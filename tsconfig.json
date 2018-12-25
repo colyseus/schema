@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "outDir": "lib",
+        "module": "commonjs",
+        "lib": ["es6"],
+        "target": "es2015",
+        "declaration": true,
+        "experimentalDecorators": true,
+        "noImplicitAny": false,
+        "sourceMap": false
+    },
+    "include": [
+      "**/*.ts"
+    ]
+}

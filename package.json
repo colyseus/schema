@@ -1,0 +1,21 @@
+{
+  "name": "msgpack-schema",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha --require ts-node/register test/**Test.ts"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/mocha": "^5.2.5",
+    "@types/node": "^10.12.15",
+    "ts-node": "^7.0.1",
+    "benchmark": "^2.1.4",
+    "flatbuffers": "^1.10.2",
+    "mocha": "^5.2.0",
+    "typescript": "^3.2.2"
+  }
+}
