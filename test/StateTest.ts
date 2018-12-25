@@ -34,6 +34,9 @@ describe("State", () => {
     describe("patching", () => {
         it("should encode changed values", () => {
             const state = new State();
+            state.fieldString = "Hello world!";
+            state.fieldNumber = 50;
+            console.log(state.serialize());
         });
     });
 

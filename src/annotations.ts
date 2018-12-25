@@ -2,31 +2,34 @@ import { encode, utf8Write } from "./msgpack/encode";
 import { decode } from "./msgpack/decode";
 
 export class Sync {
-  _offset: number = 0;
-  _bytes: number[] = [];
+    protected _offset: number = 0;
+    protected _bytes: number[] = [];
 
-  getPatches() {
-  }
-}
+    protected _fieldLengths: { [key: string]: number } = {};
 
-export function sync (target: any, key: string) {
-    if (!target._fields) { target._fields = []; }
-    target._fields.push(key);
+    protected _changes: { [key: string]: any } = {};
+    protected _changed: boolean = false;
 
-    Object.defineProperty(target, `_${key}`, {
-        enumerable: false,
-        configurable: false,
-        writable: true,
-    });
+    protected getFieldOffset(field: string) {
+        return 0;
+    }
 
-    Object.defineProperty(target, key, {
-        get: function () {
-            const fieldOffset = 0;
-            return decode(this._bytes, fieldOffset);
-        },
+    serialize() {
+        // skip if nothing has changed
+        if (!this._changed) { return; }
 
-        set: function (this: any, value: any) {
-            const fieldOffset = 0;
+        const fields = (this.constructor as any)._fields;
+        for (let i=0, l=fields.length; i<l; i++) {
+            const field = fields[i];
+            const value = this._changes[field];
+
+            // skip if no changes are made on this field
+            if (!value) {
+                console.log(field, "haven't changed empty. skip");
+                continue;
+            }
+
+            const fieldOffset = this.getFieldOffset(field);
             const previousLength = this._bytes[fieldOffset] || 0;
 
             var bytes = []
@@ -42,16 +45,16 @@ export function sync (target: any, key: string) {
             }
 
             var defer, deferLength = 0, offset = 0;
-            for (var i = 0, l = bytes.length; i < l; i++) {
-                bytes[deferWritten + i] = bytes[i];
-                if (i + 1 !== nextOffset) { continue; }
+            for (let j = 0, l = bytes.length; j < l; j++) {
+                bytes[deferWritten + j] = bytes[j];
+                if (j + 1 !== nextOffset) { continue; }
                 defer = defers[deferIndex];
                 deferLength = defer._length;
                 offset = deferWritten + nextOffset;
                 if (defer._bin) {
                     var bin = new Uint8Array(defer._bin);
-                    for (var j = 0; j < deferLength; j++) {
-                        bytes[offset + j] = bin[j];
+                    for (let k = 0; k < deferLength; k++) {
+                        bytes[offset + k] = bin[k];
                     }
                 } else if (defer._str) {
                     utf8Write(bytes, bytes.length, defer._str);
@@ -67,8 +70,39 @@ export function sync (target: any, key: string) {
             }
 
             this._bytes.splice(fieldOffset, previousLength, ...bytes);
-            this[`_${key}`] = value;
+        }
+
+        this._changed = false;
+        this._changes = {};
+
+        return this._bytes;
+    }
+}
+
+export function sync (target: any, key: string) {
+    const constructor = target.constructor;
+
+    if (!constructor._fields) { constructor._fields = []; }
+    constructor._fields.push(key);
+
+    const fieldCached = `_${key}`;
+
+    Object.defineProperty(target, fieldCached, {
+        enumerable: false,
+        configurable: false,
+        writable: true,
+    });
+
+    Object.defineProperty(target, key, {
+        get: function () {
+            return this._changes[key] || this[fieldCached] || decode(this._bytes, this.getFieldOffset(key));
         },
+
+        set: function (this: Sync, value: any) {
+            this._changed = true;
+            this._changes[key] = value;
+        },
+
         enumerable: true,
         configurable: false
     });
