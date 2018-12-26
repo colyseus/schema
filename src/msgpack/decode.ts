@@ -26,7 +26,7 @@
  * https://github.com/darrachequesne/notepack
  */
 
-interface Iterator { offset: number; }
+export interface Iterator { offset: number; }
 
 function utf8Read(bytes, offset, length) {
   var string = '', chr = 0;
@@ -81,9 +81,42 @@ export function string (bytes, it: Iterator) {
   return _str(bytes, it, prefix & 0x1f);
 }
 
+export function stringCheck(bytes, it: Iterator) {
+  const prefix = bytes[it.offset];
+  return (
+    // fixstr
+    (prefix < 0xc0 && prefix > 0xa0) ||
+    // str 8
+    prefix === 0xd9 ||
+    // str 16
+    prefix === 0xda ||
+    // str 32
+    prefix === 0xdb
+  );
+}
+
 export function int (bytes, it: Iterator) {
   return decode(bytes, it);
 };
+
+export function intCheck (bytes, it: Iterator) {
+  const prefix = bytes[it.offset];
+  // positive fixint - 0x00 - 0x7f
+  // float 32        - 0xca
+  // float 64        - 0xcb
+  // uint 8          - 0xcc
+  // uint 16         - 0xcd
+  // uint 32         - 0xce
+  // uint 64         - 0xcf
+  // int 8           - 0xd0
+  // int 16          - 0xd1
+  // int 32          - 0xd2
+  // int 64          - 0xd3
+  return (
+    prefix < 0x80 ||
+    (prefix >= 0xca && prefix <= 0xd3)
+  );
+}
 
 export function decode(bytes, it: Iterator) {
   const prefix = bytes[it.offset++];
