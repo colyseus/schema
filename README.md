@@ -97,8 +97,8 @@ class Room<T> {
 
 ## Inspiration:
 
+- [schemapack](https://github.com/phretaddin/schemapack/)
 - [avro](https://avro.apache.org/docs/current/spec.html)
-- [msgpack](https://github.com/msgpack/msgpack/blob/master/spec.md)
 - [flatbuffers](https://google.github.io/flatbuffers/flatbuffers_white_paper.html)
 
 
