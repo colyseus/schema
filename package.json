@@ -6,6 +6,9 @@
   "scripts": {
     "test": "mocha --require ts-node/register test/**Test.ts"
   },
+  "bin": {
+    "stateify": "./bin/stateify"
+  },
   "author": "",
   "license": "ISC",
   "dependencies": {},

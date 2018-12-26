@@ -1,6 +1,5 @@
-import * as msgpack from "notepack.io";
 import * as assert from "assert";
-import { State } from './../src/State';
+import { State, Player } from '../example/State';
 
 describe("State", () => {
     // describe("Getters", () => {
@@ -37,14 +36,18 @@ describe("State", () => {
             const state = new State();
             state.fieldString = "Hello world!";
             state.fieldNumber = 50;
+            state.player = new Player();
 
-            const serialized = state.serialize();
+            const serialized = state.encode();
             const newState = new State();
+            // newState.onChange = function(field, value, previousValue) {
+            //     console.log(field, "HAS CHANGED FROM", previousValue, "TO", value);
+            // }
             newState.decode(serialized);
 
             assert.equal(newState.fieldString, "Hello world!");
             assert.equal(newState.fieldNumber, 50);
-
+            assert.ok(newState.player instanceof Player);
         });
     });
 

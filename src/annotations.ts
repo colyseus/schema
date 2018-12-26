@@ -1,7 +1,7 @@
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
 
-export class Sync {
+export abstract class Sync {
     protected _offset: number = 0;
     protected _bytes: number[] = [];
 
@@ -9,6 +9,8 @@ export class Sync {
 
     protected _changes: { [key: string]: any } = {};
     protected _changed: boolean = false;
+
+    public onChange?(field: string, value: any, previousValue: any);
 
     protected getFieldOffset(field: string) {
         const schema = (this.constructor as any)._schema;
@@ -35,7 +37,13 @@ export class Sync {
                 continue;
             }
 
-            this[`_${field}`] = decodeFunc(bytes, iterator);
+            const value = decodeFunc(bytes, iterator);
+
+            if (this.onChange) {
+                this.onChange(field, value, this[`_${field}`]);
+            }
+
+            this[`_${field}`] = value;
         }
     }
 
@@ -128,7 +136,7 @@ export function sync (type: any) {
 
         Object.defineProperty(target, key, {
             get: function () {
-                return this._changes[key] || this[fieldCached] || decode.decode(this._bytes, this.getFieldOffset(key));
+                return this._changes[key] || this[fieldCached] /*|| decode.decode(this._bytes, this.getFieldOffset(key))*/;
             },
 
             set: function (this: Sync, value: any) {
