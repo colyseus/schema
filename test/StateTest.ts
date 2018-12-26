@@ -1,3 +1,4 @@
+import * as msgpack from "notepack.io";
 import * as assert from "assert";
 import { State } from './../src/State';
 
@@ -36,7 +37,14 @@ describe("State", () => {
             const state = new State();
             state.fieldString = "Hello world!";
             state.fieldNumber = 50;
-            console.log(state.serialize());
+
+            const serialized = state.serialize();
+            const newState = new State();
+            newState.decode(serialized);
+
+            assert.equal(newState.fieldString, "Hello world!");
+            assert.equal(newState.fieldNumber, 50);
+
         });
     });
 

@@ -1,5 +1,5 @@
-import { encode, utf8Write } from "./msgpack/encode";
-import { decode } from "./msgpack/decode";
+import * as encode from "./msgpack/encode";
+import * as decode from "./msgpack/decode";
 
 export class Sync {
     protected _offset: number = 0;
@@ -11,17 +11,47 @@ export class Sync {
     protected _changed: boolean = false;
 
     protected getFieldOffset(field: string) {
-        return 0;
+        const schema = (this.constructor as any)._schema;
+        const fields = Object.keys(schema);
+        const index = fields.indexOf(field);
+
+        let offset = 0;
+        for (let i = 0; i < index; i++) {
+            offset += this._bytes[offset];
+        }
+
+        return offset;
     }
 
-    serialize() {
+    decode(bytes) {
+        const schema = (this.constructor as any)._schema;
+
+        let iterator = { offset: 0 };
+        for (const field in schema) {
+            const decodeFunc = decode[schema[field]];
+
+            if (!decodeFunc) {
+                console.log("cannot decode", schema[field]);
+                continue;
+            }
+
+            this[`_${field}`] = decodeFunc(bytes, iterator);
+        }
+    }
+
+    encode() {
         // skip if nothing has changed
         if (!this._changed) { return; }
 
-        const fields = (this.constructor as any)._fields;
-        for (let i=0, l=fields.length; i<l; i++) {
-            const field = fields[i];
+        const schema = (this.constructor as any)._schema;
+        for (const field in schema) {
             const value = this._changes[field];
+            const encodeFunc = encode[schema[field]];
+
+            if (!encodeFunc) {
+                console.log("cannot encode", schema[field]);
+                continue;
+            }
 
             // skip if no changes are made on this field
             if (!value) {
@@ -35,7 +65,7 @@ export class Sync {
             var bytes = []
             var defers = []
 
-            const newLength = encode(bytes, defers, value);
+            const newLength = encodeFunc(bytes, defers, value);
 
             var deferIndex = 0;
             var deferWritten = 0;
@@ -57,7 +87,7 @@ export class Sync {
                         bytes[offset + k] = bin[k];
                     }
                 } else if (defer._str) {
-                    utf8Write(bytes, bytes.length, defer._str);
+                    encode.utf8Write(bytes, bytes.length, defer._str);
 
                 } else if (defer._float !== undefined) {
                     bytes[offset] = defer._float;
@@ -79,31 +109,35 @@ export class Sync {
     }
 }
 
-export function sync (target: any, key: string) {
-    const constructor = target.constructor;
+export function sync (type: any) {
+    return function (target: any, key: string) {
+        const constructor = target.constructor;
 
-    if (!constructor._fields) { constructor._fields = []; }
-    constructor._fields.push(key);
+        // static schema
+        if (!constructor._schema) {
+            constructor._schema = {};
+        }
+        constructor._schema[key] = type;
 
-    const fieldCached = `_${key}`;
+        const fieldCached = `_${key}`;
+        Object.defineProperty(target, fieldCached, {
+            enumerable: false,
+            configurable: false,
+            writable: true,
+        });
 
-    Object.defineProperty(target, fieldCached, {
-        enumerable: false,
-        configurable: false,
-        writable: true,
-    });
+        Object.defineProperty(target, key, {
+            get: function () {
+                return this._changes[key] || this[fieldCached] || decode.decode(this._bytes, this.getFieldOffset(key));
+            },
 
-    Object.defineProperty(target, key, {
-        get: function () {
-            return this._changes[key] || this[fieldCached] || decode(this._bytes, this.getFieldOffset(key));
-        },
+            set: function (this: Sync, value: any) {
+                this._changed = true;
+                this._changes[key] = value;
+            },
 
-        set: function (this: Sync, value: any) {
-            this._changed = true;
-            this._changes[key] = value;
-        },
-
-        enumerable: true,
-        configurable: false
-    });
+            enumerable: true,
+            configurable: false
+        });
+    }
 }

@@ -26,6 +26,8 @@
  * https://github.com/darrachequesne/notepack
  */
 
+interface Iterator { offset: number; }
+
 function utf8Read(bytes, offset, length) {
   var string = '', chr = 0;
   for (var i = offset, end = offset + length; i < end; i++) {
@@ -68,14 +70,23 @@ function utf8Read(bytes, offset, length) {
 }
 
 
-function _str (bytes, offset, length) {
-  var value = utf8Read(bytes, offset, length);
-  offset += length;
+function _str (bytes, it: Iterator, length: number) {
+  var value = utf8Read(bytes, it.offset, length);
+  it.offset += length;
   return value;
 };
 
-export function decode(bytes, offset) {
-  var prefix = bytes[offset++];
+export function string (bytes, it: Iterator) {
+  const prefix = bytes[it.offset++];
+  return _str(bytes, it, prefix & 0x1f);
+}
+
+export function int (bytes, it: Iterator) {
+  return decode(bytes, it);
+};
+
+export function decode(bytes, it: Iterator) {
+  const prefix = bytes[it.offset++];
   var value, length = 0, type = 0, hi = 0, lo = 0;
 
   if (prefix < 0xc0) {
@@ -92,7 +103,7 @@ export function decode(bytes, offset) {
       return this._array(prefix & 0x0f);
     }
     // fixstr
-    return _str(bytes, offset, prefix & 0x1f);
+    return _str(bytes, it, prefix & 0x1f);
   }
 
   // negative fixint
@@ -113,147 +124,147 @@ export function decode(bytes, offset) {
 
     // bin
     case 0xc4:
-      length = bytes[offset];
-      offset += 1;
+      length = bytes[it.offset];
+      it.offset += 1;
       return this._bin(length);
     case 0xc5:
-      length = bytes[offset];
-      offset += 2;
+      length = bytes[it.offset];
+      it.offset += 2;
       return this._bin(length);
     case 0xc6:
-      length = bytes[offset];
-      offset += 4;
+      length = bytes[it.offset];
+      it.offset += 4;
       return this._bin(length);
 
     // ext
     case 0xc7:
-      length = bytes[offset];
-      type = bytes[offset + 1];
-      offset += 2;
+      length = bytes[it.offset];
+      type = bytes[it.offset + 1];
+      it.offset += 2;
       return [type, this._bin(length)];
     case 0xc8:
-      length = bytes[offset];
-      type = bytes[offset + 2];
-      offset += 3;
+      length = bytes[it.offset];
+      type = bytes[it.offset + 2];
+      it.offset += 3;
       return [type, this._bin(length)];
     case 0xc9:
-      length = bytes[offset];
-      type = bytes[offset + 4];
-      offset += 5;
+      length = bytes[it.offset];
+      type = bytes[it.offset + 4];
+      it.offset += 5;
       return [type, this._bin(length)];
 
     // float
     case 0xca:
-      value = bytes[offset];
-      offset += 4;
+      value = bytes[it.offset];
+      it.offset += 4;
       return value;
     case 0xcb:
-      value = bytes[offset];
-      offset += 8;
+      value = bytes[it.offset];
+      it.offset += 8;
       return value;
 
     // uint
     case 0xcc:
-      value = bytes[offset];
-      offset += 1;
+      value = bytes[it.offset];
+      it.offset += 1;
       return value;
     case 0xcd:
-      value = bytes[offset];
-      offset += 2;
+      value = bytes[it.offset];
+      it.offset += 2;
       return value;
     case 0xce:
-      value = bytes[offset];
-      offset += 4;
+      value = bytes[it.offset];
+      it.offset += 4;
       return value;
     case 0xcf:
-      hi = bytes[offset] * Math.pow(2, 32);
-      lo = bytes[offset + 4];
-      offset += 8;
+      hi = bytes[it.offset] * Math.pow(2, 32);
+      lo = bytes[it.offset + 4];
+      it.offset += 8;
       return hi + lo;
 
     // int
     case 0xd0:
-      value = bytes[offset];
-      offset += 1;
+      value = bytes[it.offset];
+      it.offset += 1;
       return value;
     case 0xd1:
-      value = bytes[offset];
-      offset += 2;
+      value = bytes[it.offset];
+      it.offset += 2;
       return value;
     case 0xd2:
-      value = bytes[offset];
-      offset += 4;
+      value = bytes[it.offset];
+      it.offset += 4;
       return value;
     case 0xd3:
-      hi = bytes[offset] * Math.pow(2, 32);
-      lo = bytes[offset + 4];
-      offset += 8;
+      hi = bytes[it.offset] * Math.pow(2, 32);
+      lo = bytes[it.offset + 4];
+      it.offset += 8;
       return hi + lo;
 
     // fixext
     case 0xd4:
-      type = bytes[offset];
-      offset += 1;
+      type = bytes[it.offset];
+      it.offset += 1;
       if (type === 0x00) {
-        offset += 1;
+        it.offset += 1;
         return void 0;
       }
       return [type, this._bin(1)];
     case 0xd5:
-      type = bytes[offset];
-      offset += 1;
+      type = bytes[it.offset];
+      it.offset += 1;
       return [type, this._bin(2)];
     case 0xd6:
-      type = bytes[offset];
-      offset += 1;
+      type = bytes[it.offset];
+      it.offset += 1;
       return [type, this._bin(4)];
     case 0xd7:
-      type = bytes[offset];
-      offset += 1;
+      type = bytes[it.offset];
+      it.offset += 1;
       if (type === 0x00) {
-        hi = bytes[offset] * Math.pow(2, 32);
-        lo = bytes[offset + 4];
-        offset += 8;
+        hi = bytes[it.offset] * Math.pow(2, 32);
+        lo = bytes[it.offset + 4];
+        it.offset += 8;
         return new Date(hi + lo);
       }
       return [type, this._bin(8)];
     case 0xd8:
-      type = bytes[offset];
-      offset += 1;
+      type = bytes[it.offset];
+      it.offset += 1;
       return [type, this._bin(16)];
 
     // str
     case 0xd9:
-      length = bytes[offset];
-      offset += 1;
+      length = bytes[it.offset];
+      it.offset += 1;
       return this._str(length);
     case 0xda:
-      length = bytes[offset];
-      offset += 2;
+      length = bytes[it.offset];
+      it.offset += 2;
       return this._str(length);
     case 0xdb:
-      length = bytes[offset];
-      offset += 4;
+      length = bytes[it.offset];
+      it.offset += 4;
       return this._str(length);
 
     // array
     case 0xdc:
-      length = bytes[offset];
-      offset += 2;
+      length = bytes[it.offset];
+      it.offset += 2;
       return this._array(length);
     case 0xdd:
-      length = bytes[offset];
-      offset += 4;
+      length = bytes[it.offset];
+      it.offset += 4;
       return this._array(length);
 
     // map
     case 0xde:
-      length = bytes[offset];
-      offset += 2;
+      length = bytes[it.offset];
+      it.offset += 2;
       return this._map(length);
     case 0xdf:
-      length = bytes[offset];
-      offset += 4;
+      length = bytes[it.offset];
+      it.offset += 4;
       return this._map(length);
   }
 
