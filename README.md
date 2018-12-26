@@ -1,7 +1,8 @@
 # @colyseus/state
 
-## WORK-IN-PROGRESS EXPERIMENT OF A NEW SERIALIZATION ALGORITHM FOR [COLYSEUS](https://github.com/gamestdio/colyseus)
-## THIS IS NOT STABLE AND THE API MAY CHANGE COMPLETELY AT ANY TIME
+> WORK-IN-PROGRESS EXPERIMENT OF A NEW SERIALIZATION ALGORITHM FOR [COLYSEUS](https://github.com/gamestdio/colyseus)
+
+> THIS IS NOT STABLE AND THE API MAY CHANGE COMPLETELY AT ANY TIME
 
 Initial thoghts/assumptions:
 - no bottleneck to detect state changes.
