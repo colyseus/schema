@@ -16,7 +16,7 @@ export abstract class Sync {
     public onChange?(field: string, value: any, previousValue: any);
 
     protected getFieldOffset(field: string, bytes = this._bytes, offset = 0) {
-        const schema = (this.constructor as any)._schema;
+        const schema = this._schema;
         const fields = Object.keys(schema);
         const index = fields.indexOf(field);
 
@@ -27,17 +27,32 @@ export abstract class Sync {
         return offset;
     }
 
-    markAsChanged () {
-        if (this._changed) { return; }
+    markAsChanged (child?: Sync) {
         this._changed = true;
+        console.log(this.constructor.name, "HAVE PARENT?", typeof(this._parent));
 
-        if (this._parent) {
-            this._parent.markAsChanged();
+        if (child) {
+            const schema = this._schema;
+            for (const field in schema) {
+                if (this[`_${field}`] === child) {
+                    this._changes[field] = child;
+                    break;
+                }
+            }
+        }
+
+        if (this._parent && !this._parent._changed) {
+            console.log("FLAG AS CHANGED", this.constructor.name);
+            this._parent.markAsChanged(this);
         }
     }
 
+    get _schema () {
+        return (this.constructor as any)._schema;
+    }
+
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
-        const schema = (this.constructor as any)._schema;
+        const schema = this._schema;
 
         for (const field in schema) {
             const type = schema[field];
@@ -48,6 +63,7 @@ export abstract class Sync {
             if ((type as any)._schema) {
                 value = new type();
                 value._parent = this;
+                console.log("SET PARENT FOR", value.constructor.name, "PARENT=", this.constructor.name );
 
                 if (isUnchanged) {
                     console.log(`${type.name} is empty. leave it empty.`);
@@ -81,12 +97,11 @@ export abstract class Sync {
     encode(encodedBytes = [], encodingOffset: number = 0) {
         // skip if nothing has changed
         if (!this._changed) {
-            console.log(this.constructor.name, "haven't changed. skip.");
             encodedBytes.push(BYTE_UNCHANGED); // skip
             return encodedBytes;
         }
 
-        const schema = (this.constructor as any)._schema;
+        const schema = this._schema;
         for (const field in schema) {
             let bytes: number[] = [];
 
@@ -95,14 +110,20 @@ export abstract class Sync {
 
             // const fieldOffset = this.getFieldOffset(field, this._bytes || encodedBytes, encodingOffset);
 
-            if (!value) {
+            if (value === undefined) {
                 // skip if no changes are made on this field
-                console.log(field, "haven't changed empty. skip");
+                console.log(field, "haven't changed. skip it");
                 bytes = [BYTE_UNCHANGED];
 
             } else if ((type as any)._schema) {
                 // encode child object
                 bytes = (value as Sync).encode(); // , fieldOffset
+
+                // ensure parent is set
+                // in case it was manually instantiated
+                if (!value._parent) {
+                    value._parent = this;
+                }
 
             } else {
                 const encodeFunc = encode[type];
@@ -188,6 +209,7 @@ export function sync (type: any) {
             set: function (this: Sync, value: any) {
                 this.markAsChanged();
                 this._changes[key] = value;
+                this[fieldCached] = value;
             },
 
             enumerable: true,
