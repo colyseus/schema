@@ -1,4 +1,4 @@
-import { BYTE_UNCHANGED } from './spec';
+import { BYTE_UNCHANGED, BYTE_SYNC_OBJ } from './spec';
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
 
@@ -29,7 +29,6 @@ export abstract class Sync {
 
     markAsChanged (child?: Sync) {
         this._changed = true;
-        console.log(this.constructor.name, "HAVE PARENT?", typeof(this._parent));
 
         if (child) {
             const schema = this._schema;
@@ -42,7 +41,6 @@ export abstract class Sync {
         }
 
         if (this._parent && !this._parent._changed) {
-            console.log("FLAG AS CHANGED", this.constructor.name);
             this._parent.markAsChanged(this);
         }
     }
@@ -55,15 +53,20 @@ export abstract class Sync {
         const schema = this._schema;
 
         for (const field in schema) {
+            const isSyncObject = (bytes[it.offset] === BYTE_SYNC_OBJ);
+            let isUnchanged = (bytes[it.offset] === BYTE_UNCHANGED);
+
             const type = schema[field];
-
             let value: any;
-            const isUnchanged = (bytes[it.offset] === BYTE_UNCHANGED);
 
-            if ((type as any)._schema) {
-                value = new type();
+            if (isSyncObject) {
+                it.offset++;
+                isUnchanged = (bytes[it.offset] === BYTE_UNCHANGED);
+            }
+
+            if ((type as any)._schema && isSyncObject) {
+                value = this[`_${field}`] || new type();
                 value._parent = this;
-                console.log("SET PARENT FOR", value.constructor.name, "PARENT=", this.constructor.name );
 
                 if (isUnchanged) {
                     console.log(`${type.name} is empty. leave it empty.`);
@@ -76,25 +79,32 @@ export abstract class Sync {
                 const decodeFunc = decode[type];
                 const decodeCheckFunc = decode[type + "Check"];
 
+                console.log("CHECK", field, type, decodeCheckFunc(bytes, it))
+
                 if (decodeFunc && decodeCheckFunc(bytes, it)) {
                     value = decodeFunc(bytes, it);
                 }
             } else {
                 // unchanged, skip decoding it
+                console.log("field", field, "not changed. skip decoding it.");
                 it.offset++;
             }
 
-            if (this.onChange) {
-                this.onChange(field, value, this[`_${field}`]);
-            }
+            if (!isUnchanged) {
+                if (this.onChange) {
+                    this.onChange(field, value, this[`_${field}`]);
+                }
 
-            this[`_${field}`] = value;
+                this[`_${field}`] = value;
+            }
         }
 
         return this;
     }
 
     encode(encodedBytes = [], encodingOffset: number = 0) {
+        encodedBytes.push(BYTE_SYNC_OBJ);
+
         // skip if nothing has changed
         if (!this._changed) {
             encodedBytes.push(BYTE_UNCHANGED); // skip

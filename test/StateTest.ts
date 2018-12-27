@@ -48,10 +48,12 @@ describe("State", () => {
             const newState = new State();
             newState.decode(serialized);
 
+            const decodedPlayerReference = newState.player;
+
             assert.equal(newState.fieldString, "Hello world!");
             assert.equal(newState.fieldNumber, 50);
 
-            assert.ok(newState.player instanceof Player);
+            assert.ok(decodedPlayerReference instanceof Player);
             assert.equal(newState.player.name, "Jake Badlands");
             assert.equal(newState.player.x, undefined, "unset variable should be undefined");
             assert.equal(newState.player.y, 50);
@@ -70,8 +72,14 @@ describe("State", () => {
             assert.equal((state.player as any)._changed, true);
             assert.equal((state as any)._changed, true);
 
+            console.log("LETS ENCODE AGAIN");
             const serializedChanges = state.encode();
+            console.log(serializedChanges.length, serializedChanges);
+
+            console.log("LETS DECODE AGAIN");
+
             newState.decode(serializedChanges);
+            assert.equal(decodedPlayerReference, newState.player, "should re-use the same Player instance");
             assert.equal(newState.player.x, 50);
         });
     });
