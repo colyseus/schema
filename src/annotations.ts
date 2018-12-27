@@ -10,6 +10,8 @@ export abstract class Sync {
     protected _changes: { [key: string]: any } = {};
     protected _changed: boolean = false;
 
+    protected _parent: Sync;
+
     public onChange?(field: string, value: any, previousValue: any);
 
     protected getFieldOffset(field: string, bytes = this._bytes, offset = 0) {
@@ -24,6 +26,14 @@ export abstract class Sync {
         return offset;
     }
 
+    markAsChanged () {
+        this._changed = true;
+
+        if (this._parent) {
+            this._parent.markAsChanged();
+        }
+    }
+
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
         const schema = (this.constructor as any)._schema;
 
@@ -33,6 +43,7 @@ export abstract class Sync {
 
             if ((type as any)._schema) {
                 value = new type();
+                value._parent = this;
 
                 if (bytes[it.offset] === 0x00) {
                     console.log(`${type.name} is empty. leave it empty.`);
@@ -168,7 +179,7 @@ export function sync (type: any) {
             },
 
             set: function (this: Sync, value: any) {
-                this._changed = true;
+                this.markAsChanged();
                 this._changes[key] = value;
             },
 
