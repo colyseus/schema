@@ -6,6 +6,7 @@
 
 Initial thoghts/assumptions:
 - no bottleneck to detect state changes.
+- have a schema definition on both server and client
 - better experience on staticaly-typed languages (C#, C++)
 - mutations should be cheap.
   (need to check how costful is writing in buffers instead of updating variables directly.)

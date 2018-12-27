@@ -79,8 +79,6 @@ export abstract class Sync {
                 const decodeFunc = decode[type];
                 const decodeCheckFunc = decode[type + "Check"];
 
-                console.log("CHECK", field, type, decodeCheckFunc(bytes, it))
-
                 if (decodeFunc && decodeCheckFunc(bytes, it)) {
                     value = decodeFunc(bytes, it);
                 }
