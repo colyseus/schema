@@ -1,3 +1,4 @@
+import { BYTE_UNCHANGED } from './spec';
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
 
@@ -27,6 +28,7 @@ export abstract class Sync {
     }
 
     markAsChanged () {
+        if (this._changed) { return; }
         this._changed = true;
 
         if (this._parent) {
@@ -39,26 +41,31 @@ export abstract class Sync {
 
         for (const field in schema) {
             const type = schema[field];
+
             let value: any;
+            const isUnchanged = (bytes[it.offset] === BYTE_UNCHANGED);
 
             if ((type as any)._schema) {
                 value = new type();
                 value._parent = this;
 
-                if (bytes[it.offset] === 0x00) {
+                if (isUnchanged) {
                     console.log(`${type.name} is empty. leave it empty.`);
                     it.offset++;
                 } else {
                     value.decode(bytes, it);
                 }
 
-            } else {
+            } else if (!isUnchanged) {
                 const decodeFunc = decode[type];
                 const decodeCheckFunc = decode[type + "Check"];
 
                 if (decodeFunc && decodeCheckFunc(bytes, it)) {
                     value = decodeFunc(bytes, it);
                 }
+            } else {
+                // unchanged, skip decoding it
+                it.offset++;
             }
 
             if (this.onChange) {
@@ -75,26 +82,26 @@ export abstract class Sync {
         // skip if nothing has changed
         if (!this._changed) {
             console.log(this.constructor.name, "haven't changed. skip.");
-            encodedBytes.push(0x00); // skip
+            encodedBytes.push(BYTE_UNCHANGED); // skip
             return encodedBytes;
         }
 
         const schema = (this.constructor as any)._schema;
         for (const field in schema) {
-            const value = this._changes[field];
             let bytes: number[] = [];
+
+            const type = schema[field];
+            const value = this._changes[field];
+
+            // const fieldOffset = this.getFieldOffset(field, this._bytes || encodedBytes, encodingOffset);
 
             if (!value) {
                 // skip if no changes are made on this field
                 console.log(field, "haven't changed empty. skip");
-                continue;
-            }
+                bytes = [BYTE_UNCHANGED];
 
-            // const fieldOffset = this.getFieldOffset(field, this._bytes || encodedBytes, encodingOffset);
-            const type = schema[field];
-
-            // encode child object
-            if ((type as any)._schema) {
+            } else if ((type as any)._schema) {
+                // encode child object
                 bytes = (value as Sync).encode(); // , fieldOffset
 
             } else {

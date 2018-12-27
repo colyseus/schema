@@ -25,7 +25,7 @@ describe("State", () => {
 
             state.player = new Player();
             state.player.name = "Jake Badlands";
-            state.player.x = 50;
+            // state.player.x = 50;
             state.player.y = 50;
 
             const serialized = state.encode();
@@ -40,7 +40,7 @@ describe("State", () => {
 
             assert.ok(newState.player instanceof Player);
             assert.equal(newState.player.name, "Jake Badlands");
-            assert.equal(newState.player.x, 50);
+            assert.equal(newState.player.x, undefined);
             assert.equal(newState.player.y, 50);
         });
     });
