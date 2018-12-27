@@ -68,12 +68,12 @@ export abstract class Sync {
                 value = this[`_${field}`] || new type();
                 value._parent = this;
 
-                if (isUnchanged) {
-                    console.log(`${type.name} is empty. leave it empty.`);
-                    it.offset++;
-                } else {
+                // if (isUnchanged) {
+                //     console.log(`${type.name} is empty. leave it empty.`);
+                //     it.offset++;
+                // } else {
                     value.decode(bytes, it);
-                }
+                // }
 
             } else if (!isUnchanged) {
                 const decodeFunc = decode[type];

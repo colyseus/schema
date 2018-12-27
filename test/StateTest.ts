@@ -80,7 +80,7 @@ describe("State", () => {
 
             newState.decode(serializedChanges);
             assert.equal(decodedPlayerReference, newState.player, "should re-use the same Player instance");
-            assert.equal(newState.player.x, 50);
+            assert.equal(newState.player.x, 30);
         });
     });
 });
