@@ -9,7 +9,6 @@ Initial thoghts/assumptions:
 - have a schema definition on both server and client
 - better experience on staticaly-typed languages (C#, C++)
 - mutations should be cheap.
-  (need to check how costful is writing in buffers instead of updating variables directly.)
 
 Practical Colyseus issues this should solve:
 - Avoid decoding large objects that haven't been patched
@@ -85,8 +84,6 @@ class Room<T> {
 
         const filteredState = this.onPatch(client, this.state.clone());
         send(client, filteredState.encode());
-
-        this.statesPerClient[client.sessionId] = filteredState.bytes;
       }
 
     } else {
