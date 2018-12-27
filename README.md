@@ -52,7 +52,7 @@ This is the ideal scenario that should be possible to achieve.
 ### Customizing which data each client will receive
 
 ```typescript
-class MyRoom extends Room {
+class MyRoom extends Room<State> {
   onInit() {
     this.setState(new State());
   }
@@ -60,6 +60,7 @@ class MyRoom extends Room {
   onPatch (client: Client, state: State) {
     const player = state.players[client.sessionId];
 
+    // filter enemies closer to current player
     state.enemies = state.enemies.filter(enemy =>
       distance(enemy.x, enemy.y, player.x, player.y) < 50);
 
