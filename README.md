@@ -15,6 +15,18 @@ Practical Colyseus issues this should solve:
 - Allow to send different patches for each client
 - Better developer experience on statically-typed languages
 
+Current problems when listening to changes:
+
+```
+// given that "position" is an object containing x and y
+// e.g. {"x": 100, "y": 200};
+room.listen("entities/:id/position/:axis", (change) => {
+  // this callback will be called twice
+  // - first for "x"
+  // - second for "y"
+});
+```
+
 ## Defining Schema
 
 As Colyseus is written in TypeScript, the schema is defined as type annotations inside the state class. Additional server logic may be added to that class, but client-side generated (not implemented) files will consider only the schema itself.

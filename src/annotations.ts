@@ -67,13 +67,11 @@ export abstract class Sync {
             if ((type as any)._schema && isSyncObject) {
                 value = this[`_${field}`] || new type();
                 value._parent = this;
+                value.decode(bytes, it);
 
-                // if (isUnchanged) {
-                //     console.log(`${type.name} is empty. leave it empty.`);
-                //     it.offset++;
-                // } else {
-                    value.decode(bytes, it);
-                // }
+            } else if (decode.arrayCheck(bytes, it)) {
+                value = decode.decode(bytes, it);
+                console.log("IS ARRAY!", value);
 
             } else if (!isUnchanged) {
                 const decodeFunc = decode[type];
@@ -84,11 +82,11 @@ export abstract class Sync {
                 }
             } else {
                 // unchanged, skip decoding it
-                console.log("field", field, "not changed. skip decoding it.");
+                // console.log("field", field, "not changed. skip decoding it.");
                 it.offset++;
             }
 
-            if (!isUnchanged) {
+            if (!isUnchanged || isSyncObject) {
                 if (this.onChange) {
                     this.onChange(field, value, this[`_${field}`]);
                 }
@@ -120,7 +118,7 @@ export abstract class Sync {
 
             if (value === undefined) {
                 // skip if no changes are made on this field
-                console.log(field, "haven't changed. skip it");
+                // console.log(field, "haven't changed. skip it");
                 bytes = [BYTE_UNCHANGED];
 
             } else if ((type as any)._schema) {
@@ -132,6 +130,15 @@ export abstract class Sync {
                 if (!value._parent) {
                     value._parent = this;
                 }
+
+            } else if (Array.isArray(value)) {
+                // encode Array of type
+                for (let i = 0, l = value.length; i < l; i++) {
+                    bytes = bytes.concat(value[i].encode());
+                }
+
+            } else if (typeof(type) === "object") {
+                // encode Map of type
 
             } else {
                 const encodeFunc = encode[type];

@@ -21,9 +21,9 @@ export class State extends Sync {
   @sync(Player)
   player: Player;
 
-  // @sync([ Player ])
-  // arrayOfPlayers: Player[];
+  @sync([ Player ])
+  arrayOfPlayers: Player[];
 
-  // @sync({ id: Player })
-  // mapOfPlayers: { [id: string]: Player };
+  @sync({ id: Player })
+  mapOfPlayers: { [id: string]: Player };
 }

@@ -25,7 +25,78 @@ describe("State", () => {
     });
 
     describe("encoding", () => {
-        it("should encode changed values", () => {
+        it("should encode/decode STRING", () => {
+            const state = new State();
+            state.fieldString = "Hello world";
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.fieldString, "Hello world");
+        });
+
+        it("should encode/decode INT", () => {
+            const state = new State();
+            state.fieldNumber = 50;
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.fieldNumber, 50);
+        });
+
+        it("should encode/decode empty Sync reference", () => {
+            const state = new State();
+            state.player = new Player();
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            assert.ok(decodedState.player instanceof Player);
+        });
+
+        it("should encode/decode Sync reference with its properties", () => {
+            const state = new State();
+            state.player = new Player();
+            state.player.name = "Jake";
+            state.player.x = 100;
+            state.player.y = 200;
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            assert.ok(decodedState.player instanceof Player);
+            assert.equal(decodedState.player.x, 100);
+            assert.equal(decodedState.player.y, 200);
+        });
+
+        it("should re-use child Sync instance when decoding multiple times", () => {
+            const state = new State();
+            state.player = new Player();
+            state.player.name = "Guest";
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            const playerReference = decodedState.player;
+            assert.ok(playerReference instanceof Player);
+            assert.equal(playerReference.name, "Guest");
+
+            state.player.name = "Jake";
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.player, playerReference);
+            assert.equal(playerReference.name, "Jake");
+        });
+
+        it("should encode empty array", () => {
+            const state = new State();
+            state.arrayOfPlayers = [];
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            assert.deepEqual(decodedState.arrayOfPlayers, []);
+        });
+
+        xit("should encode changed values", () => {
             const state = new State();
             state.fieldString = "Hello world!";
             state.fieldNumber = 50;
@@ -80,7 +151,9 @@ describe("State", () => {
 
             newState.decode(serializedChanges);
             assert.equal(decodedPlayerReference, newState.player, "should re-use the same Player instance");
+            assert.equal(newState.player.name, "Jake Badlands");
             assert.equal(newState.player.x, 30);
+            assert.equal(newState.player.y, 50);
         });
     });
 });

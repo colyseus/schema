@@ -118,6 +118,10 @@ export function intCheck (bytes, it: Iterator) {
   );
 }
 
+export function arrayCheck (bytes, it: Iterator) {
+  return bytes[it.offset] < 0xa0;
+}
+
 export function decode(bytes, it: Iterator) {
   const prefix = bytes[it.offset++];
   var value, length = 0, type = 0, hi = 0, lo = 0;
