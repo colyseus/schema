@@ -315,7 +315,9 @@ export function string (bytes, defers, value) {
     throw new Error('String too long');
   }
 
-  defers.push({ _str: value, _length: length, _offset: bytes.length });
+  // defers.push({ _str: value, _length: length, _offset: bytes.length });
+  utf8Write(bytes, bytes.length, value);
+
   return size + length;
 }
 

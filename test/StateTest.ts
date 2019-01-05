@@ -121,15 +121,41 @@ describe("State", () => {
             assert.equal(decodedState.arrayOfPlayers[2].name, "Tarquinn");
 
             state.arrayOfPlayers.pop();
+            state.arrayOfPlayers[0].name = "Tarquinn"
             decodedState.decode(state.encode());
 
             assert.equal(decodedState.arrayOfPlayers.length, 2);
             assert.equal(decodedState.arrayOfPlayers[0], decodedPlayer1);
+            assert.equal(decodedState.arrayOfPlayers[0].name, "Tarquinn");
             assert.equal(decodedState.arrayOfPlayers[1], decodedPlayer2);
             assert.equal(decodedState.arrayOfPlayers[2], undefined);
         });
 
-        xit("should encode changed values", () => {
+        it("should encode map of objects", () => {
+            const state = new State();
+            state.mapOfPlayers = {
+                "one": new Player("Jake Badlands"),
+                "two": new Player("Snake Sanders")
+            };
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            const playerOne = decodedState.mapOfPlayers.one;
+            const playerTwo = decodedState.mapOfPlayers.two;
+
+            assert.deepEqual(Object.keys(decodedState.mapOfPlayers), ["one", "two"]);
+            assert.equal(playerOne.name, "Jake Badlands");
+            assert.equal(playerTwo.name, "Snake Sanders");
+
+            state.mapOfPlayers.one.name = "Tarquinn";
+            decodedState.decode(state.encode());
+
+            assert.equal(playerOne, decodedState.mapOfPlayers.one);
+            assert.equal(decodedState.mapOfPlayers.one.name, "Tarquinn");
+        });
+
+        it("should encode changed values", () => {
             const state = new State();
             state.fieldString = "Hello world!";
             state.fieldNumber = 50;
@@ -176,11 +202,7 @@ describe("State", () => {
             assert.equal((state.player as any)._changed, true);
             assert.equal((state as any)._changed, true);
 
-            console.log("LETS ENCODE AGAIN");
             const serializedChanges = state.encode();
-            console.log(serializedChanges.length, serializedChanges);
-
-            console.log("LETS DECODE AGAIN");
 
             newState.decode(serializedChanges);
             assert.equal(decodedPlayerReference, newState.player, "should re-use the same Player instance");

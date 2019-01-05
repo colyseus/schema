@@ -32,6 +32,6 @@ export class State extends Sync {
   @sync([ Player ])
   arrayOfPlayers: Player[];
 
-  @sync({ id: Player })
+  @sync({ map: Player })
   mapOfPlayers: { [id: string]: Player };
 }

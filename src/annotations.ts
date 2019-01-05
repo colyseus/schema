@@ -98,6 +98,21 @@ export abstract class Sync {
                     }
                 }
 
+            } else if (type.map) {
+                type = type.map;
+                value = this[`_${field}`] || {};
+
+                const length = (bytes[it.offset++] & 0x0f);
+                for (let i = 0; i < length; i++) {
+                    const key = decode.string(bytes, it);
+                    const item = value[key] || new type();
+                    item._parent = this;
+                    item.decode(bytes, it);
+
+                    if (value[key] === undefined) {
+                        value[key] = item;
+                    }
+                }
 
             } else if (!isUnchanged) {
                 const decodeFunc = decode[type];
@@ -157,16 +172,34 @@ export abstract class Sync {
                     value._parent = this;
                 }
 
-            } else if (Array.isArray(value)) {
+            } else if (Array.isArray(type)) {
                 // encode Array of type
                 bytes.push(value.length | 0xa0);
 
                 for (let i = 0, l = value.length; i < l; i++) {
-                    bytes = bytes.concat(value[i].encode());
+                    const item = value[i];
+                    bytes = bytes.concat(item.encode());
+
+                    if (!item._parent) {
+                        item._parent = this;
+                    }
                 }
 
-            } else if (typeof(type) === "object") {
+            } else if (type.map) {
                 // encode Map of type
+                const keys = Object.keys(value);
+                bytes.push(keys.length | 0x80);
+
+                for (let i = 0; i < keys.length; i++) {
+                    encode.string(bytes, [], keys[i]);
+
+                    const item = value[keys[i]];
+                    bytes = bytes.concat(item.encode());
+
+                    if (!item._parent) {
+                        item._parent = this;
+                    }
+                }
 
             } else {
                 const encodeFunc = encode[type];
@@ -177,9 +210,9 @@ export abstract class Sync {
                 }
 
                 let defers = []
-
                 const newLength = encodeFunc(bytes, defers, value);
 
+                /*
                 let deferIndex = 0;
                 let deferWritten = 0;
                 let nextOffset = -1;
@@ -211,6 +244,8 @@ export abstract class Sync {
                         nextOffset = defers[deferIndex]._offset;
                     }
                 }
+                */
+
             }
 
             // const previousLength = encodedBytes[encodingOffset + fieldOffset] || 0;
@@ -255,7 +290,7 @@ export function sync (type: any) {
                 /**
                  * Create Proxy for array items
                  */
-                if (Array.isArray(type)) {
+                if (Array.isArray(type) || type.map) {
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, value) => {
