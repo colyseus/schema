@@ -56,7 +56,7 @@ export abstract class Sync {
             const isSyncObject = (bytes[it.offset] === BYTE_SYNC_OBJ);
             let isUnchanged = (bytes[it.offset] === BYTE_UNCHANGED);
 
-            const type = schema[field];
+            let type = schema[field];
             let value: any;
 
             if (isSyncObject) {
@@ -69,9 +69,21 @@ export abstract class Sync {
                 value._parent = this;
                 value.decode(bytes, it);
 
-            } else if (decode.arrayCheck(bytes, it)) {
-                value = decode.decode(bytes, it);
-                console.log("IS ARRAY!", value);
+            } else if (Array.isArray(type)) {
+                type = type[0];
+                value = this[`_${field}`] || []
+
+                const length = (bytes[it.offset++] & 0x0f);
+
+                for (let i = 0; i < length; i++) {
+                    const item = value[i] || new type();
+                    item._parent = this;
+                    item.decode(bytes, it);
+
+                    if (value[i] === undefined) {
+                        value.push(item);
+                    }
+                }
 
             } else if (!isUnchanged) {
                 const decodeFunc = decode[type];
@@ -133,6 +145,8 @@ export abstract class Sync {
 
             } else if (Array.isArray(value)) {
                 // encode Array of type
+                bytes.push(value.length | 0xa0);
+
                 for (let i = 0, l = value.length; i < l; i++) {
                     bytes = bytes.concat(value[i].encode());
                 }

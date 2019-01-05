@@ -96,6 +96,20 @@ describe("State", () => {
             assert.deepEqual(decodedState.arrayOfPlayers, []);
         });
 
+        it("should encode array with two values", () => {
+            const state = new State();
+            state.arrayOfPlayers = [
+                new Player("Jake Badlands"),
+                new Player("Snake Sanders"),
+            ];
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.arrayOfPlayers[0].name, state.arrayOfPlayers[0].name);
+            assert.equal(decodedState.arrayOfPlayers[1].name, state.arrayOfPlayers[1].name);
+        });
+
         xit("should encode changed values", () => {
             const state = new State();
             state.fieldString = "Hello world!";

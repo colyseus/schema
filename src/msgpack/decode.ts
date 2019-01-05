@@ -118,8 +118,30 @@ export function intCheck (bytes, it: Iterator) {
   );
 }
 
+export function arrayLength (bytes, it: Iterator) {
+  const prefix = bytes[it.offset++];
+  if (prefix < 0xa0) {
+    return this._array(prefix & 0x0f);
+  }
+}
+
 export function arrayCheck (bytes, it: Iterator) {
   return bytes[it.offset] < 0xa0;
+
+  // const prefix = bytes[it.offset] ;
+
+  // if (prefix < 0xa0) {
+  //   return prefix;
+
+  // // array
+  // } else if (prefix === 0xdc) {
+  //   it.offset += 2;
+
+  // } else if (0xdd) {
+  //   it.offset += 4;
+  // }
+
+  // return prefix;
 }
 
 export function decode(bytes, it: Iterator) {

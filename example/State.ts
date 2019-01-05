@@ -9,6 +9,14 @@ export class Player extends Sync {
 
   @sync("int")
   y: number;
+
+  constructor (name?: string, x?: number, y?: number) {
+    super();
+
+    this.name = name;
+    this.x = x;
+    this.y = y;
+  }
 }
 
 export class State extends Sync {
