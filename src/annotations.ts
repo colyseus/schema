@@ -75,7 +75,20 @@ export abstract class Sync {
 
                 const length = (bytes[it.offset++] & 0x0f);
 
+                // ensure current array has the same length as encoded one
+                if (value.length > length) {
+                    value.splice(length);
+                }
+
                 for (let i = 0; i < length; i++) {
+                    // it.offset = BYTE_SYNC_OBJ
+                    // it.offset+1 = BYTE_UNCHANGED or actual change
+                    if (bytes[it.offset+1] === BYTE_UNCHANGED) {
+                        // skip unchanged entries
+                        it.offset++;
+                        continue;
+                    }
+
                     const item = value[i] || new type();
                     item._parent = this;
                     item.decode(bytes, it);
@@ -84,6 +97,7 @@ export abstract class Sync {
                         value.push(item);
                     }
                 }
+
 
             } else if (!isUnchanged) {
                 const decodeFunc = decode[type];
@@ -237,6 +251,22 @@ export function sync (type: any) {
 
             set: function (this: Sync, value: any) {
                 this.markAsChanged();
+
+                /**
+                 * Create Proxy for array items
+                 */
+                if (Array.isArray(type)) {
+                    value = new Proxy(value, {
+                        get: (obj, prop) => obj[prop],
+                        set: (obj, prop, value) => {
+                            obj[prop] = value;
+                            this._changes[key] = this[fieldCached];
+                            this.markAsChanged();
+                            return true;
+                        }
+                    });
+                }
+
                 this._changes[key] = value;
                 this[fieldCached] = value;
             },

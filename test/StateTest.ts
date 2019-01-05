@@ -106,8 +106,27 @@ describe("State", () => {
             const decodedState = new State();
             decodedState.decode(state.encode());
 
-            assert.equal(decodedState.arrayOfPlayers[0].name, state.arrayOfPlayers[0].name);
-            assert.equal(decodedState.arrayOfPlayers[1].name, state.arrayOfPlayers[1].name);
+            const decodedPlayer1 = decodedState.arrayOfPlayers[0];
+            const decodedPlayer2 = decodedState.arrayOfPlayers[1];
+            assert.equal(decodedState.arrayOfPlayers.length, 2);
+            assert.equal(decodedPlayer1.name, "Jake Badlands");
+            assert.equal(decodedPlayer2.name, "Snake Sanders");
+
+            state.arrayOfPlayers.push(new Player("Tarquinn"));
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.arrayOfPlayers.length, 3);
+            assert.equal(decodedState.arrayOfPlayers[0], decodedPlayer1);
+            assert.equal(decodedState.arrayOfPlayers[1], decodedPlayer2);
+            assert.equal(decodedState.arrayOfPlayers[2].name, "Tarquinn");
+
+            state.arrayOfPlayers.pop();
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.arrayOfPlayers.length, 2);
+            assert.equal(decodedState.arrayOfPlayers[0], decodedPlayer1);
+            assert.equal(decodedState.arrayOfPlayers[1], decodedPlayer2);
+            assert.equal(decodedState.arrayOfPlayers[2], undefined);
         });
 
         xit("should encode changed values", () => {
