@@ -28,26 +28,33 @@ export abstract class Sync {
         return offset;
     }
 
-    markAsChanged (child?: Sync) {
+    markAsChanged (field: string, value?: Sync | any) {
         this._changed = true;
 
-        if (child) {
-            const schema = this._schema;
-            for (const field in schema) {
-                if (child._parentField) {
-                    this._changes[child._parentField] = this[`_${child._parentField}`];
+        if (value) {
+            if (Array.isArray(value._parentField)) {
+                // used for MAP/ARRAY
+                const fieldName = value._parentField[0];
+                const fieldKey = value._parentField[1];
 
-                } else {
-                    if (this[`_${field}`] === child) {
-                        this._changes[field] = child;
-                        break;
-                    }
+                if (!this._changes[fieldName]) {
+                    this._changes[fieldName] = [];
                 }
+
+                this._changes[fieldName].push(fieldKey);
+
+            } else if (value._parentField) {
+                // used for direct type relationship
+                this._changes[value._parentField] = value;
+
+            } else {
+                // basic types
+                this._changes[field] = this[`_${field}`];
             }
         }
 
         if (this._parent && !this._parent._changed) {
-            this._parent.markAsChanged(this);
+            this._parent.markAsChanged(field, this);
         }
     }
 
@@ -81,12 +88,18 @@ export abstract class Sync {
 
                 const length = (bytes[it.offset++] & 0x0f);
 
-                // ensure current array has the same length as encoded one
-                if (value.length > length) {
-                    value.splice(length);
-                }
+                console.log("DECODE", field, "length:", length);
+
+                // // ensure current array has the same length as encoded one
+                // if (value.length > length) {
+                //     value.splice(length);
+                // }
 
                 for (let i = 0; i < length; i++) {
+                    console.log("LETS DECODE INDEX")
+                    const index = decode.int(bytes, it);
+                    console.log("DECODE INDEX:", index);
+
                     // it.offset = BYTE_SYNC_OBJ
                     // it.offset+1 = BYTE_UNCHANGED or actual change
                     if (bytes[it.offset+1] === BYTE_UNCHANGED) {
@@ -95,11 +108,13 @@ export abstract class Sync {
                         continue;
                     }
 
-                    const item = value[i] || new type();
+                    const item = value[index] || new type();
                     item._parent = this;
                     item.decode(bytes, it);
 
-                    if (value[i] === undefined) {
+                    console.log("ITEM:", index, item);
+
+                    if (value[index] === undefined) {
                         value.push(item);
                     }
                 }
@@ -150,6 +165,7 @@ export abstract class Sync {
 
         // skip if nothing has changed
         if (!this._changed) {
+            console.log("NOTHING CHANGED");
             encodedBytes.push(BYTE_UNCHANGED); // skip
             return encodedBytes;
         }
@@ -176,37 +192,49 @@ export abstract class Sync {
                 // in case it was manually instantiated
                 if (!value._parent) {
                     value._parent = this;
+                    value._parentField = field;
                 }
 
             } else if (Array.isArray(type)) {
                 // encode Array of type
                 bytes.push(value.length | 0xa0);
 
+                console.log("ENCODE ARRAY, LENGTH:", value.length);
+
                 for (let i = 0, l = value.length; i < l; i++) {
-                    const item = value[i];
-                    bytes = bytes.concat(item.encode());
+                    const index = value[i];
+                    const item = this[`_${field}`][index];
 
                     if (!item._parent) {
                         item._parent = this;
-                        item._parentField = field;
+                        item._parentField = [field, i];
                     }
+
+                    console.log("ENCODE ARRAY ITEM, INDEX:", index, item._changed, item._changes);
+
+                    encode.int(bytes, [], index);
+                    console.log("ENCODED");
+                    bytes = bytes.concat(item.encode());
                 }
 
             } else if (type.map) {
+                console.log("ENCODE MAP", value, value.length);
+
                 // encode Map of type
-                const keys = Object.keys(value);
+                const keys = value;
                 bytes.push(keys.length | 0x80);
 
                 for (let i = 0; i < keys.length; i++) {
                     encode.string(bytes, [], keys[i]);
 
-                    const item = value[keys[i]];
-                    bytes = bytes.concat(item.encode());
+                    const item = this[`_${field}`][keys[i]];
 
                     if (!item._parent) {
                         item._parent = this;
-                        item._parentField = field;
+                        item._parentField = [field, keys[i]];
                     }
+
+                    bytes = bytes.concat(item.encode());
                 }
 
             } else {
@@ -271,30 +299,28 @@ export abstract class Sync {
 }
 
 export function sync (type: any) {
-    return function (target: any, key: string) {
+    return function (target: any, field: string) {
         const constructor = target.constructor;
 
         // static schema
         if (!constructor._schema) {
             constructor._schema = {};
         }
-        constructor._schema[key] = type;
+        constructor._schema[field] = type;
 
-        const fieldCached = `_${key}`;
+        const fieldCached = `_${field}`;
         Object.defineProperty(target, fieldCached, {
             enumerable: false,
             configurable: false,
             writable: true,
         });
 
-        Object.defineProperty(target, key, {
+        Object.defineProperty(target, field, {
             get: function () {
-                return this._changes[key] || this[fieldCached] /*|| decode.decode(this._bytes, this.getFieldOffset(key))*/;
+                return this._changes[field] || this[fieldCached] /*|| decode.decode(this._bytes, this.getFieldOffset(field))*/;
             },
 
             set: function (this: Sync, value: any) {
-                this.markAsChanged();
-
                 /**
                  * Create Proxy for array items
                  */
@@ -303,15 +329,56 @@ export function sync (type: any) {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, value) => {
                             obj[prop] = value;
-                            this._changes[key] = this[fieldCached];
-                            this.markAsChanged();
+
+                            if (prop !== "length") {
+                                console.log("PROXY:", field, prop, value)
+                                if (!value._parent) {
+                                    value._parent = this;
+                                    value._parentField = [field, Number(prop)];
+                                }
+
+                                this.markAsChanged(field, value);
+                            } else {
+                                console.log("PROXY, LENGTH => ", value);
+                            }
+
                             return true;
                         }
                     });
                 }
 
-                this._changes[key] = value;
                 this[fieldCached] = value;
+
+                if (Array.isArray(constructor._schema[field])) {
+                    for (let i = 0, l = value.length; i < l; i++) {
+                        if (!value[i]._parent) {
+                            value[i]._parent = this;
+                            value[i]._parentField = [field, i];
+                        }
+
+                        this.markAsChanged(field, value[i]);
+                    }
+
+                } else if (constructor._schema[field].map) {
+                    for (let key in value) {
+                        if (!value[key]._parent) {
+                            value[key]._parent = this;
+                            value[key]._parentField = [field, key];
+                        }
+
+                        this.markAsChanged(field, value[key]);
+                    }
+
+                } else if (typeof(constructor._schema[field]) === "function") {
+                    if (!value._parent) {
+                        value._parent = this;
+                        value._parentField = field;
+                    }
+                    this.markAsChanged(field, value);
+
+                } else {
+                    this.markAsChanged(field, value);
+                }
             },
 
             enumerable: true,

@@ -29,8 +29,12 @@ describe("State API", () => {
             const state = new State();
             state.fieldString = "Hello world";
 
+            let encoded = state.encode();
+            assert.deepEqual(encoded, [222, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 193, 193, 193, 193]);
+
             const decodedState = new State();
-            decodedState.decode(state.encode());
+            decodedState.decode(encoded);
+
             assert.equal(decodedState.fieldString, "Hello world");
         });
 
@@ -209,6 +213,9 @@ describe("State API", () => {
             assert.equal(newState.player.name, "Jake Badlands");
             assert.equal(newState.player.x, 30);
             assert.equal(newState.player.y, 50);
+        });
+
+        xit("no changes", () => {
         });
     });
 });

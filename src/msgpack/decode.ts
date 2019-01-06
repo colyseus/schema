@@ -96,7 +96,80 @@ export function stringCheck(bytes, it: Iterator) {
 }
 
 export function int (bytes, it: Iterator) {
-  return decode(bytes, it);
+  const prefix = bytes[it.offset++];
+
+  console.log("INT PREFIX", prefix);
+
+  if (prefix < 0x80) {
+    // positive fixint
+    return prefix;
+
+  } else if (prefix > 0xdf) {
+    // negative fixint
+    return (0xff - prefix + 1) * -1
+
+  } else if (prefix === 0xca) {
+    // float
+    const value = bytes[it.offset];
+    it.offset += 4;
+    return value;
+
+  } else if (prefix === 0xcb) {
+    // uint
+    const value = bytes[it.offset];
+    it.offset += 8;
+    return value;
+
+  } else if (prefix === 0xcc) {
+    // uint
+    const value = bytes[it.offset];
+    it.offset += 1;
+    return value;
+
+  } else if (prefix === 0xcd) {
+    // uint
+    const value = bytes[it.offset];
+    it.offset += 2;
+    return value;
+
+  } else if (prefix === 0xce) {
+    // uint
+    const value = bytes[it.offset];
+    it.offset += 4;
+    return value;
+
+  } else if (prefix === 0xcf) {
+    // uint
+    const hi = bytes[it.offset] * Math.pow(2, 32);
+    const lo = bytes[it.offset + 4];
+    it.offset += 8;
+    return hi + lo;
+
+  } else if (prefix === 0xd0) {
+    // int
+    const value = bytes[it.offset];
+    it.offset += 1;
+    return value;
+
+  } else if (prefix === 0xd1) {
+    // int
+    const value = bytes[it.offset];
+    it.offset += 2;
+    return value;
+
+  } else if (prefix === 0xd2) {
+    // int
+    const value = bytes[it.offset];
+    it.offset += 4;
+    return value;
+
+  } else if (prefix === 0xd3) {
+    // int
+    const hi = bytes[it.offset] * Math.pow(2, 32);
+    const lo = bytes[it.offset + 4];
+    it.offset += 8;
+    return hi + lo;
+  }
 };
 
 export function intCheck (bytes, it: Iterator) {
