@@ -84,14 +84,16 @@ export abstract class Sync {
                 type = type[0];
                 value = this[`_${field}`] || []
 
-                const length = (bytes[it.offset++] & 0x0f);
+                const newLength = (bytes[it.offset++] & 0x0f);
+                const numChanges = (bytes[it.offset++] & 0x0f);
 
-                // // ensure current array has the same length as encoded one
-                // if (value.length > length) {
-                //     value.splice(length);
-                // }
+                // ensure current array has the same length as encoded one
+                if (value.length > newLength) {
+                    value.splice(newLength);
+                    // TODO: API to trigger data removal
+                }
 
-                for (let i = 0; i < length; i++) {
+                for (let i = 0; i < numChanges; i++) {
                     const index = decode.int(bytes, it);
 
                     // it.offset = BYTE_SYNC_OBJ
@@ -191,6 +193,11 @@ export abstract class Sync {
 
             } else if (Array.isArray(type)) {
                 // encode Array of type
+
+                // total of items in the array
+                bytes.push(this[`_${field}`].length | 0xa0);
+
+                // number of changed items
                 bytes.push(value.length | 0xa0);
 
                 for (let i = 0, l = value.length; i < l; i++) {
@@ -217,15 +224,12 @@ export abstract class Sync {
                     const key = keys[i];
                     const item = this[`_${field}`][key];
 
-                    encode.string(bytes, [], key);
-
                     if (!item._parent) {
                         item._parent = this;
                         item._parentField = [field, key];
                     }
 
-                    // console.log("ENCODE MAP KEY:", key);
-
+                    encode.string(bytes, [], key);
                     bytes = bytes.concat(item.encode());
                 }
 
