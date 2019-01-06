@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { State, Player } from '../example/State';
 import { Sync, sync } from "../src/annotations";
 
-describe("State", () => {
+describe("State API", () => {
 
     describe("declaration", () => {
         it("should allow to define default values", () => {
@@ -24,7 +24,7 @@ describe("State", () => {
         });
     });
 
-    describe("encoding", () => {
+    describe("encoding/decoding", () => {
         it("should encode/decode STRING", () => {
             const state = new State();
             state.fieldString = "Hello world";

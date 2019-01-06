@@ -12,6 +12,7 @@ export abstract class Sync {
     protected _changed: boolean = false;
 
     protected _parent: Sync;
+    protected _parentField: string;
 
     public onChange?(field: string, value: any, previousValue: any);
 
@@ -33,9 +34,14 @@ export abstract class Sync {
         if (child) {
             const schema = this._schema;
             for (const field in schema) {
-                if (this[`_${field}`] === child) {
-                    this._changes[field] = child;
-                    break;
+                if (child._parentField) {
+                    this._changes[child._parentField] = this[`_${child._parentField}`];
+
+                } else {
+                    if (this[`_${field}`] === child) {
+                        this._changes[field] = child;
+                        break;
+                    }
                 }
             }
         }
@@ -182,6 +188,7 @@ export abstract class Sync {
 
                     if (!item._parent) {
                         item._parent = this;
+                        item._parentField = field;
                     }
                 }
 
@@ -198,6 +205,7 @@ export abstract class Sync {
 
                     if (!item._parent) {
                         item._parent = this;
+                        item._parentField = field;
                     }
                 }
 
