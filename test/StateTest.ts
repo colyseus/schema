@@ -215,7 +215,16 @@ describe("State API", () => {
             assert.equal(newState.player.y, 50);
         });
 
-        xit("no changes", () => {
+        it("no changes", () => {
+            const state = new State();
+            assert.deepEqual(state.encode(), [222, 193]);
+
+            const decodedState = new State();
+            assert.doesNotThrow(() => decodedState.decode(state.encode()));
+
+            state.arrayOfPlayers = [];
+            state.mapOfPlayers = {};
+            assert.doesNotThrow(() => decodedState.decode(state.encode()));
         });
     });
 });

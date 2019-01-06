@@ -315,9 +315,8 @@ export function sync (type: any) {
 
         Object.defineProperty(target, field, {
             get: function () {
-                return this._changes[field] || this[fieldCached] /*|| decode.decode(this._bytes, this.getFieldOffset(field))*/;
+                return this._changes[field] || this[fieldCached];
             },
-
             set: function (this: Sync, value: any) {
                 /**
                  * Create Proxy for array items
