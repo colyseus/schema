@@ -98,8 +98,6 @@ export function stringCheck(bytes, it: Iterator) {
 export function int (bytes, it: Iterator) {
   const prefix = bytes[it.offset++];
 
-  console.log("INT PREFIX", prefix);
-
   if (prefix < 0x80) {
     // positive fixint
     return prefix;

@@ -6,8 +6,6 @@ export abstract class Sync {
     protected _offset: number = 0;
     protected _bytes: number[] = [];
 
-    protected _fieldLengths: { [key: string]: number } = {};
-
     protected _changes: { [key: string]: any } = {};
     protected _changed: boolean = false;
 
@@ -82,13 +80,11 @@ export abstract class Sync {
                 value._parent = this;
                 value.decode(bytes, it);
 
-            } else if (Array.isArray(type)) {
+            } else if (Array.isArray(type) && !isUnchanged) {
                 type = type[0];
                 value = this[`_${field}`] || []
 
                 const length = (bytes[it.offset++] & 0x0f);
-
-                console.log("DECODE", field, "length:", length);
 
                 // // ensure current array has the same length as encoded one
                 // if (value.length > length) {
@@ -96,9 +92,7 @@ export abstract class Sync {
                 // }
 
                 for (let i = 0; i < length; i++) {
-                    console.log("LETS DECODE INDEX")
                     const index = decode.int(bytes, it);
-                    console.log("DECODE INDEX:", index);
 
                     // it.offset = BYTE_SYNC_OBJ
                     // it.offset+1 = BYTE_UNCHANGED or actual change
@@ -112,21 +106,21 @@ export abstract class Sync {
                     item._parent = this;
                     item.decode(bytes, it);
 
-                    console.log("ITEM:", index, item);
-
                     if (value[index] === undefined) {
                         value.push(item);
                     }
                 }
 
-            } else if (type.map) {
+            } else if (type.map && !isUnchanged) {
                 type = type.map;
                 value = this[`_${field}`] || {};
 
                 const length = (bytes[it.offset++] & 0x0f);
+
                 for (let i = 0; i < length; i++) {
                     const key = decode.string(bytes, it);
                     const item = value[key] || new type();
+
                     item._parent = this;
                     item.decode(bytes, it);
 
@@ -142,9 +136,10 @@ export abstract class Sync {
                 if (decodeFunc && decodeCheckFunc(bytes, it)) {
                     value = decodeFunc(bytes, it);
                 }
+
             } else {
                 // unchanged, skip decoding it
-                // console.log("field", field, "not changed. skip decoding it.");
+                // console.log("field", field, "not changed. skip decoding it.", bytes[it.offset]);
                 it.offset++;
             }
 
@@ -165,7 +160,6 @@ export abstract class Sync {
 
         // skip if nothing has changed
         if (!this._changed) {
-            console.log("NOTHING CHANGED");
             encodedBytes.push(BYTE_UNCHANGED); // skip
             return encodedBytes;
         }
@@ -199,8 +193,6 @@ export abstract class Sync {
                 // encode Array of type
                 bytes.push(value.length | 0xa0);
 
-                console.log("ENCODE ARRAY, LENGTH:", value.length);
-
                 for (let i = 0, l = value.length; i < l; i++) {
                     const index = value[i];
                     const item = this[`_${field}`][index];
@@ -210,29 +202,29 @@ export abstract class Sync {
                         item._parentField = [field, i];
                     }
 
-                    console.log("ENCODE ARRAY ITEM, INDEX:", index, item._changed, item._changes);
-
                     encode.int(bytes, [], index);
-                    console.log("ENCODED");
                     bytes = bytes.concat(item.encode());
                 }
 
             } else if (type.map) {
-                console.log("ENCODE MAP", value, value.length);
-
                 // encode Map of type
                 const keys = value;
                 bytes.push(keys.length | 0x80);
 
-                for (let i = 0; i < keys.length; i++) {
-                    encode.string(bytes, [], keys[i]);
+                // console.log("ENCODE MAP, KEYS:", keys.length, keys);
 
-                    const item = this[`_${field}`][keys[i]];
+                for (let i = 0; i < keys.length; i++) {
+                    const key = keys[i];
+                    const item = this[`_${field}`][key];
+
+                    encode.string(bytes, [], key);
 
                     if (!item._parent) {
                         item._parent = this;
-                        item._parentField = [field, keys[i]];
+                        item._parentField = [field, key];
                     }
+
+                    // console.log("ENCODE MAP KEY:", key);
 
                     bytes = bytes.concat(item.encode());
                 }
@@ -245,8 +237,10 @@ export abstract class Sync {
                     continue;
                 }
 
-                let defers = []
-                const newLength = encodeFunc(bytes, defers, value);
+                encodeFunc(bytes, [], value);
+
+                // let defers = []
+                // const newLength = encodeFunc(bytes, defers, value);
 
                 /*
                 let deferIndex = 0;
@@ -331,20 +325,22 @@ export function sync (type: any) {
                             obj[prop] = value;
 
                             if (prop !== "length") {
-                                console.log("PROXY:", field, prop, value)
                                 if (!value._parent) {
                                     value._parent = this;
                                     value._parentField = [field, Number(prop)];
                                 }
 
                                 this.markAsChanged(field, value);
-                            } else {
-                                console.log("PROXY, LENGTH => ", value);
                             }
 
                             return true;
                         }
                     });
+                }
+
+                // skip if value is the same as cached.
+                if (value === this[fieldCached]) {
+                    return;
                 }
 
                 this[fieldCached] = value;
