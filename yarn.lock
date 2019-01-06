@@ -66,6 +66,10 @@ flatbuffers@^1.10.2:
   version "1.10.2"
   resolved "https://registry.yarnpkg.com/flatbuffers/-/flatbuffers-1.10.2.tgz#f1012af6728a0ed6e7e6ddf2013b565b039c5e86"
 
+fossil-delta@^1.0.2:
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/fossil-delta/-/fossil-delta-1.0.2.tgz#a3e9545d5fd5e1b317dca38f0c852baa80b13b89"
+
 fs.realpath@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/fs.realpath/-/fs.realpath-1.0.0.tgz#1504ad2523158caa40db4a2787cb01411994ea4f"
@@ -151,6 +155,10 @@ mocha@^5.2.0:
 ms@2.0.0:
   version "2.0.0"
   resolved "https://registry.yarnpkg.com/ms/-/ms-2.0.0.tgz#5608aeadfc00be6c2901df5f9861788de0d597c8"
+
+nanoid@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/nanoid/-/nanoid-2.0.0.tgz#e1ab4a4b024a38d15531ba34a712a201540de639"
 
 notepack.io@^2.2.0:
   version "2.2.0"

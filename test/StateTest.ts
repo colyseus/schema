@@ -1,6 +1,41 @@
 import * as assert from "assert";
-import { State, Player } from '../example/State';
 import { Sync, sync } from "../src/annotations";
+
+export class Player extends Sync {
+  @sync("string")
+  name: string;
+
+  @sync("int")
+  x: number;
+
+  @sync("int")
+  y: number;
+
+  constructor (name?: string, x?: number, y?: number) {
+    super();
+    this.name = name;
+    this.x = x;
+    this.y = y;
+  }
+}
+
+export class State extends Sync {
+  @sync('string')
+  fieldString: string;
+
+  @sync('int') // varint
+  fieldNumber: number;
+
+  @sync(Player)
+  player: Player;
+
+  @sync([ Player ])
+  arrayOfPlayers: Player[];
+
+  @sync({ map: Player })
+  mapOfPlayers: { [id: string]: Player };
+}
+
 
 describe("State API", () => {
 
@@ -157,6 +192,25 @@ describe("State API", () => {
 
             assert.equal(playerOne, decodedState.mapOfPlayers.one);
             assert.equal(decodedState.mapOfPlayers.one.name, "Tarquinn");
+        });
+
+        it("should allow adding and removing items from map", () => {
+            const state = new State();
+            state.mapOfPlayers = {}
+
+            state.mapOfPlayers['one'] = new Player("Jake Badlands");
+            state.mapOfPlayers['two'] = new Player("Snake Sanders");
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            assert.deepEqual(Object.keys(decodedState.mapOfPlayers), ["one", "two"]);
+            assert.equal(decodedState.mapOfPlayers.one.name, "Jake Badlands");
+            assert.equal(decodedState.mapOfPlayers.two.name, "Snake Sanders");
+
+            delete state.mapOfPlayers['two'];
+            decodedState.decode(state.encode());
+            assert.deepEqual(Object.keys(decodedState.mapOfPlayers), ["one"]);
         });
 
         it("should encode changed values", () => {

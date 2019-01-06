@@ -51,7 +51,7 @@ export abstract class Sync {
             }
         }
 
-        if (this._parent && !this._parent._changed) {
+        if (this._parent) {
             this._parent.markAsChanged(field, this);
         }
     }
@@ -218,8 +218,6 @@ export abstract class Sync {
                 const keys = value;
                 bytes.push(keys.length | 0x80);
 
-                // console.log("ENCODE MAP, KEYS:", keys.length, keys);
-
                 for (let i = 0; i < keys.length; i++) {
                     const key = keys[i];
                     const item = this[`_${field}`][key];
@@ -315,13 +313,16 @@ export function sync (type: any) {
 
         Object.defineProperty(target, field, {
             get: function () {
-                return this._changes[field] || this[fieldCached];
+                return this[fieldCached];
             },
+
             set: function (this: Sync, value: any) {
                 /**
                  * Create Proxy for array items
                  */
                 if (Array.isArray(type) || type.map) {
+                    const isArray = Array.isArray(type);
+
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, value) => {
@@ -329,15 +330,22 @@ export function sync (type: any) {
 
                             if (prop !== "length") {
                                 if (!value._parent) {
+                                    const key = (isArray) ? Number(prop) : prop;
                                     value._parent = this;
-                                    value._parentField = [field, Number(prop)];
+                                    value._parentField = [field, key];
                                 }
 
                                 this.markAsChanged(field, value);
                             }
 
                             return true;
-                        }
+                        },
+
+                        deleteProperty: (obj, prop) => {
+                            console.log("DELETE PROPERTY", prop);
+                            delete obj[prop];
+                            return true;
+                        },
                     });
                 }
 
