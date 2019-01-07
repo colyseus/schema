@@ -194,7 +194,7 @@ describe("State API", () => {
             assert.equal(decodedState.mapOfPlayers.one.name, "Tarquinn");
         });
 
-        it("should allow adding and removing items from map", () => {
+        xit("should allow adding and removing items from map", () => {
             const state = new State();
             state.mapOfPlayers = {}
 

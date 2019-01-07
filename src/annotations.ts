@@ -2,7 +2,12 @@ import { BYTE_UNCHANGED, BYTE_SYNC_OBJ } from './spec';
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
 
+type SchemaType = ("string" | "int" | typeof Sync) & { map?: typeof Sync };
+type Schema = { [field: string]: SchemaType };
+
 export abstract class Sync {
+    static _schema: Schema;
+
     protected _offset: number = 0;
     protected _bytes: number[] = [];
 
@@ -294,9 +299,9 @@ export abstract class Sync {
     }
 }
 
-export function sync (type: any) {
+export function sync (type: SchemaType) {
     return function (target: any, field: string) {
-        const constructor = target.constructor;
+        const constructor = target.constructor as typeof Sync;
 
         // static schema
         if (!constructor._schema) {
