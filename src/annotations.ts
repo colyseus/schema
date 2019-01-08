@@ -1,91 +1,97 @@
-import { BYTE_UNCHANGED, BYTE_SYNC_OBJ } from './spec';
+import { END_OF_STRUCTURE } from './spec';
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
 
-type SchemaType = ("string" | "int" | typeof Sync) & { map?: typeof Sync };
+type SchemaType = (
+    "string" |
+    "int" |
+    (typeof Sync)[] |
+    typeof Sync |
+    { map?: typeof Sync }
+);
 type Schema = { [field: string]: SchemaType };
 
 export abstract class Sync {
     static _schema: Schema;
+    static _indexes: {[field: string]: number};
 
-    protected _offset: number = 0;
-    protected _bytes: number[] = [];
+    protected $changes: { [key: string]: any } = {};
+    protected $changed: boolean = false;
 
-    protected _changes: { [key: string]: any } = {};
-    protected _changed: boolean = false;
-
-    protected _parent: Sync;
-    protected _parentField: string;
+    protected $parent: Sync;
+    protected $parentField: string;
 
     public onChange?(field: string, value: any, previousValue: any);
 
-    protected getFieldOffset(field: string, bytes = this._bytes, offset = 0) {
-        const schema = this._schema;
-        const fields = Object.keys(schema);
-        const index = fields.indexOf(field);
-
-        for (let i = 0; i < index; i++) {
-            offset += bytes[offset] || 0;
-        }
-
-        return offset;
-    }
-
     markAsChanged (field: string, value?: Sync | any) {
-        this._changed = true;
+        this.$changed = true;
 
         if (value) {
-            if (Array.isArray(value._parentField)) {
+            if (Array.isArray(value.$parentField)) {
                 // used for MAP/ARRAY
-                const fieldName = value._parentField[0];
-                const fieldKey = value._parentField[1];
+                const fieldName = value.$parentField[0];
+                const fieldKey = value.$parentField[1];
 
-                if (!this._changes[fieldName]) {
-                    this._changes[fieldName] = [];
+                if (!this.$changes[fieldName]) {
+                    this.$changes[fieldName] = [];
                 }
 
-                this._changes[fieldName].push(fieldKey);
+                if (fieldKey !== undefined) {
+                    this.$changes[fieldName].push(fieldKey);
+                }
 
-            } else if (value._parentField) {
+            } else if (value.$parentField) {
                 // used for direct type relationship
-                this._changes[value._parentField] = value;
+                this.$changes[value.$parentField] = value;
 
             } else {
                 // basic types
-                this._changes[field] = this[`_${field}`];
+                this.$changes[field] = this[`_${field}`];
             }
         }
 
-        if (this._parent) {
-            this._parent.markAsChanged(field, this);
+        if (this.$parent) {
+            this.$parent.markAsChanged(field, this);
         }
     }
 
     get _schema () {
-        return (this.constructor as any)._schema;
+        return (this.constructor as typeof Sync)._schema;
+    }
+    get _indexes () {
+        return (this.constructor as typeof Sync)._indexes;
     }
 
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
         const schema = this._schema;
+        const indexes = this._indexes;
 
-        for (const field in schema) {
-            const isSyncObject = (bytes[it.offset] === BYTE_SYNC_OBJ);
-            let isUnchanged = (bytes[it.offset] === BYTE_UNCHANGED);
+        const fieldsByIndex = {}
+        Object.keys(indexes).forEach((key) => {
+            const value = indexes[key];
+            fieldsByIndex[value] = key
+        })
+
+        const totalBytes = bytes.length;
+
+        while (it.offset < totalBytes) {
+            const index = bytes[it.offset++];
+            const field = fieldsByIndex[index];
+
+            if (index === END_OF_STRUCTURE) {
+                // reached end of strucutre. skip.
+                break;
+            }
 
             let type = schema[field];
             let value: any;
 
-            if (isSyncObject) {
-                it.offset++;
-                isUnchanged = (bytes[it.offset] === BYTE_UNCHANGED);
-            }
-
-            if ((type as any)._schema && isSyncObject) {
-                value = this[`_${field}`] || new type();
-                value._parent = this;
+            if ((type as any)._schema) {
+                value = this[`_${field}`] || new (type as any)();
+                value.$parent = this;
                 value.decode(bytes, it);
 
-            } else if (Array.isArray(type) && !isUnchanged) {
+            } else if (Array.isArray(type)) {
                 type = type[0];
                 value = this[`_${field}`] || []
 
@@ -101,16 +107,8 @@ export abstract class Sync {
                 for (let i = 0; i < numChanges; i++) {
                     const index = decode.int(bytes, it);
 
-                    // it.offset = BYTE_SYNC_OBJ
-                    // it.offset+1 = BYTE_UNCHANGED or actual change
-                    if (bytes[it.offset+1] === BYTE_UNCHANGED) {
-                        // skip unchanged entries
-                        it.offset++;
-                        continue;
-                    }
-
-                    const item = value[index] || new type();
-                    item._parent = this;
+                    const item = value[index] || new (type as any)();
+                    item.$parent = this;
                     item.decode(bytes, it);
 
                     if (value[index] === undefined) {
@@ -118,17 +116,17 @@ export abstract class Sync {
                     }
                 }
 
-            } else if (type.map && !isUnchanged) {
-                type = type.map;
+            } else if ((type as any).map) {
+                type = (type as any).map;
                 value = this[`_${field}`] || {};
 
                 const length = (bytes[it.offset++] & 0x0f);
 
                 for (let i = 0; i < length; i++) {
                     const key = decode.string(bytes, it);
-                    const item = value[key] || new type();
+                    const item = value[key] || new (type as any)();
 
-                    item._parent = this;
+                    item.$parent = this;
                     item.decode(bytes, it);
 
                     if (value[key] === undefined) {
@@ -136,68 +134,61 @@ export abstract class Sync {
                     }
                 }
 
-            } else if (!isUnchanged) {
-                const decodeFunc = decode[type];
+            } else {
+                const decodeFunc = decode[type as string];
                 const decodeCheckFunc = decode[type + "Check"];
 
                 if (decodeFunc && decodeCheckFunc(bytes, it)) {
                     value = decodeFunc(bytes, it);
                 }
-
-            } else {
-                // unchanged, skip decoding it
-                // console.log("field", field, "not changed. skip decoding it.", bytes[it.offset]);
-                it.offset++;
             }
 
-            if (!isUnchanged || isSyncObject) {
-                if (this.onChange) {
-                    this.onChange(field, value, this[`_${field}`]);
-                }
-
-                this[`_${field}`] = value;
+            if (this.onChange) {
+                this.onChange(field, value, this[`_${field}`]);
             }
+
+            this[`_${field}`] = value;
         }
 
         return this;
     }
 
-    encode(encodedBytes = [], encodingOffset: number = 0) {
-        encodedBytes.push(BYTE_SYNC_OBJ);
-
+    encode(root: boolean = true, encodedBytes = []) {
         // skip if nothing has changed
-        if (!this._changed) {
-            encodedBytes.push(BYTE_UNCHANGED); // skip
+        if (!this.$changed) {
             return encodedBytes;
         }
 
         const schema = this._schema;
-        for (const field in schema) {
+        const indexes = this._indexes;
+
+        for (const field in this.$changes) {
             let bytes: number[] = [];
 
             const type = schema[field];
-            const value = this._changes[field];
+            const value = this.$changes[field];
+            const fieldIndex = indexes[field];
 
-            // const fieldOffset = this.getFieldOffset(field, this._bytes || encodedBytes, encodingOffset);
-
+            // skip unchagned fields
             if (value === undefined) {
-                // skip if no changes are made on this field
-                // console.log(field, "haven't changed. skip it");
-                bytes = [BYTE_UNCHANGED];
+                continue;
+            }
 
-            } else if ((type as any)._schema) {
+            if ((type as any)._schema) {
+                encode.int(bytes, [], fieldIndex);
+
                 // encode child object
-                bytes = (value as Sync).encode(); // , fieldOffset
+                bytes = bytes.concat((value as Sync).encode(false));
 
                 // ensure parent is set
                 // in case it was manually instantiated
-                if (!value._parent) {
-                    value._parent = this;
-                    value._parentField = field;
+                if (!value.$parent) {
+                    value.$parent = this;
+                    value.$parentField = field;
                 }
 
             } else if (Array.isArray(type)) {
-                // encode Array of type
+                encode.int(bytes, [], fieldIndex);
 
                 // total of items in the array
                 bytes.push(this[`_${field}`].length | 0xa0);
@@ -205,20 +196,23 @@ export abstract class Sync {
                 // number of changed items
                 bytes.push(value.length | 0xa0);
 
+                // encode Array of type
                 for (let i = 0, l = value.length; i < l; i++) {
                     const index = value[i];
                     const item = this[`_${field}`][index];
 
-                    if (!item._parent) {
-                        item._parent = this;
-                        item._parentField = [field, i];
+                    if (!item.$parent) {
+                        item.$parent = this;
+                        item.$parentField = [field, i];
                     }
 
                     encode.int(bytes, [], index);
-                    bytes = bytes.concat(item.encode());
+                    bytes = bytes.concat(item.encode(false));
                 }
 
-            } else if (type.map) {
+            } else if ((type as any).map) {
+                encode.int(bytes, [], fieldIndex);
+
                 // encode Map of type
                 const keys = value;
                 bytes.push(keys.length | 0x80);
@@ -227,74 +221,38 @@ export abstract class Sync {
                     const key = keys[i];
                     const item = this[`_${field}`][key];
 
-                    if (!item._parent) {
-                        item._parent = this;
-                        item._parentField = [field, key];
+                    if (!item.$parent) {
+                        item.$parent = this;
+                        item.$parentField = [field, key];
                     }
 
                     encode.string(bytes, [], key);
-                    bytes = bytes.concat(item.encode());
+                    bytes = bytes.concat(item.encode(false));
                 }
 
             } else {
-                const encodeFunc = encode[type];
+                encode.int(bytes, [], fieldIndex);
 
+                const encodeFunc = encode[type as string];
                 if (!encodeFunc) {
                     console.log("cannot encode", schema[field]);
                     continue;
                 }
 
                 encodeFunc(bytes, [], value);
-
-                // let defers = []
-                // const newLength = encodeFunc(bytes, defers, value);
-
-                /*
-                let deferIndex = 0;
-                let deferWritten = 0;
-                let nextOffset = -1;
-                if (defers.length > 0) {
-                    nextOffset = defers[0]._offset;
-                }
-
-                let defer, deferLength = 0, offset = 0;
-                for (let j = 0, l = bytes.length; j < l; j++) {
-                    bytes[deferWritten + j] = bytes[j];
-                    if (j + 1 !== nextOffset) { continue; }
-                    defer = defers[deferIndex];
-                    deferLength = defer._length;
-                    offset = deferWritten + nextOffset;
-                    if (defer._bin) {
-                        var bin = new Uint8Array(defer._bin);
-                        for (let k = 0; k < deferLength; k++) {
-                            bytes[offset + k] = bin[k];
-                        }
-                    } else if (defer._str) {
-                        encode.utf8Write(bytes, bytes.length, defer._str);
-
-                    } else if (defer._float !== undefined) {
-                        bytes[offset] = defer._float;
-                    }
-                    deferIndex++;
-                    deferWritten += deferLength;
-                    if (defers[deferIndex]) {
-                        nextOffset = defers[deferIndex]._offset;
-                    }
-                }
-                */
-
             }
-
-            // const previousLength = encodedBytes[encodingOffset + fieldOffset] || 0;
-            // encodedBytes.splice(encodingOffset + fieldOffset, previousLength, ...bytes);
 
             encodedBytes = [...encodedBytes, ...bytes];
         }
 
-        this._changed = false;
-        this._changes = {};
+        // flag end of Sync object structure
+        if (!root) {
+            encodedBytes.push(END_OF_STRUCTURE);
+        }
 
-        this._bytes = encodedBytes;
+        this.$changed = false;
+        this.$changes = {};
+
         return encodedBytes;
     }
 }
@@ -303,13 +261,21 @@ export function sync (type: SchemaType) {
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Sync;
 
-        // static schema
+        /*
+         * static schema
+         */
         if (!constructor._schema) {
             constructor._schema = {};
+            constructor._indexes = {};
         }
+        constructor._indexes[field] = Object.keys(constructor._schema).length;
         constructor._schema[field] = type;
 
+        const isArray = Array.isArray(type);
+        const isMap = (type as any).map;
+
         const fieldCached = `_${field}`;
+
         Object.defineProperty(target, fieldCached, {
             enumerable: false,
             configurable: false,
@@ -325,23 +291,27 @@ export function sync (type: SchemaType) {
                 /**
                  * Create Proxy for array items
                  */
-                if (Array.isArray(type) || type.map) {
-                    const isArray = Array.isArray(type);
-
+                if (isArray || isMap) {
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, value) => {
-                            obj[prop] = value;
+                            const isAdd = (typeof (obj[prop]) === "undefined");
 
                             if (prop !== "length") {
-                                if (!value._parent) {
+                                // if (isMap && isAdd) {
+                                // }
+
+                                // ensure new value has a parent
+                                if (!value.$parent) {
                                     const key = (isArray) ? Number(prop) : prop;
-                                    value._parent = this;
-                                    value._parentField = [field, key];
+                                    value.$parent = this;
+                                    value.$parentField = [field, key];
                                 }
 
                                 this.markAsChanged(field, value);
                             }
+
+                            obj[prop] = value;
 
                             return true;
                         },
@@ -362,29 +332,37 @@ export function sync (type: SchemaType) {
                 this[fieldCached] = value;
 
                 if (Array.isArray(constructor._schema[field])) {
-                    for (let i = 0, l = value.length; i < l; i++) {
-                        if (!value[i]._parent) {
-                            value[i]._parent = this;
-                            value[i]._parentField = [field, i];
-                        }
+                    const length = value.length;
 
+                    if (length === 0) {
+                        // FIXME: this is a bit confusing.
+                        // Needed to allow encoding an empty array.
+                        this.markAsChanged(field, { $parentField: [field] });
+                        return;
+                    }
+
+                    for (let i = 0; i < length; i++) {
+                        if (!value[i].$parent) {
+                            value[i].$parent = this;
+                            value[i].$parentField = [field, i];
+                        }
                         this.markAsChanged(field, value[i]);
                     }
 
-                } else if (constructor._schema[field].map) {
+                } else if ((constructor._schema[field] as any).map) {
                     for (let key in value) {
-                        if (!value[key]._parent) {
-                            value[key]._parent = this;
-                            value[key]._parentField = [field, key];
+                        if (!value[key].$parent) {
+                            value[key].$parent = this;
+                            value[key].$parentField = [field, key];
                         }
 
                         this.markAsChanged(field, value[key]);
                     }
 
                 } else if (typeof(constructor._schema[field]) === "function") {
-                    if (!value._parent) {
-                        value._parent = this;
-                        value._parentField = field;
+                    if (!value.$parent) {
+                        value.$parent = this;
+                        value.$parentField = field;
                     }
                     this.markAsChanged(field, value);
 

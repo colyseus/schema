@@ -65,7 +65,7 @@ describe("State API", () => {
             state.fieldString = "Hello world";
 
             let encoded = state.encode();
-            assert.deepEqual(encoded, [222, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 193, 193, 193, 193]);
+            assert.deepEqual(encoded, [0, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]);
 
             const decodedState = new State();
             decodedState.decode(encoded);
@@ -87,8 +87,10 @@ describe("State API", () => {
             state.player = new Player();
 
             const decodedState = new State();
-            decodedState.decode(state.encode());
+            const encoded = state.encode();
+            decodedState.decode(encoded);
 
+            assert.deepEqual(encoded, [2]);
             assert.ok(decodedState.player instanceof Player);
         });
 
@@ -100,8 +102,10 @@ describe("State API", () => {
             state.player.y = 200;
 
             const decodedState = new State();
-            decodedState.decode(state.encode());
+            const encoded = state.encode();
+            decodedState.decode(encoded);
 
+            assert.deepEqual(encoded, [2, 0, 164, 74, 97, 107, 101, 1, 100, 2, 204, 200, 193]);
             assert.ok(decodedState.player instanceof Player);
             assert.equal(decodedState.player.x, 100);
             assert.equal(decodedState.player.y, 200);
@@ -130,8 +134,10 @@ describe("State API", () => {
             state.arrayOfPlayers = [];
 
             const decodedState = new State();
-            decodedState.decode(state.encode());
+            const encoded = state.encode();
+            decodedState.decode(encoded);
 
+            assert.deepEqual(encoded, [3, 160, 160]);
             assert.deepEqual(decodedState.arrayOfPlayers, []);
         });
 
@@ -143,7 +149,10 @@ describe("State API", () => {
             ];
 
             const decodedState = new State();
-            decodedState.decode(state.encode());
+            const encoded = state.encode();
+            assert.deepEqual(encoded, [3, 162, 162, 0, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 1, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
+
+            decodedState.decode(encoded);
 
             const decodedPlayer1 = decodedState.arrayOfPlayers[0];
             const decodedPlayer2 = decodedState.arrayOfPlayers[1];
@@ -177,8 +186,11 @@ describe("State API", () => {
                 "two": new Player("Snake Sanders")
             };
 
+            let encoded = state.encode();
+            assert.deepEqual(encoded, [4, 130, 163, 111, 110, 101, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 163, 116, 119, 111, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
+
             const decodedState = new State();
-            decodedState.decode(state.encode());
+            decodedState.decode(encoded);
 
             const playerOne = decodedState.mapOfPlayers.one;
             const playerTwo = decodedState.mapOfPlayers.two;
@@ -188,7 +200,11 @@ describe("State API", () => {
             assert.equal(playerTwo.name, "Snake Sanders");
 
             state.mapOfPlayers.one.name = "Tarquinn";
-            decodedState.decode(state.encode());
+
+            encoded = state.encode();
+            assert.deepEqual(encoded, [4, 129, 163, 111, 110, 101, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
+
+            decodedState.decode(encoded);
 
             assert.equal(playerOne, decodedState.mapOfPlayers.one);
             assert.equal(decodedState.mapOfPlayers.one.name, "Tarquinn");
@@ -222,56 +238,57 @@ describe("State API", () => {
             state.player.name = "Jake Badlands";
             state.player.y = 50;
 
-            const serialized = state.encode();
+            const encoded = state.encode();
+            assert.deepEqual(encoded, [0, 172, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 33, 1, 50, 2, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 2, 50, 193]);
 
             // SHOULD PRESERVE VALUES AFTER SERIALIZING
             assert.equal(state.fieldString, "Hello world!");
             assert.equal(state.fieldNumber, 50);
             assert.ok(state.player instanceof Player);
-            assert.equal((state.player as any)._parent, state);
+            assert.equal((state.player as any).$parent, state);
             assert.equal(state.player.name, "Jake Badlands");
             assert.equal(state.player.x, undefined);
             assert.equal(state.player.y, 50);
 
-            const newState = new State();
-            newState.decode(serialized);
+            const decodedState = new State();
+            decodedState.decode(encoded);
 
-            const decodedPlayerReference = newState.player;
+            const decodedPlayerReference = decodedState.player;
 
-            assert.equal(newState.fieldString, "Hello world!");
-            assert.equal(newState.fieldNumber, 50);
+            assert.equal(decodedState.fieldString, "Hello world!");
+            assert.equal(decodedState.fieldNumber, 50);
 
             assert.ok(decodedPlayerReference instanceof Player);
-            assert.equal(newState.player.name, "Jake Badlands");
-            assert.equal(newState.player.x, undefined, "unset variable should be undefined");
-            assert.equal(newState.player.y, 50);
+            assert.equal(decodedState.player.name, "Jake Badlands");
+            assert.equal(decodedState.player.x, undefined, "unset variable should be undefined");
+            assert.equal(decodedState.player.y, 50);
 
             /**
              * Lets encode a single change now
              */
 
             // are Player and State unchanged?
-            assert.equal((state.player as any)._changed, false);
-            assert.equal((state as any)._changed, false);
+            assert.equal((state.player as any).$changed, false);
+            assert.equal((state as any).$changed, false);
 
             state.player.x = 30;
 
             // Player and State should've changes!
-            assert.equal((state.player as any)._changed, true);
-            assert.equal((state as any)._changed, true);
+            assert.equal((state.player as any).$changed, true);
+            assert.equal((state as any).$changed, true);
 
             const serializedChanges = state.encode();
 
-            newState.decode(serializedChanges);
-            assert.equal(decodedPlayerReference, newState.player, "should re-use the same Player instance");
-            assert.equal(newState.player.name, "Jake Badlands");
-            assert.equal(newState.player.x, 30);
-            assert.equal(newState.player.y, 50);
+            decodedState.decode(serializedChanges);
+            assert.equal(decodedPlayerReference, decodedState.player, "should re-use the same Player instance");
+            assert.equal(decodedState.player.name, "Jake Badlands");
+            assert.equal(decodedState.player.x, 30);
+            assert.equal(decodedState.player.y, 50);
         });
 
         it("no changes", () => {
             const state = new State();
-            assert.deepEqual(state.encode(), [222, 193]);
+            assert.deepEqual(state.encode(), []);
 
             const decodedState = new State();
             assert.doesNotThrow(() => decodedState.decode(state.encode()));

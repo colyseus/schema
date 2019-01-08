@@ -106,6 +106,13 @@ class Room<T> {
 }
 ```
 
+## Benchmarks:
+
+| Scenario | `@colyseus/state` | `msgpack` + `fossil-delta` |
+|---|---|---|
+| Initial state size (100 entities) | 2671 | 3283 |
+
+
 ## Inspiration:
 
 - [schemapack](https://github.com/phretaddin/schemapack/)
