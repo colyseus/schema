@@ -89,8 +89,6 @@ export abstract class Sync {
             let type = schema[field];
             let value: any;
 
-            console.log("Decode type:", type);
-
             if ((type as any)._schema) {
                 value = this[`_${field}`] || new (type as any)();
                 value.$parent = this;
@@ -126,18 +124,13 @@ export abstract class Sync {
                 value = this[`_${field}`] || {};
 
                 const length = decode.int(bytes, it);
-                console.log("DECODE MAP, LENGTH:", length);
 
                 for (let i = 0; i < length; i++) {
                     const hasMapIndex = decode.intCheck(bytes, it);
 
-                    console.log("hasMapIndex?", hasMapIndex);
-
                     const key = (hasMapIndex)
                         ? Object.keys(value)[decode.int(bytes, it)]
                         : decode.string(bytes, it);
-
-                    console.log("key:", key);
 
                     const item = value[key] || new (type as any)();
 
@@ -230,7 +223,6 @@ export abstract class Sync {
 
                 // encode Map of type
                 const keys = value;
-                console.log("ENCODE MAP, LENGTH:", keys.length);
                 encode.int(bytes, [], keys.length)
 
                 for (let i = 0; i < keys.length; i++) {
@@ -309,11 +301,6 @@ export function sync (type: SchemaType) {
 
         if (isMap) {
             target[`${fieldCached}MapIndex`] = {};
-            // Object.defineProperty(target, , {
-            //     enumerable: false,
-            //     configurable: false,
-            //     writable: true,
-            // });
         }
 
         Object.defineProperty(target, field, {
