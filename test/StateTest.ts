@@ -137,7 +137,7 @@ describe("State API", () => {
             const encoded = state.encode();
             decodedState.decode(encoded);
 
-            assert.deepEqual(encoded, [3, 160, 160]);
+            assert.deepEqual(encoded, [3, 0, 0]);
             assert.deepEqual(decodedState.arrayOfPlayers, []);
         });
 
@@ -150,7 +150,7 @@ describe("State API", () => {
 
             const decodedState = new State();
             const encoded = state.encode();
-            assert.deepEqual(encoded, [3, 162, 162, 0, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 1, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
+            assert.deepEqual(encoded, [3, 2, 2, 0, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 1, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
 
             decodedState.decode(encoded);
 
@@ -187,7 +187,7 @@ describe("State API", () => {
             };
 
             let encoded = state.encode();
-            assert.deepEqual(encoded, [4, 130, 163, 111, 110, 101, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 163, 116, 119, 111, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
+            assert.deepEqual(encoded, [4, 2, 163, 111, 110, 101, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 163, 116, 119, 111, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
 
             const decodedState = new State();
             decodedState.decode(encoded);
@@ -202,7 +202,7 @@ describe("State API", () => {
             state.mapOfPlayers.one.name = "Tarquinn";
 
             encoded = state.encode();
-            assert.deepEqual(encoded, [4, 129, 163, 111, 110, 101, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
+            assert.deepEqual(encoded, [4, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
 
             decodedState.decode(encoded);
 

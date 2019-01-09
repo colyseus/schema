@@ -36,7 +36,10 @@ export abstract class Sync {
                     this.$changes[fieldName] = [];
                 }
 
-                if (fieldKey !== undefined) {
+                if (
+                    fieldKey !== undefined &&
+                    this.$changes[fieldName].indexOf(fieldKey) === -1 // do not store duplicates of changed fields
+                ) {
                     this.$changes[fieldName].push(fieldKey);
                 }
 
@@ -86,6 +89,8 @@ export abstract class Sync {
             let type = schema[field];
             let value: any;
 
+            console.log("Decode type:", type);
+
             if ((type as any)._schema) {
                 value = this[`_${field}`] || new (type as any)();
                 value.$parent = this;
@@ -95,8 +100,8 @@ export abstract class Sync {
                 type = type[0];
                 value = this[`_${field}`] || []
 
-                const newLength = (bytes[it.offset++] & 0x0f);
-                const numChanges = (bytes[it.offset++] & 0x0f);
+                const newLength = decode.int(bytes, it);
+                const numChanges = decode.int(bytes, it);
 
                 // ensure current array has the same length as encoded one
                 if (value.length > newLength) {
@@ -120,10 +125,20 @@ export abstract class Sync {
                 type = (type as any).map;
                 value = this[`_${field}`] || {};
 
-                const length = (bytes[it.offset++] & 0x0f);
+                const length = decode.int(bytes, it);
+                console.log("DECODE MAP, LENGTH:", length);
 
                 for (let i = 0; i < length; i++) {
-                    const key = decode.string(bytes, it);
+                    const hasMapIndex = decode.intCheck(bytes, it);
+
+                    console.log("hasMapIndex?", hasMapIndex);
+
+                    const key = (hasMapIndex)
+                        ? Object.keys(value)[decode.int(bytes, it)]
+                        : decode.string(bytes, it);
+
+                    console.log("key:", key);
+
                     const item = value[key] || new (type as any)();
 
                     item.$parent = this;
@@ -191,10 +206,10 @@ export abstract class Sync {
                 encode.int(bytes, [], fieldIndex);
 
                 // total of items in the array
-                bytes.push(this[`_${field}`].length | 0xa0);
+                encode.int(bytes, [], this[`_${field}`].length);
 
                 // number of changed items
-                bytes.push(value.length | 0xa0);
+                encode.int(bytes, [], value.length);
 
                 // encode Array of type
                 for (let i = 0, l = value.length; i < l; i++) {
@@ -215,18 +230,28 @@ export abstract class Sync {
 
                 // encode Map of type
                 const keys = value;
-                bytes.push(keys.length | 0x80);
+                console.log("ENCODE MAP, LENGTH:", keys.length);
+                encode.int(bytes, [], keys.length)
 
                 for (let i = 0; i < keys.length; i++) {
-                    const key = keys[i];
+                    let key = keys[i];
                     const item = this[`_${field}`][key];
+                    const mapItemIndex = this[`_${field}MapIndex`][key];
+
+                    if (mapItemIndex !== undefined) {
+                        key = mapItemIndex;
+                        encode.int(bytes, [], key);
+
+                    } else {
+                        encode.string(bytes, [], key);
+                        this[`_${field}MapIndex`][key] = Object.keys(this[`_${field}`]).indexOf(key);
+                    }
 
                     if (!item.$parent) {
                         item.$parent = this;
                         item.$parentField = [field, key];
                     }
 
-                    encode.string(bytes, [], key);
                     bytes = bytes.concat(item.encode(false));
                 }
 
@@ -282,6 +307,15 @@ export function sync (type: SchemaType) {
             writable: true,
         });
 
+        if (isMap) {
+            target[`${fieldCached}MapIndex`] = {};
+            // Object.defineProperty(target, , {
+            //     enumerable: false,
+            //     configurable: false,
+            //     writable: true,
+            // });
+        }
+
         Object.defineProperty(target, field, {
             get: function () {
                 return this[fieldCached];
@@ -295,12 +329,7 @@ export function sync (type: SchemaType) {
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, value) => {
-                            const isAdd = (typeof (obj[prop]) === "undefined");
-
                             if (prop !== "length") {
-                                // if (isMap && isAdd) {
-                                // }
-
                                 // ensure new value has a parent
                                 if (!value.$parent) {
                                     const key = (isArray) ? Number(prop) : prop;

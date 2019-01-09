@@ -111,6 +111,9 @@ class Room<T> {
 | Scenario | `@colyseus/state` | `msgpack` + `fossil-delta` |
 |---|---|---|
 | Initial state size (100 entities) | 2671 | 3283 |
+| Updating x/y of 1 entity after initial state | 9 | 26 |
+| Updating x/y of 50 entities after initial state | 342 | 684 |
+| Updating x/y of 100 entities after initial state | 668 | 1529 |
 
 
 ## Inspiration:
