@@ -75,6 +75,11 @@ function _str (bytes, it: Iterator, length: number) {
   return value;
 };
 
+const isLittleEndian = new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
+const int32 = new Int32Array(2);
+const float32 = new Float32Array(int32.buffer);
+const float64 = new Float64Array(int32.buffer);
+
 function readInt8 (bytes: number[], it: Iterator) {
     return readUint8(bytes, it) << 24 >> 24;
 };
@@ -107,16 +112,16 @@ function readUint32 (bytes: number[], it: Iterator) {
 //     return new flatbuffers.Long(readUint32(bytes, it), readUint32(bytes, it));
 // };
 
-// function readFloat32 (bytes: number[], it: Iterator) {
-//     flatbuffers.int32[0] = readInt32(bytes, it);
-//     return flatbuffers.float32[0];
-// };
+function readFloat32 (bytes: number[], it: Iterator) {
+    int32[0] = readInt32(bytes, it);
+    return float32[0];
+};
 
-// function readFloat64 (bytes: number[], it: Iterator) {
-//     flatbuffers.int32[flatbuffers.isLittleEndian ? 0 : 1] = readInt32(bytes, it.offset);
-//     flatbuffers.int32[flatbuffers.isLittleEndian ? 1 : 0] = readInt32(bytes, it.offset + 4);
-//     return flatbuffers.float64[0];
-// };
+function readFloat64 (bytes: number[], it: Iterator) {
+    int32[isLittleEndian ? 0 : 1] = readInt32(bytes, it);
+    int32[isLittleEndian ? 1 : 0] = readInt32(bytes, it);
+    return float64[0];
+};
 
 export function string (bytes, it: Iterator) {
   const prefix = bytes[it.offset++];
@@ -137,7 +142,7 @@ export function stringCheck(bytes, it: Iterator) {
   );
 }
 
-export function int (bytes, it: Iterator) {
+export function number (bytes, it: Iterator) {
   const prefix = bytes[it.offset++];
 
   if (prefix < 0x80) {
@@ -150,12 +155,13 @@ export function int (bytes, it: Iterator) {
     it.offset += 4;
     return value;
 
+  } else if (prefix === 0xca) {
+    // float 32
+    return readFloat32(bytes, it);
+
   } else if (prefix === 0xcb) {
     // float 64
-    // TODO
-    const value = bytes[it.offset];
-    it.offset += 8;
-    return value;
+    return readFloat64(bytes, it);
 
   } else if (prefix === 0xcc) {
     // uint 8
@@ -201,7 +207,7 @@ export function int (bytes, it: Iterator) {
   }
 };
 
-export function intCheck (bytes, it: Iterator) {
+export function numberCheck (bytes, it: Iterator) {
   const prefix = bytes[it.offset];
   // positive fixint - 0x00 - 0x7f
   // float 32        - 0xca

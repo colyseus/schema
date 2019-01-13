@@ -160,7 +160,7 @@ export function string (bytes, defers, value) {
   return size + length;
 }
 
-export function int (bytes, defers, value) {
+export function number (bytes, defers, value) {
   // float 64
   if (Math.floor(value) !== value || !isFinite(value)) {
     bytes.push(0xcb);

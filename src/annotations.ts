@@ -2,7 +2,23 @@ import { END_OF_STRUCTURE } from './spec';
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
 
-type PrimitiveType = "string" | "int" | typeof Sync;
+type PrimitiveType =
+    "string" |
+    "number" |
+    /**
+     * TODO: allow to specialize, this would save 1 description byte for each value
+     * currently on "int" type
+     */
+    // "int8" |
+    // "uint8" |
+    // "int16" |
+    // "uint16" |
+    // "int32" |
+    // "uint32" |
+    // "int64" |
+    // "uint64" |
+    typeof Sync;
+
 type SchemaType = ( PrimitiveType | PrimitiveType[] | { map?: typeof Sync });
 type Schema = { [field: string]: SchemaType };
 
@@ -111,8 +127,8 @@ export abstract class Sync {
                 type = type[0];
                 value = this[`_${field}`] || []
 
-                const newLength = decode.int(bytes, it);
-                const numChanges = decode.int(bytes, it);
+                const newLength = decode.number(bytes, it);
+                const numChanges = decode.number(bytes, it);
 
                 // ensure current array has the same length as encoded one
                 if (value.length > newLength) {
@@ -121,7 +137,7 @@ export abstract class Sync {
                 }
 
                 for (let i = 0; i < numChanges; i++) {
-                    const index = decode.int(bytes, it);
+                    const index = decode.number(bytes, it);
 
                     if ((type as any).prototype instanceof Sync) {
                         const item = value[index] || new (type as any)();
@@ -145,13 +161,13 @@ export abstract class Sync {
                 type = (type as any).map;
                 value = this[`_${field}`] || {};
 
-                const length = decode.int(bytes, it);
+                const length = decode.number(bytes, it);
 
                 for (let i = 0; i < length; i++) {
-                    const hasMapIndex = decode.intCheck(bytes, it);
+                    const hasMapIndex = decode.numberCheck(bytes, it);
 
                     const key = (hasMapIndex)
-                        ? Object.keys(value)[decode.int(bytes, it)]
+                        ? Object.keys(value)[decode.number(bytes, it)]
                         : decode.string(bytes, it);
 
                     const item = value[key] || new (type as any)();
@@ -200,7 +216,7 @@ export abstract class Sync {
             }
 
             if ((type as any)._schema) {
-                encode.int(bytes, [], fieldIndex);
+                encode.number(bytes, [], fieldIndex);
 
                 // encode child object
                 bytes = bytes.concat((value as Sync).encode(false));
@@ -213,13 +229,13 @@ export abstract class Sync {
                 }
 
             } else if (Array.isArray(type)) {
-                encode.int(bytes, [], fieldIndex);
+                encode.number(bytes, [], fieldIndex);
 
                 // total of items in the array
-                encode.int(bytes, [], this[`_${field}`].length);
+                encode.number(bytes, [], this[`_${field}`].length);
 
                 // number of changed items
-                encode.int(bytes, [], value.length);
+                encode.number(bytes, [], value.length);
 
                 // encode Array of type
                 for (let i = 0, l = value.length; i < l; i++) {
@@ -227,7 +243,7 @@ export abstract class Sync {
                     const item = this[`_${field}`][index];
 
                     if (item instanceof Sync) {
-                        encode.int(bytes, [], index);
+                        encode.number(bytes, [], index);
 
                         if (!item.$parent) {
                             item.$parent = this;
@@ -236,7 +252,7 @@ export abstract class Sync {
 
                         bytes = bytes.concat(item.encode(false));
                     } else {
-                        encode.int(bytes, [], i);
+                        encode.number(bytes, [], i);
 
                         if (!encodePrimitiveType(type[0] as string, bytes, index)) {
                             console.log("cannot encode", schema[field]);
@@ -246,11 +262,11 @@ export abstract class Sync {
                 }
 
             } else if ((type as any).map) {
-                encode.int(bytes, [], fieldIndex);
+                encode.number(bytes, [], fieldIndex);
 
                 // encode Map of type
                 const keys = value;
-                encode.int(bytes, [], keys.length)
+                encode.number(bytes, [], keys.length)
 
                 for (let i = 0; i < keys.length; i++) {
                     let key = keys[i];
@@ -259,7 +275,7 @@ export abstract class Sync {
 
                     if (mapItemIndex !== undefined) {
                         key = mapItemIndex;
-                        encode.int(bytes, [], key);
+                        encode.number(bytes, [], key);
 
                     } else {
                         encode.string(bytes, [], key);
@@ -275,7 +291,7 @@ export abstract class Sync {
                 }
 
             } else {
-                encode.int(bytes, [], fieldIndex);
+                encode.number(bytes, [], fieldIndex);
 
                 if (!encodePrimitiveType(type as string, bytes, value)) {
                     console.log("cannot encode", schema[field]);

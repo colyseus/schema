@@ -36,6 +36,16 @@ As Colyseus is written in TypeScript, the schema is defined as type annotations 
 
 See [example/State.ts](example/State.ts).
 
+## Supported types
+
+- `@sync("string") name: string;`
+- `@sync("number") level: number;`
+- `@sync(Player) player: Player;`
+- `@sync([ Player ]) arrayOfPlayers: Player[];`
+- `@sync([ "number" ]) arrayOfNumbers: number[];`
+- `@sync([ "string" ]) arrayOfStrings: string[];`
+- `@sync({ map: Player }) mapOfPlayers: {[id: string]: Player};`
+
 ## Generating client-side state/schema files:
 
 > THIS HAS NOT BEEN IMPLEMENTED

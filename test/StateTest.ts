@@ -5,10 +5,10 @@ export class Player extends Sync {
   @sync("string")
   name: string;
 
-  @sync("int")
+  @sync("number")
   x: number;
 
-  @sync("int")
+  @sync("number")
   y: number;
 
   constructor (name?: string, x?: number, y?: number) {
@@ -23,7 +23,7 @@ export class State extends Sync {
   @sync('string')
   fieldString: string;
 
-  @sync('int') // varint
+  @sync('number') // varint
   fieldNumber: number;
 
   @sync(Player)
@@ -45,7 +45,7 @@ describe("State API", () => {
                 @sync("string")
                 stringValue = "initial value";
 
-                @sync("int")
+                @sync("number")
                 intValue = 50;
             }
 
@@ -54,7 +54,7 @@ describe("State API", () => {
             assert.equal(data.intValue, 50);
             assert.deepEqual((DataObject as any)._schema, {
                 stringValue: 'string',
-                intValue: 'int',
+                intValue: 'number',
             });
         });
     });
@@ -331,7 +331,7 @@ describe("State API", () => {
 
         it("should support array of numbers", () => {
             class MyState extends Sync {
-                @sync(["int"])
+                @sync(["number"])
                 arrayOfNumbers: number[];
             }
 
