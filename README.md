@@ -1,5 +1,7 @@
 # @colyseus/state
 
+![](https://img.shields.io/travis/endel/state.svg?style=for-the-badge)
+
 > WORK-IN-PROGRESS EXPERIMENT OF A NEW SERIALIZATION ALGORITHM FOR [COLYSEUS](https://github.com/gamestdio/colyseus)
 
 > THIS IS NOT STABLE AND THE API MAY CHANGE COMPLETELY AT ANY TIME
