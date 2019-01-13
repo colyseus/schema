@@ -245,6 +245,9 @@ export function arrayCheck (bytes, it: Iterator) {
   // return prefix;
 }
 
+/**
+ * UNUSED. LEFT HERE JUST FOR REFERENCE.
+ */
 export function decode(bytes, it: Iterator) {
   const prefix = bytes[it.offset++];
   var value, length = 0, type = 0, hi = 0, lo = 0;
