@@ -40,6 +40,12 @@ function decodePrimitiveType (type: string, bytes: number[], it: decode.Iterator
     return null;
 }
 
+export interface DataChange {
+    field: string;
+    value: any;
+    previousValue: any;
+}
+
 export abstract class Sync {
     static _schema: Schema;
     static _indexes: {[field: string]: number};
@@ -50,7 +56,7 @@ export abstract class Sync {
     protected $parent: Sync;
     protected $parentField: string | (string | number)[];
 
-    public onChange?(field: string, value: any, previousValue: any);
+    public onChange?(changes: DataChange[]);
 
     markAsChanged (field: string, value?: Sync | any) {
         this.$changed = true;
@@ -95,6 +101,8 @@ export abstract class Sync {
     }
 
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
+        const changes: DataChange[] = [];
+
         const schema = this._schema;
         const indexes = this._indexes;
 
@@ -185,10 +193,18 @@ export abstract class Sync {
             }
 
             if (this.onChange) {
-                this.onChange(field, value, this[`_${field}`]);
+                changes.push({
+                    field,
+                    value,
+                    previousValue: this[`_${field}`]
+                });
             }
 
             this[`_${field}`] = value;
+        }
+
+        if (this.onChange && changes.length > 0) {
+            this.onChange(changes);
         }
 
         return this;
