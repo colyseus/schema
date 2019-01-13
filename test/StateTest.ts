@@ -79,7 +79,32 @@ describe("State API", () => {
 
             const decodedState = new State();
             decodedState.decode(state.encode());
+
             assert.equal(decodedState.fieldNumber, 50);
+
+            state.fieldNumber = 100;
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.fieldNumber, 100);
+
+            state.fieldNumber = 300;
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.fieldNumber, 300);
+
+            state.fieldNumber = 500;
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.fieldNumber, 500);
+
+            state.fieldNumber = 1000;
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.fieldNumber, 1000);
+
+            state.fieldNumber = 2000;
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.fieldNumber, 2000);
+
+            state.fieldNumber = 999999;
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.fieldNumber, 999999);
         });
 
         it("should encode/decode empty Sync reference", () => {
@@ -284,6 +309,42 @@ describe("State API", () => {
             assert.equal(decodedState.player.name, "Jake Badlands");
             assert.equal(decodedState.player.x, 30);
             assert.equal(decodedState.player.y, 50);
+        });
+
+        it("should support array of strings", () => {
+            class MyState extends Sync {
+                @sync(["string"])
+                arrayOfStrings: string[];
+            }
+
+            const state = new MyState();
+            state.arrayOfStrings = ["one", "two", "three"];
+
+            let encoded = state.encode();
+            assert.deepEqual(encoded, [0, 3, 3, 0, 163, 111, 110, 101, 1, 163, 116, 119, 111, 2, 165, 116, 104, 114, 101, 101]);
+
+            const decodedState = new MyState();
+            decodedState.decode(encoded);
+
+            assert.deepEqual(decodedState.arrayOfStrings, ["one", "two", "three"]);
+        });
+
+        it("should support array of numbers", () => {
+            class MyState extends Sync {
+                @sync(["int"])
+                arrayOfNumbers: number[];
+            }
+
+            const state = new MyState();
+            state.arrayOfNumbers = [144, 233, 377, 610, 987, 1597, 2584];
+
+            let encoded = state.encode();
+            // assert.deepEqual(encoded, [0, 3, 3, 0, 163, 111, 110, 101, 1, 163, 116, 119, 111, 2, 165, 116, 104, 114, 101, 101]);
+
+            const decodedState = new MyState();
+            decodedState.decode(encoded);
+
+            assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584]);
         });
 
         it("no changes", () => {

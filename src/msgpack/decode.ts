@@ -69,12 +69,54 @@ function utf8Read(bytes, offset, length) {
   return string;
 }
 
-
 function _str (bytes, it: Iterator, length: number) {
   var value = utf8Read(bytes, it.offset, length);
   it.offset += length;
   return value;
 };
+
+function readInt8 (bytes: number[], it: Iterator) {
+    return readUint8(bytes, it) << 24 >> 24;
+};
+
+function readUint8 (bytes: number[], it: Iterator) {
+    return bytes[it.offset++];
+};
+
+function readInt16 (bytes: number[], it: Iterator) {
+    return readUint16(bytes, it) << 16 >> 16;
+};
+
+function readUint16 (bytes: number[], it: Iterator) {
+    return bytes[it.offset++] | bytes[it.offset++] << 8;
+};
+
+function readInt32 (bytes: number[], it: Iterator) {
+    return bytes[it.offset++] | bytes[it.offset++] << 8 | bytes[it.offset++] << 16 | bytes[it.offset++] << 24;
+};
+
+function readUint32 (bytes: number[], it: Iterator) {
+    return readInt32(bytes, it) >>> 0;
+};
+
+// function readInt64 (bytes: number[], it: Iterator) {
+//     return new flatbuffers.Long(readInt32(bytes, it), readInt32(bytes, it));
+// };
+
+// function readUint64 (bytes: number[], it: Iterator) {
+//     return new flatbuffers.Long(readUint32(bytes, it), readUint32(bytes, it));
+// };
+
+// function readFloat32 (bytes: number[], it: Iterator) {
+//     flatbuffers.int32[0] = readInt32(bytes, it);
+//     return flatbuffers.float32[0];
+// };
+
+// function readFloat64 (bytes: number[], it: Iterator) {
+//     flatbuffers.int32[flatbuffers.isLittleEndian ? 0 : 1] = readInt32(bytes, it.offset);
+//     flatbuffers.int32[flatbuffers.isLittleEndian ? 1 : 0] = readInt32(bytes, it.offset + 4);
+//     return flatbuffers.float64[0];
+// };
 
 export function string (bytes, it: Iterator) {
   const prefix = bytes[it.offset++];
@@ -102,10 +144,6 @@ export function int (bytes, it: Iterator) {
     // positive fixint
     return prefix;
 
-  } else if (prefix > 0xdf) {
-    // negative fixint
-    return (0xff - prefix + 1) * -1
-
   } else if (prefix === 0xca) {
     // float
     const value = bytes[it.offset];
@@ -113,60 +151,53 @@ export function int (bytes, it: Iterator) {
     return value;
 
   } else if (prefix === 0xcb) {
-    // uint
+    // float 64
+    // TODO
     const value = bytes[it.offset];
     it.offset += 8;
     return value;
 
   } else if (prefix === 0xcc) {
-    // uint
-    const value = bytes[it.offset];
-    it.offset += 1;
-    return value;
+    // uint 8
+    return readUint8(bytes, it);
 
   } else if (prefix === 0xcd) {
-    // uint
-    const value = bytes[it.offset];
-    it.offset += 2;
-    return value;
+    // uint 16
+    return readUint16(bytes, it);
 
   } else if (prefix === 0xce) {
-    // uint
-    const value = bytes[it.offset];
-    it.offset += 4;
-    return value;
+    // uint 32
+    return readUint32(bytes, it);
 
   } else if (prefix === 0xcf) {
-    // uint
+    // uint 64
     const hi = bytes[it.offset] * Math.pow(2, 32);
     const lo = bytes[it.offset + 4];
     it.offset += 8;
     return hi + lo;
 
   } else if (prefix === 0xd0) {
-    // int
-    const value = bytes[it.offset];
-    it.offset += 1;
-    return value;
+    // int 8
+    return readInt8(bytes, it);
 
   } else if (prefix === 0xd1) {
-    // int
-    const value = bytes[it.offset];
-    it.offset += 2;
-    return value;
+    // int 16
+    return readInt16(bytes, it);
 
   } else if (prefix === 0xd2) {
-    // int
-    const value = bytes[it.offset];
-    it.offset += 4;
-    return value;
+    // int 32
+    return readInt32(bytes, it);
 
   } else if (prefix === 0xd3) {
-    // int
+    // int 64
     const hi = bytes[it.offset] * Math.pow(2, 32);
     const lo = bytes[it.offset + 4];
     it.offset += 8;
     return hi + lo;
+
+  } else if (prefix > 0xdf) {
+    // negative fixint
+    return (0xff - prefix + 1) * -1
   }
 };
 
@@ -187,13 +218,6 @@ export function intCheck (bytes, it: Iterator) {
     prefix < 0x80 ||
     (prefix >= 0xca && prefix <= 0xd3)
   );
-}
-
-export function arrayLength (bytes, it: Iterator) {
-  const prefix = bytes[it.offset++];
-  if (prefix < 0xa0) {
-    return this._array(prefix & 0x0f);
-  }
 }
 
 export function arrayCheck (bytes, it: Iterator) {

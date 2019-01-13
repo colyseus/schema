@@ -74,6 +74,172 @@ export function utf8Write(view, offset, str) {
   }
 }
 
+function writeInt8 (bytes, value) {
+    bytes.push(value);
+};
+
+function writeUint8 (bytes, value) {
+    bytes.push(value);
+};
+
+function writeInt16 (bytes, value) {
+    bytes.push(value);
+    bytes.push(value >> 8);
+};
+
+function writeUint16 (bytes, value) {
+    bytes.push(value);
+    bytes.push(value >> 8);
+};
+
+function writeInt32 (bytes, value) {
+    bytes.push(value);
+    bytes.push(value >> 8);
+    bytes.push(value >> 16);
+    bytes.push(value >> 24);
+};
+
+function writeUint32 (bytes, value) {
+    bytes.push(value);
+    bytes.push(value >> 8);
+    bytes.push(value >> 16);
+    bytes.push(value >> 24);
+};
+
+function writeInt64 (bytes, value) {
+    writeInt32(bytes, value.low);
+    writeInt32(bytes, value.high);
+};
+
+function writeUint64 (bytes, value) {
+    writeUint32(bytes, value.low);
+    writeUint32(bytes, value.high);
+};
+
+// function writeFloat32 (bytes, offset, value) {
+//     flatbuffers.float32[0] = value;
+//     writeInt32(bytes, offset, flatbuffers.int32[0]);
+// };
+
+// function writeFloat64 (bytes, offset, value) {
+//     flatbuffers.float64[0] = value;
+//     writeInt32(bytes, offset, flatbuffers.int32[flatbuffers.isLittleEndian ? 0 : 1]);
+//     writeInt32(bytes, offset + 4, flatbuffers.int32[flatbuffers.isLittleEndian ? 1 : 0]);
+// };
+
+export function string (bytes, defers, value) {
+  let length = utf8Length(value);
+  let size = 0;
+
+  // fixstr
+  if (length < 0x20) {
+    bytes.push(length | 0xa0);
+    size = 1;
+  }
+  // str 8
+  else if (length < 0x100) {
+    bytes.push(0xd9, length);
+    size = 2;
+  }
+  // str 16
+  else if (length < 0x10000) {
+    bytes.push(0xda, length >> 8, length);
+    size = 3;
+  }
+  // str 32
+  else if (length < 0x100000000) {
+    bytes.push(0xdb, length >> 24, length >> 16, length >> 8, length);
+    size = 5;
+  } else {
+    throw new Error('String too long');
+  }
+
+  // defers.push({ _str: value, _length: length, _offset: bytes.length });
+  utf8Write(bytes, bytes.length, value);
+
+  return size + length;
+}
+
+export function int (bytes, defers, value) {
+  // float 64
+  if (Math.floor(value) !== value || !isFinite(value)) {
+    bytes.push(0xcb);
+    defers.push({ _float: value, _length: 8, _offset: bytes.length });
+    return 9;
+  }
+
+  if (value >= 0) {
+    // positive fixnum
+    if (value < 0x80) {
+      writeUint8(bytes, value);
+      return 1;
+    }
+
+    // uint 8
+    if (value < 0x100) {
+      bytes.push(0xcc);
+      writeUint8(bytes, value);
+      return 2;
+    }
+
+    // uint 16
+    if (value < 0x10000) {
+      bytes.push(0xcd);
+      writeUint16(bytes, value);
+      return 3;
+    }
+
+    // uint 32
+    if (value < 0x100000000) {
+      bytes.push(0xce);
+      writeUint32(bytes, value);
+      return 5;
+    }
+
+    // uint 64
+    bytes.push(0xcf);
+    writeUint64(bytes, value);
+    return 9;
+
+  } else {
+
+    // negative fixnum
+    if (value >= -0x20) {
+      bytes.push(value);
+      return 1;
+    }
+
+    // int 8
+    if (value >= -0x80) {
+      bytes.push(0xd0);
+      writeInt8(bytes, value);
+      return 2;
+    }
+
+    // int 16
+    if (value >= -0x8000) {
+      bytes.push(0xd1);
+      writeInt16(bytes, value);
+      return 3;
+    }
+
+    // int 32
+    if (value >= -0x80000000) {
+      bytes.push(0xd2);
+      writeInt32(bytes, value);
+      return 5;
+    }
+
+    // int 64
+    bytes.push(0xd3);
+    writeInt64(bytes, value);
+    return 9;
+  }
+}
+
+/**
+ * UNUSED. LEFT HERE JUST FOR REFERENCE.
+ */
 export function encode(bytes, defers, value) {
   var type = typeof value, i = 0, l = 0, hi = 0, lo = 0, length = 0, size = 0;
 
@@ -286,102 +452,4 @@ export function encode(bytes, defers, value) {
     return 3;
   }
   throw new Error('Could not encode');
-}
-
-export function string (bytes, defers, value) {
-  let length = utf8Length(value);
-  let size = 0;
-
-  // fixstr
-  if (length < 0x20) {
-    bytes.push(length | 0xa0);
-    size = 1;
-  }
-  // str 8
-  else if (length < 0x100) {
-    bytes.push(0xd9, length);
-    size = 2;
-  }
-  // str 16
-  else if (length < 0x10000) {
-    bytes.push(0xda, length >> 8, length);
-    size = 3;
-  }
-  // str 32
-  else if (length < 0x100000000) {
-    bytes.push(0xdb, length >> 24, length >> 16, length >> 8, length);
-    size = 5;
-  } else {
-    throw new Error('String too long');
-  }
-
-  // defers.push({ _str: value, _length: length, _offset: bytes.length });
-  utf8Write(bytes, bytes.length, value);
-
-  return size + length;
-}
-
-export function int (bytes, defers, value) {
-  let hi = 0, lo = 0;
-
-  // float 64
-  if (Math.floor(value) !== value || !isFinite(value)) {
-    bytes.push(0xcb);
-    defers.push({ _float: value, _length: 8, _offset: bytes.length });
-    return 9;
-  }
-
-  if (value >= 0) {
-    // positive fixnum
-    if (value < 0x80) {
-      bytes.push(value);
-      return 1;
-    }
-    // uint 8
-    if (value < 0x100) {
-      bytes.push(0xcc, value);
-      return 2;
-    }
-    // uint 16
-    if (value < 0x10000) {
-      bytes.push(0xcd, value >> 8, value);
-      return 3;
-    }
-    // uint 32
-    if (value < 0x100000000) {
-      bytes.push(0xce, value >> 24, value >> 16, value >> 8, value);
-      return 5;
-    }
-    // uint 64
-    hi = (value / Math.pow(2, 32)) >> 0;
-    lo = value >>> 0;
-    bytes.push(0xcf, hi >> 24, hi >> 16, hi >> 8, hi, lo >> 24, lo >> 16, lo >> 8, lo);
-    return 9;
-  } else {
-    // negative fixnum
-    if (value >= -0x20) {
-      bytes.push(value);
-      return 1;
-    }
-    // int 8
-    if (value >= -0x80) {
-      bytes.push(0xd0, value);
-      return 2;
-    }
-    // int 16
-    if (value >= -0x8000) {
-      bytes.push(0xd1, value >> 8, value);
-      return 3;
-    }
-    // int 32
-    if (value >= -0x80000000) {
-      bytes.push(0xd2, value >> 24, value >> 16, value >> 8, value);
-      return 5;
-    }
-    // int 64
-    hi = Math.floor(value / Math.pow(2, 32));
-    lo = value >>> 0;
-    bytes.push(0xd3, hi >> 24, hi >> 16, hi >> 8, hi, lo >> 24, lo >> 16, lo >> 8, lo);
-    return 9;
-  }
 }

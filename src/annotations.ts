@@ -2,14 +2,27 @@ import { END_OF_STRUCTURE } from './spec';
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
 
-type SchemaType = (
-    "string" |
-    "int" |
-    (typeof Sync)[] |
-    typeof Sync |
-    { map?: typeof Sync }
-);
+type PrimitiveType = "string" | "int" | typeof Sync;
+type SchemaType = ( PrimitiveType | PrimitiveType[] | { map?: typeof Sync });
 type Schema = { [field: string]: SchemaType };
+
+function encodePrimitiveType (type: string, bytes: number[], value: any) {
+    const encodeFunc = encode[type];
+    if (!encodeFunc) { return false; }
+    encodeFunc(bytes, [], value);
+    return true;
+}
+
+function decodePrimitiveType (type: string, bytes: number[], it: decode.Iterator) {
+    const decodeFunc = decode[type as string];
+    const decodeCheckFunc = decode[type + "Check"];
+
+    if (decodeFunc && decodeCheckFunc(bytes, it)) {
+        return decodeFunc(bytes, it);
+    }
+
+    return null;
+}
 
 export abstract class Sync {
     static _schema: Schema;
@@ -19,7 +32,7 @@ export abstract class Sync {
     protected $changed: boolean = false;
 
     protected $parent: Sync;
-    protected $parentField: string;
+    protected $parentField: string | (string | number)[];
 
     public onChange?(field: string, value: any, previousValue: any);
 
@@ -110,13 +123,22 @@ export abstract class Sync {
                 for (let i = 0; i < numChanges; i++) {
                     const index = decode.int(bytes, it);
 
-                    const item = value[index] || new (type as any)();
-                    item.$parent = this;
-                    item.decode(bytes, it);
+                    if ((type as any).prototype instanceof Sync) {
+                        const item = value[index] || new (type as any)();
+                        item.$parent = this;
+                        item.decode(bytes, it);
 
-                    if (value[index] === undefined) {
-                        value.push(item);
+                        if (value[index] === undefined) {
+                            value.push(item);
+                        }
+                    } else {
+                        const item = decodePrimitiveType(type as string, bytes, it);
+
+                        if (value[index] === undefined) {
+                            value.push(item);
+                        }
                     }
+
                 }
 
             } else if ((type as any).map) {
@@ -143,12 +165,7 @@ export abstract class Sync {
                 }
 
             } else {
-                const decodeFunc = decode[type as string];
-                const decodeCheckFunc = decode[type + "Check"];
-
-                if (decodeFunc && decodeCheckFunc(bytes, it)) {
-                    value = decodeFunc(bytes, it);
-                }
+                value = decodePrimitiveType(type as string, bytes, it);
             }
 
             if (this.onChange) {
@@ -209,13 +226,23 @@ export abstract class Sync {
                     const index = value[i];
                     const item = this[`_${field}`][index];
 
-                    if (!item.$parent) {
-                        item.$parent = this;
-                        item.$parentField = [field, i];
-                    }
+                    if (item instanceof Sync) {
+                        encode.int(bytes, [], index);
 
-                    encode.int(bytes, [], index);
-                    bytes = bytes.concat(item.encode(false));
+                        if (!item.$parent) {
+                            item.$parent = this;
+                            item.$parentField = [field, i];
+                        }
+
+                        bytes = bytes.concat(item.encode(false));
+                    } else {
+                        encode.int(bytes, [], i);
+
+                        if (!encodePrimitiveType(type[0] as string, bytes, index)) {
+                            console.log("cannot encode", schema[field]);
+                            continue;
+                        }
+                    }
                 }
 
             } else if ((type as any).map) {
@@ -250,13 +277,10 @@ export abstract class Sync {
             } else {
                 encode.int(bytes, [], fieldIndex);
 
-                const encodeFunc = encode[type as string];
-                if (!encodeFunc) {
+                if (!encodePrimitiveType(type as string, bytes, value)) {
                     console.log("cannot encode", schema[field]);
                     continue;
                 }
-
-                encodeFunc(bytes, [], value);
             }
 
             encodedBytes = [...encodedBytes, ...bytes];
@@ -358,7 +382,7 @@ export function sync (type: SchemaType) {
                     }
 
                     for (let i = 0; i < length; i++) {
-                        if (!value[i].$parent) {
+                        if (value[i] instanceof Sync && !value[i].$parent) {
                             value[i].$parent = this;
                             value[i].$parentField = [field, i];
                         }
