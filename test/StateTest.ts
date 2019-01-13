@@ -339,7 +339,7 @@ describe("State API", () => {
             state.arrayOfNumbers = [144, 233, 377, 610, 987, 1597, 2584];
 
             let encoded = state.encode();
-            // assert.deepEqual(encoded, [0, 3, 3, 0, 163, 111, 110, 101, 1, 163, 116, 119, 111, 2, 165, 116, 104, 114, 101, 101]);
+            assert.deepEqual(encoded, [0, 7, 7, 0, 204, 144, 1, 204, 233, 2, 205, 377, 1, 3, 205, 610, 2, 4, 205, 987, 3, 5, 205, 1597, 6, 6, 205, 2584, 10]);
 
             const decodedState = new MyState();
             decodedState.decode(encoded);
