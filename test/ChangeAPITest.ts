@@ -75,6 +75,8 @@ describe("Change API", () => {
             assert.equal(changes.length, 1);
             assert.equal(changes[0].field, "player");
 
+            // not having a previous value means this is a new object
+            // which would only define the `onChange` function once per object.
             if (!changes[0].previousValue) {
                 const player = changes[0].value as Player;
                 player.onChange = function(changes: DataChange[]) {
