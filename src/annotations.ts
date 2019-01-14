@@ -20,20 +20,24 @@ type Schema = { [field: string]: SchemaType };
 
 function encodePrimitiveType (type: string, bytes: number[], value: any) {
     const encodeFunc = encode[type];
-    if (!encodeFunc) { return false; }
-    encodeFunc(bytes, value);
-    return true;
+    if (encodeFunc) {
+        encodeFunc(bytes, value);
+        return true;
+
+    } else {
+        return false;
+    }
 }
 
 function decodePrimitiveType (type: string, bytes: number[], it: decode.Iterator) {
     const decodeFunc = decode[type as string];
-    // const decodeCheckFunc = decode[type + "Check"];
 
-    if (decodeFunc) { //  && decodeCheckFunc(bytes, it)
-        return decodeFunc(bytes, it);
+    if (decodeFunc) {
+         return decodeFunc(bytes, it);
+
+    } else {
+        return null;
     }
-
-    return null;
 }
 
 export interface DataChange {

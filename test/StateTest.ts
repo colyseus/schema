@@ -25,10 +25,7 @@ describe("State API", () => {
         });
 
         it("uint8", () => {
-            class Data extends Sync {
-                @sync("uint8")
-                uint8 = 255;
-            }
+            class Data extends Sync { @sync("uint8") uint8 = 255; }
 
             let data = new Data();
             assert.equal(data.uint8, 255);
@@ -44,10 +41,7 @@ describe("State API", () => {
         });
 
         it("uint16", () => {
-            class Data extends Sync {
-                @sync("uint16")
-                uint16;
-            }
+            class Data extends Sync { @sync("uint16") uint16; }
 
             let data = new Data();
             data.uint16 = 65500;
@@ -60,6 +54,64 @@ describe("State API", () => {
             decoded.decode(encoded);
             assert.equal(decoded.uint16, 65500);
         });
+
+        it("uint32", () => {
+            class Data extends Sync { @sync("uint32") uint32; }
+
+            let data = new Data();
+            data.uint32 = 4294967290;
+
+            let encoded = data.encode();
+            console.log(encoded);
+            assert.deepEqual(encoded, [0, 4294967290, -1, -1, -1]);
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.uint32, 4294967290);
+        });
+
+        it("int8", () => {
+            class Data extends Sync { @sync("int8") int8; }
+
+            let data = new Data();
+            data.int8 = -128;
+
+            let encoded = data.encode();
+            assert.deepEqual(encoded, [0, -128]);
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.int8, -128);
+        });
+
+        it("int16", () => {
+            class Data extends Sync { @sync("int16") int16; }
+
+            let data = new Data();
+            data.int16 = -32768;
+
+            let encoded = data.encode();
+            // assert.deepEqual(encoded, []);
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.int16, -32768);
+        });
+
+        it("int32", () => {
+            class Data extends Sync { @sync("int32") int32; }
+
+            let data = new Data();
+            data.int32 = -2147483648;
+
+            let encoded = data.encode();
+            // assert.deepEqual(encoded, [0, 4294967290, -1, -1, -1]);
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.int32, -2147483648);
+        });
+
     });
 
     describe("encoding/decoding", () => {
