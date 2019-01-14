@@ -74,60 +74,65 @@ export function utf8Write(view, offset, str) {
   }
 }
 
-function writeInt8 (bytes, value) {
+export function int8 (bytes, value) {
     bytes.push(value);
 };
 
-function writeUint8 (bytes, value) {
+export function uint8 (bytes, value) {
     bytes.push(value);
 };
 
-function writeInt16 (bytes, value) {
-    bytes.push(value);
-    bytes.push(value >> 8);
-};
-
-function writeUint16 (bytes, value) {
+export function int16 (bytes, value) {
     bytes.push(value);
     bytes.push(value >> 8);
 };
 
-function writeInt32 (bytes, value) {
+export function uint16 (bytes, value) {
     bytes.push(value);
     bytes.push(value >> 8);
-    bytes.push(value >> 16);
-    bytes.push(value >> 24);
 };
 
-function writeUint32 (bytes, value) {
+export function int32 (bytes, value) {
     bytes.push(value);
     bytes.push(value >> 8);
     bytes.push(value >> 16);
     bytes.push(value >> 24);
 };
 
-function writeInt64 (bytes, value) {
-    writeInt32(bytes, value.low);
-    writeInt32(bytes, value.high);
+export function uint32 (bytes, value) {
+    bytes.push(value);
+    bytes.push(value >> 8);
+    bytes.push(value >> 16);
+    bytes.push(value >> 24);
 };
 
-function writeUint64 (bytes, value) {
-    writeUint32(bytes, value.low);
-    writeUint32(bytes, value.high);
+export function int64 (bytes, value) {
+    int32(bytes, value.low);
+    int32(bytes, value.high);
 };
 
-// function writeFloat32 (bytes, offset, value) {
-//     flatbuffers.float32[0] = value;
-//     writeInt32(bytes, offset, flatbuffers.int32[0]);
-// };
+export function uint64 (bytes, value) {
+    uint32(bytes, value.low);
+    uint32(bytes, value.high);
+};
 
-// function writeFloat64 (bytes, offset, value) {
-//     flatbuffers.float64[0] = value;
-//     writeInt32(bytes, offset, flatbuffers.int32[flatbuffers.isLittleEndian ? 0 : 1]);
-//     writeInt32(bytes, offset + 4, flatbuffers.int32[flatbuffers.isLittleEndian ? 1 : 0]);
-// };
+const _isLittleEndian = new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
+const _int32 = new Int32Array(2);
+const _float32 = new Float32Array(_int32.buffer);
+const _float64 = new Float64Array(_int32.buffer);
 
-export function string (bytes, defers, value) {
+export function writeFloat32 (bytes, value) {
+    _float32[0] = value;
+    int32(bytes, int32[0]);
+};
+
+export function writeFloat64 (bytes, value) {
+    _float64[0] = value;
+    int32(bytes, _int32[_isLittleEndian ? 0 : 1]);
+    int32(bytes, _int32[_isLittleEndian ? 1 : 0]);
+};
+
+export function string (bytes, value) {
   let length = utf8Length(value);
   let size = 0;
 
@@ -160,45 +165,45 @@ export function string (bytes, defers, value) {
   return size + length;
 }
 
-export function number (bytes, defers, value) {
+export function number (bytes, value) {
   // float 64
   if (Math.floor(value) !== value || !isFinite(value)) {
     bytes.push(0xcb);
-    defers.push({ _float: value, _length: 8, _offset: bytes.length });
+    // defers.push({ _float: value, _length: 8, _offset: bytes.length });
     return 9;
   }
 
   if (value >= 0) {
     // positive fixnum
     if (value < 0x80) {
-      writeUint8(bytes, value);
+      uint8(bytes, value);
       return 1;
     }
 
     // uint 8
     if (value < 0x100) {
       bytes.push(0xcc);
-      writeUint8(bytes, value);
+      uint8(bytes, value);
       return 2;
     }
 
     // uint 16
     if (value < 0x10000) {
       bytes.push(0xcd);
-      writeUint16(bytes, value);
+      uint16(bytes, value);
       return 3;
     }
 
     // uint 32
     if (value < 0x100000000) {
       bytes.push(0xce);
-      writeUint32(bytes, value);
+      uint32(bytes, value);
       return 5;
     }
 
     // uint 64
     bytes.push(0xcf);
-    writeUint64(bytes, value);
+    uint64(bytes, value);
     return 9;
 
   } else {
@@ -212,27 +217,27 @@ export function number (bytes, defers, value) {
     // int 8
     if (value >= -0x80) {
       bytes.push(0xd0);
-      writeInt8(bytes, value);
+      int8(bytes, value);
       return 2;
     }
 
     // int 16
     if (value >= -0x8000) {
       bytes.push(0xd1);
-      writeInt16(bytes, value);
+      int16(bytes, value);
       return 3;
     }
 
     // int 32
     if (value >= -0x80000000) {
       bytes.push(0xd2);
-      writeInt32(bytes, value);
+      int32(bytes, value);
       return 5;
     }
 
     // int 64
     bytes.push(0xd3);
-    writeInt64(bytes, value);
+    int64(bytes, value);
     return 9;
   }
 }

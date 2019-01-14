@@ -40,6 +40,23 @@ See [example/State.ts](example/State.ts).
 
 ## Supported types
 
+## Primitive Types
+
+| Type | Description | Limitation |
+|------|-------------|------------|
+| string | utf8 strings | maximum byte size of `4294967295` |
+| number | auto-detects `int` or `float` type | `0` to `18446744073709551615` |
+| int8 | signed 8-bit integer | `-128` to `127` |
+| uint8 | unsigned 8-bit integer | `0` to `255` |
+| int16 | signed 16-bit integer | `-32768` to `32767` |
+| uint16 | unsigned 16-bit integer | `0` to `65535` |
+| int32 | signed 32-bit integer | `-2147483648` to `2147483647` |
+| uint32 | unsigned 32-bit integer | `0` to `4294967295` |
+| int64 | signed 64-bit integer | `-9223372036854775808` to `9223372036854775807` |
+| uint64 | unsigned 64-bit integer | `0` to `18446744073709551615` |
+
+**Declaration:**
+
 - `@sync("string") name: string;`
 - `@sync("number") level: number;`
 - `@sync(Player) player: Player;`

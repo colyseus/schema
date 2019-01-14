@@ -5,22 +5,60 @@ import { State, Player } from "./Schema";
 describe("State API", () => {
 
     describe("declaration", () => {
-        it("should allow to define default values", () => {
+        it("default values", () => {
             class DataObject extends Sync {
                 @sync("string")
                 stringValue = "initial value";
 
                 @sync("number")
-                intValue = 50;
+                intValue = 300;
             }
 
             let data = new DataObject();
             assert.equal(data.stringValue, "initial value");
-            assert.equal(data.intValue, 50);
+            assert.equal(data.intValue, 300);
             assert.deepEqual((DataObject as any)._schema, {
                 stringValue: 'string',
                 intValue: 'number',
             });
+            assert.deepEqual(data.encode(), [0, 173, 105, 110, 105, 116, 105, 97, 108, 32, 118, 97, 108, 117, 101, 1, 205, 300, 1]);
+        });
+
+        it("uint8", () => {
+            class Data extends Sync {
+                @sync("uint8")
+                uint8 = 255;
+            }
+
+            let data = new Data();
+            assert.equal(data.uint8, 255);
+
+            data.uint8 = 127;
+            let encoded = data.encode();
+
+            assert.deepEqual(encoded, [0, 127]);
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.uint8, 127);
+        });
+
+        it("uint16", () => {
+            class Data extends Sync {
+                @sync("uint16")
+                uint16;
+            }
+
+            let data = new Data();
+            data.uint16 = 65500;
+
+            let encoded = data.encode();
+            console.log(encoded);
+            assert.deepEqual(encoded, [ 0, 65500, 255 ]);
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.uint16, 65500);
         });
     });
 

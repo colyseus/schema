@@ -75,53 +75,55 @@ function _str (bytes, it: Iterator, length: number) {
   return value;
 };
 
-const isLittleEndian = new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
-const int32 = new Int32Array(2);
-const float32 = new Float32Array(int32.buffer);
-const float64 = new Float64Array(int32.buffer);
-
-function readInt8 (bytes: number[], it: Iterator) {
-    return readUint8(bytes, it) << 24 >> 24;
+export function int8 (bytes: number[], it: Iterator) {
+    return uint8(bytes, it) << 24 >> 24;
 };
 
-function readUint8 (bytes: number[], it: Iterator) {
+export function uint8 (bytes: number[], it: Iterator) {
     return bytes[it.offset++];
 };
 
-function readInt16 (bytes: number[], it: Iterator) {
-    return readUint16(bytes, it) << 16 >> 16;
+export function int16 (bytes: number[], it: Iterator) {
+    return uint16(bytes, it) << 16 >> 16;
 };
 
-function readUint16 (bytes: number[], it: Iterator) {
+export function uint16 (bytes: number[], it: Iterator) {
     return bytes[it.offset++] | bytes[it.offset++] << 8;
 };
 
-function readInt32 (bytes: number[], it: Iterator) {
+export function int32 (bytes: number[], it: Iterator) {
     return bytes[it.offset++] | bytes[it.offset++] << 8 | bytes[it.offset++] << 16 | bytes[it.offset++] << 24;
 };
 
-function readUint32 (bytes: number[], it: Iterator) {
-    return readInt32(bytes, it) >>> 0;
+export function uint32 (bytes: number[], it: Iterator) {
+    return int32(bytes, it) >>> 0;
 };
 
-// function readInt64 (bytes: number[], it: Iterator) {
-//     return new flatbuffers.Long(readInt32(bytes, it), readInt32(bytes, it));
+// export function int64 (bytes: number[], it: Iterator) {
+//     return new flatbuffers.Long(int32(bytes, it), int32(bytes, it));
 // };
 
-// function readUint64 (bytes: number[], it: Iterator) {
-//     return new flatbuffers.Long(readUint32(bytes, it), readUint32(bytes, it));
+// export function uint64 (bytes: number[], it: Iterator) {
+//     return new flatbuffers.Long(uint32(bytes, it), uint32(bytes, it));
 // };
 
-function readFloat32 (bytes: number[], it: Iterator) {
-    int32[0] = readInt32(bytes, it);
-    return float32[0];
+const _isLittleEndian = new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
+const _int32 = new Int32Array(2);
+const _float32 = new Float32Array(_int32.buffer);
+const _float64 = new Float64Array(_int32.buffer);
+
+export function readFloat32 (bytes: number[], it: Iterator) {
+    _int32[0] = int32(bytes, it);
+    return _float32[0];
 };
 
-function readFloat64 (bytes: number[], it: Iterator) {
-    int32[isLittleEndian ? 0 : 1] = readInt32(bytes, it);
-    int32[isLittleEndian ? 1 : 0] = readInt32(bytes, it);
-    return float64[0];
+export function readFloat64 (bytes: number[], it: Iterator) {
+    _int32[_isLittleEndian ? 0 : 1] = int32(bytes, it);
+    _int32[_isLittleEndian ? 1 : 0] = int32(bytes, it);
+    return _float64[0];
 };
+
+/****/
 
 export function string (bytes, it: Iterator) {
   const prefix = bytes[it.offset++];
@@ -165,15 +167,15 @@ export function number (bytes, it: Iterator) {
 
   } else if (prefix === 0xcc) {
     // uint 8
-    return readUint8(bytes, it);
+    return uint8(bytes, it);
 
   } else if (prefix === 0xcd) {
     // uint 16
-    return readUint16(bytes, it);
+    return uint16(bytes, it);
 
   } else if (prefix === 0xce) {
     // uint 32
-    return readUint32(bytes, it);
+    return uint32(bytes, it);
 
   } else if (prefix === 0xcf) {
     // uint 64
@@ -184,15 +186,15 @@ export function number (bytes, it: Iterator) {
 
   } else if (prefix === 0xd0) {
     // int 8
-    return readInt8(bytes, it);
+    return int8(bytes, it);
 
   } else if (prefix === 0xd1) {
     // int 16
-    return readInt16(bytes, it);
+    return int16(bytes, it);
 
   } else if (prefix === 0xd2) {
     // int 32
-    return readInt32(bytes, it);
+    return int32(bytes, it);
 
   } else if (prefix === 0xd3) {
     // int 64
