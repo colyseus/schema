@@ -1,3 +1,5 @@
+import { NIL, INDEX_CHANGE } from "../spec";
+
 /**
  * Copyright (c) 2018 Endel Dreyer
  * Copyright (c) 2014 Ion Drive Software Ltd.
@@ -245,6 +247,14 @@ export function arrayCheck (bytes, it: Iterator) {
   // }
 
   // return prefix;
+}
+
+export function nilCheck(bytes, it: Iterator) {
+  return bytes[it.offset] === NIL;
+}
+
+export function indexChangeCheck(bytes, it: Iterator) {
+  return bytes[it.offset] === INDEX_CHANGE;
 }
 
 /**

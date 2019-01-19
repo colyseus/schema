@@ -259,6 +259,44 @@ describe("State API", () => {
             assert.equal(decodedState.arrayOfPlayers[2], undefined);
         });
 
+        it("should allow to `pop` an array", () => {
+            const state = new State();
+            state.arrayOfPlayers = [new Player("Jake"), new Player("Snake"), new Player("Player 3")];
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.arrayOfPlayers.length, 3);
+            state.arrayOfPlayers.pop();
+
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.arrayOfPlayers.length, 2);
+            assert.deepEqual(decodedState.arrayOfPlayers.map(p => p.name), ["Jake", "Snake"]);
+        });
+
+        it("should allow to `shift` an array", () => {
+            const state = new State();
+            state.arrayOfPlayers = [new Player("Jake"), new Player("Snake"), new Player("Cyberhawk")];
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.arrayOfPlayers.length, 3);
+
+            const snake = decodedState.arrayOfPlayers[1];
+            const cyberhawk = decodedState.arrayOfPlayers[2];
+
+            console.log(">>>> LETS SHIFT!");
+            state.arrayOfPlayers.shift();
+            // state.arrayOfPlayers.splice(1, 1);
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.arrayOfPlayers.length, 2);
+            assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
+            assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
+            assert.equal(snake, decodedState.arrayOfPlayers[0]);
+            assert.equal(cyberhawk, decodedState.arrayOfPlayers[1]);
+        });
+
         it("should encode map of objects", () => {
             const state = new State();
             state.mapOfPlayers = {

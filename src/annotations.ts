@@ -1,4 +1,4 @@
-import { END_OF_STRUCTURE } from './spec';
+import { END_OF_STRUCTURE, NIL, INDEX_CHANGE } from './spec';
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
 
@@ -55,6 +55,7 @@ export abstract class Sync {
 
     protected $parent: Sync;
     protected $parentField: string | (string | number)[];
+    protected $parentIndexChange: number;
 
     public onChange?(changes: DataChange[]);
 
@@ -138,6 +139,9 @@ export abstract class Sync {
                 const newLength = decode.number(bytes, it);
                 const numChanges = decode.number(bytes, it);
 
+                console.log("DECODE ARRAY, newLength:", newLength);
+                console.log("DECODE ARRAY, numChanges:", numChanges);
+
                 // ensure current array has the same length as encoded one
                 if (value.length > newLength) {
                     value.splice(newLength);
@@ -145,9 +149,26 @@ export abstract class Sync {
                 }
 
                 for (let i = 0; i < numChanges; i++) {
+                    let previousIndex: number;
+
+                    if (decode.indexChangeCheck(bytes, it)) {
+                        it.offset++;
+                        previousIndex = decode.number(bytes, it);
+                        console.log("DECODING, INDEX CHANGE DETECTED:", previousIndex);
+                    }
+
                     const index = decode.number(bytes, it);
 
                     if ((type as any).prototype instanceof Sync) {
+                        if (decode.nilCheck(bytes, it)) {
+                            it.offset++;
+                            continue;
+                        }
+
+                        if (previousIndex) {
+                            console.log("PREVIOUS INDEX WAS", previousIndex);
+                        }
+
                         const item = value[index] || new (type as any)();
                         item.$parent = this;
                         item.decode(bytes, it);
@@ -258,7 +279,14 @@ export abstract class Sync {
                     const index = value[i];
                     const item = this[`_${field}`][index];
 
+                    // console.log("ITEM:", index, item);
+
                     if (item instanceof Sync) {
+                        if (item.$parentIndexChange) {
+                            encode.number(bytes, INDEX_CHANGE);
+                            encode.number(bytes, item.$parentIndexChange);
+                        }
+
                         encode.number(bytes, index);
 
                         if (!item.$parent) {
@@ -267,6 +295,11 @@ export abstract class Sync {
                         }
 
                         bytes = bytes.concat(item.encode(false));
+
+                    } else if (item === undefined) {
+                        encode.number(bytes, index);
+                        encode.uint8(bytes, NIL);
+
                     } else {
                         encode.number(bytes, i);
 
@@ -366,31 +399,49 @@ export function sync (type: SchemaType) {
 
             set: function (this: Sync, value: any) {
                 /**
-                 * Create Proxy for array items
+                 * Create Proxy for array or map items
                  */
                 if (isArray || isMap) {
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
-                        set: (obj, prop, value) => {
+                        set: (obj, prop, setValue) => {
                             if (prop !== "length") {
                                 // ensure new value has a parent
-                                if (!value.$parent) {
-                                    const key = (isArray) ? Number(prop) : prop;
-                                    value.$parent = this;
-                                    value.$parentField = [field, key];
+                                const key = (isArray) ? Number(prop) : prop;
+
+                                console.log("SET", (setValue as any).name, "AT INDEX", key);
+                                if (setValue !== value[key]) {
+                                    console.log("INDEX CHANGE? ", value[key].name, setValue.name);
                                 }
 
-                                this.markAsChanged(field, value);
+                                if (setValue.$parentField && setValue.$parentField[1] !== key) {
+                                    setValue.$parentIndexChange = setValue.$parentField[1];
+                                }
+
+                                setValue.$parent = this;
+                                setValue.$parentField = [field, key];
+
+                                this.markAsChanged(field, setValue);
+
+                            } else if (setValue !== obj[prop]) {
+                                console.log("SET NEW LENGTH:", setValue);
+                                console.log("PREVIOUS LENGTH: ", obj[prop]);
                             }
 
-                            obj[prop] = value;
+                            obj[prop] = setValue;
 
                             return true;
                         },
 
                         deleteProperty: (obj, prop) => {
-                            console.log("DELETE PROPERTY", prop);
+                            const previousValue = obj[prop];
                             delete obj[prop];
+
+                            // ensure new value has a parent
+                            if (previousValue.$parent) {
+                                previousValue.$parent.markAsChanged(field, previousValue);
+                            }
+
                             return true;
                         },
                     });
@@ -404,6 +455,7 @@ export function sync (type: SchemaType) {
                 this[fieldCached] = value;
 
                 if (Array.isArray(constructor._schema[field])) {
+                    // directly assigning an array of items as value.
                     const length = value.length;
 
                     if (length === 0) {
@@ -414,31 +466,31 @@ export function sync (type: SchemaType) {
                     }
 
                     for (let i = 0; i < length; i++) {
-                        if (value[i] instanceof Sync && !value[i].$parent) {
+                        if (value[i] instanceof Sync) {
                             value[i].$parent = this;
                             value[i].$parentField = [field, i];
+                            console.log("SET", (value[i] as any).name, "AT INDEX", i);
                         }
                         this.markAsChanged(field, value[i]);
                     }
 
                 } else if ((constructor._schema[field] as any).map) {
+                    // directly assigning a map
                     for (let key in value) {
-                        if (!value[key].$parent) {
-                            value[key].$parent = this;
-                            value[key].$parentField = [field, key];
-                        }
+                        value[key].$parent = this;
+                        value[key].$parentField = [field, key];
 
                         this.markAsChanged(field, value[key]);
                     }
 
                 } else if (typeof(constructor._schema[field]) === "function") {
-                    if (!value.$parent) {
-                        value.$parent = this;
-                        value.$parentField = field;
-                    }
+                    // directly assigning a `Sync` object
+                    value.$parent = this;
+                    value.$parentField = field;
                     this.markAsChanged(field, value);
 
                 } else {
+                    // directly assigning a primitive type
                     this.markAsChanged(field, value);
                 }
             },
