@@ -65,6 +65,24 @@ See [example/State.ts](example/State.ts).
 - `@sync([ "string" ]) arrayOfStrings: string[];`
 - `@sync({ map: Player }) mapOfPlayers: {[id: string]: Player};`
 
+## Decoding / Listening for changes
+
+> TODO: describe how changes will arrive on array and map types
+
+```typescript
+import { DataChange } from "@colyseus/state";
+import { State } from "./YourStateDefinition";
+
+const decodedState = new State();
+decodedState.onChange = function(changes: DataChange[]) {
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].field, "fieldNumber");
+  assert.equal(changes[0].value, 50);
+  assert.equal(changes[0].previousValue, undefined);
+}
+decodedState.decode(incomingData);
+```
+
 ## Generating client-side state/schema files:
 
 > THIS HAS NOT BEEN IMPLEMENTED
