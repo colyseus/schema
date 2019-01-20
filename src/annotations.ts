@@ -134,10 +134,16 @@ export abstract class Sync {
 
             } else if (Array.isArray(type)) {
                 type = type[0];
-                value = (this[`_${field}`] || []).slice(0);
+
+                const valueRef = this[`_${field}`] || [];
+                value = valueRef.slice(0);
 
                 const newLength = decode.number(bytes, it);
                 const numChanges = decode.number(bytes, it);
+
+                // FIXME: this may not be reliable. possibly need to encode this variable during
+                // serializagion
+                let hasIndexChange = false;
 
                 // ensure current array has the same length as encoded one
                 if (value.length > newLength) {
@@ -155,16 +161,30 @@ export abstract class Sync {
                         continue;
                     }
 
-                    let previousIndex: number;
+                    let indexChangedFrom: number;
                     if (decode.indexChangeCheck(bytes, it)) {
                         // it.offset++;
                         decode.uint8(bytes, it);
-                        previousIndex = decode.number(bytes, it);
+                        indexChangedFrom = decode.number(bytes, it);
+                        hasIndexChange = true;
                     }
 
                     if ((type as any).prototype instanceof Sync) {
-                        // const item = (this[`_${field}`] || [])[previousIndex] || new (type as any)();
-                        const item = (this[`_${field}`] || [])[previousIndex || newIndex] || new (type as any)();
+                        let item;
+
+                        if (hasIndexChange && indexChangedFrom === undefined && newIndex !== undefined) {
+                            item = new (type as any)();
+
+                        } else if (indexChangedFrom !== undefined) {
+                            item = valueRef[indexChangedFrom];
+
+                        } else if (newIndex !== undefined) {
+                            item = valueRef[newIndex]
+                        }
+
+                        if (!item) {
+                            item = new (type as any)();
+                        }
 
                         item.$parent = this;
                         item.decode(bytes, it);
