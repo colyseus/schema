@@ -134,13 +134,10 @@ export abstract class Sync {
 
             } else if (Array.isArray(type)) {
                 type = type[0];
-                value = this[`_${field}`] || []
+                value = (this[`_${field}`] || []).slice(0);
 
                 const newLength = decode.number(bytes, it);
                 const numChanges = decode.number(bytes, it);
-
-                console.log("DECODE ARRAY, newLength:", newLength);
-                console.log("DECODE ARRAY, numChanges:", numChanges);
 
                 // ensure current array has the same length as encoded one
                 if (value.length > newLength) {
@@ -149,42 +146,35 @@ export abstract class Sync {
                 }
 
                 for (let i = 0; i < numChanges; i++) {
-                    let previousIndex: number;
+                    const newIndex = decode.number(bytes, it);
 
-                    if (decode.indexChangeCheck(bytes, it)) {
+                    if (decode.nilCheck(bytes, it)) {
+                        // const item = this[`_${field}`][newIndex];
+                        // TODO: trigger `onRemove` on Sync object being removed.
                         it.offset++;
-                        previousIndex = decode.number(bytes, it);
-                        console.log("DECODING, INDEX CHANGE DETECTED:", previousIndex);
+                        continue;
                     }
 
-                    const index = decode.number(bytes, it);
+                    let previousIndex: number;
+                    if (decode.indexChangeCheck(bytes, it)) {
+                        // it.offset++;
+                        decode.uint8(bytes, it);
+                        previousIndex = decode.number(bytes, it);
+                    }
 
                     if ((type as any).prototype instanceof Sync) {
-                        if (decode.nilCheck(bytes, it)) {
-                            it.offset++;
-                            continue;
-                        }
+                        // const item = (this[`_${field}`] || [])[previousIndex] || new (type as any)();
+                        const item = (this[`_${field}`] || [])[previousIndex || newIndex] || new (type as any)();
 
-                        if (previousIndex) {
-                            console.log("PREVIOUS INDEX WAS", previousIndex);
-                        }
-
-                        const item = value[index] || new (type as any)();
                         item.$parent = this;
                         item.decode(bytes, it);
 
-                        if (value[index] === undefined) {
-                            value.push(item);
-                        }
+                        value[newIndex] = item;
                     } else {
-                        const item = decodePrimitiveType(type as string, bytes, it);
-
-                        if (value[index] === undefined) {
-                            value.push(item);
-                        }
+                        value[newIndex] = decodePrimitiveType(type as string, bytes, it);
                     }
-
                 }
+
 
             } else if ((type as any).map) {
                 type = (type as any).map;
@@ -232,8 +222,15 @@ export abstract class Sync {
     }
 
     encode(root: boolean = true, encodedBytes = []) {
+        const endStructure = () => {
+            if (!root) {
+                encodedBytes.push(END_OF_STRUCTURE);
+            }
+        }
+
         // skip if nothing has changed
         if (!this.$changed) {
+            endStructure();
             return encodedBytes;
         }
 
@@ -279,15 +276,19 @@ export abstract class Sync {
                     const index = value[i];
                     const item = this[`_${field}`][index];
 
-                    // console.log("ITEM:", index, item);
+                    if (typeof(type[0]) !== "string") { // is array of Sync
+                        encode.number(bytes, index);
 
-                    if (item instanceof Sync) {
-                        if (item.$parentIndexChange) {
-                            encode.number(bytes, INDEX_CHANGE);
-                            encode.number(bytes, item.$parentIndexChange);
+                        if (item === undefined) {
+                            encode.uint8(bytes, NIL);
+                            continue;
                         }
 
-                        encode.number(bytes, index);
+                        if (item.$parentIndexChange >= 0) {
+                            encode.uint8(bytes, INDEX_CHANGE);
+                            encode.number(bytes, item.$parentIndexChange);
+                            item.$parentIndexChange = undefined; // reset
+                        }
 
                         if (!item.$parent) {
                             item.$parent = this;
@@ -295,10 +296,6 @@ export abstract class Sync {
                         }
 
                         bytes = bytes.concat(item.encode(false));
-
-                    } else if (item === undefined) {
-                        encode.number(bytes, index);
-                        encode.uint8(bytes, NIL);
 
                     } else {
                         encode.number(bytes, i);
@@ -352,9 +349,7 @@ export abstract class Sync {
         }
 
         // flag end of Sync object structure
-        if (!root) {
-            encodedBytes.push(END_OF_STRUCTURE);
-        }
+        endStructure();
 
         this.$changed = false;
         this.$changes = {};
@@ -409,11 +404,6 @@ export function sync (type: SchemaType) {
                                 // ensure new value has a parent
                                 const key = (isArray) ? Number(prop) : prop;
 
-                                console.log("SET", (setValue as any).name, "AT INDEX", key);
-                                if (setValue !== value[key]) {
-                                    console.log("INDEX CHANGE? ", value[key].name, setValue.name);
-                                }
-
                                 if (setValue.$parentField && setValue.$parentField[1] !== key) {
                                     setValue.$parentIndexChange = setValue.$parentField[1];
                                 }
@@ -424,8 +414,8 @@ export function sync (type: SchemaType) {
                                 this.markAsChanged(field, setValue);
 
                             } else if (setValue !== obj[prop]) {
-                                console.log("SET NEW LENGTH:", setValue);
-                                console.log("PREVIOUS LENGTH: ", obj[prop]);
+                                // console.log("SET NEW LENGTH:", setValue);
+                                // console.log("PREVIOUS LENGTH: ", obj[prop]);
                             }
 
                             obj[prop] = setValue;
@@ -469,7 +459,6 @@ export function sync (type: SchemaType) {
                         if (value[i] instanceof Sync) {
                             value[i].$parent = this;
                             value[i].$parentField = [field, i];
-                            console.log("SET", (value[i] as any).name, "AT INDEX", i);
                         }
                         this.markAsChanged(field, value[i]);
                     }

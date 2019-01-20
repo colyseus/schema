@@ -47,7 +47,6 @@ describe("State API", () => {
             data.uint16 = 65500;
 
             let encoded = data.encode();
-            console.log(encoded);
             assert.deepEqual(encoded, [ 0, 65500, 255 ]);
 
             const decoded = new Data();
@@ -62,7 +61,6 @@ describe("State API", () => {
             data.uint32 = 4294967290;
 
             let encoded = data.encode();
-            console.log(encoded);
             assert.deepEqual(encoded, [0, 4294967290, -1, -1, -1]);
 
             const decoded = new Data();
@@ -170,7 +168,7 @@ describe("State API", () => {
             const encoded = state.encode();
             decodedState.decode(encoded);
 
-            assert.deepEqual(encoded, [2]);
+            assert.deepEqual(encoded, [2, 193]);
             assert.ok(decodedState.player instanceof Player);
         });
 
@@ -229,33 +227,40 @@ describe("State API", () => {
             ];
 
             const decodedState = new State();
-            const encoded = state.encode();
+            let encoded = state.encode();
             assert.deepEqual(encoded, [3, 2, 2, 0, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 1, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
 
             decodedState.decode(encoded);
 
-            const decodedPlayer1 = decodedState.arrayOfPlayers[0];
-            const decodedPlayer2 = decodedState.arrayOfPlayers[1];
-            assert.equal(decodedState.arrayOfPlayers.length, 2);
-            assert.equal(decodedPlayer1.name, "Jake Badlands");
-            assert.equal(decodedPlayer2.name, "Snake Sanders");
+            const jake = decodedState.arrayOfPlayers[0];
+            const snake = decodedState.arrayOfPlayers[1];
 
-            state.arrayOfPlayers.push(new Player("Tarquinn"));
+            assert.equal(decodedState.arrayOfPlayers.length, 2);
+            assert.equal(jake.name, "Jake Badlands");
+            assert.equal(snake.name, "Snake Sanders");
+
+            state.arrayOfPlayers.push(new Player("Katarina Lyons"));
             decodedState.decode(state.encode());
 
+            const tarquinn = decodedState.arrayOfPlayers[2];
+
             assert.equal(decodedState.arrayOfPlayers.length, 3);
-            assert.equal(decodedState.arrayOfPlayers[0], decodedPlayer1);
-            assert.equal(decodedState.arrayOfPlayers[1], decodedPlayer2);
-            assert.equal(decodedState.arrayOfPlayers[2].name, "Tarquinn");
+            assert.equal(decodedState.arrayOfPlayers[0], jake);
+            assert.equal(decodedState.arrayOfPlayers[1], snake);
+            assert.equal(tarquinn.name, "Katarina Lyons");
 
             state.arrayOfPlayers.pop();
             state.arrayOfPlayers[0].name = "Tarquinn"
-            decodedState.decode(state.encode());
+
+            encoded = state.encode();
+            assert.deepEqual(encoded, [3, 2, 2, 2, 192, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
+
+            decodedState.decode(encoded);
 
             assert.equal(decodedState.arrayOfPlayers.length, 2);
-            assert.equal(decodedState.arrayOfPlayers[0], decodedPlayer1);
+            assert.equal(decodedState.arrayOfPlayers[0], jake);
             assert.equal(decodedState.arrayOfPlayers[0].name, "Tarquinn");
-            assert.equal(decodedState.arrayOfPlayers[1], decodedPlayer2);
+            assert.equal(decodedState.arrayOfPlayers[1], snake);
             assert.equal(decodedState.arrayOfPlayers[2], undefined);
         });
 
@@ -285,16 +290,58 @@ describe("State API", () => {
             const snake = decodedState.arrayOfPlayers[1];
             const cyberhawk = decodedState.arrayOfPlayers[2];
 
-            console.log(">>>> LETS SHIFT!");
             state.arrayOfPlayers.shift();
-            // state.arrayOfPlayers.splice(1, 1);
-            decodedState.decode(state.encode());
+
+            let encoded = state.encode();
+            decodedState.decode(encoded);
 
             assert.equal(decodedState.arrayOfPlayers.length, 2);
             assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
             assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
             assert.equal(snake, decodedState.arrayOfPlayers[0]);
             assert.equal(cyberhawk, decodedState.arrayOfPlayers[1]);
+        });
+
+        it("should allow to `push` and `shift` an array lelele", () => {
+            const state = new State();
+            state.arrayOfPlayers = [new Player("Jake"), new Player("Snake"), new Player("Cyberhawk")];
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.arrayOfPlayers.length, 3);
+
+            // first `push`, then `shift`
+            state.arrayOfPlayers.push(new Player("Katarina Lyons"));
+            state.arrayOfPlayers.shift();
+
+            let encoded = state.encode();
+            decodedState.decode(encoded);
+
+            assert.equal(decodedState.arrayOfPlayers.length, 3);
+            assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
+            assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
+            assert.equal(decodedState.arrayOfPlayers[2].name, "Katarina Lyons");
+        });
+
+        it("should allow to `shift` and `push` an array lalala", () => {
+            const state = new State();
+            state.arrayOfPlayers = [new Player("Jake"), new Player("Snake"), new Player("Cyberhawk")];
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.arrayOfPlayers.length, 3);
+
+            // first `shift`, then `push`
+            state.arrayOfPlayers.shift();
+            state.arrayOfPlayers.push(new Player("Katarina Lyons"));
+
+            let encoded = state.encode();
+            decodedState.decode(encoded);
+
+            assert.equal(decodedState.arrayOfPlayers.length, 3);
+            assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
+            assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
+            assert.equal(decodedState.arrayOfPlayers[2].name, "Katarina Lyons");
         });
 
         it("should encode map of objects", () => {
