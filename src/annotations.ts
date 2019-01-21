@@ -58,6 +58,7 @@ export abstract class Sync {
     protected $parentIndexChange: number;
 
     public onChange?(changes: DataChange[]);
+    public onRemove?();
 
     markAsChanged (field: string, value?: Sync | any) {
         this.$changed = true;
@@ -127,13 +128,18 @@ export abstract class Sync {
             let type = schema[field];
             let value: any;
 
+            let change: any; // for triggering onChange 
+            let hasChange = false;
+
             if ((type as any)._schema) {
                 value = this[`_${field}`] || new (type as any)();
                 value.$parent = this;
                 value.decode(bytes, it);
+                hasChange = true;
 
             } else if (Array.isArray(type)) {
                 type = type[0];
+                change = [];
 
                 const valueRef = this[`_${field}`] || [];
                 value = valueRef.slice(0);
@@ -141,14 +147,19 @@ export abstract class Sync {
                 const newLength = decode.number(bytes, it);
                 const numChanges = decode.number(bytes, it);
 
+                hasChange = (numChanges > 0);
+
                 // FIXME: this may not be reliable. possibly need to encode this variable during
                 // serializagion
                 let hasIndexChange = false;
 
                 // ensure current array has the same length as encoded one
                 if (value.length > newLength) {
-                    value.splice(newLength);
-                    // TODO: API to trigger data removal
+                    value.splice(newLength).forEach(itemRemoved => {
+                        if (itemRemoved.onRemove) {
+                            itemRemoved.onRemove();
+                        }
+                    });
                 }
 
                 for (let i = 0; i < numChanges; i++) {
@@ -190,9 +201,12 @@ export abstract class Sync {
                         item.decode(bytes, it);
 
                         value[newIndex] = item;
+
                     } else {
                         value[newIndex] = decodePrimitiveType(type as string, bytes, it);
                     }
+
+                    change.push(value[newIndex]);
                 }
 
 
@@ -201,6 +215,7 @@ export abstract class Sync {
                 value = this[`_${field}`] || {};
 
                 const length = decode.number(bytes, it);
+                hasChange = (length > 0);
 
                 for (let i = 0; i < length; i++) {
                     const hasMapIndex = decode.numberCheck(bytes, it);
@@ -221,12 +236,14 @@ export abstract class Sync {
 
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
+                hasChange = true;
             }
 
-            if (this.onChange) {
+            if (this.onChange && hasChange) {
                 changes.push({
                     field,
-                    value,
+                    value: change || value,
+                    // value: value,
                     previousValue: this[`_${field}`]
                 });
             }

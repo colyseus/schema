@@ -107,4 +107,71 @@ describe("Change API", () => {
         sinon.assert.calledOnce(playerSpy);
     });
 
+    it("detecting onChange on arrays", () => {
+        const state = new State();
+        state.arrayOfPlayers = [new Player("Jake Badlands"), new Player("Katarina Lyons")];
+
+        const decodedState = new State();
+        decodedState.onChange = function(changes: DataChange[]) {
+            assert.equal(changes.length, 1);
+            assert.equal(changes[0].field, "arrayOfPlayers");
+            assert.equal(changes[0].value.length, 2);
+
+            assert.equal(changes[0].value[0].name, "Jake Badlands");
+            assert.equal(changes[0].value[1].name, "Katarina Lyons");
+        }
+
+        let onChangeSpy = sinon.spy(decodedState, 'onChange');
+        decodedState.decode(state.encode());
+        sinon.assert.calledOnce(onChangeSpy);
+
+        state.arrayOfPlayers.push(new Player("Snake Sanders"));
+        decodedState.onChange = function(changes: DataChange[]) {
+            assert.equal(changes.length, 1);
+            assert.equal(changes[0].field, "arrayOfPlayers");
+            assert.equal(changes[0].value.length, 1);
+
+            assert.equal(changes[0].value[0].name, "Snake Sanders");
+        }
+
+        onChangeSpy = sinon.spy(decodedState, 'onChange');
+        decodedState.decode(state.encode());
+        sinon.assert.calledOnce(onChangeSpy);
+    });
+
+    it("detecting onRemove on array items", () => {
+        const state = new State();
+        state.arrayOfPlayers = [new Player("Jake Badlands"), new Player("Katarina Lyons")];
+
+        let katarina: Player;
+
+        const decodedState = new State();
+        decodedState.onChange = function(changes: DataChange[]) {
+            assert.equal(changes.length, 1);
+
+            katarina = changes[0].value[1];
+            assert.ok(katarina instanceof Player);
+            assert.equal(katarina.name, "Katarina Lyons");
+        };
+
+        let onChangeSpy = sinon.spy(decodedState, 'onChange');
+        decodedState.decode(state.encode());
+        sinon.assert.calledOnce(onChangeSpy);
+
+        state.arrayOfPlayers.splice(1);
+
+        katarina.onRemove = function () {}
+        const onItemRemoveSpy = sinon.spy(katarina, "onRemove");
+
+        decodedState.onChange = function(changes: DataChange[]) {
+            assert.equal(changes.length, 1);
+        }
+
+        onChangeSpy = sinon.spy(decodedState, 'onChange');
+        decodedState.decode(state.encode());
+        sinon.assert.calledOnce(onChangeSpy);
+        sinon.assert.calledOnce(onItemRemoveSpy);
+    });
+
+
 });
