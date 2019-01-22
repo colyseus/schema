@@ -147,11 +147,8 @@ describe("Change API", () => {
 
         const decodedState = new State();
         decodedState.onChange = function(changes: DataChange[]) {
-            assert.equal(changes.length, 1);
-
             katarina = changes[0].value[1];
             assert.ok(katarina instanceof Player);
-            assert.equal(katarina.name, "Katarina Lyons");
         };
 
         let onChangeSpy = sinon.spy(decodedState, 'onChange');
@@ -173,5 +170,72 @@ describe("Change API", () => {
         sinon.assert.calledOnce(onItemRemoveSpy);
     });
 
+    it("detecting onChange on maps", () => {
+        const state = new State();
+        state.mapOfPlayers = {
+            'jake': new Player("Jake Badlands"),
+            'katarina': new Player("Katarina Lyons"),
+        };
+
+        const decodedState = new State();
+        decodedState.onChange = function(changes: DataChange[]) {
+            assert.equal(changes.length, 1);
+            assert.equal(changes[0].field, "mapOfPlayers");
+            assert.equal(Object.keys(changes[0].value).length, 2);
+
+            assert.equal(changes[0].value.jake.name, "Jake Badlands");
+            assert.equal(changes[0].value.katarina.name, "Katarina Lyons");
+        }
+
+        let onChangeSpy = sinon.spy(decodedState, 'onChange');
+        decodedState.decode(state.encode());
+        sinon.assert.calledOnce(onChangeSpy);
+
+        state.mapOfPlayers['snake'] = new Player("Snake Sanders");
+        decodedState.onChange = function(changes: DataChange[]) {
+            assert.equal(changes.length, 1);
+            assert.equal(changes[0].field, "mapOfPlayers");
+            assert.equal(Object.keys(changes[0].value).length, 3);
+
+            assert.equal(changes[0].value.snake.name, "Snake Sanders");
+        }
+
+        onChangeSpy = sinon.spy(decodedState, 'onChange');
+        decodedState.decode(state.encode());
+        sinon.assert.calledOnce(onChangeSpy);
+    });
+
+    it("detecting onRemove on map items", () => {
+        const state = new State();
+        state.mapOfPlayers = {
+            'jake': new Player("Jake Badlands"),
+            'katarina': new Player("Katarina Lyons"),
+        };
+
+        let katarina: Player;
+
+        const decodedState = new State();
+        decodedState.onChange = function(changes: DataChange[]) {
+            katarina = changes[0].value.katarina;
+            assert.ok(katarina instanceof Player);
+        }
+
+        let onChangeSpy = sinon.spy(decodedState, 'onChange');
+        decodedState.decode(state.encode());
+        sinon.assert.calledOnce(onChangeSpy);
+
+        delete state.mapOfPlayers['katarina'];
+        katarina.onRemove = function () {}
+        const onItemRemoveSpy = sinon.spy(katarina, "onRemove");
+
+        decodedState.onChange = function(changes: DataChange[]) {
+            assert.equal(changes.length, 1);
+        }
+
+        onChangeSpy = sinon.spy(decodedState, 'onChange');
+        decodedState.decode(state.encode());
+        sinon.assert.calledOnce(onChangeSpy);
+        sinon.assert.calledOnce(onItemRemoveSpy);
+    });
 
 });
