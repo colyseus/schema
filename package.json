@@ -1,16 +1,21 @@
 {
-  "name": "@colyseus/state",
+  "name": "@colyseus/schema",
   "version": "0.1.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "test": "mocha --require ts-node/register test/**Test.ts"
   },
+  "files": ["lib"],
   "bin": {
     "stateify": "./bin/stateify"
   },
-  "author": "",
-  "license": "ISC",
+  "repository": {
+    "url": "git://github.com/colyseus/schema.git",
+    "type": "git"
+  },
+  "author": "Endel Dreyer",
+  "license": "MIT",
   "dependencies": {},
   "devDependencies": {
     "@types/mocha": "^5.2.5",

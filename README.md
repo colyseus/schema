@@ -1,8 +1,8 @@
-# @colyseus/state
-
-![](https://img.shields.io/travis/endel/state.svg?style=for-the-badge)
+<img src="logo.png?raw=true" />
 
 > WORK-IN-PROGRESS EXPERIMENT OF A NEW SERIALIZATION ALGORITHM FOR [COLYSEUS](https://github.com/gamestdio/colyseus)
+
+![](https://img.shields.io/travis/endel/state.svg?style=for-the-badge)
 
 Initial thoghts/assumptions:
 - no bottleneck to detect state changes.
