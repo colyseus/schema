@@ -4,8 +4,6 @@
 
 > WORK-IN-PROGRESS EXPERIMENT OF A NEW SERIALIZATION ALGORITHM FOR [COLYSEUS](https://github.com/gamestdio/colyseus)
 
-> THIS IS NOT STABLE AND THE API MAY CHANGE COMPLETELY AT ANY TIME
-
 Initial thoghts/assumptions:
 - no bottleneck to detect state changes.
 - have a schema definition on both server and client
@@ -17,24 +15,42 @@ Practical Colyseus issues this should solve:
 - Allow to send different patches for each client
 - Better developer experience on statically-typed languages
 
-Current problems when listening to changes:
-
-```
-// given that "position" is an object containing x and y
-// e.g. {"x": 100, "y": 200};
-room.listen("entities/:id/position/:axis", (change) => {
-  // this callback will be called twice
-  // - first for "x"
-  // - second for "y"
-});
-```
-
 ## Defining Schema
 
 As Colyseus is written in TypeScript, the schema is defined as type annotations inside the state class. Additional server logic may be added to that class, but client-side generated (not implemented) files will consider only the schema itself.
 
-- I'm using decorators to allow defining the schema at runtime and quickstart the project
-- Parsing types from plain TypeScript would be possible for generating client-side state/schema files (see next section)
+```typescript
+import { DataChange } from './../src/annotations';
+import { Sync, sync } from "../src/annotations";
+
+export class Player extends Sync {
+  @sync("string")
+  name: string;
+
+  @sync("number")
+  x: number;
+
+  @sync("number")
+  y: number;
+}
+
+export class State extends Sync {
+  @sync('string')
+  fieldString: string;
+
+  @sync('number') // varint
+  fieldNumber: number;
+
+  @sync(Player)
+  player: Player;
+
+  @sync([ Player ])
+  arrayOfPlayers: Player[];
+
+  @sync({ map: Player })
+  mapOfPlayers: { [id: string]: Player };
+}
+```
 
 See [example/State.ts](example/State.ts).
 
