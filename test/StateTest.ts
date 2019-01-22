@@ -375,9 +375,9 @@ describe("State API", () => {
             assert.equal(decodedState.mapOfPlayers.one.name, "Tarquinn");
         });
 
-        xit("should allow adding and removing items from map", () => {
+        it("should allow adding and removing items from map", () => {
             const state = new State();
-            state.mapOfPlayers = {}
+            state.mapOfPlayers = {};
 
             state.mapOfPlayers['one'] = new Player("Jake Badlands");
             state.mapOfPlayers['two'] = new Player("Snake Sanders");

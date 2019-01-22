@@ -224,13 +224,26 @@ export abstract class Sync {
                         ? Object.keys(value)[decode.number(bytes, it)]
                         : decode.string(bytes, it);
 
+
                     const item = value[key] || new (type as any)();
 
-                    item.$parent = this;
-                    item.decode(bytes, it);
+                    if (decode.nilCheck(bytes, it)) {
+                        it.offset++;
 
-                    if (value[key] === undefined) {
-                        value[key] = item;
+                        if (item.onRemove) {
+                            item.onRemove();
+                        }
+
+                        delete value[key];
+                        continue;
+
+                    } else {
+                        item.$parent = this;
+                        item.decode(bytes, it);
+
+                        if (value[key] === undefined) {
+                            value[key] = item;
+                        }
                     }
                 }
 
@@ -365,12 +378,15 @@ export abstract class Sync {
                         this[`_${field}MapIndex`][key] = Object.keys(this[`_${field}`]).indexOf(key);
                     }
 
-                    if (!item.$parent) {
+                    if (item) {
                         item.$parent = this;
                         item.$parentField = [field, key];
+                        bytes = bytes.concat(item.encode(false));
+
+                    } else  {
+                        encode.uint8(bytes, NIL);
                     }
 
-                    bytes = bytes.concat(item.encode(false));
                 }
 
             } else {
@@ -420,10 +436,6 @@ export function sync (type: SchemaType) {
             writable: true,
         });
 
-        if (isMap) {
-            target[`${fieldCached}MapIndex`] = {};
-        }
-
         Object.defineProperty(target, field, {
             get: function () {
                 return this[fieldCached];
@@ -434,6 +446,10 @@ export function sync (type: SchemaType) {
                  * Create Proxy for array or map items
                  */
                 if (isArray || isMap) {
+                    if (isMap) {
+                        this[`${fieldCached}MapIndex`] = {};
+                    }
+
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, setValue) => {
