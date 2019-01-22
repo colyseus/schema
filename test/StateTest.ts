@@ -394,6 +394,31 @@ describe("State API", () => {
             assert.deepEqual(Object.keys(decodedState.mapOfPlayers), ["one"]);
         });
 
+        it("should allow moving items from one map key to another", () => {
+            const state = new State();
+            state.mapOfPlayers = {};
+
+            state.mapOfPlayers['one'] = new Player("Jake Badlands");
+            state.mapOfPlayers['two'] = new Player("Snake Sanders");
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            const decodedJake = decodedState.mapOfPlayers['one'];
+            const decodedSnake = decodedState.mapOfPlayers['two'];
+            assert.deepEqual(Object.keys(decodedState.mapOfPlayers), ["one", "two"]);
+
+            // swap Jake / Snake keys
+            const jake = state.mapOfPlayers['one'];
+            const snake = state.mapOfPlayers['two'];
+            state.mapOfPlayers['one'] = snake;
+            state.mapOfPlayers['two'] = jake;
+
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.mapOfPlayers['one'], decodedSnake);
+            assert.equal(decodedState.mapOfPlayers['two'], decodedJake);
+        });
+
         it("should encode changed values", () => {
             const state = new State();
             state.fieldString = "Hello world!";

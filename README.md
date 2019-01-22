@@ -65,6 +65,11 @@ See [example/State.ts](example/State.ts).
 - `@sync([ "string" ]) arrayOfStrings: string[];`
 - `@sync({ map: Player }) mapOfPlayers: {[id: string]: Player};`
 
+## Limitations and best practices 
+
+- Avoid manipulating indexes of an array. This result in at least `2` extra bytes for each index change. **Example:** If you have an array of 20 items, and remove the first item (through `shift()`) this means `38` extra bytes to be serialized.
+- Avoid moving keys of maps. As of arrays, it adds `2` extra bytes per key move.
+
 ## Decoding / Listening for changes
 
 > TODO: describe how changes will arrive on array and map types

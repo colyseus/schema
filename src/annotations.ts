@@ -172,9 +172,9 @@ export abstract class Sync {
                         continue;
                     }
 
+                    // index change check
                     let indexChangedFrom: number;
                     if (decode.indexChangeCheck(bytes, it)) {
-                        // it.offset++;
                         decode.uint8(bytes, it);
                         indexChangedFrom = decode.number(bytes, it);
                         hasIndexChange = true;
@@ -212,20 +212,48 @@ export abstract class Sync {
 
             } else if ((type as any).map) {
                 type = (type as any).map;
-                value = this[`_${field}`] || {};
+
+                const valueRef = this[`_${field}`] || {};
+                value = Object.assign({}, valueRef);
 
                 const length = decode.number(bytes, it);
+
                 hasChange = (length > 0);
 
+                // FIXME: this may not be reliable. possibly need to encode this variable during
+                // serializagion
+                let hasIndexChange = false;
+
                 for (let i = 0; i < length; i++) {
+                    // index change check
+                    let previousKey: string;
+                    if (decode.indexChangeCheck(bytes, it)) {
+                        decode.uint8(bytes, it);
+                        previousKey = Object.keys(valueRef)[decode.number(bytes, it)];
+                        hasIndexChange = true;
+                    }
+
                     const hasMapIndex = decode.numberCheck(bytes, it);
 
-                    const key = (hasMapIndex)
-                        ? Object.keys(value)[decode.number(bytes, it)]
+                    const newKey = (hasMapIndex)
+                        ? Object.keys(valueRef)[decode.number(bytes, it)]
                         : decode.string(bytes, it);
 
+                    let item;
 
-                    const item = value[key] || new (type as any)();
+                    if (hasIndexChange && previousKey === undefined && hasMapIndex) {
+                        item = new (type as any)();
+
+                    } else if (previousKey !== undefined) {
+                        item = valueRef[previousKey];
+
+                    } else {
+                        item = valueRef[newKey]
+                    }
+
+                    if (!item) {
+                        item = new (type as any)();
+                    }
 
                     if (decode.nilCheck(bytes, it)) {
                         it.offset++;
@@ -234,16 +262,13 @@ export abstract class Sync {
                             item.onRemove();
                         }
 
-                        delete value[key];
+                        delete value[newKey];
                         continue;
 
                     } else {
                         item.$parent = this;
                         item.decode(bytes, it);
-
-                        if (value[key] === undefined) {
-                            value[key] = item;
-                        }
+                        value[newKey] = item;
                     }
                 }
 
@@ -369,6 +394,13 @@ export abstract class Sync {
                     const item = this[`_${field}`][key];
                     const mapItemIndex = this[`_${field}MapIndex`][key];
 
+                    // encode index change
+                    if (item && item.$parentIndexChange >= 0) {
+                        encode.uint8(bytes, INDEX_CHANGE);
+                        encode.number(bytes, item.$parentIndexChange);
+                        item.$parentIndexChange = undefined; // reset
+                    }
+
                     if (mapItemIndex !== undefined) {
                         key = mapItemIndex;
                         encode.number(bytes, key);
@@ -426,7 +458,7 @@ export function sync (type: SchemaType) {
         constructor._schema[field] = type;
 
         const isArray = Array.isArray(type);
-        const isMap = (type as any).map;
+        const isMap = !isArray && (type as any).map;
 
         const fieldCached = `_${field}`;
 
@@ -458,7 +490,13 @@ export function sync (type: SchemaType) {
                                 const key = (isArray) ? Number(prop) : prop;
 
                                 if (setValue.$parentField && setValue.$parentField[1] !== key) {
-                                    setValue.$parentIndexChange = setValue.$parentField[1];
+                                    if (isMap) {
+                                        const indexChange = this[`${fieldCached}MapIndex`][setValue.$parentField[1]];
+                                        setValue.$parentIndexChange = indexChange;
+
+                                    } else {
+                                        setValue.$parentIndexChange = setValue.$parentField[1];
+                                    }
                                 }
 
                                 setValue.$parent = this;
