@@ -7,10 +7,10 @@ export class Player extends Sync {
   @sync("string")
   name: string;
 
-  @sync("int")
+  @sync("number")
   x: number;
 
-  @sync("int")
+  @sync("number")
   y: number;
 
   constructor (name?: string, x?: number, y?: number) {
@@ -54,23 +54,44 @@ console.log("(@colyseus/state) INITIAL STATE SIZE:", encoded.length);
 console.log("(msgpack) INITIAL STATE SIZE:", firstStateEncoded.length);
 console.log("");
 
-// CHANGE ALL X/Y VALUES
-let i = 0;
-for (let id in msgpackState.players) {
+{
+  // CHANGE X/Y OF A SINGLE ENTITY
   const x = Math.floor(Math.random() * 200);
   const y = Math.floor(Math.random() * 200);
-  state.players[id].x = x
-  state.players[id].y = y
-  msgpackState.players[id].x = x
-  msgpackState.players[id].y = y
-  i++;
+  state.players[fixedUnitId].x = x
+  state.players[fixedUnitId].y = y
+  msgpackState.players[fixedUnitId].x = x
+  msgpackState.players[fixedUnitId].y = y
 }
 
-state.players[fixedUnitId].x = Math.floor(Math.random() * 200);
-state.players[fixedUnitId].y = Math.floor(Math.random() * 200);
+// {
+//   // CHANGE X/Y OF 50 ENTITIES
+//   let i = 0;
+//   for (let id in msgpackState.players) {
+//     if (i > 50) break;
+//     const x = Math.floor(Math.random() * 200);
+//     const y = Math.floor(Math.random() * 200);
+//     state.players[id].x = x
+//     state.players[id].y = y
+//     msgpackState.players[id].x = x
+//     msgpackState.players[id].y = y
+//     i++;
+//   }
+// }
 
-msgpackState.players[fixedUnitId].x = state.players[fixedUnitId].x;
-msgpackState.players[fixedUnitId].y = state.players[fixedUnitId].y;
+// {
+//   // CHANGE ALL X/Y VALUES
+//   let i = 0;
+//   for (let id in msgpackState.players) {
+//     const x = Math.floor(Math.random() * 200);
+//     const y = Math.floor(Math.random() * 200);
+//     state.players[id].x = x
+//     state.players[id].y = y
+//     msgpackState.players[id].x = x
+//     msgpackState.players[id].y = y
+//     i++;
+//   }
+// }
 
 encoded = state.encode();
 decodedState.decode(encoded);
