@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { Sync, sync } from "../src/annotations";
 import { State, Player } from "./Schema";
 
-describe("State API", () => {
+describe("Schema", () => {
 
     describe("declaration", () => {
         it("default values", () => {
@@ -510,6 +510,29 @@ describe("State API", () => {
             decodedState.decode(encoded);
 
             assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584]);
+        });
+
+        xit("should support map of strings", () => {
+            class MyState extends Sync {
+                // @sync({ map: "string" })
+                mapOfStrings: {[id: string]: string};
+            }
+
+            const state = new MyState();
+            state.mapOfStrings = {
+                'one': "ONE",
+                'two': "TWO",
+            }
+
+            let encoded = state.encode();
+
+            const decodedState = new MyState();
+            decodedState.decode(encoded);
+
+            assert.deepEqual(decodedState.mapOfStrings, {
+                'one': "ONE",
+                'two': "TWO",
+            });
         });
 
         it("no changes", () => {

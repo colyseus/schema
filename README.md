@@ -82,6 +82,9 @@ See [example/State.ts](example/State.ts).
 
 ## Limitations and best practices 
 
+- Multi-dimensional arrays are not supported.
+- Maps are only supported for custom `Sync` types.
+- Array items must all have the same type as defined in the schema.
 - `@colyseus/schema` encodes only field values in the specified order.
   - Both encoder (server) and decoder (client) must have same schema definition.
   - The order of the fields must be the same.
