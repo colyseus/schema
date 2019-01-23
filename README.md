@@ -2,7 +2,7 @@
 
 > WORK-IN-PROGRESS EXPERIMENT OF A NEW SERIALIZATION ALGORITHM FOR [COLYSEUS](https://github.com/gamestdio/colyseus)
 
-![](https://img.shields.io/travis/endel/state.svg?style=for-the-badge)
+![](https://img.shields.io/travis/colyseus/schema.svg?style=for-the-badge)
 
 Initial thoghts/assumptions:
 - no bottleneck to detect state changes.
@@ -80,7 +80,7 @@ See [example/State.ts](example/State.ts).
 - `@sync([ "string" ]) arrayOfStrings: string[];`
 - `@sync({ map: Player }) mapOfPlayers: {[id: string]: Player};`
 
-## Limitations and best practices 
+## Limitations and best practices
 
 - Multi-dimensional arrays are not supported.
 - Maps are only supported for custom `Sync` types.
