@@ -82,6 +82,9 @@ See [example/State.ts](example/State.ts).
 
 ## Limitations and best practices 
 
+- `@colyseus/schema` encodes only field values in the specified order.
+  - Both encoder (server) and decoder (client) must have same schema definition.
+  - The order of the fields must be the same.
 - Avoid manipulating indexes of an array. This result in at least `2` extra bytes for each index change. **Example:** If you have an array of 20 items, and remove the first item (through `shift()`) this means `38` extra bytes to be serialized.
 - Avoid moving keys of maps. As of arrays, it adds `2` extra bytes per key move.
 
