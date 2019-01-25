@@ -113,6 +113,8 @@ decodedState.decode(incomingData);
 
 > THIS HAS NOT BEEN IMPLEMENTED
 
+Decoders for each target language are located at [`/decoders/`](decoders). Usage should be as simple as dropping the decoder along with the schema files in your project, since they have no external dependencies.
+
 ```
 # TypeScript
 statefy ./schemas/State.ts --output ./ts-project/State.ts
