@@ -131,7 +131,11 @@ describe("Schema", () => {
             state.fieldNumber = 50;
 
             const decodedState = new State();
-            decodedState.decode(state.encode());
+
+            let encoded = state.encode();
+            assert.deepEqual(encoded, [1, 50]);
+
+            decodedState.decode(encoded);
 
             assert.equal(decodedState.fieldNumber, 50);
 

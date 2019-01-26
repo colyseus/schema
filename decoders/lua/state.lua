@@ -25,10 +25,10 @@ local State = Schema({
     ["_order"] = {"fieldString", "fieldNumber", "player", "arrayOfPlayers", "mapOfPlayers"}
 })
 
-local encoded_state = {0, 173, 105, 110, 105, 116, 105, 97, 108, 32, 118, 97, 108, 117, 101, 1, 205, 300, 1}
+local encoded_state = { 1, 50 }
 
 local state = State:new()
 state:decode(encoded_state)
 
-print(state.fieldString)
-print(state.fieldNumber)
+print("fieldString: " .. tostring(state.fieldString))
+print("fieldNumber: " .. tostring(state.fieldNumber))
