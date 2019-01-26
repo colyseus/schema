@@ -36,9 +36,16 @@ local State = Schema({
 -- local encoded_state = {2, 193}
 
 -- -- Player with properties
-local encoded_state = {2, 0, 164, 74, 97, 107, 101, 1, 100, 2, 204, 200, 193}
+-- local encoded_state = {2, 0, 164, 74, 97, 107, 101, 1, 100, 2, 204, 200, 193}
+
+-- -- Array with three values
+local encoded_state = { 3, 3, 3, 0, 0, 164, 74, 97, 107, 101, 193, 1, 0, 165, 83, 110, 97, 107, 101, 193, 2, 0, 168, 80, 108, 97, 121, 101, 114, 32, 51, 193 }
 
 local state = State:new()
 state:decode(encoded_state)
+pprint(state)
+
+local encoded_pop_value = { 3, 2, 1, 2, 192 }
+state:decode(encoded_pop_value)
 
 pprint(state)

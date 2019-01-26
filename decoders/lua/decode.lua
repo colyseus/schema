@@ -145,7 +145,7 @@ function _string (bytes, it)
   return _str(bytes, it, bit.band(prefix, 0x1f))
 end
 
-function stringCheck (bytes, it) 
+function string_check (bytes, it) 
   local prefix = bytes[it.offset]
   return (
     -- fixstr
@@ -219,20 +219,20 @@ function number (bytes, it)
   end
 end
 
-function numberCheck (bytes, it) 
+function number_check (bytes, it) 
   local prefix = bytes[it.offset]
   return (prefix < 128 or (prefix >= 202 and prefix <= 211))
 end
 
-function arrayCheck (bytes, it) 
+function array_check (bytes, it) 
   return bytes[it.offset] < 160
 end
 
-function nilCheck (bytes, it) 
+function nil_check (bytes, it) 
   return bytes[it.offset] == spec.NIL
 end
 
-function indexChangeCheck (bytes, it) 
+function index_change_check (bytes, it) 
   return bytes[it.offset] == spec.INDEX_CHANGE
 end
 
@@ -245,9 +245,9 @@ return {
     uint32 = uint32,
     number = number,
     string = _string,
-    stringCheck = stringCheck,
-    numberCheck = numberCheck,
-    arrayCheck = arrayCheck,
-    nilCheck = nilCheck,
-    indexChangeCheck  = indexChangeCheck,
+    string_check = string_check,
+    number_check = number_check,
+    array_check = array_check,
+    nil_check = nil_check,
+    index_change_check  = index_change_check,
 }
