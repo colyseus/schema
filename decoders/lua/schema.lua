@@ -51,8 +51,15 @@ function Sync:decode(bytes, it)
         local change = nil
         local has_change = false
 
-        value = decode_primitive_type(type, bytes, it)
-        print("VALUE:" .. tostring(value))
+        if type['new'] ~= nil then
+            value = self[field] or type:new()
+            value:decode(bytes, it)
+            has_change = true
+
+        else
+            value = decode_primitive_type(type, bytes, it)
+            has_change = true
+        end
 
         if self["on_change"] and has_change then
             table.insert(changes, {
