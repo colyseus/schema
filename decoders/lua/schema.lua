@@ -54,6 +54,14 @@ function Sync:decode(bytes, it)
         value = decode_primitive_type(type, bytes, it)
         print("VALUE:" .. tostring(value))
 
+        if self["on_change"] and has_change then
+            table.insert(changes, {
+                field = field,
+                value = change or value,
+                previousValue = this[field]
+            })
+        end
+
         self[field] = value
         -- has_change = true;
     end
