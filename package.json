@@ -1,13 +1,13 @@
 {
   "name": "@colyseus/schema",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "",
-  "main": "index.js",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "scripts": {
     "test": "mocha --require ts-node/register test/**Test.ts",
     "prepublish": "tsc"
   },
-  "types": "lib/index.d.ts",
   "files": ["lib"],
   "repository": {
     "url": "git://github.com/colyseus/schema.git",
