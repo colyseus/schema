@@ -2,7 +2,7 @@ import { END_OF_STRUCTURE, NIL, INDEX_CHANGE } from './spec';
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
 
-type PrimitiveType =
+export type PrimitiveType =
     "string" |
     "number" |
     "int8" |
@@ -15,8 +15,8 @@ type PrimitiveType =
     "uint64" |
     typeof Sync;
 
-type SchemaType = ( PrimitiveType | PrimitiveType[] | { map?: typeof Sync });
-type Schema = { [field: string]: SchemaType };
+export type SchemaType = ( PrimitiveType | PrimitiveType[] | { map?: typeof Sync });
+export type Schema = { [field: string]: SchemaType };
 
 function encodePrimitiveType (type: string, bytes: number[], value: any) {
     const encodeFunc = encode[type];
