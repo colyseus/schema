@@ -96,8 +96,6 @@ function Sync:decode(bytes, it)
 
             -- ensure current array has the same length as encoded one
             if #value+1 > new_length then
-                print("NEED SPLICE!")
-
                 local new_values = {}
                 for i, item in ipairs(value) do
                     if i > new_length then
@@ -111,62 +109,62 @@ function Sync:decode(bytes, it)
                 end
 
                 value = new_values
-                print("SPLICED!")
-                pprint(value)
             end
 
-            local i = 1
-            ::continue_array::
-            while i < num_changes do
+            local i = 0
+            repeat
                 local new_index = decode.number(bytes, it)
 
                 -- lua indexes start at 1
                 if new_index ~= nil then new_index = new_index + 1 end
 
-                if (decode.nil_check(bytes, it)) then
-                    print("NIL!")
+                if decode.nil_check(bytes, it) then
                     -- const item = this[`_${field}`][new_index]
                     -- TODO: trigger `onRemove` on Sync object being removed.
                     it.offset = it.offset + 1
-                    i = i + 1
                     goto continue_array
                 end
 
-                -- index change check
-                local index_change_from
-                if (decode.index_change_check(bytes, it)) then
-                    decode.uint8(bytes, it)
-                    index_change_from = decode.number(bytes, it) + 1
-                    has_index_change = true
-                end
-
-                if typeref['new'] ~= nil then
-                    local item
-
-                    if has_index_change and index_change_from == nil and new_index ~= nil then
-                        item = typeref:new()
-
-                    elseif (index_change_from ~= nil) then
-                        item = value_ref[index_change_from]
-
-                    elseif (new_index ~= nil) then
-                        item = value_ref[new_index]
+                -- do/end block is necessary due to `goto`
+                do
+                    -- index change check
+                    local index_change_from
+                    if (decode.index_change_check(bytes, it)) then
+                        decode.uint8(bytes, it)
+                        index_change_from = decode.number(bytes, it) + 1
+                        has_index_change = true
                     end
 
-                    if item == nil then
-                        item = typeref:new()
+                    if typeref['new'] ~= nil then
+                        local item
+
+                        if has_index_change and index_change_from == nil and new_index ~= nil then
+                            item = typeref:new()
+
+                        elseif (index_change_from ~= nil) then
+                            item = value_ref[index_change_from]
+
+                        elseif (new_index ~= nil) then
+                            item = value_ref[new_index]
+                        end
+
+                        if item == nil then
+                            item = typeref:new()
+                        end
+
+                        item:decode(bytes, it)
+                        value[new_index] = item
+
+                    else 
+                        value[new_index] = decode_primitive_type(typeref, bytes, it)
                     end
 
-                    item:decode(bytes, it)
-                    value[new_index] = item
-
-                else 
-                    value[new_index] = decode_primitive_type(typeref, bytes, it)
+                    table.insert(change, value[new_index])
                 end
 
-                table.insert(change, value[new_index])
+                ::continue_array::
                 i = i + 1
-            end
+            until i >= num_changes
 
         elseif type(ftype) == "table" and ftype['map'] ~= nil then
             -- decode map

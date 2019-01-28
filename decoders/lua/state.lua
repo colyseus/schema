@@ -8,7 +8,10 @@ local Player = Schema({
 
     ["on_change"] = function(changes)
     end,
+
     ["on_remove"] = function()
+        print("REMOVE!")
+        print(self.name .. " HAS BEEN REMOVED!")
     end,
 
     -- field order
@@ -40,12 +43,12 @@ local State = Schema({
 -- local encoded_next_state = {}
 
 -- -- Array with three values
--- local encoded_state = { 3, 3, 3, 0, 0, 164, 74, 97, 107, 101, 193, 1, 0, 165, 83, 110, 97, 107, 101, 193, 2, 0, 168, 80, 108, 97, 121, 101, 114, 32, 51, 193 }
--- local encoded_next_state = { 3, 2, 1, 2, 192 }
+local encoded_state = {3, 2, 2, 0, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 1, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193}
+local encoded_next_state = { 3, 2, 2, 2, 192, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193}
 
 -- -- Map of two 
-local encoded_state = {4, 2, 163, 111, 110, 101, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 163, 116, 119, 111, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193}
-local encoded_next_state = {4, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193}
+-- local encoded_state = {4, 2, 163, 111, 110, 101, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 163, 116, 119, 111, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193}
+-- local encoded_next_state = {4, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193}
 
 local state = State:new()
 state:decode(encoded_state)
