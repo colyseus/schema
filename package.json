@@ -1,10 +1,11 @@
 {
   "name": "@colyseus/schema",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "mocha --require ts-node/register test/**Test.ts"
+    "test": "mocha --require ts-node/register test/**Test.ts",
+    "prepublish": "tsc"
   },
   "files": ["lib"],
   "bin": {
@@ -14,6 +15,7 @@
     "url": "git://github.com/colyseus/schema.git",
     "type": "git"
   },
+  "keywords": ["schema", "binary", "serialization", "netcode"],
   "author": "Endel Dreyer",
   "license": "MIT",
   "dependencies": {},

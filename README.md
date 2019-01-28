@@ -96,7 +96,7 @@ See [example/State.ts](example/State.ts).
 > TODO: describe how changes will arrive on array and map types
 
 ```typescript
-import { DataChange } from "@colyseus/state";
+import { DataChange } from "@colyseus/schema";
 import { State } from "./YourStateDefinition";
 
 const decodedState = new State();
@@ -183,7 +183,7 @@ class Room<T> {
 
 ## Benchmarks:
 
-| Scenario | `@colyseus/state` | `msgpack` + `fossil-delta` |
+| Scenario | `@colyseus/schema` | `msgpack` + `fossil-delta` |
 |---|---|---|
 | Initial state size (100 entities) | 2671 | 3283 |
 | Updating x/y of 1 entity after initial state | 9 | 26 |
