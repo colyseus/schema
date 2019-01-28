@@ -110,6 +110,33 @@ describe("Schema", () => {
             assert.equal(decoded.int32, -2147483648);
         });
 
+        it("string", () => {
+            class Data extends Sync { @sync("string") str; }
+
+            let data = new Data();
+            data.str = "Hello world!";
+
+            let encoded = data.encode();
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.str, "Hello world!");
+        });
+
+        it("string with utf8", () => {
+            class Data extends Sync { @sync("string") utf8; }
+
+            let data = new Data();
+            data.utf8 = "🚀ॐ漢字♤♧♥♢®⚔";
+
+            let encoded = data.encode();
+            assert.deepEqual(encoded, [0, 190, 240, 159, 154, 128, 224, 165, 144, 230, 188, 162, 229, 173, 151, 226, 153, 164, 226, 153, 167, 226, 153, 165, 226, 153, 162, 194, 174, 226, 154, 148]);
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.utf8, "🚀ॐ漢字♤♧♥♢®⚔");
+        });
+
     });
 
     describe("encoding/decoding", () => {
