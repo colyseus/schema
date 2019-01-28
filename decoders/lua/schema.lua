@@ -28,6 +28,14 @@ function table.clone(orig)
     return copy
 end
 
+function table.keys(orig)
+    local keyset = {}
+    for k,v in pairs(orig) do
+      keyset[#keyset + 1] = k
+    end
+    return keyset
+end
+
 local Sync = {}
 
 function Sync:new()
@@ -108,7 +116,7 @@ function Sync:decode(bytes, it)
             end
 
             local i = 1
-            ::continue::
+            ::continue_array::
             while i < num_changes do
                 local new_index = decode.number(bytes, it)
 
@@ -121,7 +129,7 @@ function Sync:decode(bytes, it)
                     -- TODO: trigger `onRemove` on Sync object being removed.
                     it.offset = it.offset + 1
                     i = i + 1
-                    goto continue
+                    goto continue_array
                 end
 
                 -- index change check
@@ -162,7 +170,71 @@ function Sync:decode(bytes, it)
 
         elseif type(ftype) == "table" and ftype['map'] ~= nil then
             -- decode map
-            print("MAP!")
+            ftype = ftype['map']
+
+            local value_ref = self[field] or {}
+            value = table.clone(value_ref)
+
+            local length = decode.number(bytes, it)
+            has_change = (length > 0)
+
+            -- FIXME: this may not be reliable. possibly need to encode this variable during
+            -- serializagion
+            local has_index_change = false
+
+            local i = 0
+            repeat
+                -- index change check
+                local previous_key
+                if decode.index_change_check(bytes, it) then
+                    decode.uint8(bytes, it)
+                    previous_key = table.keys(value_ref)[decode.number(bytes, it)+1]
+                    has_index_change = true
+                end
+
+                local has_map_index = decode.number_check(bytes, it)
+                
+                local new_key
+                if has_map_index then 
+                    new_key = table.keys(value_ref)[decode.number(bytes, it)+1] 
+                else 
+                    new_key = decode.string(bytes, it)
+                end
+
+                local item
+
+                if has_index_change and previous_key == nil and has_map_index then
+                    item = ftype:new()
+
+                elseif previous_key ~= nil then
+                    item = value_ref[previous_key]
+
+                else 
+                    item = value_ref[new_key]
+                end
+
+                if item == nil then
+                    item = ftype:new()
+                end
+
+                if decode.nil_check(bytes, it) then
+                    it.offset = it.offset + 1
+
+                    if item['on_remove'] ~= nil then
+                        item['on_remove']()
+                    end
+
+                    value[new_key] = nil
+                    goto continue_map
+
+                else 
+                    item:decode(bytes, it)
+                    value[new_key] = item
+                end
+
+                ::continue_map::
+                i = i + 1
+            until i >= length
 
         else
             -- decode primivite type
@@ -174,15 +246,13 @@ function Sync:decode(bytes, it)
             table.insert(changes, {
                 field = field,
                 value = change or value,
-                previousValue = this[field]
+                previous_value = self[field]
             })
         end
 
-        print("FIELD:" .. tostring(field))
         if field ~= nil then
             self[field] = value
         end
-        -- has_change = true;
     end
 
     if self["on_change"] ~= nil and table.getn(changes) then
