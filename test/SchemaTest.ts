@@ -354,7 +354,7 @@ describe("Schema", () => {
             assert.equal(decodedState.arrayOfPlayers[2].name, "Katarina Lyons");
         });
 
-        it("should allow to `shift` and `push` an array lalala", () => {
+        it("should allow to `shift` and `push` an array", () => {
             const state = new State();
             state.arrayOfPlayers = [new Player("Jake"), new Player("Snake"), new Player("Cyberhawk")];
 
@@ -521,8 +521,14 @@ describe("Schema", () => {
 
             const decodedState = new MyState();
             decodedState.decode(encoded);
-
             assert.deepEqual(decodedState.arrayOfStrings, ["one", "two", "three"]);
+
+            state.arrayOfStrings.push("four")
+            encoded = state.encode();
+            // assert.deepEqual(encoded, []);
+
+            decodedState.decode(encoded);
+            assert.deepEqual(decodedState.arrayOfStrings, ["one", "two", "three", "four"]);
         });
 
         it("should support array of numbers", () => {
@@ -543,27 +549,28 @@ describe("Schema", () => {
             assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584]);
         });
 
-        xit("should support map of strings", () => {
+        it("should support map of strings", () => {
             class MyState extends Sync {
-                // @sync({ map: "string" })
+                @sync({ map: "string" })
                 mapOfStrings: {[id: string]: string};
             }
 
             const state = new MyState();
-            state.mapOfStrings = {
-                'one': "ONE",
-                'two': "TWO",
-            }
+            state.mapOfStrings = { 'one': "ONE", 'two': "TWO" };
 
             let encoded = state.encode();
+            // assert.deepEqual(encoded, []);
 
             const decodedState = new MyState();
             decodedState.decode(encoded);
+            assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO" });
 
-            assert.deepEqual(decodedState.mapOfStrings, {
-                'one': "ONE",
-                'two': "TWO",
-            });
+            state.mapOfStrings['three'] = "THREE";
+            encoded = state.encode();
+            // assert.deepEqual(encoded, []);
+
+            decodedState.decode(encoded);
+            assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO", 'three': "THREE" });
         });
 
         it("no changes", () => {

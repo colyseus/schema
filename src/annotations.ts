@@ -15,7 +15,7 @@ export type PrimitiveType =
     "uint64" |
     typeof Sync;
 
-export type SchemaType = ( PrimitiveType | PrimitiveType[] | { map?: typeof Sync });
+export type SchemaType = ( PrimitiveType | PrimitiveType[] | { map: PrimitiveType });
 export type Schema = { [field: string]: SchemaType };
 
 function encodePrimitiveType (type: string, bytes: number[], value: any) {
@@ -54,20 +54,33 @@ export abstract class Sync {
     protected $changed: boolean = false;
 
     protected $parent: Sync;
-    protected $parentField: string | (string | number)[];
+    protected $parentField: string | (string | number | symbol)[];
     protected $parentIndexChange: number;
 
     public onChange?(changes: DataChange[]);
     public onRemove?();
 
     markAsChanged (field: string, value?: Sync | any) {
+        const fieldSchema = this._schema[field];
         this.$changed = true;
 
         if (value) {
-            if (Array.isArray(value.$parentField)) {
+            if (
+                Array.isArray(value.$parentField) || 
+                fieldSchema && (
+                    Array.isArray(fieldSchema) || (fieldSchema as any).map
+                )
+            ) {
+                const $parentField = value.$parentField || [];
+
                 // used for MAP/ARRAY
-                const fieldName = value.$parentField[0];
-                const fieldKey = value.$parentField[1];
+                const fieldName = ($parentField.length > 0) 
+                    ? $parentField[0]
+                    : field;
+
+                const fieldKey = ($parentField.length > 0) 
+                    ? $parentField[1] 
+                    : value;
 
                 if (!this.$changes[fieldName]) {
                     this.$changes[fieldName] = [];
@@ -217,7 +230,6 @@ export abstract class Sync {
                 value = Object.assign({}, valueRef);
 
                 const length = decode.number(bytes, it);
-
                 hasChange = (length > 0);
 
                 // FIXME: this may not be reliable. possibly need to encode this variable during
@@ -251,19 +263,22 @@ export abstract class Sync {
                         item = valueRef[newKey]
                     }
 
-                    if (!item) {
+                    if (!item && type !== "string") {
                         item = new (type as any)();
                     }
 
                     if (decode.nilCheck(bytes, it)) {
                         it.offset++;
 
-                        if (item.onRemove) {
+                        if (item && item.onRemove) {
                             item.onRemove();
                         }
 
                         delete value[newKey];
                         continue;
+
+                    } else if (type === "string") {
+                        value[newKey] = decodePrimitiveType(type, bytes, it);
 
                     } else {
                         item.$parent = this;
@@ -410,12 +425,15 @@ export abstract class Sync {
                         this[`_${field}MapIndex`][key] = Object.keys(this[`_${field}`]).indexOf(key);
                     }
 
-                    if (item) {
+                    if (item instanceof Sync) {
                         item.$parent = this;
                         item.$parentField = [field, key];
                         bytes = bytes.concat(item.encode(false));
 
-                    } else  {
+                    } else if (item !== undefined) {
+                        encodePrimitiveType((type as any).map, bytes, item);
+
+                    } else {
                         encode.uint8(bytes, NIL);
                     }
 
@@ -499,10 +517,16 @@ export function sync (type: SchemaType) {
                                     }
                                 }
 
-                                setValue.$parent = this;
-                                setValue.$parentField = [field, key];
+                                if (setValue instanceof Sync) {
+                                    setValue.$parent = this;
+                                    setValue.$parentField = [field, key];
+                                    this.markAsChanged(field, setValue);
 
-                                this.markAsChanged(field, setValue);
+                                } else {
+                                    obj[prop] = setValue;
+                                    // console.log("setValue:", obj, setValue)
+                                    this.markAsChanged(field, obj);
+                                }
 
                             } else if (setValue !== obj[prop]) {
                                 // console.log("SET NEW LENGTH:", setValue);
@@ -557,10 +581,15 @@ export function sync (type: SchemaType) {
                 } else if ((constructor._schema[field] as any).map) {
                     // directly assigning a map
                     for (let key in value) {
-                        value[key].$parent = this;
-                        value[key].$parentField = [field, key];
+                        if (value[key] instanceof Sync) {
+                            value[key].$parent = this;
+                            value[key].$parentField = [field, key];
+                            this.markAsChanged(field, value[key]);
 
-                        this.markAsChanged(field, value[key]);
+                        } else {
+                            this.markAsChanged(field, key);
+                        }
+
                     }
 
                 } else if (typeof(constructor._schema[field]) === "function") {
