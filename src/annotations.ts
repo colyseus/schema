@@ -13,10 +13,10 @@ export type PrimitiveType =
     "uint32" |
     "int64" |
     "uint64" |
-    typeof Sync;
+    typeof Schema;
 
-export type SchemaType = ( PrimitiveType | PrimitiveType[] | { map: PrimitiveType });
-export type Schema = { [field: string]: SchemaType };
+export type DefinitionType = ( PrimitiveType | PrimitiveType[] | { map: PrimitiveType });
+export type Definition = { [field: string]: DefinitionType };
 
 function encodePrimitiveType (type: string, bytes: number[], value: any) {
     const encodeFunc = encode[type];
@@ -46,21 +46,21 @@ export interface DataChange {
     previousValue: any;
 }
 
-export abstract class Sync {
-    static _schema: Schema;
+export abstract class Schema {
+    static _schema: Definition;
     static _indexes: {[field: string]: number};
 
     protected $changes: { [key: string]: any } = {};
     protected $changed: boolean = false;
 
-    protected $parent: Sync;
+    protected $parent: Schema;
     protected $parentField: string | (string | number | symbol)[];
     protected $parentIndexChange: number;
 
     public onChange?(changes: DataChange[]);
     public onRemove?();
 
-    markAsChanged (field: string, value?: Sync | any) {
+    markAsChanged (field: string, value?: Schema | any) {
         const fieldSchema = this._schema[field];
         this.$changed = true;
 
@@ -109,10 +109,10 @@ export abstract class Sync {
     }
 
     get _schema () {
-        return (this.constructor as typeof Sync)._schema;
+        return (this.constructor as typeof Schema)._schema;
     }
     get _indexes () {
-        return (this.constructor as typeof Sync)._indexes;
+        return (this.constructor as typeof Schema)._indexes;
     }
 
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
@@ -180,7 +180,7 @@ export abstract class Sync {
 
                     if (decode.nilCheck(bytes, it)) {
                         // const item = this[`_${field}`][newIndex];
-                        // TODO: trigger `onRemove` on Sync object being removed.
+                        // TODO: trigger `onRemove` on Schema object being removed.
                         it.offset++;
                         continue;
                     }
@@ -193,7 +193,7 @@ export abstract class Sync {
                         hasIndexChange = true;
                     }
 
-                    if ((type as any).prototype instanceof Sync) {
+                    if ((type as any).prototype instanceof Schema) {
                         let item;
 
                         if (hasIndexChange && indexChangedFrom === undefined && newIndex !== undefined) {
@@ -343,7 +343,7 @@ export abstract class Sync {
                 encode.number(bytes, fieldIndex);
 
                 // encode child object
-                bytes = bytes.concat((value as Sync).encode(false));
+                bytes = bytes.concat((value as Schema).encode(false));
 
                 // ensure parent is set
                 // in case it was manually instantiated
@@ -366,7 +366,7 @@ export abstract class Sync {
                     const index = value[i];
                     const item = this[`_${field}`][index];
 
-                    if (typeof(type[0]) !== "string") { // is array of Sync
+                    if (typeof(type[0]) !== "string") { // is array of Schema
                         encode.number(bytes, index);
 
                         if (item === undefined) {
@@ -425,7 +425,7 @@ export abstract class Sync {
                         this[`_${field}MapIndex`][key] = Object.keys(this[`_${field}`]).indexOf(key);
                     }
 
-                    if (item instanceof Sync) {
+                    if (item instanceof Schema) {
                         item.$parent = this;
                         item.$parentField = [field, key];
                         bytes = bytes.concat(item.encode(false));
@@ -451,7 +451,7 @@ export abstract class Sync {
             encodedBytes = [...encodedBytes, ...bytes];
         }
 
-        // flag end of Sync object structure
+        // flag end of Schema object structure
         endStructure();
 
         this.$changed = false;
@@ -461,9 +461,9 @@ export abstract class Sync {
     }
 }
 
-export function sync (type: SchemaType) {
+export function type (type: DefinitionType) {
     return function (target: any, field: string) {
-        const constructor = target.constructor as typeof Sync;
+        const constructor = target.constructor as typeof Schema;
 
         /*
          * static schema
@@ -491,7 +491,7 @@ export function sync (type: SchemaType) {
                 return this[fieldCached];
             },
 
-            set: function (this: Sync, value: any) {
+            set: function (this: Schema, value: any) {
                 /**
                  * Create Proxy for array or map items
                  */
@@ -517,7 +517,7 @@ export function sync (type: SchemaType) {
                                     }
                                 }
 
-                                if (setValue instanceof Sync) {
+                                if (setValue instanceof Schema) {
                                     setValue.$parent = this;
                                     setValue.$parentField = [field, key];
                                     this.markAsChanged(field, setValue);
@@ -571,7 +571,7 @@ export function sync (type: SchemaType) {
                     }
 
                     for (let i = 0; i < length; i++) {
-                        if (value[i] instanceof Sync) {
+                        if (value[i] instanceof Schema) {
                             value[i].$parent = this;
                             value[i].$parentField = [field, i];
                         }
@@ -581,7 +581,7 @@ export function sync (type: SchemaType) {
                 } else if ((constructor._schema[field] as any).map) {
                     // directly assigning a map
                     for (let key in value) {
-                        if (value[key] instanceof Sync) {
+                        if (value[key] instanceof Schema) {
                             value[key].$parent = this;
                             value[key].$parentField = [field, key];
                             this.markAsChanged(field, value[key]);
@@ -593,7 +593,7 @@ export function sync (type: SchemaType) {
                     }
 
                 } else if (typeof(constructor._schema[field]) === "function") {
-                    // directly assigning a `Sync` object
+                    // directly assigning a `Schema` object
                     value.$parent = this;
                     value.$parentField = field;
                     this.markAsChanged(field, value);

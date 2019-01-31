@@ -1,16 +1,16 @@
 import * as assert from "assert";
-import { Sync, sync } from "../src/annotations";
+import { Schema, type } from "../src/annotations";
 import { State, Player } from "./Schema";
 
 describe("Schema", () => {
 
     describe("declaration", () => {
         it("default values", () => {
-            class DataObject extends Sync {
-                @sync("string")
+            class DataObject extends Schema {
+                @type("string")
                 stringValue = "initial value";
 
-                @sync("number")
+                @type("number")
                 intValue = 300;
             }
 
@@ -25,7 +25,7 @@ describe("Schema", () => {
         });
 
         it("uint8", () => {
-            class Data extends Sync { @sync("uint8") uint8 = 255; }
+            class Data extends Schema { @type("uint8") uint8 = 255; }
 
             let data = new Data();
             assert.equal(data.uint8, 255);
@@ -41,7 +41,7 @@ describe("Schema", () => {
         });
 
         it("uint16", () => {
-            class Data extends Sync { @sync("uint16") uint16; }
+            class Data extends Schema { @type("uint16") uint16; }
 
             let data = new Data();
             data.uint16 = 65500;
@@ -55,7 +55,7 @@ describe("Schema", () => {
         });
 
         it("uint32", () => {
-            class Data extends Sync { @sync("uint32") uint32; }
+            class Data extends Schema { @type("uint32") uint32; }
 
             let data = new Data();
             data.uint32 = 4294967290;
@@ -69,7 +69,7 @@ describe("Schema", () => {
         });
 
         it("int8", () => {
-            class Data extends Sync { @sync("int8") int8; }
+            class Data extends Schema { @type("int8") int8; }
 
             let data = new Data();
             data.int8 = -128;
@@ -83,7 +83,7 @@ describe("Schema", () => {
         });
 
         it("int16", () => {
-            class Data extends Sync { @sync("int16") int16; }
+            class Data extends Schema { @type("int16") int16; }
 
             let data = new Data();
             data.int16 = -32768;
@@ -97,7 +97,7 @@ describe("Schema", () => {
         });
 
         it("int32", () => {
-            class Data extends Sync { @sync("int32") int32; }
+            class Data extends Schema { @type("int32") int32; }
 
             let data = new Data();
             data.int32 = -2147483648;
@@ -111,7 +111,7 @@ describe("Schema", () => {
         });
 
         it("string", () => {
-            class Data extends Sync { @sync("string") str; }
+            class Data extends Schema { @type("string") str; }
 
             let data = new Data();
             data.str = "Hello world!";
@@ -124,7 +124,7 @@ describe("Schema", () => {
         });
 
         it("string with utf8", () => {
-            class Data extends Sync { @sync("string") utf8; }
+            class Data extends Schema { @type("string") utf8; }
 
             let data = new Data();
             data.utf8 = "🚀ॐ漢字♤♧♥♢®⚔";
@@ -191,7 +191,7 @@ describe("Schema", () => {
             assert.equal(decodedState.fieldNumber, 999999);
         });
 
-        it("should encode/decode empty Sync reference", () => {
+        it("should encode/decode empty Schema reference", () => {
             const state = new State();
             state.player = new Player();
 
@@ -203,7 +203,7 @@ describe("Schema", () => {
             assert.ok(decodedState.player instanceof Player);
         });
 
-        it("should encode/decode Sync reference with its properties", () => {
+        it("should encode/decode Schema reference with its properties", () => {
             const state = new State();
             state.player = new Player();
             state.player.name = "Jake";
@@ -220,7 +220,7 @@ describe("Schema", () => {
             assert.equal(decodedState.player.y, 200);
         });
 
-        it("should re-use child Sync instance when decoding multiple times", () => {
+        it("should re-use child Schema instance when decoding multiple times", () => {
             const state = new State();
             state.player = new Player();
             state.player.name = "Guest";
@@ -508,8 +508,8 @@ describe("Schema", () => {
         });
 
         it("should support array of strings", () => {
-            class MyState extends Sync {
-                @sync(["string"])
+            class MyState extends Schema {
+                @type(["string"])
                 arrayOfStrings: string[];
             }
 
@@ -532,8 +532,8 @@ describe("Schema", () => {
         });
 
         it("should support array of numbers", () => {
-            class MyState extends Sync {
-                @sync(["number"])
+            class MyState extends Schema {
+                @type(["number"])
                 arrayOfNumbers: number[];
             }
 
@@ -550,8 +550,8 @@ describe("Schema", () => {
         });
 
         it("should support map of strings", () => {
-            class MyState extends Sync {
-                @sync({ map: "string" })
+            class MyState extends Schema {
+                @type({ map: "string" })
                 mapOfStrings: {[id: string]: string};
             }
 

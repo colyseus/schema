@@ -1,16 +1,16 @@
-import { Sync, sync } from "../src/annotations";
+import { Schema, type } from "../src/annotations";
 import * as nanoid from "nanoid";
 import * as msgpack from "notepack.io";
 import * as fossildelta from "fossil-delta";
 
-export class Player extends Sync {
-  @sync("string")
+export class Player extends Schema {
+  @type("string")
   name: string;
 
-  @sync("number")
+  @type("number")
   x: number;
 
-  @sync("number")
+  @type("number")
   y: number;
 
   constructor (name?: string, x?: number, y?: number) {
@@ -22,8 +22,8 @@ export class Player extends Sync {
   }
 }
 
-export class State extends Sync {
-  @sync({ map: Player })
+export class State extends Schema {
+  @type({ map: Player })
   players: { [id: string]: Player };
 }
 

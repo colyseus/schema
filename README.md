@@ -20,33 +20,33 @@ Practical Colyseus issues this should solve:
 As Colyseus is written in TypeScript, the schema is defined as type annotations inside the state class. Additional server logic may be added to that class, but client-side generated (not implemented) files will consider only the schema itself.
 
 ```typescript
-import { DataChange, Sync, sync } from '@colyseus/schema';
+import { DataChange, Schema, type } from '@colyseus/schema';
 
-export class Player extends Sync {
-  @sync("string")
+export class Player extends Schema {
+  @type("string")
   name: string;
 
-  @sync("number")
+  @type("number")
   x: number;
 
-  @sync("number")
+  @type("number")
   y: number;
 }
 
-export class State extends Sync {
-  @sync('string')
+export class State extends Schema {
+  @type('string')
   fieldString: string;
 
-  @sync('number') // varint
+  @type('number') // varint
   fieldNumber: number;
 
-  @sync(Player)
+  @type(Player)
   player: Player;
 
-  @sync([ Player ])
+  @type([ Player ])
   arrayOfPlayers: Player[];
 
-  @sync({ map: Player })
+  @type({ map: Player })
   mapOfPlayers: { [id: string]: Player };
 }
 ```
@@ -72,18 +72,18 @@ See [example/State.ts](example/State.ts).
 
 **Declaration:**
 
-- `@sync("string") name: string;`
-- `@sync("number") level: number;`
-- `@sync(Player) player: Player;`
-- `@sync([ Player ]) arrayOfPlayers: Player[];`
-- `@sync([ "number" ]) arrayOfNumbers: number[];`
-- `@sync([ "string" ]) arrayOfStrings: string[];`
-- `@sync({ map: Player }) mapOfPlayers: {[id: string]: Player};`
+- `@type("string") name: string;`
+- `@type("number") level: number;`
+- `@type(Player) player: Player;`
+- `@type([ Player ]) arrayOfPlayers: Player[];`
+- `@type([ "number" ]) arrayOfNumbers: number[];`
+- `@type([ "string" ]) arrayOfStrings: string[];`
+- `@type({ map: Player }) mapOfPlayers: {[id: string]: Player};`
 
 ## Limitations and best practices
 
 - Multi-dimensional arrays are not supported.
-- Maps are only supported for custom `Sync` types.
+- Maps are only supported for custom `Schema` types.
 - Array items must all have the same type as defined in the schema.
 - `@colyseus/schema` encodes only field values in the specified order.
   - Both encoder (server) and decoder (client) must have same schema definition.

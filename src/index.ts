@@ -1,8 +1,8 @@
 export {
-    Sync,
-    sync,
+    Schema,
+    type,
     DataChange,
     PrimitiveType,
-    Schema,
-    SchemaType
+    Definition,
+    DefinitionType,
 } from "./annotations";

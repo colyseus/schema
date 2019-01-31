@@ -1,14 +1,14 @@
 import { DataChange } from './../src/annotations';
-import { Sync, sync } from "../src/annotations";
+import { Schema, type } from "../src/annotations";
 
-export class Player extends Sync {
-  @sync("string")
+export class Player extends Schema {
+  @type("string")
   name: string;
 
-  @sync("number")
+  @type("number")
   x: number;
 
-  @sync("number")
+  @type("number")
   y: number;
 
   constructor (name?: string, x?: number, y?: number) {
@@ -19,19 +19,19 @@ export class Player extends Sync {
   }
 }
 
-export class State extends Sync {
-  @sync('string')
+export class State extends Schema {
+  @type('string')
   fieldString: string;
 
-  @sync('number') // varint
+  @type('number') // varint
   fieldNumber: number;
 
-  @sync(Player)
+  @type(Player)
   player: Player;
 
-  @sync([ Player ])
+  @type([ Player ])
   arrayOfPlayers: Player[];
 
-  @sync({ map: Player })
+  @type({ map: Player })
   mapOfPlayers: { [id: string]: Player };
 }
