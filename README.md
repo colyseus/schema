@@ -1,8 +1,20 @@
-<img src="logo.png?raw=true" />
+<div align="center">
+  <img src="logo.png?raw=true" />
+
+  <p>
+    A binary schema-based serialization algorithm. <br>
+    Although it was born to solve a <a href="https://github.com/colyseus/colyseus">Colyseus</a> issue, this library can be used standalone.
+  </p>
+
+  <a href="https://travis-ci.org/colyseus/schema">
+    <img src="https://img.shields.io/travis/colyseus/schema.svg?style=for-the-badge" alt="Build status" />
+  </a>
+  <a href="https://patreon.com/endel" title="Donate to this project using Patreon">
+    <img src="https://img.shields.io/badge/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fendel&style=for-the-badge" alt="Patreon donate button"/>
+  </a>
+</div>
 
 > WORK-IN-PROGRESS EXPERIMENT OF A NEW SERIALIZATION ALGORITHM FOR [COLYSEUS](https://github.com/gamestdio/colyseus)
-
-![](https://img.shields.io/travis/colyseus/schema.svg?style=for-the-badge)
 
 Initial thoghts/assumptions:
 - no bottleneck to detect state changes.

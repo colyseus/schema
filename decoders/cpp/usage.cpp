@@ -68,7 +68,11 @@ struct State : public Colyseus::Schema {
 const std::vector<std::string> State::_fields = { "fieldString", "number", "player", "arrayOfPlayers", "mapOfPlayers"};
 
 int main () {
+    const int encodedState[2] = {1, 50};
+
     State* state = new State();
+    state->decode(encodedState, 2);
+
     printf("Hello world!");
     return 0;
 }

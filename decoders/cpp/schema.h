@@ -11,13 +11,19 @@
 
 namespace Colyseus
 {
-    struct Schema {
-        // Schema();
-        // virtual ~Schema();
+    struct Iterator {
+        int offset = 0;
+    };
 
+    struct Schema {
         static const std::vector<std::string> _fields;
 
-        void decode(char* bytes) {
+        void decode(const int bytes[], int length, Iterator* it = new Iterator()) {
+            for(size_t i = 0; i < length; i++)
+            {
+                printf("%d\n", bytes[i]);
+            }
+            
         }
     };
 
