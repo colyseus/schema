@@ -1,5 +1,7 @@
 <div align="center">
   <img src="logo.png?raw=true" />
+  <br>
+  <br>
 
   <p>
     A binary schema-based serialization algorithm. <br>

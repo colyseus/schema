@@ -27,10 +27,11 @@ struct Player : public Colyseus::Schema {
         }
     };
 
-    static const std::vector<std::string> _fields;
+    static const std::vector<std::string> _order;
+    static const std::map<int, std::string> _indexes;
 };
-
-const std::vector<std::string> Player::_fields = {"name", "x", "y"};
+const std::vector<std::string> Player::_order = {"name", "x", "y"};
+const std::map<int, std::string> Player::_indexes = {{0, "name"}, {1, "x"}, {2, "y"}};
 
 struct State : public Colyseus::Schema {
     std::string fieldString;
@@ -62,10 +63,12 @@ struct State : public Colyseus::Schema {
         }
     };
 
-    static const std::vector<std::string> _fields;
+    static const std::vector<std::string> _order;
+    static const std::map<int, std::string> _indexes;
 };
 
-const std::vector<std::string> State::_fields = { "fieldString", "number", "player", "arrayOfPlayers", "mapOfPlayers"};
+const std::vector<std::string> State::_order = {"fieldString", "number", "player", "arrayOfPlayers", "mapOfPlayers"};
+const std::map<int, std::string> State::_indexes = { {0, "fieldString"}, {1, "number"}, {2, "player"}, {3, "arrayOfPlayers"}, {4, "mapOfPlayers"} };
 
 int main () {
     const int encodedState[2] = {1, 50};
