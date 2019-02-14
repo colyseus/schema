@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -36,6 +36,6 @@
     "notepack.io": "^2.2.0",
     "sinon": "^7.2.2",
     "ts-node": "^7.0.1",
-    "typescript": "^3.2.2"
+    "typescript": "^3.3.3"
   }
 }
