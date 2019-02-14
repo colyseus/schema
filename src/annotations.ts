@@ -60,6 +60,9 @@ export abstract class Schema {
     public onChange?(changes: DataChange[]);
     public onRemove?();
 
+    // allow inherited classes to have a constructor
+    constructor(...args: any[]) {}
+
     markAsChanged (field: string, value?: Schema | any) {
         const fieldSchema = this._schema[field];
         this.$changed = true;
