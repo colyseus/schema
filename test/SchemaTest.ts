@@ -110,6 +110,48 @@ describe("Schema", () => {
             assert.equal(decoded.int32, -2147483648);
         });
 
+        it("float32", () => {
+            class Data extends Schema { @type("float32") float32; }
+
+            let data = new Data();
+            data.float32 = 24.5;
+
+            let encoded = data.encode();
+            assert.deepEqual(encoded, [ 0, 1103364096, 4310016, 16836, 65 ]);
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.float32, 24.5);
+        });
+
+        it("float64", () => {
+            class Data extends Schema { @type("float64") float64; }
+
+            let data = new Data();
+            data.float64 = 24.5;
+
+            let encoded = data.encode();
+            assert.deepEqual(encoded, [ 0, 0, 0, 0, 0, 1077444608, 4208768, 16440, 64 ]);
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.float64, 24.5);
+        });
+
+        it("varint", () => {
+            class Data extends Schema { @type("number") varint; }
+
+            let data = new Data();
+            data.varint = 476.7620516517428;
+
+            let encoded = data.encode();
+            assert.deepEqual(encoded, [ 0, 203, 1561502098, 6099617, 23826, 93, 1081986097, 4226508, 16509, 64 ]);
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.varint, 476.7620516517428);
+        });
+
         it("string", () => {
             class Data extends Schema { @type("string") str; }
 

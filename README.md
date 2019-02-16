@@ -83,6 +83,8 @@ See [example/State.ts](example/State.ts).
 | uint32 | unsigned 32-bit integer | `0` to `4294967295` |
 | int64 | signed 64-bit integer | `-9223372036854775808` to `9223372036854775807` |
 | uint64 | unsigned 64-bit integer | `0` to `18446744073709551615` |
+| float32 | | |
+| float64 | | |
 
 **Declaration:**
 

@@ -13,6 +13,8 @@ export type PrimitiveType =
     "uint32" |
     "int64" |
     "uint64" |
+    "float32" |
+    "float64" |
     typeof Schema;
 
 export type DefinitionType = ( PrimitiveType | PrimitiveType[] | { map: PrimitiveType });

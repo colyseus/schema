@@ -116,6 +116,14 @@ export function uint64 (bytes, value) {
     uint32(bytes, value.high);
 };
 
+export function float32 (bytes, value) {
+  writeFloat32(bytes, value);
+}
+
+export function float64 (bytes, value) {
+  writeFloat64(bytes, value);
+}
+
 const _isLittleEndian = new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
 const _int32 = new Int32Array(2);
 const _float32 = new Float32Array(_int32.buffer);
@@ -123,7 +131,7 @@ const _float64 = new Float64Array(_int32.buffer);
 
 export function writeFloat32 (bytes, value) {
     _float32[0] = value;
-    int32(bytes, int32[0]);
+    int32(bytes, _int32[0]);
 };
 
 export function writeFloat64 (bytes, value) {
@@ -168,8 +176,12 @@ export function string (bytes, value) {
 export function number (bytes, value) {
   // float 64
   if (Math.floor(value) !== value || !isFinite(value)) {
+    /**
+     * TODO: 
+     * is it possible to differentiate between float32 / float64 here?
+     */
     bytes.push(0xcb);
-    // defers.push({ _float: value, _length: 8, _offset: bytes.length });
+    writeFloat64(bytes, value);
     return 9;
   }
 

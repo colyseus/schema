@@ -101,6 +101,14 @@ export function uint32 (bytes: number[], it: Iterator) {
     return int32(bytes, it) >>> 0;
 };
 
+export function float32(bytes: number[], it: Iterator) {
+  return readFloat32(bytes, it);
+}
+
+export function float64(bytes: number[], it: Iterator) {
+  return readFloat64(bytes, it);
+}
+
 // export function int64 (bytes: number[], it: Iterator) {
 //     return new flatbuffers.Long(int32(bytes, it), int32(bytes, it));
 // };
