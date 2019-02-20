@@ -95,6 +95,7 @@ export abstract class Schema {
                     fieldKey !== undefined &&
                     this.$changes[fieldName].indexOf(fieldKey) === -1 // do not store duplicates of changed fields
                 ) {
+                    console.log("PUSH FIELD KEY!", fieldKey, value.$parentField, value);
                     this.$changes[fieldName].push(fieldKey);
                 }
 
@@ -409,8 +410,13 @@ export abstract class Schema {
                 const keys = value;
                 encode.number(bytes, keys.length)
 
+                const mapKeys = Object.keys(this[`_${field}`]);
+
                 for (let i = 0; i < keys.length; i++) {
-                    let key = keys[i];
+                    let key = (typeof(keys[i]) === "string")
+                        ? keys[i]
+                        : mapKeys[keys[i]];
+
                     const item = this[`_${field}`][key];
                     const mapItemIndex = this[`_${field}MapIndex`][key];
 
@@ -529,7 +535,6 @@ export function type (type: DefinitionType) {
 
                                 } else {
                                     obj[prop] = setValue;
-                                    // console.log("setValue:", obj, setValue)
                                     this.markAsChanged(field, obj);
                                 }
 
@@ -589,6 +594,7 @@ export function type (type: DefinitionType) {
                         if (value[key] instanceof Schema) {
                             value[key].$parent = this;
                             value[key].$parentField = [field, key];
+                            console.log("directly assigning:", value[key].$parentField);
                             this.markAsChanged(field, value[key]);
 
                         } else {

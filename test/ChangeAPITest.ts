@@ -205,6 +205,27 @@ describe("Change API", () => {
         sinon.assert.calledOnce(onChangeSpy);
     });
 
+    it("detecting multiple changes on item inside a map", () => {
+        const state = new State();
+        state.mapOfPlayers = { 'jake': new Player("Jake Badlands") };
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        decodedState.mapOfPlayers['jake'].onChange = function(changes: DataChange[]) {}
+        let onChangeSpy = sinon.spy(decodedState.mapOfPlayers['jake'], 'onChange');
+
+        state.mapOfPlayers['jake'].x = 100;
+        let encoded = state.encode();
+        decodedState.decode(encoded);
+
+        state.mapOfPlayers['jake'].x = 200;
+        encoded = state.encode();
+        decodedState.decode(encoded);
+
+        sinon.assert.calledTwice(onChangeSpy);
+    })
+
     it("detecting onRemove on map items", () => {
         const state = new State();
         state.mapOfPlayers = {
