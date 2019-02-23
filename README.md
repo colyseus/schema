@@ -86,15 +86,62 @@ See [example/State.ts](example/State.ts).
 | float32 | single-precision floating-point number | `-3.40282347e+38` to `3.40282347e+38`|
 | float64 | double-precision floating-point number | `-1.7976931348623157e+308` to `1.7976931348623157e+308` |
 
-**Declaration:**
+### Declaration:
 
-- `@type("string") name: string;`
-- `@type("number") level: number;`
-- `@type(Player) player: Player;`
-- `@type([ Player ]) arrayOfPlayers: ArraySchema<Player>;`
-- `@type([ "number" ]) arrayOfNumbers: ArraySchema<number>;`
-- `@type([ "string" ]) arrayOfStrings: ArraySchema<string>;`
-- `@type({ map: Player }) mapOfPlayers: MapSchema<Player>;`
+#### Primitive types (`string`, `number`, etc)
+
+```typescript
+@type("string")
+name: string;
+
+@type("int32")
+name: number;
+```
+
+#### Custom `Schema` type
+
+```typescript
+@type(Player)
+player: Player;
+```
+
+#### Array of a primitive type
+
+You can't mix types inside arrays.
+
+```typescript
+@type([ "number" ])
+arrayOfNumbers: ArraySchema<number>;
+
+@type([ "string" ])
+arrayOfStrings: ArraySchema<string>;
+```
+
+#### Array of custom `Schema` type
+
+```typescript
+@type([ Player ]) 
+arrayOfPlayers: ArraySchema<Player>;
+```
+
+#### Map of a primitive type
+
+You can't mix types inside maps.
+
+```typescript
+@type({ map: "number" })
+arrayOfNumbers: MapSchema<number>;
+
+@type({ map: "string" })
+arrayOfStrings: MapSchema<string>;
+```
+
+#### Map of custom `Schema` type
+
+```typescript
+@type({ map: Player })
+mapOfPlayers: MapSchema<Player>;
+```
 
 ## Limitations and best practices
 
