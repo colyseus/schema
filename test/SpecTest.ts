@@ -50,7 +50,7 @@ describe("Spec / Protocol", () => {
             assert.equal(indexChangeCheck(bytes, { offset: 0 }), false);
         })
 
-        it("int16 shouldn't collide", () => {
+        it("int8 shouldn't collide", () => {
             const bytes = [];
             encode.int8(bytes, 126);
             assert.equal(nilCheck(bytes, { offset: 0 }), false);
@@ -112,7 +112,7 @@ describe("Spec / Protocol", () => {
             assert.equal(indexChangeCheck(bytes, { offset: 0 }), false);
         })
 
-        it("int16 shouldn't collide", () => {
+        it("int8 shouldn't collide", () => {
             const bytes = [];
             encode.number(bytes, 126);
             assert.equal(numberCheck(bytes, { offset: 0 }), true);
