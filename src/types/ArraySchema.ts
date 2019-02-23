@@ -30,6 +30,6 @@ export class ArraySchema<T=any> extends Array<T> {
     static get [Symbol.species](): ArrayConstructor { return Array; }
 
     clone: () => ArraySchema<T>;
-    onAdd: (item: T) => void;
-    onRemove: (item: T) => void;
+    onAdd: (item: T, index: number) => void;
+    onRemove: (item: T, index: number) => void;
 }

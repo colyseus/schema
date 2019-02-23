@@ -177,13 +177,13 @@ export abstract class Schema {
 
                 // ensure current array has the same length as encoded one
                 if (value.length > newLength) {
-                    value.splice(newLength).forEach(itemRemoved => {
+                    value.splice(newLength).forEach((itemRemoved, i) => {
                         if (itemRemoved.onRemove) {
                             itemRemoved.onRemove();
                         }
 
                         if (valueRef.onRemove) {
-                            valueRef.onRemove(itemRemoved);
+                            valueRef.onRemove(itemRemoved, newLength + i);
                         }
                     });
                 }
@@ -222,7 +222,7 @@ export abstract class Schema {
                             it.offset++;
 
                             if (valueRef.onRemove) {
-                                valueRef.onRemove(item);
+                                valueRef.onRemove(item, newIndex);
                             }
 
                             continue;
@@ -232,7 +232,7 @@ export abstract class Schema {
                         item.decode(bytes, it);
 
                         if (isNew && valueRef.onAdd) {
-                            valueRef.onAdd(item);
+                            valueRef.onAdd(item, newIndex);
                         }
 
                         value[newIndex] = item;
@@ -299,7 +299,7 @@ export abstract class Schema {
                         }
 
                         if (valueRef.onRemove) {
-                            valueRef.onRemove(item);
+                            valueRef.onRemove(item, newKey);
                         }
 
                         delete value[newKey];
@@ -314,7 +314,7 @@ export abstract class Schema {
                         value[newKey] = item;
 
                         if (isNew && valueRef.onAdd) {
-                            valueRef.onAdd(item);
+                            valueRef.onAdd(item, newKey);
                         }
                     }
                 }
