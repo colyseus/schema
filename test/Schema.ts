@@ -1,5 +1,4 @@
-import { DataChange } from './../src/annotations';
-import { Schema, type } from "../src/annotations";
+import { Schema, type, ArraySchema, MapSchema } from "../src";
 
 export class Player extends Schema {
   @type("string")
@@ -30,8 +29,8 @@ export class State extends Schema {
   player: Player;
 
   @type([ Player ])
-  arrayOfPlayers: Player[];
+  arrayOfPlayers: ArraySchema<Player>;
 
   @type({ map: Player })
-  mapOfPlayers: { [id: string]: Player };
+  mapOfPlayers: MapSchema<Player>;
 }

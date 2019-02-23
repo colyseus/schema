@@ -1,6 +1,9 @@
 import { END_OF_STRUCTURE, NIL, INDEX_CHANGE } from './spec';
+
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
+import { ArraySchema } from './types/ArraySchema';
+import { MapSchema } from './types/MapSchema';
 
 export type PrimitiveType =
     "string" |
@@ -42,10 +45,10 @@ function decodePrimitiveType (type: string, bytes: number[], it: decode.Iterator
     }
 }
 
-export interface DataChange {
+export interface DataChange<T=any> {
     field: string;
-    value: any;
-    previousValue: any;
+    value: T;
+    previousValue: T;
 }
 
 export abstract class Schema {
@@ -95,7 +98,7 @@ export abstract class Schema {
                     fieldKey !== undefined &&
                     this.$changes[fieldName].indexOf(fieldKey) === -1 // do not store duplicates of changed fields
                 ) {
-                    console.log("PUSH FIELD KEY!", fieldKey, value.$parentField, value);
+                    // console.log("PUSH FIELD KEY!", fieldKey, value.$parentField, value);
                     this.$changes[fieldName].push(fieldKey);
                 }
 
@@ -160,8 +163,8 @@ export abstract class Schema {
                 type = type[0];
                 change = [];
 
-                const valueRef = this[`_${field}`] || [];
-                value = valueRef.slice(0);
+                const valueRef: ArraySchema = this[`_${field}`] || new ArraySchema();
+                value = valueRef.clone();
 
                 const newLength = decode.number(bytes, it);
                 const numChanges = decode.number(bytes, it);
@@ -178,18 +181,15 @@ export abstract class Schema {
                         if (itemRemoved.onRemove) {
                             itemRemoved.onRemove();
                         }
+
+                        if (valueRef.onRemove) {
+                            valueRef.onRemove(itemRemoved);
+                        }
                     });
                 }
 
                 for (let i = 0; i < numChanges; i++) {
                     const newIndex = decode.number(bytes, it);
-
-                    if (decode.nilCheck(bytes, it)) {
-                        // const item = this[`_${field}`][newIndex];
-                        // TODO: trigger `onRemove` on Schema object being removed.
-                        it.offset++;
-                        continue;
-                    }
 
                     // index change check
                     let indexChangedFrom: number;
@@ -201,8 +201,9 @@ export abstract class Schema {
 
                     if ((type as any).prototype instanceof Schema) {
                         let item;
+                        let isNew = (hasIndexChange && indexChangedFrom === undefined && newIndex !== undefined);
 
-                        if (hasIndexChange && indexChangedFrom === undefined && newIndex !== undefined) {
+                        if (isNew) {
                             item = new (type as any)();
 
                         } else if (indexChangedFrom !== undefined) {
@@ -214,10 +215,25 @@ export abstract class Schema {
 
                         if (!item) {
                             item = new (type as any)();
+                            isNew = true;
+                        }
+
+                        if (decode.nilCheck(bytes, it)) {
+                            it.offset++;
+
+                            if (valueRef.onRemove) {
+                                valueRef.onRemove(item);
+                            }
+
+                            continue;
                         }
 
                         item.$parent = this;
                         item.decode(bytes, it);
+
+                        if (isNew && valueRef.onAdd) {
+                            valueRef.onAdd(item);
+                        }
 
                         value[newIndex] = item;
 
@@ -232,8 +248,8 @@ export abstract class Schema {
             } else if ((type as any).map) {
                 type = (type as any).map;
 
-                const valueRef = this[`_${field}`] || {};
-                value = Object.assign({}, valueRef);
+                const valueRef: MapSchema = this[`_${field}`] || new MapSchema();
+                value = valueRef.clone();
 
                 const length = decode.number(bytes, it);
                 hasChange = (length > 0);
@@ -258,6 +274,7 @@ export abstract class Schema {
                         : decode.string(bytes, it);
 
                     let item;
+                    let isNew = (hasIndexChange && previousKey === undefined && hasMapIndex);
 
                     if (hasIndexChange && previousKey === undefined && hasMapIndex) {
                         item = new (type as any)();
@@ -271,6 +288,7 @@ export abstract class Schema {
 
                     if (!item && type !== "string") {
                         item = new (type as any)();
+                        isNew = true;
                     }
 
                     if (decode.nilCheck(bytes, it)) {
@@ -278,6 +296,10 @@ export abstract class Schema {
 
                         if (item && item.onRemove) {
                             item.onRemove();
+                        }
+
+                        if (valueRef.onRemove) {
+                            valueRef.onRemove(item);
                         }
 
                         delete value[newKey];
@@ -290,6 +312,10 @@ export abstract class Schema {
                         item.$parent = this;
                         item.decode(bytes, it);
                         value[newKey] = item;
+
+                        if (isNew && valueRef.onAdd) {
+                            valueRef.onAdd(item);
+                        }
                     }
                 }
 
@@ -298,11 +324,10 @@ export abstract class Schema {
                 hasChange = true;
             }
 
-            if (this.onChange && hasChange) {
+            if (hasChange && this.onChange) {
                 changes.push({
                     field,
                     value: change || value,
-                    // value: value,
                     previousValue: this[`_${field}`]
                 });
             }
@@ -594,7 +619,7 @@ export function type (type: DefinitionType) {
                         if (value[key] instanceof Schema) {
                             value[key].$parent = this;
                             value[key].$parentField = [field, key];
-                            console.log("directly assigning:", value[key].$parentField);
+                            // console.log("directly assigning:", value[key].$parentField);
                             this.markAsChanged(field, value[key]);
 
                         } else {

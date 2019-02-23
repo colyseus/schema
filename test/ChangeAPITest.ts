@@ -3,6 +3,7 @@ import * as assert from "assert";
 
 import { DataChange } from './../src/annotations';
 import { State, Player } from "./Schema";
+import { MapSchema, ArraySchema } from "../src";
 
 describe("Change API", () => {
 
@@ -109,9 +110,13 @@ describe("Change API", () => {
 
     it("detecting onChange on arrays", () => {
         const state = new State();
-        state.arrayOfPlayers = [new Player("Jake Badlands"), new Player("Katarina Lyons")];
+        state.arrayOfPlayers = new ArraySchema(new Player("Jake Badlands"), new Player("Katarina Lyons"));
 
         const decodedState = new State();
+        decodedState.arrayOfPlayers = new ArraySchema();
+        decodedState.arrayOfPlayers.onAdd = function(player: Player) {}
+        const onAddPlayerSpy = sinon.spy(decodedState.arrayOfPlayers, 'onAdd');
+
         decodedState.onChange = function(changes: DataChange[]) {
             assert.equal(changes.length, 1);
             assert.equal(changes[0].field, "arrayOfPlayers");
@@ -122,6 +127,8 @@ describe("Change API", () => {
         }
 
         let onChangeSpy = sinon.spy(decodedState, 'onChange');
+
+
         decodedState.decode(state.encode());
         sinon.assert.calledOnce(onChangeSpy);
 
@@ -137,11 +144,13 @@ describe("Change API", () => {
         onChangeSpy = sinon.spy(decodedState, 'onChange');
         decodedState.decode(state.encode());
         sinon.assert.calledOnce(onChangeSpy);
+
+        sinon.assert.calledThrice(onAddPlayerSpy);
     });
 
     it("detecting onRemove on array items", () => {
         const state = new State();
-        state.arrayOfPlayers = [new Player("Jake Badlands"), new Player("Katarina Lyons")];
+        state.arrayOfPlayers = new ArraySchema(new Player("Jake Badlands"), new Player("Katarina Lyons"));
 
         let katarina: Player;
 
@@ -172,10 +181,10 @@ describe("Change API", () => {
 
     it("detecting onChange on maps", () => {
         const state = new State();
-        state.mapOfPlayers = {
+        state.mapOfPlayers = new MapSchema({
             'jake': new Player("Jake Badlands"),
             'katarina': new Player("Katarina Lyons"),
-        };
+        });
 
         const decodedState = new State();
         decodedState.onChange = function(changes: DataChange[]) {
@@ -207,7 +216,9 @@ describe("Change API", () => {
 
     it("detecting multiple changes on item inside a map", () => {
         const state = new State();
-        state.mapOfPlayers = { 'jake': new Player("Jake Badlands") };
+        state.mapOfPlayers = new MapSchema({
+            'jake': new Player("Jake Badlands")
+        });
 
         const decodedState = new State();
         decodedState.decode(state.encode());
@@ -226,12 +237,43 @@ describe("Change API", () => {
         sinon.assert.calledTwice(onChangeSpy);
     })
 
+    it("should call onAdd / onRemove on map", () => {
+        const state = new State();
+        state.mapOfPlayers = new MapSchema({
+            'jake': new Player("Jake Badlands"),
+        });
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        // add two entries
+        state.mapOfPlayers['snake'] = new Player("Snake Sanders");
+        state.mapOfPlayers['katarina'] = new Player("Katarina Lyons");
+
+        decodedState.mapOfPlayers.onAdd = function(player: Player) {}
+        decodedState.mapOfPlayers.onRemove = function(player: Player) {}
+
+        const onAddSpy = sinon.spy(decodedState.mapOfPlayers, 'onAdd');
+        const onRemoveSpy = sinon.spy(decodedState.mapOfPlayers, 'onRemove');
+
+        let encoded = state.encode();
+        decodedState.decode(encoded);
+
+        // remove one entry
+        delete state.mapOfPlayers['snake'];
+        encoded = state.encode();
+        decodedState.decode(encoded);
+
+        sinon.assert.calledTwice(onAddSpy);
+        sinon.assert.calledOnce(onRemoveSpy);
+    })
+
     it("detecting onRemove on map items", () => {
         const state = new State();
-        state.mapOfPlayers = {
+        state.mapOfPlayers = new MapSchema({
             'jake': new Player("Jake Badlands"),
             'katarina': new Player("Katarina Lyons"),
-        };
+        });
 
         let katarina: Player;
 

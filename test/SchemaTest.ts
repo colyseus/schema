@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import { Schema, type } from "../src/annotations";
 import { State, Player } from "./Schema";
+import { ArraySchema, MapSchema } from "../src";
 
 describe("Schema", () => {
 
@@ -282,7 +283,7 @@ describe("Schema", () => {
 
         it("should encode empty array", () => {
             const state = new State();
-            state.arrayOfPlayers = [];
+            state.arrayOfPlayers = new ArraySchema();
 
             const decodedState = new State();
             const encoded = state.encode();
@@ -294,10 +295,10 @@ describe("Schema", () => {
 
         it("should encode array with two values", () => {
             const state = new State();
-            state.arrayOfPlayers = [
+            state.arrayOfPlayers = new ArraySchema(
                 new Player("Jake Badlands"),
                 new Player("Snake Sanders"),
-            ];
+            );
 
             const decodedState = new State();
             let encoded = state.encode();
@@ -339,7 +340,7 @@ describe("Schema", () => {
 
         it("should allow to `pop` an array", () => {
             const state = new State();
-            state.arrayOfPlayers = [new Player("Jake"), new Player("Snake"), new Player("Player 3")];
+            state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Player 3"));
 
             const decodedState = new State();
             decodedState.decode(state.encode());
@@ -354,7 +355,7 @@ describe("Schema", () => {
 
         it("should allow to `shift` an array", () => {
             const state = new State();
-            state.arrayOfPlayers = [new Player("Jake"), new Player("Snake"), new Player("Cyberhawk")];
+            state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
 
             const decodedState = new State();
             decodedState.decode(state.encode());
@@ -377,7 +378,7 @@ describe("Schema", () => {
 
         it("should allow to `push` and `shift` an array lelele", () => {
             const state = new State();
-            state.arrayOfPlayers = [new Player("Jake"), new Player("Snake"), new Player("Cyberhawk")];
+            state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
 
             const decodedState = new State();
             decodedState.decode(state.encode());
@@ -398,7 +399,7 @@ describe("Schema", () => {
 
         it("should allow to `shift` and `push` an array", () => {
             const state = new State();
-            state.arrayOfPlayers = [new Player("Jake"), new Player("Snake"), new Player("Cyberhawk")];
+            state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
 
             const decodedState = new State();
             decodedState.decode(state.encode());
@@ -419,10 +420,10 @@ describe("Schema", () => {
 
         it("should encode map of objects", () => {
             const state = new State();
-            state.mapOfPlayers = {
+            state.mapOfPlayers = new MapSchema({
                 "one": new Player("Jake Badlands"),
                 "two": new Player("Snake Sanders")
-            };
+            });
 
             let encoded = state.encode();
             assert.deepEqual(encoded, [4, 2, 163, 111, 110, 101, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 163, 116, 119, 111, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
@@ -430,27 +431,27 @@ describe("Schema", () => {
             const decodedState = new State();
             decodedState.decode(encoded);
 
-            const playerOne = decodedState.mapOfPlayers.one;
-            const playerTwo = decodedState.mapOfPlayers.two;
+            const playerOne = decodedState.mapOfPlayers['one'];
+            const playerTwo = decodedState.mapOfPlayers['two'];
 
             assert.deepEqual(Object.keys(decodedState.mapOfPlayers), ["one", "two"]);
             assert.equal(playerOne.name, "Jake Badlands");
             assert.equal(playerTwo.name, "Snake Sanders");
 
-            state.mapOfPlayers.one.name = "Tarquinn";
+            state.mapOfPlayers['one'].name = "Tarquinn";
 
             encoded = state.encode();
             assert.deepEqual(encoded, [4, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
 
             decodedState.decode(encoded);
 
-            assert.equal(playerOne, decodedState.mapOfPlayers.one);
-            assert.equal(decodedState.mapOfPlayers.one.name, "Tarquinn");
+            assert.equal(playerOne, decodedState.mapOfPlayers['one']);
+            assert.equal(decodedState.mapOfPlayers['one'].name, "Tarquinn");
         });
 
         it("should allow adding and removing items from map", () => {
             const state = new State();
-            state.mapOfPlayers = {};
+            state.mapOfPlayers = new MapSchema();
 
             state.mapOfPlayers['one'] = new Player("Jake Badlands");
             state.mapOfPlayers['two'] = new Player("Snake Sanders");
@@ -459,8 +460,8 @@ describe("Schema", () => {
             decodedState.decode(state.encode());
 
             assert.deepEqual(Object.keys(decodedState.mapOfPlayers), ["one", "two"]);
-            assert.equal(decodedState.mapOfPlayers.one.name, "Jake Badlands");
-            assert.equal(decodedState.mapOfPlayers.two.name, "Snake Sanders");
+            assert.equal(decodedState.mapOfPlayers['one'].name, "Jake Badlands");
+            assert.equal(decodedState.mapOfPlayers['two'].name, "Snake Sanders");
 
             delete state.mapOfPlayers['two'];
             decodedState.decode(state.encode());
@@ -469,7 +470,7 @@ describe("Schema", () => {
 
         it("should allow moving items from one map key to another", () => {
             const state = new State();
-            state.mapOfPlayers = {};
+            state.mapOfPlayers = new MapSchema();
 
             state.mapOfPlayers['one'] = new Player("Jake Badlands");
             state.mapOfPlayers['two'] = new Player("Snake Sanders");
@@ -576,11 +577,11 @@ describe("Schema", () => {
         it("should support array of numbers", () => {
             class MyState extends Schema {
                 @type(["number"])
-                arrayOfNumbers: number[];
+                arrayOfNumbers: ArraySchema<number>;
             }
 
             const state = new MyState();
-            state.arrayOfNumbers = [144, 233, 377, 610, 987, 1597, 2584];
+            state.arrayOfNumbers = new ArraySchema(144, 233, 377, 610, 987, 1597, 2584);
 
             let encoded = state.encode();
             assert.deepEqual(encoded, [0, 7, 7, 0, 204, 144, 1, 204, 233, 2, 205, 377, 1, 3, 205, 610, 2, 4, 205, 987, 3, 5, 205, 1597, 6, 6, 205, 2584, 10]);
@@ -622,8 +623,8 @@ describe("Schema", () => {
             const decodedState = new State();
             assert.doesNotThrow(() => decodedState.decode(state.encode()));
 
-            state.arrayOfPlayers = [];
-            state.mapOfPlayers = {};
+            state.arrayOfPlayers = new ArraySchema();
+            state.mapOfPlayers = new MapSchema();
             assert.doesNotThrow(() => decodedState.decode(state.encode()));
         });
     });
