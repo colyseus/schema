@@ -34,7 +34,7 @@ Practical Colyseus issues this should solve:
 As Colyseus is written in TypeScript, the schema is defined as type annotations inside the state class. Additional server logic may be added to that class, but client-side generated (not implemented) files will consider only the schema itself.
 
 ```typescript
-import { DataChange, Schema, type } from '@colyseus/schema';
+import { Schema, type, ArraySchema, MapSchema } from '@colyseus/schema';
 
 export class Player extends Schema {
   @type("string")
