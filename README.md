@@ -58,10 +58,10 @@ export class State extends Schema {
   player: Player;
 
   @type([ Player ])
-  arrayOfPlayers: Player[];
+  arrayOfPlayers: ArraySchema<Player>;
 
   @type({ map: Player })
-  mapOfPlayers: { [id: string]: Player };
+  mapOfPlayers: MapSchema<Player>;
 }
 ```
 
@@ -83,18 +83,18 @@ See [example/State.ts](example/State.ts).
 | uint32 | unsigned 32-bit integer | `0` to `4294967295` |
 | int64 | signed 64-bit integer | `-9223372036854775808` to `9223372036854775807` |
 | uint64 | unsigned 64-bit integer | `0` to `18446744073709551615` |
-| float32 | | |
-| float64 | | |
+| float32 | single-precision floating-point number | `-3.40282347e+38` to `3.40282347e+38`|
+| float64 | double-precision floating-point number | `-1.7976931348623157e+308` to `1.7976931348623157e+308` |
 
 **Declaration:**
 
 - `@type("string") name: string;`
 - `@type("number") level: number;`
 - `@type(Player) player: Player;`
-- `@type([ Player ]) arrayOfPlayers: Player[];`
-- `@type([ "number" ]) arrayOfNumbers: number[];`
-- `@type([ "string" ]) arrayOfStrings: string[];`
-- `@type({ map: Player }) mapOfPlayers: {[id: string]: Player};`
+- `@type([ Player ]) arrayOfPlayers: ArraySchema<Player>;`
+- `@type([ "number" ]) arrayOfNumbers: ArraySchema<number>;`
+- `@type([ "string" ]) arrayOfStrings: ArraySchema<string>;`
+- `@type({ map: Player }) mapOfPlayers: MapSchema<Player>;`
 
 ## Limitations and best practices
 
