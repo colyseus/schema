@@ -130,10 +130,10 @@ You can't mix types inside maps.
 
 ```typescript
 @type({ map: "number" })
-arrayOfNumbers: MapSchema<number>;
+mapOfNumbers: MapSchema<number>;
 
 @type({ map: "string" })
-arrayOfStrings: MapSchema<string>;
+mapOfStrings: MapSchema<string>;
 ```
 
 #### Map of custom `Schema` type
