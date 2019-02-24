@@ -1,5 +1,3 @@
-import { nonenumerable } from "nonenumerable";
-
 export class MapSchema<T=any> {
     constructor (obj: any = {}) {
         for (let key in obj) {

@@ -1,5 +1,3 @@
-import { nonenumerable } from "nonenumerable";
-
 export class ArraySchema<T=any> extends Array<T> {
     constructor (...items: T[]) {
         super(...items);
