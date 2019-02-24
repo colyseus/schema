@@ -616,16 +616,55 @@ describe("Schema", () => {
             assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO", 'three': "THREE" });
         });
 
-        it("no changes", () => {
-            const state = new State();
-            assert.deepEqual(state.encode(), []);
+        describe("no changes", () => {
+            it("empty state", () => {
+                const state = new State();
+                assert.deepEqual(state.encode(), []);
 
-            const decodedState = new State();
-            assert.doesNotThrow(() => decodedState.decode(state.encode()));
+                const decodedState = new State();
+                assert.doesNotThrow(() => decodedState.decode(state.encode()));
 
-            state.arrayOfPlayers = new ArraySchema();
-            state.mapOfPlayers = new MapSchema();
-            assert.doesNotThrow(() => decodedState.decode(state.encode()));
+                state.arrayOfPlayers = new ArraySchema();
+                state.mapOfPlayers = new MapSchema();
+                assert.doesNotThrow(() => decodedState.decode(state.encode()));
+            });
+
+            it("updating with same value", () => {
+                const state = new State();
+                state.mapOfPlayers = new MapSchema<Player>({
+                    jake: new Player("Jake Badlands", 50, 50)
+                });
+                assert.ok(state.encode().length > 0);
+
+                state.mapOfPlayers['jake'].x = 50;
+                state.mapOfPlayers['jake'].y = 50;
+                state.mapOfPlayers['jake'].thisPropDoesntExist = 100;
+
+                const encoded = state.encode();
+                assert.ok(encoded.length === 0, "updates with same value shouldn't trigger change.");
+            });
         });
     });
+
+    describe("encodeAll", () => {
+        it('should encode everything again', () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>({
+                jake: new Player("Jake"),
+                katarina: new Player("Katarina"),
+            });
+            state.encode();
+
+            const decodedState = new State();
+            decodedState.decode(state.encodeAll());
+            assert.deepEqual(Object.keys(decodedState.mapOfPlayers), ['jake', 'katarina']);
+
+            let jakeX = Math.random() * 2000;
+            state.mapOfPlayers['jake'].x = jakeX;
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.mapOfPlayers['jake'].x, jakeX);
+
+            delete state.mapOfPlayers['jake'];
+        });
+    })
 });

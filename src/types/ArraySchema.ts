@@ -1,4 +1,6 @@
 export class ArraySchema<T=any> extends Array<T> {
+    static get [Symbol.species](): ArrayConstructor { return Array; }
+
     constructor (...items: T[]) {
         super(...items);
 
@@ -24,8 +26,6 @@ export class ArraySchema<T=any> extends Array<T> {
             }
         });
     }
-
-    static get [Symbol.species](): ArrayConstructor { return Array; }
 
     clone: () => ArraySchema<T>;
     onAdd: (item: T, index: number) => void;

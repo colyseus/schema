@@ -26,6 +26,8 @@ export class MapSchema<T=any> {
         });
     }
 
+    [key: string]: T | any;
+
     clone: () => MapSchema<T>;
     onAdd: (item: T, key: string) => void;
     onRemove: (item: T, key: string) => void;

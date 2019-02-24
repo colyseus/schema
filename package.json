@@ -32,7 +32,7 @@
     "flatbuffers": "^1.10.2",
     "fossil-delta": "^1.0.2",
     "mocha": "^5.2.0",
-    "nanoid": "^2.0.0",
+    "nanoid": "^2.0.1",
     "notepack.io": "^2.2.0",
     "sinon": "^7.2.2",
     "ts-node": "^7.0.1",

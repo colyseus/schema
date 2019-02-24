@@ -55,6 +55,7 @@ export abstract class Schema {
     static _schema: Definition;
     static _indexes: {[field: string]: number};
 
+    protected $allChanges: { [key: string]: any } = {};
     protected $changes: { [key: string]: any } = {};
     protected $changed: boolean = false;
 
@@ -90,25 +91,29 @@ export abstract class Schema {
                     ? $parentField[1] 
                     : value;
 
-                if (!this.$changes[fieldName]) {
-                    this.$changes[fieldName] = [];
+                if (!this.$changes[fieldName]) { this.$changes[fieldName] = []; }
+                if (!this.$allChanges[fieldName]) { this.$allChanges[fieldName] = []; }
+
+                if (fieldKey !== undefined) {
+                    // do not store duplicates of changed fields
+                    if (this.$changes[fieldName].indexOf(fieldKey) === -1) {
+                        this.$changes[fieldName].push(fieldKey);
+                    }
+                    if (this.$allChanges[fieldName].indexOf(fieldKey) === -1) {
+                        this.$allChanges[fieldName].push(fieldKey);
+                    }
                 }
 
-                if (
-                    fieldKey !== undefined &&
-                    this.$changes[fieldName].indexOf(fieldKey) === -1 // do not store duplicates of changed fields
-                ) {
-                    // console.log("PUSH FIELD KEY!", fieldKey, value.$parentField, value);
-                    this.$changes[fieldName].push(fieldKey);
-                }
 
             } else if (value.$parentField) {
                 // used for direct type relationship
                 this.$changes[value.$parentField] = value;
+                this.$allChanges[value.$parentField] = value;
 
             } else {
                 // basic types
                 this.$changes[field] = this[`_${field}`];
+                this.$allChanges[field] = this[`_${field}`];
             }
         }
 
@@ -342,7 +347,9 @@ export abstract class Schema {
         return this;
     }
 
-    encode(root: boolean = true, encodedBytes = []) {
+    encode(root: boolean = true, encodeAll = false) {
+        let encodedBytes = [];
+
         const endStructure = () => {
             if (!root) {
                 encodedBytes.push(END_OF_STRUCTURE);
@@ -350,19 +357,22 @@ export abstract class Schema {
         }
 
         // skip if nothing has changed
-        if (!this.$changed) {
+        if (!this.$changed && !encodeAll) {
             endStructure();
             return encodedBytes;
         }
 
         const schema = this._schema;
         const indexes = this._indexes;
+        const changes = (encodeAll) 
+            ? this.$allChanges
+            : this.$changes;
 
-        for (const field in this.$changes) {
+        for (const field in changes) {
             let bytes: number[] = [];
 
             const type = schema[field];
-            const value = this.$changes[field];
+            const value = changes[field];
             const fieldIndex = indexes[field];
 
             // skip unchagned fields
@@ -374,7 +384,7 @@ export abstract class Schema {
                 encode.number(bytes, fieldIndex);
 
                 // encode child object
-                bytes = bytes.concat((value as Schema).encode(false));
+                bytes = bytes.concat((value as Schema).encode(false, encodeAll));
 
                 // ensure parent is set
                 // in case it was manually instantiated
@@ -416,7 +426,7 @@ export abstract class Schema {
                             item.$parentField = [field, i];
                         }
 
-                        bytes = bytes.concat(item.encode(false));
+                        bytes = bytes.concat(item.encode(false, encodeAll));
 
                     } else {
                         encode.number(bytes, i);
@@ -443,7 +453,9 @@ export abstract class Schema {
                         : mapKeys[keys[i]];
 
                     const item = this[`_${field}`][key];
-                    const mapItemIndex = this[`_${field}MapIndex`][key];
+                    const mapItemIndex = (encodeAll)
+                        ? undefined
+                        : this[`_${field}MapIndex`][key];
 
                     // encode index change
                     if (item && item.$parentIndexChange >= 0) {
@@ -464,7 +476,7 @@ export abstract class Schema {
                     if (item instanceof Schema) {
                         item.$parent = this;
                         item.$parentField = [field, key];
-                        bytes = bytes.concat(item.encode(false));
+                        bytes = bytes.concat(item.encode(false, encodeAll));
 
                     } else if (item !== undefined) {
                         encodePrimitiveType((type as any).map, bytes, item);
@@ -494,6 +506,19 @@ export abstract class Schema {
         this.$changes = {};
 
         return encodedBytes;
+    }
+
+    encodeAll () {
+        return this.encode(true, true);
+    }
+
+    toJSON () {
+        const schema = this._schema;
+        const obj = {}
+        for (let field in schema) {
+            obj[field] = this[`_${field}`];
+        }
+        return obj;
     }
 }
 
