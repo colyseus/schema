@@ -550,7 +550,7 @@ describe("Schema", () => {
             assert.equal(decodedState.player.y, 50);
         });
 
-        it("should support array of strings", () => {
+        xit("should support array of strings", () => {
             class MyState extends Schema {
                 @type(["string"])
                 arrayOfStrings: string[];
@@ -592,7 +592,7 @@ describe("Schema", () => {
             assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584]);
         });
 
-        it("should support map of strings", () => {
+        xit("should support map of strings", () => {
             class MyState extends Schema {
                 @type({ map: "string" })
                 mapOfStrings: {[id: string]: string};
