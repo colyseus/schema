@@ -603,7 +603,7 @@ export function type (type: DefinitionType) {
                             delete obj[prop];
 
                             // ensure new value has a parent
-                            if (previousValue.$parent) {
+                            if (previousValue && previousValue.$parent) {
                                 previousValue.$parent.markAsChanged(field, previousValue);
                             }
 

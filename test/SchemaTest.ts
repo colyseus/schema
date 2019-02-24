@@ -182,6 +182,16 @@ describe("Schema", () => {
 
     });
 
+    describe("API", () => {
+        it("should allow deleting non-existing items", () => {
+            assert.doesNotThrow(() => {
+                const state = new State();
+                state.mapOfPlayers = new MapSchema<Player>();
+                delete state.mapOfPlayers['jake']
+            });
+        });
+    });
+
     describe("encoding/decoding", () => {
         it("should encode/decode STRING", () => {
             const state = new State();
