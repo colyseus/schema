@@ -1,5 +1,6 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
+import * as nanoid from "nanoid";
 
 import { DataChange } from './../src/annotations';
 import { State, Player } from "./Schema";
@@ -276,6 +277,28 @@ describe("Change API", () => {
 
             sinon.assert.calledTwice(onAddSpy);
             sinon.assert.calledOnce(onRemoveSpy);
+        })
+
+        it("should not loose reference when add / remove is performed at once", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema({
+                [nanoid(8)]: new Player("food 1", Math.random() * 2000, Math.random() * 2000),
+                [nanoid(8)]: new Player("food 2", Math.random() * 2000, Math.random() * 2000),
+                'jake': new Player("Jake Badlands", Math.random() * 2000, Math.random() * 2000)
+            });
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            // increase "jake"'s radius, delete one food, insert another.
+            state.mapOfPlayers['jake'].x += Math.random() * 2;
+            state.mapOfPlayers['jake'].y += Math.random() * 2;
+            state.mapOfPlayers[nanoid(8)] = new Player("food 3", Math.random() * 2000, Math.random() * 2000);
+            delete state.mapOfPlayers[Object.keys(state.mapOfPlayers)[0]];
+            decodedState.decode(state.encode());
+
+            delete state.mapOfPlayers['jake'];
+            decodedState.decode(state.encode());
         })
         
         it("should call onAdd 100 times", () => {
