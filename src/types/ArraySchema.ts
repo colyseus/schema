@@ -6,16 +6,9 @@ export class ArraySchema<T=any> extends Array<T> {
 
         Object.setPrototypeOf(this, Object.create(ArraySchema.prototype));
         Object.defineProperties(this, {
-            onAdd: {
-                value: undefined,
-                enumerable: false,
-                writable: true
-            },
-            onRemove: {
-                value: undefined,
-                enumerable: false,
-                writable: true
-            },
+            onAdd:    { value: undefined, enumerable: false, writable: true },
+            onRemove: { value: undefined, enumerable: false, writable: true },
+            onChange: { value: undefined, enumerable: false, writable: true },
             clone: {
                 value: () => {
                     const arr = new ArraySchema(...this);
@@ -28,6 +21,8 @@ export class ArraySchema<T=any> extends Array<T> {
     }
 
     clone: () => ArraySchema<T>;
+
     onAdd: (item: T, index: number) => void;
     onRemove: (item: T, index: number) => void;
+    onChange: (item: T, index: number) => void;
 }

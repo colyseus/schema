@@ -263,19 +263,21 @@ export abstract class Schema {
                 // serializagion
                 let hasIndexChange = false;
 
+                const mapKeys = Object.keys(valueRef);
+
                 for (let i = 0; i < length; i++) {
                     // index change check
                     let previousKey: string;
                     if (decode.indexChangeCheck(bytes, it)) {
                         decode.uint8(bytes, it);
-                        previousKey = Object.keys(valueRef)[decode.number(bytes, it)];
+                        previousKey = mapKeys[decode.number(bytes, it)];
                         hasIndexChange = true;
                     }
 
                     const hasMapIndex = decode.numberCheck(bytes, it);
 
                     const newKey = (hasMapIndex)
-                        ? Object.keys(valueRef)[decode.number(bytes, it)]
+                        ? mapKeys[decode.number(bytes, it)]
                         : decode.string(bytes, it);
 
                     let item;
@@ -320,6 +322,9 @@ export abstract class Schema {
 
                         if (isNew && valueRef.onAdd) {
                             valueRef.onAdd(item, newKey);
+
+                        } else if (valueRef.onChange) {
+                            valueRef.onChange(item, newKey);
                         }
                     }
                 }
@@ -448,14 +453,20 @@ export abstract class Schema {
                 const mapKeys = Object.keys(this[`_${field}`]);
 
                 for (let i = 0; i < keys.length; i++) {
-                    let key = (typeof(keys[i]) === "string")
-                        ? keys[i]
-                        : mapKeys[keys[i]];
-
+                    const key = mapKeys[keys[i]] || keys[i];
                     const item = this[`_${field}`][key];
-                    const mapItemIndex = (encodeAll)
-                        ? undefined
-                        : this[`_${field}MapIndex`][key];
+
+                    let mapItemIndex = this[`_${field}`]._indexes[key];
+
+                    if (encodeAll) {
+                        if (item) {
+                            mapItemIndex = undefined;
+
+                        } else {
+                            // previously deleted items are skipped during `encodeAll`
+                            continue;
+                        }
+                    }
 
                     // encode index change
                     if (item && item.$parentIndexChange >= 0) {
@@ -465,17 +476,24 @@ export abstract class Schema {
                     }
 
                     if (mapItemIndex !== undefined) {
-                        key = mapItemIndex;
-                        encode.number(bytes, key);
+                        encode.number(bytes, mapItemIndex);
 
                     } else {
+                        // TODO: remove item
                         encode.string(bytes, key);
-                        this[`_${field}MapIndex`][key] = Object.keys(this[`_${field}`]).indexOf(key);
+
+                        const mapKey = mapKeys.indexOf(key);
+                        if (mapKey < 0) {
+                            delete this[`_${field}`][key]
+
+                        } else {
+                            this[`_${field}`]._indexes[key] = mapKey;
+                        }
                     }
 
                     if (item instanceof Schema) {
                         item.$parent = this;
-                        item.$parentField = [field, key];
+                        item.$parentField = [field, keys[i]];
                         bytes = bytes.concat(item.encode(false, encodeAll));
 
                     } else if (item !== undefined) {
@@ -486,6 +504,8 @@ export abstract class Schema {
                     }
 
                 }
+
+                this[`_${field}`]._removeIndexes();
 
             } else {
                 encode.number(bytes, fieldIndex);
@@ -557,20 +577,16 @@ export function type (type: DefinitionType) {
                  * Create Proxy for array or map items
                  */
                 if (isArray || isMap) {
-                    if (isMap) {
-                        this[`${fieldCached}MapIndex`] = {};
-                    }
-
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, setValue) => {
                             if (prop !== "length") {
                                 // ensure new value has a parent
-                                const key = (isArray) ? Number(prop) : prop;
+                                const key = (isArray) ? Number(prop) : String(prop);
 
                                 if (setValue.$parentField && setValue.$parentField[1] !== key) {
                                     if (isMap) {
-                                        const indexChange = this[`${fieldCached}MapIndex`][setValue.$parentField[1]];
+                                        const indexChange = this[`${fieldCached}`]._indexes[setValue.$parentField[1]];
                                         setValue.$parentIndexChange = indexChange;
 
                                     } else {
@@ -601,6 +617,16 @@ export function type (type: DefinitionType) {
                         deleteProperty: (obj, prop) => {
                             const previousValue = obj[prop];
                             delete obj[prop];
+
+                            if (isMap) {
+                                const fieldMapIndex = this[fieldCached]._indexes;
+
+                                const propIndex = fieldMapIndex[prop];
+                                delete fieldMapIndex[prop];
+
+                                // enqueue field for removal
+                                this[fieldCached]._removedIndexes.push(propIndex);
+                            }
 
                             // ensure new value has a parent
                             if (previousValue && previousValue.$parent) {
@@ -644,7 +670,6 @@ export function type (type: DefinitionType) {
                         if (value[key] instanceof Schema) {
                             value[key].$parent = this;
                             value[key].$parentField = [field, key];
-                            // console.log("directly assigning:", value[key].$parentField);
                             this.markAsChanged(field, value[key]);
 
                         } else {

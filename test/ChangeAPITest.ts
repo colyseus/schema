@@ -25,7 +25,7 @@ describe("Change API", () => {
 
             decodedState.decode(state.encode());
             sinon.assert.calledOnce(onChangeSpy);
-        })
+        });
 
         it("should trigger onChange with multiple values", () => {
             const state = new State();
@@ -184,7 +184,6 @@ describe("Change API", () => {
         });
     });
 
-
     describe("MapSchema", () => {
         it("detecting onChange on maps", () => {
             const state = new State();
@@ -242,7 +241,7 @@ describe("Change API", () => {
             decodedState.decode(encoded);
 
             sinon.assert.calledTwice(onChangeSpy);
-        })
+        });
 
         it("should call onAdd / onRemove on map", () => {
             const state = new State();
@@ -277,31 +276,138 @@ describe("Change API", () => {
 
             sinon.assert.calledTwice(onAddSpy);
             sinon.assert.calledOnce(onRemoveSpy);
-        })
+        });
 
         it("should not loose reference when add / remove is performed at once", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema({
-                [nanoid(8)]: new Player("food 1", Math.random() * 2000, Math.random() * 2000),
-                [nanoid(8)]: new Player("food 2", Math.random() * 2000, Math.random() * 2000),
-                'jake': new Player("Jake Badlands", Math.random() * 2000, Math.random() * 2000)
+                ['food1']: new Player("food 1", 1, 1),
+                ['food2']: new Player("food 2", 2, 2),
+                ['food3']: new Player("food 3", 3, 3),
+                ['food4']: new Player("food 4", 4, 4),
+                ['food5']: new Player("food 5", 5, 5),
+                ['food6']: new Player("food 6", 6, 6),
+                ['food7']: new Player("food 7", 7, 7),
+                ['food8']: new Player("food 8", 8, 8),
+                ['food9']: new Player("food 9", 9, 9),
+                'player': new Player("Player", 10, 10)
             });
 
             const decodedState = new State();
             decodedState.decode(state.encode());
 
-            // increase "jake"'s radius, delete one food, insert another.
-            state.mapOfPlayers['jake'].x += Math.random() * 2;
-            state.mapOfPlayers['jake'].y += Math.random() * 2;
-            state.mapOfPlayers[nanoid(8)] = new Player("food 3", Math.random() * 2000, Math.random() * 2000);
-            delete state.mapOfPlayers[Object.keys(state.mapOfPlayers)[0]];
+            /* CHANGESET */
+            let keyAddition = 'food10';
+            let keyRemoval = 'food2';
+            decodedState.mapOfPlayers.onAdd = (player: Player, key: string) => { assert.equal(key, keyAddition); }
+            decodedState.mapOfPlayers.onRemove = (player: Player, key: string) => { assert.equal(key, keyRemoval); }
+            decodedState.mapOfPlayers.onChange = (player: Player, key: string) => { assert.equal(key, 'player'); }
+
+            const unchangedSpies = ['food1', 'food2', 'food3', 'food4', 'food5', 'food6', 'food7', 'food8', 'food9'].map((key) => {
+                decodedState.mapOfPlayers[key].onChange = function () {};
+                return sinon.spy(decodedState.mapOfPlayers[key], 'onChange');
+            });
+
+            // move "player", delete one food, insert another.
+            state.mapOfPlayers['player'].x += 1;
+            state.mapOfPlayers['player'].y += 1;
+            state.mapOfPlayers[keyAddition] = new Player("food 10", 10, 10);
+            delete state.mapOfPlayers[keyRemoval];
+
             decodedState.decode(state.encode());
 
-            delete state.mapOfPlayers['jake'];
+            assert.equal(decodedState.mapOfPlayers['food1'].x, 1);
+            assert.equal(decodedState.mapOfPlayers['food2'], undefined);
+            assert.equal(decodedState.mapOfPlayers['food3'].x, 3);
+            assert.equal(decodedState.mapOfPlayers['food4'].x, 4);
+            assert.equal(decodedState.mapOfPlayers['food5'].x, 5);
+            assert.equal(decodedState.mapOfPlayers['food6'].x, 6);
+            assert.equal(decodedState.mapOfPlayers['food7'].x, 7);
+            assert.equal(decodedState.mapOfPlayers['food8'].x, 8);
+            assert.equal(decodedState.mapOfPlayers['food9'].x, 9);
+            assert.equal(decodedState.mapOfPlayers['food10'].x, 10);
+            assert.equal(decodedState.mapOfPlayers['player'].x, 11);
+            // "food"'s onChange should NOT be called.
+            unchangedSpies.forEach((onChangedSpy) => sinon.assert.notCalled(onChangedSpy));
+
+            /* 
+             * CHANGESET
+             */
+            state.mapOfPlayers['player'].x += 1;
+            state.mapOfPlayers['player'].y += 1;
             decodedState.decode(state.encode());
-        })
-        
-        it("should call onAdd 100 times", () => {
+
+            assert.equal(decodedState.mapOfPlayers['food1'].x, 1);
+            assert.equal(decodedState.mapOfPlayers['food2'], undefined);
+            assert.equal(decodedState.mapOfPlayers['food3'].x, 3);
+            assert.equal(decodedState.mapOfPlayers['food4'].x, 4);
+            assert.equal(decodedState.mapOfPlayers['food5'].x, 5);
+            assert.equal(decodedState.mapOfPlayers['food6'].x, 6);
+            assert.equal(decodedState.mapOfPlayers['food7'].x, 7);
+            assert.equal(decodedState.mapOfPlayers['food8'].x, 8);
+            assert.equal(decodedState.mapOfPlayers['food9'].x, 9);
+            assert.equal(decodedState.mapOfPlayers['food10'].x, 10);
+            assert.equal(decodedState.mapOfPlayers['player'].x, 12);
+            // "food"'s onChange should NOT be called.
+            unchangedSpies.forEach((onChangedSpy) => sinon.assert.notCalled(onChangedSpy));
+
+            /* 
+             * CHANGESET
+             */
+            keyAddition = 'food11';
+            keyRemoval = 'food5';
+
+            // move "player", delete one food, insert another.
+            state.mapOfPlayers['player'].x += 1;
+            state.mapOfPlayers['player'].y += 1;
+            state.mapOfPlayers[keyAddition] = new Player("food 11", 11, 11);
+            delete state.mapOfPlayers[keyRemoval];
+
+            // console.log("STATE =>", state);
+
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.mapOfPlayers['food1'].x, 1);
+            assert.equal(decodedState.mapOfPlayers['food2'], undefined);
+            assert.equal(decodedState.mapOfPlayers['food3'].x, 3);
+            assert.equal(decodedState.mapOfPlayers['food4'].x, 4);
+            assert.equal(decodedState.mapOfPlayers['food5'], undefined);
+            assert.equal(decodedState.mapOfPlayers['food6'].x, 6);
+            assert.equal(decodedState.mapOfPlayers['food7'].x, 7);
+            assert.equal(decodedState.mapOfPlayers['food8'].x, 8);
+            assert.equal(decodedState.mapOfPlayers['food9'].x, 9);
+            assert.equal(decodedState.mapOfPlayers['food10'].x, 10);
+            assert.equal(decodedState.mapOfPlayers['food11'].x, 11);
+            assert.equal(decodedState.mapOfPlayers['player'].x, 13);
+            // "food"'s onChange should NOT be called.
+            unchangedSpies.forEach((onChangedSpy) => sinon.assert.notCalled(onChangedSpy));
+
+            /* 
+             * CHANGESET
+             */
+
+            state.mapOfPlayers['player'].x += 1;
+            state.mapOfPlayers['player'].y += 1;
+
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.mapOfPlayers['food1'].x, 1);
+            assert.equal(decodedState.mapOfPlayers['food2'], undefined);
+            assert.equal(decodedState.mapOfPlayers['food3'].x, 3);
+            assert.equal(decodedState.mapOfPlayers['food4'].x, 4);
+            assert.equal(decodedState.mapOfPlayers['food5'], undefined);
+            assert.equal(decodedState.mapOfPlayers['food6'].x, 6);
+            assert.equal(decodedState.mapOfPlayers['food7'].x, 7);
+            assert.equal(decodedState.mapOfPlayers['food8'].x, 8);
+            assert.equal(decodedState.mapOfPlayers['food9'].x, 9);
+            assert.equal(decodedState.mapOfPlayers['food10'].x, 10);
+            assert.equal(decodedState.mapOfPlayers['food11'].x, 11);
+            assert.equal(decodedState.mapOfPlayers['player'].x, 14);
+            // "food"'s onChange should NOT be called.
+            unchangedSpies.forEach((onChangedSpy) => sinon.assert.notCalled(onChangedSpy));
+        });
+
+        it("should call onAdd 5 times", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema({
                 'jake': new Player("Jake")
@@ -316,16 +422,16 @@ describe("Change API", () => {
             const onAddSpy = sinon.spy(decodedState.mapOfPlayers, 'onAdd');
 
             delete state.mapOfPlayers['jake'];
-            for (let i = 0; i < 100; i++) {
+            for (let i = 0; i < 5; i++) {
                 state.mapOfPlayers[i] = new Player("Player " + i, Math.random() * 2000, Math.random() * 2000);
             }
 
             let encoded = state.encode();
             decodedState.decode(encoded);
 
-            assert.equal(Object.keys(decodedState.mapOfPlayers).length, 100);
-            sinon.assert.callCount(onAddSpy, 100);
-        })
+            assert.equal(Object.keys(decodedState.mapOfPlayers).length, 5);
+            sinon.assert.callCount(onAddSpy, 5);
+        });
 
         it("detecting onRemove on map items", () => {
             const state = new State();
@@ -359,6 +465,28 @@ describe("Change API", () => {
             sinon.assert.calledOnce(onChangeSpy);
             sinon.assert.calledOnce(onItemRemoveSpy);
         });
-    })
+    });
+
+    describe("encodeAll", () => {
+        it("shouldn't trigger onRemove for previously removed items", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>({
+                'player': new Player("Player One", 0, 0)
+            });
+            state.encode();
+
+            delete state.mapOfPlayers['player'];
+            state.encode();
+
+            const decodedState = new State();
+            decodedState.mapOfPlayers = new MapSchema<Player>();
+            decodedState.mapOfPlayers.onRemove = function() {}
+            const onRemoveSpy = sinon.spy(decodedState.mapOfPlayers, 'onRemove');
+
+            decodedState.decode(state.encodeAll());
+
+            sinon.assert.notCalled(onRemoveSpy);
+        });
+    });
 
 });
