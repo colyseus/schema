@@ -327,8 +327,6 @@ describe("Change API", () => {
             assert.equal(decodedState.mapOfPlayers['food9'].x, 9);
             assert.equal(decodedState.mapOfPlayers['food10'].x, 10);
             assert.equal(decodedState.mapOfPlayers['player'].x, 11);
-            // "food"'s onChange should NOT be called.
-            unchangedSpies.forEach((onChangedSpy) => sinon.assert.notCalled(onChangedSpy));
 
             /* 
              * CHANGESET
@@ -348,8 +346,6 @@ describe("Change API", () => {
             assert.equal(decodedState.mapOfPlayers['food9'].x, 9);
             assert.equal(decodedState.mapOfPlayers['food10'].x, 10);
             assert.equal(decodedState.mapOfPlayers['player'].x, 12);
-            // "food"'s onChange should NOT be called.
-            unchangedSpies.forEach((onChangedSpy) => sinon.assert.notCalled(onChangedSpy));
 
             /* 
              * CHANGESET
@@ -362,8 +358,6 @@ describe("Change API", () => {
             state.mapOfPlayers['player'].y += 1;
             state.mapOfPlayers[keyAddition] = new Player("food 11", 11, 11);
             delete state.mapOfPlayers[keyRemoval];
-
-            // console.log("STATE =>", state);
 
             decodedState.decode(state.encode());
 
@@ -379,8 +373,6 @@ describe("Change API", () => {
             assert.equal(decodedState.mapOfPlayers['food10'].x, 10);
             assert.equal(decodedState.mapOfPlayers['food11'].x, 11);
             assert.equal(decodedState.mapOfPlayers['player'].x, 13);
-            // "food"'s onChange should NOT be called.
-            unchangedSpies.forEach((onChangedSpy) => sinon.assert.notCalled(onChangedSpy));
 
             /* 
              * CHANGESET
@@ -403,6 +395,15 @@ describe("Change API", () => {
             assert.equal(decodedState.mapOfPlayers['food10'].x, 10);
             assert.equal(decodedState.mapOfPlayers['food11'].x, 11);
             assert.equal(decodedState.mapOfPlayers['player'].x, 14);
+
+            /* 
+             * ADDS SECOND DECODER 
+             */
+            const secondDecodedState = new State();
+            secondDecodedState.decode(state.encodeAll());
+
+            assert.equal(JSON.stringify(secondDecodedState), JSON.stringify(decodedState));
+
             // "food"'s onChange should NOT be called.
             unchangedSpies.forEach((onChangedSpy) => sinon.assert.notCalled(onChangedSpy));
         });

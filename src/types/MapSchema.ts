@@ -19,16 +19,16 @@ export class MapSchema<T=any> {
             },
 
             _indexes: { value: {},        enumerable: false, writable: true },
-            _removedIndexes: { value: [], enumerable: false, writable: true },
-            _removeIndexes: {
+            _updateIndexes: {
                 value: () => {
-                    for (const index of this._removedIndexes) {
-                        for (const field in this._indexes) {
-                            if (this._indexes[field] > index) {
-                                this._indexes[field]--;
-                            }
-                        }
+                    let index: number = 0;
+
+                    let indexes: any = {};
+                    for (let key in this) {
+                        indexes[key] = index++;
                     }
+
+                    this._indexes = indexes;
                 }
             },
         });
@@ -43,6 +43,5 @@ export class MapSchema<T=any> {
     onChange: (item: T, key: string) => void;
 
     _indexes: { [id: string]: number };
-    _removedIndexes: number[];
-    _removeIndexes: () => void;
+    _updateIndexes: () => void;
 }

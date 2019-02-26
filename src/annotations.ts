@@ -266,6 +266,15 @@ export abstract class Schema {
                 const mapKeys = Object.keys(valueRef);
 
                 for (let i = 0; i < length; i++) {
+                    // `encodeAll` may indicate a higher number of indexes it actually encodes
+                    // TODO: do not encode a higher number than actual encoded entries
+                    if (
+                        bytes[it.offset] === undefined ||
+                        bytes[it.offset] === END_OF_STRUCTURE
+                    ) {
+                        break;
+                    }
+
                     // index change check
                     let previousKey: string;
                     if (decode.indexChangeCheck(bytes, it)) {
@@ -444,10 +453,10 @@ export abstract class Schema {
                 }
 
             } else if ((type as any).map) {
+                // encode Map of type
                 encode.number(bytes, fieldIndex);
 
-                // encode Map of type
-                const keys = value;
+                const keys = value; // TODO: during `encodeAll`, removed entries are not going to be encoded
                 encode.number(bytes, keys.length)
 
                 const mapKeys = Object.keys(this[`_${field}`]);
@@ -483,10 +492,7 @@ export abstract class Schema {
                         encode.string(bytes, key);
 
                         const mapKey = mapKeys.indexOf(key);
-                        if (mapKey < 0) {
-                            delete this[`_${field}`][key]
-
-                        } else {
+                        if (mapKey >= 0) {
                             this[`_${field}`]._indexes[key] = mapKey;
                         }
                     }
@@ -505,7 +511,7 @@ export abstract class Schema {
 
                 }
 
-                this[`_${field}`]._removeIndexes();
+                this[`_${field}`]._updateIndexes();
 
             } else {
                 encode.number(bytes, fieldIndex);
@@ -617,16 +623,6 @@ export function type (type: DefinitionType) {
                         deleteProperty: (obj, prop) => {
                             const previousValue = obj[prop];
                             delete obj[prop];
-
-                            if (isMap) {
-                                const fieldMapIndex = this[fieldCached]._indexes;
-
-                                const propIndex = fieldMapIndex[prop];
-                                delete fieldMapIndex[prop];
-
-                                // enqueue field for removal
-                                this[fieldCached]._removedIndexes.push(propIndex);
-                            }
 
                             // ensure new value has a parent
                             if (previousValue && previousValue.$parent) {
