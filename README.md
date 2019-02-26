@@ -5,7 +5,7 @@
 
   <p>
     A binary schema-based serialization algorithm. <br>
-    Although it was born to solve a <a href="https://github.com/colyseus/colyseus">Colyseus</a> issue, this library can be used standalone.
+    Although it was born to be used on <a href="https://github.com/colyseus/colyseus">Colyseus</a>, this library can be used as standalone.
   </p>
 
   <a href="https://travis-ci.org/colyseus/schema">
@@ -120,7 +120,7 @@ arrayOfStrings: ArraySchema<string>;
 #### Array of custom `Schema` type
 
 ```typescript
-@type([ Player ]) 
+@type([ Player ])
 arrayOfPlayers: ArraySchema<Player>;
 ```
 
