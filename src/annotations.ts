@@ -648,7 +648,7 @@ export class Reflection extends Schema {
         reflection.decode(bytes);
 
         const schemaTypes: typeof Schema[] = reflection.types.reverse().map(_ => {
-            return class schemaType extends Schema { };
+            return class _ extends Schema { };
         })
 
         reflection.types.forEach((reflectionType, i) => {
@@ -659,18 +659,18 @@ export class Reflection extends Schema {
                     const refType = schemaTypes[field.referencedType];
 
                     if (field.type === "array") {
-                        type([ refType ])(schemaType, field.name);
+                        type([ refType ])(schemaType.prototype, field.name);
 
                     } else if (field.type === "map") {
-                        type({ map: refType })(schemaType, field.name);
+                        type({ map: refType })(schemaType.prototype, field.name);
 
                     } else if (field.type === "ref") {
-                        type(refType)(schemaType, field.name);
+                        type(refType)(schemaType.prototype, field.name);
 
                     }
 
                 } else {
-                    type(field.type)(schemaType, field.name);
+                    type(field.type)(schemaType.prototype, field.name);
                 }
             });
         })
