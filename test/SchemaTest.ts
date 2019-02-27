@@ -153,16 +153,33 @@ describe("Schema", () => {
             assert.equal(decoded.varint, 476.7620516517428);
         });
 
+        it("boolean", () => {
+            class Data extends Schema { @type("boolean") bool; }
+
+            let data = new Data();
+            data.bool = false;
+
+            let decoded = new Data();
+            decoded.decode(data.encode());
+            assert.equal(decoded.bool, false);
+
+            data.bool = true;
+            decoded.decode(data.encode());
+            assert.equal(decoded.bool, true);
+        });
+
         it("string", () => {
             class Data extends Schema { @type("string") str; }
 
             let data = new Data();
-            data.str = "Hello world!";
-
-            let encoded = data.encode();
+            data.str = "";
 
             const decoded = new Data();
-            decoded.decode(encoded);
+            decoded.decode(data.encode());
+            assert.equal(decoded.str, "");
+
+            data.str = "Hello world!";
+            decoded.decode(data.encode());
             assert.equal(decoded.str, "Hello world!");
         });
 

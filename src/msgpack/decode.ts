@@ -133,7 +133,9 @@ export function readFloat64 (bytes: number[], it: Iterator) {
     return _float64[0];
 };
 
-/****/
+export function boolean (bytes: number[], it: Iterator) {
+    return uint8(bytes, it) > 0;
+};
 
 export function string (bytes, it: Iterator) {
   const prefix = bytes[it.offset++];

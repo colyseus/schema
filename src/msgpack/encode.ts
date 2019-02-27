@@ -140,6 +140,10 @@ export function writeFloat64 (bytes, value) {
     int32(bytes, _int32[_isLittleEndian ? 1 : 0]);
 };
 
+export function boolean (bytes, value) {
+    return uint8(bytes, value ? 1 : 0);
+};
+
 export function string (bytes, value) {
   let length = utf8Length(value);
   let size = 0;

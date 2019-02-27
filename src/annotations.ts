@@ -2,12 +2,14 @@ import { END_OF_STRUCTURE, NIL, INDEX_CHANGE } from './spec';
 
 import * as encode from "./msgpack/encode";
 import * as decode from "./msgpack/decode";
+
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema } from './types/MapSchema';
 
 export type PrimitiveType =
     "string" |
     "number" |
+    "boolean" |
     "int8" |
     "uint8" |
     "int16" |
@@ -73,7 +75,7 @@ export abstract class Schema {
         const fieldSchema = this._schema[field];
         this.$changed = true;
 
-        if (value) {
+        if (value !== undefined) {
             if (
                 Array.isArray(value.$parentField) || 
                 fieldSchema && (
@@ -538,6 +540,10 @@ export abstract class Schema {
         return this.encode(true, true);
     }
 
+    encodeSchema () {
+        return ReflectionSchema.reflect(this).encode();
+    }
+
     toJSON () {
         const schema = this._schema;
         const obj = {}
@@ -545,6 +551,52 @@ export abstract class Schema {
             obj[field] = this[`_${field}`];
         }
         return obj;
+    }
+}
+
+export class ReflectionField extends Schema {
+    @type("string")
+    type: string;
+
+    @type("number")
+    referencedType: number;
+}
+
+export class ReflectionTypeSchema extends Schema {
+    @type("uint8")
+    id: number;
+
+    @type([ ReflectionField ])
+    fields: ArraySchema<ReflectionField> = new ArraySchema<ReflectionField>();
+
+}
+
+export class ReflectionSchema extends Schema {
+    @type([ ReflectionTypeSchema ])
+    types: ArraySchema<ReflectionTypeSchema> = new ArraySchema<ReflectionTypeSchema>();
+
+    static reflect (instance: Schema) {
+        const reflection = new ReflectionSchema();
+
+        const schema = instance._schema
+        for (let fieldName in schema) {
+            const field = new ReflectionField();
+
+            let fieldType;
+            if (typeof (schema[fieldName]) === "string") {
+                fieldType = schema[fieldName];
+
+            } else if (Array.isArray(schema[fieldName])) {
+                fieldType = "array";
+
+            } else if ((schema[fieldName] as any).map) {
+                fieldType = "map";
+            }
+
+            field.type = fieldType;
+        }
+
+        return reflection;
     }
 }
 

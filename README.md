@@ -75,6 +75,7 @@ See [example/State.ts](example/State.ts).
 |------|-------------|------------|
 | string | utf8 strings | maximum byte size of `4294967295` |
 | number | auto-detects `int` or `float` type. (extra byte on output) | `0` to `18446744073709551615` |
+| boolean | `true` or `false` | `0` or `1` |
 | int8 | signed 8-bit integer | `-128` to `127` |
 | uint8 | unsigned 8-bit integer | `0` to `255` |
 | int16 | signed 16-bit integer | `-32768` to `32767` |
