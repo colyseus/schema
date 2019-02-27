@@ -65,7 +65,7 @@ export class State extends Schema {
 }
 ```
 
-See [example/State.ts](example/State.ts).
+See [example](test/Schema.ts).
 
 ## Supported types
 
