@@ -541,7 +541,7 @@ export abstract class Schema {
     }
 
     encodeSchema () {
-        return ReflectionSchema.reflect(this).encode();
+        return Reflection.reflect(this).encode();
     }
 
     toJSON () {
@@ -562,7 +562,7 @@ export class ReflectionField extends Schema {
     referencedType: number;
 }
 
-export class ReflectionTypeSchema extends Schema {
+export class ReflectionType extends Schema {
     @type("uint8")
     id: number;
 
@@ -571,12 +571,12 @@ export class ReflectionTypeSchema extends Schema {
 
 }
 
-export class ReflectionSchema extends Schema {
-    @type([ ReflectionTypeSchema ])
-    types: ArraySchema<ReflectionTypeSchema> = new ArraySchema<ReflectionTypeSchema>();
+export class Reflection extends Schema {
+    @type([ ReflectionType ])
+    types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
 
     static reflect (instance: Schema) {
-        const reflection = new ReflectionSchema();
+        const reflection = new Reflection();
 
         const schema = instance._schema
         for (let fieldName in schema) {
