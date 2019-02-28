@@ -15,6 +15,15 @@ describe("Reflection", () => {
         );
     });
 
+    it("should initialize ref types with empty structures", () => {
+        const state = new State();
+        const stateReflected: State = Reflection.decode(Reflection.encode(state))
+
+        assert.equal(stateReflected.arrayOfPlayers.length, 0);
+        assert.equal(Object.keys(stateReflected.mapOfPlayers).length, 0);
+        assert.equal(JSON.stringify(stateReflected.player), "{}");
+    });
+
     it("should decode schema and be able to use it", () => {
         const state = new State();
         const stateReflected = Reflection.decode(Reflection.encode(state))

@@ -77,20 +77,6 @@ describe("Change API", () => {
             decodedState.onChange = function (changes: DataChange[]) {
                 assert.equal(changes.length, 1);
                 assert.equal(changes[0].field, "player");
-
-                // not having a previous value means this is a new object
-                // which would only define the `onChange` function once per object.
-                if (!changes[0].previousValue) {
-                    const player = changes[0].value as Player;
-                    player.onChange = function (changes: DataChange[]) {
-                        assert.equal(changes.length, 1);
-                        assert.equal(changes[0].field, "name");
-                        assert.equal(changes[0].value, "Snake");
-                        assert.equal(changes[0].previousValue, "Jake");
-                    }
-
-                    playerSpy = sinon.spy(player, 'onChange');
-                }
             }
             let onChangeSpy = sinon.spy(decodedState, 'onChange');
 
@@ -98,6 +84,14 @@ describe("Change API", () => {
             sinon.assert.calledOnce(onChangeSpy);
 
             state.player.name = "Snake";
+
+            decodedState.player.onChange = function (changes: DataChange[]) {
+                assert.equal(changes.length, 1);
+                assert.equal(changes[0].field, "name");
+                assert.equal(changes[0].value, "Snake");
+                assert.equal(changes[0].previousValue, "Jake");
+            }
+            playerSpy = sinon.spy(decodedState.player, 'onChange');
 
             // overwrite `onChange` for second decode
             decodedState.onChange = function (changes: DataChange[]) {

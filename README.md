@@ -89,7 +89,7 @@ See [example](test/Schema.ts).
 
 ### Declaration:
 
-#### Primitive types (`string`, `number`, etc)
+#### Primitive types (`string`, `number`, `boolean`, etc)
 
 ```typescript
 @type("string")

@@ -599,13 +599,14 @@ export class Reflection extends Schema {
                 field.name = fieldName;
 
                 let fieldType;
+
                 if (typeof (schema[fieldName]) === "string") {
                     fieldType = schema[fieldName];
 
                 } else {
-                    const isSchema = typeof(schema[fieldName])==="function";
+                    const isSchema = typeof (schema[fieldName]) === "function";
                     const isArray = Array.isArray(schema[fieldName]);
-                    const isMap = !isArray && (schema[fieldName] as any).map;
+                    // const isMap = !isArray && (schema[fieldName] as any).map;
 
                     fieldType = (isArray) 
                         ? "array" 
@@ -675,7 +676,31 @@ export class Reflection extends Schema {
             });
         })
 
-        return new (schemaTypes[0] as any);
+        const rootType = new (schemaTypes[0] as any);
+
+        /**
+         * auto-initialize referenced types on root type
+         * to allow registering listeners immediatelly on client-side
+         */
+        for (let fieldName in rootType._schema) {
+            const fieldType = rootType._schema[fieldName];
+
+            if (typeof(fieldType) !== "string") {
+                const isSchema = typeof (fieldType) === "function";
+                const isArray = Array.isArray(fieldType);
+                const isMap = !isArray && (fieldType as any).map;
+
+                rootType[fieldName] = (isArray)
+                    ? new ArraySchema()
+                    : (isMap)
+                        ? new MapSchema()
+                        : (isSchema)
+                            ? new (fieldType as any)()
+                            : undefined;
+            }
+        }
+
+        return rootType;
     }
 }
 
@@ -696,6 +721,10 @@ export function type (type: DefinitionType) {
         constructor._indexes[field] = Object.keys(constructor._schema).length;
         constructor._schema[field] = type;
 
+        /** 
+         * TODO: `isSchema` / `isArray` / `isMap` is repeated on many places! 
+         * need to refactor all of them. 
+         */
         const isArray = Array.isArray(type);
         const isMap = !isArray && (type as any).map;
 
