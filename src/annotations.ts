@@ -63,9 +63,9 @@ export abstract class Schema {
     static _schema: Definition;
     static _indexes: {[field: string]: number};
 
+    public $changed: boolean = false;
     protected $allChanges: { [key: string]: any } = {};
     protected $changes: { [key: string]: any } = {};
-    protected $changed: boolean = false;
 
     protected $parent: Schema;
     protected $parentField: string | (string | number | symbol)[];
