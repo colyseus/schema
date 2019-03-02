@@ -16,19 +16,6 @@
   </a>
 </div>
 
-> WORK-IN-PROGRESS EXPERIMENT OF A NEW SERIALIZATION ALGORITHM FOR [COLYSEUS](https://github.com/gamestdio/colyseus)
-
-Initial thoghts/assumptions:
-- no bottleneck to detect state changes.
-- have a schema definition on both server and client
-- better experience on staticaly-typed languages (C#, C++)
-- mutations should be cheap.
-
-Practical Colyseus issues this should solve:
-- Avoid decoding large objects that haven't been patched
-- Allow to send different patches for each client
-- Better developer experience on statically-typed languages
-
 ## Defining Schema
 
 As Colyseus is written in TypeScript, the schema is defined as type annotations inside the state class. Additional server logic may be added to that class, but client-side generated (not implemented) files will consider only the schema itself.
@@ -106,7 +93,14 @@ name: number;
 player: Player;
 ```
 
-#### Array of a primitive type
+#### Array of custom `Schema` type
+
+```typescript
+@type([ Player ])
+arrayOfPlayers: ArraySchema<Player>;
+```
+
+#### Array of a primitive type (**not currently supported!**)
 
 You can't mix types inside arrays.
 
@@ -118,14 +112,14 @@ arrayOfNumbers: ArraySchema<number>;
 arrayOfStrings: ArraySchema<string>;
 ```
 
-#### Array of custom `Schema` type
+#### Map of custom `Schema` type
 
 ```typescript
-@type([ Player ])
-arrayOfPlayers: ArraySchema<Player>;
+@type({ map: Player })
+mapOfPlayers: MapSchema<Player>;
 ```
 
-#### Map of a primitive type
+#### Map of a primitive type (**not currently supported!**)
 
 You can't mix types inside maps.
 
@@ -135,13 +129,6 @@ mapOfNumbers: MapSchema<number>;
 
 @type({ map: "string" })
 mapOfStrings: MapSchema<string>;
-```
-
-#### Map of custom `Schema` type
-
-```typescript
-@type({ map: Player })
-mapOfPlayers: MapSchema<Player>;
 ```
 
 ## Limitations and best practices
@@ -254,6 +241,19 @@ class Room<T> {
 | Updating x/y of 50 entities after initial state | 342 | 684 |
 | Updating x/y of 100 entities after initial state | 668 | 1529 |
 
+
+## Why 
+
+Initial thoghts/assumptions, for Colyseus:
+- little to no bottleneck for detecting state changes.
+- have a schema definition on both server and client
+- better experience on staticaly-typed languages (C#, C++)
+- mutations should be cheap.
+
+Practical Colyseus issues this should solve:
+- Avoid decoding large objects that haven't been patched
+- Allow to send different patches for each client
+- Better developer experience on statically-typed languages
 
 ## Inspiration:
 
