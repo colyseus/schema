@@ -1,6 +1,5 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
-import * as nanoid from "nanoid";
 
 import { DataChange } from './../src/annotations';
 import { State, Player } from "./Schema";
