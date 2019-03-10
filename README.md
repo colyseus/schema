@@ -131,6 +131,30 @@ mapOfNumbers: MapSchema<number>;
 mapOfStrings: MapSchema<string>;
 ```
 
+### Data filters (experimental)
+
+When using with [Colyseus 0.10](https://github.com/colyseus/colyseus), you may provide a `@filter` per field, to filter out what don't want to serialize for a specific client. 
+
+On the example below, we are filtering entities which are close to the player entity.
+
+```typescript
+import { Schema } from "@colyseus/schema";
+
+export class State extends Schema {
+  @filter(function(this: State, client: any, value: Entity) {
+    const currentPlayer = this.entities[client.sessionId]
+
+    var a = value.x - currentPlayer.x;
+    var b = value.y - currentPlayer.y;
+
+    return (Math.sqrt(a * a + b * b)) <= 10;
+
+  })
+  @type({ map: Unit })
+  entities = new MapSchema<Entity>();
+}
+```
+
 ## Limitations and best practices
 
 - Multi-dimensional arrays are not supported.
@@ -181,55 +205,6 @@ statefy ./schemas/State.ts --output ./unity-project/State.cs
 
 # Haxe
 statefy ./schemas/State.ts --output ./haxe-project/State.hx
-```
-
-## Aimed usage on Colyseus
-
-This is the ideal scenario that should be possible to achieve.
-
-### Customizing which data each client will receive
-
-```typescript
-class MyRoom extends Room<State> {
-  onInit() {
-    this.setState(new State());
-  }
-
-  onPatch (client: Client, state: State) {
-    const player = state.players[client.sessionId];
-
-    // filter enemies closer to current player
-    state.enemies = state.enemies.filter(enemy =>
-      distance(enemy.x, enemy.y, player.x, player.y) < 50);
-
-    return state;
-  }
-}
-```
-
-### Broadcasting different patches for each client
-
-```typescript
-class Room<T> {
-  // ...
-  public onPatch?(client: Client, state: T);
-
-  // ...
-  broadcastPatch() {
-    if (this.onPatch) {
-      for (let i=0; i<this.clients.length; i++) {
-        const client = this.clients[i];
-
-        const filteredState = this.onPatch(client, this.state.clone());
-        send(client, filteredState.encode());
-      }
-
-    } else {
-      this.broadcast(this.state.encode());
-    }
-  }
-
-}
 ```
 
 ## Benchmarks:
