@@ -133,12 +133,12 @@ mapOfStrings: MapSchema<string>;
 
 ### Data filters (experimental)
 
-When using with [Colyseus 0.10](https://github.com/colyseus/colyseus), you may provide a `@filter` per field, to filter out what you don't want to serialize for a specific client. 
+When using with [Colyseus 0.10](https://github.com/colyseus/colyseus), you may provide a `@filter` per field, to filter out what you don't want to serialize for a specific client.
 
 On the example below, we are filtering entities which are close to the player entity.
 
 ```typescript
-import { Schema } from "@colyseus/schema";
+import { Schema, type, filter } from "@colyseus/schema";
 
 export class State extends Schema {
   @filter(function(this: State, client: any, value: Entity) {
@@ -150,7 +150,7 @@ export class State extends Schema {
     return (Math.sqrt(a * a + b * b)) <= 10;
 
   })
-  @type({ map: Unit })
+  @type({ map: Entity })
   entities = new MapSchema<Entity>();
 }
 ```
@@ -217,7 +217,7 @@ statefy ./schemas/State.ts --output ./haxe-project/State.hx
 | Updating x/y of 100 entities after initial state | 668 | 1529 |
 
 
-## Why 
+## Why
 
 Initial thoghts/assumptions, for Colyseus:
 - little to no bottleneck for detecting state changes.
