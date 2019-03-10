@@ -1,8 +1,8 @@
 import * as assert from "assert";
 
 import { INDEX_CHANGE, NIL } from "../src/spec";
-import * as encode from "../src/msgpack/encode";
-import { nilCheck, numberCheck, indexChangeCheck } from "../src/msgpack/decode";
+import * as encode from "../src/encoding/encode";
+import { nilCheck, numberCheck, indexChangeCheck } from "../src/encoding/decode";
 
 describe("Spec / Protocol", () => {
     describe("spec", () => {

@@ -5,12 +5,14 @@ export {
     // Public API
     Schema,
     type,
+    filter,
     DataChange,
 
     // Types
     PrimitiveType,
     Definition,
     DefinitionType,
+    FilterCallback,
 
     // Reflection
     Reflection,

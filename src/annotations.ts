@@ -1,7 +1,7 @@
 import { END_OF_STRUCTURE, NIL, INDEX_CHANGE } from './spec';
 
-import * as encode from "./msgpack/encode";
-import * as decode from "./msgpack/decode";
+import * as encode from "./encoding/encode";
+import * as decode from "./encoding/decode";
 
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema } from './types/MapSchema';
@@ -27,6 +27,10 @@ export type PrimitiveType =
 
 export type DefinitionType = ( PrimitiveType | PrimitiveType[] | { map: PrimitiveType });
 export type Definition = { [field: string]: DefinitionType };
+export type FilterCallback = (this: Schema, client: Client, instance: Schema, root?: Schema) => boolean;
+
+// Colyseus integration
+export type Client = { sessionId: string } & any;
 
 function encodePrimitiveType (type: string, bytes: number[], value: any) {
     const encodeFunc = encode[type];
@@ -62,6 +66,7 @@ export interface DataChange<T=any> {
 export abstract class Schema {
     static _schema: Definition;
     static _indexes: {[field: string]: number};
+    static _filters: {[field: string]: FilterCallback};
 
     public $changed: boolean = false;
     protected $allChanges: { [key: string]: any } = {};
@@ -77,18 +82,23 @@ export abstract class Schema {
     // allow inherited classes to have a constructor
     constructor(...args: any[]) {}
 
+    get _schema () { return (this.constructor as typeof Schema)._schema; }
+    get _indexes () { return (this.constructor as typeof Schema)._indexes; }
+    get _filters () { return (this.constructor as typeof Schema)._filters; }
+
     markAsChanged (field: string, value?: Schema | any) {
         const fieldSchema = this._schema[field];
         this.$changed = true;
 
         if (value !== undefined) {
             if (
-                Array.isArray(value.$parentField) || 
+                value &&
+                Array.isArray(value.$parentField) ||
                 fieldSchema && (
                     Array.isArray(fieldSchema) || (fieldSchema as any).map
                 )
             ) {
-                const $parentField = value.$parentField || [];
+                const $parentField = value && value.$parentField || [];
 
                 // used for MAP/ARRAY
                 const fieldName = ($parentField.length > 0) 
@@ -113,7 +123,7 @@ export abstract class Schema {
                 }
 
 
-            } else if (value.$parentField) {
+            } else if (value && value.$parentField) {
                 // used for direct type relationship
                 this.$changes[value.$parentField] = value;
                 this.$allChanges[value.$parentField] = value;
@@ -130,11 +140,48 @@ export abstract class Schema {
         }
     }
 
-    get _schema () {
-        return (this.constructor as typeof Schema)._schema;
-    }
-    get _indexes () {
-        return (this.constructor as typeof Schema)._indexes;
+    markAsUnchanged() {
+        const schema = this._schema;
+        const changes = this.$changes;
+
+        for (const field in changes) {
+            const type = schema[field];
+            const value = changes[field];
+
+            // skip unchagned fields
+            if (value === undefined) { continue; }
+
+            if ((type as any)._schema) {
+                (value as Schema).markAsUnchanged();
+
+            } else if (Array.isArray(type)) {
+                // encode Array of type
+                for (let i = 0, l = value.length; i < l; i++) {
+                    const index = value[i];
+                    const item = this[`_${field}`][index];
+
+                    if (typeof(type[0]) !== "string") { // is array of Schema
+                        (item as Schema).markAsUnchanged();
+                    }
+                }
+
+            } else if ((type as any).map) {
+                const keys = value;
+                const mapKeys = Object.keys(this[`_${field}`]);
+
+                for (let i = 0; i < keys.length; i++) {
+                    const key = mapKeys[keys[i]] || keys[i];
+                    const item = this[`_${field}`][key];
+
+                    if (item instanceof Schema) {
+                        item.markAsUnchanged();
+                    }
+                }
+            }
+        }
+
+        this.$changed = false;
+        this.$changes = {};
     }
 
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
@@ -167,10 +214,19 @@ export abstract class Schema {
             let hasChange = false;
 
             if ((type as any)._schema) {
-                value = this[`_${field}`] || new (type as any)();
-                value.$parent = this;
-                value.decode(bytes, it);
-                hasChange = true;
+                if (decode.nilCheck(bytes, it)) {
+                    it.offset++;
+
+                    value = null;
+                    hasChange = true;
+
+                } else {
+                    value = this[`_${field}`] || new (type as any)();
+                    value.$parent = this;
+                    value.decode(bytes, it);
+                    hasChange = true;
+
+                }
 
             } else if (Array.isArray(type)) {
                 type = type[0];
@@ -369,11 +425,11 @@ export abstract class Schema {
         return this;
     }
 
-    encode(root: boolean = true, encodeAll = false) {
+    encode(root: Schema = this, encodeAll = false, client?: Client) {
         let encodedBytes = [];
 
         const endStructure = () => {
-            if (!root) {
+            if (this !== root) {
                 encodedBytes.push(END_OF_STRUCTURE);
             }
         }
@@ -386,6 +442,7 @@ export abstract class Schema {
 
         const schema = this._schema;
         const indexes = this._indexes;
+        const filters = this._filters;
         const changes = (encodeAll) 
             ? this.$allChanges
             : this.$changes;
@@ -394,7 +451,8 @@ export abstract class Schema {
             let bytes: number[] = [];
 
             const type = schema[field];
-            const value = changes[field];
+            const filter = (filters && filters[field]);
+            const value = (filter && this.$allChanges[field]) || changes[field];
             const fieldIndex = indexes[field];
 
             // skip unchagned fields
@@ -403,16 +461,28 @@ export abstract class Schema {
             }
 
             if ((type as any)._schema) {
+                if (client && filter) {
+                    // skip if not allowed by custom filter
+                    if (!filter.call(this, client, value, root)) {
+                        continue;
+                    }
+                }
+
                 encode.number(bytes, fieldIndex);
 
                 // encode child object
-                bytes = bytes.concat((value as Schema).encode(false, encodeAll));
+                if (value) {
+                    bytes = bytes.concat((value as Schema).encode(root, encodeAll, client));
 
-                // ensure parent is set
-                // in case it was manually instantiated
-                if (!value.$parent) {
-                    value.$parent = this;
-                    value.$parentField = field;
+                    // ensure parent is set
+                    // in case it was manually instantiated
+                    if (!value.$parent) {
+                        value.$parent = this;
+                        value.$parentField = field;
+                    }
+                } else {
+                    // value has been removed
+                    encode.uint8(bytes, NIL);
                 }
 
             } else if (Array.isArray(type)) {
@@ -428,6 +498,13 @@ export abstract class Schema {
                 for (let i = 0, l = value.length; i < l; i++) {
                     const index = value[i];
                     const item = this[`_${field}`][index];
+
+                    if (client && filter) {
+                        // skip if not allowed by custom filter
+                        if (!filter.call(this, client, item, root)) {
+                            continue;
+                        }
+                    }
 
                     if (typeof(type[0]) !== "string") { // is array of Schema
                         encode.number(bytes, index);
@@ -448,7 +525,7 @@ export abstract class Schema {
                             item.$parentField = [field, i];
                         }
 
-                        bytes = bytes.concat(item.encode(false, encodeAll));
+                        bytes = bytes.concat(item.encode(root, encodeAll, client));
 
                     } else {
                         encode.number(bytes, i);
@@ -475,6 +552,13 @@ export abstract class Schema {
 
                     let mapItemIndex = this[`_${field}`]._indexes[key];
 
+                    if (client && filter) {
+                        // skip if not allowed by custom filter
+                        if (!filter.call(this, client, item, root)) {
+                            continue;
+                        }
+                    }
+
                     if (encodeAll) {
                         if (item) {
                             mapItemIndex = undefined;
@@ -499,16 +583,16 @@ export abstract class Schema {
                         // TODO: remove item
                         encode.string(bytes, key);
 
-                        const mapKey = mapKeys.indexOf(key);
-                        if (mapKey >= 0) {
-                            this[`_${field}`]._indexes[key] = mapKey;
-                        }
+                        // const mapKey = mapKeys.indexOf(key);
+                        // if (!client && mapKey >= 0) {
+                        //     this[`_${field}`]._indexes[key] = mapKey;
+                        // }
                     }
 
                     if (item instanceof Schema) {
                         item.$parent = this;
                         item.$parentField = [field, keys[i]];
-                        bytes = bytes.concat(item.encode(false, encodeAll));
+                        bytes = bytes.concat(item.encode(root, encodeAll, client));
 
                     } else if (item !== undefined) {
                         encodePrimitiveType((type as any).map, bytes, item);
@@ -519,9 +603,19 @@ export abstract class Schema {
 
                 }
 
-                this[`_${field}`]._updateIndexes();
+                // TODO: track array/map indexes per client?
+                if (!client) {
+                    this[`_${field}`]._updateIndexes();
+                }
 
             } else {
+                if (client && filter) {
+                    // skip if not allowed by custom filter
+                    if (!filter.call(this, client, value, root)) {
+                        continue;
+                    }
+                }
+
                 encode.number(bytes, fieldIndex);
 
                 if (!encodePrimitiveType(type as string, bytes, value)) {
@@ -536,14 +630,24 @@ export abstract class Schema {
         // flag end of Schema object structure
         endStructure();
 
-        this.$changed = false;
-        this.$changes = {};
+        if (!client) {
+            this.$changed = false;
+            this.$changes = {};
+        }
 
         return encodedBytes;
     }
 
+    encodeFiltered(client: Client) {
+        return this.encode(this, false, client);
+    }
+
     encodeAll () {
-        return this.encode(true, true);
+        return this.encode(this, true);
+    }
+
+    encodeAllFiltered (client: Client) {
+        return this.encode(this, true, client);
     }
 
     toJSON () {
@@ -644,7 +748,7 @@ export class Reflection extends Schema {
         return reflection.encodeAll();
     }
 
-    static decode (bytes: number[]) {
+    static decode (bytes: number[]): Schema {
         const reflection = new Reflection();
         reflection.decode(bytes);
 
@@ -705,9 +809,9 @@ export class Reflection extends Schema {
 }
 
 /**
- * Decorators / Proxies
+ * `@type()` decorator for proxies
  */
-export function type (type: DefinitionType) {
+export function type (type: DefinitionType): PropertyDecorator {
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
 
@@ -839,8 +943,11 @@ export function type (type: DefinitionType) {
 
                 } else if (typeof(constructor._schema[field]) === "function") {
                     // directly assigning a `Schema` object
-                    value.$parent = this;
-                    value.$parentField = field;
+                    // value may be set to null
+                    if (value) {
+                        value.$parent = this;
+                        value.$parentField = field;
+                    }
                     this.markAsChanged(field, value);
 
                 } else {
@@ -852,5 +959,23 @@ export function type (type: DefinitionType) {
             enumerable: true,
             configurable: false
         });
+    }
+}
+
+/**
+ * `@filter()` decorator for defining data filters per client
+ */
+export function filter(cb: FilterCallback): PropertyDecorator  {
+    return function (target: any, field: string) {
+        const constructor = target.constructor as typeof Schema;
+
+        /*
+        * static filters
+        */
+        if (!constructor._filters) {
+            constructor._filters = {};
+        }
+
+        constructor._filters[field] = cb;
     }
 }

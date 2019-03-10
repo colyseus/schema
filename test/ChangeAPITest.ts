@@ -102,6 +102,26 @@ describe("Change API", () => {
             sinon.assert.calledOnce(onChangeSpy);
             sinon.assert.calledOnce(playerSpy);
         });
+
+        it("should trigger onChange when removing child object", () => {
+            const state = new State();
+            state.player = new Player("Jake", 10, 10);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            decodedState.onChange = function (changes: DataChange[]) {
+                console.log(changes);
+                // assert.equal(changes.length, 1);
+                // assert.equal(changes[0].field, "player");
+            }
+            let onChangeSpy = sinon.spy(decodedState, 'onChange');
+
+            state.player = null;
+            decodedState.decode(state.encode());
+
+            sinon.assert.calledOnce(onChangeSpy);
+        });
     });
 
     describe("ArraySchema", () => {

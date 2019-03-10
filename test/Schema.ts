@@ -1,5 +1,8 @@
-import { Schema, type, ArraySchema, MapSchema } from "../src";
+import { Schema, type, ArraySchema, MapSchema, filter } from "../src";
 
+/**
+ * No filters example
+ */
 export class Player extends Schema {
   @type("string")
   name: string;
@@ -33,4 +36,69 @@ export class State extends Schema {
 
   @type({ map: Player })
   mapOfPlayers: MapSchema<Player>;
+}
+
+/**
+ * Filters example
+ */
+export class Inventory extends Schema {
+  @type("number")
+  items: number;
+}
+
+export class Unit extends Schema {
+  @type("number")
+  x: number;
+
+  @type("number")
+  y: number;
+
+  @filter(function(client: any, value: Inventory, root: StateWithFilter) {
+    return root.units[client.sessionId] === this;
+  })
+  @type(Inventory)
+  inventory: Inventory;
+}
+
+export class Bullet extends Schema {
+  @type("number")
+  x: number;
+
+  @type("number")
+  y: number;
+}
+
+const filters = {
+  byDistance: function(this: StateWithFilter, client: any, value: Player | Bullet) {
+    const currentPlayer = this.unitsWithDistanceFilter[client.sessionId]
+
+    var a = value.x - currentPlayer.x;
+    var b = value.y - currentPlayer.y;
+
+    return (Math.sqrt(a * a + b * b)) <= 10;
+  }
+}
+
+export class StateWithFilter extends Schema {
+  @type("string")
+  unfilteredString: string;
+
+  @type({ map: Unit })
+  units = new MapSchema<Unit>();
+
+  @type({ map: Bullet })
+  bullets: MapSchema<Bullet>;
+
+  @filter(filters.byDistance)
+  @type({ map: Unit })
+  unitsWithDistanceFilter = new MapSchema<Unit>();
+
+  @type("string")
+  unfilteredString2: string;
+
+  @filter(function(client: any) {
+    return client.sessionId === "one";
+  })
+  @type("number")
+  filteredNumber: number;
 }

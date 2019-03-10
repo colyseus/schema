@@ -1,5 +1,4 @@
 local spec = require('spec')
-local exports = {}
 
 function utf8_read(bytes, offset, length) 
   local str = ""
@@ -77,12 +76,6 @@ function utf8_read(bytes, offset, length)
   return str
 end
 
-function _str (bytes, it, length) 
-  local value = utf8_read(bytes, it.offset, length)
-  it.offset = it.offset + length
-  return value
-end
-
 ---
 -- Shift a number's bits to the right.
 -- Roughly equivalent to (x / (2^bits)).
@@ -142,7 +135,12 @@ end
 function _string (bytes, it) 
   local prefix = bytes[it.offset]
   it.offset = it.offset + 1
-  return _str(bytes, it, bit.band(prefix, 0x1f))
+
+  local length = bit.band(prefix, 0x1f)
+  local value = utf8_read(bytes, it.offset, length)
+  it.offset = it.offset + length
+
+  return value
 end
 
 function string_check (bytes, it) 
