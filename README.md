@@ -133,7 +133,7 @@ mapOfStrings: MapSchema<string>;
 
 ### Data filters (experimental)
 
-When using with [Colyseus 0.10](https://github.com/colyseus/colyseus), you may provide a `@filter` per field, to filter out what don't want to serialize for a specific client. 
+When using with [Colyseus 0.10](https://github.com/colyseus/colyseus), you may provide a `@filter` per field, to filter out what you don't want to serialize for a specific client. 
 
 On the example below, we are filtering entities which are close to the player entity.
 
