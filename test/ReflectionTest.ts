@@ -17,7 +17,7 @@ describe("Reflection", () => {
 
     it("should initialize ref types with empty structures", () => {
         const state = new State();
-        const stateReflected: State = Reflection.decode(Reflection.encode(state))
+        const stateReflected = Reflection.decode(Reflection.encode(state)) as State;
 
         assert.equal(stateReflected.arrayOfPlayers.length, 0);
         assert.equal(Object.keys(stateReflected.mapOfPlayers).length, 0);
@@ -26,7 +26,7 @@ describe("Reflection", () => {
 
     it("should decode schema and be able to use it", () => {
         const state = new State();
-        const stateReflected = Reflection.decode(Reflection.encode(state))
+        const stateReflected = Reflection.decode(Reflection.encode(state)) as State;
 
         assert.deepEqual(state._indexes, stateReflected._indexes);
 
