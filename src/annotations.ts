@@ -93,7 +93,10 @@ export abstract class Schema {
             $parentIndexChange: { value: undefined, enumerable: false, writable: true },
         });
 
-        Object.defineProperties(this, this._descriptors);
+        const descriptors = this._descriptors;
+        if (descriptors) {
+            Object.defineProperties(this, descriptors);
+        }
     }
 
     get _schema () { return (this.constructor as typeof Schema)._schema; }

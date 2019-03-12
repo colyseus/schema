@@ -28,4 +28,11 @@ describe("Definition", () => {
         assert.deepEqual(Object.keys(obj.players['one']), ['x', 'y', 'somethingPrivate']);
     });
 
+    it("should allow a Schema instance with no fields", () => {
+        class IDontExist extends Schema {}
+
+        const obj = new IDontExist();
+        assert.deepEqual(Object.keys(obj), []);
+    });
+
 });
