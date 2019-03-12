@@ -67,10 +67,11 @@ export abstract class Schema {
     static _schema: Definition;
     static _indexes: {[field: string]: number};
     static _filters: {[field: string]: FilterCallback};
+    static _descriptors: PropertyDescriptorMap & ThisType<any>;
 
-    public $changed: boolean = false;
-    protected $allChanges: { [key: string]: any } = {};
-    protected $changes: { [key: string]: any } = {};
+    public $changed: boolean;
+    protected $allChanges: { [key: string]: any };
+    protected $changes: { [key: string]: any };
 
     protected $parent: Schema;
     protected $parentField: string | (string | number | symbol)[];
@@ -80,9 +81,23 @@ export abstract class Schema {
     public onRemove?();
 
     // allow inherited classes to have a constructor
-    constructor(...args: any[]) {}
+    constructor(...args: any[]) {
+        // fix enumerability of fields for end-user
+        Object.defineProperties(this, {
+            $changed: { value: false, enumerable: false, writable: true },
+            $changes: { value: {}, enumerable: false, writable: true },
+            $allChanges: { value: {}, enumerable: false, writable: true },
+
+            $parent: { value: undefined, enumerable: false, writable: true },
+            $parentField: { value: undefined, enumerable: false, writable: true },
+            $parentIndexChange: { value: undefined, enumerable: false, writable: true },
+        });
+
+        Object.defineProperties(this, this._descriptors);
+    }
 
     get _schema () { return (this.constructor as typeof Schema)._schema; }
+    get _descriptors () { return (this.constructor as typeof Schema)._descriptors; }
     get _indexes () { return (this.constructor as typeof Schema)._indexes; }
     get _filters () { return (this.constructor as typeof Schema)._filters; }
 
@@ -821,6 +836,7 @@ export function type (type: DefinitionType): PropertyDecorator {
         if (!constructor._schema) {
             constructor._schema = {};
             constructor._indexes = {};
+            constructor._descriptors = {};
         }
         constructor._indexes[field] = Object.keys(constructor._schema).length;
         constructor._schema[field] = type;
@@ -834,13 +850,13 @@ export function type (type: DefinitionType): PropertyDecorator {
 
         const fieldCached = `_${field}`;
 
-        Object.defineProperty(target, fieldCached, {
+        constructor._descriptors[fieldCached] = {
             enumerable: false,
             configurable: false,
             writable: true,
-        });
+        };
 
-        Object.defineProperty(target, field, {
+        constructor._descriptors[field] = {
             get: function () {
                 return this[fieldCached];
             },
@@ -957,8 +973,8 @@ export function type (type: DefinitionType): PropertyDecorator {
             },
 
             enumerable: true,
-            configurable: false
-        });
+            configurable: true
+        };
     }
 }
 
