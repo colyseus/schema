@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Schema-based binary serializer / de-serializer. ",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -13,7 +13,8 @@
     "prepublish": "tsc"
   },
   "files": [
-    "lib"
+    "lib",
+    "bin"
   ],
   "repository": {
     "url": "git://github.com/colyseus/schema.git",
