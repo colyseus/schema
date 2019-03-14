@@ -658,8 +658,9 @@ function Schema:decode(bytes, it)
 
     return self
 end
+-- END SCHEMA CLASS --
 
-return function(fields)
+local define = function(fields)
     local DerivedSchema = setmetatable({}, { __index = Schema })
 
     function DerivedSchema:new()
@@ -678,4 +679,37 @@ return function(fields)
 
     return DerivedSchema
 end
--- END SCHEMA CLASS --
+
+-- START REFLECTION --
+local ReflectionField = define({
+    ["name"] = "string",
+    ["type"] = "string",
+    ["referencedType"] = "number",
+    ["_order"] = {"name", "type", "referencedType"}
+})
+
+local ReflectionType = define({
+    ["id"] = "number",
+    ["fields"] = { ReflectionField },
+    ["_order"] = {"id", "fields"}
+})
+
+local Reflection = define({
+    ["types"] = { ReflectionType },
+    ["_order"] = {"types"}
+})
+Reflection.decode = function (bytes)
+    local reflection = Reflection:new()
+    reflection:decode(bytes)
+
+    local schema_types = {}
+    -- TODO
+    local root_type = nil
+
+    return root_type:new()
+end
+-- END REFLECTION --
+
+return {
+    define = define
+}
