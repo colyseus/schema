@@ -711,5 +711,6 @@ end
 -- END REFLECTION --
 
 return {
-    define = define
+    define = define,
+    Reflection = Reflection
 }
