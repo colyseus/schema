@@ -1,6 +1,6 @@
 local Schema = require('schema')
 
-local Player = Schema({
+local Player = Schema.define({
     ["name"] = "string",
     ["x"] = "number",
     ["y"] = "number",
@@ -17,7 +17,7 @@ local Player = Schema({
     ["_order"] = {"name", "x", "y"}
 })
 
-local State = Schema({
+local State = Schema.define({
     ["fieldString"] = "string",
     ["fieldNumber"] = "number",
     ["player"] = Player,

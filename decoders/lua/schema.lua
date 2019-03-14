@@ -670,7 +670,7 @@ local define = function(fields)
 
     DerivedSchema._schema = {}
     DerivedSchema._indexes = {}
-    DerivedSchema._order = fields['_order']
+    DerivedSchema._order = fields and fields['_order'] or {}
 
     for i, field in pairs(DerivedSchema._order) do
         DerivedSchema._indexes[field] = i
@@ -684,8 +684,8 @@ end
 local ReflectionField = define({
     ["name"] = "string",
     ["type"] = "string",
-    ["referencedType"] = "number",
-    ["_order"] = {"name", "type", "referencedType"}
+    ["referenced_type"] = "number",
+    ["_order"] = {"name", "type", "referenced_type"}
 })
 
 local ReflectionType = define({
@@ -698,15 +698,72 @@ local Reflection = define({
     ["types"] = { ReflectionType },
     ["_order"] = {"types"}
 })
+
 Reflection.decode = function (bytes)
     local reflection = Reflection:new()
     reflection:decode(bytes)
 
-    local schema_types = {}
-    -- TODO
-    local root_type = nil
+    local field_index = 1
+    local add_field_to_schema = function(schema_class, field_name, field_type)
+        schema_class._indexes[field_name] = field_index
+        schema_class._schema[field_name] = field_type
+        table.insert(schema_class._order, field_name)
+        field_index = field_index + 1
+    end
 
-    return root_type:new()
+    local schema_types = {}
+
+    for i = #reflection.types, 1, -1 do
+        table.insert(schema_types, define({}))
+    end
+
+    for i = 1, #reflection.types do
+        local reflection_type = reflection.types[i]
+
+        for j = 1, #reflection_type.fields do
+            local schema_type = schema_types[i]
+            local field = reflection_type.fields[j]
+
+            if field.referenced_type ~= nil then
+                local referenced_type = schema_types[field.referenced_type + 1]
+
+                if field.type == "array" then
+                    add_field_to_schema(schema_type, field.name, { referenced_type })
+
+                elseif field.type == "map" then
+                    add_field_to_schema(schema_type, field.name, { map = referenced_type })
+
+                elseif field.type == "ref" then
+                    add_field_to_schema(schema_type, field.name, referenced_type)
+                end
+
+            else
+                add_field_to_schema(schema_type, field.name, field.type)
+            end
+        end
+    end
+
+    local root_type = schema_types[1]
+    local root_instance = root_type:new()
+
+    for i = 1, #root_type._order do
+        local field_name = root_type._order[i]
+        local field_type = root_type._schema[field_name]
+
+        if type(field_type) ~= "string" then
+            -- local is_schema = field_type['new'] ~= nil
+            -- local is_map = field_type['map'] ~= nil
+            -- local is_array = type(field_type) == "table" and (not is_schema) and (not is_map)
+
+            if type(field_type) == "table" then
+                root_instance[field_name] = {}
+            else
+                root_instance[field_name] = field_type:new()
+            end
+        end
+    end
+
+    return root_instance
 end
 -- END REFLECTION --
 
