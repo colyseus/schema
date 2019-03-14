@@ -1,8 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player } from "./Schema";
-import { Reflection } from "../src/annotations";
-import { MapSchema, ArraySchema } from "../src";
+import { Reflection, Schema, type, MapSchema, ArraySchema } from "../src";
 
 describe("Reflection", () => {
 
@@ -62,4 +61,40 @@ describe("Reflection", () => {
         assert.equal(stateReflected.arrayOfPlayers[0].y, 4);
     });
 
+    it("should allow extending another Schema type", () => {
+        class Point extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+
+            constructor (x: number, y: number) {
+                super();
+                this.x = x;
+                this.y = y;
+            }
+        }
+
+        class Player extends Point {
+            @type("string") name: string;
+
+            constructor (x: number, y: number, name: string) {
+                super(x, y);
+                this.name = name;
+            }
+        }
+
+        class MyState extends Schema {
+            @type([ Point ])
+            points = new ArraySchema<Point>();
+
+            @type([ Player ])
+            players = new ArraySchema<Player>();
+        }
+
+        const state = new MyState();
+        const encodedReflection = Reflection.encode(state);
+
+        const decodedState = Reflection.decode(encodedReflection) as MyState;
+        assert.deepEqual(Object.keys(decodedState._schema.points[0]._schema), ['x', 'y'])
+        assert.deepEqual(Object.keys(decodedState._schema.players[0]._schema), ['x', 'y', 'string'])
+    });
 });
