@@ -218,12 +218,13 @@ export abstract class Schema {
 
         while (it.offset < totalBytes) {
             const index = bytes[it.offset++];
-            const field = fieldsByIndex[index];
 
             if (index === END_OF_STRUCTURE) {
                 // reached end of strucutre. skip.
                 break;
             }
+
+            const field = fieldsByIndex[index];
 
             let type = schema[field];
             let value: any;
@@ -234,17 +235,15 @@ export abstract class Schema {
             if ((type as any)._schema) {
                 if (decode.nilCheck(bytes, it)) {
                     it.offset++;
-
                     value = null;
-                    hasChange = true;
 
                 } else {
                     value = this[`_${field}`] || new (type as any)();
                     value.$parent = this;
                     value.decode(bytes, it);
-                    hasChange = true;
-
                 }
+
+                hasChange = true;
 
             } else if (Array.isArray(type)) {
                 type = type[0];
