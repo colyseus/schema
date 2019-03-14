@@ -797,7 +797,8 @@ export class Reflection extends Schema {
             });
         })
 
-        const rootType = new (schemaTypes[0] as any);
+        const rootType: any = schemaTypes[0];
+        const rootInstance = new rootType();
 
         /**
          * auto-initialize referenced types on root type
@@ -811,7 +812,7 @@ export class Reflection extends Schema {
                 const isArray = Array.isArray(fieldType);
                 const isMap = !isArray && (fieldType as any).map;
 
-                rootType[fieldName] = (isArray)
+                rootInstance[fieldName] = (isArray)
                     ? new ArraySchema()
                     : (isMap)
                         ? new MapSchema()
@@ -821,7 +822,7 @@ export class Reflection extends Schema {
             }
         }
 
-        return rootType;
+        return rootInstance;
     }
 }
 
