@@ -747,7 +747,7 @@ export class Reflection extends Schema {
                         const childType = new ReflectionType();
                         childType.id = lastTypeId++;
                         typeIds[childSchemaName] = childType.id;
-                        buildType(childType, (new childSchema())._schema);
+                        buildType(childType, childSchema._schema);
                     }
 
                     field.referencedType = typeIds[childSchemaName];
