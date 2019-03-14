@@ -83,6 +83,7 @@ function utf8_read(bytes, offset, length)
             break
         end
 
+        pprint(str)
         error('invalid byte ' .. byte)
         break
     until true
@@ -268,7 +269,7 @@ local decode = {
 
 
 -- START UTIL FUNCTIONS --
-function pprint(node)
+local pprint = pprint or function(node)
     -- to make output beautiful
     local function tab(amt)
         local str = ""
@@ -400,7 +401,6 @@ function Schema:decode(bytes, it)
     end
 
     local schema = self._schema
-    local indexes = self._indexes
     local fields_by_index = self._order
 
     local total_bytes = #bytes
@@ -412,7 +412,6 @@ function Schema:decode(bytes, it)
         if index == spec.END_OF_STRUCTURE then break end
 
         local field = fields_by_index[index + 1]
-        -- print("field: " .. tostring(field))
 
         local ftype = schema[field]
         local value = nil
@@ -475,7 +474,10 @@ function Schema:decode(bytes, it)
                 local new_index = decode.number(bytes, it)
 
                 -- lua indexes start at 1
-                if new_index ~= nil then new_index = new_index + 1 end
+                if new_index ~= nil then 
+                    new_index = new_index + 1 
+                end
+                -- 
 
                 if decode.nil_check(bytes, it) then
                     -- const item = this[`_${field}`][new_index]
@@ -484,7 +486,7 @@ function Schema:decode(bytes, it)
                     goto continue_array
                 end
 
-                -- do/end block is necessary due to `goto`
+                -- LUA: do/end block is necessary due to `goto`
                 do
                     -- index change check
                     local index_change_from
@@ -569,17 +571,25 @@ function Schema:decode(bytes, it)
                 local previous_key
                 if decode.index_change_check(bytes, it) then
                     decode.uint8(bytes, it)
-                    previous_key = table.keys(value_ref)[decode.number(bytes, it)+1]
+                    previous_key = value_ref.__order[decode.number(bytes, it)+1]
                     has_index_change = true
                 end
 
                 local has_map_index = decode.number_check(bytes, it)
-                
+
                 local new_key
                 if has_map_index then 
-                    new_key = table.keys(value_ref)[decode.number(bytes, it)+1] 
+                    local map_index = decode.number(bytes, it) + 1
+                    new_key = value_ref.__order[map_index] 
                 else 
                     new_key = decode.string(bytes, it)
+
+                    -- LUA-specific keep track of keys ordering (lua tables doesn't keep then)
+                    if value_ref.__order == nil then
+                        value_ref.__order = {}
+                    end
+                    table.insert(value_ref.__order, new_key)
+                    --
                 end
 
                 local item
@@ -669,11 +679,9 @@ local define = function(fields)
     end
 
     DerivedSchema._schema = {}
-    DerivedSchema._indexes = {}
     DerivedSchema._order = fields and fields['_order'] or {}
 
     for i, field in pairs(DerivedSchema._order) do
-        DerivedSchema._indexes[field] = i
         DerivedSchema._schema[field] = fields[field]
     end
 
@@ -703,25 +711,22 @@ local reflection_decode = function (bytes)
     local reflection = Reflection:new()
     reflection:decode(bytes)
 
-    local field_index = 1
     local add_field_to_schema = function(schema_class, field_name, field_type)
-        schema_class._indexes[field_name] = field_index
         schema_class._schema[field_name] = field_type
         table.insert(schema_class._order, field_name)
-        field_index = field_index + 1
     end
 
     local schema_types = {}
 
-    for i = #reflection.types, 1, -1 do
-        table.insert(schema_types, define({}))
+    for i, reflection_type in ipairs(reflection.types) do
+        schema_types[reflection_type.id + 1] = define({})
     end
 
     for i = 1, #reflection.types do
         local reflection_type = reflection.types[i]
 
         for j = 1, #reflection_type.fields do
-            local schema_type = schema_types[i]
+            local schema_type = schema_types[reflection_type.id + 1]
             local field = reflection_type.fields[j]
 
             if field.referenced_type ~= nil then
@@ -751,14 +756,11 @@ local reflection_decode = function (bytes)
         local field_type = root_type._schema[field_name]
 
         if type(field_type) ~= "string" then
-            -- local is_schema = field_type['new'] ~= nil
-            -- local is_map = field_type['map'] ~= nil
-            -- local is_array = type(field_type) == "table" and (not is_schema) and (not is_map)
-
-            if type(field_type) == "table" then
-                root_instance[field_name] = {}
-            else
+            if field_type['new'] ~= nil then
                 root_instance[field_name] = field_type:new()
+
+            elseif type(field_type) == "table" then
+                root_instance[field_name] = {}
             end
         end
     end
@@ -769,5 +771,6 @@ end
 
 return {
     define = define,
-    reflection_decode = reflection_decode
+    reflection_decode = reflection_decode,
+    string = decode.string
 }
