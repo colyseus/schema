@@ -699,7 +699,7 @@ local Reflection = define({
     ["_order"] = {"types"}
 })
 
-Reflection.decode = function (bytes)
+local reflection_decode = function (bytes)
     local reflection = Reflection:new()
     reflection:decode(bytes)
 
@@ -743,7 +743,7 @@ Reflection.decode = function (bytes)
         end
     end
 
-    local root_type = schema_types[1]
+    local root_type = schema_types[#schema_types]
     local root_instance = root_type:new()
 
     for i = 1, #root_type._order do
@@ -769,5 +769,5 @@ end
 
 return {
     define = define,
-    Reflection = Reflection
+    reflection_decode = reflection_decode
 }
