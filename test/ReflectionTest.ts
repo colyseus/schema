@@ -95,6 +95,6 @@ describe("Reflection", () => {
 
         const decodedState = Reflection.decode(encodedReflection) as MyState;
         assert.deepEqual(Object.keys(decodedState._schema.points[0]._schema), ['x', 'y'])
-        assert.deepEqual(Object.keys(decodedState._schema.players[0]._schema), ['x', 'y', 'string'])
+        assert.deepEqual(Object.keys(decodedState._schema.players[0]._schema), ['x', 'y', 'name'])
     });
 });

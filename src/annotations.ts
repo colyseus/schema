@@ -29,6 +29,8 @@ export type DefinitionType = ( PrimitiveType | PrimitiveType[] | { map: Primitiv
 export type Definition = { [field: string]: DefinitionType };
 export type FilterCallback = (this: Schema, client: Client, instance: Schema, root?: Schema) => boolean;
 
+const definedSchemas = new Map<typeof Schema, boolean>();
+
 // Colyseus integration
 export type Client = { sessionId: string } & any;
 
@@ -769,13 +771,14 @@ export class Reflection extends Schema {
         const reflection = new Reflection();
         reflection.decode(bytes);
 
-        const schemaTypes: typeof Schema[] = reflection.types.reverse().map(_ => {
-            return class _ extends Schema { };
-        })
+        let schemaTypes = reflection.types.reduce((types, reflectionType) => {
+            types[reflectionType.id] = class _ extends Schema {};
+            return types;
+        }, {});
 
         reflection.types.forEach((reflectionType, i) => {
             reflectionType.fields.forEach(field => {
-                const schemaType = schemaTypes[i];
+                const schemaType = schemaTypes[reflectionType.id];
 
                 if (field.referencedType !== undefined) {
                     const refType = schemaTypes[field.referencedType];
@@ -829,6 +832,7 @@ export class Reflection extends Schema {
 /**
  * `@type()` decorator for proxies
  */
+
 export function type (type: DefinitionType): PropertyDecorator {
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
@@ -836,10 +840,13 @@ export function type (type: DefinitionType): PropertyDecorator {
         /*
          * static schema
          */
-        if (!constructor._schema) {
-            constructor._schema = {};
-            constructor._indexes = {};
-            constructor._descriptors = {};
+        if (!definedSchemas.get(constructor)) {
+            definedSchemas.set(constructor, true);
+
+            // support inheritance
+            constructor._schema = Object.assign({}, constructor._schema || {});
+            constructor._indexes = Object.assign({}, constructor._indexes || {});
+            constructor._descriptors = Object.assign({}, constructor._descriptors || {});
         }
         constructor._indexes[field] = Object.keys(constructor._schema).length;
         constructor._schema[field] = type;
