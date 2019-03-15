@@ -5,6 +5,7 @@
 -- This file is part of Colyseus: https://github.com/colyseus/colyseus
 --
 local bit = bit or require('bit')
+local ldexp = math.ldexp or mathx.ldexp
 
 -- START SPEC --
 local spec = {
@@ -102,6 +103,10 @@ local function brshift(x, bits)
 	return floor(floor(x) / (2^bits))
 end
 
+function boolean (bytes, it) 
+    return uint8(bytes, it) == 1
+end
+
 function int8 (bytes, it) 
     return brshift(bit.rshift(uint8(bytes, it), 24), 24)
 end
@@ -148,6 +153,68 @@ function uint32 (bytes, it)
     return int32(bytes, it)
 end
 
+function float32(bytes, it)
+    local b1 = bytes[it.offset]
+    local b2 = bytes[it.offset + 1]
+    local b3 = bytes[it.offset + 2]
+    local b4 = bytes[it.offset + 3]
+    local sign = b1 > 0x7F
+    local expo = (b1 % 0x80) * 0x2 + math.floor(b2 / 0x80)
+    local mant = ((b2 % 0x80) * 0x100 + b3) * 0x100 + b4
+    if sign then
+        sign = -1
+    else
+        sign = 1
+    end
+    local n
+    if mant == 0 and expo == 0 then
+        n = sign * 0.0
+    elseif expo == 0xFF then
+        if mant == 0 then
+            n = sign * huge
+        else
+            n = 0.0/0.0
+        end
+    else
+        n = sign * ldexp(1.0 + mant / 0x800000, expo - 0x7F)
+    end
+    it.offset = it.offset + 4
+    return n
+end
+
+function float64(bytes, it)
+    local b1 = bytes[it.offset]
+    local b2 = bytes[it.offset + 1]
+    local b3 = bytes[it.offset + 2]
+    local b4 = bytes[it.offset + 3]
+    local b5 = bytes[it.offset + 4]
+    local b6 = bytes[it.offset + 5]
+    local b7 = bytes[it.offset + 6]
+    local b8 = bytes[it.offset + 7]
+    local sign = b1 > 0x7F
+    local expo = (b1 % 0x80) * 0x10 + math.floor(b2 / 0x10)
+    local mant = ((((((b2 % 0x10) * 0x100 + b3) * 0x100 + b4) * 0x100 + b5) * 0x100 + b6) * 0x100 + b7) * 0x100 + b8
+    if sign then
+        sign = -1
+    else
+        sign = 1
+    end
+    local n
+    if mant == 0 and expo == 0 then
+        n = sign * 0.0
+    elseif expo == 0x7FF then
+        if mant == 0 then
+            n = sign * huge
+        else
+            n = 0.0/0.0
+        end
+    else
+        n = sign * ldexp(1.0 + mant / 4503599627370496.0, expo - 0x3FF)
+    end
+    it.offset = it.offset + 8
+    return n
+end
+
 function _string (bytes, it) 
   local prefix = bytes[it.offset]
   it.offset = it.offset + 1
@@ -183,11 +250,11 @@ function number (bytes, it)
 
   elseif (prefix == 202) then
     -- float 32
-    return readFloat32(bytes, it)
+    return float32(bytes, it)
 
   elseif (prefix == 203) then
     -- float 64
-    return readFloat64(bytes, it)
+    return float64(bytes, it)
 
   elseif (prefix == 204) then
     -- uint 8
@@ -251,12 +318,15 @@ function index_change_check (bytes, it)
 end
 
 local decode = {
+    boolean = boolean,
     int8 = int8,
     uint8 = uint8,
     int16 = int16,
     uint1 = uint1,
     int32 = int32,
     uint32 = uint32,
+    float32 = float32,
+    float64 = float64,
     number = number,
     string = _string,
     string_check = string_check,
@@ -388,8 +458,8 @@ end
 -- START SCHEMA CLASS --
 local Schema = {}
 
-function Schema:new()
-    local obj = {}
+function Schema:new(obj)
+    obj = obj or {}
     return setmetatable(obj, { __index = self })
 end
 
@@ -412,7 +482,6 @@ function Schema:decode(bytes, it)
         if index == spec.END_OF_STRUCTURE then break end
 
         local field = fields_by_index[index + 1]
-
         local ftype = schema[field]
         local value = nil
 
@@ -470,7 +539,7 @@ function Schema:decode(bytes, it)
             end
 
             local i = 0
-            repeat
+            while i < num_changes do
                 local new_index = decode.number(bytes, it)
 
                 -- lua indexes start at 1
@@ -544,7 +613,7 @@ function Schema:decode(bytes, it)
 
                 ::continue_array::
                 i = i + 1
-            until i >= num_changes
+            end
 
         elseif type(ftype) == "table" and ftype['map'] ~= nil then
             -- decode map
@@ -748,7 +817,7 @@ local reflection_decode = function (bytes)
         end
     end
 
-    local root_type = schema_types[#schema_types]
+    local root_type = schema_types[1]
     local root_instance = root_type:new()
 
     for i = 1, #root_type._order do
@@ -756,6 +825,10 @@ local reflection_decode = function (bytes)
         local field_type = root_type._schema[field_name]
 
         if type(field_type) ~= "string" then
+            -- local is_schema = field_type['new'] ~= nil
+            -- local is_map = field_type['map'] ~= nil
+            -- local is_array = type(field_type) == "table" and (not is_schema) and (not is_map)
+
             if field_type['new'] ~= nil then
                 root_instance[field_name] = field_type:new()
 
