@@ -4,7 +4,7 @@ import { Schema, type, Reflection, MapSchema } from "../src";
 
 describe("Definition", () => {
 
-    it("private Schema fields shouldn't be part of enumerable keys", () => {
+    it("private Schema fields should be part of enumerable keys", () => {
         class Player extends Schema {
             @type("number") x: number;
             @type("number") y: number;
