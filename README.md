@@ -131,6 +131,29 @@ mapOfNumbers: MapSchema<number>;
 mapOfStrings: MapSchema<string>;
 ```
 
+### Reflection
+
+The Schema definitions can encode itself through `Reflection`. You can have the
+definition implementation in the server-side, and just send the encoded
+reflection to the client-side, for example:
+
+```typescript
+import { Schema, type, Reflection } from "@colyseus/schema";
+
+class MyState extends Schema {
+  @type("string")
+  currentTurn: string;
+
+  // more definitions relating to more Schema types.
+}
+
+// send `encodedStateSchema` across the network
+const encodedStateSchema = Reflection.encode(new MyState());
+
+// instantiate `MyState` in the client-side, without having its definition:
+const myState = Reflection.decode(encodedStateSchema);
+```
+
 ### Data filters (experimental)
 
 When using with [Colyseus 0.10](https://github.com/colyseus/colyseus), you may provide a `@filter` per field, to filter out what you don't want to serialize for a specific client.
