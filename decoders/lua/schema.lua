@@ -234,8 +234,6 @@ function number (bytes, it)
   local prefix = bytes[it.offset]
   it.offset = it.offset + 1
 
-  print("number prefix:", prefix)
-
   if (prefix < 128) then
     -- positive fixint
     return prefix
@@ -487,11 +485,6 @@ function Schema:decode(bytes, it)
             else
                 -- decode child Schema instance
                 value = self[field] or ftype:new()
-
-                if field == "spawnPoint" then
-                    print("--------- DECODING SPAWN POINT ---------")
-                end
-
                 value:decode(bytes, it)
                 has_change = true
             end
@@ -712,7 +705,6 @@ function Schema:decode(bytes, it)
         else
             -- decode primivite type
             value = decode_primitive_type(ftype, bytes, it)
-            print("> PRIMITIVE DECODE:", field, value)
             has_change = true
         end
 
