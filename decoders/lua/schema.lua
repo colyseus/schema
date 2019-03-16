@@ -93,22 +93,12 @@ function utf8_read(bytes, offset, length)
   return str
 end
 
----
--- Shift a number's bits to the right.
--- Roughly equivalent to (x / (2^bits)).
--- @param x  The number to shift (number).
--- @param bits  Number of positions to shift by (number).
--- @return  A number.
-local function brshift(x, bits)
-	return floor(floor(x) / (2^bits))
-end
-
 function boolean (bytes, it) 
     return uint8(bytes, it) == 1
 end
 
 function int8 (bytes, it) 
-    return brshift(bit.rshift(uint8(bytes, it), 24), 24)
+    return bit.rshift(bit.lshift(uint8(bytes, it), 24), 24)
 end
 
 function uint8 (bytes, it) 
@@ -118,7 +108,7 @@ function uint8 (bytes, it)
 end
 
 function int16 (bytes, it) 
-    return brshift(bit.rshift(uint16(bytes, it), 16), 16)
+    return bit.rshift(bit.lshift(uint16(bytes, it), 16), 16)
 end
 
 function uint16 (bytes, it) 
@@ -128,7 +118,7 @@ function uint16 (bytes, it)
     local n2 = bytes[it.offset]
     it.offset = it.offset + 1
 
-    return bit.rshift(bit.bor(n1, n2), 8)
+    return bit.bor(n1, bit.lshift(n2, 8))
 end
 
 function int32 (bytes, it) 
@@ -243,6 +233,8 @@ end
 function number (bytes, it) 
   local prefix = bytes[it.offset]
   it.offset = it.offset + 1
+
+  print("number prefix:", prefix)
 
   if (prefix < 128) then
     -- positive fixint
@@ -495,6 +487,11 @@ function Schema:decode(bytes, it)
             else
                 -- decode child Schema instance
                 value = self[field] or ftype:new()
+
+                if field == "spawnPoint" then
+                    print("--------- DECODING SPAWN POINT ---------")
+                end
+
                 value:decode(bytes, it)
                 has_change = true
             end
@@ -715,6 +712,7 @@ function Schema:decode(bytes, it)
         else
             -- decode primivite type
             value = decode_primitive_type(ftype, bytes, it)
+            print("> PRIMITIVE DECODE:", field, value)
             has_change = true
         end
 
