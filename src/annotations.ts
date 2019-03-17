@@ -689,7 +689,7 @@ export class ReflectionField extends Schema {
     @type("string")
     type: PrimitiveType;
 
-    @type("number")
+    @type("uint8")
     referencedType: number;
 }
 
