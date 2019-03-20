@@ -2,6 +2,7 @@ import { Schema, type } from "../src/annotations";
 import * as nanoid from "nanoid";
 import * as msgpack from "notepack.io";
 import * as fossildelta from "fossil-delta";
+import { MapSchema } from "../src/types/MapSchema";
 
 export class Player extends Schema {
   @type("string")
@@ -24,11 +25,10 @@ export class Player extends Schema {
 
 export class State extends Schema {
   @type({ map: Player })
-  players: { [id: string]: Player };
+  players = new MapSchema<Player>();
 }
 
 const state = new State();
-state.players = {};
 
 
 let msgpackState = { players: {} };
