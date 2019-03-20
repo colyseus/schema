@@ -577,14 +577,14 @@ describe("Schema", () => {
             assert.equal(decodedState.player.y, 50);
         });
 
-        xit("should support array of strings", () => {
+        it("should support array of strings", () => {
             class MyState extends Schema {
                 @type(["string"])
-                arrayOfStrings: string[];
+                arrayOfStrings: ArraySchema<string>;
             }
 
             const state = new MyState();
-            state.arrayOfStrings = ["one", "two", "three"];
+            state.arrayOfStrings = new ArraySchema("one", "two", "three");
 
             let encoded = state.encode();
             assert.deepEqual(encoded, [0, 3, 3, 0, 163, 111, 110, 101, 1, 163, 116, 119, 111, 2, 165, 116, 104, 114, 101, 101]);
@@ -593,12 +593,16 @@ describe("Schema", () => {
             decodedState.decode(encoded);
             assert.deepEqual(decodedState.arrayOfStrings, ["one", "two", "three"]);
 
-            state.arrayOfStrings.push("four")
-            encoded = state.encode();
-            // assert.deepEqual(encoded, []);
+            //
+            // TODO: support mutations
+            //
 
-            decodedState.decode(encoded);
-            assert.deepEqual(decodedState.arrayOfStrings, ["one", "two", "three", "four"]);
+            // state.arrayOfStrings.push("four")
+            // encoded = state.encode();
+            // // assert.deepEqual(encoded, []);
+
+            // decodedState.decode(encoded);
+            // assert.deepEqual(decodedState.arrayOfStrings, ["one", "two", "three", "four"]);
         });
 
         it("should support array of numbers", () => {
@@ -617,16 +621,27 @@ describe("Schema", () => {
             decodedState.decode(encoded);
 
             assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584]);
+
+            //
+            // TODO: support mutations
+            //
+
+            // state.arrayOfNumbers.push(999999);
+            // encoded = state.encode();
+            // // assert.deepEqual(encoded, []);
+
+            // decodedState.decode(encoded);
+            // assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584, 999999]);
         });
 
-        xit("should support map of strings", () => {
+        it("should support map of strings", () => {
             class MyState extends Schema {
                 @type({ map: "string" })
-                mapOfStrings: {[id: string]: string};
+                mapOfStrings: MapSchema<string>;
             }
 
             const state = new MyState();
-            state.mapOfStrings = { 'one': "ONE", 'two': "TWO" };
+            state.mapOfStrings = new MapSchema<string>({ 'one': "ONE", 'two': "TWO" });
 
             let encoded = state.encode();
             // assert.deepEqual(encoded, []);
@@ -635,12 +650,16 @@ describe("Schema", () => {
             decodedState.decode(encoded);
             assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO" });
 
-            state.mapOfStrings['three'] = "THREE";
-            encoded = state.encode();
-            // assert.deepEqual(encoded, []);
+            //
+            // TODO: support mutations
+            //
 
-            decodedState.decode(encoded);
-            assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO", 'three': "THREE" });
+            // state.mapOfStrings['three'] = "THREE";
+            // encoded = state.encode();
+            // // assert.deepEqual(encoded, []);
+
+            // decodedState.decode(encoded);
+            // assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO", 'three': "THREE" });
         });
 
         describe("no changes", () => {
