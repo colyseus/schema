@@ -117,7 +117,8 @@ export function float64(bytes: number[], it: Iterator) {
 //     return new flatbuffers.Long(uint32(bytes, it), uint32(bytes, it));
 // };
 
-const _isLittleEndian = new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
+// force little endian to facilitate decoding on multiple implementations
+const _isLittleEndian = true;  // new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
 const _int32 = new Int32Array(2);
 const _float32 = new Float32Array(_int32.buffer);
 const _float64 = new Float64Array(_int32.buffer);
