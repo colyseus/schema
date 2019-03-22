@@ -54,7 +54,7 @@ local encoded_next_state = { 3, 2, 2, 2, 192, 0, 0, 168, 84, 97, 114, 113, 117, 
 
 local state = State:new()
 state:decode(encoded_state)
-pprint(state)
+Schema.pprint(state)
 
 state:decode(encoded_next_state)
-pprint(state)
+Schema.pprint(state)

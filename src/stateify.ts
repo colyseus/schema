@@ -18,13 +18,18 @@ let currentProperty: Property;
 function inspectNode(node: ts.Node) {
     switch (node.kind) {
         case ts.SyntaxKind.ClassDeclaration:
-            currentClass = new Class();;
+            currentClass = new Class();
             classes.push(currentClass);
             break;
         case ts.SyntaxKind.PropertyDeclaration:
             break;
 
         case ts.SyntaxKind.Identifier:
+            // console.log("NODE =>", node.getText());
+            if (node.getText() === "type" && node.parent.kind !== ts.SyntaxKind.ImportSpecifier) {
+                console.log("TYPE DECORATORS:", node.parent.parent.parent.decorators[0].getText());
+                
+            }
             if (node.parent.kind === ts.SyntaxKind.ClassDeclaration) {
                 currentClass.name = node.getText();
 

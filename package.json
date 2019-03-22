@@ -1,7 +1,7 @@
 {
   "name": "@colyseus/schema",
-  "version": "0.3.6",
-  "description": "Schema-based binary serializer / de-serializer. ",
+  "version": "0.3.8",
+  "description": "Schema-based binary serializer / de-serializer.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "bin": {
@@ -24,6 +24,7 @@
     "schema",
     "binary",
     "serialization",
+    "serializer",
     "netcode"
   ],
   "author": "Endel Dreyer",

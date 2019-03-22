@@ -85,6 +85,12 @@ describe("@filter", () => {
         const state = new StateWithFilter();
         state.unitsWithDistanceFilter = new MapSchema<Unit>();
 
+        const client5 = { sessionId: "five" };
+
+        // FIRST DECODE
+        const decoded5 = (new StateWithFilter()).decode(state.encodeFiltered(client5));
+        assert.equal(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{}}');
+
         const createUnit = (key: string, x: number, y: number) => {
             const unit = new Unit();
             unit.x = x;
@@ -98,18 +104,29 @@ describe("@filter", () => {
         createUnit("four", 20, 0);
         createUnit("five", 50, 0);
 
-        const client5 = { sessionId: "five" };
-        const decoded5 = (Reflection.decode(Reflection.encode(state)) as StateWithFilter).decode(state.encodeFiltered(client5));
-
-        state.unitsWithDistanceFilter.five.x = 30;
-        decoded5.unitsWithDistanceFilter.onAdd = function(item, key) {
-            assert.equal(key, "four");
-        }
-        const onAddSpy = sinon.spy(decoded5.unitsWithDistanceFilter, 'onAdd');
+        // SECOND DECODE
         decoded5.decode(state.encodeFiltered(client5));
+        assert.equal(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{"five":{"x":50,"y":0}}}');
+
+        assert.deepEqual(Object.keys(decoded5.unitsWithDistanceFilter), ['five']);
+
+        // SECOND DECODE
+        state.unitsWithDistanceFilter.five.x = 30;
+        decoded5.unitsWithDistanceFilter.onAdd = function(item, key) {}
+        let onAddSpy = sinon.spy(decoded5.unitsWithDistanceFilter, 'onAdd');
+
+        decoded5.decode(state.encodeFiltered(client5));
+        assert.equal(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{"five":{"x":30,"y":0},"four":{"x":20,"y":0}}}');
 
         assert.deepEqual(Object.keys(decoded5.unitsWithDistanceFilter), ['five', 'four']);
-        sinon.assert.calledOnce(onAddSpy);
+
+        // THIRD DECODE
+        state.unitsWithDistanceFilter.five.x = 17;
+        decoded5.decode(state.encodeFiltered(client5));
+        assert.equal(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{"five":{"x":17,"y":0},"four":{"x":20,"y":0},"two":{"x":10,"y":0},"three":{"x":15,"y":0}}}');
+
+        assert.deepEqual(Object.keys(decoded5.unitsWithDistanceFilter), ['five', 'four', 'two', 'three']);
+        sinon.assert.calledThrice(onAddSpy);
     });
 
     it("should trigger onRemove when filter by distance doesn't match anymore", () => {

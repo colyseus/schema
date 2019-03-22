@@ -1,14 +1,21 @@
+import { ChangeTree } from "../ChangeTree";
+
 export class ArraySchema<T=any> extends Array<T> {
     static get [Symbol.species](): ArrayConstructor { return Array; }
+
+    protected $changes: ChangeTree;
 
     constructor (...items: T[]) {
         super(...items);
 
         Object.setPrototypeOf(this, Object.create(ArraySchema.prototype));
         Object.defineProperties(this, {
-            onAdd:    { value: undefined, enumerable: false, writable: true },
-            onRemove: { value: undefined, enumerable: false, writable: true },
-            onChange: { value: undefined, enumerable: false, writable: true },
+            $changes:     { value: new ChangeTree(), enumerable: false, writable: true },
+
+            onAdd:        { value: undefined, enumerable: false, writable: true },
+            onRemove:     { value: undefined, enumerable: false, writable: true },
+            onChange:     { value: undefined, enumerable: false, writable: true },
+
             clone: {
                 value: () => {
                     const arr = new ArraySchema(...this);

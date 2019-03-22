@@ -1,17 +1,23 @@
+import { ChangeTree } from "../ChangeTree";
+
 export class MapSchema<T=any> {
+    protected $changes: ChangeTree;
+
     constructor (obj: any = {}) {
         for (let key in obj) {
             this[key] = obj[key];
         }
 
         Object.defineProperties(this, {
-            onAdd:    { value: undefined, enumerable: false, writable: true },
-            onRemove: { value: undefined, enumerable: false, writable: true },
-            onChange: { value: undefined, enumerable: false, writable: true },
+            $changes:     { value: new ChangeTree(), enumerable: false, writable: true },
+
+            onAdd:        { value: undefined, enumerable: false, writable: true },
+            onRemove:     { value: undefined, enumerable: false, writable: true },
+            onChange:     { value: undefined, enumerable: false, writable: true },
 
             clone: {
                 value: () => {
-                    const map = Object.assign(new MapSchema(), this);;
+                    const map = Object.assign(new MapSchema(), this);
                     map.onAdd = this.onAdd;
                     map.onRemove = this.onRemove;
                     return map;

@@ -26,4 +26,14 @@ describe("Compatibility", () => {
     it("should be compatible with msgpack.encode", () => {
         assert.deepEqual(msgpack.encode(state), msgpack.encode(targetState));
     });
+
+    it("should allow only one child as Schema instance", () => {
+        state.player.x = 500;
+        console.log(state.player);
+        const data = {
+            number: 10,
+            player: state.player
+        }
+        msgpack.encode([data]);
+    });
 })

@@ -3,6 +3,8 @@ import { END_OF_STRUCTURE, NIL, INDEX_CHANGE } from './spec';
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
 
+import { ChangeTree } from './ChangeTree';
+
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema } from './types/MapSchema';
 
@@ -71,13 +73,7 @@ export abstract class Schema {
     static _filters: {[field: string]: FilterCallback};
     static _descriptors: PropertyDescriptorMap & ThisType<any>;
 
-    public $changed: boolean;
-    protected $allChanges: { [key: string]: any };
-    protected $changes: { [key: string]: any };
-
-    protected $parent: Schema;
-    protected $parentField: string | (string | number | symbol)[];
-    protected $parentIndexChange: number;
+    protected $changes: ChangeTree;
 
     public onChange?(changes: DataChange[]);
     public onRemove?();
@@ -86,13 +82,7 @@ export abstract class Schema {
     constructor(...args: any[]) {
         // fix enumerability of fields for end-user
         Object.defineProperties(this, {
-            $changed: { value: false, enumerable: false, writable: true },
-            $changes: { value: {}, enumerable: false, writable: true },
-            $allChanges: { value: {}, enumerable: false, writable: true },
-
-            $parent: { value: undefined, enumerable: false, writable: true },
-            $parentField: { value: undefined, enumerable: false, writable: true },
-            $parentIndexChange: { value: undefined, enumerable: false, writable: true },
+            $changes: { value: new ChangeTree(), enumerable: false, writable: true },
         });
 
         const descriptors = this._descriptors;
@@ -106,103 +96,7 @@ export abstract class Schema {
     get _indexes () { return (this.constructor as typeof Schema)._indexes; }
     get _filters () { return (this.constructor as typeof Schema)._filters; }
 
-    markAsChanged (field: string, value?: Schema | any) {
-        const fieldSchema = this._schema[field];
-        this.$changed = true;
-
-        if (value !== undefined) {
-            if (
-                value &&
-                Array.isArray(value.$parentField) ||
-                fieldSchema && (
-                    Array.isArray(fieldSchema) || (fieldSchema as any).map
-                )
-            ) {
-                const $parentField = value && value.$parentField || [];
-
-                // used for MAP/ARRAY
-                const fieldName = ($parentField.length > 0) 
-                    ? $parentField[0]
-                    : field;
-
-                const fieldKey = ($parentField.length > 0) 
-                    ? $parentField[1] 
-                    : value;
-
-                if (!this.$changes[fieldName]) { this.$changes[fieldName] = []; }
-                if (!this.$allChanges[fieldName]) { this.$allChanges[fieldName] = []; }
-
-                if (fieldKey !== undefined) {
-                    // do not store duplicates of changed fields
-                    if (this.$changes[fieldName].indexOf(fieldKey) === -1) {
-                        this.$changes[fieldName].push(fieldKey);
-                    }
-                    if (this.$allChanges[fieldName].indexOf(fieldKey) === -1) {
-                        this.$allChanges[fieldName].push(fieldKey);
-                    }
-                }
-
-
-            } else if (value && value.$parentField) {
-                // used for direct type relationship
-                this.$changes[value.$parentField] = value;
-                this.$allChanges[value.$parentField] = value;
-
-            } else {
-                // basic types
-                this.$changes[field] = this[`_${field}`];
-                this.$allChanges[field] = this[`_${field}`];
-            }
-        }
-
-        if (this.$parent) {
-            this.$parent.markAsChanged(field, this);
-        }
-    }
-
-    markAsUnchanged() {
-        const schema = this._schema;
-        const changes = this.$changes;
-
-        for (const field in changes) {
-            const type = schema[field];
-            const value = changes[field];
-
-            // skip unchagned fields
-            if (value === undefined) { continue; }
-
-            if ((type as any)._schema) {
-                (value as Schema).markAsUnchanged();
-
-            } else if (Array.isArray(type)) {
-                // encode Array of type
-                for (let i = 0, l = value.length; i < l; i++) {
-                    const index = value[i];
-                    const item = this[`_${field}`][index];
-
-                    if (typeof(type[0]) !== "string") { // is array of Schema
-                        (item as Schema).markAsUnchanged();
-                    }
-                }
-
-            } else if ((type as any).map) {
-                const keys = value;
-                const mapKeys = Object.keys(this[`_${field}`]);
-
-                for (let i = 0; i < keys.length; i++) {
-                    const key = mapKeys[keys[i]] || keys[i];
-                    const item = this[`_${field}`][key];
-
-                    if (item instanceof Schema) {
-                        item.markAsUnchanged();
-                    }
-                }
-            }
-        }
-
-        this.$changed = false;
-        this.$changes = {};
-    }
+    get $changed () { return this.$changes.changed; }
 
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
         const changes: DataChange[] = [];
@@ -454,7 +348,7 @@ export abstract class Schema {
         }
 
         // skip if nothing has changed
-        if (!this.$changed && !encodeAll) {
+        if (!this.$changes.changed && !encodeAll) {
             endStructure();
             return encodedBytes;
         }
@@ -463,21 +357,24 @@ export abstract class Schema {
         const indexes = this._indexes;
         const filters = this._filters;
         const changes = (encodeAll) 
-            ? this.$allChanges
-            : this.$changes;
+            ? this.$changes.allChanges
+            : this.$changes.changes;
 
-        for (const field in changes) {
-            let bytes: number[] = [];
+        for (let i = 0, l = changes.length; i < l; i++) {
+            const field = changes[i] as string;
 
             const type = schema[field];
             const filter = (filters && filters[field]);
-            const value = (filter && this.$allChanges[field]) || changes[field];
+            // const value = (filter && this.$allChanges[field]) || changes[field];
+            const value = this[`_${field}`];
             const fieldIndex = indexes[field];
 
             // skip unchagned fields
             if (value === undefined) {
                 continue;
             }
+
+            let bytes: number[] = [];
 
             if ((type as any)._schema) {
                 if (client && filter) {
@@ -508,14 +405,16 @@ export abstract class Schema {
                 encode.number(bytes, fieldIndex);
 
                 // total of items in the array
-                encode.number(bytes, this[`_${field}`].length);
-
-                // number of changed items
                 encode.number(bytes, value.length);
 
+                const arrayChanges = (encodeAll) ? value.$changes.allChanges : value.$changes.changes;
+
+                // number of changed items
+                encode.number(bytes, arrayChanges.length);
+
                 // encode Array of type
-                for (let i = 0, l = value.length; i < l; i++) {
-                    const index = value[i];
+                for (let j = 0; j < arrayChanges.length; j++) {
+                    const index = arrayChanges[j];
                     const item = this[`_${field}`][index];
 
                     if (client && filter) {
@@ -533,34 +432,32 @@ export abstract class Schema {
                             continue;
                         }
 
-                        if (item.$parentIndexChange >= 0) {
+                        const indexChange = value.$changes.getIndexChange(item);
+                        if (indexChange !== undefined) {
                             encode.uint8(bytes, INDEX_CHANGE);
-                            encode.number(bytes, item.$parentIndexChange);
-                            item.$parentIndexChange = undefined; // reset
-                        }
-
-                        if (!item.$parent) {
-                            item.$parent = this;
-                            item.$parentField = [field, i];
+                            encode.number(bytes, indexChange);
                         }
 
                         bytes = bytes.concat(item.encode(root, encodeAll, client));
 
                     } else {
-                        encode.number(bytes, i);
+                        encode.number(bytes, index);
 
-                        if (!encodePrimitiveType(type[0] as string, bytes, index)) {
+                        if (!encodePrimitiveType(type[0] as string, bytes, item)) {
                             console.log("cannot encode", schema[field]);
                             continue;
                         }
                     }
                 }
 
+                value.$changes.discard();
+
             } else if ((type as any).map) {
                 // encode Map of type
                 encode.number(bytes, fieldIndex);
 
-                const keys = value; // TODO: during `encodeAll`, removed entries are not going to be encoded
+                // TODO: during `encodeAll`, removed entries are not going to be encoded
+                const keys = (encodeAll) ? value.$changes.allChanges : value.$changes.changes;
                 encode.number(bytes, keys.length)
 
                 const mapKeys = Object.keys(this[`_${field}`]);
@@ -589,10 +486,10 @@ export abstract class Schema {
                     }
 
                     // encode index change
-                    if (item && item.$parentIndexChange >= 0) {
+                    const indexChange = value.$changes.getIndexChange(item);
+                    if (item && indexChange !== undefined) {
                         encode.uint8(bytes, INDEX_CHANGE);
-                        encode.number(bytes, item.$parentIndexChange);
-                        item.$parentIndexChange = undefined; // reset
+                        encode.number(bytes, this[`_${field}`]._indexes[indexChange]);
                     }
 
                     if (mapItemIndex !== undefined) {
@@ -601,16 +498,9 @@ export abstract class Schema {
                     } else {
                         // TODO: remove item
                         encode.string(bytes, key);
-
-                        // const mapKey = mapKeys.indexOf(key);
-                        // if (!client && mapKey >= 0) {
-                        //     this[`_${field}`]._indexes[key] = mapKey;
-                        // }
                     }
 
                     if (item instanceof Schema) {
-                        item.$parent = this;
-                        item.$parentField = [field, keys[i]];
                         bytes = bytes.concat(item.encode(root, encodeAll, client));
 
                     } else if (item !== undefined) {
@@ -621,6 +511,8 @@ export abstract class Schema {
                     }
 
                 }
+
+                value.$changes.discard();
 
                 // TODO: track array/map indexes per client?
                 if (!client) {
@@ -650,8 +542,7 @@ export abstract class Schema {
         endStructure();
 
         if (!client) {
-            this.$changed = false;
-            this.$changes = {};
+            this.$changes.discard();
         }
 
         return encodedBytes;
@@ -879,29 +770,30 @@ export function type (type: DefinitionType): PropertyDecorator {
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, setValue) => {
-                            if (prop !== "length") {
+                            if (prop !== "length" && prop !== "$changes") {
                                 // ensure new value has a parent
                                 const key = (isArray) ? Number(prop) : String(prop);
 
-                                if (setValue.$parentField && setValue.$parentField[1] !== key) {
-                                    if (isMap) {
-                                        const indexChange = this[`${fieldCached}`]._indexes[setValue.$parentField[1]];
-                                        setValue.$parentIndexChange = indexChange;
-
-                                    } else {
-                                        setValue.$parentIndexChange = setValue.$parentField[1];
-                                    }
+                                const previousIndex = obj.$changes.getIndex(setValue);
+                                if (previousIndex !== undefined) {
+                                    obj.$changes.mapIndexChange(setValue, previousIndex);
                                 }
 
+                                obj.$changes.mapIndex(setValue, key);
+
                                 if (setValue instanceof Schema) {
-                                    setValue.$parent = this;
-                                    setValue.$parentField = [field, key];
-                                    this.markAsChanged(field, setValue);
+                                    // new items are flagged with all changes
+                                    if (!setValue.$changes.parent) {
+                                        setValue.$changes = new ChangeTree(key, obj.$changes)
+                                        setValue.$changes.changeAll(setValue);
+                                    }
 
                                 } else {
                                     obj[prop] = setValue;
-                                    this.markAsChanged(field, obj);
                                 }
+
+                                // apply change on ArraySchema / MapSchema
+                                obj.$changes.change(key);
 
                             } else if (setValue !== obj[prop]) {
                                 // console.log("SET NEW LENGTH:", setValue);
@@ -914,13 +806,18 @@ export function type (type: DefinitionType): PropertyDecorator {
                         },
 
                         deleteProperty: (obj, prop) => {
-                            const previousValue = obj[prop];
+                            const deletedValue = obj[prop];
+
+                            // TODO: 
+                            // remove deleteIndex of property being deleted as well.
+
+                            // obj.$changes.deleteIndex(deletedValue);
+                            // obj.$changes.deleteIndexChange(deletedValue);
+
                             delete obj[prop];
 
-                            // ensure new value has a parent
-                            if (previousValue && previousValue.$parent) {
-                                previousValue.$parent.markAsChanged(field, previousValue);
-                            }
+                            const key = (isArray) ? Number(prop) : String(prop);
+                            obj.$changes.change(key);
 
                             return true;
                         },
@@ -936,49 +833,45 @@ export function type (type: DefinitionType): PropertyDecorator {
 
                 if (Array.isArray(constructor._schema[field])) {
                     // directly assigning an array of items as value.
-                    const length = value.length;
+                    this.$changes.change(field);
+                    value.$changes = new ChangeTree(field, this.$changes);
 
-                    if (length === 0) {
-                        // FIXME: this is a bit confusing.
-                        // Needed to allow encoding an empty array.
-                        this.markAsChanged(field, { $parentField: [field] });
-                        return;
-                    }
-
-                    for (let i = 0; i < length; i++) {
+                    for (let i = 0; i < value.length; i++) {
                         if (value[i] instanceof Schema) {
-                            value[i].$parent = this;
-                            value[i].$parentField = [field, i];
+                            value[i].$changes = new ChangeTree(i, value.$changes);
+                            value[i].$changes.changeAll(value[i]);
                         }
-                        this.markAsChanged(field, value[i]);
+                        value.$changes.mapIndex(value[i], i);
+                        value.$changes.change(i);
                     }
 
                 } else if ((constructor._schema[field] as any).map) {
                     // directly assigning a map
+                    value.$changes = new ChangeTree(field, this.$changes);
+                    this.$changes.change(field);
+
                     for (let key in value) {
                         if (value[key] instanceof Schema) {
-                            value[key].$parent = this;
-                            value[key].$parentField = [field, key];
-                            this.markAsChanged(field, value[key]);
-
-                        } else {
-                            this.markAsChanged(field, key);
+                            value[key].$changes = new ChangeTree(key, value.$changes);
+                            value[key].$changes.changeAll(value[key]);
                         }
-
+                        value.$changes.mapIndex(value[key], key);
+                        value.$changes.change(key);
                     }
 
                 } else if (typeof(constructor._schema[field]) === "function") {
                     // directly assigning a `Schema` object
                     // value may be set to null
+                    this.$changes.change(field);
+
                     if (value) {
-                        value.$parent = this;
-                        value.$parentField = field;
+                        value.$changes = new ChangeTree(field, this.$changes);
+                        value.$changes.changeAll(value);
                     }
-                    this.markAsChanged(field, value);
 
                 } else {
                     // directly assigning a primitive type
-                    this.markAsChanged(field, value);
+                    this.$changes.change(field);
                 }
             },
 
