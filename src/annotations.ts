@@ -356,7 +356,7 @@ export abstract class Schema {
         const schema = this._schema;
         const indexes = this._indexes;
         const filters = this._filters;
-        const changes = (encodeAll) 
+        const changes = (encodeAll || client) 
             ? this.$changes.allChanges
             : this.$changes.changes;
 
@@ -407,7 +407,9 @@ export abstract class Schema {
                 // total of items in the array
                 encode.number(bytes, value.length);
 
-                const arrayChanges = (encodeAll) ? value.$changes.allChanges : value.$changes.changes;
+                const arrayChanges = (encodeAll || client)
+                    ? value.$changes.allChanges
+                    : value.$changes.changes;
 
                 // number of changed items
                 encode.number(bytes, arrayChanges.length);
@@ -457,7 +459,10 @@ export abstract class Schema {
                 encode.number(bytes, fieldIndex);
 
                 // TODO: during `encodeAll`, removed entries are not going to be encoded
-                const keys = (encodeAll) ? value.$changes.allChanges : value.$changes.changes;
+                const keys = (encodeAll || client)
+                    ? value.$changes.allChanges
+                    : value.$changes.changes;
+
                 encode.number(bytes, keys.length)
 
                 const mapKeys = Object.keys(this[`_${field}`]);

@@ -593,13 +593,10 @@ describe("Schema", () => {
             decodedState.decode(encoded);
             assert.deepEqual(decodedState.arrayOfStrings, ["one", "two", "three"]);
 
-            //
-            // TODO: support mutations
-            //
-
+            // mutate array
             state.arrayOfStrings.push("four")
             encoded = state.encode();
-            // assert.deepEqual(encoded, []);
+            assert.deepEqual(encoded, [ 0, 4, 1, 3, 164, 102, 111, 117, 114 ]);
 
             decodedState.decode(encoded);
             assert.deepEqual(decodedState.arrayOfStrings, ["one", "two", "three", "four"]);
@@ -622,16 +619,13 @@ describe("Schema", () => {
 
             assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584]);
 
-            //
-            // TODO: support mutations
-            //
+            // mutate array
+            state.arrayOfNumbers.push(999999);
+            encoded = state.encode();
+            assert.deepEqual(encoded, [ 0, 8, 1, 7, 206, 999999, 3906, 15, 0 ]);
 
-            // state.arrayOfNumbers.push(999999);
-            // encoded = state.encode();
-            // // assert.deepEqual(encoded, []);
-
-            // decodedState.decode(encoded);
-            // assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584, 999999]);
+            decodedState.decode(encoded);
+            assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584, 999999]);
         });
 
         it("should support map of strings", () => {
@@ -650,16 +644,13 @@ describe("Schema", () => {
             decodedState.decode(encoded);
             assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO" });
 
-            //
-            // TODO: support mutations
-            //
+            // mutate map
+            state.mapOfStrings['three'] = "THREE";
+            encoded = state.encode();
+            // assert.deepEqual(encoded, []);
 
-            // state.mapOfStrings['three'] = "THREE";
-            // encoded = state.encode();
-            // // assert.deepEqual(encoded, []);
-
-            // decodedState.decode(encoded);
-            // assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO", 'three': "THREE" });
+            decodedState.decode(encoded);
+            assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO", 'three': "THREE" });
         });
 
         describe("no changes", () => {
