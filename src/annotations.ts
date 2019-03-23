@@ -471,7 +471,7 @@ export abstract class Schema {
                     }
 
                     if (encodeAll) {
-                        if (item) {
+                        if (item !== undefined) {
                             mapItemIndex = undefined;
 
                         } else {

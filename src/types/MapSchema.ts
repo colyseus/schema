@@ -9,7 +9,7 @@ export class MapSchema<T=any> {
         }
 
         Object.defineProperties(this, {
-            $changes:     { value: new ChangeTree(), enumerable: false, writable: true },
+            $changes:     { value: undefined, enumerable: false, writable: true },
 
             onAdd:        { value: undefined, enumerable: false, writable: true },
             onRemove:     { value: undefined, enumerable: false, writable: true },
