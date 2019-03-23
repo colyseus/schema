@@ -21,6 +21,7 @@ export class ArraySchema<T=any> extends Array<T> {
                     const arr = new ArraySchema(...this);
                     arr.onAdd = this.onAdd;
                     arr.onRemove = this.onRemove;
+                    arr.onChange = this.onChange;
                     return arr;
                 }
             }

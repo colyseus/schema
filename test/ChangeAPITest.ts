@@ -1,7 +1,7 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
 
-import { DataChange } from './../src/annotations';
+import { DataChange, Schema, type } from './../src/annotations';
 import { State, Player } from "./Schema";
 import { MapSchema, ArraySchema } from "../src";
 
@@ -163,6 +163,38 @@ describe("Change API", () => {
             sinon.assert.calledOnce(onChangeSpy);
 
             sinon.assert.calledThrice(onAddPlayerSpy);
+        });
+
+        it("detecting onChange on array holder", () => {
+            class MyState extends Schema {
+                @type(["number"])
+                arrayOfNumbers: ArraySchema<number> = new ArraySchema();
+            }
+
+            const state = new MyState();
+            state.arrayOfNumbers = new ArraySchema(10, 20, 30, 40, 50, 60, 70);
+
+            const decodedState = new MyState();
+            decodedState.arrayOfNumbers.onChange = function(item, index) {}
+            const onChangeSpy = sinon.spy(decodedState.arrayOfNumbers, 'onChange');
+
+            decodedState.decode(state.encode());
+            assert.deepEqual(decodedState.arrayOfNumbers, [10, 20, 30, 40, 50, 60, 70]);
+
+            // mutate array
+            state.arrayOfNumbers[0] = 0;
+            state.arrayOfNumbers[3] = 10;
+            decodedState.decode(state.encode());
+
+            assert.deepEqual(decodedState.arrayOfNumbers, [0, 20, 30, 10, 50, 60, 70]);
+
+            // mutate array
+            state.arrayOfNumbers[4] = 40;
+            state.arrayOfNumbers[6] = 100;
+            decodedState.decode(state.encode());
+
+            assert.deepEqual(decodedState.arrayOfNumbers, [0, 20, 30, 10, 40, 60, 100]);
+            sinon.assert.callCount(onChangeSpy, 11);
         });
 
         it("detecting onRemove on array items", () => {

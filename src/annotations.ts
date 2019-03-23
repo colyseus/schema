@@ -173,17 +173,17 @@ export abstract class Schema {
                 for (let i = 0; i < numChanges; i++) {
                     const newIndex = decode.number(bytes, it);
 
-                    // index change check
-                    let indexChangedFrom: number;
+                    let indexChangedFrom: number; // index change check
                     if (decode.indexChangeCheck(bytes, it)) {
                         decode.uint8(bytes, it);
                         indexChangedFrom = decode.number(bytes, it);
                         hasIndexChange = true;
                     }
 
+                    let isNew = (!hasIndexChange && !value[newIndex]) || (hasIndexChange && indexChangedFrom === undefined);
+
                     if ((type as any).prototype instanceof Schema) {
-                        let item;
-                        let isNew = (hasIndexChange && indexChangedFrom === undefined && newIndex !== undefined);
+                        let item: Schema;
 
                         if (isNew) {
                             item = new (type as any)();
@@ -191,7 +191,7 @@ export abstract class Schema {
                         } else if (indexChangedFrom !== undefined) {
                             item = valueRef[indexChangedFrom];
 
-                        } else if (newIndex !== undefined) {
+                        } else {
                             item = valueRef[newIndex]
                         }
 
@@ -210,17 +210,18 @@ export abstract class Schema {
                             continue;
                         }
 
-                        item.$parent = this;
                         item.decode(bytes, it);
-
-                        if (isNew && valueRef.onAdd) {
-                            valueRef.onAdd(item, newIndex);
-                        }
-
                         value[newIndex] = item;
 
                     } else {
                         value[newIndex] = decodePrimitiveType(type as string, bytes, it);
+                    }
+
+                    if (isNew && valueRef.onAdd) {
+                        valueRef.onAdd(value[newIndex], newIndex);
+
+                    } else if (valueRef.onChange) {
+                        valueRef.onChange(value[newIndex], newIndex);
                     }
 
                     change.push(value[newIndex]);
@@ -305,14 +306,15 @@ export abstract class Schema {
                         item.$parent = this;
                         item.decode(bytes, it);
                         value[newKey] = item;
-
-                        if (isNew && valueRef.onAdd) {
-                            valueRef.onAdd(item, newKey);
-
-                        } else if (valueRef.onChange) {
-                            valueRef.onChange(item, newKey);
-                        }
                     }
+
+                    if (isNew && valueRef.onAdd) {
+                        valueRef.onAdd(item, newKey);
+
+                    } else if (valueRef.onChange) {
+                        valueRef.onChange(item, newKey);
+                    }
+
                 }
 
             } else {

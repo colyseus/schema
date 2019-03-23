@@ -20,6 +20,7 @@ export class MapSchema<T=any> {
                     const map = Object.assign(new MapSchema(), this);
                     map.onAdd = this.onAdd;
                     map.onRemove = this.onRemove;
+                    map.onChange = this.onChange;
                     return map;
                 }
             },
