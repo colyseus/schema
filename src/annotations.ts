@@ -216,8 +216,10 @@ export abstract class Schema {
                         value[newIndex] = decodePrimitiveType(type as string, bytes, it);
                     }
 
-                    if (isNew && valueRef.onAdd) {
-                        valueRef.onAdd(value[newIndex], newIndex);
+                    if (isNew) {
+                        if (valueRef.onAdd) {
+                            valueRef.onAdd(value[newIndex], newIndex);
+                        }
 
                     } else if (valueRef.onChange) {
                         valueRef.onChange(value[newIndex], newIndex);
@@ -302,8 +304,10 @@ export abstract class Schema {
                         value[newKey] = item;
                     }
 
-                    if (isNew && valueRef.onAdd) {
-                        valueRef.onAdd(item, newKey);
+                    if (isNew) {
+                        if (valueRef.onAdd) {
+                            valueRef.onAdd(item, newKey);
+                        }
 
                     } else if (valueRef.onChange) {
                         valueRef.onChange(item, newKey);

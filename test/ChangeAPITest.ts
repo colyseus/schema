@@ -194,7 +194,7 @@ describe("Change API", () => {
             decodedState.decode(state.encode());
 
             assert.deepEqual(decodedState.arrayOfNumbers, [0, 20, 30, 10, 40, 60, 100]);
-            sinon.assert.callCount(onChangeSpy, 11);
+            sinon.assert.callCount(onChangeSpy, 4);
         });
 
         it("detecting onRemove on array items", () => {
