@@ -128,5 +128,39 @@ describe("Reflection", () => {
         decodedState.decode(state.encode());
 
         assert.equal(JSON.stringify(decodedState), '{"arrayOfStrings":["one","two"]}');
-    })
+    });
+
+    it("should reflect and be able to use multiple structures of primitive tyes", () => {
+        class MyState extends Schema {
+            @type("string") 
+            currentTurn: string;
+
+            @type({ map: "number" }) 
+            players: MapSchema<number>;
+
+            @type(["number"]) 
+            board: ArraySchema<number>;
+
+            @type("string") 
+            winner: string;
+
+            @type("boolean") 
+            draw: boolean;
+        }
+
+        const state = new MyState();
+        state.currentTurn = "one";
+        state.players = new MapSchema();
+        state.board = new ArraySchema(0, 0, 0, 0, 0, 0, 0, 0, 0);
+        state.players['one'] = 1;
+
+        const decodedState = Reflection.decode(Reflection.encode(state)) as MyState;
+        decodedState.decode(state.encodeAll());
+
+        const decodedState2 = Reflection.decode(Reflection.encode(state)) as MyState;
+        decodedState2.decode(state.encodeAll());
+
+        assert.equal(JSON.stringify(decodedState),  '{"currentTurn":"one","players":{"one":1},"board":[0,0,0,0,0,0,0,0,0]}');
+        assert.equal(JSON.stringify(decodedState2), '{"currentTurn":"one","players":{"one":1},"board":[0,0,0,0,0,0,0,0,0]}');
+    });
 });

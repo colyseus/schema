@@ -609,48 +609,48 @@ describe("Schema", () => {
             }
 
             const state = new MyState();
-            state.arrayOfNumbers = new ArraySchema(144, 233, 377, 610, 987, 1597, 2584);
+            state.arrayOfNumbers = new ArraySchema(0, 144, 233, 377, 610, 987, 1597, 2584);
 
             let encoded = state.encode();
-            assert.deepEqual(encoded, [0, 7, 7, 0, 204, 144, 1, 204, 233, 2, 205, 377, 1, 3, 205, 610, 2, 4, 205, 987, 3, 5, 205, 1597, 6, 6, 205, 2584, 10]);
-
+            assert.deepEqual(encoded, [ 0, 8, 8, 0, 0, 1, 204, 144, 2, 204, 233, 3, 205, 377, 1, 4, 205, 610, 2, 5, 205, 987, 3, 6, 205, 1597, 6, 7, 205, 2584, 10 ] );
+            
             const decodedState = new MyState();
             decodedState.decode(encoded);
 
-            assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584]);
+            assert.deepEqual(decodedState.arrayOfNumbers, [0, 144, 233, 377, 610, 987, 1597, 2584]);
 
             // mutate array
             state.arrayOfNumbers.push(999999);
             encoded = state.encode();
-            assert.deepEqual(encoded, [ 0, 8, 1, 7, 206, 999999, 3906, 15, 0 ]);
+            assert.deepEqual(encoded, [ 0, 9, 1, 8, 206, 999999, 3906, 15, 0 ]);
 
             decodedState.decode(encoded);
-            assert.deepEqual(decodedState.arrayOfNumbers, [144, 233, 377, 610, 987, 1597, 2584, 999999]);
+            assert.deepEqual(decodedState.arrayOfNumbers, [0, 144, 233, 377, 610, 987, 1597, 2584, 999999]);
         });
 
-        it("should support map of strings", () => {
+        it("should support map of numbers", () => {
             class MyState extends Schema {
-                @type({ map: "string" })
-                mapOfStrings: MapSchema<string>;
+                @type({ map: "number" })
+                mapOfNumbers: MapSchema<number>;
             }
 
             const state = new MyState();
-            state.mapOfStrings = new MapSchema<string>({ 'one': "ONE", 'two': "TWO" });
+            state.mapOfNumbers = new MapSchema<number>({ 'zero': 0, 'one': 1, 'two': 2 });
 
             let encoded = state.encode();
             // assert.deepEqual(encoded, []);
 
             const decodedState = new MyState();
             decodedState.decode(encoded);
-            assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO" });
+            assert.deepEqual(decodedState.mapOfNumbers, { 'zero': 0, 'one': 1, 'two': 2 });
 
             // mutate map
-            state.mapOfStrings['three'] = "THREE";
+            state.mapOfNumbers['three'] = 3;
             encoded = state.encode();
             // assert.deepEqual(encoded, []);
 
             decodedState.decode(encoded);
-            assert.deepEqual(decodedState.mapOfStrings, { 'one': "ONE", 'two': "TWO", 'three': "THREE" });
+            assert.deepEqual(decodedState.mapOfNumbers, { 'zero': 0, 'one': 1, 'two': 2, 'three': 3 });
         });
 
         describe("no changes", () => {
