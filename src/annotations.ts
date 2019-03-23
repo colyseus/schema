@@ -135,7 +135,6 @@ export abstract class Schema {
 
                 } else {
                     value = this[`_${field}`] || new (type as any)();
-                    value.$parent = this;
                     value.decode(bytes, it);
                 }
 
@@ -303,7 +302,6 @@ export abstract class Schema {
                         value[newKey] = decodePrimitiveType(type, bytes, it);
 
                     } else {
-                        item.$parent = this;
                         item.decode(bytes, it);
                         value[newKey] = item;
                     }
@@ -392,12 +390,6 @@ export abstract class Schema {
                 if (value) {
                     bytes = bytes.concat((value as Schema).encode(root, encodeAll, client));
 
-                    // ensure parent is set
-                    // in case it was manually instantiated
-                    if (!value.$parent) {
-                        value.$parent = this;
-                        value.$parentField = field;
-                    }
                 } else {
                     // value has been removed
                     encode.uint8(bytes, NIL);

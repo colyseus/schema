@@ -536,7 +536,7 @@ describe("Schema", () => {
             assert.equal(state.fieldString, "Hello world!");
             assert.equal(state.fieldNumber, 50);
             assert.ok(state.player instanceof Player);
-            assert.equal((state.player as any).$parent, state);
+            assert.equal((state.player as any).$changes.parent, (state as any).$changes);
             assert.equal(state.player.name, "Jake Badlands");
             assert.equal(state.player.x, undefined);
             assert.equal(state.player.y, 50);
