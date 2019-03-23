@@ -97,4 +97,36 @@ describe("Reflection", () => {
         assert.deepEqual(Object.keys(decodedState._schema.points[0]._schema), ['x', 'y'])
         assert.deepEqual(Object.keys(decodedState._schema.players[0]._schema), ['x', 'y', 'name'])
     });
+
+    it("should reflect map of primitive type", () => {
+        class MyState extends Schema {
+            @type({map: "string"})
+            mapOfStrings: MapSchema<string> = new MapSchema();
+        }
+
+        const state = new MyState();
+        const decodedState = Reflection.decode(Reflection.encode(state)) as MyState;
+
+        state.mapOfStrings['one'] = "one";
+        state.mapOfStrings['two'] = "two";
+        decodedState.decode(state.encode());
+
+        assert.equal(JSON.stringify(decodedState), '{"mapOfStrings":{"one":"one","two":"two"}}');
+    });
+
+    it("should reflect array of primitive type", () => {
+        class MyState extends Schema {
+            @type([ "string" ])
+            arrayOfStrings: ArraySchema<string> = new ArraySchema();
+        }
+
+        const state = new MyState();
+        const decodedState = Reflection.decode(Reflection.encode(state)) as MyState;
+
+        state.arrayOfStrings.push("one")
+        state.arrayOfStrings.push("two");
+        decodedState.decode(state.encode());
+
+        assert.equal(JSON.stringify(decodedState), '{"arrayOfStrings":["one","two"]}');
+    })
 });

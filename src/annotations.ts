@@ -577,7 +577,7 @@ export class ReflectionField extends Schema {
     name: string;
 
     @type("string")
-    type: PrimitiveType;
+    type: string;
 
     @type("uint8")
     referencedType: number;
@@ -611,7 +611,7 @@ export class Reflection extends Schema {
                 const field = new ReflectionField();
                 field.name = fieldName;
 
-                let fieldType;
+                let fieldType: string;
 
                 if (typeof (schema[fieldName]) === "string") {
                     fieldType = schema[fieldName];
@@ -619,30 +619,49 @@ export class Reflection extends Schema {
                 } else {
                     const isSchema = typeof (schema[fieldName]) === "function";
                     const isArray = Array.isArray(schema[fieldName]);
-                    // const isMap = !isArray && (schema[fieldName] as any).map;
+                    const isMap = !isArray && (schema[fieldName] as any).map;
 
-                    fieldType = (isArray) 
-                        ? "array" 
-                        : (isSchema)
-                            ? "ref"
-                            : "map";
+                    let childTypeSchema: any;
+                    if (isSchema) {
+                        fieldType = "ref";
+                        childTypeSchema = schema[fieldName];
 
-                    const childSchema: any = (isArray) 
-                        ? schema[fieldName][0] 
-                        : (isSchema)
-                            ? schema[fieldName]
-                            : schema[fieldName].map;
+                    } else if (isArray) {
+                        fieldType = "array";
 
-                    const childSchemaName = childSchema.name;
+                        if (typeof(schema[fieldName][0]) === "string") {
+                            fieldType += ":" + schema[fieldName][0]; // array:string
 
-                    if (typeIds[childSchemaName] === undefined) {
-                        const childType = new ReflectionType();
-                        childType.id = lastTypeId++;
-                        typeIds[childSchemaName] = childType.id;
-                        buildType(childType, childSchema._schema);
+                        } else {
+                            childTypeSchema = schema[fieldName][0];
+                        }
+
+                    } else if (isMap) {
+                        fieldType = "map";
+
+                        if (typeof(schema[fieldName].map) === "string") {
+                            fieldType += ":" + schema[fieldName].map; // array:string
+
+                        } else {
+                            childTypeSchema = schema[fieldName].map;
+                        }
                     }
 
-                    field.referencedType = typeIds[childSchemaName];
+                    if (childTypeSchema) {
+                        const childSchemaName = childTypeSchema.name;
+
+                        if (typeIds[childSchemaName] === undefined) {
+                            const childType = new ReflectionType();
+                            childType.id = lastTypeId++;
+                            typeIds[childSchemaName] = childType.id;
+                            buildType(childType, childTypeSchema._schema);
+                        }
+
+                        field.referencedType = typeIds[childSchemaName];
+
+                    } else {
+                        field.referencedType = 255;
+                    }
                 }
 
                 field.type = fieldType;
@@ -671,12 +690,17 @@ export class Reflection extends Schema {
                 const schemaType = schemaTypes[reflectionType.id];
 
                 if (field.referencedType !== undefined) {
-                    const refType = schemaTypes[field.referencedType];
+                    let refType = schemaTypes[field.referencedType];
 
-                    if (field.type === "array") {
+                    // map or array of primitive type (255)
+                    if (!refType) {
+                        refType = field.type.split(":")[1];
+                    }
+
+                    if (field.type.indexOf("array") === 0) {
                         type([ refType ])(schemaType.prototype, field.name);
 
-                    } else if (field.type === "map") {
+                    } else if (field.type.indexOf("map") === 0) {
                         type({ map: refType })(schemaType.prototype, field.name);
 
                     } else if (field.type === "ref") {
@@ -685,7 +709,7 @@ export class Reflection extends Schema {
                     }
 
                 } else {
-                    type(field.type)(schemaType.prototype, field.name);
+                    type(field.type as PrimitiveType)(schemaType.prototype, field.name);
                 }
             });
         })

@@ -100,7 +100,7 @@ player: Player;
 arrayOfPlayers: ArraySchema<Player>;
 ```
 
-#### Array of a primitive type (**not currently supported!**)
+#### Array of a primitive type 
 
 You can't mix types inside arrays.
 
@@ -119,7 +119,7 @@ arrayOfStrings: ArraySchema<string>;
 mapOfPlayers: MapSchema<Player>;
 ```
 
-#### Map of a primitive type (**not currently supported!**)
+#### Map of a primitive type 
 
 You can't mix types inside maps.
 
@@ -181,7 +181,6 @@ export class State extends Schema {
 ## Limitations and best practices
 
 - Multi-dimensional arrays are not supported.
-- Maps are only supported for custom `Schema` types.
 - Array items must all have the same type as defined in the schema.
 - `@colyseus/schema` encodes only field values in the specified order.
   - Both encoder (server) and decoder (client) must have same schema definition.
