@@ -261,15 +261,16 @@ export abstract class Schema {
                     }
 
                     const hasMapIndex = decode.numberCheck(bytes, it);
+                    const isSchemaType = typeof(type) !== "string";
 
                     const newKey = (hasMapIndex)
                         ? mapKeys[decode.number(bytes, it)]
                         : decode.string(bytes, it);
 
                     let item;
-                    let isNew = (hasIndexChange && previousKey === undefined && hasMapIndex);
+                    let isNew = (!hasIndexChange && !valueRef[newKey]) || (hasIndexChange && previousKey === undefined && hasMapIndex);
 
-                    if (hasIndexChange && previousKey === undefined && hasMapIndex) {
+                    if (isNew && isSchemaType) {
                         item = new (type as any)();
 
                     } else if (previousKey !== undefined) {
@@ -277,11 +278,6 @@ export abstract class Schema {
 
                     } else {
                         item = valueRef[newKey]
-                    }
-
-                    if (!item && type !== "string") {
-                        item = new (type as any)();
-                        isNew = true;
                     }
 
                     if (decode.nilCheck(bytes, it)) {
@@ -298,8 +294,8 @@ export abstract class Schema {
                         delete value[newKey];
                         continue;
 
-                    } else if (type === "string") {
-                        value[newKey] = decodePrimitiveType(type, bytes, it);
+                    } else if (!isSchemaType) {
+                        value[newKey] = decodePrimitiveType(type as string, bytes, it);
 
                     } else {
                         item.decode(bytes, it);
