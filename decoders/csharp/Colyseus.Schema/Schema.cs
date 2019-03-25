@@ -51,11 +51,20 @@ namespace Colyseus.Schema
     INDEX_CHANGE = 0xd4,
   }
 
-  public class DataChange<T>
+  public class DataChange
   {
     public string Field;
-    public T Value;
-    public T PreviousValue;
+    public object Value;
+    public object PreviousValue;
+  }
+
+  public class OnChangeEventArgs : EventArgs
+  {
+    public List<DataChange> Changes;
+    public OnChangeEventArgs(List<DataChange> changes)
+    {
+      Changes = changes;
+    }
   }
 
   public class Schema
@@ -64,7 +73,7 @@ namespace Colyseus.Schema
     protected Dictionary<string, string> fieldTypes = new Dictionary<string, string>();
     protected Dictionary<string, System.Type> fieldChildTypes = new Dictionary<string, System.Type>();
 
-    public event EventHandler OnChange;
+    public event EventHandler<OnChangeEventArgs> OnChange;
     public event EventHandler OnRemove;
 
     public Schema()
@@ -90,15 +99,22 @@ namespace Colyseus.Schema
     /* allow to retrieve property values by its string name */   
     public object this[string propertyName]
     {
-      get { return GetType().GetField(propertyName).GetValue(this); }
-      set { GetType().GetField(propertyName).SetValue(this, value); }
+      get { 
+        return GetType().GetField(propertyName).GetValue(this); 
+      }
+      set {
+        var field = GetType().GetField(propertyName);
+        field.SetValue(this, Convert.ChangeType(value, field.FieldType)); 
+      }
     }
 
     public void Decode(byte[] bytes, Iterator it = null)
     {
       if (it == null) { it = new Iterator(); }
 
-      var changes = new List<DataChange<object>>();
+      var t = GetType();
+
+      var changes = new List<DataChange>();
       var totalBytes = bytes.Length;
 
       while (it.Offset < totalBytes)
@@ -120,6 +136,20 @@ namespace Colyseus.Schema
         if (fieldType == "ref")
         {
           // child schema type
+          if (Decoder.GetInstance().NilCheck(bytes, it))
+          {
+            it.Offset++;
+            value = null;
+
+          }
+          else
+          {
+            System.Type childType = fieldChildTypes[field];
+            value = this[field] ?? Activator.CreateInstance(childType);
+            (value as Schema).Decode(bytes, it);
+          }
+
+          hasChange = true;
         }
         else if (fieldType == "array")
         {
@@ -138,7 +168,7 @@ namespace Colyseus.Schema
 
         if (hasChange)
         {
-          changes.Add(new DataChange<object>
+          changes.Add(new DataChange
           {
             Field = field,
             Value = (change != null) ? change : value,
@@ -152,7 +182,7 @@ namespace Colyseus.Schema
       if (changes.Count > 0 && OnChange != null)
       {
         // TODO: provide 'changes' list to onChange event.
-        OnChange.Invoke(this, new EventArgs());
+        OnChange.Invoke(this, new OnChangeEventArgs(changes));
       }
     }
   }
