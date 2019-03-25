@@ -1,4 +1,14 @@
+# Mac
+.DS_Store
+.vscode/
+
+# Node.js
 node_modules
 *.log
 
 decoders/cpp/usage
+
+# Colyseus.Schema (C# decoder)
+bin/
+obj/
+.vs/
