@@ -90,8 +90,8 @@ namespace Colyseus.Schema
     /* allow to retrieve property values by its string name */   
     public object this[string propertyName]
     {
-      get { return this.GetType().GetField(propertyName).GetValue(this); }
-      set { this.GetType().GetField(propertyName).SetValue(this, value); }
+      get { return GetType().GetField(propertyName).GetValue(this); }
+      set { GetType().GetField(propertyName).SetValue(this, value); }
     }
 
     public void Decode(byte[] bytes, Iterator it = null)
