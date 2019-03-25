@@ -90,8 +90,8 @@ namespace Colyseus.Schema
     /* allow to retrieve property values by its string name */   
     public object this[string propertyName]
     {
-      get { return GetType().GetProperty(propertyName).GetValue(this, null); }
-      set { GetType().GetProperty(propertyName).SetValue(this, value, null); }
+      get { return this.GetType().GetField(propertyName).GetValue(this); }
+      set { this.GetType().GetField(propertyName).SetValue(this, value); }
     }
 
     public void Decode(byte[] bytes, Iterator it = null)
@@ -112,7 +112,7 @@ namespace Colyseus.Schema
 
         var field = fieldsByIndex[index];
         var fieldType = fieldTypes[field];
-        object value;
+        object value = null;
 
         object change = null;
         bool hasChange = false;
@@ -146,6 +146,13 @@ namespace Colyseus.Schema
           });
         }
 
+        this[field] = value;
+      }
+
+      if (changes.Count > 0 && OnChange != null)
+      {
+        // TODO: provide 'changes' list to onChange event.
+        OnChange.Invoke(this, new EventArgs());
       }
     }
   }
