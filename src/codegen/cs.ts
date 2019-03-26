@@ -47,7 +47,7 @@ function generateClass(klass: Class, namespace: string) {
     const indent = (namespace) ? "\t" : "";
     return `using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
-${indent}class ${klass.name} : Schema {
+${indent}public class ${klass.name} : Schema {
 ${klass.properties.map(prop => generateProperty(prop, indent)).join("\n\n")}
 ${indent}}
 ${namespace ? "}" : ""}
