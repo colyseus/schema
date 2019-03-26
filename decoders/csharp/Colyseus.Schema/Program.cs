@@ -12,10 +12,17 @@ namespace Colyseus.Schema
     public int y;
   }
 
+  class Block : Schema
+  {
+    [Type("number")]
+    public int x;
+
+    [Type("number")]
+    public int y;
+  }
+
   class State : Schema
   {
-    protected int thisIsNotTyped = 0;
-
     [Type("string")]
     public string firstStringField = "";
 
@@ -31,7 +38,8 @@ namespace Colyseus.Schema
     [Type("ref", typeof(Player))]
     public Player player;
 
-    protected int thisIsNotTypedToo = 0;
+    [Type("array", typeof(ArraySchema<Block>))]
+    public ArraySchema<Block> blocks;
   }
 
   class MainClass
@@ -40,41 +48,12 @@ namespace Colyseus.Schema
     {
       State state = new State();
 
-      byte[] bytes = {0,
-  165,
-  70,
-  105,
-  114,
-  115,
-  116,
-  1,
-  166,
-  83,
-  101,
-  99,
-  111,
-  110,
-  100,
-  3,
-  165,
-  84,
-  104,
-  105,
-  114,
-  100,
-  2,
-  204,
-  255,
-  4,
-  0,
-  10,
-  1,
-  20,
-  193 };
+      byte[] bytes = { 0, 165, 70, 105, 114, 115, 116, 1, 166, 83, 101, 99, 111, 110, 100, 3, 165, 84, 104, 105, 114, 100, 2, 204, 255, 4, 0, 10, 1, 20, 193, 5, 2, 2, 0, 0, 50, 1, 60, 193, 1, 0, 70, 1, 80, 193
+       };
 
       state.OnChange += (object sender, OnChangeEventArgs e) =>
       {
-        e.Changes.ForEach((DataChange<object> obj) =>
+        e.Changes.ForEach((DataChange obj) =>
         {
           if (obj.Field == "highNumber")
           {
@@ -91,6 +70,13 @@ namespace Colyseus.Schema
 
       Console.WriteLine("Player, x => " + state.player.x);
       Console.WriteLine("Player, y => " + state.player.y);
+
+      Console.WriteLine("Blocks, Count => " + state.blocks.Count);
+      state.blocks.Items.ForEach((Block obj) =>
+      {
+        Console.WriteLine("Block: " + obj.x + ", " + obj.y);
+      });
+
 
       Console.WriteLine("Program ended!");
     }

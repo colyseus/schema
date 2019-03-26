@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 
@@ -67,6 +68,151 @@ namespace Colyseus.Schema
     }
   }
 
+  public class CollectionEventArgs<T, K> : EventArgs
+  {
+    public T Value;
+    public K Key;
+
+    public CollectionEventArgs(T value, K key)
+    {
+      Value = value;
+      Key = key;
+    }
+  }
+
+  public interface ISchemaCollection
+  {
+    void InvokeOnAdd(object item, object index);
+    void InvokeOnChange(object item, object index);
+    void InvokeOnRemove(object item, object index);
+
+    object CreateItemInstance();
+
+    bool HasSchemaChild { get; }
+    int Count { get; }
+    object this[object key] { get; set; }
+  }
+
+  public class ArraySchema<T> : ISchemaCollection
+  {
+    public List<T> Items;
+    public event EventHandler<CollectionEventArgs<T, int>> OnAdd;
+    public event EventHandler<CollectionEventArgs<T, int>> OnChange;
+    public event EventHandler<CollectionEventArgs<T, int>> OnRemove;
+
+    public ArraySchema()
+    {
+      Items = new List<T>();
+    }
+
+    public ArraySchema(List<T> items = null)
+    {
+      Items = items ?? new List<T>();
+    }
+
+    public object CreateItemInstance()
+    {
+      return (T) Activator.CreateInstance(typeof(T));
+    }
+
+    public bool HasSchemaChild
+    {
+      get { return typeof(T).BaseType == typeof(Schema); }
+    }
+
+    public int Count
+    {
+      get { return Items.Count; }
+    }
+
+    public T this[int index]
+    {
+      get {
+        return (Items.Count > index) ? (T)Items[index] : default(T);
+      }
+      set { Items.Insert(index, value); }
+    }
+
+    public object this[object key]
+    {
+      get {
+        int k = (int)key;
+        return (Items.Count > k) ? (T)Items[k] : default(T);
+      }
+      set { Items.Insert((int)key, (T)value); }
+    }
+
+    public void InvokeOnAdd(object item, object index)
+    {
+      if (OnAdd != null) { OnAdd.Invoke(this, new CollectionEventArgs<T, int>((T) item, (int) index)); }
+    }
+
+    public void InvokeOnChange(object item, object index)
+    {
+      if (OnChange != null) { OnChange.Invoke(this, new CollectionEventArgs<T, int>((T) item, (int) index)); }
+    }
+
+    public void InvokeOnRemove(object item, object index)
+    {
+      if (OnRemove != null) { OnRemove.Invoke(this, new CollectionEventArgs<T, int>((T) item, (int) index)); }
+    }
+  }
+
+  public class MapSchema<T> : ISchemaCollection
+  {
+    public Dictionary<string, T> Items;
+    public event EventHandler<CollectionEventArgs<T, string>> OnAdd;
+    public event EventHandler<CollectionEventArgs<T, string>> OnChange;
+    public event EventHandler<CollectionEventArgs<T, string>> OnRemove;
+
+    public MapSchema(Dictionary<string, T> items = null)
+    {
+      Items = items ?? new Dictionary<string, T>();
+    }
+
+    public object CreateItemInstance()
+    {
+      return (T) Activator.CreateInstance(typeof(T));
+    }
+
+    public bool HasSchemaChild
+    {
+      get { return typeof(T) == typeof(Schema); }
+    }
+
+    public T this[string key]
+    {
+      get { return Items[key]; }
+      set { Items[key] = value; }
+    }
+
+    public object this[object key]
+    {
+      get { return (T) Items[(string) key]; }
+      set { Items[(string) key] = (T) value; }
+    }
+
+    public int Count
+    {
+      get { return Items.Count; }
+    }
+
+    public void InvokeOnAdd(object item, object index)
+    {
+      if (OnAdd != null) { OnAdd.Invoke(this, new CollectionEventArgs<T, string>((T)item, (string)index)); }
+    }
+
+    public void InvokeOnChange(object item, object index)
+    {
+      if (OnChange != null) { OnChange.Invoke(this, new CollectionEventArgs<T, string>((T)item, (string)index)); }
+    }
+
+    public void InvokeOnRemove(object item, object index)
+    {
+      if (OnRemove != null) { OnRemove.Invoke(this, new CollectionEventArgs<T, string>((T)item, (string)index)); }
+    }
+  }
+
   public class Schema
   {
     protected Dictionary<int, string> fieldsByIndex = new Dictionary<int, string>();
@@ -110,9 +256,9 @@ namespace Colyseus.Schema
 
     public void Decode(byte[] bytes, Iterator it = null)
     {
-      if (it == null) { it = new Iterator(); }
+      var decode = Decoder.GetInstance();
 
-      var t = GetType();
+      if (it == null) { it = new Iterator(); }
 
       var changes = new List<DataChange>();
       var totalBytes = bytes.Length;
@@ -128,6 +274,9 @@ namespace Colyseus.Schema
 
         var field = fieldsByIndex[index];
         var fieldType = fieldTypes[field];
+        System.Type childType;
+        fieldChildTypes.TryGetValue(field, out childType);
+
         object value = null;
 
         object change = null;
@@ -136,7 +285,7 @@ namespace Colyseus.Schema
         if (fieldType == "ref")
         {
           // child schema type
-          if (Decoder.GetInstance().NilCheck(bytes, it))
+          if (decode.NilCheck(bytes, it))
           {
             it.Offset++;
             value = null;
@@ -144,7 +293,6 @@ namespace Colyseus.Schema
           }
           else
           {
-            System.Type childType = fieldChildTypes[field];
             value = this[field] ?? Activator.CreateInstance(childType);
             (value as Schema).Decode(bytes, it);
           }
@@ -153,7 +301,102 @@ namespace Colyseus.Schema
         }
         else if (fieldType == "array")
         {
+          change = new List<object>();
+
           // array type
+          ISchemaCollection valueRef = (ISchemaCollection) (this[field] ?? Activator.CreateInstance(childType));
+          ISchemaCollection currentValue = valueRef as ISchemaCollection;
+          //value = valueRef;// TODO: clone
+
+          int newLength = Convert.ToInt32(decode.DecodeNumber(bytes, it));
+          int numChanges = Convert.ToInt32(decode.DecodeNumber(bytes, it));
+
+          hasChange = (numChanges > 0);
+
+          bool hasIndexChange = false;
+
+          // ensure current array has the same length as encoded one
+          if (currentValue.Count > newLength)
+          {
+            for (var i=newLength; i<currentValue.Count; i++)
+            {
+              var item = currentValue[i];
+              if (item is Schema && (item as Schema).OnRemove != null)
+              {
+                (item as Schema).OnRemove.Invoke(this, new EventArgs());
+              }
+              currentValue.InvokeOnRemove(item, i);
+            }
+
+            // reduce items length
+            (currentValue as ArraySchema<object>).Items = (currentValue as ArraySchema<object>).Items.GetRange(0, newLength);
+          }
+
+          for (var i=0; i<numChanges; i++)
+          {
+            var newIndex = Convert.ToInt32(decode.DecodeNumber(bytes, it));
+
+            int indexChangedFrom = -1;
+            if (decode.IndexChangeCheck(bytes, it))
+            {
+              decode.DecodeUint8(bytes, it);
+              indexChangedFrom = Convert.ToInt32(decode.DecodeNumber(bytes, it));
+              hasIndexChange = true;
+            }
+
+            var isNew = (!hasIndexChange && currentValue[newIndex] == null) || (hasIndexChange && indexChangedFrom != -1);
+
+            if (currentValue.HasSchemaChild)
+            {
+              Schema item = null;
+
+              if (isNew)
+              {
+                item = (Schema) currentValue.CreateItemInstance();
+
+              } else if (indexChangedFrom != -1)
+              {
+                item = (Schema) valueRef[indexChangedFrom];
+              }
+              else
+              {
+                item = (Schema) valueRef[newIndex];
+              }
+
+              if (item == null)
+              {
+                item = (Schema) currentValue.CreateItemInstance();
+                isNew = true;
+              }
+
+              if (decode.NilCheck(bytes, it))
+              {
+                it.Offset++;
+                valueRef.InvokeOnRemove(item, newIndex);
+                continue;
+              }
+
+              item.Decode(bytes, it);
+              currentValue[newIndex] = item;
+            }
+            else
+            {
+              currentValue[newIndex] = decode.DecodePrimitiveType(fieldType, bytes, it);
+            }
+
+            if (isNew)
+            {
+              currentValue.InvokeOnAdd(currentValue[newIndex], newIndex);
+            }
+            else
+            {
+              currentValue.InvokeOnChange(currentValue[newIndex], newIndex);
+            }
+
+            (change as List<object>).Add(currentValue[newIndex]);
+          }
+
+          value = currentValue;
         }
         else if (fieldType == "map")
         {
@@ -162,7 +405,7 @@ namespace Colyseus.Schema
         else
         {
           // primitive type
-          value = Decoder.GetInstance().DecodePrimitiveType(fieldType, bytes, it);
+          value = decode.DecodePrimitiveType(fieldType, bytes, it);
           hasChange = true;
         }
 
