@@ -1,24 +1,25 @@
 using System;
 using System.Reflection;
+using System.Collections.Generic;
 
 namespace Colyseus.Schema
 {
   class Player : Schema
   {
     [Type("number")]
-    public int x;
+    public int x = 0;
 
     [Type("number")]
-    public int y;
+    public int y = 0;
   }
 
   class Block : Schema
   {
     [Type("number")]
-    public int x;
+    public int x = 0;
 
     [Type("number")]
-    public int y;
+    public int y = 0;
   }
 
   class State : Schema
@@ -30,16 +31,19 @@ namespace Colyseus.Schema
     public string secondStringField = "";
 
     [Type("number")]
-    public double highNumber;
+    public double highNumber = 0;
 
     [Type("string")]
     public string thirdStringField = "";
 
     [Type("ref", typeof(Player))]
-    public Player player;
+    public Player player = new Player();
 
     [Type("array", typeof(ArraySchema<Block>))]
-    public ArraySchema<Block> blocks;
+    public ArraySchema<Block> blocks = new ArraySchema<Block>();
+
+    [Type("map", typeof(MapSchema<Player>))]
+    public MapSchema<Player> players = new MapSchema<Player>();
   }
 
   class MainClass
@@ -48,8 +52,8 @@ namespace Colyseus.Schema
     {
       State state = new State();
 
-      byte[] bytes = { 0, 165, 70, 105, 114, 115, 116, 1, 166, 83, 101, 99, 111, 110, 100, 3, 165, 84, 104, 105, 114, 100, 2, 204, 255, 4, 0, 10, 1, 20, 193, 5, 2, 2, 0, 0, 50, 1, 60, 193, 1, 0, 70, 1, 80, 193
-       };
+      byte[] bytes = { 0, 165, 70, 105, 114, 115, 116, 1, 166, 83, 101, 99, 111, 110, 100, 3, 165, 84, 104, 105, 114, 100, 2, 204, 255, 4, 0, 10, 1, 20, 193, 5, 2, 2, 0, 0, 50, 1, 60, 193, 1, 0, 70, 1, 80, 193, 6, 3, 163, 111, 110, 101, 0, 100, 1, 120, 193, 163, 116, 119, 111, 0, 204, 140, 1, 204, 160, 193, 165, 116, 104, 114, 101, 101, 0, 204, 180, 1, 204, 200, 193 
+      };
 
       state.OnChange += (object sender, OnChangeEventArgs e) =>
       {
@@ -76,6 +80,12 @@ namespace Colyseus.Schema
       {
         Console.WriteLine("Block: " + obj.x + ", " + obj.y);
       });
+
+      Console.WriteLine("Players, Count => " + state.players.Count);
+      foreach (KeyValuePair<string, Player> entry in state.players.Items)
+      {
+        Console.WriteLine("Player: " + entry.Key + ", " + entry.Value.x + ", " + entry.Value.y);
+      }
 
 
       Console.WriteLine("Program ended!");
