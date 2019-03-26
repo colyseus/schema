@@ -91,6 +91,8 @@ namespace Colyseus.Schema
     bool HasSchemaChild { get; }
     int Count { get; }
     object this[object key] { get; set; }
+
+    ISchemaCollection Clone();
   }
 
   public class ArraySchema<T> : ISchemaCollection
@@ -108,6 +110,17 @@ namespace Colyseus.Schema
     public ArraySchema(List<T> items = null)
     {
       Items = items ?? new List<T>();
+    }
+
+    public ISchemaCollection Clone()
+    {
+      var clone = new ArraySchema<T>(Items)
+      {
+        OnAdd = OnAdd,
+        OnChange = OnChange,
+        OnRemove = OnRemove
+      };
+      return clone;
     }
 
     public object CreateItemInstance()
@@ -168,6 +181,17 @@ namespace Colyseus.Schema
     public MapSchema(Dictionary<string, T> items = null)
     {
       Items = items ?? new Dictionary<string, T>();
+    }
+
+    public ISchemaCollection Clone()
+    {
+      var clone = new MapSchema<T>(Items)
+      {
+        OnAdd = OnAdd,
+        OnChange = OnChange,
+        OnRemove = OnRemove
+      };
+      return clone;
     }
 
     public object CreateItemInstance()
@@ -289,7 +313,6 @@ namespace Colyseus.Schema
           {
             it.Offset++;
             value = null;
-
           }
           else
           {
@@ -299,14 +322,14 @@ namespace Colyseus.Schema
 
           hasChange = true;
         }
+
+        // Array type
         else if (fieldType == "array")
         {
           change = new List<object>();
 
-          // array type
           ISchemaCollection valueRef = (ISchemaCollection) (this[field] ?? Activator.CreateInstance(childType));
-          ISchemaCollection currentValue = valueRef as ISchemaCollection;
-          //value = valueRef;// TODO: clone
+          ISchemaCollection currentValue = valueRef.Clone();
 
           int newLength = Convert.ToInt32(decode.DecodeNumber(bytes, it));
           int numChanges = Convert.ToInt32(decode.DecodeNumber(bytes, it));
@@ -398,13 +421,15 @@ namespace Colyseus.Schema
 
           value = currentValue;
         }
+
+        // Map type
         else if (fieldType == "map")
         {
-          // map type
         }
+
+        // Primitive type
         else
         {
-          // primitive type
           value = decode.DecodePrimitiveType(fieldType, bytes, it);
           hasChange = true;
         }
@@ -424,7 +449,6 @@ namespace Colyseus.Schema
 
       if (changes.Count > 0 && OnChange != null)
       {
-        // TODO: provide 'changes' list to onChange event.
         OnChange.Invoke(this, new OnChangeEventArgs(changes));
       }
     }
