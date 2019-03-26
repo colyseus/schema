@@ -1,3 +1,7 @@
+/**
+ * @author Ethan Davis
+ * https://github.com/ethanent/gar
+ */
 export default (sargs): any => {
 	let props = {}
 	let lones = []
