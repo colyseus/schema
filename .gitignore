@@ -9,6 +9,6 @@ node_modules
 decoders/cpp/usage
 
 # Colyseus.Schema (C# decoder)
-bin/
-obj/
-.vs/
+decoders/csharp/Colyseus.Schema/bin/
+decoders/csharp/Colyseus.Schema/obj/
+decoders/csharp/Colyseus.Schema/.vs/

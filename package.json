@@ -1,11 +1,11 @@
 {
   "name": "@colyseus/schema",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Schema-based binary serializer / de-serializer.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "bin": {
-    "stateify": "./bin/stateify"
+    "schema-codegen": "./bin/schema-codegen"
   },
   "scripts": {
     "test": "mocha --require ts-node/register test/**Test.ts",

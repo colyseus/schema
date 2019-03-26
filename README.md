@@ -206,27 +206,22 @@ decodedState.onChange = function(changes: DataChange[]) {
 decodedState.decode(incomingData);
 ```
 
-## Generating client-side state/schema files:
+## Generating client-side schema files (for strictly typed languages)
 
-> THIS HAS NOT BEEN IMPLEMENTED
+> If you're using JavaScript or LUA, there's no need to bother about this.
+> Interpreted programming languages are able to re-build the Schema locally through the use of `Reflection`.
 
-Decoders for each target language are located at [`/decoders/`](decoders). Usage should be as simple as dropping the decoder along with the schema files in your project, since they have no external dependencies.
+You can generate the client-side schema files based on the TypeScript schema definitions automatically.
 
 ```
-# TypeScript
-statefy ./schemas/State.ts --output ./ts-project/State.ts
-
-# LUA/Defold
-statefy ./schemas/State.ts --output ./lua-project/State.lua
+# C#/Unity
+schema-codegen ./schemas/State.ts --output ./unity-project/ --cs 
 
 # C/C++
-statefy ./schemas/State.ts --output ./cpp-project/State.c
-
-# C#/Unity
-statefy ./schemas/State.ts --output ./unity-project/State.cs
+schema-codegen ./schemas/State.ts --output ./cpp-project/ --cpp
 
 # Haxe
-statefy ./schemas/State.ts --output ./haxe-project/State.hx
+schema-codegen ./schemas/State.ts --output ./haxe-project/ --hx
 ```
 
 ## Benchmarks:
@@ -238,6 +233,10 @@ statefy ./schemas/State.ts --output ./haxe-project/State.hx
 | Updating x/y of 50 entities after initial state | 342 | 684 |
 | Updating x/y of 100 entities after initial state | 668 | 1529 |
 
+
+## Decoder implementations
+
+Decoders for each target language are located at [`/decoders/`](decoders). They have no third party dependencies.
 
 ## Why
 
