@@ -59,5 +59,5 @@ export function parseFiles(fileNames: string[]): Class[] {
         inspectNode(sourceFile, classes);
     });
 
-    return classes;
+    return classes.filter(klass => klass.properties.length > 0);
 }
