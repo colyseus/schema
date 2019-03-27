@@ -1,4 +1,4 @@
-import { Class, Property, File } from "./types";
+import { Class, Property, File, getCommentHeader } from "./types";
 
 const typeMaps = {
     "string": "string",
@@ -45,7 +45,8 @@ export function generate (classes: Class[], args: any): File[] {
 
 function generateClass(klass: Class, namespace: string) {
     const indent = (namespace) ? "\t" : "";
-    return `using Colyseus.Schema;
+    return `${getCommentHeader()}
+using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
 ${indent}public class ${klass.name} : Schema {
 ${klass.properties.map(prop => generateProperty(prop, indent)).join("\n\n")}
