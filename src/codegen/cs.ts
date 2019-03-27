@@ -2,17 +2,17 @@ import { Class, Property, File } from "./types";
 
 const typeMaps = {
     "string": "string",
-    "number": "double",
+    "number": "float",
     "boolean": "bool",
     "int8": "int",
     "uint8": "uint",
-    "int16": "Int16",
-    "uint16": "Uint16",
-    "int32": "Int32",
-    "uint32": "Uint32",
-    "int64": "Int64",
-    "uint64": "Uint64",
-    "float32": "double",
+    "int16": "short",
+    "uint16": "ushort",
+    "int32": "int",
+    "uint32": "uint",
+    "int64": "long",
+    "uint64": "ulong",
+    "float32": "float",
     "float64": "double",
 }
 
@@ -62,20 +62,20 @@ function generateProperty(prop: Property, indent: string = "") {
 
     if (prop.childType) {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
-        
+
         if(prop.type === "ref") {
-            langType = (isUpcaseFirst) 
-                ? prop.childType 
+            langType = (isUpcaseFirst)
+                ? prop.childType
                 : typeMaps[prop.childType];
 
         } else if(prop.type === "array") {
-            langType = (isUpcaseFirst) 
-                ? `ArraySchema<${prop.childType}>` 
+            langType = (isUpcaseFirst)
+                ? `ArraySchema<${prop.childType}>`
                 : `ArraySchema<${typeMaps[prop.childType]}>`;
 
         } else if(prop.type === "map") {
-            langType = (isUpcaseFirst) 
-                ? `MapSchema<${prop.childType}>` 
+            langType = (isUpcaseFirst)
+                ? `MapSchema<${prop.childType}>`
                 : `MapSchema<${typeMaps[prop.childType]}>`;
         }
 
