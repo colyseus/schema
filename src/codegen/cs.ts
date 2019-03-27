@@ -46,6 +46,7 @@ export function generate (classes: Class[], args: any): File[] {
 function generateClass(klass: Class, namespace: string) {
     const indent = (namespace) ? "\t" : "";
     return `${getCommentHeader()}
+
 using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
 ${indent}public class ${klass.name} : Schema {
