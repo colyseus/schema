@@ -68,12 +68,12 @@ namespace Colyseus.Schema
     }
   }
 
-  public class CollectionEventArgs<T, K> : EventArgs
+  public class KeyValueEventArgs<T, K> : EventArgs
   {
     public T Value;
     public K Key;
 
-    public CollectionEventArgs(T value, K key)
+    public KeyValueEventArgs(T value, K key)
     {
       Value = value;
       Key = key;
@@ -100,9 +100,9 @@ namespace Colyseus.Schema
   public class ArraySchema<T> : ISchemaCollection
   {
     public List<T> Items;
-    public event EventHandler<CollectionEventArgs<T, int>> OnAdd;
-    public event EventHandler<CollectionEventArgs<T, int>> OnChange;
-    public event EventHandler<CollectionEventArgs<T, int>> OnRemove;
+    public event EventHandler<KeyValueEventArgs<T, int>> OnAdd;
+    public event EventHandler<KeyValueEventArgs<T, int>> OnChange;
+    public event EventHandler<KeyValueEventArgs<T, int>> OnRemove;
 
     public ArraySchema()
     {
@@ -169,26 +169,26 @@ namespace Colyseus.Schema
 
     public void InvokeOnAdd(object item, object index)
     {
-      if (OnAdd != null) { OnAdd.Invoke(this, new CollectionEventArgs<T, int>((T) item, (int) index)); }
+      if (OnAdd != null) { OnAdd.Invoke(this, new KeyValueEventArgs<T, int>((T) item, (int) index)); }
     }
 
     public void InvokeOnChange(object item, object index)
     {
-      if (OnChange != null) { OnChange.Invoke(this, new CollectionEventArgs<T, int>((T) item, (int) index)); }
+      if (OnChange != null) { OnChange.Invoke(this, new KeyValueEventArgs<T, int>((T) item, (int) index)); }
     }
 
     public void InvokeOnRemove(object item, object index)
     {
-      if (OnRemove != null) { OnRemove.Invoke(this, new CollectionEventArgs<T, int>((T) item, (int) index)); }
+      if (OnRemove != null) { OnRemove.Invoke(this, new KeyValueEventArgs<T, int>((T) item, (int) index)); }
     }
   }
 
   public class MapSchema<T> : ISchemaCollection
   {
     public Dictionary<string, T> Items;
-    public event EventHandler<CollectionEventArgs<T, string>> OnAdd;
-    public event EventHandler<CollectionEventArgs<T, string>> OnChange;
-    public event EventHandler<CollectionEventArgs<T, string>> OnRemove;
+    public event EventHandler<KeyValueEventArgs<T, string>> OnAdd;
+    public event EventHandler<KeyValueEventArgs<T, string>> OnChange;
+    public event EventHandler<KeyValueEventArgs<T, string>> OnRemove;
 
     public MapSchema()
     {
@@ -258,17 +258,17 @@ namespace Colyseus.Schema
 
     public void InvokeOnAdd(object item, object index)
     {
-      if (OnAdd != null) { OnAdd.Invoke(this, new CollectionEventArgs<T, string>((T)item, (string)index)); }
+      if (OnAdd != null) { OnAdd.Invoke(this, new KeyValueEventArgs<T, string>((T)item, (string)index)); }
     }
 
     public void InvokeOnChange(object item, object index)
     {
-      if (OnChange != null) { OnChange.Invoke(this, new CollectionEventArgs<T, string>((T)item, (string)index)); }
+      if (OnChange != null) { OnChange.Invoke(this, new KeyValueEventArgs<T, string>((T)item, (string)index)); }
     }
 
     public void InvokeOnRemove(object item, object index)
     {
-      if (OnRemove != null) { OnRemove.Invoke(this, new CollectionEventArgs<T, string>((T)item, (string)index)); }
+      if (OnRemove != null) { OnRemove.Invoke(this, new KeyValueEventArgs<T, string>((T)item, (string)index)); }
     }
   }
 
@@ -288,16 +288,17 @@ namespace Colyseus.Schema
       FieldInfo[] fields = GetType().GetFields();
       foreach (FieldInfo field in fields)
       {
-        Type t = field.GetCustomAttribute<Type>();
-        if (t != null)
-        {
-          fieldsByIndex.Add(index++, field.Name);
-          fieldTypes.Add(field.Name, t.FieldType);
-          if (t.FieldType == "ref" || t.FieldType == "array" || t.FieldType == "map")
-          {
-            fieldChildTypes.Add(field.Name, t.ChildType);
-          }
-        }
+        object[] typeAttributes = field.GetCustomAttributes(typeof(Type), true);
+		for (var i=0; i<typeAttributes.Length; i++)
+		{
+			Type t = (Type)typeAttributes[i];
+			fieldsByIndex.Add(index++, field.Name);
+			fieldTypes.Add(field.Name, t.FieldType);
+			if (t.FieldType == "ref" || t.FieldType == "array" || t.FieldType == "map")
+			{
+				fieldChildTypes.Add(field.Name, t.ChildType);
+			}
+		}
       }
     }
 
@@ -308,7 +309,7 @@ namespace Colyseus.Schema
         return GetType().GetField(propertyName).GetValue(this); 
       }
       set {
-        var field = GetType().GetField(propertyName);
+      	var field = GetType().GetField(propertyName);
         field.SetValue(this, Convert.ChangeType(value, field.FieldType)); 
       }
     }
