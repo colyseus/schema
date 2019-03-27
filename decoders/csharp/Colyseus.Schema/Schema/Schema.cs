@@ -526,6 +526,7 @@ namespace Colyseus.Schema
 
               valueRef.InvokeOnRemove(item, newKey);
               items.Remove(newKey);
+              continue;
 
             } else if (!isSchemaType)
             {
