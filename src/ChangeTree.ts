@@ -82,10 +82,17 @@ export class ChangeTree {
     }
 
     changeAll(obj: Schema | ArraySchema | MapSchema) {
-        const keys = Object.keys(obj);
+        if (obj instanceof Schema) {
+            const schema = obj._schema;
+            for (const field in schema) {
+                this.change(field);
+            }
 
-        for (const key of keys) {
-            this.change(key);
+        } else {
+            const keys = Object.keys(obj);
+            for (const key of keys) {
+                this.change(key);
+            }
         }
     }
 
