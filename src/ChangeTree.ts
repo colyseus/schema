@@ -36,15 +36,20 @@ export class ChangeTree {
         this.linkedTrees.push(linkedTree);
     }
 
-    change(field: FieldKey) {
+    change(field: FieldKey, isDelete: boolean = false) {
         this.changed = true;
 
         if (this.changes.indexOf(field) === -1) {
             this.changes.push(field);
         }
 
-        if (this.allChanges.indexOf(field) === -1) {
+        const allChangesIndex = this.allChanges.indexOf(field);
+        if (!isDelete && allChangesIndex === -1) {
             this.allChanges.push(field);
+
+        } else if (isDelete && allChangesIndex >= 0) {
+            // discard all-changes for removed items.
+            this.allChanges.splice(allChangesIndex, 1);
         }
 
         if (this.parent) {

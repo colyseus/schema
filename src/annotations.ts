@@ -840,7 +840,7 @@ export function type (type: DefinitionType): PropertyDecorator {
                             delete obj[prop];
 
                             const key = (isArray) ? Number(prop) : String(prop);
-                            obj.$changes.change(key);
+                            obj.$changes.change(key, true);
 
                             return true;
                         },

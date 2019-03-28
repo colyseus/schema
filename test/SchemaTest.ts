@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type } from "../src/annotations";
+import { Schema, type, Reflection } from "../src/annotations";
 import { State, Player } from "./Schema";
 import { ArraySchema, MapSchema } from "../src";
 
@@ -613,7 +613,7 @@ describe("Schema", () => {
 
             let encoded = state.encode();
             assert.deepEqual(encoded, [ 0, 8, 8, 0, 0, 1, 204, 144, 2, 204, 233, 3, 205, 377, 1, 4, 205, 610, 2, 5, 205, 987, 3, 6, 205, 1597, 6, 7, 205, 2584, 10 ] );
-            
+
             const decodedState = new MyState();
             decodedState.decode(encoded);
 
@@ -702,6 +702,41 @@ describe("Schema", () => {
             assert.equal(decodedState.mapOfPlayers['jake'].x, jakeX);
 
             delete state.mapOfPlayers['jake'];
+        });
+
+        it('should discard deleted map items', () => {
+            class Player extends Schema {
+                @type("number")
+                xp: number;
+
+                constructor (xp: number) {
+                    super();
+                    this.xp = xp;
+                }
+            }
+            class MyState extends Schema {
+                @type({map: Player})
+                players = new MapSchema<Player>();
+
+                @type("number")
+                n = 100;
+            }
+
+            const state = new MyState();
+            state.players['one'] = new Player(100);
+            state.players['two'] = new Player(100);
+
+            const decodedState1 = new MyState();
+            decodedState1.decode(state.encodeAll());
+            assert.deepEqual(Object.keys(decodedState1.players), ['one', 'two']);
+            assert.equal(decodedState1.n, 100);
+
+            delete state.players['two'];
+
+            const decodedState2 = new MyState();
+            decodedState2.decode(state.encodeAll());
+            assert.deepEqual(Object.keys(decodedState2.players), ['one']);
+            assert.equal(decodedState2.n, 100);
         });
     })
 });
