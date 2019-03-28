@@ -1,5 +1,4 @@
 import { NIL, INDEX_CHANGE } from "../spec";
-
 /**
  * Copyright (c) 2018 Endel Dreyer
  * Copyright (c) 2014 Ion Drive Software Ltd.
@@ -109,13 +108,15 @@ export function float64(bytes: number[], it: Iterator) {
   return readFloat64(bytes, it);
 }
 
-// export function int64 (bytes: number[], it: Iterator) {
-//     return new flatbuffers.Long(int32(bytes, it), int32(bytes, it));
-// };
+export function int64(bytes: number[], it: Iterator) {
+  return uint64(bytes, it);
+};
 
-// export function uint64 (bytes: number[], it: Iterator) {
-//     return new flatbuffers.Long(uint32(bytes, it), uint32(bytes, it));
-// };
+export function uint64(bytes: number[], it: Iterator) {
+  const low = uint32(bytes, it);
+  const high = uint32(bytes, it) * Math.pow(2, 32);
+  return high + low;
+};
 
 // force little endian to facilitate decoding on multiple implementations
 const _isLittleEndian = true;  // new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
@@ -192,10 +193,7 @@ export function number (bytes, it: Iterator) {
 
   } else if (prefix === 0xcf) {
     // uint 64
-    const hi = bytes[it.offset] * Math.pow(2, 32);
-    const lo = bytes[it.offset + 4];
-    it.offset += 8;
-    return hi + lo;
+    return uint64(bytes, it);
 
   } else if (prefix === 0xd0) {
     // int 8
@@ -215,6 +213,8 @@ export function number (bytes, it: Iterator) {
     const lo = bytes[it.offset + 4];
     it.offset += 8;
     return hi + lo;
+
+    return int64(bytes, it);
 
   } else if (prefix > 0xdf) {
     // negative fixint

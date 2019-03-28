@@ -74,53 +74,58 @@ export function utf8Write(view, offset, str) {
   }
 }
 
-export function int8 (bytes, value) {
-    bytes.push(value);
+export function int8(bytes, value) {
+  bytes.push(value);
 };
 
-export function uint8 (bytes, value) {
-    bytes.push(value);
+export function uint8(bytes, value) {
+  bytes.push(value);
 };
 
-export function int16 (bytes, value) {
-    bytes.push(value);
-    bytes.push(value >> 8);
+export function int16(bytes, value) {
+  bytes.push(value);
+  bytes.push(value >> 8);
 };
 
-export function uint16 (bytes, value) {
-    bytes.push(value);
-    bytes.push(value >> 8);
+export function uint16(bytes, value) {
+  bytes.push(value);
+  bytes.push(value >> 8);
 };
 
-export function int32 (bytes, value) {
-    bytes.push(value);
-    bytes.push(value >> 8);
-    bytes.push(value >> 16);
-    bytes.push(value >> 24);
+export function int32(bytes, value) {
+  bytes.push(value);
+  bytes.push(value >> 8);
+  bytes.push(value >> 16);
+  bytes.push(value >> 24);
 };
 
-export function uint32 (bytes, value) {
-    bytes.push(value);
-    bytes.push(value >> 8);
-    bytes.push(value >> 16);
-    bytes.push(value >> 24);
+export function uint32(bytes, value) {
+  const b4 = value >> 24;
+  const b3 = value >> 16;
+  const b2 = value >> 8;
+  const b1 = value;
+  bytes.push(b1);
+  bytes.push(b2);
+  bytes.push(b3);
+  bytes.push(b4);
 };
 
-export function int64 (bytes, value) {
-    int32(bytes, value.low);
-    int32(bytes, value.high);
+export function int64(bytes, value) {
+  return uint64(bytes, value);
 };
 
-export function uint64 (bytes, value) {
-    uint32(bytes, value.low);
-    uint32(bytes, value.high);
+export function uint64(bytes, value) {
+  const high = (value / Math.pow(2, 32)) >> 0;
+  const low = value >>> 0;
+  uint32(bytes, low);
+  uint32(bytes, high);
 };
 
-export function float32 (bytes, value) {
+export function float32(bytes, value) {
   writeFloat32(bytes, value);
 }
 
-export function float64 (bytes, value) {
+export function float64(bytes, value) {
   writeFloat64(bytes, value);
 }
 
@@ -130,22 +135,22 @@ const _int32 = new Int32Array(2);
 const _float32 = new Float32Array(_int32.buffer);
 const _float64 = new Float64Array(_int32.buffer);
 
-export function writeFloat32 (bytes, value) {
-    _float32[0] = value;
-    int32(bytes, _int32[0]);
+export function writeFloat32(bytes, value) {
+  _float32[0] = value;
+  int32(bytes, _int32[0]);
 };
 
-export function writeFloat64 (bytes, value) {
-    _float64[0] = value;
-    int32(bytes, _int32[_isLittleEndian ? 0 : 1]);
-    int32(bytes, _int32[_isLittleEndian ? 1 : 0]);
+export function writeFloat64(bytes, value) {
+  _float64[0] = value;
+  int32(bytes, _int32[_isLittleEndian ? 0 : 1]);
+  int32(bytes, _int32[_isLittleEndian ? 1 : 0]);
 };
 
-export function boolean (bytes, value) {
-    return uint8(bytes, value ? 1 : 0);
+export function boolean(bytes, value) {
+  return uint8(bytes, value ? 1 : 0);
 };
 
-export function string (bytes, value) {
+export function string(bytes, value) {
   let length = utf8Length(value);
   let size = 0;
 
@@ -178,7 +183,7 @@ export function string (bytes, value) {
   return size + length;
 }
 
-export function number (bytes, value) {
+export function number(bytes, value) {
   // float 64
   if (Math.floor(value) !== value || !isFinite(value)) {
     /**
