@@ -90,6 +90,19 @@ export class ChangeTree {
         if (obj instanceof Schema) {
             const schema = obj._schema;
             for (const field in schema) {
+
+                // ensure ArraySchema and MapSchema already initialized
+                // on its structure have a valid parent.
+                if (
+                    (
+                        obj[field] instanceof ArraySchema ||
+                        obj[field] instanceof MapSchema
+                    ) &&
+                    !obj[field].$changes.parent.parent
+                ) {
+                    obj[field].$changes.parent = this;
+                }
+
                 this.change(field);
             }
 

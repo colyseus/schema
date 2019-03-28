@@ -513,6 +513,57 @@ describe("Change API", () => {
         });
     });
 
+    describe("complex structures", () => {
+        it("should identify changes on arrays inside maps", () => {
+            class Block extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+                constructor(x: number, y: number) {
+                    super();
+                    this.x = x;
+                    this.y = y;
+                }
+            }
+            class Player extends Schema {
+                @type([Block]) blocks = new ArraySchema<Block>();
+                @type("string") name: string;
+
+                constructor(name: string) {
+                    super();
+                    this.name = name;
+                }
+            }
+            class MyState extends Schema {
+                @type({ map: Player })
+                players = new MapSchema<Player>();
+            }
+
+            const state = new MyState();
+            state.players['one'] = new Player("Jake");
+            state.players['one'].blocks.push(new Block(10, 10));
+
+            const decodedState = new MyState();
+            decodedState.decode(state.encodeAll());
+
+            decodedState.players['one'].blocks.onAdd = function (block, key) {}
+            const onBlockAddSpy = sinon.spy(decodedState.players['one'].blocks, 'onAdd');
+
+            decodedState.players['one'].blocks.onChange = function (block, key) {}
+            const onBlockChangeSpy = sinon.spy(decodedState.players['one'].blocks, 'onChange');
+
+            state.players['one'].blocks[0].x = 100;
+            state.players['one'].blocks.push(new Block(50, 150));
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.players['one'].blocks[0].x, 100);
+            assert.equal(decodedState.players['one'].blocks[1].x, 50);
+            assert.equal(decodedState.players['one'].blocks[1].y, 150);
+
+            sinon.assert.calledOnce(onBlockAddSpy);
+            sinon.assert.calledOnce(onBlockChangeSpy);
+        });
+    });
+
     describe("encodeAll", () => {
         it("shouldn't trigger onRemove for previously removed items", () => {
             const state = new State();

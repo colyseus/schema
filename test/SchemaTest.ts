@@ -738,5 +738,5 @@ describe("Schema", () => {
             assert.deepEqual(Object.keys(decodedState2.players), ['one']);
             assert.equal(decodedState2.n, 100);
         });
-    })
+    });
 });

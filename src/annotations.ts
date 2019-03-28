@@ -807,7 +807,7 @@ export function type (type: DefinitionType): PropertyDecorator {
                                 if (setValue instanceof Schema) {
                                     // new items are flagged with all changes
                                     if (!setValue.$changes.parent) {
-                                        setValue.$changes = new ChangeTree(key, obj.$changes)
+                                        setValue.$changes = new ChangeTree(key, obj.$changes);
                                         setValue.$changes.changeAll(setValue);
                                     }
 

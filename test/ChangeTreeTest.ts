@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { ChangeTree } from "../src/ChangeTree";
-import { Schema, type } from "../src";
+import { Schema, type, MapSchema, ArraySchema } from "../src";
 
 describe("ChangeTree", () => {
 
