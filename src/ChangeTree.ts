@@ -95,6 +95,7 @@ export class ChangeTree {
                 // on its structure have a valid parent.
                 if (
                     (
+                        obj[field] instanceof Schema ||
                         obj[field] instanceof ArraySchema ||
                         obj[field] instanceof MapSchema
                     ) &&

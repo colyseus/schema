@@ -562,6 +562,37 @@ describe("Change API", () => {
             sinon.assert.calledOnce(onBlockAddSpy);
             sinon.assert.calledOnce(onBlockChangeSpy);
         });
+
+        it("should identify reference inside a reference", () => {
+            class Vector3 extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+                @type("number") z?: number;
+                constructor(x: number = 0, y: number = 0, z?: number) {
+                    super();
+                    this.x = x;
+                    this.y = y;
+                    this.z = z;
+                }
+            }
+            class Player extends Schema {
+                @type(Vector3) position: Vector3 = new Vector3();
+            }
+            class MyState extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            const state = new MyState();
+            const decodedState = new MyState();
+            decodedState.decode(state.encodeAll());
+
+            state.players['one'] = new Player();
+            decodedState.decode(state.encode());
+
+            state.players['one'].position.x += 0.01;
+            decodedState.decode(state.encode());
+            assert.equal(JSON.stringify(decodedState), '{"players":{"one":{"position":{"x":0.01,"y":0}}}}');
+        });
     });
 
     describe("encodeAll", () => {
