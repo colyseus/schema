@@ -151,6 +151,9 @@ export function boolean(bytes, value) {
 };
 
 export function string(bytes, value) {
+  // encode `null` strings as empty.
+  if (!value) { value = ""; }
+
   let length = utf8Length(value);
   let size = 0;
 

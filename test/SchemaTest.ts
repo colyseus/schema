@@ -683,6 +683,32 @@ describe("Schema", () => {
         });
     });
 
+    describe("null values", () => {
+        it("should not encode null string", () => {
+            class MyState extends Schema {
+                @type("string")
+                myString: string = "hello";
+
+                @type("number")
+                myNumber: number = 1;
+            };
+
+            const state = new MyState();
+            const decodedState = new MyState();
+            decodedState.decode(state.encodeAll());
+
+            assert.equal(decodedState.myString, "hello");
+            assert.equal(decodedState.myNumber, 1);
+
+            state.myString = null;
+            state.myNumber = null;
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.myString, "");
+            assert.equal(decodedState.myNumber, 0);
+        });
+    })
+
     describe("encodeAll", () => {
         it('should encode everything again', () => {
             const state = new State();
