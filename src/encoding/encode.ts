@@ -111,7 +111,10 @@ export function uint32(bytes, value) {
 };
 
 export function int64(bytes, value) {
-  return uint64(bytes, value);
+  const high = Math.floor(value / Math.pow(2, 32));
+  const low = value >>> 0;
+  uint32(bytes, low);
+  uint32(bytes, high);
 };
 
 export function uint64(bytes, value) {
@@ -187,8 +190,15 @@ export function string(bytes, value) {
 }
 
 export function number(bytes, value) {
-  // float 64
-  if (Math.floor(value) !== value || !isFinite(value)) {
+  if (isNaN(value)) {
+    console.error("trying to encode a NaN value. will be encoded as `0`.");
+    return number(bytes, 0);
+
+  } else if (!isFinite(value)) {
+    return number(bytes, (value > 0) ? Number.MAX_SAFE_INTEGER : -Number.MAX_SAFE_INTEGER);
+
+  } else if (Math.floor(value) !== value || !isFinite(value)) {
+    // float 64
     /**
      * TODO: 
      * is it possible to differentiate between float32 / float64 here?

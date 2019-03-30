@@ -111,7 +111,7 @@ describe("Change API", () => {
             decodedState.decode(state.encode());
 
             decodedState.onChange = function (changes: DataChange[]) {
-                console.log(changes);
+                // console.log(changes);
                 // assert.equal(changes.length, 1);
                 // assert.equal(changes[0].field, "player");
             }

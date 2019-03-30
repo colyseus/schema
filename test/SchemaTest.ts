@@ -683,7 +683,7 @@ describe("Schema", () => {
         });
     });
 
-    describe("null values", () => {
+    describe("limitations", () => {
         it("should not encode null string", () => {
             class MyState extends Schema {
                 @type("string")
@@ -705,6 +705,18 @@ describe("Schema", () => {
             decodedState.decode(state.encode());
 
             assert.equal(decodedState.myString, "");
+            assert.equal(decodedState.myNumber, 0);
+
+            state.myNumber = Infinity;
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.myNumber, Number.MAX_SAFE_INTEGER);
+
+            state.myNumber = -Infinity;
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.myNumber, -Number.MAX_SAFE_INTEGER);
+
+            state.myNumber = NaN;
+            decodedState.decode(state.encode());
             assert.equal(decodedState.myNumber, 0);
         });
     })

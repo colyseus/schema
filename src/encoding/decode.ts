@@ -109,7 +109,9 @@ export function float64(bytes: number[], it: Iterator) {
 }
 
 export function int64(bytes: number[], it: Iterator) {
-  return uint64(bytes, it);
+  const low = uint32(bytes, it);
+  const high = int32(bytes, it) * Math.pow(2, 32);
+  return high + low;
 };
 
 export function uint64(bytes: number[], it: Iterator) {
@@ -209,11 +211,6 @@ export function number (bytes, it: Iterator) {
 
   } else if (prefix === 0xd3) {
     // int 64
-    const hi = bytes[it.offset] * Math.pow(2, 32);
-    const lo = bytes[it.offset + 4];
-    it.offset += 8;
-    return hi + lo;
-
     return int64(bytes, it);
 
   } else if (prefix > 0xdf) {

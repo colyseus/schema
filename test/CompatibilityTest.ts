@@ -29,7 +29,6 @@ describe("Compatibility", () => {
 
     it("should allow only one child as Schema instance", () => {
         state.player.x = 500;
-        console.log(state.player);
         const data = {
             number: 10,
             player: state.player
