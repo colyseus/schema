@@ -180,8 +180,12 @@ export class State extends Schema {
 
 ## Limitations and best practices
 
+- `NaN` numbers are encoded as `0`
+- `null` strings are encoded as `""`
+- `null` numbers are encoded as `0`
+- `Infinity` numbers are encoded as `Number.MAX_SAFE_INTEGER`
 - Multi-dimensional arrays are not supported.
-- Array items must all have the same type as defined in the schema.
+- Items inside Arrays and Maps must be all of the same type.
 - `@colyseus/schema` encodes only field values in the specified order.
   - Both encoder (server) and decoder (client) must have same schema definition.
   - The order of the fields must be the same.
