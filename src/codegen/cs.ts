@@ -32,6 +32,11 @@ const typeInitializer = {
     "float64": "0",
 }
 
+const capitalize = (s) => {
+    if (typeof s !== 'string') return ''
+    return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
 /**
  * C# Code Generator
  */
@@ -49,8 +54,13 @@ function generateClass(klass: Class, namespace: string) {
 
 using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
-${indent}public class ${klass.name} : ${klass.extends} {
+${indent}public class ${klass.name} : Schema {
 ${klass.properties.map(prop => generateProperty(prop, indent)).join("\n\n")}
+${generateConstructor(klass.name, indent)}
+${klass.properties.map(function (prop) { return generateFieldDelegates(prop, indent); }).join("")}
+${generateOnChangeMethodPart1(indent)}
+${klass.properties.map(function (prop) { return generateFieldCases(prop, indent); }).join("")}
+${generateOnChangeMethodPart2(indent)}
 ${indent}}
 ${namespace ? "}" : ""}
 `;
@@ -93,4 +103,70 @@ function generateProperty(prop: Property, indent: string = "") {
 
     return `\t${indent}[Type(${typeArgs})]
 \t${indent}${property} = ${initializer};`
+}
+
+
+function generateFieldCases(prop, indent) {
+    if (indent === void 0) { indent = ""; }
+    var langType = typeMaps[prop.type];
+    
+    if(!langType) return null;
+
+    var capitalizedPropName = capitalize(prop.name);
+   
+    var codeBlock = `
+    ${indent}\t\t\tcase "${prop.name}":
+    ${indent}\t\t\t    On${capitalizedPropName}Change.Invoke(this, (${langType})obj.Value);
+    ${indent}\t\t\t    break;
+    ${indent}\t\t\t`;
+
+    return codeBlock;
+}
+
+function generateOnChangeMethodPart1(indent) {
+   
+    var codeBlock = `
+    ${indent}private void OnPropertyChange(object sender, OnChangeEventArgs e)
+    ${indent}{
+    ${indent}    e.Changes.ForEach((DataChange obj) =>
+    ${indent}    {
+    ${indent}        switch (obj.Field)
+    ${indent}        {`
+
+    return codeBlock;
+}
+
+function generateOnChangeMethodPart2(indent) {
+   
+    var codeBlock = `
+    ${indent}        }
+    ${indent}    });
+    ${indent}}`
+
+    return codeBlock;
+}
+
+function generateConstructor(className, indent) {
+   
+    var codeBlock = `
+    ${indent}public ${className}() : base()
+    ${indent}{
+    ${indent}    this.OnChange += OnPropertyChange;
+    ${indent}}`
+
+    return codeBlock;
+}
+
+function generateFieldDelegates(prop, indent) {
+    if (indent === void 0) { indent = ""; }
+    var langType = typeMaps[prop.type];
+    
+    if(!langType) return null;
+
+    var capitalizedPropName = capitalize(prop.name);
+   
+    var codeBlock = `
+    ${indent}public event System.EventHandler<${langType}> On${capitalizedPropName}Change;`
+
+    return codeBlock;
 }
