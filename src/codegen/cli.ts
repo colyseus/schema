@@ -8,12 +8,12 @@ function displayHelp() {
     console.log(`\nschema-codegen [path/to/Schema.ts]
 
 Usage (C#/Unity)
-    schema-codegen src/Schema.ts --output client-side/ --cs --namespace MyGame.Schema
+    schema-codegen src/Schema.ts --output client-side/ --csharp --namespace MyGame.Schema
 
 Valid options:
     --output: fhe output directory for generated client-side schema files
-    --cs: generate files C#/Unity
-    --cpp: generate files C++
+    --csharp: generate files for C#/Unity
+    --cpp: generate files for C++
     --hx: generate files for Haxe
 
 Optional:
@@ -27,11 +27,11 @@ if (args.help) {
 }
 
 let generatorId: string;
-if (args.cs) {
-    generatorId = 'cs';
+if (args.csharp) {
+    generatorId = 'csharp';
 
-} else if (args.hx) {
-    generatorId = 'hx';
+} else if (args.haxe) {
+    generatorId = 'haxe';
 
 } else if (args.cpp) {
     generatorId = 'cpp';
@@ -42,10 +42,14 @@ if (!args.output || !fs.existsSync(args.output)) {
     displayHelp();
 }
 
-const generator = require('./' + generatorId).generate;
-if (!generator) {
-    console.error("You must provide a valid generator as argument.");
+let generator;
+try {
+    generator = require('./' + generatorId).generate;
+} catch (e) {
+    console.error("You must provide a valid generator as argument, such as: --csharp, --haxe or --cpp");
+    displayHelp();
 }
+
 const classes = parseFiles(args._);
 const files = generator(classes, args);
 
