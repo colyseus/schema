@@ -17,7 +17,12 @@ function inspectNode(node: ts.Node, classes: Class[]) {
         case ts.SyntaxKind.Identifier:
             if (node.getText() === "type" && node.parent.kind !== ts.SyntaxKind.ImportSpecifier) {
                 const prop: any = node.parent.parent.parent;
-                const typeDecorator: any = node.parent.parent.parent.decorators.find((decorator => {
+                const propDecorator = node.parent.parent.parent.decorators;
+
+                // ignore if "type" identifier doesn't have a decorator.
+                if (!propDecorator) { break; }
+
+                const typeDecorator: any = propDecorator.find((decorator => {
                     return (decorator.expression as any).expression.escapedText === "type";
                 })).expression;
 
