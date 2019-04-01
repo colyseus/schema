@@ -100,7 +100,7 @@ player: Player;
 arrayOfPlayers: ArraySchema<Player>;
 ```
 
-#### Array of a primitive type 
+#### Array of a primitive type
 
 You can't mix types inside arrays.
 
@@ -119,7 +119,7 @@ arrayOfStrings: ArraySchema<string>;
 mapOfPlayers: MapSchema<Player>;
 ```
 
-#### Map of a primitive type 
+#### Map of a primitive type
 
 You can't mix types inside maps.
 
@@ -180,9 +180,8 @@ export class State extends Schema {
 
 ## Limitations and best practices
 
-- `NaN` numbers are encoded as `0`
+- `NaN` or `null` numbers are encoded as `0`
 - `null` strings are encoded as `""`
-- `null` numbers are encoded as `0`
 - `Infinity` numbers are encoded as `Number.MAX_SAFE_INTEGER`
 - Multi-dimensional arrays are not supported.
 - Items inside Arrays and Maps must be all of the same type.
@@ -219,7 +218,7 @@ You can generate the client-side schema files based on the TypeScript schema def
 
 ```
 # C#/Unity
-schema-codegen ./schemas/State.ts --output ./unity-project/ --cs 
+schema-codegen ./schemas/State.ts --output ./unity-project/ --cs
 
 # C/C++
 schema-codegen ./schemas/State.ts --output ./cpp-project/ --cpp
