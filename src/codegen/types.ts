@@ -16,6 +16,7 @@ export class Property {
 export class Class {
     name: string;
     properties: Property[] = [];
+    extends: string;
 }
 
 export interface File {

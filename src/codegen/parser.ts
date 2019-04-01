@@ -9,9 +9,20 @@ function inspectNode(node: ts.Node, classes: Class[]) {
     switch (node.kind) {
         case ts.SyntaxKind.ClassDeclaration:
             currentClass = new Class();
+
+            const heritageClauses = (node as ts.ClassLikeDeclarationBase).heritageClauses;
+            if (heritageClauses && heritageClauses.length > 0) {
+                currentClass.extends = heritageClauses[0].types[0].getText();
+            }
+
             classes.push(currentClass);
             break;
-        case ts.SyntaxKind.PropertyDeclaration:
+
+        // case ts.SyntaxKind.PropertyDeclaration:
+        //     break;
+
+        case ts.SyntaxKind.ExtendsKeyword:
+            console.log(node.getText());
             break;
 
         case ts.SyntaxKind.Identifier:
