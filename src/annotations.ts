@@ -38,41 +38,48 @@ export type Client = { sessionId: string } & any;
 
 class EncodeSchemaError extends Error {}
 
-function assertType(value: any, type: string, allowNull: boolean = false) {
-    if (typeof (value) !== type && (!allowNull || (allowNull && value !== null))) {
+function assertType(value: any, type: string, klass: Schema, field: string) {
+    let typeofTarget: string;
+    let allowNull: boolean = false;
+
+    switch (type) {
+        case "number":
+        case "int8":
+        case "uint8":
+        case "int16":
+        case "uint16":
+        case "int32":
+        case "uint32":
+        case "int64":
+        case "uint64":
+        case "float32":
+        case "float64":
+            typeofTarget = "number";
+            break;
+        case "string":
+            typeofTarget = "string";
+            allowNull = true;
+            break;
+        case "boolean":
+            // boolean is always encoded as true/false based on truthiness
+            return;
+    }
+
+    if (typeof (value) !== typeofTarget && (!allowNull || (allowNull && value !== null))) {
         let foundValue = `'${JSON.stringify(value)}'${(value && value.constructor && ` (${value.constructor.name})`)}`;
-        throw new EncodeSchemaError(`a '${type}' was expected, but ${foundValue} was provided.`);
+        throw new EncodeSchemaError(`a '${typeofTarget}' was expected, but ${foundValue} was provided in ${klass.constructor.name}#${field}`);
     }
 }
 
-function assertInstanceType(value: Schema, type: typeof Schema) {
+function assertInstanceType(value: Schema, type: typeof Schema, klass: Schema, field: string) {
     if (value.constructor !== type) {
-        throw new EncodeSchemaError(`a '${type.name}' was expected, but '${(value as any).constructor.name}' was provided.`);
+        throw new EncodeSchemaError(`a '${type.name}' was expected, but '${(value as any).constructor.name}' was provided in ${klass.constructor.name}#${field}`);
     }
 }
 
 function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any) {
     const encodeFunc = encode[type as string];
     if (encodeFunc) {
-        switch (type) {
-            case "number":
-            case "int8":
-            case "uint8":
-            case "int16":
-            case "uint16":
-            case "int32":
-            case "uint32":
-            case "int64":
-            case "uint64":
-            case "float32":
-            case "float64":
-                assertType(value, "number");
-                break;
-            case "string":
-                assertType(value, "string", true);
-                break;
-        }
-
         encodeFunc(bytes, value);
         return true;
 
@@ -422,7 +429,7 @@ export abstract class Schema {
 
                 // encode child object
                 if (value) {
-                    assertInstanceType(value, type as typeof Schema);
+                    assertInstanceType(value, type as typeof Schema, this, field);
                     bytes = bytes.concat((value as Schema).encode(root, encodeAll, client));
 
                 } else {
@@ -471,12 +478,13 @@ export abstract class Schema {
                             encode.number(bytes, indexChange);
                         }
 
-                        assertInstanceType(item, type[0] as typeof Schema);
+                        assertInstanceType(item, type[0] as typeof Schema, this, field);
                         bytes = bytes.concat(item.encode(root, encodeAll, client));
 
                     } else {
                         encode.number(bytes, index);
 
+                        assertType(item, type[0] as string, this, field);
                         if (!encodePrimitiveType(type[0], bytes, item)) {
                             console.log("cannot encode", schema[field]);
                             continue;
@@ -540,10 +548,11 @@ export abstract class Schema {
                     }
 
                     if (item && isChildSchema) {
-                        assertInstanceType(item, (type as any).map);
+                        assertInstanceType(item, (type as any).map, this, field);
                         bytes = bytes.concat(item.encode(root, encodeAll, client));
 
                     } else if (item !== undefined) {
+                        assertType(item, (type as any).map, this, field);
                         encodePrimitiveType((type as any).map, bytes, item);
 
                     } else {
@@ -569,6 +578,7 @@ export abstract class Schema {
 
                 encode.number(bytes, fieldIndex);
 
+                assertType(value, type as string, this, field);
                 if (!encodePrimitiveType(type as PrimitiveType, bytes, value)) {
                     console.log("cannot encode", schema[field]);
                     continue;
