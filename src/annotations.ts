@@ -261,7 +261,7 @@ export abstract class Schema {
                 // serializagion
                 let hasIndexChange = false;
 
-                const mapKeys = Object.keys(valueRef);
+                const previousKeys = Object.keys(valueRef);
 
                 for (let i = 0; i < length; i++) {
                     // `encodeAll` may indicate a higher number of indexes it actually encodes
@@ -277,7 +277,7 @@ export abstract class Schema {
                     let previousKey: string;
                     if (decode.indexChangeCheck(bytes, it)) {
                         decode.uint8(bytes, it);
-                        previousKey = mapKeys[decode.number(bytes, it)];
+                        previousKey = previousKeys[decode.number(bytes, it)];
                         hasIndexChange = true;
                     }
 
@@ -285,7 +285,7 @@ export abstract class Schema {
                     const isSchemaType = typeof(type) !== "string";
 
                     const newKey = (hasMapIndex)
-                        ? mapKeys[decode.number(bytes, it)]
+                        ? previousKeys[decode.number(bytes, it)]
                         : decode.string(bytes, it);
 
                     let item;
@@ -478,13 +478,13 @@ export abstract class Schema {
 
                 encode.number(bytes, keys.length)
 
-                const mapKeys = Object.keys(this[`_${field}`]);
+                const previousKeys = Object.keys(this[`_${field}`]);
 
                 for (let i = 0; i < keys.length; i++) {
-                    const key = mapKeys[keys[i]] || keys[i];
+                    const key = (typeof(keys[i]) === "number" && previousKeys[keys[i]]) || keys[i];
                     const item = this[`_${field}`][key];
 
-                    let mapItemIndex = this[`_${field}`]._indexes[key];
+                    let mapItemIndex = this[`_${field}`]._indexes.get(key);
 
                     if (client && filter) {
                         // skip if not allowed by custom filter
@@ -507,7 +507,7 @@ export abstract class Schema {
                     const indexChange = value.$changes.getIndexChange(item);
                     if (item && indexChange !== undefined) {
                         encode.uint8(bytes, INDEX_CHANGE);
-                        encode.number(bytes, this[`_${field}`]._indexes[indexChange]);
+                        encode.number(bytes, this[`_${field}`]._indexes.get(indexChange));
                     }
 
                     if (mapItemIndex !== undefined) {

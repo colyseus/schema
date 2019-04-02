@@ -54,12 +54,17 @@ export class Position extends Schema {
   }
 }
 
+export class Another extends Schema {
+  @type(Position)
+  position: Position = new Position(0, 0, 0);
+}
+
 export class DeepEntity extends Schema {
   @type("string")
   name: string;
 
-  @type(Position)
-  position: Position = new Position(0, 0, 0);
+  @type(Another)
+  another: Another = new Another();
 }
 
 export class DeepChild extends Schema {

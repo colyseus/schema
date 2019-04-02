@@ -520,6 +520,27 @@ describe("Schema", () => {
             assert.equal(decodedState.mapOfPlayers['two'], decodedJake);
         });
 
+        it("should allow maps with numeric indexes", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema({
+                '2': new Player("Jake Badlands"),
+                '1': new Player("Snake Sanders")
+            });
+
+            const decodedState = new State();
+            decodedState.decode(state.encodeAll());
+
+            assert.deepEqual(Object.keys(decodedState.mapOfPlayers), ['1', '2']);
+            assert.equal(decodedState.mapOfPlayers['1'].name, "Snake Sanders");
+            assert.equal(decodedState.mapOfPlayers['2'].name, "Jake Badlands");
+
+            state.mapOfPlayers['1'].name = "New name";
+            decodedState.decode(state.encodeAll());
+
+            assert.deepEqual(decodedState.mapOfPlayers['1'].name, "New name");
+            assert.deepEqual(decodedState.mapOfPlayers['2'].name, "Jake Badlands");
+        });
+
         it("should encode changed values", () => {
             const state = new State();
             state.fieldString = "Hello world!";
@@ -814,7 +835,7 @@ describe("Schema", () => {
 
             const deepChild = new DeepChild();
             deepChild.entity.name = "Player one";
-            deepChild.entity.position = new Position(100, 200, 300);
+            deepChild.entity.another.position = new Position(100, 200, 300);
             deepMap.arrayOfChildren.push(deepChild);
 
             state.map['one'] = deepMap;
@@ -823,17 +844,17 @@ describe("Schema", () => {
             decodedState.decode(state.encodeAll());
 
             assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.name, "Player one");
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.position.x, 100);
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.position.y, 200);
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.position.z, 300);
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
 
 
             const decodedState2 = new DeepState();
             decodedState2.decode(state.encodeAll());
             assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.name, "Player one");
-            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.position.x, 100);
-            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.position.y, 200);
-            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.position.z, 300);
+            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
+            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
+            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
         });
     });
 });

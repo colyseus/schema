@@ -81,11 +81,13 @@ describe("Spec / Protocol", () => {
 
     describe("dynamic numbers", () => {
         it("string should't collide with number", () => {
-            const bytes = [];
-            encode.string(bytes, '0');
-            assert.equal(numberCheck(bytes, { offset: 0 }), false);
-            assert.equal(nilCheck(bytes, { offset: 0 }), false);
-            assert.equal(indexChangeCheck(bytes, { offset: 0 }), false);
+            for (let i = 0; i <= 1024; i++) {
+                const bytes = [];
+                encode.string(bytes, i.toString());
+                assert.equal(numberCheck(bytes, { offset: 0 }), false);
+                assert.equal(nilCheck(bytes, { offset: 0 }), false);
+                assert.equal(indexChangeCheck(bytes, { offset: 0 }), false);
+            }
         });
 
         it("uint8 shouldn't collide", () => {

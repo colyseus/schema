@@ -25,14 +25,14 @@ export class MapSchema<T=any> {
                 }
             },
 
-            _indexes: { value: {},        enumerable: false, writable: true },
+            _indexes: { value: new Map<string, number>(), enumerable: false, writable: true },
             _updateIndexes: {
                 value: () => {
                     let index: number = 0;
 
-                    let indexes: any = {};
+                    let indexes = new Map<string, number>();
                     for (let key in this) {
-                        indexes[key] = index++;
+                        indexes.set(key, index++);
                     }
 
                     this._indexes = indexes;
@@ -49,6 +49,6 @@ export class MapSchema<T=any> {
     onRemove: (item: T, key: string) => void;
     onChange: (item: T, key: string) => void;
 
-    _indexes: { [id: string]: number };
+    _indexes: Map<string, number>;
     _updateIndexes: () => void;
 }

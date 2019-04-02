@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "0.4.12",
+  "version": "0.4.13",
   "description": "Schema-based binary serializer / de-serializer.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -29,7 +29,9 @@
   ],
   "author": "Endel Dreyer",
   "license": "MIT",
-  "dependencies": {},
+  "dependencies": {
+    "underscore": "^1.9.1"
+  },
   "devDependencies": {
     "@types/mocha": "^5.2.5",
     "@types/node": "^10.12.15",
