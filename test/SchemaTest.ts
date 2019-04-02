@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { Schema, type, Reflection } from "../src/annotations";
-import { State, Player } from "./Schema";
+import { State, Player, DeepState, DeepMap, DeepChild } from "./Schema";
 import { ArraySchema, MapSchema } from "../src";
 
 describe("Schema", () => {
@@ -775,6 +775,40 @@ describe("Schema", () => {
             decodedState2.decode(state.encodeAll());
             assert.deepEqual(Object.keys(decodedState2.players), ['one']);
             assert.equal(decodedState2.n, 100);
+        });
+    });
+
+    describe("deep structures / re-assignents", () => {
+        it("should allow re-assigning child schema type", () => {
+            const state = new DeepState();
+            const deepMap = new DeepMap();
+
+            const deepChild = new DeepChild();
+            deepChild.player.name = "Player one";
+            deepChild.player.x = 10;
+            deepChild.player.y = 20;
+            deepMap.arrayOfChildren.push(deepChild);
+
+            state.map['one'] = deepMap;
+
+            const decodedState = new DeepState();
+            decodedState.decode(state.encodeAll());
+
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.name, "Player one");
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.x, 10);
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.y, 20);
+
+            deepChild.player = new Player("Player two", 20, 30)
+
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.name, "Player two");
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.x, 20);
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.y, 30);
+
+            delete state.map['one'];
+            decodedState.decode(state.encode());
+            
+            assert.equal(JSON.stringify(decodedState), '{"map":{}}');
         });
     });
 });

@@ -39,6 +39,25 @@ export class State extends Schema {
 }
 
 /**
+ * Deep example
+ */
+export class DeepChild extends Schema {
+  @type(Player)
+  player: Player = new Player();
+}
+
+export class DeepMap extends Schema {
+  @type([DeepChild])
+  arrayOfChildren = new ArraySchema<DeepChild>();
+}
+
+export class DeepState extends Schema {
+  @type({ map: DeepMap })
+  map = new MapSchema<DeepMap>();
+}
+
+
+/**
  * Filters example
  */
 export class Inventory extends Schema {
