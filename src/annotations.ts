@@ -36,6 +36,21 @@ const definedSchemas = new Map<typeof Schema, boolean>();
 // Colyseus integration
 export type Client = { sessionId: string } & any;
 
+class EncodeSchemaError extends Error {}
+
+function assertType(value: any, type: string, allowNull: boolean = false) {
+    if (typeof (value) !== type && (!allowNull || (allowNull && value !== null))) {
+        let foundValue = `'${JSON.stringify(value)}'${(value && value.constructor && ` (${value.constructor.name})`)}`;
+        throw new EncodeSchemaError(`a '${type}' was expected, but ${foundValue} was provided.`);
+    }
+}
+
+function assertInstanceType(value: Schema, type: typeof Schema) {
+    if (value.constructor !== type) {
+        throw new EncodeSchemaError(`a '${type.name}' was expected, but '${(value as any).constructor.name}' was provided.`);
+    }
+}
+
 function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any) {
     const encodeFunc = encode[type as string];
     if (encodeFunc) {
@@ -51,10 +66,10 @@ function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any) 
             case "uint64":
             case "float32":
             case "float64":
-                encode.assertType(value, "number");
+                assertType(value, "number");
                 break;
             case "string":
-                encode.assertType(value, "string", true);
+                assertType(value, "string", true);
                 break;
         }
 
@@ -407,6 +422,7 @@ export abstract class Schema {
 
                 // encode child object
                 if (value) {
+                    assertInstanceType(value, type as typeof Schema);
                     bytes = bytes.concat((value as Schema).encode(root, encodeAll, client));
 
                 } else {
@@ -427,6 +443,8 @@ export abstract class Schema {
                 // number of changed items
                 encode.number(bytes, arrayChanges.length);
 
+                const isChildSchema = typeof(type[0]) !== "string";
+
                 // encode Array of type
                 for (let j = 0; j < arrayChanges.length; j++) {
                     const index = arrayChanges[j];
@@ -439,7 +457,7 @@ export abstract class Schema {
                         }
                     }
 
-                    if (typeof(type[0]) !== "string") { // is array of Schema
+                    if (isChildSchema) { // is array of Schema
                         encode.number(bytes, index);
 
                         if (item === undefined) {
@@ -453,6 +471,7 @@ export abstract class Schema {
                             encode.number(bytes, indexChange);
                         }
 
+                        assertInstanceType(item, type[0] as typeof Schema);
                         bytes = bytes.concat(item.encode(root, encodeAll, client));
 
                     } else {
@@ -468,6 +487,7 @@ export abstract class Schema {
                 value.$changes.discard();
 
             } else if ((type as any).map) {
+
                 // encode Map of type
                 encode.number(bytes, fieldIndex);
 
@@ -479,6 +499,7 @@ export abstract class Schema {
                 encode.number(bytes, keys.length)
 
                 const previousKeys = Object.keys(this[`_${field}`]);
+                const isChildSchema = typeof((type as any).map) !== "string";
 
                 for (let i = 0; i < keys.length; i++) {
                     const key = (typeof(keys[i]) === "number" && previousKeys[keys[i]]) || keys[i];
@@ -518,7 +539,8 @@ export abstract class Schema {
                         encode.string(bytes, key);
                     }
 
-                    if (item instanceof Schema) {
+                    if (item && isChildSchema) {
+                        assertInstanceType(item, (type as any).map);
                         bytes = bytes.concat(item.encode(root, encodeAll, client));
 
                     } else if (item !== undefined) {

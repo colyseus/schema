@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { Schema, type, Reflection } from "../src/annotations";
-import { State, Player, DeepState, DeepMap, DeepChild, Position } from "./Schema";
+import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity } from "./Schema";
 import { ArraySchema, MapSchema } from "../src";
 
 describe("Schema", () => {
@@ -711,6 +711,15 @@ describe("Schema", () => {
                 myString: string = "hello";
             };
 
+            class AToStringClass {
+                toJSON (){
+                    return "I'm a json!";
+                }
+                toString () {
+                    return "I'm not a string!";
+                }
+            }
+
             const state = new MyState();
             const decodedState = new MyState();
             decodedState.decode(state.encodeAll());
@@ -725,6 +734,11 @@ describe("Schema", () => {
                 (state as any).myString = {};
                 decodedState.decode(state.encode());
             }, /a 'string' was expected/ig);
+
+            assert.throws(() => {
+                (state as any).myString = new AToStringClass();
+                decodedState.decode(state.encode());
+            }, /a 'string' was expected, but '"I'm a json!"' \(AToStringClass\) was provided./ig);
         });
 
         it("should not encode null numbers", () => {
@@ -768,6 +782,86 @@ describe("Schema", () => {
                 (state as any).myNumber = {};
                 decodedState.decode(state.encode());
             }, /a 'number' was expected/ig);
+        });
+
+        it("should trigger error when assigning incompatible Schema type", () => {
+            class Entity extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+
+                constructor (x?: number, y?: number) {
+                    super();
+                    this.x = x;
+                    this.y = y;
+                }
+            }
+
+            class Player extends Entity {
+                @type("string") name: string;
+
+                constructor (name?: string, x?: number, y?: number) {
+                    super(x, y);
+                    this.name = name;
+                }
+            }
+
+            class MyState extends Schema {
+                @type(Player) player = new Player();
+                @type(Entity) entity = new Entity();
+                @type([Player]) arrayOfPlayers = new ArraySchema<Player>();
+                @type({ map: Player }) mapOfPlayers = new MapSchema<Player>();
+            }
+
+            assert.throws(() => {
+                const state = new MyState();
+                (state as any).player = {};
+                state.encode();
+            }, /a 'player' was expected/ig);
+
+            assert.throws(() => {
+                const state = new MyState();
+                state.arrayOfPlayers.push({} as Player);
+                state.encode();
+            }, /a 'player' was expected/ig);
+
+            assert.throws(() => {
+                const state = new MyState();
+                state.mapOfPlayers['one'] = new Entity();
+                state.encode();
+            }, /a 'player' was expected/ig);
+
+            assert.throws(() => {
+                const state = new MyState();
+                state.mapOfPlayers['one'] = {};
+                state.encode();
+            }, /a 'player' was expected/ig);
+
+            assert.throws(() => {
+                const state = new MyState();
+                (state as any).player = new Entity();
+                state.encode();
+            }, /a 'player' was expected/ig);
+
+            assert.throws(() => {
+                const state = new MyState();
+                (state as any).player = new Entity(100, 100);
+                state.encode();
+            }, /a 'Player' was expected, but 'Entity' was provided/ig);
+
+            assert.throws(() => {
+                const state = new MyState();
+                state.entity = new Player("Player name", 50, 50);
+                state.encode();
+            }, /a 'Entity' was expected, but 'Player' was provided/ig);
+
+            const state = new MyState();
+            (state as any).player = new Player("Name", 100, 100);
+
+            const decodedState = new MyState();
+            decodedState.decode(state.encodeAll());
+            assert.equal(decodedState.player.name, "Name");
+            assert.equal(decodedState.player.x, 100);
+            assert.equal(decodedState.player.y, 100);
         });
     })
 
