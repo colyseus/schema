@@ -26,6 +26,13 @@
  * https://github.com/darrachequesne/notepack
  */
 
+class EncodeSchemaError extends Error {
+  constructor(...args) {
+      super(...args);
+      Error.captureStackTrace(this, EncodeSchemaError);
+  }
+}
+
 function utf8Length(str) {
   var c = 0, length = 0;
   for (var i = 0, l = str.length; i < l; i++) {
@@ -71,6 +78,12 @@ export function utf8Write(view, offset, str) {
       view[offset++] = 0x80 | (c >> 6 & 0x3f);
       view[offset++] = 0x80 | (c & 0x3f);
     }
+  }
+}
+
+export function assertType(value, type) {
+  if (typeof(value) !== type) {
+    throw new EncodeSchemaError(`a '${type}' was expected, but a '${JSON.stringify(value)}' was provided.`);
   }
 }
 

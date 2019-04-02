@@ -688,9 +688,6 @@ describe("Schema", () => {
             class MyState extends Schema {
                 @type("string")
                 myString: string = "hello";
-
-                @type("number")
-                myNumber: number = 1;
             };
 
             const state = new MyState();
@@ -698,14 +695,32 @@ describe("Schema", () => {
             decodedState.decode(state.encodeAll());
 
             assert.equal(decodedState.myString, "hello");
+
+            assert.throws(() => {
+                state.myString = null;
+                decodedState.decode(state.encode());
+            }, /a 'string' was expected/ig);
+        });
+
+        it("should not encode null numbers", () => {
+            class MyState extends Schema {
+                @type("number")
+                myNumber: number = 1;
+
+                @type("uint8")
+                uint8: number = 50;
+            };
+
+            const state = new MyState();
+            const decodedState = new MyState();
+            decodedState.decode(state.encodeAll());
+
             assert.equal(decodedState.myNumber, 1);
 
-            state.myString = null;
-            state.myNumber = null;
-            decodedState.decode(state.encode());
-
-            assert.equal(decodedState.myString, "");
-            assert.equal(decodedState.myNumber, 0);
+            assert.throws(() => {
+                state.myNumber = null;
+                decodedState.decode(state.encode());
+            }, /a 'number' was expected/ig);
 
             state.myNumber = Infinity;
             decodedState.decode(state.encode());
@@ -718,6 +733,16 @@ describe("Schema", () => {
             state.myNumber = NaN;
             decodedState.decode(state.encode());
             assert.equal(decodedState.myNumber, 0);
+
+            assert.throws(() => {
+                state.uint8 = null;
+                decodedState.decode(state.encode());
+            }, /a 'number' was expected/ig);
+
+            assert.throws(() => {
+                (state as any).myNumber = {};
+                decodedState.decode(state.encode());
+            }, /a 'number' was expected/ig);
         });
     })
 

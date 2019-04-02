@@ -36,9 +36,28 @@ const definedSchemas = new Map<typeof Schema, boolean>();
 // Colyseus integration
 export type Client = { sessionId: string } & any;
 
-function encodePrimitiveType (type: string, bytes: number[], value: any) {
-    const encodeFunc = encode[type];
+function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any) {
+    const encodeFunc = encode[type as string];
     if (encodeFunc) {
+        switch (type) {
+            case "number":
+            case "int8":
+            case "uint8":
+            case "int16":
+            case "uint16":
+            case "int32":
+            case "uint32":
+            case "int64":
+            case "uint64":
+            case "float32":
+            case "float64":
+                encode.assertType(value, "number");
+                break;
+            case "string":
+                encode.assertType(value, "string");
+                break;
+        }
+
         encodeFunc(bytes, value);
         return true;
 
@@ -439,7 +458,7 @@ export abstract class Schema {
                     } else {
                         encode.number(bytes, index);
 
-                        if (!encodePrimitiveType(type[0] as string, bytes, item)) {
+                        if (!encodePrimitiveType(type[0], bytes, item)) {
                             console.log("cannot encode", schema[field]);
                             continue;
                         }
@@ -528,7 +547,7 @@ export abstract class Schema {
 
                 encode.number(bytes, fieldIndex);
 
-                if (!encodePrimitiveType(type as string, bytes, value)) {
+                if (!encodePrimitiveType(type as PrimitiveType, bytes, value)) {
                     console.log("cannot encode", schema[field]);
                     continue;
                 }
