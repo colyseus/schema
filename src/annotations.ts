@@ -54,7 +54,7 @@ function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any) 
                 encode.assertType(value, "number");
                 break;
             case "string":
-                encode.assertType(value, "string");
+                encode.assertType(value, "string", true);
                 break;
         }
 

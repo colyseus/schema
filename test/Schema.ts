@@ -41,9 +41,30 @@ export class State extends Schema {
 /**
  * Deep example
  */
+export class Position extends Schema {
+  @type("float32") x: number;
+  @type("float32") y: number;
+  @type("float32") z: number;
+
+  constructor (x: number, y: number, z: number) {
+    super();
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
+}
+
+export class DeepEntity extends Schema {
+  @type("string")
+  name: string;
+
+  @type(Position)
+  position: Position = new Position(0, 0, 0);
+}
+
 export class DeepChild extends Schema {
-  @type(Player)
-  player: Player = new Player();
+  @type(DeepEntity)
+  entity = new DeepEntity();
 }
 
 export class DeepMap extends Schema {

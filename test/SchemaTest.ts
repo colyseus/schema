@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { Schema, type, Reflection } from "../src/annotations";
-import { State, Player, DeepState, DeepMap, DeepChild } from "./Schema";
+import { State, Player, DeepState, DeepMap, DeepChild, Position } from "./Schema";
 import { ArraySchema, MapSchema } from "../src";
 
 describe("Schema", () => {
@@ -684,7 +684,7 @@ describe("Schema", () => {
     });
 
     describe("limitations", () => {
-        it("should not encode null string", () => {
+        it("should encode null string as empty", () => {
             class MyState extends Schema {
                 @type("string")
                 myString: string = "hello";
@@ -696,8 +696,12 @@ describe("Schema", () => {
 
             assert.equal(decodedState.myString, "hello");
 
+            state.myString = null;
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.myString, "");
+
             assert.throws(() => {
-                state.myString = null;
+                (state as any).myString = {};
                 decodedState.decode(state.encode());
             }, /a 'string' was expected/ig);
         });
@@ -809,9 +813,8 @@ describe("Schema", () => {
             const deepMap = new DeepMap();
 
             const deepChild = new DeepChild();
-            deepChild.player.name = "Player one";
-            deepChild.player.x = 10;
-            deepChild.player.y = 20;
+            deepChild.entity.name = "Player one";
+            deepChild.entity.position = new Position(100, 200, 300);
             deepMap.arrayOfChildren.push(deepChild);
 
             state.map['one'] = deepMap;
@@ -819,21 +822,18 @@ describe("Schema", () => {
             const decodedState = new DeepState();
             decodedState.decode(state.encodeAll());
 
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.name, "Player one");
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.x, 10);
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.y, 20);
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.name, "Player one");
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.position.x, 100);
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.position.y, 200);
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.position.z, 300);
 
-            deepChild.player = new Player("Player two", 20, 30)
 
-            decodedState.decode(state.encode());
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.name, "Player two");
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.x, 20);
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].player.y, 30);
-
-            delete state.map['one'];
-            decodedState.decode(state.encode());
-            
-            assert.equal(JSON.stringify(decodedState), '{"map":{}}');
+            const decodedState2 = new DeepState();
+            decodedState2.decode(state.encodeAll());
+            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.name, "Player one");
+            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.position.x, 100);
+            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.position.y, 200);
+            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.position.z, 300);
         });
     });
 });
