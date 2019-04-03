@@ -610,6 +610,15 @@ export abstract class Schema {
         return this.encode(this, true, client);
     }
 
+    clone () {
+        const cloned = new ((this as any).constructor);
+        const schema = this._schema;
+        for (let field in schema) {
+            cloned[field] = this[field];
+        }
+        return cloned;
+    }
+
     triggerAll() {
         if (!this.onChange) {
             return;

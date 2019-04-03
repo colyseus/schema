@@ -207,6 +207,22 @@ describe("Schema", () => {
                 delete state.mapOfPlayers['jake']
             });
         });
+
+        it("should allow to clone Schema instances", () => {
+            const CONSTANT_PLAYER = new Player("Cloned", 100, 100);
+            const state = new State();
+            state.player = CONSTANT_PLAYER.clone();
+            state.mapOfPlayers = new MapSchema<Player>();
+            state.mapOfPlayers['one'] = CONSTANT_PLAYER.clone();
+            state.arrayOfPlayers = new ArraySchema<Player>();
+            state.arrayOfPlayers.push(CONSTANT_PLAYER.clone());
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+            assert.equal(state.player.name, "Cloned");
+            assert.equal(state.mapOfPlayers['one'].name, "Cloned");
+            assert.equal(state.arrayOfPlayers[0].name, "Cloned");
+        });
     });
 
     describe("encoding/decoding", () => {
