@@ -610,6 +610,27 @@ export abstract class Schema {
         return this.encode(this, true, client);
     }
 
+    triggerAll() {
+        if (!this.onChange) {
+            return;
+        }
+
+        const changes: DataChange[] = [];
+        const schema = this._schema;
+
+        for (let field in schema) {
+            if (this[field] !== undefined) {
+                changes.push({
+                    field,
+                    value: this[field],
+                    previousValue: undefined
+                });
+            }
+        }
+
+        this.onChange(changes);
+    }
+
     toJSON () {
         const schema = this._schema;
         const obj = {}

@@ -25,6 +25,18 @@ export class MapSchema<T=any> {
                 }
             },
 
+            triggerAll: {
+                value: () => {
+                    if (!this.onAdd) {
+                        return;
+                    }
+
+                    for (let key in this) {
+                        this.onAdd(this[key], key);
+                    }
+                }
+            },
+
             _indexes: { value: new Map<string, number>(), enumerable: false, writable: true },
             _updateIndexes: {
                 value: () => {
@@ -48,6 +60,8 @@ export class MapSchema<T=any> {
     onAdd: (item: T, key: string) => void;
     onRemove: (item: T, key: string) => void;
     onChange: (item: T, key: string) => void;
+
+    triggerAll: () => void;
 
     _indexes: Map<string, number>;
     _updateIndexes: () => void;

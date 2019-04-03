@@ -595,6 +595,27 @@ describe("Change API", () => {
         });
     });
 
+    describe("triggerAll", () => {
+        it("should trigger onChange on Schema instance", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>();
+            state.mapOfPlayers['one'] = new Player("Endel", 100, 200);
+
+            let onChangeSpy: sinon.SinonSpy;
+
+            const decodedState = new State();
+            decodedState.mapOfPlayers = new MapSchema<Player>();
+            decodedState.mapOfPlayers.onAdd = function (player, key) {
+                player.onChange = function(changes) {};
+                onChangeSpy = sinon.spy(player, 'onChange');
+                player.triggerAll();
+            };
+            decodedState.decode(state.encode());
+
+            sinon.assert.calledOnce(onChangeSpy);
+        });
+    })
+
     describe("encodeAll", () => {
         it("shouldn't trigger onRemove for previously removed items", () => {
             const state = new State();
@@ -616,5 +637,6 @@ describe("Change API", () => {
             sinon.assert.notCalled(onRemoveSpy);
         });
     });
+
 
 });

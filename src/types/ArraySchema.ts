@@ -16,6 +16,18 @@ export class ArraySchema<T=any> extends Array<T> {
             onRemove:     { value: undefined, enumerable: false, writable: true },
             onChange:     { value: undefined, enumerable: false, writable: true },
 
+            triggerAll: {
+                value: () => {
+                    if (!this.onAdd) {
+                        return;
+                    }
+
+                    for (let i = 0; i < this.length; i++) {
+                        this.onAdd(this[i], i);
+                    }
+                }
+            },
+
             clone: {
                 value: () => {
                     const arr = new ArraySchema(...this);
@@ -33,4 +45,6 @@ export class ArraySchema<T=any> extends Array<T> {
     onAdd: (item: T, index: number) => void;
     onRemove: (item: T, index: number) => void;
     onChange: (item: T, index: number) => void;
+
+    triggerAll: () => void;
 }
