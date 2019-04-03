@@ -21,7 +21,7 @@ namespace Colyseus
 {
 
 using varint_t = float; // "number"
-using string = std::string; // "number"
+using string = std::string;
 using float32_t = float;
 using float64_t = double;
 
@@ -37,46 +37,168 @@ enum class SPEC : unsigned char
     INDEX_CHANGE = 0xd4,
 };
 
-string* decodeString(const unsigned char bytes[], Iterator *it)
+string decodeString(const unsigned char bytes[], Iterator *it)
 {
-    auto str_size = (bytes[it->offset++] & 0x1f) + 1;
-    std::cout << "str_size: " << str_size << std::endl; 
+    auto str_size = (bytes[it->offset] & 0x1f) + 1;
     char *str = new char[str_size];
-    memcpy(str, bytes + it->offset, str_size);
+    memcpy(str, bytes + it->offset + 1, str_size);
     str[str_size - 1] = '\0'; // endl
     it->offset += str_size;
-    return new string(str);
+    return string(str);
 }
 
-template <typename T>
+int8_t decodeInt8(const unsigned char bytes[], Iterator *it)
+{
+    return 0;
+}
+
+uint8_t decodeUint8(const unsigned char bytes[], Iterator *it)
+{
+    return (uint8_t)bytes[it->offset++];
+}
+
+int16_t decodeInt16(const unsigned char bytes[], Iterator *it)
+{
+    return 0;
+}
+
+uint16_t decodeUint16(const unsigned char bytes[], Iterator *it)
+{
+    return 0;
+}
+
+int32_t decodeInt32(const unsigned char bytes[], Iterator *it)
+{
+    return 0;
+}
+
+uint32_t decodeUint32(const unsigned char bytes[], Iterator *it)
+{
+    return 0;
+}
+
+int64_t decodeInt64(const unsigned char bytes[], Iterator *it)
+{
+    return 0;
+}
+
+uint64_t decodeUint64(const unsigned char bytes[], Iterator *it)
+{
+    return 0;
+}
+
+float32_t decodeFloat32(const unsigned char bytes[], Iterator *it)
+{
+    return 0;
+}
+
+float64_t decodeFloat64(const unsigned char bytes[], Iterator *it)
+{
+    return 0;
+}
+
+varint_t decodeNumber(const unsigned char bytes[], Iterator *it)
+{
+    auto prefix = bytes[it->offset++];
+    std::cout << "decodeNumber, prefix => " << ((int)prefix) << std::endl;
+
+    if (prefix < 0x80)
+    {
+        // positive fixint
+        return (varint_t)prefix;
+    }
+    else if (prefix == 0xca)
+    {
+        // float 32
+        return decodeFloat32(bytes, it);
+    }
+    else if (prefix == 0xcb)
+    {
+        // float 64
+        return (varint_t) decodeFloat64(bytes, it);
+    }
+    else if (prefix == 0xcc)
+    {
+        // uint 8
+        return (varint_t)decodeUint8(bytes, it);
+    }
+    else if (prefix == 0xcd)
+    {
+        // uint 16
+        return (varint_t) decodeUint16(bytes, it);
+    }
+    else if (prefix == 0xce)
+    {
+        // uint 32
+        return (varint_t) decodeUint32(bytes, it);
+    }
+    else if (prefix == 0xcf)
+    {
+        // uint 64
+        return (varint_t) decodeUint64(bytes, it);
+    }
+    else if (prefix == 0xd0)
+    {
+        // int 8
+        return (varint_t) decodeInt8(bytes, it);
+    }
+    else if (prefix == 0xd1)
+    {
+        // int 16
+        return (varint_t) decodeInt16(bytes, it);
+    }
+    else if (prefix == 0xd2)
+    {
+        // int 32
+        return (varint_t) decodeInt32(bytes, it);
+    }
+    else if (prefix == 0xd3)
+    {
+        // int 64
+        return (varint_t) decodeInt64(bytes, it);
+    }
+    else if (prefix > 0xdf)
+    {
+        // negative fixint
+        return (varint_t) ((0xff - prefix + 1) * -1);
+    }
+
+    return 0;
+}
+
+bool decodeBoolean(const unsigned char bytes[], Iterator *it)
+{
+    return decodeUint8(bytes, it) > 0;
+}
+
+// template <typename T>
 struct DataChange
 {
     string field;
-    T value;
-    T previousValue;
+    // T value;
+    // T previousValue;
 };
 
 class Schema
 {
   public:
-    std::function<void(Schema*, std::vector<DataChange<char *>>)> onChange;
+    std::function<void(Schema*, std::vector<DataChange>)> onChange;
     std::function<void()> onRemove;
 
     void decode(const unsigned char bytes[], int totalBytes, Iterator *it = new Iterator())
     {
-        std::vector<DataChange<char *>> changes;
+        std::vector<DataChange> changes;
 
         while (it->offset < totalBytes)
         {
             unsigned char index = (unsigned char) bytes[it->offset++];
+            std::cout << "INDEX: " << ((int)index) << std::endl;
 
             if (index == (unsigned char) SPEC::END_OF_STRUCTURE)
             {
                 break;
             }
 
-            std::cout << "INDEX: " << index << std::endl;
-            std::cout << "_indexes.length => " << (this->_indexes.size()) << std::endl;
 
             string field = this->_indexes.at(index);
             string type = this->_types.at(index);
@@ -100,21 +222,18 @@ class Schema
             }
             else
             {
-                value = this->decodePrimitiveType(type, bytes, it);
+                this->decodePrimitiveType(field, type, bytes, it);
                 hasChange = true;
             }
 
             if (hasChange && this->onChange)
             {
-                DataChange<char*> dataChange = DataChange<char*>();
+                DataChange dataChange = DataChange();
                 dataChange.field = field;
-                dataChange.value = value;
+                // dataChange.value = value;
 
                 changes.push_back(dataChange);
             }
-
-            this->assignPrimitiveType(type, field, value);
-            return;
         }
 
         // trigger onChange callback.
@@ -126,10 +245,10 @@ class Schema
 
   protected:
     std::vector<string> _order;
-    std::map<int, string> _indexes;
+    std::map<unsigned char, string> _indexes;
 
-    std::map<int, string> _types;
-    std::map<int, std::type_index> _childTypes;
+    std::map<unsigned char, string> _types;
+    std::map<unsigned char, std::type_index> _childTypes;
 
     // typed virtual getters by field
     virtual string getString(string field) { return ""; }
@@ -164,54 +283,64 @@ class Schema
     virtual void setSchema(string field, Schema value) {}
 
   private:
-    char* decodePrimitiveType(string type, const unsigned char bytes[], Iterator *it)
+    void decodePrimitiveType(string field, string type, const unsigned char bytes[], Iterator *it)
     {
         if (type == "string")
         {
-            return (char *)decodeString(bytes, it);
+            this->setString(field, decodeString(bytes, it));
         }
         else if (type == "number")
         {
+            this->setNumber(field, decodeNumber(bytes, it));
         }
         else if (type == "boolean")
         {
+            this->setBool(field, decodeBoolean(bytes, it));
         }
         else if (type == "int8")
         {
+            this->setInt8(field, decodeInt8(bytes, it));
         }
         else if (type == "uint8")
         {
+            this->setUint8(field, decodeUint8(bytes, it));
         }
         else if (type == "int16")
         {
+            this->setInt16(field, decodeInt16(bytes, it));
         }
         else if (type == "uint16")
         {
+            this->setUint16(field, decodeUint16(bytes, it));
         }
         else if (type == "int32")
         {
+            this->setInt32(field, decodeInt32(bytes, it));
         }
         else if (type == "uint32")
         {
+            this->setUint32(field, decodeUint32(bytes, it));
         }
         else if (type == "int64")
         {
+            this->setInt64(field, decodeInt64(bytes, it));
         }
         else if (type == "uint64")
         {
+            this->setUint64(field, decodeUint64(bytes, it));
         }
         else if (type == "float32")
         {
+            this->setFloat32(field, decodeFloat32(bytes, it));
         }
         else if (type == "float64")
         {
+            this->setFloat64(field, decodeFloat64(bytes, it));
         }
         else
         {
             throw std::invalid_argument("cannot decode invalid type: " + type);
         }
-
-        return nullptr;
     }
 
     void assignPrimitiveType(string type, string field, char* value)

@@ -94,75 +94,17 @@ public:
             this->number = value;
         }
     }
-
-    template <typename T>
-    T getValue(const std::string &key)
-    {
-        if (key == "fieldString")
-        {
-            return this->fieldString;
-        }
-        else if (key == "number")
-        {
-            return this->number;
-        }
-        else if (key == "player")
-        {
-            return this->player;
-        }
-        else if (key == "arrayOfPlayers")
-        {
-            return this->arrayOfPlayers;
-        }
-        else if (key == "mapOfPlayers")
-        {
-            return this->mapOfPlayers;
-        }
-        else
-        {
-            throw std::invalid_argument("non-existing propery: " + key);
-        }
-    };
-
-    template <typename T>
-    void setProperty(const std::string &key, T value) 
-    {
-        std::cout << "setProperty: " << key << ", value =>" << value << std::endl;
-        if (key == "fieldString")
-        {
-            this->fieldString = value;
-        }
-        else if (key == "number")
-        {
-            this->number = value;
-        }
-        else if (key == "player")
-        {
-            this->player = value;
-        }
-        else if (key == "arrayOfPlayers")
-        {
-            this->arrayOfPlayers = value;
-        }
-        else if (key == "mapOfPlayers")
-        {
-            this->mapOfPlayers = value;
-        }
-        else
-        {
-            throw std::invalid_argument("non-existing propery: " + key);
-        }
-    }
 };
 
 int main()
 {
-    const unsigned char encodedState[] = {0, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100};
+    const unsigned char encodedState[] = {0, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 1, 204, 200};
 
     State *state = new State();
-    state->decode(encodedState, 13);
+    state->decode(encodedState, 16);
 
-    std::cout << state->fieldString << std::endl;
+    std::cout << "fieldString: " << state->fieldString << std::endl;
+    std::cout << "number: " << state->number << std::endl;
 
     return 0;
 }
