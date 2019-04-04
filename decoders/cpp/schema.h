@@ -17,7 +17,9 @@
 #include <typeinfo>
 #include <typeindex>
 
-namespace Colyseus
+namespace colyseus
+{
+namespace schema
 {
 
 using varint_t = float; // "number"
@@ -25,16 +27,24 @@ using string = std::string;
 using float32_t = float;
 using float64_t = double;
 
-struct Iterator
-{
-    int offset = 0;
-};
-
 enum class SPEC : unsigned char
 {
     END_OF_STRUCTURE = 0xc1, // (msgpack spec: never used)
     NIL = 0xc0,
     INDEX_CHANGE = 0xd4,
+};
+
+struct Iterator
+{
+    int offset = 0;
+};
+
+// template <typename T>
+struct DataChange
+{
+    string field;
+    // T value;
+    // T previousValue;
 };
 
 string decodeString(const unsigned char bytes[], Iterator *it)
@@ -44,6 +54,7 @@ string decodeString(const unsigned char bytes[], Iterator *it)
     memcpy(str, bytes + it->offset + 1, str_size);
     str[str_size - 1] = '\0'; // endl
     it->offset += str_size;
+    std::cout << "decodeString, value => " << (str) << std::endl;
     return string(str);
 }
 
@@ -171,12 +182,54 @@ bool decodeBoolean(const unsigned char bytes[], Iterator *it)
     return decodeUint8(bytes, it) > 0;
 }
 
-// template <typename T>
-struct DataChange
+bool numberCheck(const unsigned char bytes[], Iterator *it)
 {
-    string field;
-    // T value;
-    // T previousValue;
+    auto prefix = bytes[it->offset];
+    return (prefix < 0x80 || (prefix >= 0xca && prefix <= 0xd3));
+}
+
+bool arrayCheck (const unsigned char bytes[], Iterator *it) {
+  return bytes[it->offset] < 0xa0;
+}
+
+bool nilCheck(const unsigned char bytes[], Iterator *it) {
+  return bytes[it->offset] == (unsigned char) SPEC::NIL;
+}
+
+bool indexChangeCheck(const unsigned char bytes[], Iterator *it) {
+  return bytes[it->offset] == (unsigned char) SPEC::INDEX_CHANGE;
+}
+
+template <typename T>
+class ArraySchema
+{
+  public:
+    std::vector<T*> items;
+
+    std::function<void(ArraySchema<T>*, T *, int)> OnAdd;
+    std::function<void(ArraySchema<T>*, T *, int)> onChange;
+    std::function<void(ArraySchema<T>*, T *, int)> onRemove;
+
+    T &operator[](const int &index)
+    {
+        return items[index];
+    }
+};
+
+template <typename T>
+class MapSchema
+{
+  public:
+    std::map<string, T*> items;
+
+    std::function<void(ArraySchema<T> *, T *, string)> OnAdd;
+    std::function<void(ArraySchema<T> *, T *, string)> onChange;
+    std::function<void(ArraySchema<T> *, T *, string)> onRemove;
+
+    T &operator[](string &index)
+    {
+        return items[index];
+    }
 };
 
 class Schema
@@ -199,26 +252,44 @@ class Schema
                 break;
             }
 
-
             string field = this->_indexes.at(index);
             string type = this->_types.at(index);
 
             std::cout << "FIELD: " << field << std::endl;
             // std::type_info& fieldType = typeid(this[field]);
 
-            char *value = nullptr;
+            // char *value = nullptr;
             char *change = nullptr;
 
             bool hasChange = false;
 
             if (type == "ref")
             {
+                auto childType = this->_childTypes.at(index);
+
+                if (nilCheck(bytes, it)) {
+                    it->offset++;
+                    this->setSchema(field, nullptr);
+
+                } else {
+                    Schema* value = this->getSchema(field);
+
+                    if (value == nullptr) {
+                        value = this->createInstance(childType);
+                    }
+
+                    value->decode(bytes, totalBytes, it);
+                }
+
+                hasChange = true;
             }
             else if (type == "array")
             {
+
             }
             else if (type == "map")
             {
+
             }
             else
             {
@@ -264,7 +335,7 @@ class Schema
     virtual uint64_t getUInt64(string field) { return 0; }
     virtual float32_t getFloat32(string field) { return 0; }
     virtual float64_t getFloat64(string field) { return 0; }
-    virtual Schema getSchema(string field) { return Schema(); }
+    virtual Schema* getSchema(string field) { return nullptr; }
 
     // typed virtual setters by field
     virtual void setString(string field, string value) {}
@@ -280,7 +351,9 @@ class Schema
     virtual void setUint64(string field, uint64_t value) {}
     virtual void setFloat32(string field, float32_t value) {}
     virtual void setFloat64(string field, float64_t value) {}
-    virtual void setSchema(string field, Schema value) {}
+    virtual void setSchema(string field, Schema* value) {}
+
+    virtual Schema* createInstance(std::type_index type) { return nullptr; }
 
   private:
     void decodePrimitiveType(string field, string type, const unsigned char bytes[], Iterator *it)
@@ -405,6 +478,7 @@ class Schema
     }
 };
 
-} // namespace Colyseus
+} // namespace schema
+} // namespace colyseus
 
 #endif

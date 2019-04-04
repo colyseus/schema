@@ -8,103 +8,176 @@
 #include <typeinfo>
 #include <typeindex>
 
-struct Player : public Colyseus::Schema
-{
-    std::string name;
-    int x;
-    int y;
+using namespace colyseus::schema;
 
-    template <typename T>
-    T &operator[](const std::string &key)
+struct Player : public Schema
+{
+  public:
+    string name;
+    varint_t x;
+    varint_t y;
+
+    Player()
     {
-        if (key == "name")
+        this->_order = {"name", "x", "y"};
+        this->_indexes = {{0, "name"}, {1, "x"}, {2, "y"}};
+        this->_types = {{0, "string"}, {1, "number"}, {2, "number"}};
+    }
+
+  protected:
+    string getString(string field)
+    {
+        if (field == "name")
         {
             return this->name;
         }
-        else if (key == "x")
+        else
+        {
+            return "";
+        }
+    }
+
+    void setString(string field, string value)
+    {
+        if (field == "name")
+        {
+            this->name = value;
+        }
+    }
+
+    varint_t getNumber(string field)
+    {
+        if (field == "x")
         {
             return this->x;
         }
-        else if (key == "y")
+        else if (field == "y")
         {
             return this->y;
         }
         else
         {
-            throw std::invalid_argument("non-existing propery: " + key);
+            return 0;
         }
-    };
+    }
 
-    static const std::vector<std::string> _order;
-    static const std::map<int, std::string> _indexes;
+    void setNumber(string field, varint_t value)
+    {
+        if (field == "x")
+        {
+            this->x = value;
+        }
+        else if (field == "y")
+        {
+            this->y = value;
+        }
+    }
 };
-const std::vector<std::string> Player::_order = {"name", "x", "y"};
-const std::map<int, std::string> Player::_indexes = {{0, "name"}, {1, "x"}, {2, "y"}};
 
-class State : public Colyseus::Schema
+class State : public Schema
 {
-public:
-    std::string fieldString;
-    float number;
-    Player *player;
+  public:
+    string fieldString;
+    varint_t number;
+    Player *player = new Player();
     std::vector<Player *> arrayOfPlayers;
     std::map<std::string, Player *> mapOfPlayers;
 
-    State () {
+    State()
+    {
         this->_order = {"fieldString", "number", "player", "arrayOfPlayers", "mapOfPlayers"};
         this->_indexes = {{0, "fieldString"}, {1, "number"}, {2, "player"}, {3, "arrayOfPlayers"}, {4, "mapOfPlayers"}};
 
         this->_types = {{0, "string"}, {1, "number"}, {2, "ref"}, {3, "array"}, {4, "map"}};
         this->_childTypes = {{2, typeid(Player)}, {3, typeid(Player)}, {4, typeid(Player)}};
-
-        std::cout << "State() constructor." << std::endl;
-        std::cout << "_indexes.length => " << (this->_indexes.size()) << std::endl;
     }
 
-    std::string getString(std::string field)
+  protected:
+    string getString(std::string field)
     {
-        if (field == "fieldString") {
+        if (field == "fieldString")
+        {
             return this->fieldString;
-
-        } else {
+        }
+        else
+        {
             return "";
         }
     }
 
     void setString(std::string field, std::string value)
     {
-        if (field == "fieldString") {
+        if (field == "fieldString")
+        {
             this->fieldString = value;
         }
     }
 
-    float getNumber (std::string field)
+    float getNumber(std::string field)
     {
-        if (field == "number") {
+        if (field == "number")
+        {
             return this->number;
-
-        } else {
+        }
+        else
+        {
             return 0;
         }
     }
 
-    void setNumber (std::string field, float value)
+    void setNumber(std::string field, float value)
     {
-        if (field == "number") {
+        if (field == "number")
+        {
             this->number = value;
+        }
+    }
+
+    Schema *getSchema(string field)
+    {
+        if (field == "player")
+        {
+            return this->player;
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+
+    void setSchema(string field, Schema *value)
+    {
+        if (field == "player")
+        {
+            this->player = (Player *)value;
+        }
+    }
+
+    Schema *createInstance(std::type_index type)
+    {
+        if (type == typeid(Player))
+        {
+            return new Player();
+        }
+        else
+        {
+            return nullptr;
         }
     }
 };
 
 int main()
 {
-    const unsigned char encodedState[] = {0, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 1, 204, 200};
+    const unsigned char encodedState[] = {0, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 1, 204, 200, 2, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 1, 100, 2, 100, 193};
 
     State *state = new State();
-    state->decode(encodedState, 16);
+    state->decode(encodedState, 37);
 
-    std::cout << "fieldString: " << state->fieldString << std::endl;
-    std::cout << "number: " << state->number << std::endl;
+    std::cout << "state.fieldString: " << state->fieldString << std::endl;
+    std::cout << "state.number: " << state->number << std::endl;
+    std::cout << "player.name: " << state->player->name << std::endl;
+    std::cout << "player.x: " << state->player->x << std::endl;
+    std::cout << "player.y: " << state->player->y << std::endl;
 
     return 0;
 }
