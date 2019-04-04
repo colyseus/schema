@@ -1,7 +1,7 @@
 /**
  * @colyseus/schema decoder for C/C++
  * Do not modify this file unless you know exactly what you're doing.
- * 
+ *
  * This file is part of Colyseus: https://github.com/colyseus/colyseus
  */
 #ifndef __COLYSEUS_SCHEMA_H__
@@ -245,6 +245,24 @@ class ArraySchema
     {
         return items.size();
     }
+
+    void decodePrimitiveType(int key, string type, const unsigned char bytes[], Iterator *it)
+    {
+        if (type == "string")       { this[key] = decodeString(bytes, it); }
+        else if (type == "number")  { this[key] = decodeNumber(bytes, it); }
+        else if (type == "boolean") { this[key] = decodeBoolean(bytes, it); }
+        else if (type == "int8")    { this[key] = decodeInt8(bytes, it); }
+        else if (type == "uint8")   { this[key] = decodeUint8(bytes, it); }
+        else if (type == "int16")   { this[key] = decodeInt16(bytes, it); }
+        else if (type == "uint16")  { this[key] = decodeUint16(bytes, it); }
+        else if (type == "int32")   { this[key] = decodeInt32(bytes, it); }
+        else if (type == "uint32")  { this[key] = decodeUint32(bytes, it); }
+        else if (type == "int64")   { this[key] = decodeInt64(bytes, it); }
+        else if (type == "uint64")  { this[key] = decodeUint64(bytes, it); }
+        else if (type == "float32") { this[key] = decodeFloat32(bytes, it); }
+        else if (type == "float64") { this[key] = decodeFloat64(bytes, it); }
+        else { throw std::invalid_argument("cannot decode invalid type: " + type); }
+    }
 };
 
 template <typename T>
@@ -317,7 +335,7 @@ class Schema
 
             if (type == "ref")
             {
-                auto childType = this->_childTypes.at(index);
+                auto childType = this->_childSchemaTypes.at(index);
 
                 if (nilCheck(bytes, it)) {
                     it->offset++;
@@ -350,8 +368,8 @@ class Schema
                 hasChange = (length > 0);
 
                 bool hasIndexChange = false;
-                bool isSchemaType = this->_childTypes.find(index) != this->_childTypes.end();
-                // auto childType = this->_childTypes.at(index);
+                bool isSchemaType = this->_childSchemaTypes.find(index) != this->_childSchemaTypes.end();
+                // auto childType = this->_childSchemaTypes.at(index);
 
                 // list of previous keys
                 std::vector<string> previousKeys;
@@ -383,15 +401,15 @@ class Schema
                     char* item;
                     bool isNew = (!hasIndexChange && !valueRef.has(newKey)) || (hasIndexChange && previousKey == "" && hasMapIndex);
 
-                    if (isNew && isSchemaType) 
+                    if (isNew && isSchemaType)
                     {
-                        item = (char*) this->createInstance(this->_childTypes.at(index));
+                        item = (char*) this->createInstance(this->_childSchemaTypes.at(index));
 
-                    } else if (previousKey != "") 
+                    } else if (previousKey != "")
                     {
                         item = valueRef.at(previousKey);
 
-                    } else 
+                    } else
                     {
                         item = valueRef.at(newKey);
                     }
@@ -412,13 +430,26 @@ class Schema
                         value.items[newKey] = nullptr;
                         continue;
 
-                    } else if (!isSchemaType) 
+                    } else if (!isSchemaType)
                     {
-                        // TODO: decode primitive type and insert at newKey
+                        string primitiveType = this->_childPrimitiveTypes.at(index);
+
+                        if (primitiveType == "string")       { (*(MapSchema<string> *)&value).items[newKey] = decodeString(bytes, it); }
+                        else if (primitiveType == "number")  { (*(MapSchema<varint_t> *)&value).items[newKey] = decodeNumber(bytes, it); }
+                        else if (primitiveType == "boolean") { (*(MapSchema<bool> *)&value).items[newKey] = decodeBoolean(bytes, it) ; }
+                        else if (primitiveType == "int8")    { (*(MapSchema<int8_t> *)&value).items[newKey] = decodeInt8(bytes, it) ; }
+                        else if (primitiveType == "uint8")   { (*(MapSchema<uint8_t> *)&value).items[newKey] = decodeUint8(bytes, it) ; }
+                        else if (primitiveType == "int16")   { (*(MapSchema<int16_t> *)&value).items[newKey] = decodeInt16(bytes, it) ; }
+                        else if (primitiveType == "uint16")  { (*(MapSchema<uint16_t> *)&value).items[newKey] = decodeUint16(bytes, it) ; }
+                        else if (primitiveType == "int32")   { (*(MapSchema<int32_t> *)&value).items[newKey] = decodeInt32(bytes, it) ; }
+                        else if (primitiveType == "uint32")  { (*(MapSchema<uint32_t> *)&value).items[newKey] = decodeUint32(bytes, it) ; }
+                        else if (primitiveType == "int64")   { (*(MapSchema<int64_t> *)&value).items[newKey] = decodeInt64(bytes, it) ; }
+                        else if (primitiveType == "uint64")  { (*(MapSchema<uint64_t> *)&value).items[newKey] = decodeUint64(bytes, it) ; }
+                        else if (primitiveType == "float32") { (*(MapSchema<float32_t> *)&value).items[newKey] = decodeFloat32(bytes, it) ; }
+                        else if (primitiveType == "float64") { (*(MapSchema<float64_t> *)&value).items[newKey] = decodeFloat64(bytes, it) ; }
                     }
                     else
                     {
-                        std::cout << "Let's decode child item on map!" << std::endl;
                         ((Schema*) item)->decode(bytes, totalBytes, it);
                         value.items[newKey] = item;
                     }
@@ -463,9 +494,9 @@ class Schema
 
   protected:
     std::map<unsigned char, string> _indexes;
-
     std::map<unsigned char, string> _types;
-    std::map<unsigned char, std::type_index> _childTypes;
+    std::map<unsigned char, string> _childPrimitiveTypes;
+    std::map<unsigned char, std::type_index> _childSchemaTypes;
 
     // typed virtual getters by field
     virtual string getString(string field) { return ""; }
@@ -506,62 +537,20 @@ class Schema
   private:
     void decodePrimitiveType(string field, string type, const unsigned char bytes[], Iterator *it)
     {
-        if (type == "string")
-        {
-            this->setString(field, decodeString(bytes, it));
-        }
-        else if (type == "number")
-        {
-            this->setNumber(field, decodeNumber(bytes, it));
-        }
-        else if (type == "boolean")
-        {
-            this->setBool(field, decodeBoolean(bytes, it));
-        }
-        else if (type == "int8")
-        {
-            this->setInt8(field, decodeInt8(bytes, it));
-        }
-        else if (type == "uint8")
-        {
-            this->setUint8(field, decodeUint8(bytes, it));
-        }
-        else if (type == "int16")
-        {
-            this->setInt16(field, decodeInt16(bytes, it));
-        }
-        else if (type == "uint16")
-        {
-            this->setUint16(field, decodeUint16(bytes, it));
-        }
-        else if (type == "int32")
-        {
-            this->setInt32(field, decodeInt32(bytes, it));
-        }
-        else if (type == "uint32")
-        {
-            this->setUint32(field, decodeUint32(bytes, it));
-        }
-        else if (type == "int64")
-        {
-            this->setInt64(field, decodeInt64(bytes, it));
-        }
-        else if (type == "uint64")
-        {
-            this->setUint64(field, decodeUint64(bytes, it));
-        }
-        else if (type == "float32")
-        {
-            this->setFloat32(field, decodeFloat32(bytes, it));
-        }
-        else if (type == "float64")
-        {
-            this->setFloat64(field, decodeFloat64(bytes, it));
-        }
-        else
-        {
-            throw std::invalid_argument("cannot decode invalid type: " + type);
-        }
+        if (type == "string")       { this->setString(field, decodeString(bytes, it)); }
+        else if (type == "number")  { this->setNumber(field, decodeNumber(bytes, it)); }
+        else if (type == "boolean") { this->setBool(field, decodeBoolean(bytes, it)); }
+        else if (type == "int8")    { this->setInt8(field, decodeInt8(bytes, it)); }
+        else if (type == "uint8")   { this->setUint8(field, decodeUint8(bytes, it)); }
+        else if (type == "int16")   { this->setInt16(field, decodeInt16(bytes, it)); }
+        else if (type == "uint16")  { this->setUint16(field, decodeUint16(bytes, it)); }
+        else if (type == "int32")   { this->setInt32(field, decodeInt32(bytes, it)); }
+        else if (type == "uint32")  { this->setUint32(field, decodeUint32(bytes, it)); }
+        else if (type == "int64")   { this->setInt64(field, decodeInt64(bytes, it)); }
+        else if (type == "uint64")  { this->setUint64(field, decodeUint64(bytes, it)); }
+        else if (type == "float32") { this->setFloat32(field, decodeFloat32(bytes, it)); }
+        else if (type == "float64") { this->setFloat64(field, decodeFloat64(bytes, it)); }
+        else { throw std::invalid_argument("cannot decode invalid type: " + type); }
     }
 };
 

@@ -80,7 +80,7 @@ class State : public Schema
     {
         this->_indexes = {{0, "fieldString"}, {1, "number"}, {2, "player"}, {3, "arrayOfPlayers"}, {4, "mapOfPlayers"}};
         this->_types = {{0, "string"}, {1, "number"}, {2, "ref"}, {3, "array"}, {4, "map"}};
-        this->_childTypes = {{2, typeid(Player)}, {3, typeid(Player)}, {4, typeid(Player)}};
+        this->_childSchemaTypes = {{2, typeid(Player)}, {3, typeid(Player)}, {4, typeid(Player)}};
     }
 
   protected:
