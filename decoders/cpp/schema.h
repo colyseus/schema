@@ -227,9 +227,12 @@ template <typename T>
 class ArraySchema
 {
   public:
+    ArraySchema() {}
+    ~ArraySchema() {}
+
     std::vector<T*> items;
 
-    std::function<void(ArraySchema<T>*, T *, int)> OnAdd;
+    std::function<void(ArraySchema<T>*, T *, int)> onAdd;
     std::function<void(ArraySchema<T>*, T *, int)> onChange;
     std::function<void(ArraySchema<T>*, T *, int)> onRemove;
 
@@ -237,21 +240,44 @@ class ArraySchema
     {
         return items[index];
     }
+
+    int size()
+    {
+        return items.size();
+    }
 };
 
 template <typename T>
 class MapSchema
 {
   public:
-    std::map<string, T*> items;
+    MapSchema() {}
+    ~MapSchema() {}
 
-    std::function<void(ArraySchema<T> *, T *, string)> OnAdd;
-    std::function<void(ArraySchema<T> *, T *, string)> onChange;
-    std::function<void(ArraySchema<T> *, T *, string)> onRemove;
+    std::map<string, T> items;
 
-    T &operator[](string &index)
+    std::function<void(MapSchema<T> *, T, string)> onAdd;
+    std::function<void(MapSchema<T> *, T, string)> onChange;
+    std::function<void(MapSchema<T> *, T, string)> onRemove;
+
+    T &operator[](const char index[])
     {
         return items[index];
+    }
+
+    T at(string key)
+    {
+        return items.at(key);
+    }
+
+    bool has(string field)
+    {
+        return items.find(field) != items.end();
+    }
+
+    int size()
+    {
+        return items.size();
     }
 };
 
@@ -260,6 +286,9 @@ class Schema
   public:
     std::function<void(Schema*, std::vector<DataChange>)> onChange;
     std::function<void()> onRemove;
+
+    Schema() {}
+    ~Schema() {}
 
     void decode(const unsigned char bytes[], int totalBytes, Iterator *it = new Iterator())
     {
@@ -292,10 +321,10 @@ class Schema
 
                 if (nilCheck(bytes, it)) {
                     it->offset++;
-                    this->setSchema(field, nullptr);
+                    this->setRef(field, nullptr);
 
                 } else {
-                    Schema* value = this->getSchema(field);
+                    Schema* value = this->getRef(field);
 
                     if (value == nullptr) {
                         value = this->createInstance(childType);
@@ -312,7 +341,101 @@ class Schema
             }
             else if (type == "map")
             {
+                std::cout << "FOUND A MAP!" << std::endl;
 
+                MapSchema<char *> valueRef = this->getMap(field);
+                MapSchema<char *> value = valueRef;
+
+                int length = (int) decodeNumber(bytes, it);
+                hasChange = (length > 0);
+
+                bool hasIndexChange = false;
+                bool isSchemaType = this->_childTypes.find(index) != this->_childTypes.end();
+                // auto childType = this->_childTypes.at(index);
+
+                // list of previous keys
+                std::vector<string> previousKeys;
+                for (std::map<string, char *>::iterator it = valueRef.items.begin(); it != valueRef.items.end(); ++it)
+                {
+                    std::cout << "PREVIOUS KEY => " << it->first << std::endl;
+                    previousKeys.push_back(it->first);
+                }
+
+                for (int i = 0; i < length; i++)
+                {
+                    if (it->offset > totalBytes || bytes[it->offset] == (unsigned char)SPEC::END_OF_STRUCTURE)
+                    {
+                        break;
+                    }
+
+                    string previousKey = "";
+                    if (indexChangeCheck(bytes, it)) {
+                        it->offset++;
+                        previousKey = previousKeys[decodeNumber(bytes, it)];
+                        hasIndexChange = true;
+                    }
+
+                    bool hasMapIndex = numberCheck(bytes, it);
+                    string newKey = (hasMapIndex)
+                        ? previousKeys[decodeNumber(bytes, it)]
+                        : decodeString(bytes, it);
+
+                    char* item;
+                    bool isNew = (!hasIndexChange && !valueRef.has(newKey)) || (hasIndexChange && previousKey == "" && hasMapIndex);
+
+                    if (isNew && isSchemaType) 
+                    {
+                        item = (char*) this->createInstance(this->_childTypes.at(index));
+
+                    } else if (previousKey != "") 
+                    {
+                        item = valueRef.at(previousKey);
+
+                    } else 
+                    {
+                        item = valueRef.at(newKey);
+                    }
+
+                    if (nilCheck(bytes, it))
+                    {
+                        it->offset++;
+                        // if (item && item.onRemove) {
+                        //     item.onRemove();
+                        // }
+
+                        // if (valueRef.onRemove) {
+                        //     valueRef.onRemove(item, newKey);
+                        // }
+
+                        // delete value[newKey];
+                        // continue;
+
+                    } else if (!isSchemaType) 
+                    {
+                        // TODO: decode primitive type and insert at newKey
+                    }
+                    else
+                    {
+                        std::cout << "Let's decode child item on map!" << std::endl;
+                        ((Schema*) item)->decode(bytes, totalBytes, it);
+                        value.items[newKey] = item;
+                    }
+
+                    if (isNew)
+                    {
+                        if (valueRef.onAdd)
+                        {
+                            valueRef.onAdd(&valueRef, item, newKey);
+                        }
+                    }
+                    else if (valueRef.onChange)
+                    {
+                        valueRef.onChange(&valueRef, item, newKey);
+                    }
+
+                }
+
+                this->setMap(field, value);
             }
             else
             {
@@ -338,7 +461,6 @@ class Schema
     }
 
   protected:
-    std::vector<string> _order;
     std::map<unsigned char, string> _indexes;
 
     std::map<unsigned char, string> _types;
@@ -358,7 +480,8 @@ class Schema
     virtual uint64_t getUInt64(string field) { return 0; }
     virtual float32_t getFloat32(string field) { return 0; }
     virtual float64_t getFloat64(string field) { return 0; }
-    virtual Schema* getSchema(string field) { return nullptr; }
+    virtual Schema* getRef(string field) { return nullptr; }
+    virtual MapSchema<char*> getMap(string field) { return MapSchema<char*>(); }
 
     // typed virtual setters by field
     virtual void setString(string field, string value) {}
@@ -374,7 +497,8 @@ class Schema
     virtual void setUint64(string field, uint64_t value) {}
     virtual void setFloat32(string field, float32_t value) {}
     virtual void setFloat64(string field, float64_t value) {}
-    virtual void setSchema(string field, Schema* value) {}
+    virtual void setRef(string field, Schema* value) {}
+    virtual void setMap(string field, MapSchema<char*>) {}
 
     virtual Schema* createInstance(std::type_index type) { return nullptr; }
 

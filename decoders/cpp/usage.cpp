@@ -19,7 +19,6 @@ struct Player : public Schema
 
     Player()
     {
-        this->_order = {"name", "x", "y"};
         this->_indexes = {{0, "name"}, {1, "x"}, {2, "y"}};
         this->_types = {{0, "string"}, {1, "number"}, {2, "number"}};
     }
@@ -31,10 +30,7 @@ struct Player : public Schema
         {
             return this->name;
         }
-        else
-        {
-            return "";
-        }
+        return Schema::getString(field);
     }
 
     void setString(string field, string value)
@@ -55,10 +51,7 @@ struct Player : public Schema
         {
             return this->y;
         }
-        else
-        {
-            return 0;
-        }
+        return Schema::getNumber(field);
     }
 
     void setNumber(string field, varint_t value)
@@ -80,32 +73,27 @@ class State : public Schema
     string fieldString;
     varint_t number;
     Player *player = new Player();
-    std::vector<Player *> arrayOfPlayers;
-    std::map<string, Player *> mapOfPlayers;
+    ArraySchema<Player*> arrayOfPlayers;
+    MapSchema<Player*> mapOfPlayers;
 
     State()
     {
-        this->_order = {"fieldString", "number", "player", "arrayOfPlayers", "mapOfPlayers"};
         this->_indexes = {{0, "fieldString"}, {1, "number"}, {2, "player"}, {3, "arrayOfPlayers"}, {4, "mapOfPlayers"}};
-
         this->_types = {{0, "string"}, {1, "number"}, {2, "ref"}, {3, "array"}, {4, "map"}};
         this->_childTypes = {{2, typeid(Player)}, {3, typeid(Player)}, {4, typeid(Player)}};
     }
 
   protected:
-    string getString(string field)
+    string getString(std::string field)
     {
         if (field == "fieldString")
         {
             return this->fieldString;
         }
-        else
-        {
-            return "";
-        }
+        return Schema::getString(field);
     }
 
-    void setString(string field, string value)
+    void setString(std::string field, std::string value)
     {
         if (field == "fieldString")
         {
@@ -113,19 +101,16 @@ class State : public Schema
         }
     }
 
-    float getNumber(string field)
+    float getNumber(std::string field)
     {
         if (field == "number")
         {
             return this->number;
         }
-        else
-        {
-            return 0;
-        }
+        return Schema::getNumber(field);
     }
 
-    void setNumber(string field, float value)
+    void setNumber(std::string field, float value)
     {
         if (field == "number")
         {
@@ -133,7 +118,7 @@ class State : public Schema
         }
     }
 
-    Schema *getSchema(string field)
+    Schema *getRef(string field)
     {
         if (field == "player")
         {
@@ -145,11 +130,21 @@ class State : public Schema
         }
     }
 
-    void setSchema(string field, Schema *value)
+    void setRef(string field, Schema *value)
     {
         if (field == "player")
         {
             this->player = (Player *)value;
+        }
+    }
+
+    void setMap(string field, MapSchema<char*> pointer)
+    {
+        if (field == "mapOfPlayers")
+        {
+            this->mapOfPlayers = *(MapSchema<Player*> *)&pointer;
+            
+            // this->mapOfPlayers = static_cast<MapSchema<Player*>>(pointer);
         }
     }
 
@@ -168,16 +163,20 @@ class State : public Schema
 
 int main()
 {
-    const unsigned char encodedState[] = {0, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 1, 204, 200, 2, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 1, 100, 2, 100, 193};
+    const unsigned char encodedState[] = {0, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 1, 204, 200, 2, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 1, 100, 2, 100, 193, 4, 1, 163, 111, 110, 101, 0, 175, 80, 108, 97, 121, 101, 114, 32, 105, 110, 32, 97, 32, 109, 97, 112, 1, 80, 2, 90, 193};
 
     State *state = new State();
-    state->decode(encodedState, 37);
+    state->decode(encodedState, 65);
 
     std::cout << "state.fieldString: " << state->fieldString << std::endl;
     std::cout << "state.number: " << state->number << std::endl;
     std::cout << "player.name: " << state->player->name << std::endl;
     std::cout << "player.x: " << state->player->x << std::endl;
     std::cout << "player.y: " << state->player->y << std::endl;
+    std::cout << "mapOfPlayers.size(): " << state->mapOfPlayers.size() << std::endl;
+    std::cout << "mapOfPlayers.one.name: " << (state->mapOfPlayers["one"]->name) << std::endl;
+    std::cout << "mapOfPlayers.one.x: " << (state->mapOfPlayers["one"]->x) << std::endl;
+    std::cout << "mapOfPlayers.one.y: " << (state->mapOfPlayers["one"]->y) << std::endl;
 
     return 0;
 }
