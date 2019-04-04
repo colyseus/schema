@@ -399,16 +399,18 @@ class Schema
                     if (nilCheck(bytes, it))
                     {
                         it->offset++;
-                        // if (item && item.onRemove) {
-                        //     item.onRemove();
-                        // }
 
-                        // if (valueRef.onRemove) {
-                        //     valueRef.onRemove(item, newKey);
-                        // }
+                        if (isSchemaType && item != nullptr && ((Schema*)item)->onRemove) {
+                            ((Schema *)item)->onRemove();
+                        }
 
-                        // delete value[newKey];
-                        // continue;
+                        if (valueRef.onRemove) {
+                            valueRef.onRemove(&valueRef, item, newKey);
+                        }
+
+                        delete value.items[newKey];
+                        value.items[newKey] = nullptr;
+                        continue;
 
                     } else if (!isSchemaType) 
                     {
@@ -432,7 +434,6 @@ class Schema
                     {
                         valueRef.onChange(&valueRef, item, newKey);
                     }
-
                 }
 
                 this->setMap(field, value);
