@@ -1,6 +1,11 @@
+import * as fs from "fs";
+
+const VERSION = JSON.parse(fs.readFileSync(__dirname + "/../../package.json").toString()).version;
 const COMMENT_HEADER = `
 THIS FILE HAS BEEN GENERATED AUTOMATICALLY
 DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING
+
+GENERATED USING @colyseus/schema ${VERSION}
 `;
 
 export function getCommentHeader(singleLineComment: string = "//") {

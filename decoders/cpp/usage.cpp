@@ -81,7 +81,7 @@ class State : public Schema
     varint_t number;
     Player *player = new Player();
     std::vector<Player *> arrayOfPlayers;
-    std::map<std::string, Player *> mapOfPlayers;
+    std::map<string, Player *> mapOfPlayers;
 
     State()
     {
@@ -93,7 +93,7 @@ class State : public Schema
     }
 
   protected:
-    string getString(std::string field)
+    string getString(string field)
     {
         if (field == "fieldString")
         {
@@ -105,7 +105,7 @@ class State : public Schema
         }
     }
 
-    void setString(std::string field, std::string value)
+    void setString(string field, string value)
     {
         if (field == "fieldString")
         {
@@ -113,7 +113,7 @@ class State : public Schema
         }
     }
 
-    float getNumber(std::string field)
+    float getNumber(string field)
     {
         if (field == "number")
         {
@@ -125,7 +125,7 @@ class State : public Schema
         }
     }
 
-    void setNumber(std::string field, float value)
+    void setNumber(string field, float value)
     {
         if (field == "number")
         {
