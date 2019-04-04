@@ -250,24 +250,6 @@ class ArraySchema
     {
         return items.size();
     }
-
-    void decodePrimitiveType(int key, string type, const unsigned char bytes[], Iterator *it)
-    {
-        if (type == "string")       { this[key] = decodeString(bytes, it); }
-        else if (type == "number")  { this[key] = decodeNumber(bytes, it); }
-        else if (type == "boolean") { this[key] = decodeBoolean(bytes, it); }
-        else if (type == "int8")    { this[key] = decodeInt8(bytes, it); }
-        else if (type == "uint8")   { this[key] = decodeUint8(bytes, it); }
-        else if (type == "int16")   { this[key] = decodeInt16(bytes, it); }
-        else if (type == "uint16")  { this[key] = decodeUint16(bytes, it); }
-        else if (type == "int32")   { this[key] = decodeInt32(bytes, it); }
-        else if (type == "uint32")  { this[key] = decodeUint32(bytes, it); }
-        else if (type == "int64")   { this[key] = decodeInt64(bytes, it); }
-        else if (type == "uint64")  { this[key] = decodeUint64(bytes, it); }
-        else if (type == "float32") { this[key] = decodeFloat32(bytes, it); }
-        else if (type == "float64") { this[key] = decodeFloat64(bytes, it); }
-        else { throw std::invalid_argument("cannot decode invalid type: " + type); }
-    }
 };
 
 template <typename T>
