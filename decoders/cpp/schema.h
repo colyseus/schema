@@ -65,7 +65,7 @@ string decodeString(const unsigned char bytes[], Iterator *it)
 
 int8_t decodeInt8(const unsigned char bytes[], Iterator *it)
 {
-    return 0;
+    return (int8_t)bytes[it->offset++];
 }
 
 uint8_t decodeUint8(const unsigned char bytes[], Iterator *it)
@@ -437,67 +437,6 @@ class Schema
         {
             throw std::invalid_argument("cannot decode invalid type: " + type);
         }
-    }
-
-    void assignPrimitiveType(string type, string field, char* value)
-    {
-        if (type == "string")
-        {
-            this->setString(field, static_cast<string>(value));
-        }
-        else if (type == "number")
-        {
-            this->setNumber(field, (varint_t) *value);
-        }
-        else if (type == "boolean")
-        {
-            this->setBool(field, (bool) *value);
-        }
-        else if (type == "int8")
-        {
-            this->setInt8(field, (int8_t) *value);
-        }
-        else if (type == "uint8")
-        {
-            this->setUint8(field, (uint8_t) *value);
-        }
-        else if (type == "int16")
-        {
-            this->setInt16(field, (int16_t) *value);
-        }
-        else if (type == "uint16")
-        {
-            this->setUint16(field, (uint16_t) *value);
-        }
-        else if (type == "int32")
-        {
-            this->setInt32(field, (int32_t) *value);
-        }
-        else if (type == "uint32")
-        {
-            this->setUint32(field, (uint32_t) *value);
-        }
-        else if (type == "int64")
-        {
-            this->setInt64(field, (int64_t) *value);
-        }
-        else if (type == "uint64")
-        {
-            this->setUint64(field, (uint64_t) *value);
-        }
-        else if (type == "float32")
-        {
-            this->setFloat32(field, (float32_t) *value);
-        }
-        else if (type == "float64")
-        {
-            this->setFloat64(field, (float64_t) *value);
-        }
-        else
-        {
-            throw std::invalid_argument("cannot decode invalid type: " + type);
-        }
-
     }
 };
 
