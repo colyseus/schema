@@ -47,6 +47,12 @@ struct DataChange
     // T previousValue;
 };
 
+bool IsLittleEndian()
+{
+    int i = 1;
+    return (int)*((unsigned char *)&i) == 1;
+}
+
 string decodeString(const unsigned char bytes[], Iterator *it)
 {
     auto str_size = (bytes[it->offset] & 0x1f) + 1;
@@ -54,7 +60,6 @@ string decodeString(const unsigned char bytes[], Iterator *it)
     memcpy(str, bytes + it->offset + 1, str_size);
     str[str_size - 1] = '\0'; // endl
     it->offset += str_size;
-    std::cout << "decodeString, value => " << (str) << std::endl;
     return string(str);
 }
 
@@ -70,42 +75,58 @@ uint8_t decodeUint8(const unsigned char bytes[], Iterator *it)
 
 int16_t decodeInt16(const unsigned char bytes[], Iterator *it)
 {
-    return 0;
+    int16_t value = *(int16_t *)&bytes[it->offset];
+    it->offset += 2;
+    return value;
 }
 
 uint16_t decodeUint16(const unsigned char bytes[], Iterator *it)
 {
-    return 0;
+    uint16_t value = *(uint16_t *)&bytes[it->offset];
+    it->offset += 2;
+    return value;
 }
 
 int32_t decodeInt32(const unsigned char bytes[], Iterator *it)
 {
-    return 0;
+    int32_t value = *(int32_t *)&bytes[it->offset];
+    it->offset += 4;
+    return value;
 }
 
 uint32_t decodeUint32(const unsigned char bytes[], Iterator *it)
 {
-    return 0;
+    uint32_t value = *(uint32_t *)&bytes[it->offset];
+    it->offset += 4;
+    return value;
 }
 
 int64_t decodeInt64(const unsigned char bytes[], Iterator *it)
 {
-    return 0;
+    int64_t value = *(int64_t *)&bytes[it->offset];
+    it->offset += 8;
+    return value;
 }
 
 uint64_t decodeUint64(const unsigned char bytes[], Iterator *it)
 {
-    return 0;
+    uint64_t value = *(uint64_t *)&bytes[it->offset];
+    it->offset += 8;
+    return value;
 }
 
 float32_t decodeFloat32(const unsigned char bytes[], Iterator *it)
 {
-    return 0;
+    float32_t value = *(float32_t *)&bytes[it->offset];
+    it->offset += 4;
+    return value;
 }
 
 float64_t decodeFloat64(const unsigned char bytes[], Iterator *it)
 {
-    return 0;
+    float64_t value = *(float64_t *)&bytes[it->offset];
+    it->offset += 8;
+    return value;
 }
 
 varint_t decodeNumber(const unsigned char bytes[], Iterator *it)
@@ -173,8 +194,10 @@ varint_t decodeNumber(const unsigned char bytes[], Iterator *it)
         // negative fixint
         return (varint_t) ((0xff - prefix + 1) * -1);
     }
-
-    return 0;
+    else
+    {
+        return 0;
+    }
 }
 
 bool decodeBoolean(const unsigned char bytes[], Iterator *it)
