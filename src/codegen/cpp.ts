@@ -40,6 +40,7 @@ const capitalize = (s) => {
     if (typeof s !== 'string') return ''
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
+const distinct = (value, index, self) => self.indexOf(value) === index;
 
 export function generate (classes: Class[], args: any): File[] {
     return classes.map(klass => ({
@@ -80,7 +81,11 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
 #ifndef __SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__
 #define __SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__ 1
 
-${allRefs.map(ref => `#include "${ref.childType}.hpp"`).join("\n")}
+${allRefs.
+    map(ref => ref.childType).
+    filter(distinct).
+    map(childType => `#include "${childType}.hpp"`).
+    join("\n")}
 
 using namespace colyseus::schema;
 
