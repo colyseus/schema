@@ -71,14 +71,16 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     `\tSchema* createInstance(std::type_index type) {
 \t\t${generateFieldIfElseChain(allRefs, 
     (property) => `type == typeof(${property.childType})`,
-    (property) => `return this->${property.name};`,
-    (property) => property.childType !== undefined)}
+    (property) => `return new ${property.childType}();`,
+    (property) => typeMaps[property.childType] === undefined)}
 \t\treturn ${klass.extends}::createInstance(field);
 \t}`;
 
     return `${getCommentHeader()}
 #ifndef __SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__
 #define __SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__ 1
+
+${allRefs.map(ref => `#include "${ref.childType}.hpp"`).join("\n")}
 
 using namespace colyseus::schema;
 
@@ -90,7 +92,8 @@ ${klass.properties.map(prop => generateProperty(prop)).join("\n")}
 \t${klass.name}() {
 \t\tthis->_indexes = ${generateAllIndexes(allProperties)};
 \t\tthis->_types = ${generateAllTypes(allProperties)};
-\t\tthis->_childTypes = ${generateAllChildTypes(allProperties)};
+\t\tthis->_childPrimitiveTypes = ${generateAllChildPrimitiveTypes(allProperties)};
+\t\tthis->_childSchemaTypes = ${generateAllChildSchemaTypes(allProperties)};
 \t}
 
 protected:
@@ -143,6 +146,7 @@ function generateProperty(prop: Property) {
 
 function generateGettersAndSetters(klass: Class, type: string, properties: Property[]) {
     let langType = typeMaps[type];
+    let typeCast = "";
     const methodName = `get${capitalize(type)}`;
 
     if (type === "ref") {
@@ -153,6 +157,7 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
 
     } else if (type === "map") {
         langType = `MapSchema<T>*`;
+        typeCast = `*(MapSchema<Player*> *)&`;
     }
 
     return `\t${langType} ${methodName}(string field)
@@ -167,7 +172,7 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
 \t{
 \t\t${generateFieldIfElseChain(properties,
     (property) => `field == "${property.name}"`,
-    (property) => `this->${property.name} = ${((property.childType) ? `(${langType})` : "")}value;`)}
+    (property) => `this->${property.name} = ${typeCast}value;`)}
 \t}`;
 }
 
@@ -175,13 +180,22 @@ function generateFieldIfElseChain(
     properties: Property[],
     ifCallback: (property: Property) => string,
     callback: (property: Property) => string,
-    filter: (property: Property) => boolean = (_) => true
+    filter: (property: Property) => boolean = (_) => true,
 ) {
     let chain = "";
 
+    const uniqueChecks: string[] = [];
     properties.filter(filter).forEach((property, i) => {
+        const check = ifCallback(property);
+        if (uniqueChecks.indexOf(check) === -1) {
+            uniqueChecks.push(check);
+
+        } else {
+            return;
+        }
+
         if (i === 0) { chain += "if " } else { chain += " else if " }
-        chain += `(${ifCallback(property)})
+        chain += `(${check})
 \t\t{
 \t\t\t${callback(property)}\n
 \t\t}`
@@ -199,10 +213,20 @@ function generateAllTypes(properties: Property[]) {
     return `{${properties.map((property, i) => `{${i}, "${property.type}"}`).join(", ")}}`
 }
 
-function generateAllChildTypes(properties: Property[]) {
+function generateAllChildSchemaTypes(properties: Property[]) {
     return `{${properties.map((property, i) => {
-        if (property.childType) {
+        if (property.childType && typeMaps[property.childType] === undefined) {
             return `{${i}, typeid(${property.childType})}`
+        } else {
+            return null;
+        }
+    }).filter(r => r !== null).join(", ")}}`
+}
+
+function generateAllChildPrimitiveTypes(properties: Property[]) {
+    return `{${properties.map((property, i) => {
+        if (typeMaps[property.childType] !== undefined) {
+            return `{${i}, "${property.childType}"}`
         } else {
             return null;
         }
