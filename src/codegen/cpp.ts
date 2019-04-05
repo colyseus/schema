@@ -49,6 +49,22 @@ export function generate (classes: Class[], args: any): File[] {
     }));
 }
 
+function getInheritanceTree(klass: Class, allClasses: Class[], includeSelf: boolean = true) {
+    let currentClass = klass;
+    let inheritanceTree: Class[] = [];
+
+    if (includeSelf) {
+        inheritanceTree.push(currentClass);
+    }
+
+    while (currentClass.extends !== "Schema") {
+        currentClass = allClasses.find(klass => klass.name == currentClass.extends);
+        inheritanceTree.push(currentClass);
+    }
+
+    return inheritanceTree;
+}
+
 function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     const propertiesPerType: {[type: string]: Property[]} = {};
     const allRefs: Property[] = [];
@@ -71,18 +87,24 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     const createInstanceMethod = (allRefs.length === 0) ? "" : 
     `\tSchema* createInstance(std::type_index type) {
 \t\t${generateFieldIfElseChain(allRefs, 
-    (property) => `type == typeof(${property.childType})`,
+    (property) => `type == typeid(${property.childType})`,
     (property) => `return new ${property.childType}();`,
     (property) => typeMaps[property.childType] === undefined)}
-\t\treturn ${klass.extends}::createInstance(field);
+\t\treturn ${klass.extends}::createInstance(type);
 \t}`;
 
     return `${getCommentHeader()}
 #ifndef __SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__
 #define __SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__ 1
 
+#include "schema.h"
+#include <typeinfo>
+#include <typeindex>
+
 ${allRefs.
+    filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
     map(ref => ref.childType).
+    concat(getInheritanceTree(klass, allClasses, false).map(klass => klass.name)).
     filter(distinct).
     map(childType => `#include "${childType}.hpp"`).
     join("\n")}
@@ -107,7 +129,7 @@ ${Object.keys(propertiesPerType).map(type =>
     join("\n")}
 
 ${createInstanceMethod}
-}
+};
 ${namespace ? "}" : ""}
 
 #endif
@@ -130,13 +152,13 @@ function generateProperty(prop: Property) {
             langType = (isUpcaseFirst)
                 ? `ArraySchema<${prop.childType}*>`
                 : `ArraySchema<${typeMaps[prop.childType]}>`;
-            initializer = `new ${langType}()`;
+            initializer = `${langType}()`;
 
         } else if(prop.type === "map") {
             langType = (isUpcaseFirst)
                 ? `MapSchema<${prop.childType}*>`
                 : `MapSchema<${typeMaps[prop.childType]}>`;
-            initializer = `new ${langType}()`;
+            initializer = `${langType}()`;
         }
 
     } else {
@@ -152,24 +174,26 @@ function generateProperty(prop: Property) {
 function generateGettersAndSetters(klass: Class, type: string, properties: Property[]) {
     let langType = typeMaps[type];
     let typeCast = "";
+
     const methodName = `get${capitalize(type)}`;
 
     if (type === "ref") {
         langType = "Schema*";
 
     } else if (type === "array") {
-        langType = `ArraySchema<T>*`;
+        langType = `ArraySchema<char*>`;
+        typeCast = `*(ArraySchema<char*> *)&`;
 
     } else if (type === "map") {
-        langType = `MapSchema<T>*`;
-        typeCast = `*(MapSchema<Player*> *)&`;
+        langType = `MapSchema<char*>`;
+        typeCast = `*(MapSchema<char*> *)&`;
     }
 
     return `\t${langType} ${methodName}(string field)
 \t{
 \t\t${generateFieldIfElseChain(properties, 
     (property) => `field == "${property.name}"`,
-    (property) => `return this->${property.name};`)}
+    (property) => `return ${typeCast} this->${property.name};`)}
 \t\treturn ${klass.extends}::${methodName}(field);
 \t}
 
@@ -177,7 +201,25 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
 \t{
 \t\t${generateFieldIfElseChain(properties,
     (property) => `field == "${property.name}"`,
-    (property) => `this->${property.name} = ${typeCast}value;`)}
+    (property) => {
+        const isSchemaType = (typeMaps[property.childType] === undefined)
+
+        if (type === "ref") {
+            langType = `${property.childType}*`;
+
+        } else if (type === "array") {
+            typeCast = (isSchemaType)
+                ? `*(ArraySchema<${property.childType}*> *)&`
+                : `*(ArraySchema<${typeMaps[property.childType]}> *)&`;
+
+        } else if (type === "map") {
+            typeCast = (isSchemaType)
+                ? `*(MapSchema<${property.childType}*> *)&`
+                : `*(MapSchema<${typeMaps[property.childType]}> *)&`;
+        }
+
+        return `this->${property.name} = ${typeCast}value;`
+    })}
 \t}`;
 }
 
@@ -241,14 +283,7 @@ function generateAllChildPrimitiveTypes(properties: Property[]) {
 function getAllProperties (klass: Class, allClasses: Class[]) {
     let properties: Property[] = [];
 
-    let currentClass = klass;
-    let inheritanceTree = [currentClass];
-    while (currentClass.extends !== "Schema") {
-        currentClass = allClasses.find(klass => klass.name == currentClass.extends);
-        inheritanceTree.push(currentClass);
-    }
-
-    inheritanceTree.reverse().forEach((klass) => {
+    getInheritanceTree(klass, allClasses).reverse().forEach((klass) => {
         properties = properties.concat(klass.properties);
     });
 
