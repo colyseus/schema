@@ -67,7 +67,6 @@ function getInheritanceTree(klass: Class, allClasses: Class[], includeSelf: bool
 
 function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     const propertiesPerType: {[type: string]: Property[]} = {};
-    const allRefs: Property[] = [];
     klass.properties.forEach(property => {
         let type = property.type;
 
@@ -76,11 +75,6 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
         }
 
         propertiesPerType[type].push(property);
-
-        // keep all refs list
-        if ((type === "ref" || type === "array" || type === "map")) {
-            allRefs.push(property);
-        }
     });
 
     const allProperties = getAllProperties(klass, allClasses);
