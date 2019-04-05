@@ -6,11 +6,11 @@
 // 
 
 
+import io.colyseus.serializer.schema.Schema;
 
 class Player extends Entity {
 	public var name: String = "";
 
-  
 	public function new () {
 		super();
 		this._indexes = [0 => "x", 1 => "y", 2 => "name"];
@@ -20,4 +20,3 @@ class Player extends Entity {
 	}
 
 }
-

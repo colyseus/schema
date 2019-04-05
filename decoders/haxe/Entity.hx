@@ -6,12 +6,12 @@
 // 
 
 
+import io.colyseus.serializer.schema.Schema;
 
 class Entity extends Schema {
 	public var x: Dynamic = 0;
 	public var y: Dynamic = 0;
 
-  
 	public function new () {
 		super();
 		this._indexes = [0 => "x", 1 => "y"];
@@ -21,4 +21,3 @@ class Entity extends Schema {
 	}
 
 }
-

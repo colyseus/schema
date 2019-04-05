@@ -88,11 +88,11 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     return `${getCommentHeader()}
 
 ${namespace ? `package ${namespace};` : ""}
+import io.colyseus.serializer.schema.Schema;
 
 class ${klass.name} extends ${klass.extends} {
 ${klass.properties.map(prop => generateProperty(prop)).join("\n")}
 
-  
 \tpublic function new () {
 \t\tsuper();
 \t\tthis._indexes = ${generateAllIndexes(allProperties)};
@@ -102,12 +102,10 @@ ${klass.properties.map(prop => generateProperty(prop)).join("\n")}
 \t}
 
 }
-${namespace ? "}" : ""}
 `;
 }
 
 function generateProperty(prop: Property) {
-    let property = "";
     let langType: string;
     let initializer = "";
 
@@ -120,15 +118,15 @@ function generateProperty(prop: Property) {
 
         } else if(prop.type === "array") {
             langType = (isUpcaseFirst)
-                ? `Array<${prop.childType}>`
-                : `Array<${typeMaps[prop.childType]}>`;
-            initializer = `${langType}()`;
+                ? `ArraySchema<${prop.childType}>`
+                : `ArraySchema<${typeMaps[prop.childType]}>`;
+            initializer = `new ${langType}()`;
 
         } else if(prop.type === "map") {
             langType = (isUpcaseFirst)
-                ? `Map<String, ${prop.childType}>`
-                : `Map<String, ${typeMaps[prop.childType]}>`;
-            initializer = `${langType}()`;
+                ? `MapSchema<${prop.childType}>`
+                : `MapSchema<${typeMaps[prop.childType]}>`;
+            initializer = `new ${langType}()`;
         }
 
     } else {
