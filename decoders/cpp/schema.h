@@ -53,14 +53,14 @@ bool IsLittleEndian()
     return (int)*((unsigned char *)&i) == 1;
 }
 
-string decodeString(const unsigned char bytes[], Iterator *it)
+string* decodeString(const unsigned char bytes[], Iterator *it)
 {
     auto str_size = (bytes[it->offset] & 0x1f) + 1;
     char *str = new char[str_size];
     memcpy(str, bytes + it->offset + 1, str_size);
     str[str_size - 1] = '\0'; // endl
     it->offset += str_size;
-    return string(str);
+    return new string(str);
 }
 
 int8_t decodeInt8(const unsigned char bytes[], Iterator *it)
@@ -426,7 +426,12 @@ class Schema
                         // FIXME: this is ugly and repetitive
                         string primitiveType = this->_childPrimitiveTypes.at(index);
 
-                        if (primitiveType == "string")       { (*(ArraySchema<string> *)&value).items[newIndex] = decodeString(bytes, it); }
+                        if (primitiveType == "string")       {
+                            std::cout << "let's decode string!" << std::endl;
+                            value.items.assign(newIndex, (char *)decodeString(bytes, it));
+                            // value.items[newIndex] = ;
+                            std::cout << "string decoded!" << std::endl;
+                        }
                         else if (primitiveType == "number")  { (*(ArraySchema<varint_t> *)&value).items[newIndex] = decodeNumber(bytes, it); }
                         else if (primitiveType == "boolean") { (*(ArraySchema<bool> *)&value).items[newIndex] = decodeBoolean(bytes, it) ; }
                         else if (primitiveType == "int8")    { (*(ArraySchema<int8_t> *)&value).items[newIndex] = decodeInt8(bytes, it) ; }
@@ -493,7 +498,7 @@ class Schema
                     bool hasMapIndex = numberCheck(bytes, it);
                     string newKey = (hasMapIndex)
                         ? previousKeys[decodeNumber(bytes, it)]
-                        : decodeString(bytes, it);
+                        : *decodeString(bytes, it);
 
                     char* item;
                     bool isNew = (!hasIndexChange && !valueRef.has(newKey)) || (hasIndexChange && previousKey == "" && hasMapIndex);
@@ -532,7 +537,7 @@ class Schema
                         string primitiveType = this->_childPrimitiveTypes.at(index);
 
                         // FIXME: this is ugly and repetitive
-                        if (primitiveType == "string")       { (*(MapSchema<string> *)&value).items[newKey] = decodeString(bytes, it); }
+                        if (primitiveType == "string")       { (*(MapSchema<string*> *)&value).items[newKey] = decodeString(bytes, it); }
                         else if (primitiveType == "number")  { (*(MapSchema<varint_t> *)&value).items[newKey] = decodeNumber(bytes, it); }
                         else if (primitiveType == "boolean") { (*(MapSchema<bool> *)&value).items[newKey] = decodeBoolean(bytes, it) ; }
                         else if (primitiveType == "int8")    { (*(MapSchema<int8_t> *)&value).items[newKey] = decodeInt8(bytes, it) ; }
@@ -617,7 +622,7 @@ class Schema
     virtual MapSchema<char*> getMap(string field) { return MapSchema<char*>(); }
 
     // typed virtual setters by field
-    virtual void setString(string field, string value) {}
+    virtual void setString(string field, string* value) {}
     virtual void setNumber(string field, varint_t value) {}
     virtual void setBool(string field, bool value) {}
     virtual void setInt8(string field, int8_t value) {}
