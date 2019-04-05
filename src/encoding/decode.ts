@@ -168,12 +168,6 @@ export function number (bytes, it: Iterator) {
     return prefix;
 
   } else if (prefix === 0xca) {
-    // float
-    const value = bytes[it.offset];
-    it.offset += 4;
-    return value;
-
-  } else if (prefix === 0xca) {
     // float 32
     return readFloat32(bytes, it);
 
