@@ -1,10 +1,7 @@
 package io.colyseus.serializer.schema;
 import haxe.io.Bytes;
 
-class It {
-  public var offset: Int = 0;
-  public function new () {}
-}
+typedef It = { offset: Int }
 
 class SPEC {
   public static var END_OF_STRUCTURE: Int = 193; // (msgpack spec: never used)
@@ -283,7 +280,7 @@ class Schema {
     var changes: Array<DataChange> = [];
 
     if (it == null) {
-      it = new It();
+      it = { offset: 0 };
     }
 
     var totalBytes = bytes.length;
