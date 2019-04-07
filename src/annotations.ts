@@ -564,7 +564,7 @@ export abstract class Schema {
                 value.$changes.discard();
 
                 // TODO: track array/map indexes per client?
-                if (!client) {
+                if (!encodeAll && !client) {
                     this[`_${field}`]._updateIndexes();
                 }
 
