@@ -492,7 +492,9 @@ export abstract class Schema {
                     }
                 }
 
-                value.$changes.discard();
+                if (!encodeAll) {
+                    value.$changes.discard();
+                }
 
             } else if ((type as any).map) {
 
@@ -561,11 +563,13 @@ export abstract class Schema {
 
                 }
 
-                value.$changes.discard();
+                if (!encodeAll) {
+                    value.$changes.discard();
 
-                // TODO: track array/map indexes per client?
-                if (!encodeAll && !client) {
-                    this[`_${field}`]._updateIndexes();
+                    // TODO: track array/map indexes per client?
+                    if (!client) {
+                        this[`_${field}`]._updateIndexes();
+                    }
                 }
 
             } else {
@@ -591,7 +595,7 @@ export abstract class Schema {
         // flag end of Schema object structure
         endStructure();
 
-        if (!client) {
+        if (!encodeAll && !client) {
             this.$changes.discard();
         }
 
