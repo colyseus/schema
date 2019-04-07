@@ -16,6 +16,8 @@
   </a>
 </div>
 
+> Decoders currently available for JavaScript, LUA, C# and Haxe.
+
 ## Defining Schema
 
 As Colyseus is written in TypeScript, the schema is defined as type annotations inside the state class. Additional server logic may be added to that class, but client-side generated (not implemented) files will consider only the schema itself.
