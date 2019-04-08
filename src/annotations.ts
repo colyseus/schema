@@ -514,7 +514,7 @@ export abstract class Schema {
                 const previousKeys = Object.keys(this[`_${field}`]);
                 const isChildSchema = typeof((type as any).map) !== "string";
 
-                // assert ArraySchema was provided
+                // assert MapSchema was provided
                 assertInstanceType(this[`_${field}`], MapSchema, this, field);
 
                 for (let i = 0; i < keys.length; i++) {
