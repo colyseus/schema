@@ -71,7 +71,7 @@ function assertType(value: any, type: string, klass: Schema, field: string) {
     }
 }
 
-function assertInstanceType(value: Schema, type: typeof Schema, klass: Schema, field: string) {
+function assertInstanceType(value: Schema, type: typeof Schema | typeof ArraySchema | typeof MapSchema, klass: Schema, field: string) {
     if (value.constructor !== type) {
         throw new EncodeSchemaError(`a '${type.name}' was expected, but '${(value as any).constructor.name}' was provided in ${klass.constructor.name}#${field}`);
     }
@@ -452,6 +452,9 @@ export abstract class Schema {
 
                 const isChildSchema = typeof(type[0]) !== "string";
 
+                // assert ArraySchema was provided
+                assertInstanceType(this[`_${field}`], ArraySchema, this, field);
+
                 // encode Array of type
                 for (let j = 0; j < arrayChanges.length; j++) {
                     const index = arrayChanges[j];
@@ -510,6 +513,9 @@ export abstract class Schema {
 
                 const previousKeys = Object.keys(this[`_${field}`]);
                 const isChildSchema = typeof((type as any).map) !== "string";
+
+                // assert ArraySchema was provided
+                assertInstanceType(this[`_${field}`], MapSchema, this, field);
 
                 for (let i = 0; i < keys.length; i++) {
                     const key = (typeof(keys[i]) === "number" && previousKeys[keys[i]]) || keys[i];

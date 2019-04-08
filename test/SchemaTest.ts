@@ -879,6 +879,25 @@ describe("Schema", () => {
             assert.equal(decodedState.player.x, 100);
             assert.equal(decodedState.player.y, 100);
         });
+
+        it("should trigger error when assigning plain maps or arrays", () => {
+            class MyState extends Schema {
+                @type({ map: "string" }) map = new MapSchema<string>();
+                @type([ "string" ]) array = new ArraySchema<string>();
+            }
+
+            assert.throws(() => {
+                const state = new MyState();
+                (state as any).map = {};
+                state.encode();
+            }, /a 'MapSchema' was expected/ig);
+
+            assert.throws(() => {
+                const state = new MyState();
+                (state as any).array = [];
+                state.encode();
+            }, /a 'ArraySchema' was expected/ig);
+        });
     })
 
     describe("encodeAll", () => {
