@@ -202,7 +202,7 @@ export abstract class Schema {
                         let item: Schema;
 
                         if (isNew) {
-                            item = new (type as any)();
+                            item = new (this.getDecodeType(bytes, it, type as typeof Schema))();
 
                         } else if (indexChangedFrom !== undefined) {
                             item = valueRef[indexChangedFrom];
@@ -212,7 +212,7 @@ export abstract class Schema {
                         }
 
                         if (!item) {
-                            item = new (type as any)();
+                            item = new (this.getDecodeType(bytes, it, type as typeof Schema))();
                             isNew = true;
                         }
 
@@ -290,7 +290,7 @@ export abstract class Schema {
                     let isNew = (!hasIndexChange && !valueRef[newKey]) || (hasIndexChange && previousKey === undefined && hasMapIndex);
 
                     if (isNew && isSchemaType) {
-                        item = new (type as any)();
+                        item = new (this.getDecodeType(bytes, it, type as typeof Schema))();
 
                     } else if (previousKey !== undefined) {
                         item = valueRef[previousKey];
