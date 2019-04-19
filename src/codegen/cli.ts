@@ -11,13 +11,14 @@ Usage (C#/Unity)
     schema-codegen src/Schema.ts --output client-side/ --csharp --namespace MyGame.Schema
 
 Valid options:
-    --output: fhe output directory for generated client-side schema files
+    --output: the output directory for generated client-side schema files
     --csharp: generate files for C#/Unity
     --cpp: generate files for C++
     --hx: generate files for Haxe
 
 Optional:
-    --namespace: generate namespace on output code`);
+    --namespace: generate namespace on output code
+    --decorator: custom name for @type decorator to scan for`);
     process.exit();
 }
 
@@ -37,6 +38,11 @@ if (args.csharp) {
     generatorId = 'cpp';
 }
 
+let decoratorName = "type";
+if (args.decorator) {
+    decoratorName = args.decorator;
+}
+
 if (!args.output || !fs.existsSync(args.output)) {
     console.error("You must provide a valid (and existing) --output directory.");
     displayHelp();
@@ -50,7 +56,7 @@ try {
     displayHelp();
 }
 
-const classes = parseFiles(args._);
+const classes = parseFiles(args._, decoratorName);
 const files = generator(classes, args);
 
 files.forEach((file: File) => {
