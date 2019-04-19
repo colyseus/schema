@@ -5,7 +5,7 @@ import { Class, Property } from "./types";
 let currentClass: Class;
 let currentProperty: Property;
 
-function inspectNode(node: ts.Node, classes: Class[]) {
+function inspectNode(node: ts.Node, classes: Class[], decoratorName: string) {
     switch (node.kind) {
         case ts.SyntaxKind.ClassDeclaration:
             currentClass = new Class();
@@ -26,7 +26,7 @@ function inspectNode(node: ts.Node, classes: Class[]) {
             break;
 
         case ts.SyntaxKind.Identifier:
-            if (node.getText() === "type" && node.parent.kind !== ts.SyntaxKind.ImportSpecifier) {
+            if (node.getText() === decoratorName && node.parent.kind !== ts.SyntaxKind.ImportSpecifier) {
                 const prop: any = node.parent.parent.parent;
                 const propDecorator = node.parent.parent.parent.decorators;
 
@@ -34,7 +34,7 @@ function inspectNode(node: ts.Node, classes: Class[]) {
                 if (!propDecorator) { break; }
 
                 const typeDecorator: any = propDecorator.find((decorator => {
-                    return (decorator.expression as any).expression.escapedText === "type";
+                    return (decorator.expression as any).expression.escapedText === decoratorName;
                 })).expression;
 
                 currentProperty = new Property();
@@ -64,15 +64,15 @@ function inspectNode(node: ts.Node, classes: Class[]) {
             break;
     }
 
-    ts.forEachChild(node, (n) => inspectNode(n, classes));
+    ts.forEachChild(node, (n) => inspectNode(n, classes, decoratorName));
 }
 
-export function parseFiles(fileNames: string[]): Class[] {
+export function parseFiles(fileNames: string[], decoratorName: string = "type"): Class[] {
     const classes: Class[] = [];
 
     fileNames.forEach((fileName) => {
         let sourceFile = ts.createSourceFile(fileName, readFileSync(fileName).toString(), ts.ScriptTarget.ES2018, true);
-        inspectNode(sourceFile, classes);
+        inspectNode(sourceFile, classes, decoratorName);
     });
 
     return classes.filter(klass => klass.properties.length > 0);
