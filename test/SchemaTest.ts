@@ -1,7 +1,7 @@
 import * as assert from "assert";
-import { Schema, type, Reflection } from "../src/annotations";
+import { type, Reflection } from "../src/annotations";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity } from "./Schema";
-import { ArraySchema, MapSchema } from "../src";
+import { Schema, ArraySchema, MapSchema } from "../src";
 
 describe("Schema", () => {
 
@@ -864,11 +864,11 @@ describe("Schema", () => {
                 state.encode();
             }, /a 'Player' was expected, but 'Entity' was provided/ig);
 
-            assert.throws(() => {
+            assert.doesNotThrow(() => {
                 const state = new MyState();
                 state.entity = new Player("Player name", 50, 50);
                 state.encode();
-            }, /a 'Entity' was expected, but 'Player' was provided/ig);
+            });
 
             const state = new MyState();
             (state as any).player = new Player("Name", 100, 100);

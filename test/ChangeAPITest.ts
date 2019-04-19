@@ -1,9 +1,9 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
 
-import { DataChange, Schema, type } from './../src/annotations';
+import { DataChange, type } from './../src/annotations';
 import { State, Player } from "./Schema";
-import { MapSchema, ArraySchema } from "../src";
+import { Schema, MapSchema, ArraySchema } from "../src";
 
 describe("Change API", () => {
 

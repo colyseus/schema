@@ -1,21 +1,23 @@
+export { Schema, DataChange } from "./Schema";
 export { MapSchema } from "./types/MapSchema";
 export { ArraySchema } from "./types/ArraySchema";
 
+// Reflection
 export {
-    // Public API
-    Schema,
+    Reflection,
+    ReflectionType,
+    ReflectionField,
+} from "./Reflection";
+
+export {
+    // Annotations
     type,
     filter,
-    DataChange,
 
     // Types
+    Context,
     PrimitiveType,
     Definition,
     DefinitionType,
     FilterCallback,
-
-    // Reflection
-    Reflection,
-    ReflectionType,
-    ReflectionField,
 } from "./annotations";

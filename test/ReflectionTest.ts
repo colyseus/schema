@@ -1,7 +1,31 @@
 import * as assert from "assert";
+import { Reflection, Schema, type, MapSchema, ArraySchema, Context } from "../src";
 
-import { State, Player } from "./Schema";
-import { Reflection, Schema, type, MapSchema, ArraySchema } from "../src";
+const testContext = new Context();
+
+/**
+ * No filters example
+ */
+class Player extends Schema {
+  @type("string", testContext) name: string;
+  @type("number", testContext) x: number;
+  @type("number", testContext) y: number;
+
+  constructor (name?: string, x?: number, y?: number) {
+    super();
+    this.name = name;
+    this.x = x;
+    this.y = y;
+  }
+}
+
+export class State extends Schema {
+  @type('string', testContext) fieldString: string;
+  @type('number', testContext) fieldNumber: number;
+  @type(Player, testContext) player: Player;
+  @type([ Player ], testContext) arrayOfPlayers: ArraySchema<Player>;
+  @type({ map: Player }, testContext) mapOfPlayers: MapSchema<Player>;
+}
 
 describe("Reflection", () => {
 

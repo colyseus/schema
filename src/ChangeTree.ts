@@ -1,4 +1,4 @@
-import { Schema } from "./annotations";
+import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
