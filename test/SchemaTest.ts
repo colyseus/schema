@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { type, Reflection } from "../src/annotations";
+import { type } from "../src/annotations";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity } from "./Schema";
 import { Schema, ArraySchema, MapSchema } from "../src";
 
