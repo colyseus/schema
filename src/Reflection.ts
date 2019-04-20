@@ -176,10 +176,9 @@ export class Reflection extends Schema {
                     ? new ArraySchema()
                     : (isMap)
                         ? new MapSchema()
-                        : undefined;
-                        // : (isSchema)
-                        //     ? new (fieldType as any)()
-                        //     : undefined;
+                        : (isSchema)
+                            ? new (fieldType as any)()
+                            : undefined;
             }
         }
 
