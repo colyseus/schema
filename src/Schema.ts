@@ -408,6 +408,7 @@ export abstract class Schema {
                     assertInstanceType(value, type as typeof Schema, this, field);
 
                     this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
+
                     bytes = bytes.concat((value as Schema).encode(root, encodeAll, client));
 
                 } else {
@@ -649,12 +650,9 @@ export abstract class Schema {
     private getDecodeType (bytes: number[], it: decode.Iterator, type: typeof Schema): any {
         if (bytes[it.offset] === TYPE_ID) {
             it.offset++;
-            const typeid = decode.uint8(bytes, it);
-            console.log("FOUND TYPE ID!", typeid);
-            return (this.constructor as typeof Schema)._context.get(typeid);
+            return (this.constructor as typeof Schema)._context.get(decode.uint8(bytes, it));
 
         } else {
-            console.log("RETURN REGULAR TYPE:", type.constructor.name);
             return type;
         }
     }

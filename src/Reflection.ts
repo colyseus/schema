@@ -31,16 +31,14 @@ export class Reflection extends Schema {
     @type([ ReflectionType ], reflectionContext)
     types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
 
+    @type("uint8")
+    rootType: number;
+
     static encode (instance: Schema) {
-        const reflection = new Reflection();
-
         const rootSchemaType = instance.constructor as typeof Schema;
-        const schema = rootSchemaType._schema
 
-        const rootType = new ReflectionType();
-        rootType.id = rootSchemaType._typeid;
-
-        // const typeIds: {[id: string]: number} = {};
+        const reflection = new Reflection();
+        reflection.rootType = rootSchemaType._typeid;
 
         const buildType = (currentType: ReflectionType, schema: any) => {
             for (let fieldName in schema) {
@@ -107,15 +105,11 @@ export class Reflection extends Schema {
             reflection.types.push(currentType);
         }
 
-        buildType(rootType, schema);
-
         const types = rootSchemaType._context.types;
         for (let typeid in types) {
-            if (types[typeid] !== rootSchemaType) {
-                const childType = new ReflectionType();
-                childType.id = Number(typeid);
-                buildType(childType, types[typeid]._schema);
-            }
+            const type = new ReflectionType();
+            type.id = Number(typeid);
+            buildType(type, types[typeid]._schema);
         }
 
         return reflection.encodeAll();
@@ -130,11 +124,6 @@ export class Reflection extends Schema {
         let rootTypeId: number;
 
         let schemaTypes = reflection.types.reduce((types, reflectionType) => {
-            if (rootTypeId === undefined) {
-                rootTypeId = reflectionType.id;
-                console.log("ROOT TYPE ID:", rootTypeId);
-            }
-
             types[reflectionType.id] = class _ extends Schema {};
             return types;
         }, {});
@@ -168,7 +157,7 @@ export class Reflection extends Schema {
             });
         })
 
-        const rootType: any = schemaTypes[rootTypeId];
+        const rootType: any = schemaTypes[reflection.rootType];
         const rootInstance = new rootType();
 
         /**
@@ -187,9 +176,10 @@ export class Reflection extends Schema {
                     ? new ArraySchema()
                     : (isMap)
                         ? new MapSchema()
-                        : (isSchema)
-                            ? new (fieldType as any)()
-                            : undefined;
+                        : undefined;
+                        // : (isSchema)
+                        //     ? new (fieldType as any)()
+                        //     : undefined;
             }
         }
 
