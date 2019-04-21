@@ -91,6 +91,6 @@ function generateProperty(prop: Property, indent: string = "") {
 
     property += ` ${langType} ${prop.name}`;
 
-    return `\t${indent}[Type(${typeArgs})]
+    return `\t${indent}[Type(${prop.index}, ${typeArgs})]
 \t${indent}${property} = ${initializer};`
 }

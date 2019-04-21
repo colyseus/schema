@@ -1,5 +1,5 @@
 import { END_OF_STRUCTURE, NIL, INDEX_CHANGE, TYPE_ID } from './spec';
-import { Definition, FilterCallback, Client, PrimitiveType, Context, globalContext } from "./annotations";
+import { Definition, FilterCallback, Client, PrimitiveType, Context } from "./annotations";
 
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";

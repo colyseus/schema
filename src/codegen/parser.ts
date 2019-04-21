@@ -1,11 +1,10 @@
 import * as ts from "typescript";
 import { readFileSync } from "fs";
-import { Class, Property } from "./types";
+import { Class, Property, Context } from "./types";
 
 let currentClass: Class;
-let currentProperty: Property;
 
-function inspectNode(node: ts.Node, classes: Class[], decoratorName: string) {
+function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
     switch (node.kind) {
         case ts.SyntaxKind.ClassDeclaration:
             currentClass = new Class();
@@ -15,7 +14,7 @@ function inspectNode(node: ts.Node, classes: Class[], decoratorName: string) {
                 currentClass.extends = heritageClauses[0].types[0].getText();
             }
 
-            classes.push(currentClass);
+            context.addClass(currentClass);
             break;
 
         // case ts.SyntaxKind.PropertyDeclaration:
@@ -37,25 +36,25 @@ function inspectNode(node: ts.Node, classes: Class[], decoratorName: string) {
                     return (decorator.expression as any).expression.escapedText === decoratorName;
                 })).expression;
 
-                currentProperty = new Property();
-                currentProperty.name = prop.name.escapedText;
-                currentClass.properties.push(currentProperty);
+                const property = new Property();
+                property.name = prop.name.escapedText;
+                currentClass.addProperty(property);
 
                 const typeArgument = typeDecorator.arguments[0];
                 if(ts.isIdentifier(typeArgument)) {
-                    currentProperty.type = "ref";
-                    currentProperty.childType = typeArgument.text;
+                    property.type = "ref";
+                    property.childType = typeArgument.text;
 
                 } else if (typeArgument.kind == ts.SyntaxKind.ObjectLiteralExpression) {
-                    currentProperty.type = "map";
-                    currentProperty.childType = typeArgument.properties[0].initializer.text;
+                    property.type = "map";
+                    property.childType = typeArgument.properties[0].initializer.text;
 
                 } else if (typeArgument.kind == ts.SyntaxKind.ArrayLiteralExpression) {
-                    currentProperty.type = "array";
-                    currentProperty.childType = typeArgument.elements[0].text;
+                    property.type = "array";
+                    property.childType = typeArgument.elements[0].text;
 
                 } else {
-                    currentProperty.type = typeArgument.text;
+                    property.type = typeArgument.text;
                 }
             }
             if (node.parent.kind === ts.SyntaxKind.ClassDeclaration) {
@@ -64,16 +63,16 @@ function inspectNode(node: ts.Node, classes: Class[], decoratorName: string) {
             break;
     }
 
-    ts.forEachChild(node, (n) => inspectNode(n, classes, decoratorName));
+    ts.forEachChild(node, (n) => inspectNode(n, context, decoratorName));
 }
 
 export function parseFiles(fileNames: string[], decoratorName: string = "type"): Class[] {
-    const classes: Class[] = [];
+    const context = new Context();
 
     fileNames.forEach((fileName) => {
         let sourceFile = ts.createSourceFile(fileName, readFileSync(fileName).toString(), ts.ScriptTarget.ES2018, true);
-        inspectNode(sourceFile, classes, decoratorName);
+        inspectNode(sourceFile, context, decoratorName);
     });
 
-    return classes.filter(klass => klass.properties.length > 0);
+    return context.classes.filter(klass => klass.properties.length > 0);
 }
