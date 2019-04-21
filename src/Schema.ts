@@ -151,7 +151,7 @@ export abstract class Schema {
                     value = null;
 
                 } else {
-                    value = this[`_${field}`] || new (this.getDecodeType(bytes, it, type as typeof Schema))();
+                    value = this[`_${field}`] || this.createTypeInstance(bytes, it, type as typeof Schema);
                     value.decode(bytes, it);
                 }
 
@@ -202,7 +202,7 @@ export abstract class Schema {
                         let item: Schema;
 
                         if (isNew) {
-                            item = new (this.getDecodeType(bytes, it, type as typeof Schema))();
+                            item = this.createTypeInstance(bytes, it, type as typeof Schema);
 
                         } else if (indexChangedFrom !== undefined) {
                             item = valueRef[indexChangedFrom];
@@ -212,7 +212,7 @@ export abstract class Schema {
                         }
 
                         if (!item) {
-                            item = new (this.getDecodeType(bytes, it, type as typeof Schema))();
+                            item = this.createTypeInstance(bytes, it, type as typeof Schema);
                             isNew = true;
                         }
 
@@ -290,7 +290,7 @@ export abstract class Schema {
                     let isNew = (!hasIndexChange && !valueRef[newKey]) || (hasIndexChange && previousKey === undefined && hasMapIndex);
 
                     if (isNew && isSchemaType) {
-                        item = new (this.getDecodeType(bytes, it, type as typeof Schema))();
+                        item = this.createTypeInstance(bytes, it, type as typeof Schema);
 
                     } else if (previousKey !== undefined) {
                         item = valueRef[previousKey];
@@ -647,13 +647,14 @@ export abstract class Schema {
         }
     }
 
-    private getDecodeType (bytes: number[], it: decode.Iterator, type: typeof Schema): any {
+    private createTypeInstance (bytes: number[], it: decode.Iterator, type: typeof Schema): Schema {
         if (bytes[it.offset] === TYPE_ID) {
             it.offset++;
-            return (this.constructor as typeof Schema)._context.get(decode.uint8(bytes, it));
+            const anotherType = (this.constructor as typeof Schema)._context.get(decode.uint8(bytes, it));
+            return new (anotherType as any)();
 
         } else {
-            return type;
+            return new (type as any)();
         }
     }
 }

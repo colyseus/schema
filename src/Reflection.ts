@@ -31,7 +31,7 @@ export class Reflection extends Schema {
     @type([ ReflectionType ], reflectionContext)
     types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
 
-    @type("uint8")
+    @type("uint8", reflectionContext)
     rootType: number;
 
     static encode (instance: Schema) {
@@ -81,21 +81,9 @@ export class Reflection extends Schema {
                         }
                     }
 
-                    if (childTypeSchema) {
-                        // const childSchemaName = childTypeSchema.name;
-                        // if (typeIds[childSchemaName] === undefined) {
-                        //     const childType = new ReflectionType();
-                        //     childType.id = childTypeSchema._typeid;
-                        //     typeIds[childSchemaName] = childType.id;
-                        //     buildType(childType, childTypeSchema._schema);
-                        // }
-                        // field.referencedType = typeIds[childSchemaName];
-
-                        field.referencedType = childTypeSchema._typeid;
-
-                    } else {
-                        field.referencedType = 255;
-                    }
+                    field.referencedType = (childTypeSchema)
+                        ? childTypeSchema._typeid
+                        : 255;
                 }
 
                 field.type = fieldType;
@@ -120,8 +108,6 @@ export class Reflection extends Schema {
 
         const reflection = new Reflection();
         reflection.decode(bytes);
-
-        let rootTypeId: number;
 
         let schemaTypes = reflection.types.reduce((types, reflectionType) => {
             types[reflectionType.id] = class _ extends Schema {};

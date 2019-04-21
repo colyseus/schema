@@ -38,7 +38,7 @@ export class Context {
         return this.schemas.has(schema);
     }
 
-    get(typeid: number): any {
+    get(typeid: number) {
         return this.types[typeid];
     }
 
