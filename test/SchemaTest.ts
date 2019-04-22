@@ -197,6 +197,20 @@ describe("Schema", () => {
             assert.equal(decoded.utf8, "🚀ॐ漢字♤♧♥♢®⚔");
         });
 
+        it("long string", () => {
+            class Data extends Schema { @type("string") longstring; }
+
+            const longstring = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur ac justo quis massa ultricies dictum cursus at tellus. Curabitur laoreet ipsum eu risus convallis rutrum. Integer bibendum hendrerit nisl, eget vestibulum nisi interdum sed. Pellentesque lacus risus, luctus a iaculis non, vulputate eget massa. Nunc aliquet venenatis lorem, id viverra lectus rutrum a. Nulla nunc mauris, euismod a est nec, scelerisque maximus felis. Sed vel lobortis velit, non congue lectus. In eget lectus at sem bibendum vestibulum in non turpis.";
+
+            let data = new Data();
+            data.longstring = longstring;
+
+            const decoded = new Data();
+            decoded.decode(data.encode());
+            console.log(decoded.longstring.length, longstring.length);
+            assert.equal(decoded.longstring, longstring);
+        });
+
     });
 
     describe("API", () => {

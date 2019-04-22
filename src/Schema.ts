@@ -129,6 +129,11 @@ export abstract class Schema {
 
         const totalBytes = bytes.length;
 
+        // skip TYPE_ID of existing instances
+        if (bytes[it.offset] === TYPE_ID) {
+            it.offset += 2;
+        }
+
         while (it.offset < totalBytes) {
             const index = bytes[it.offset++];
 

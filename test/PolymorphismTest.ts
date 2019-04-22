@@ -93,6 +93,12 @@ describe("Polymorphism", () => {
         assert.ok(decodedState.arrayOfEntities[0] instanceof Entity);
         assert.ok(decodedState.arrayOfEntities[1] instanceof Player);
         assert.ok(decodedState.arrayOfEntities[2] instanceof Enemy);
+
+        state.arrayOfEntities.push(createPlayer());
+        decodedState.decode(state.encode());
+
+        assert.ok(decodedState.arrayOfEntities[3] instanceof Entity);
+        assert.ok(decodedState.arrayOfEntities[3] instanceof Player);
     });
 
     it("should encode the correct class inside a map", () => {
@@ -106,5 +112,10 @@ describe("Polymorphism", () => {
         assert.ok(decodedState.mapOfEntities['entity'] instanceof Entity);
         assert.ok(decodedState.mapOfEntities['player'] instanceof Player);
         assert.ok(decodedState.mapOfEntities['enemy'] instanceof Enemy);
+
+        state.mapOfEntities['player-2'] = createPlayer();
+        decodedState.decode(state.encode());
+        assert.ok(decodedState.mapOfEntities['player-2'] instanceof Entity);
+        assert.ok(decodedState.mapOfEntities['player-2'] instanceof Player);
     });
 });
