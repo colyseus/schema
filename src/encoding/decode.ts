@@ -70,12 +70,6 @@ function utf8Read(bytes, offset, length) {
   return string;
 }
 
-function _str (bytes, it: Iterator, length: number) {
-  var value = utf8Read(bytes, it.offset, length);
-  it.offset += length;
-  return value;
-};
-
 export function int8 (bytes: number[], it: Iterator) {
     return uint8(bytes, it) << 24 >> 24;
 };
@@ -143,7 +137,26 @@ export function boolean (bytes: number[], it: Iterator) {
 
 export function string (bytes, it: Iterator) {
   const prefix = bytes[it.offset++];
-  return _str(bytes, it, prefix & 0x1f);
+  let length: number;
+
+  if (prefix < 0xc0) {
+    // fixstr
+    length = prefix & 0x1f;
+
+  } else if (prefix === 0xd9) {
+    length = uint8(bytes, it);
+
+  } else if (prefix === 0xda) {
+    length = uint16(bytes, it);
+
+  } else if (prefix === 0xdb) {
+    length = uint32(bytes, it);
+  }
+
+  const value = utf8Read(bytes, it.offset, length);
+  it.offset += length;
+
+  return value;
 }
 
 export function stringCheck(bytes, it: Iterator) {

@@ -168,23 +168,25 @@ export function string(bytes, value) {
   }
   // str 8
   else if (length < 0x100) {
-    bytes.push(0xd9, length);
+    bytes.push(0xd9);
+    uint8(bytes, length);
     size = 2;
   }
   // str 16
   else if (length < 0x10000) {
-    bytes.push(0xda, length >> 8, length);
+    bytes.push(0xda);
+    uint16(bytes, length);
     size = 3;
   }
   // str 32
   else if (length < 0x100000000) {
-    bytes.push(0xdb, length >> 24, length >> 16, length >> 8, length);
+    bytes.push(0xdb);
+    uint32(bytes, length);
     size = 5;
   } else {
     throw new Error('String too long');
   }
 
-  // defers.push({ _str: value, _length: length, _offset: bytes.length });
   utf8Write(bytes, bytes.length, value);
 
   return size + length;
