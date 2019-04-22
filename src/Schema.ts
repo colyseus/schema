@@ -56,8 +56,16 @@ function assertInstanceType(value: Schema, type: typeof Schema | typeof ArraySch
     }
 }
 
-function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any) {
+function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any, klass: Schema, field: string) {
     const encodeFunc = encode[type as string];
+
+    if (value === undefined) {
+        bytes.push(NIL);
+
+    } else {
+        assertType(value, type as string, klass, field);
+    }
+
     if (encodeFunc) {
         encodeFunc(bytes, value);
         return true;
@@ -71,7 +79,7 @@ function decodePrimitiveType (type: string, bytes: number[], it: decode.Iterator
     const decodeFunc = decode[type as string];
 
     if (decodeFunc) {
-         return decodeFunc(bytes, it);
+        return decodeFunc(bytes, it);
 
     } else {
         return null;
@@ -170,7 +178,7 @@ export abstract class Schema {
                 value = valueRef.clone();
 
                 const newLength = decode.number(bytes, it);
-                const numChanges = decode.number(bytes, it);
+                let numChanges = decode.number(bytes, it);
 
                 hasChange = (numChanges > 0);
 
@@ -180,6 +188,10 @@ export abstract class Schema {
 
                 // ensure current array has the same length as encoded one
                 if (value.length > newLength) {
+                    // decrease removed items from number of changes.
+                    // no need to iterate through them, as they're going to be removed.
+                    numChanges -= value.length - newLength;
+
                     value.splice(newLength).forEach((itemRemoved, i) => {
                         if (itemRemoved.onRemove) {
                             itemRemoved.onRemove();
@@ -444,6 +456,10 @@ export abstract class Schema {
                     const index = arrayChanges[j];
                     const item = this[`_${field}`][index];
 
+                    if (item === undefined) {
+                        continue;
+                    }
+
                     if (client && filter) {
                         // skip if not allowed by custom filter
                         if (!filter.call(this, client, item, root)) {
@@ -453,11 +469,6 @@ export abstract class Schema {
 
                     if (isChildSchema) { // is array of Schema
                         encode.number(bytes, index);
-
-                        if (item === undefined) {
-                            encode.uint8(bytes, NIL);
-                            continue;
-                        }
 
                         const indexChange = value.$changes.getIndexChange(item);
                         if (indexChange !== undefined) {
@@ -472,8 +483,7 @@ export abstract class Schema {
                     } else {
                         encode.number(bytes, index);
 
-                        assertType(item, type[0] as string, this, field);
-                        if (!encodePrimitiveType(type[0], bytes, item)) {
+                        if (!encodePrimitiveType(type[0], bytes, item, this, field)) {
                             console.log("cannot encode", schema[field]);
                             continue;
                         }
@@ -546,8 +556,7 @@ export abstract class Schema {
                         bytes = bytes.concat(item.encode(root, encodeAll, client));
 
                     } else if (item !== undefined) {
-                        assertType(item, (type as any).map, this, field);
-                        encodePrimitiveType((type as any).map, bytes, item);
+                        encodePrimitiveType((type as any).map, bytes, item, this, field);
 
                     } else {
                         encode.uint8(bytes, NIL);
@@ -574,8 +583,7 @@ export abstract class Schema {
 
                 encode.number(bytes, fieldIndex);
 
-                assertType(value, type as string, this, field);
-                if (!encodePrimitiveType(type as PrimitiveType, bytes, value)) {
+                if (!encodePrimitiveType(type as PrimitiveType, bytes, value, this, field)) {
                     console.log("cannot encode", schema[field]);
                     continue;
                 }

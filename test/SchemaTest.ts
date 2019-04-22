@@ -207,7 +207,6 @@ describe("Schema", () => {
 
             const decoded = new Data();
             decoded.decode(data.encode());
-            console.log(decoded.longstring.length, longstring.length);
             assert.equal(decoded.longstring, longstring);
         });
 
@@ -384,7 +383,7 @@ describe("Schema", () => {
             state.arrayOfPlayers[0].name = "Tarquinn"
 
             encoded = state.encode();
-            assert.deepEqual(encoded, [3, 2, 2, 2, 192, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
+            assert.deepEqual(encoded, [3, 2, 2, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
 
             decodedState.decode(encoded);
 
@@ -408,6 +407,32 @@ describe("Schema", () => {
             decodedState.decode(state.encode());
             assert.equal(decodedState.arrayOfPlayers.length, 2);
             assert.deepEqual(decodedState.arrayOfPlayers.map(p => p.name), ["Jake", "Snake"]);
+        });
+
+        it("should allow to `pop` an array of numbers", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+                @type("string") str: string;
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1);
+            state.arrayOfNumbers.push(2);
+            state.arrayOfNumbers.push(3);
+            state.arrayOfNumbers.push(4);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.arrayOfNumbers.length, 4);
+            assert.equal(JSON.stringify(decodedState.arrayOfNumbers), '[1,2,3,4]');
+
+            state.arrayOfNumbers.pop();
+            state.str = "hello!";
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.arrayOfNumbers.length, 3);
+            assert.equal(JSON.stringify(decodedState.arrayOfNumbers), '[1,2,3]');
+            assert.equal(decodedState.str, 'hello!');
         });
 
         it("should allow to `shift` an array", () => {
