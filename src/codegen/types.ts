@@ -15,9 +15,33 @@ export function getCommentHeader(singleLineComment: string = "//") {
 export class Context {
     classes: Class[] = [];
 
+    getSchemaClasses() {
+        return this.classes.filter(klass => {
+            if (this.isSchemaClass(klass)) {
+                return true;
+            } else {
+                let parentClass = klass;
+                while (parentClass = this.getParentClass(parentClass)) {
+                    if (this.isSchemaClass(parentClass)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        });
+    }
+
     addClass(currentClass: Class) {
         currentClass.context = this;
         this.classes.push(currentClass);
+    }
+
+    private getParentClass(klass: Class) {
+        return this.classes.find(c => c.name === klass.extends);
+    }
+
+    private isSchemaClass(klass: Class) {
+        return klass.properties.length > 0;
     }
 }
 

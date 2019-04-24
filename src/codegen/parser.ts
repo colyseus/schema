@@ -74,5 +74,5 @@ export function parseFiles(fileNames: string[], decoratorName: string = "type"):
         inspectNode(sourceFile, context, decoratorName);
     });
 
-    return context.classes.filter(klass => klass.properties.length > 0);
+    return context.getSchemaClasses();
 }
