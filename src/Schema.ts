@@ -193,7 +193,7 @@ export abstract class Schema {
                     numChanges -= value.length - newLength;
 
                     value.splice(newLength).forEach((itemRemoved, i) => {
-                        if (itemRemoved.onRemove) {
+                        if (itemRemoved && itemRemoved.onRemove) {
                             itemRemoved.onRemove();
                         }
 
