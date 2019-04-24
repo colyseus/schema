@@ -457,10 +457,6 @@ export abstract class Schema {
                     const index = arrayChanges[j];
                     const item = this[`_${field}`][index];
 
-                    if (item === undefined) {
-                        continue;
-                    }
-
                     if (client && filter) {
                         // skip if not allowed by custom filter
                         if (!filter.call(this, client, item, root)) {
