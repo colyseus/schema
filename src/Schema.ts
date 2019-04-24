@@ -443,8 +443,11 @@ export abstract class Schema {
                     ? value.$changes.allChanges
                     : value.$changes.changes;
 
+                // ensure number of changes doesn't exceed array length
+                const numChanges = Math.min(value.length, arrayChanges.length);
+
                 // number of changed items
-                encode.number(bytes, arrayChanges.length);
+                encode.number(bytes, numChanges);
 
                 const isChildSchema = typeof(type[0]) !== "string";
 
@@ -452,7 +455,7 @@ export abstract class Schema {
                 assertInstanceType(this[`_${field}`], ArraySchema, this, field);
 
                 // encode Array of type
-                for (let j = 0; j < arrayChanges.length; j++) {
+                for (let j = 0; j < numChanges; j++) {
                     const index = arrayChanges[j];
                     const item = this[`_${field}`][index];
 

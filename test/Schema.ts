@@ -67,6 +67,9 @@ export class DeepEntity extends Schema {
   another: Another = new Another();
 }
 
+export class DeepEntity2 extends DeepEntity {
+}
+
 export class DeepChild extends Schema {
   @type(DeepEntity)
   entity = new DeepEntity();

@@ -435,6 +435,34 @@ describe("Schema", () => {
             assert.equal(decodedState.str, 'hello!');
         });
 
+        it("should not encode a higher number of items than array actually have", () => {
+            // Thanks @Ramus on Discord
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+                @type(["number"]) anotherOne = new ArraySchema<number>();
+            }
+
+            const state = new State();
+
+            state.arrayOfNumbers.push(0, 0, 0, 1, 1, 1, 2, 2, 2);
+            assert.equal(state.arrayOfNumbers.length, 9);
+            state.arrayOfNumbers = new ArraySchema<number>(...[0, 0, 0, 1, 1, 1, 2, 2, 2]);
+            assert.equal(state.arrayOfNumbers.length, 9);
+            state.anotherOne.push(state.arrayOfNumbers.pop());
+            state.anotherOne.push(state.arrayOfNumbers.pop());
+            state.anotherOne.push(state.arrayOfNumbers.pop());
+            state.anotherOne.push(state.arrayOfNumbers.pop());
+            state.anotherOne.push(state.arrayOfNumbers.pop());
+
+            assert.equal(state.arrayOfNumbers.length, 4);
+            assert.equal(state.anotherOne.length, 5);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.arrayOfNumbers.length, 4);
+            assert.equal(decodedState.anotherOne.length, 5);
+        });
+
         it("should allow to `shift` an array", () => {
             const state = new State();
             state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
