@@ -178,8 +178,7 @@ export abstract class Schema {
                 value = valueRef.clone();
 
                 const newLength = decode.number(bytes, it);
-                let numChanges = decode.number(bytes, it);
-
+                const numChanges = Math.min(decode.number(bytes, it), newLength);
                 hasChange = (numChanges > 0);
 
                 // FIXME: this may not be reliable. possibly need to encode this variable during
@@ -190,7 +189,6 @@ export abstract class Schema {
                 if (value.length > newLength) {
                     // decrease removed items from number of changes.
                     // no need to iterate through them, as they're going to be removed.
-                    numChanges -= value.length - newLength;
 
                     value.splice(newLength).forEach((itemRemoved, i) => {
                         if (itemRemoved && itemRemoved.onRemove) {
@@ -439,12 +437,12 @@ export abstract class Schema {
                 // total of items in the array
                 encode.number(bytes, value.length);
 
-                const arrayChanges = (encodeAll || client)
+                const arrayChanges = ((encodeAll || client)
                     ? value.$changes.allChanges
-                    : value.$changes.changes;
+                    : value.$changes.changes).filter(index => this[`_${field}`][index] !== undefined);
 
                 // ensure number of changes doesn't exceed array length
-                const numChanges = Math.min(value.length, arrayChanges.length);
+                const numChanges = arrayChanges.length;
 
                 // number of changed items
                 encode.number(bytes, numChanges);

@@ -383,7 +383,7 @@ describe("Schema", () => {
             state.arrayOfPlayers[0].name = "Tarquinn"
 
             encoded = state.encode();
-            assert.deepEqual(encoded, [3, 2, 2, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
+            assert.deepEqual(encoded, [3, 2, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
 
             decodedState.decode(encoded);
 
@@ -478,6 +478,27 @@ describe("Schema", () => {
 
             let encoded = state.encode();
             decodedState.decode(encoded);
+
+            assert.equal(decodedState.arrayOfPlayers.length, 2);
+            assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
+            assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
+            assert.equal(snake, decodedState.arrayOfPlayers[0]);
+            assert.equal(cyberhawk, decodedState.arrayOfPlayers[1]);
+        });
+
+        xit("should allow to `splice` an array", () => {
+            const state = new State();
+            state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+            assert.equal(decodedState.arrayOfPlayers.length, 3);
+
+            const snake = decodedState.arrayOfPlayers[1];
+            const cyberhawk = decodedState.arrayOfPlayers[2];
+
+            state.arrayOfPlayers.splice(1);
+            decodedState.decode(state.encode());
 
             assert.equal(decodedState.arrayOfPlayers.length, 2);
             assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");

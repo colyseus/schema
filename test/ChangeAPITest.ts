@@ -213,7 +213,7 @@ describe("Change API", () => {
             decodedState.decode(state.encode());
             sinon.assert.calledOnce(onChangeSpy);
 
-            state.arrayOfPlayers.splice(1);
+            state.arrayOfPlayers.shift();
 
             katarina.onRemove = function () { }
             const onItemRemoveSpy = sinon.spy(katarina, "onRemove");
