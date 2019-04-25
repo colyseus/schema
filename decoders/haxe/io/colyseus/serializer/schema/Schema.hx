@@ -326,7 +326,7 @@ class Schema {
         var valueRef = value.clone();
 
         var newLength: Int = decoder.number(bytes, it);
-        var numChanges: Int = decoder.number(bytes, it);
+        var numChanges: Int = cast(Math.min(decoder.number(bytes, it), newLength), Int);
 
         hasChange = (numChanges > 0);
 
@@ -507,5 +507,73 @@ class Schema {
     if (changes.length > 0) {
         this.onChange(changes);
     }
+  }
+}
+
+class Context {
+  public var typeIds: Map<UInt, Class<Schema>> = new Map<UInt, Class<Schema>>();
+  public var schemas: Array<Class<Schema>> = new Array();
+
+  public function new() {}
+
+  public function add(schema: Class<Schema>, ?typeid: UInt)
+  {
+    if (typeid == null) {
+      typeid = schemas.length;
+    }
+
+    this.typeIds[typeid] = schema;
+    this.schemas.push(schema);
+  }
+
+  public function get(typeid: UInt)
+  {
+    return this.typeIds[typeid];
+  }
+}
+
+/**
+ * Reflection
+ */
+class ReflectionField extends Schema {
+  public var name: String;
+  public var type: String;
+  public var referencedType: UInt;
+
+  public function new()
+  {
+    super();
+    this._indexes = [0 => "name", 1 => "type", 2 => "referencedType"];
+    this._types = [0 => "string", 1 => "string", 2 => "uint8"];
+    this._childPrimitiveTypes = [];
+    this._childSchemaTypes = [];
+  }
+}
+
+class ReflectionType extends Schema {
+  public var id: UInt;
+  public var fields: ArraySchema<ReflectionField> = new ArraySchema<ReflectionField>();
+
+  public function new()
+  {
+    super();
+    this._indexes = [0 => "id", 1 => "fields"];
+    this._types = [0 => "uint8", 1 => "array"];
+    this._childPrimitiveTypes = [];
+    this._childSchemaTypes = [1 => ReflectionField];
+  }
+}
+
+class Reflection extends Schema {
+  public var types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
+  public var rootType: UInt;
+
+  public function new ()
+  {
+    super();
+    this._indexes = [0 => "types", 1 => "rootType"];
+    this._types = [0 => "array", 1 => "uint8"];
+    this._childPrimitiveTypes = [];
+    this._childSchemaTypes = [0 => ReflectionType];
   }
 }
