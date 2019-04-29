@@ -486,7 +486,7 @@ describe("Schema", () => {
             assert.equal(cyberhawk, decodedState.arrayOfPlayers[1]);
         });
 
-        xit("should allow to `splice` an array", () => {
+        it("should allow to `splice` an array", () => {
             const state = new State();
             state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
 
@@ -494,17 +494,14 @@ describe("Schema", () => {
             decodedState.decode(state.encode());
             assert.equal(decodedState.arrayOfPlayers.length, 3);
 
-            const snake = decodedState.arrayOfPlayers[1];
-            const cyberhawk = decodedState.arrayOfPlayers[2];
+            const jake = decodedState.arrayOfPlayers[0];
 
             state.arrayOfPlayers.splice(1);
             decodedState.decode(state.encode());
 
-            assert.equal(decodedState.arrayOfPlayers.length, 2);
-            assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
-            assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
-            assert.equal(snake, decodedState.arrayOfPlayers[0]);
-            assert.equal(cyberhawk, decodedState.arrayOfPlayers[1]);
+            assert.equal(decodedState.arrayOfPlayers.length, 1);
+            assert.equal(decodedState.arrayOfPlayers[0].name, "Jake");
+            assert.equal(jake, decodedState.arrayOfPlayers[0]);
         });
 
         it("should allow to `push` and `shift` an array", () => {
