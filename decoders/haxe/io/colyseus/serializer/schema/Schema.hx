@@ -1,6 +1,119 @@
 package io.colyseus.serializer.schema;
 import haxe.io.Bytes;
 
+// begin macros / decorator
+#if macro
+import haxe.macro.Context;
+import haxe.macro.Expr;
+
+typedef DecoratedField = {
+	field: Field,
+	meta: MetadataEntry
+};
+#end
+
+class Decorator {
+#if macro
+  static public inline var TYPE = ':type';
+
+	static public function build() {
+		var localClass = haxe.macro.Context.getLocalClass().get();
+		var fields = haxe.macro.Context.getBuildFields();
+
+		var constructor: haxe.macro.Field = null;
+		var exprs: Array<Expr> = [];
+
+		fields = fields.filter(function(f) {
+			if (f.name != "new") {
+        f.meta.push({name: "typed", pos:  haxe.macro.Context.currentPos()});
+				return true;
+
+			} else {
+				constructor = f;
+				return false;
+			}
+		});
+
+		var index = 0;
+		var hasSuperClass = localClass.superClass;
+		if (hasSuperClass != null) {
+			var superClass = hasSuperClass.t.get();
+
+			// add super() call on constructor.
+			if (constructor == null) {
+				exprs.push(macro super());
+			} else {
+				switch (constructor.kind) {
+					case FFun(f): exprs.unshift(f.expr);
+					default: 
+				}
+			}
+
+			var parentFields = superClass.fields.get();
+			for (f in parentFields) {
+				// FIXME: check for annotated types instead of starting with "_".
+        trace("EXISTING FIELD => ", f.name, f);
+				if (f.name.indexOf("_") != 0) {
+					index++;
+				}
+			}
+		}
+
+		var decoratedFields = getDecoratedFields(fields);
+		for (f in decoratedFields) {
+			exprs.push(macro $p{["this", "_indexes"]}.set($v{index}, $v{f.field.name}));
+			exprs.push(macro $p{["this", "_types"]}.set($v{index}, $e{f.meta.params[0]}));
+
+			if (f.meta.params.length > 1) {
+				switch f.meta.params[1].expr {
+					case EConst(CIdent(exp)):
+						exprs.push(macro $p{["this", "_childSchemaTypes"]}.set($v{index}, $i{exp}));
+
+					case EConst(CString(exp)):
+						exprs.push(macro $p{["this", "_childPrimitiveTypes"]}.set($v{index}, $v{exp}));
+					default: 
+				}
+			}
+
+			index++;
+    }
+
+		// add constructor to fields
+		fields.push({
+			name: "new",
+			pos: haxe.macro.Context.currentPos(),
+			access: [APublic],
+			kind: FFun({
+				args: [],
+				expr: macro $b{exprs},
+				params: [],
+				ret: null
+			})
+		});
+
+		return fields;
+	}
+
+	static function getDecoratedFields(fields:Array<Field>)
+		return fields.map(getDecoration).filter(notNull);
+
+	static function getDecoration(field:Field):DecoratedField {
+		for (meta in field.meta) {
+			if (meta.name == TYPE)
+				return {
+					field: field,
+					meta: meta
+				};
+		}
+		return null;
+	}
+
+	static function notNull(v:Dynamic)
+		return v != null;
+#end
+}
+// end of macros / decorator
+
 typedef It = { offset: Int }
 
 class SPEC {
@@ -263,16 +376,17 @@ class MapSchema<T> {
   }
 }
 
+#if !macro @:autoBuild(io.colyseus.serializer.schema.Decorator.build()) #end
 class Schema {
   public function new () {}
 
   public dynamic function onChange(changes: Array<DataChange>): Void {}
   public dynamic function onRemove(): Void {}
 
-  private var _indexes: Map<Int, String> = [];
-  private var _types: Map<Int, String> = [];
-  private var _childSchemaTypes: Map<Int, Class<Schema>> = [];
-  private var _childPrimitiveTypes: Map<Int, String> = [];
+  public var _indexes: Map<Int, String> = [];
+  public var _types: Map<Int, String> = [];
+  public var _childSchemaTypes: Map<Int, Class<Schema>> = [];
+  public var _childPrimitiveTypes: Map<Int, String> = [];
 
   private static var decoder = new Decoder();
 
@@ -298,6 +412,12 @@ class Schema {
       var value: Dynamic = null;
       var change: Dynamic = null; // for triggering onChange 
       var hasChange = false;
+
+      trace("it.offset => " , it.offset);
+      trace("index => " , index);
+      trace("indexes => " , this._indexes);
+      trace("field => " , field);
+      trace("type => " , type);
 
       if (type == "ref") {
         if (SPEC.nilCheck(bytes, it)) {
@@ -536,44 +656,55 @@ class Context {
  * Reflection
  */
 class ReflectionField extends Schema {
+  @:type("string")
   public var name: String;
+
+  @:type("string")
   public var type: String;
+
+  @:type("uint8")
   public var referencedType: UInt;
 
-  public function new()
-  {
-    super();
-    this._indexes = [0 => "name", 1 => "type", 2 => "referencedType"];
-    this._types = [0 => "string", 1 => "string", 2 => "uint8"];
-    this._childPrimitiveTypes = [];
-    this._childSchemaTypes = [];
-  }
+  // public function new()
+  // {
+  //   super();
+  //   this._indexes = [0 => "name", 1 => "type", 2 => "referencedType"];
+  //   this._types = [0 => "string", 1 => "string", 2 => "uint8"];
+  //   this._childPrimitiveTypes = [];
+  //   this._childSchemaTypes = [];
+  // }
 }
 
 class ReflectionType extends Schema {
+  @:type("uint8")
   public var id: UInt;
+
+  @:type("array", ReflectionField)
   public var fields: ArraySchema<ReflectionField> = new ArraySchema<ReflectionField>();
 
-  public function new()
-  {
-    super();
-    this._indexes = [0 => "id", 1 => "fields"];
-    this._types = [0 => "uint8", 1 => "array"];
-    this._childPrimitiveTypes = [];
-    this._childSchemaTypes = [1 => ReflectionField];
-  }
+  // public function new()
+  // {
+  //   super();
+  //   this._indexes = [0 => "id", 1 => "fields"];
+  //   this._types = [0 => "uint8", 1 => "array"];
+  //   this._childPrimitiveTypes = [];
+  //   this._childSchemaTypes = [1 => ReflectionField];
+  // }
 }
 
 class Reflection extends Schema {
+  @:type("array", ReflectionType)
   public var types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
+
+  @:type("uint8")
   public var rootType: UInt;
 
-  public function new ()
-  {
-    super();
-    this._indexes = [0 => "types", 1 => "rootType"];
-    this._types = [0 => "array", 1 => "uint8"];
-    this._childPrimitiveTypes = [];
-    this._childSchemaTypes = [0 => ReflectionType];
-  }
+  // public function new ()
+  // {
+  //   super();
+  //   this._indexes = [0 => "types", 1 => "rootType"];
+  //   this._types = [0 => "array", 1 => "uint8"];
+  //   this._childPrimitiveTypes = [];
+  //   this._childSchemaTypes = [0 => ReflectionType];
+  // }
 }

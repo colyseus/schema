@@ -9,15 +9,18 @@
 import io.colyseus.serializer.schema.Schema;
 
 class Entity extends Schema {
+	@:type("number")
 	public var x: Dynamic = 0;
+
+	@:type("number")
 	public var y: Dynamic = 0;
 
-	public function new () {
-		super();
-		this._indexes = [0 => "x", 1 => "y"];
-		this._types = [0 => "number", 1 => "number"];
-		this._childPrimitiveTypes = [];
-		this._childSchemaTypes = [];
-	}
+	// public function new () {
+	// 	super();
+	// 	this._indexes = [0 => "x", 1 => "y"];
+	// 	this._types = [0 => "number", 1 => "number"];
+	// 	this._childPrimitiveTypes = [];
+	// 	this._childSchemaTypes = [];
+	// }
 
 }
