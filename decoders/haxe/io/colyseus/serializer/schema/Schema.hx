@@ -26,7 +26,6 @@ class Decorator {
 
     fields = fields.filter(function(f) {
       if (f.name != "new") {
-        f.meta.push({name: "typed", pos: haxe.macro.Context.currentPos()});
         return true;
       } else {
         constructor = f;
