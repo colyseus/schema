@@ -43,8 +43,8 @@ if (args.decorator) {
     decoratorName = args.decorator;
 }
 
-if (!args.output || !fs.existsSync(args.output)) {
-    console.error("You must provide a valid (and existing) --output directory.");
+if (!args.output) {
+    console.error("You must provide a valid --output directory.");
     displayHelp();
 }
 
@@ -54,6 +54,11 @@ try {
 } catch (e) {
     console.error("You must provide a valid generator as argument, such as: --csharp, --haxe or --cpp");
     displayHelp();
+}
+
+if (!fs.existsSync(args.output)) {
+    console.log("Creating", args.output, "directory");
+    fs.mkdirSync(args.output);
 }
 
 const classes = parseFiles(args._, decoratorName);
