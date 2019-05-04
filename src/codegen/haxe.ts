@@ -66,19 +66,6 @@ function getInheritanceTree(klass: Class, allClasses: Class[], includeSelf: bool
 }
 
 function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
-    const propertiesPerType: {[type: string]: Property[]} = {};
-    klass.properties.forEach(property => {
-        let type = property.type;
-
-        if (!propertiesPerType[type]) {
-            propertiesPerType[type] = [];
-        }
-
-        propertiesPerType[type].push(property);
-    });
-
-    const allProperties = getAllProperties(klass, allClasses);
-
     return `${getCommentHeader()}
 
 ${namespace ? `package ${namespace};` : ""}
@@ -86,15 +73,6 @@ import io.colyseus.serializer.schema.Schema;
 
 class ${klass.name} extends ${klass.extends} {
 ${klass.properties.map(prop => generateProperty(prop)).join("\n")}
-
-\tpublic function new () {
-\t\tsuper();
-\t\tthis._indexes = ${generateAllIndexes(allProperties)};
-\t\tthis._types = ${generateAllTypes(allProperties)};
-\t\tthis._childPrimitiveTypes = ${generateAllChildPrimitiveTypes(allProperties)};
-\t\tthis._childSchemaTypes = ${generateAllChildSchemaTypes(allProperties)};
-\t}
-
 }
 `;
 }
@@ -102,9 +80,17 @@ ${klass.properties.map(prop => generateProperty(prop)).join("\n")}
 function generateProperty(prop: Property) {
     let langType: string;
     let initializer = "";
+    let typeArgs = `"${prop.type}"`;
 
     if (prop.childType) {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
+
+        if (isUpcaseFirst) {
+            typeArgs += `, ${prop.childType}`;
+
+        } else {
+            typeArgs += `, "${prop.childType}"`;
+        }
 
         if(prop.type === "ref") {
             langType = `${prop.childType}`;
@@ -128,43 +114,5 @@ function generateProperty(prop: Property) {
         initializer = typeInitializer[prop.type];
     }
 
-    return `\tpublic var ${prop.name}: ${langType} = ${initializer};`
-}
-
-function generateAllIndexes(properties: Property[]) {
-    return `[${properties.map((property, i) => `${i} => "${property.name}"`).join(", ")}]`
-}
-
-function generateAllTypes(properties: Property[]) {
-    return `[${properties.map((property, i) => `${i} => "${property.type}"`).join(", ")}]`
-}
-
-function generateAllChildSchemaTypes(properties: Property[]) {
-    return `[${properties.map((property, i) => {
-        if (property.childType && typeMaps[property.childType] === undefined) {
-            return `${i} => ${property.childType}`
-        } else {
-            return null;
-        }
-    }).filter(r => r !== null).join(", ")}]`
-}
-
-function generateAllChildPrimitiveTypes(properties: Property[]) {
-    return `[${properties.map((property, i) => {
-        if (typeMaps[property.childType] !== undefined) {
-            return `${i} => "${property.childType}"`
-        } else {
-            return null;
-        }
-    }).filter(r => r !== null).join(", ")}]`
-}
-
-function getAllProperties (klass: Class, allClasses: Class[]) {
-    let properties: Property[] = [];
-
-    getInheritanceTree(klass, allClasses).reverse().forEach((klass) => {
-        properties = properties.concat(klass.properties);
-    });
-
-    return properties;
+    return `\t@:type(${typeArgs})\n\tpublic var ${prop.name}: ${langType} = ${initializer};\n`
 }
