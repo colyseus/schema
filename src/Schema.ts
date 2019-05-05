@@ -34,6 +34,9 @@ function assertType(value: any, type: string, klass: Schema, field: string) {
         case "float32":
         case "float64":
             typeofTarget = "number";
+            if (isNaN(value)) {
+                console.log(`trying to encode "NaN" in ${klass.constructor.name}#${field}`);
+            }
             break;
         case "string":
             typeofTarget = "string";
@@ -155,7 +158,7 @@ export abstract class Schema {
             let type = schema[field];
             let value: any;
 
-            let change: any; // for triggering onChange 
+            let change: any; // for triggering onChange
             let hasChange = false;
 
             if ((type as any)._schema) {
@@ -388,7 +391,7 @@ export abstract class Schema {
         const schema = this._schema;
         const indexes = this._indexes;
         const filters = this._filters;
-        const changes = (encodeAll || client) 
+        const changes = (encodeAll || client)
             ? this.$changes.allChanges
             : this.$changes.changes;
 

@@ -194,7 +194,6 @@ export function string(bytes, value) {
 
 export function number(bytes, value) {
   if (isNaN(value)) {
-    console.error("trying to encode a NaN value. will be encoded as `0`.");
     return number(bytes, 0);
 
   } else if (!isFinite(value)) {
@@ -203,7 +202,7 @@ export function number(bytes, value) {
   } else if (Math.floor(value) !== value || !isFinite(value)) {
     // float 64
     /**
-     * TODO: 
+     * TODO:
      * is it possible to differentiate between float32 / float64 here?
      */
     bytes.push(0xcb);
