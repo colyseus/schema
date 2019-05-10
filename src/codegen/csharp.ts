@@ -81,7 +81,13 @@ function generateProperty(prop: Property, indent: string = "") {
                 : `MapSchema<${typeMaps[prop.childType]}>`;
         }
 
-        typeArgs += `, typeof(${langType})`;
+        if (isUpcaseFirst) {
+            typeArgs += `, typeof(${langType})`;
+
+        } else {
+            typeArgs += `, "${prop.childType}"`;
+        }
+
         initializer = `new ${langType}()`;
 
     } else {
