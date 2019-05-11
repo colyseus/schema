@@ -44,7 +44,7 @@ export class Context {
 
     add(schema: typeof Schema) {
         schema._typeid = this.schemas.size;
-        this.types[schema._typeid] = schema; 
+        this.types[schema._typeid] = schema;
         this.schemas.set(schema, schema._typeid);
     }
 }
@@ -75,9 +75,9 @@ export function type (type: DefinitionType, context: Context = globalContext): P
         constructor._indexes[field] = Object.keys(constructor._schema).length;
         constructor._schema[field] = type;
 
-        /** 
-         * TODO: `isSchema` / `isArray` / `isMap` is repeated on many places! 
-         * need to refactor all of them. 
+        /**
+         * TODO: `isSchema` / `isArray` / `isMap` is repeated on many places!
+         * need to refactor all of them.
          */
         const isArray = Array.isArray(type);
         const isMap = !isArray && (type as any).map;
@@ -103,16 +103,18 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, setValue) => {
-                            if (prop !== "length" && prop !== "$changes") {
+                            if (prop !== "length" && (prop as string).indexOf("$") !== 0) {
                                 // ensure new value has a parent
                                 const key = (isArray) ? Number(prop) : String(prop);
 
-                                const previousIndex = obj.$changes.getIndex(setValue);
-                                if (previousIndex !== undefined) {
-                                    obj.$changes.mapIndexChange(setValue, previousIndex);
+                                if (!obj.$sorting) {
+                                    // track index change
+                                    const previousIndex = obj.$changes.getIndex(setValue);
+                                    if (previousIndex !== undefined) {
+                                        obj.$changes.mapIndexChange(setValue, previousIndex);
+                                    }
+                                    obj.$changes.mapIndex(setValue, key);
                                 }
-
-                                obj.$changes.mapIndex(setValue, key);
 
                                 if (setValue instanceof Schema) {
                                     // new items are flagged with all changes
@@ -141,7 +143,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         deleteProperty: (obj, prop) => {
                             const deletedValue = obj[prop];
 
-                            // TODO: 
+                            // TODO:
                             // remove deleteIndex of property being deleted as well.
 
                             // obj.$changes.deleteIndex(deletedValue);

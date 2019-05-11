@@ -1,15 +1,17 @@
 import { ChangeTree } from "../ChangeTree";
 
 export class ArraySchema<T=any> extends Array<T> {
-    static get [Symbol.species](): ArrayConstructor { return Array; }
-
+    protected $sorting: boolean;
     protected $changes: ChangeTree;
+
+    // static get [Symbol.species](): any { return ArraySchema; }
 
     constructor (...items: T[]) {
         super(...items);
 
         Object.setPrototypeOf(this, Object.create(ArraySchema.prototype));
         Object.defineProperties(this, {
+            $sorting:     { value: undefined, enumerable: false, writable: true },
             $changes:     { value: undefined, enumerable: false, writable: true },
 
             onAdd:        { value: undefined, enumerable: false, writable: true },
@@ -41,6 +43,23 @@ export class ArraySchema<T=any> extends Array<T> {
     }
 
     clone: () => ArraySchema<T>;
+    sort(compareFn?: (a: T, b: T) => number): this {
+        this.$sorting = true;
+        super.sort(compareFn);
+
+        const changes = this.$changes.changes;
+        for (const key of changes) {
+            // track index change
+            const previousIndex = this.$changes.getIndex(this[key]);
+            if (previousIndex !== undefined) {
+                this.$changes.mapIndexChange(this[key], previousIndex);
+            }
+            this.$changes.mapIndex(this[key], key);
+        }
+
+        this.$sorting = false;
+        return this;
+    }
 
     onAdd: (item: T, index: number) => void;
     onRemove: (item: T, index: number) => void;

@@ -214,6 +214,12 @@ export abstract class Schema {
                         hasIndexChange = true;
                     }
 
+                    // // Simplified method?
+                    // let isNew = (
+                    //     (value[newIndex] !== valueRef[newIndex]) ||
+                    //     (value[newIndex] === undefined && valueRef[newIndex] === undefined)
+                    // ) && indexChangedFrom === undefined;
+
                     let isNew = (!hasIndexChange && !value[newIndex]) || (hasIndexChange && indexChangedFrom === undefined);
 
                     if ((type as any).prototype instanceof Schema) {
