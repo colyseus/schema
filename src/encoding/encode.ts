@@ -199,15 +199,18 @@ export function number(bytes, value) {
   } else if (!isFinite(value)) {
     return number(bytes, (value > 0) ? Number.MAX_SAFE_INTEGER : -Number.MAX_SAFE_INTEGER);
 
-  } else if (Math.floor(value) !== value || !isFinite(value)) {
-    // float 64
-    /**
-     * TODO:
-     * is it possible to differentiate between float32 / float64 here?
-     */
+  } else if (value !== (value|0)) {
     bytes.push(0xcb);
     writeFloat64(bytes, value);
     return 9;
+
+    // TODO: encode float 32?
+    // is it possible to differentiate between float32 / float64 here?
+
+    // // float 32
+    // bytes.push(0xca);
+    // writeFloat32(bytes, value);
+    // return 5;
   }
 
   if (value >= 0) {
