@@ -18,7 +18,7 @@ class PrimitiveTypes extends Schema {
 
   @type("number") varint: number;
 
-  @type("string") string: string;
+  @type("string") str: string;
   @type("boolean") boolean: boolean;
 }
 
@@ -30,9 +30,12 @@ state.uint16 = 65535;
 state.int32 = -2147483648;
 state.uint32 = 4294967295;
 state.int64 = -9223372036854775808;
-state.uint64 = 18446744073709551615;
+state.uint64 = Number.MAX_SAFE_INTEGER; // 9007199254740991
 state.float32 = -3.40282347e+38;
 state.float64 = 1.7976931348623157e+308;
+state.varint = 2000;
+state.str = "Hello world";
+state.boolean = true;
 
 const bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
 

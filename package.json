@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "mocha --require ts-node/register test/**Test.ts",
+    "generate-csharp-test-cases": "schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --csharp --output ../colyseus-unity3d/Assets/Tests/Schema/PrimitiveTypes",
     "watch": "tsc -w",
     "prepublish": "tsc"
   },

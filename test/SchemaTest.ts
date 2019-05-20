@@ -69,6 +69,20 @@ describe("Schema", () => {
             assert.equal(decoded.uint32, 4294967290);
         });
 
+        it("uint64", () => {
+            class Data extends Schema { @type("uint64") uint64; }
+
+            let data = new Data();
+            data.uint64 = Number.MAX_SAFE_INTEGER;
+
+            const encoded = data.encode();
+            console.log(encoded)
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.equal(decoded.uint64, Number.MAX_SAFE_INTEGER);
+        });
+
         it("int8", () => {
             class Data extends Schema { @type("int8") int8; }
 
@@ -109,6 +123,17 @@ describe("Schema", () => {
             const decoded = new Data();
             decoded.decode(encoded);
             assert.equal(decoded.int32, -2147483648);
+        });
+
+        it("int64", () => {
+            class Data extends Schema { @type("int64") int64; }
+
+            let data = new Data();
+            data.int64 = -9223372036854775808;
+
+            const decoded = new Data();
+            decoded.decode(data.encode());
+            assert.equal(decoded.int64, -9223372036854775808);
         });
 
         it("float32", () => {
