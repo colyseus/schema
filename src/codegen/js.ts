@@ -58,15 +58,15 @@ ${klass.properties.
     }
 
     onChange (changes) {
-        // Implement your client-side onChange logic here.
+        // onChange logic here.
     }
 
     onAdd () {
-        // Implement your client-side onAdd logic here.
+        // onAdd logic here.
     }
 
     onRemove () {
-        // Implement your client-side onRemove logic here.
+        // onRemove logic here.
     }
 }
 ${klass.properties.map(prop => generatePropertyDeclaration(klass.name, prop)).join("\n")}

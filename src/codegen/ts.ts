@@ -48,18 +48,24 @@ ${allRefs.
     join("\n")}
 
 export class ${klass.name} extends ${klass.extends} {
-${klass.properties.map(prop => generateProperty(prop)).join("\n")}
+${klass.properties.map(prop => `    ${generateProperty(prop)}`).join("\n")}
+
+    constructor () {
+        super();
+
+        // initialization logic here.
+    }
 
     onChange (changes: DataChange[]) {
-        // Implement your client-side onChange logic here.
+        // onChange logic here.
     }
 
     onAdd () {
-        // Implement your client-side onAdd logic here.
+        // onAdd logic here.
     }
 
     onRemove () {
-        // Implement your client-side onRemove logic here.
+        // onRemove logic here.
     }
 
 }
@@ -106,5 +112,5 @@ function generateProperty(prop: Property) {
         typeArgs = `"${prop.type}"`;
     }
 
-    return `\t@type(${typeArgs}) public ${prop.name}: ${langType}${(initializer) ? ` = ${initializer}` : ""};`
+    return `@type(${typeArgs}) public ${prop.name}: ${langType}${(initializer) ? ` = ${initializer}` : ""};`
 }
