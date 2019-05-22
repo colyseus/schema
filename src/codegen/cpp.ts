@@ -1,4 +1,4 @@
-import { Class, Property, File, getCommentHeader } from "./types";
+import { Class, Property, File, getCommentHeader, getInheritanceTree } from "./types";
 
 const typeMaps = {
     "string": "string",
@@ -49,22 +49,6 @@ export function generate (classes: Class[], args: any): File[] {
     }));
 }
 
-function getInheritanceTree(klass: Class, allClasses: Class[], includeSelf: boolean = true) {
-    let currentClass = klass;
-    let inheritanceTree: Class[] = [];
-
-    if (includeSelf) {
-        inheritanceTree.push(currentClass);
-    }
-
-    while (currentClass.extends !== "Schema") {
-        currentClass = allClasses.find(klass => klass.name == currentClass.extends);
-        inheritanceTree.push(currentClass);
-    }
-
-    return inheritanceTree;
-}
-
 function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     const propertiesPerType: {[type: string]: Property[]} = {};
     const allRefs: Property[] = [];
@@ -84,9 +68,9 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     });
 
     const allProperties = getAllProperties(klass, allClasses);
-    const createInstanceMethod = (allRefs.length === 0) ? "" : 
+    const createInstanceMethod = (allRefs.length === 0) ? "" :
     `\tSchema* createInstance(std::type_index type) {
-\t\t${generateFieldIfElseChain(allRefs, 
+\t\t${generateFieldIfElseChain(allRefs,
     (property) => `type == typeid(${property.childType})`,
     (property) => `return new ${property.childType}();`,
     (property) => typeMaps[property.childType] === undefined)}
@@ -124,7 +108,7 @@ ${klass.properties.map(prop => generateProperty(prop)).join("\n")}
 \t}
 
 protected:
-${Object.keys(propertiesPerType).map(type => 
+${Object.keys(propertiesPerType).map(type =>
     generateGettersAndSetters(klass, type, propertiesPerType[type])).
     join("\n")}
 
@@ -191,7 +175,7 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
 
     return `\t${langType} ${methodName}(string field)
 \t{
-\t\t${generateFieldIfElseChain(properties, 
+\t\t${generateFieldIfElseChain(properties,
     (property) => `field == "${property.name}"`,
     (property) => `return ${typeCast} this->${property.name};`)}
 \t\treturn ${klass.extends}::${methodName}(field);

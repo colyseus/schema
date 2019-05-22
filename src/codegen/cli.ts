@@ -4,6 +4,14 @@ import argv from "./argv";
 import { parseFiles } from "./parser";
 import { File } from "./types";
 
+const supportedTargets = {
+    csharp: 'generate for C#/Unity',
+    cpp: 'generate for C++',
+    hx: 'generate for Haxe',
+    ts: 'generate for TypeScript',
+    js: 'generate for JavaScript'
+}
+
 function displayHelp() {
     console.log(`\nschema-codegen [path/to/Schema.ts]
 
@@ -12,9 +20,12 @@ Usage (C#/Unity)
 
 Valid options:
     --output: the output directory for generated client-side schema files
-    --csharp: generate files for C#/Unity
-    --cpp: generate files for C++
-    --hx: generate files for Haxe
+${Object.
+    keys(supportedTargets).
+    map((targetId) => (
+`    --${targetId}: ${supportedTargets[targetId]}`
+    )).
+    join("\n")}
 
 Optional:
     --namespace: generate namespace on output code
@@ -27,15 +38,11 @@ if (args.help) {
     displayHelp();
 }
 
-let generatorId: string;
-if (args.csharp) {
-    generatorId = 'csharp';
-
-} else if (args.haxe) {
-    generatorId = 'haxe';
-
-} else if (args.cpp) {
-    generatorId = 'cpp';
+let targetId: string;
+for (let target in supportedTargets) {
+    if (args[target]) {
+        targetId = target;
+    }
 }
 
 let decoratorName = "type";
@@ -50,7 +57,7 @@ if (!args.output) {
 
 let generator;
 try {
-    generator = require('./' + generatorId).generate;
+    generator = require('./' + targetId).generate;
 } catch (e) {
     console.error("You must provide a valid generator as argument, such as: --csharp, --haxe or --cpp");
     displayHelp();
