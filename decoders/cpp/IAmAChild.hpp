@@ -4,8 +4,8 @@
 // 
 // GENERATED USING @colyseus/schema 0.4.34
 // 
-#ifndef __SCHEMA_CODEGEN_ENTITY_H__
-#define __SCHEMA_CODEGEN_ENTITY_H__ 1
+#ifndef __SCHEMA_CODEGEN_IAMACHILD_H__
+#define __SCHEMA_CODEGEN_IAMACHILD_H__ 1
 
 #include "schema.h"
 #include <typeinfo>
@@ -16,12 +16,12 @@
 using namespace colyseus::schema;
 
 
-class Entity : public Schema {
+class IAmAChild : public Schema {
 public:
 	 varint_t x = 0;
 	 varint_t y = 0;
 
-	Entity() {
+	IAmAChild() {
 		this->_indexes = {{0, "x"}, {1, "y"}};
 		this->_types = {{0, "number"}, {1, "number"}};
 		this->_childPrimitiveTypes = {};

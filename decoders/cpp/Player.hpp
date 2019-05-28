@@ -2,7 +2,7 @@
 // THIS FILE HAS BEEN GENERATED AUTOMATICALLY
 // DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING
 // 
-// GENERATED USING @colyseus/schema 0.4.18
+// GENERATED USING @colyseus/schema 0.4.34
 // 
 #ifndef __SCHEMA_CODEGEN_PLAYER_H__
 #define __SCHEMA_CODEGEN_PLAYER_H__ 1
@@ -32,7 +32,7 @@ protected:
 	{
 		if (field == "name")
 		{
-			return  this->name;
+			return this->name;
 
 		}
 		return Entity::getString(field);
@@ -43,8 +43,10 @@ protected:
 		if (field == "name")
 		{
 			this->name = value;
+			return;
 
 		}
+		return Entity::setString(field, value);
 	}
 
 

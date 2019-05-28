@@ -6,7 +6,8 @@
 node_modules
 *.log
 
-decoders/cpp/usage
+decoders/cpp/usage*
+!decoders/cpp/usage*.*
 
 # Colyseus.Schema (C# decoder)
 decoders/csharp/Colyseus.Schema/bin/

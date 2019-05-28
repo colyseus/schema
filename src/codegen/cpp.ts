@@ -159,7 +159,8 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
     let langType = typeMaps[type];
     let typeCast = "";
 
-    const methodName = `get${capitalize(type)}`;
+    const getMethodName = `get${capitalize(type)}`;
+    const setMethodName = `set${capitalize(type)}`;
 
     if (type === "ref") {
         langType = "Schema*";
@@ -173,15 +174,15 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
         typeCast = `*(MapSchema<char*> *)&`;
     }
 
-    return `\t${langType} ${methodName}(string field)
+    return `\t${langType} ${getMethodName}(string field)
 \t{
 \t\t${generateFieldIfElseChain(properties,
     (property) => `field == "${property.name}"`,
-    (property) => `return ${typeCast} this->${property.name};`)}
-\t\treturn ${klass.extends}::${methodName}(field);
+    (property) => `return ${typeCast}this->${property.name};`)}
+\t\treturn ${klass.extends}::${getMethodName}(field);
 \t}
 
-\tvoid set${capitalize(type)}(string field, ${langType} value)
+\tvoid ${setMethodName}(string field, ${langType} value)
 \t{
 \t\t${generateFieldIfElseChain(properties,
     (property) => `field == "${property.name}"`,
@@ -190,6 +191,9 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
 
         if (type === "ref") {
             langType = `${property.childType}*`;
+            typeCast = (isSchemaType)
+                ? `(${property.childType}*)`
+                : `/* bug? */`;
 
         } else if (type === "array") {
             typeCast = (isSchemaType)
@@ -202,8 +206,9 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
                 : `*(MapSchema<${typeMaps[property.childType]}> *)&`;
         }
 
-        return `this->${property.name} = ${typeCast}value;`
+        return `this->${property.name} = ${typeCast}value;\n\t\t\treturn;`
     })}
+\t\treturn ${klass.extends}::${setMethodName}(field, value);
 \t}`;
 }
 

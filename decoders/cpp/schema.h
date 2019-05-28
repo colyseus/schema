@@ -64,15 +64,14 @@ string decodeString(const unsigned char bytes[], Iterator *it)
     it->offset += str_size;
 
     string value(str);
-    delete str;
-    //return new string(str);
+    delete[] str;
     return value;
 }
 
 
 int8_t decodeInt8(const unsigned char bytes[], Iterator *it)
 {
-    return (int8_t)bytes[it->offset++];
+    return (int8_t)(bytes[it->offset++] << 24 >> 24);
 }
 
 uint8_t decodeUint8(const unsigned char bytes[], Iterator *it)
@@ -381,7 +380,7 @@ class Schema
                 if (value.items.size() > newLength) {
                     for (int i = newLength; i < value.items.size(); i++)
                     {
-                        if (isSchemaType && ((Schema*)value.items[i])->onRemove) 
+                        if (isSchemaType && ((Schema*)value.items[i])->onRemove)
                         {
                             ((Schema *)value.items[i])->onRemove();
                         }
@@ -447,52 +446,26 @@ class Schema
                         }
 
                         ((Schema*) item)->decode(bytes, totalBytes, it);
-                        value[newIndex] = item;
+                        value.setAt(newIndex, item);
                     }
                     else
                     {
                         // FIXME: this is ugly and repetitive
                         string primitiveType = this->_childPrimitiveTypes.at(index);
 
-                        if (primitiveType == "string")       {
-                            (*(ArraySchema<string> *)&value).setAt(newIndex, decodeString(bytes, it));
-                        }
-                        else if (primitiveType == "number")  {
-                            (*(ArraySchema<varint_t> *)&value).setAt(newIndex, decodeNumber(bytes, it));
-                        }
-                        else if (primitiveType == "boolean") { 
-                            (*(ArraySchema<bool> *)&value).setAt(newIndex, decodeBoolean(bytes, it)); 
-                        }
-                        else if (primitiveType == "int8") { 
-                            (*(ArraySchema<int8_t> *)&value).setAt(newIndex, decodeInt8(bytes, it)); 
-                        }
-                        else if (primitiveType == "uint8") { 
-                            (*(ArraySchema<uint8_t> *)&value).setAt(newIndex, decodeUint8(bytes, it)); 
-                        }
-                        else if (primitiveType == "int16") { 
-                            (*(ArraySchema<int16_t> *)&value).setAt(newIndex, decodeInt16(bytes, it)); 
-                        }
-                        else if (primitiveType == "uint16") { 
-                            (*(ArraySchema<uint16_t> *)&value).setAt(newIndex, decodeUint16(bytes, it)); 
-                        }
-                        else if (primitiveType == "int32") { 
-                            (*(ArraySchema<int32_t> *)&value).setAt(newIndex, decodeInt32(bytes, it)); 
-                        }
-                        else if (primitiveType == "uint32") { 
-                            (*(ArraySchema<uint32_t> *)&value).setAt(newIndex, decodeUint32(bytes, it)); 
-                        }
-                        else if (primitiveType == "int64") { 
-                            (*(ArraySchema<int64_t> *)&value).setAt(newIndex, decodeInt64(bytes, it)); 
-                        }
-                        else if (primitiveType == "uint64") { 
-                            (*(ArraySchema<uint64_t> *)&value).setAt(newIndex, decodeUint64(bytes, it)); 
-                        }
-                        else if (primitiveType == "float32") { 
-                            (*(ArraySchema<float32_t> *)&value).setAt(newIndex, decodeFloat32(bytes, it)); 
-                        }
-                        else if (primitiveType == "float64") { 
-                            (*(ArraySchema<float64_t> *)&value).setAt(newIndex, decodeFloat64(bytes, it)); 
-                        }
+                        if (primitiveType == "string")       { (*(ArraySchema<string> *)&value).setAt(newIndex, decodeString(bytes, it)); }
+                        else if (primitiveType == "number")  { (*(ArraySchema<varint_t> *)&value).setAt(newIndex, decodeNumber(bytes, it)); }
+                        else if (primitiveType == "boolean") { (*(ArraySchema<bool> *)&value).setAt(newIndex, decodeBoolean(bytes, it)); }
+                        else if (primitiveType == "int8")    { (*(ArraySchema<int8_t> *)&value).setAt(newIndex, decodeInt8(bytes, it)); }
+                        else if (primitiveType == "uint8")   { (*(ArraySchema<uint8_t> *)&value).setAt(newIndex, decodeUint8(bytes, it)); }
+                        else if (primitiveType == "int16")   { (*(ArraySchema<int16_t> *)&value).setAt(newIndex, decodeInt16(bytes, it)); }
+                        else if (primitiveType == "uint16")  { (*(ArraySchema<uint16_t> *)&value).setAt(newIndex, decodeUint16(bytes, it)); }
+                        else if (primitiveType == "int32")   { (*(ArraySchema<int32_t> *)&value).setAt(newIndex, decodeInt32(bytes, it)); }
+                        else if (primitiveType == "uint32")  { (*(ArraySchema<uint32_t> *)&value).setAt(newIndex, decodeUint32(bytes, it)); }
+                        else if (primitiveType == "int64")   { (*(ArraySchema<int64_t> *)&value).setAt(newIndex, decodeInt64(bytes, it)); }
+                        else if (primitiveType == "uint64")  { (*(ArraySchema<uint64_t> *)&value).setAt(newIndex, decodeUint64(bytes, it)); }
+                        else if (primitiveType == "float32") { (*(ArraySchema<float32_t> *)&value).setAt(newIndex, decodeFloat32(bytes, it)); }
+                        else if (primitiveType == "float64") { (*(ArraySchema<float64_t> *)&value).setAt(newIndex, decodeFloat64(bytes, it)); }
                         else { throw std::invalid_argument("cannot decode invalid type: " + primitiveType); }
                     }
 
