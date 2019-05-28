@@ -655,7 +655,7 @@ class Schema
     // typed virtual setters by field
     virtual void setString(string field, string value) {}
     virtual void setNumber(string field, varint_t value) {}
-    virtual void setBool(string field, bool value) {}
+    virtual void setBoolean(string field, bool value) {}
     virtual void setInt8(string field, int8_t value) {}
     virtual void setUint8(string field, uint8_t value) {}
     virtual void setInt16(string field, int16_t value) {}
@@ -677,7 +677,7 @@ class Schema
     {
         if (type == "string")       { this->setString(field, decodeString(bytes, it)); }
         else if (type == "number")  { this->setNumber(field, decodeNumber(bytes, it)); }
-        else if (type == "boolean") { this->setBool(field, decodeBoolean(bytes, it)); }
+        else if (type == "boolean") { this->setBoolean(field, decodeBoolean(bytes, it)); }
         else if (type == "int8")    { this->setInt8(field, decodeInt8(bytes, it)); }
         else if (type == "uint8")   { this->setUint8(field, decodeUint8(bytes, it)); }
         else if (type == "int16")   { this->setInt16(field, decodeInt16(bytes, it)); }
