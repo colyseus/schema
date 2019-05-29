@@ -18,10 +18,10 @@ using namespace colyseus::schema;
 
 class MapSchemaTypes : public Schema {
 public:
-	 MapSchema<IAmAChild*> mapOfSchemas = MapSchema<IAmAChild*>();
-	 MapSchema<varint_t> mapOfNumbers = MapSchema<varint_t>();
-	 MapSchema<string> mapOfStrings = MapSchema<string>();
-	 MapSchema<int32_t> mapOfInt32 = MapSchema<int32_t>();
+	 MapSchema<IAmAChild*> *mapOfSchemas = new MapSchema<IAmAChild*>();
+	 MapSchema<varint_t> *mapOfNumbers = new MapSchema<varint_t>();
+	 MapSchema<string> *mapOfStrings = new MapSchema<string>();
+	 MapSchema<int32_t> *mapOfInt32 = new MapSchema<int32_t>();
 
 	MapSchemaTypes() {
 		this->_indexes = {{0, "mapOfSchemas"}, {1, "mapOfNumbers"}, {2, "mapOfStrings"}, {3, "mapOfInt32"}};
@@ -31,48 +31,48 @@ public:
 	}
 
 protected:
-	MapSchema<char*> getMap(string field)
+	MapSchema<char*> * getMap(string field)
 	{
 		if (field == "mapOfSchemas")
 		{
-			return *(MapSchema<char*> *)&this->mapOfSchemas;
+			return (MapSchema<char*> *)this->mapOfSchemas;
 
 		} else if (field == "mapOfNumbers")
 		{
-			return *(MapSchema<char*> *)&this->mapOfNumbers;
+			return (MapSchema<char*> *)this->mapOfNumbers;
 
 		} else if (field == "mapOfStrings")
 		{
-			return *(MapSchema<char*> *)&this->mapOfStrings;
+			return (MapSchema<char*> *)this->mapOfStrings;
 
 		} else if (field == "mapOfInt32")
 		{
-			return *(MapSchema<char*> *)&this->mapOfInt32;
+			return (MapSchema<char*> *)this->mapOfInt32;
 
 		}
 		return Schema::getMap(field);
 	}
 
-	void setMap(string field, MapSchema<char*> value)
+	void setMap(string field, MapSchema<char*> * value)
 	{
 		if (field == "mapOfSchemas")
 		{
-			this->mapOfSchemas = *(MapSchema<IAmAChild*> *)&value;
+			this->mapOfSchemas = (MapSchema<IAmAChild*> *)value;
 			return;
 
 		} else if (field == "mapOfNumbers")
 		{
-			this->mapOfNumbers = *(MapSchema<varint_t> *)&value;
+			this->mapOfNumbers = (MapSchema<varint_t> *)value;
 			return;
 
 		} else if (field == "mapOfStrings")
 		{
-			this->mapOfStrings = *(MapSchema<string> *)&value;
+			this->mapOfStrings = (MapSchema<string> *)value;
 			return;
 
 		} else if (field == "mapOfInt32")
 		{
-			this->mapOfInt32 = *(MapSchema<int32_t> *)&value;
+			this->mapOfInt32 = (MapSchema<int32_t> *)value;
 			return;
 
 		}

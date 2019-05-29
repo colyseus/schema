@@ -11,20 +11,22 @@ int main()
     p->decode(encodedState, sizeof(encodedState) / sizeof(unsigned char));
     std::cerr << "============ decoded ================================================================ \n";
 
-    std::cout << "state.mapOfNumbers['one'] = " << p->mapOfNumbers["one"] << std::endl;
-    std::cout << "state.mapOfNumbers['two'] = " << p->mapOfNumbers["two"] << std::endl;
-    std::cout << "state.mapOfNumbers['three'] = " << p->mapOfNumbers["three"] << std::endl;
+    std::cout << "state.mapOfNumbers.size() = " << p->mapOfNumbers->size() << std::endl;
+    std::cout << "state.mapOfNumbers['one'] = " << p->mapOfNumbers->at("one") << std::endl;
+    std::cout << "state.mapOfNumbers['two'] = " << p->mapOfNumbers->at("two") << std::endl;
+    std::cout << "state.mapOfNumbers['three'] = " << p->mapOfNumbers->at("three") << std::endl;
 
-    std::cout << "state.mapOfSchemas['one'].x = " << p->mapOfSchemas["one"]->x << std::endl;
-    std::cout << "state.mapOfSchemas['one'].y = " << p->mapOfSchemas["one"]->y << std::endl;
-    std::cout << "state.mapOfSchemas['two'].x = " << p->mapOfSchemas["two"]->x << std::endl;
-    std::cout << "state.mapOfSchemas['two'].y = " << p->mapOfSchemas["two"]->y << std::endl;
+    std::cout << "state.mapOfSchemas['one'].x = " << p->mapOfSchemas->at("one")->x << std::endl;
+    std::cout << "state.mapOfSchemas['one'].y = " << p->mapOfSchemas->at("one")->y << std::endl;
+    std::cout << "state.mapOfSchemas['two'].x = " << p->mapOfSchemas->at("two")->x << std::endl;
+    std::cout << "state.mapOfSchemas['two'].y = " << p->mapOfSchemas->at("two")->y << std::endl;
 
-    std::cout << "state.mapOfStrings['one'] = " << p->mapOfStrings["one"] << std::endl;
-    std::cout << "state.mapOfStrings['two'] = " << p->mapOfStrings["two"] << std::endl;
+    std::cout << "state.mapOfStrings.size() = " << p->mapOfStrings->size() << std::endl;
+    std::cout << "state.mapOfStrings['one'] = " << p->mapOfStrings->at("one") << std::endl;
+    std::cout << "state.mapOfStrings['two'] = " << p->mapOfStrings->at("two") << std::endl;
 
-    std::cout << "state.mapOfInt32['one'] = " << p->mapOfInt32["one"] << std::endl;
-    std::cout << "state.mapOfInt32['two'] = " << p->mapOfInt32["two"] << std::endl;
+    std::cout << "state.mapOfInt32['one'] = " << p->mapOfInt32->at("one") << std::endl;
+    std::cout << "state.mapOfInt32['two'] = " << p->mapOfInt32->at("two") << std::endl;
 
     std::cout << std::endl;
 

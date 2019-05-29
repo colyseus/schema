@@ -124,33 +124,35 @@ function generateProperty(prop: Property) {
     let property = "";
     let langType: string;
     let initializer = "";
+    let isPropPointer = "";
 
     if (prop.childType) {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
 
         if(prop.type === "ref") {
-            langType = `${prop.childType}*`;
+            langType = `${prop.childType}`;
             initializer = `new ${prop.childType}()`;
 
         } else if(prop.type === "array") {
             langType = (isUpcaseFirst)
                 ? `ArraySchema<${prop.childType}*>`
                 : `ArraySchema<${typeMaps[prop.childType]}>`;
-            initializer = `${langType}()`;
+            initializer = `new ${langType}()`;
 
         } else if(prop.type === "map") {
             langType = (isUpcaseFirst)
                 ? `MapSchema<${prop.childType}*>`
                 : `MapSchema<${typeMaps[prop.childType]}>`;
-            initializer = `${langType}()`;
+            initializer = `new ${langType}()`;
         }
+        isPropPointer = "*";
 
     } else {
         langType = typeMaps[prop.type];
         initializer = typeInitializer[prop.type];
     }
 
-    property += ` ${langType} ${prop.name}`;
+    property += ` ${langType} ${isPropPointer}${prop.name}`;
 
     return `\t${property} = ${initializer};`
 }
@@ -166,12 +168,12 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
         langType = "Schema*";
 
     } else if (type === "array") {
-        langType = `ArraySchema<char*>`;
-        typeCast = `*(ArraySchema<char*> *)&`;
+        langType = `ArraySchema<char*> *`;
+        typeCast = `(ArraySchema<char*> *)`;
 
     } else if (type === "map") {
-        langType = `MapSchema<char*>`;
-        typeCast = `*(MapSchema<char*> *)&`;
+        langType = `MapSchema<char*> *`;
+        typeCast = `(MapSchema<char*> *)`;
     }
 
     return `\t${langType} ${getMethodName}(string field)
@@ -197,13 +199,13 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
 
         } else if (type === "array") {
             typeCast = (isSchemaType)
-                ? `*(ArraySchema<${property.childType}*> *)&`
-                : `*(ArraySchema<${typeMaps[property.childType]}> *)&`;
+                ? `(ArraySchema<${property.childType}*> *)`
+                : `(ArraySchema<${typeMaps[property.childType]}> *)`;
 
         } else if (type === "map") {
             typeCast = (isSchemaType)
-                ? `*(MapSchema<${property.childType}*> *)&`
-                : `*(MapSchema<${typeMaps[property.childType]}> *)&`;
+                ? `(MapSchema<${property.childType}*> *)`
+                : `(MapSchema<${typeMaps[property.childType]}> *)`;
         }
 
         return `this->${property.name} = ${typeCast}value;\n\t\t\treturn;`

@@ -11,27 +11,27 @@ int main()
     p->decode(encodedState, sizeof(encodedState) / sizeof(unsigned char));
     std::cerr << "============ decoded ================================================================ \n";
 
-    std::cout << "state.arrayOfNumbers.size() " << p->arrayOfNumbers.size() << std::endl;
-    std::cout << "state.arrayOfNumbers[0] " << p->arrayOfNumbers[0] << std::endl;
-    std::cout << "state.arrayOfNumbers[1] " << p->arrayOfNumbers[1] << std::endl;
-    std::cout << "state.arrayOfNumbers[2] " << p->arrayOfNumbers[2] << std::endl;
-    std::cout << "state.arrayOfNumbers[3] " << p->arrayOfNumbers[3] << std::endl;
+    std::cout << "state.arrayOfNumbers.size() " << p->arrayOfNumbers->size() << std::endl;
+    std::cout << "state.arrayOfNumbers[0] " << p->arrayOfNumbers->at(0) << std::endl;
+    std::cout << "state.arrayOfNumbers[1] " << p->arrayOfNumbers->at(1) << std::endl;
+    std::cout << "state.arrayOfNumbers[2] " << p->arrayOfNumbers->at(2) << std::endl;
+    std::cout << "state.arrayOfNumbers[3] " << p->arrayOfNumbers->at(3) << std::endl;
 
-    std::cout << "state.arrayOfSchemas.size() " << p->arrayOfSchemas.size() << std::endl;
-    std::cout << "state.arrayOfSchemas[0].x " << p->arrayOfSchemas[0]->x << std::endl;
-    std::cout << "state.arrayOfSchemas[0].y " << p->arrayOfSchemas[0]->y << std::endl;
-    std::cout << "state.arrayOfSchemas[1].x " << p->arrayOfSchemas[1]->x << std::endl;
-    std::cout << "state.arrayOfSchemas[1].y " << p->arrayOfSchemas[1]->y << std::endl;
+    std::cout << "state.arrayOfSchemas.size() " << p->arrayOfSchemas->size() << std::endl;
+    std::cout << "state.arrayOfSchemas[0].x " << p->arrayOfSchemas->at(0)->x << std::endl;
+    std::cout << "state.arrayOfSchemas[0].y " << p->arrayOfSchemas->at(0)->y << std::endl;
+    std::cout << "state.arrayOfSchemas[1].x " << p->arrayOfSchemas->at(1)->x << std::endl;
+    std::cout << "state.arrayOfSchemas[1].y " << p->arrayOfSchemas->at(1)->y << std::endl;
 
-    std::cout << "state.arrayOfStrings.size() " << p->arrayOfStrings.size() << std::endl;
-    std::cout << "state.arrayOfStrings[0] " << p->arrayOfStrings[0] << std::endl;
-    std::cout << "state.arrayOfStrings[1] " << p->arrayOfStrings[1] << std::endl;
-    std::cout << "state.arrayOfStrings[2] " << p->arrayOfStrings[2] << std::endl;
+    std::cout << "state.arrayOfStrings.size() " << p->arrayOfStrings->size() << std::endl;
+    std::cout << "state.arrayOfStrings[0] " << p->arrayOfStrings->at(0) << std::endl;
+    std::cout << "state.arrayOfStrings[1] " << p->arrayOfStrings->at(1) << std::endl;
+    std::cout << "state.arrayOfStrings[2] " << p->arrayOfStrings->at(2) << std::endl;
 
-    std::cout << "state.arrayOfInt32.size() " << p->arrayOfInt32.size() << std::endl;
-    std::cout << "state.arrayOfInt32[0] " << p->arrayOfInt32[0] << std::endl;
-    std::cout << "state.arrayOfInt32[1] " << p->arrayOfInt32[1] << std::endl;
-    std::cout << "state.arrayOfInt32[2] " << p->arrayOfInt32[2] << std::endl;
+    std::cout << "state.arrayOfInt32.size() " << p->arrayOfInt32->size() << std::endl;
+    std::cout << "state.arrayOfInt32[0] " << p->arrayOfInt32->at(0) << std::endl;
+    std::cout << "state.arrayOfInt32[1] " << p->arrayOfInt32->at(1) << std::endl;
+    std::cout << "state.arrayOfInt32[2] " << p->arrayOfInt32->at(2) << std::endl;
 
     std::cout << std::endl;
 
