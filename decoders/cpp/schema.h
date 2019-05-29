@@ -316,8 +316,12 @@ class Schema
         array.setAt(index, decoder(bytes, it));
     }
 
-    void decode(const unsigned char bytes[], int totalBytes, Iterator *it = new Iterator())
+    void decode(const unsigned char bytes[], int totalBytes, Iterator *it = nullptr) //new Iterator())
     {
+        bool doesOwnIterator = it == nullptr;
+        if (doesOwnIterator)
+            it = new Iterator();
+
         std::vector<DataChange> changes;
 
         while (it->offset < totalBytes)
@@ -626,6 +630,9 @@ class Schema
         {
             this->onChange(this, changes);
         }
+
+        if (doesOwnIterator)
+            delete it;
     }
 
   protected:
