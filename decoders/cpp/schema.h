@@ -234,7 +234,9 @@ class ArraySchema
 {
   public:
     ArraySchema() {}
-    ~ArraySchema() {}
+    ~ArraySchema() {
+        std::cout << "ArraySchema destructor!" << std::endl;
+    }
 
     std::vector<T> items;
 
@@ -245,6 +247,16 @@ class ArraySchema
     T &operator[](const int &index)
     {
         return items[index];
+    }
+
+    ArraySchema<T> clone()
+    {
+        ArraySchema<T> cloned;
+        cloned.items = this->items;
+        cloned.onAdd = this->onAdd;
+        cloned.onRemove = this->onRemove;
+        cloned.onChange = this->onChange;
+        return cloned;
     }
 
     void setAt(int index, const T& value) {
@@ -285,6 +297,16 @@ class MapSchema
         return items[index];
     }
 
+    MapSchema<T> clone()
+    {
+        MapSchema<T> cloned;
+        cloned.items = this->items;
+        cloned.onAdd = this->onAdd;
+        cloned.onRemove = this->onRemove;
+        cloned.onChange = this->onChange;
+        return cloned;
+    }
+
     T at(string key)
     {
         return items.at(key);
@@ -319,8 +341,7 @@ class Schema
     void decode(const unsigned char bytes[], int totalBytes, Iterator *it = nullptr) //new Iterator())
     {
         bool doesOwnIterator = it == nullptr;
-        if (doesOwnIterator)
-            it = new Iterator();
+        if (doesOwnIterator) it = new Iterator();
 
         std::vector<DataChange> changes;
 
@@ -368,7 +389,7 @@ class Schema
             else if (type == "array")
             {
                 ArraySchema<char *> valueRef = this->getArray(field);
-                ArraySchema<char *> value = valueRef;
+                ArraySchema<char *> value = valueRef.clone();
 
                 int newLength = decodeNumber(bytes, it);
                 int numChanges = decodeNumber(bytes, it);
@@ -488,11 +509,12 @@ class Schema
                 }
 
                 this->setArray(field, value);
+                std::cout << "array set successfully! size => " << value.size() << std::endl;
             }
             else if (type == "map")
             {
                 MapSchema<char *> valueRef = this->getMap(field);
-                MapSchema<char *> value = valueRef;
+                MapSchema<char *> value = valueRef.clone();
 
                 int length = (int) decodeNumber(bytes, it);
                 hasChange = (length > 0);
@@ -614,6 +636,7 @@ class Schema
                 this->decodePrimitiveType(field, type, bytes, it);
                 hasChange = true;
             }
+            std::cout << "stepped out." << std::endl;
 
             if (hasChange && this->onChange)
             {
@@ -631,8 +654,7 @@ class Schema
             this->onChange(this, changes);
         }
 
-        if (doesOwnIterator)
-            delete it;
+        if (doesOwnIterator) delete it;
     }
 
   protected:
