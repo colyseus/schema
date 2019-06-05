@@ -244,10 +244,8 @@ class ArraySchema
     std::function<void(ArraySchema<T>*, T, int)> onChange;
     std::function<void(ArraySchema<T>*, T, int)> onRemove;
 
-    T &operator[](const int &index)
-    {
-        return items[index];
-    }
+    T &operator[](const int &index) { return items[index]; }
+    T at(const int &index) { return items[index]; }
 
     ArraySchema<T> clone()
     {
@@ -388,8 +386,8 @@ class Schema
             }
             else if (type == "array")
             {
-                ArraySchema<char *> valueRef = this->getArray(field);
-                ArraySchema<char *> value = valueRef.clone();
+                ArraySchema<char *> *valueRef = this->getArray(field);
+                ArraySchema<char *> *value = valueRef; // valueRef->clone();
 
                 int newLength = decodeNumber(bytes, it);
                 int numChanges = decodeNumber(bytes, it);
@@ -402,19 +400,19 @@ class Schema
                 bool hasIndexChange = false;
 
                 // ensure current array has the same length as encoded one
-                if (value.items.size() > newLength) {
-                    for (int i = newLength; i < value.items.size(); i++)
+                if (value->items.size() > newLength) {
+                    for (int i = newLength; i < value->items.size(); i++)
                     {
-                        if (isSchemaType && ((Schema*)value.items[i])->onRemove)
+                        if (isSchemaType && ((Schema*)value->items[i])->onRemove)
                         {
-                            ((Schema *)value.items[i])->onRemove();
+                            ((Schema *)value->items[i])->onRemove();
                         }
-                        if (valueRef.onRemove)
+                        if (valueRef->onRemove)
                         {
-                            valueRef.onRemove(&valueRef, value.items[i], i);
+                            valueRef->onRemove(valueRef, value->items[i], i);
                         }
                     }
-                    value.items.resize(newLength);
+                    value->items.resize(newLength);
                 }
 
                 for (int i = 0; i < numChanges; i++)
@@ -434,7 +432,7 @@ class Schema
 
                     }
 
-                    bool isNew = (!hasIndexChange && !value.has(newIndex)) || (hasIndexChange && indexChangedFrom == -1);
+                    bool isNew = (!hasIndexChange && !value->has(newIndex)) || (hasIndexChange && indexChangedFrom == -1);
 
                     if (isSchemaType)
                     {
@@ -446,11 +444,11 @@ class Schema
                         }
                         else if (indexChangedFrom != -1)
                         {
-                            item = (char*) valueRef[indexChangedFrom];
+                            item = (char*) valueRef->at(indexChangedFrom);
                         }
                         else
                         {
-                            item = (char *)valueRef[newIndex];
+                            item = (char *) valueRef->at(newIndex);
                         }
 
                         if (!item)
@@ -463,58 +461,58 @@ class Schema
                         {
                             it->offset++;
 
-                            if (valueRef.onRemove) {
-                                valueRef.onRemove(&valueRef, item, newIndex);
+                            if (valueRef->onRemove) {
+                                valueRef->onRemove(valueRef, item, newIndex);
                             }
 
                             continue;
                         }
 
                         ((Schema*) item)->decode(bytes, totalBytes, it);
-                        value.setAt(newIndex, item);
+                        value->setAt(newIndex, item);
                     }
                     else
                     {
                         // FIXME: this is ugly and repetitive
                         string primitiveType = this->_childPrimitiveTypes.at(index);
 
-                        if (primitiveType == "string")       { (*(ArraySchema<string> *)&value).setAt(newIndex, decodeString(bytes, it)); }
-                        else if (primitiveType == "number")  { (*(ArraySchema<varint_t> *)&value).setAt(newIndex, decodeNumber(bytes, it)); }
-                        else if (primitiveType == "boolean") { (*(ArraySchema<bool> *)&value).setAt(newIndex, decodeBoolean(bytes, it)); }
-                        else if (primitiveType == "int8")    { (*(ArraySchema<int8_t> *)&value).setAt(newIndex, decodeInt8(bytes, it)); }
-                        else if (primitiveType == "uint8")   { (*(ArraySchema<uint8_t> *)&value).setAt(newIndex, decodeUint8(bytes, it)); }
-                        else if (primitiveType == "int16")   { (*(ArraySchema<int16_t> *)&value).setAt(newIndex, decodeInt16(bytes, it)); }
-                        else if (primitiveType == "uint16")  { (*(ArraySchema<uint16_t> *)&value).setAt(newIndex, decodeUint16(bytes, it)); }
-                        else if (primitiveType == "int32")   { (*(ArraySchema<int32_t> *)&value).setAt(newIndex, decodeInt32(bytes, it)); }
-                        else if (primitiveType == "uint32")  { (*(ArraySchema<uint32_t> *)&value).setAt(newIndex, decodeUint32(bytes, it)); }
-                        else if (primitiveType == "int64")   { (*(ArraySchema<int64_t> *)&value).setAt(newIndex, decodeInt64(bytes, it)); }
-                        else if (primitiveType == "uint64")  { (*(ArraySchema<uint64_t> *)&value).setAt(newIndex, decodeUint64(bytes, it)); }
-                        else if (primitiveType == "float32") { (*(ArraySchema<float32_t> *)&value).setAt(newIndex, decodeFloat32(bytes, it)); }
-                        else if (primitiveType == "float64") { (*(ArraySchema<float64_t> *)&value).setAt(newIndex, decodeFloat64(bytes, it)); }
+                        if (primitiveType == "string")       { ((ArraySchema<string> *)value)->setAt(newIndex, decodeString(bytes, it)); }
+                        else if (primitiveType == "number")  { ((ArraySchema<varint_t> *)value)->setAt(newIndex, decodeNumber(bytes, it)); }
+                        else if (primitiveType == "boolean") { ((ArraySchema<bool> *)value)->setAt(newIndex, decodeBoolean(bytes, it)); }
+                        else if (primitiveType == "int8")    { ((ArraySchema<int8_t> *)value)->setAt(newIndex, decodeInt8(bytes, it)); }
+                        else if (primitiveType == "uint8")   { ((ArraySchema<uint8_t> *)value)->setAt(newIndex, decodeUint8(bytes, it)); }
+                        else if (primitiveType == "int16")   { ((ArraySchema<int16_t> *)value)->setAt(newIndex, decodeInt16(bytes, it)); }
+                        else if (primitiveType == "uint16")  { ((ArraySchema<uint16_t> *)value)->setAt(newIndex, decodeUint16(bytes, it)); }
+                        else if (primitiveType == "int32")   { ((ArraySchema<int32_t> *)value)->setAt(newIndex, decodeInt32(bytes, it)); }
+                        else if (primitiveType == "uint32")  { ((ArraySchema<uint32_t> *)value)->setAt(newIndex, decodeUint32(bytes, it)); }
+                        else if (primitiveType == "int64")   { ((ArraySchema<int64_t> *)value)->setAt(newIndex, decodeInt64(bytes, it)); }
+                        else if (primitiveType == "uint64")  { ((ArraySchema<uint64_t> *)value)->setAt(newIndex, decodeUint64(bytes, it)); }
+                        else if (primitiveType == "float32") { ((ArraySchema<float32_t> *)value)->setAt(newIndex, decodeFloat32(bytes, it)); }
+                        else if (primitiveType == "float64") { ((ArraySchema<float64_t> *)value)->setAt(newIndex, decodeFloat64(bytes, it)); }
                         else { throw std::invalid_argument("cannot decode invalid type: " + primitiveType); }
                     }
 
                     if (isNew)
                     {
-                        if (valueRef.onAdd)
+                        if (valueRef->onAdd)
                         {
-                            valueRef.onAdd(&valueRef, value.items.at(newIndex), newIndex);
+                            valueRef->onAdd(valueRef, value->items.at(newIndex), newIndex);
                         }
                     }
-                    else if (valueRef.onChange)
+                    else if (valueRef->onChange)
                     {
-                        valueRef.onChange(&valueRef, value.items.at(newIndex), newIndex);
+                        valueRef->onChange(valueRef, value->items.at(newIndex), newIndex);
                     }
 
                 }
 
                 this->setArray(field, value);
-                std::cout << "array set successfully! size => " << value.size() << std::endl;
+                std::cout << "array set successfully! size => " << value->size() << std::endl;
             }
             else if (type == "map")
             {
-                MapSchema<char *> valueRef = this->getMap(field);
-                MapSchema<char *> value = valueRef.clone();
+                MapSchema<char *>* valueRef = this->getMap(field);
+                MapSchema<char *>* value = valueRef; //valueRef.clone();
 
                 int length = (int) decodeNumber(bytes, it);
                 hasChange = (length > 0);
@@ -524,7 +522,7 @@ class Schema
 
                 // List of previous keys
                 std::vector<string> previousKeys;
-                for (std::map<string, char *>::iterator it = valueRef.items.begin(); it != valueRef.items.end(); ++it)
+                for (std::map<string, char *>::iterator it = valueRef->items.begin(); it != valueRef->items.end(); ++it)
                 {
                     previousKeys.push_back(it->first);
                 }
@@ -550,7 +548,7 @@ class Schema
 
                     char* item = nullptr;
                     bool foundItem = false;
-                    bool isNew = (!hasIndexChange && !valueRef.has(newKey)) || (hasIndexChange && previousKey == "" && hasMapIndex);
+                    bool isNew = (!hasIndexChange && !valueRef->has(newKey)) || (hasIndexChange && previousKey == "" && hasMapIndex);
 
                     if (isNew && isSchemaType)
                     {
@@ -559,12 +557,12 @@ class Schema
 
                     } else if (previousKey != "")
                     {
-                        item = valueRef.at(previousKey);
+                        item = valueRef->at(previousKey);
 
                     } else
                     {
-                        if (valueRef.has(newKey)) {
-                            item = valueRef.at(newKey);
+                        if (valueRef->has(newKey)) {
+                            item = valueRef->at(newKey);
                         }
                         else {
                             foundItem = false;
@@ -579,12 +577,12 @@ class Schema
                             ((Schema *)item)->onRemove();
                         }
 
-                        if (valueRef.onRemove) {
-                            valueRef.onRemove(&valueRef, item, newKey);
+                        if (valueRef->onRemove) {
+                            valueRef->onRemove(valueRef, item, newKey);
                         }
 
-                        delete value.items[newKey];
-                        value.items[newKey] = nullptr;
+                        delete value->items[newKey];
+                        value->items[newKey] = nullptr;
                         continue;
 
                     } else if (!isSchemaType)
@@ -592,19 +590,19 @@ class Schema
                         string primitiveType = this->_childPrimitiveTypes.at(index);
 
                         // FIXME: this is ugly and repetitive
-                        if (primitiveType == "string")       {(*(MapSchema<string> *)&value).items[newKey] = decodeString(bytes, it); }
-                        else if (primitiveType == "number")  {(*(MapSchema<varint_t> *)&value).items[newKey] = decodeNumber(bytes, it); }
-                        else if (primitiveType == "boolean") { (*(MapSchema<bool> *)&value).items[newKey] = decodeBoolean(bytes, it) ; }
-                        else if (primitiveType == "int8")    { (*(MapSchema<int8_t> *)&value).items[newKey] = decodeInt8(bytes, it) ; }
-                        else if (primitiveType == "uint8")   { (*(MapSchema<uint8_t> *)&value).items[newKey] = decodeUint8(bytes, it) ; }
-                        else if (primitiveType == "int16")   { (*(MapSchema<int16_t> *)&value).items[newKey] = decodeInt16(bytes, it) ; }
-                        else if (primitiveType == "uint16")  { (*(MapSchema<uint16_t> *)&value).items[newKey] = decodeUint16(bytes, it) ; }
-                        else if (primitiveType == "int32")   { (*(MapSchema<int32_t> *)&value).items[newKey] = decodeInt32(bytes, it) ; }
-                        else if (primitiveType == "uint32")  { (*(MapSchema<uint32_t> *)&value).items[newKey] = decodeUint32(bytes, it) ; }
-                        else if (primitiveType == "int64")   { (*(MapSchema<int64_t> *)&value).items[newKey] = decodeInt64(bytes, it) ; }
-                        else if (primitiveType == "uint64")  { (*(MapSchema<uint64_t> *)&value).items[newKey] = decodeUint64(bytes, it) ; }
-                        else if (primitiveType == "float32") { (*(MapSchema<float32_t> *)&value).items[newKey] = decodeFloat32(bytes, it) ; }
-                        else if (primitiveType == "float64") { (*(MapSchema<float64_t> *)&value).items[newKey] = decodeFloat64(bytes, it) ; }
+                        if (primitiveType == "string")       {((MapSchema<string> *)value)->items[newKey] = decodeString(bytes, it); }
+                        else if (primitiveType == "number")  {((MapSchema<varint_t> *)value)->items[newKey] = decodeNumber(bytes, it); }
+                        else if (primitiveType == "boolean") { ((MapSchema<bool> *)value)->items[newKey] = decodeBoolean(bytes, it) ; }
+                        else if (primitiveType == "int8")    { ((MapSchema<int8_t> *)value)->items[newKey] = decodeInt8(bytes, it) ; }
+                        else if (primitiveType == "uint8")   { ((MapSchema<uint8_t> *)value)->items[newKey] = decodeUint8(bytes, it) ; }
+                        else if (primitiveType == "int16")   { ((MapSchema<int16_t> *)value)->items[newKey] = decodeInt16(bytes, it) ; }
+                        else if (primitiveType == "uint16")  { ((MapSchema<uint16_t> *)value)->items[newKey] = decodeUint16(bytes, it) ; }
+                        else if (primitiveType == "int32")   { ((MapSchema<int32_t> *)value)->items[newKey] = decodeInt32(bytes, it) ; }
+                        else if (primitiveType == "uint32")  { ((MapSchema<uint32_t> *)value)->items[newKey] = decodeUint32(bytes, it) ; }
+                        else if (primitiveType == "int64")   { ((MapSchema<int64_t> *)value)->items[newKey] = decodeInt64(bytes, it) ; }
+                        else if (primitiveType == "uint64")  { ((MapSchema<uint64_t> *)value)->items[newKey] = decodeUint64(bytes, it) ; }
+                        else if (primitiveType == "float32") { ((MapSchema<float32_t> *)value)->items[newKey] = decodeFloat32(bytes, it) ; }
+                        else if (primitiveType == "float64") { ((MapSchema<float64_t> *)value)->items[newKey] = decodeFloat64(bytes, it) ; }
                         else { throw std::invalid_argument("cannot decode invalid type: " + primitiveType); }
 
 
@@ -612,19 +610,19 @@ class Schema
                     else
                     {
                         ((Schema*) item)->decode(bytes, totalBytes, it);
-                        value.items[newKey] = item;
+                        value->items[newKey] = item;
                     }
 
                     if (isNew)
                     {
-                        if (valueRef.onAdd)
+                        if (valueRef->onAdd)
                         {
-                            valueRef.onAdd(&valueRef, item, newKey);
+                            valueRef->onAdd(valueRef, item, newKey);
                         }
                     }
-                    else if (valueRef.onChange)
+                    else if (valueRef->onChange)
                     {
-                        valueRef.onChange(&valueRef, item, newKey);
+                        valueRef->onChange(valueRef, item, newKey);
                     }
                 }
 
@@ -678,8 +676,8 @@ class Schema
     virtual float32_t getFloat32(string field) { return 0; }
     virtual float64_t getFloat64(string field) { return 0; }
     virtual Schema* getRef(string field) { return nullptr; }
-    virtual ArraySchema<char*> getArray(string field) { return ArraySchema<char*>(); }
-    virtual MapSchema<char*> getMap(string field) { return MapSchema<char*>(); }
+    virtual ArraySchema<char *> *getArray(string field) { return new ArraySchema<char *>(); }
+    virtual MapSchema<char *> *getMap(string field) { return new MapSchema<char *>(); }
 
     // typed virtual setters by field
     virtual void setString(string field, string value) {}
@@ -696,8 +694,8 @@ class Schema
     virtual void setFloat32(string field, float32_t value) {}
     virtual void setFloat64(string field, float64_t value) {}
     virtual void setRef(string field, Schema* value) {}
-    virtual void setArray(string field, ArraySchema<char*>) {}
-    virtual void setMap(string field, MapSchema<char*>) {}
+    virtual void setArray(string field, ArraySchema<char*>*) {}
+    virtual void setMap(string field, MapSchema<char*>*) {}
 
     virtual Schema* createInstance(std::type_index type) { return nullptr; }
 

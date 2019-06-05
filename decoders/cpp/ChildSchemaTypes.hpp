@@ -18,8 +18,8 @@ using namespace colyseus::schema;
 
 class ChildSchemaTypes : public Schema {
 public:
-	 IAmAChild* child = new IAmAChild();
-	 IAmAChild* secondChild = new IAmAChild();
+	 IAmAChild *child = new IAmAChild();
+	 IAmAChild *secondChild = new IAmAChild();
 
 	ChildSchemaTypes() {
 		this->_indexes = {{0, "child"}, {1, "secondChild"}};
@@ -33,11 +33,11 @@ protected:
 	{
 		if (field == "child")
 		{
-			return  this->child;
+			return this->child;
 
 		} else if (field == "secondChild")
 		{
-			return  this->secondChild;
+			return this->secondChild;
 
 		}
 		return Schema::getRef(field);
@@ -48,12 +48,15 @@ protected:
 		if (field == "child")
 		{
 			this->child = (IAmAChild*)value;
+			return;
 
 		} else if (field == "secondChild")
 		{
 			this->secondChild = (IAmAChild*)value;
+			return;
 
 		}
+		return Schema::setRef(field, value);
 	}
 
 	Schema* createInstance(std::type_index type) {

@@ -20,10 +20,10 @@ using namespace colyseus::schema;
 
 class InheritedTypes : public Schema {
 public:
-	 Entity* entity = new Entity();
-	 Player* player = new Player();
-	 Bot* bot = new Bot();
-	 Entity* any = new Entity();
+	 Entity *entity = new Entity();
+	 Player *player = new Player();
+	 Bot *bot = new Bot();
+	 Entity *any = new Entity();
 
 	InheritedTypes() {
 		this->_indexes = {{0, "entity"}, {1, "player"}, {2, "bot"}, {3, "any"}};

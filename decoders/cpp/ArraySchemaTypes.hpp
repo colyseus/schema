@@ -18,10 +18,10 @@ using namespace colyseus::schema;
 
 class ArraySchemaTypes : public Schema {
 public:
-	 ArraySchema<IAmAChild*> arrayOfSchemas = ArraySchema<IAmAChild*>();
-	 ArraySchema<varint_t> arrayOfNumbers = ArraySchema<varint_t>();
-	 ArraySchema<string> arrayOfStrings = ArraySchema<string>();
-	 ArraySchema<int32_t> arrayOfInt32 = ArraySchema<int32_t>();
+	 ArraySchema<IAmAChild*> *arrayOfSchemas = new ArraySchema<IAmAChild*>();
+	 ArraySchema<varint_t> *arrayOfNumbers = new ArraySchema<varint_t>();
+	 ArraySchema<string> *arrayOfStrings = new ArraySchema<string>();
+	 ArraySchema<int32_t> *arrayOfInt32 = new ArraySchema<int32_t>();
 
 	ArraySchemaTypes() {
 		this->_indexes = {{0, "arrayOfSchemas"}, {1, "arrayOfNumbers"}, {2, "arrayOfStrings"}, {3, "arrayOfInt32"}};
@@ -31,48 +31,48 @@ public:
 	}
 
 protected:
-	ArraySchema<char*> getArray(string field)
+	ArraySchema<char*> * getArray(string field)
 	{
 		if (field == "arrayOfSchemas")
 		{
-			return *(ArraySchema<char*> *)&this->arrayOfSchemas;
+			return (ArraySchema<char*> *)this->arrayOfSchemas;
 
 		} else if (field == "arrayOfNumbers")
 		{
-			return *(ArraySchema<char*> *)&this->arrayOfNumbers;
+			return (ArraySchema<char*> *)this->arrayOfNumbers;
 
 		} else if (field == "arrayOfStrings")
 		{
-			return *(ArraySchema<char*> *)&this->arrayOfStrings;
+			return (ArraySchema<char*> *)this->arrayOfStrings;
 
 		} else if (field == "arrayOfInt32")
 		{
-			return *(ArraySchema<char*> *)&this->arrayOfInt32;
+			return (ArraySchema<char*> *)this->arrayOfInt32;
 
 		}
 		return Schema::getArray(field);
 	}
 
-	void setArray(string field, ArraySchema<char*> value)
+	void setArray(string field, ArraySchema<char*> * value)
 	{
 		if (field == "arrayOfSchemas")
 		{
-			this->arrayOfSchemas = *(ArraySchema<IAmAChild*> *)&value;
+			this->arrayOfSchemas = (ArraySchema<IAmAChild*> *)value;
 			return;
 
 		} else if (field == "arrayOfNumbers")
 		{
-			this->arrayOfNumbers = *(ArraySchema<varint_t> *)&value;
+			this->arrayOfNumbers = (ArraySchema<varint_t> *)value;
 			return;
 
 		} else if (field == "arrayOfStrings")
 		{
-			this->arrayOfStrings = *(ArraySchema<string> *)&value;
+			this->arrayOfStrings = (ArraySchema<string> *)value;
 			return;
 
 		} else if (field == "arrayOfInt32")
 		{
-			this->arrayOfInt32 = *(ArraySchema<int32_t> *)&value;
+			this->arrayOfInt32 = (ArraySchema<int32_t> *)value;
 			return;
 
 		}
