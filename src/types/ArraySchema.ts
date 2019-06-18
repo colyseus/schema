@@ -61,6 +61,16 @@ export class ArraySchema<T=any> extends Array<T> {
         return this;
     }
 
+    splice(start: number, deleteCount?: number, ...insert: T[]) {
+        const removedItems = Array.prototype.splice.apply(this, arguments);
+
+        removedItems.map(removedItem => {
+            delete (removedItem as any).$changes.parent;
+        });
+
+        return removedItems;
+    }
+
     onAdd: (item: T, index: number) => void;
     onRemove: (item: T, index: number) => void;
     onChange: (item: T, index: number) => void;

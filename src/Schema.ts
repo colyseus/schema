@@ -193,7 +193,7 @@ export abstract class Schema {
                     // decrease removed items from number of changes.
                     // no need to iterate through them, as they're going to be removed.
 
-                    value.splice(newLength).forEach((itemRemoved, i) => {
+                    Array.prototype.splice.call(value, newLength).forEach((itemRemoved, i) => {
                         if (itemRemoved && itemRemoved.onRemove) {
                             itemRemoved.onRemove();
                         }
