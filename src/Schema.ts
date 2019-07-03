@@ -532,10 +532,8 @@ export abstract class Schema {
                     }
 
                     if (encodeAll) {
-                        if (item !== undefined) {
-                            mapItemIndex = undefined;
-
-                        } else {
+                        mapItemIndex = undefined;
+                        if (item === undefined) {
                             // previously deleted items are skipped during `encodeAll`
                             continue;
                         }
