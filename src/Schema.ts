@@ -101,6 +101,10 @@ export abstract class Schema {
     static _filters: {[field: string]: FilterCallback};
     static _descriptors: PropertyDescriptorMap & ThisType<any>;
 
+    static onError(e) {
+        console.error(e);
+    }
+
     protected $changes: ChangeTree;
 
     public onChange?(changes: DataChange[]);
@@ -195,11 +199,19 @@ export abstract class Schema {
 
                     Array.prototype.splice.call(value, newLength).forEach((itemRemoved, i) => {
                         if (itemRemoved && itemRemoved.onRemove) {
-                            itemRemoved.onRemove();
+                            try {
+                                itemRemoved.onRemove();
+                            } catch (e) {
+                                Schema.onError(e);
+                            }
                         }
 
                         if (valueRef.onRemove) {
-                            valueRef.onRemove(itemRemoved, newLength + i);
+                            try {
+                                valueRef.onRemove(itemRemoved, newLength + i);
+                            } catch (e) {
+                                Schema.onError(e);
+                            }
                         }
                     });
                 }
@@ -244,7 +256,11 @@ export abstract class Schema {
                             it.offset++;
 
                             if (valueRef.onRemove) {
-                                valueRef.onRemove(item, newIndex);
+                                try {
+                                    valueRef.onRemove(item, newIndex);
+                                } catch (e) {
+                                    Schema.onError(e);
+                                }
                             }
 
                             continue;
@@ -259,11 +275,19 @@ export abstract class Schema {
 
                     if (isNew) {
                         if (valueRef.onAdd) {
-                            valueRef.onAdd(value[newIndex], newIndex);
+                            try {
+                                valueRef.onAdd(value[newIndex], newIndex);
+                            } catch (e) {
+                                Schema.onError(e);
+                            }
                         }
 
                     } else if (valueRef.onChange) {
-                        valueRef.onChange(value[newIndex], newIndex);
+                        try {
+                            valueRef.onChange(value[newIndex], newIndex);
+                        } catch (e) {
+                            Schema.onError(e);
+                        }
                     }
 
                     change.push(value[newIndex]);
@@ -327,11 +351,20 @@ export abstract class Schema {
                         it.offset++;
 
                         if (item && item.onRemove) {
-                            item.onRemove();
+                            try {
+                                item.onRemove();
+                            } catch (e) {
+                                Schema.onError(e);
+                            }
+
                         }
 
                         if (valueRef.onRemove) {
-                            valueRef.onRemove(item, newKey);
+                            try {
+                                valueRef.onRemove(item, newKey);
+                            } catch (e) {
+                                Schema.onError(e);
+                            }
                         }
 
                         delete value[newKey];
@@ -347,11 +380,19 @@ export abstract class Schema {
 
                     if (isNew) {
                         if (valueRef.onAdd) {
-                            valueRef.onAdd(item, newKey);
+                            try {
+                                valueRef.onAdd(item, newKey);
+                            } catch (e) {
+                                Schema.onError(e);
+                            }
                         }
 
                     } else if (valueRef.onChange) {
-                        valueRef.onChange(item, newKey);
+                        try {
+                            valueRef.onChange(item, newKey);
+                        } catch (e) {
+                            Schema.onError(e);
+                        }
                     }
 
                 }
@@ -373,7 +414,11 @@ export abstract class Schema {
         }
 
         if (this.onChange && changes.length > 0) {
-            this.onChange(changes);
+            try {
+                this.onChange(changes);
+            } catch (e) {
+                Schema.onError(e);
+            }
         }
 
         return this;
@@ -645,7 +690,11 @@ export abstract class Schema {
             }
         }
 
-        this.onChange(changes);
+        try {
+            this.onChange(changes);
+        } catch (e) {
+            Schema.onError(e);
+        }
     }
 
     toJSON () {

@@ -2,9 +2,65 @@ import * as sinon from "sinon";
 import * as assert from "assert";
 
 import { State, Player } from "./Schema";
-import { ArraySchema, MapSchema } from "../src";
+import { ArraySchema, MapSchema, type, Schema } from "../src";
 
 describe("MapSchema", () => {
+
+    it("should not consider changes after removing from the change tree", (done) => {
+        class Item extends Schema {
+            @type("number") price: number;
+            constructor (price: number) {
+                super();
+                this.price = price;
+            }
+        }
+        class Inventory extends Schema {
+            @type({ map: Item }) slots = new MapSchema<Item>();
+        }
+        class Player extends Schema {
+            @type("string") name: string;
+            @type(Inventory) inventory = new Inventory();
+            @type(Inventory) purchase = new Inventory();
+        }
+
+        class State extends Schema {
+            @type({map: Player}) players = new MapSchema<Player>();
+        }
+
+        const state = new State();
+        const playerOne = new Player();
+        state.players['one'] = playerOne;
+
+        playerOne.name = "One!";
+        playerOne.inventory['one'] = new Item(100);
+        playerOne.inventory['two'] = new Item(100);
+        playerOne.inventory['three'] = new Item(100);
+
+        state.encodeAll();
+
+        const playerTwo = new Player();
+        state.players['two'] = playerTwo
+        playerTwo.name = "Two!";
+
+        delete state.players['two'];
+        playerTwo.name = "Hello";
+        playerTwo.purchase['one'] = new Item(500);
+        playerTwo.purchase['two'] = new Item(500);
+        playerTwo.purchase['three'] = new Item(500);
+
+        state.encode();
+
+        playerTwo.name = "Hello";
+        playerTwo.purchase['one'] = new Item(500);
+        playerTwo.purchase['two'] = new Item(500);
+        playerTwo.purchase['three'] = new Item(500);
+        state.encode();
+
+        const decodedState = new State();
+        decodedState.decode(state.encodeAll());
+        console.log(decodedState.toJSON());
+        done();
+    });
 
     xit("should allow to remove and set an item in the same place", () => {
         const state = new State();
