@@ -521,10 +521,12 @@ export abstract class Schema {
                     if (isChildSchema) { // is array of Schema
                         encode.number(bytes, index);
 
-                        const indexChange = value.$changes.getIndexChange(item);
-                        if (indexChange !== undefined) {
-                            encode.uint8(bytes, INDEX_CHANGE);
-                            encode.number(bytes, indexChange);
+                        if (!encodeAll)  {
+                            const indexChange = value.$changes.getIndexChange(item);
+                            if (indexChange !== undefined) {
+                                encode.uint8(bytes, INDEX_CHANGE);
+                                encode.number(bytes, indexChange);
+                            }
                         }
 
                         assertInstanceType(item, type[0] as typeof Schema, this, field);
@@ -567,7 +569,7 @@ export abstract class Schema {
                     const key = (typeof(keys[i]) === "number" && previousKeys[keys[i]]) || keys[i];
                     const item = this[`_${field}`][key];
 
-                    let mapItemIndex = this[`_${field}`]._indexes.get(key);
+                    let mapItemIndex: number = undefined;
 
                     if (client && filter) {
                         // skip if not allowed by custom filter
@@ -577,18 +579,20 @@ export abstract class Schema {
                     }
 
                     if (encodeAll) {
-                        mapItemIndex = undefined;
                         if (item === undefined) {
                             // previously deleted items are skipped during `encodeAll`
                             continue;
                         }
-                    }
 
-                    // encode index change
-                    const indexChange = value.$changes.getIndexChange(item);
-                    if (item && indexChange !== undefined) {
-                        encode.uint8(bytes, INDEX_CHANGE);
-                        encode.number(bytes, this[`_${field}`]._indexes.get(indexChange));
+                    } else {
+                        // encode index change
+                        const indexChange = value.$changes.getIndexChange(item);
+                        if (item && indexChange !== undefined) {
+                            encode.uint8(bytes, INDEX_CHANGE);
+                            encode.number(bytes, this[`_${field}`]._indexes.get(indexChange));
+                        }
+
+                        mapItemIndex = this[`_${field}`]._indexes.get(key);
                     }
 
                     if (mapItemIndex !== undefined) {
