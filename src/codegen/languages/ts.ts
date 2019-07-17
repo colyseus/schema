@@ -1,4 +1,4 @@
-import { Class, Property, File, getCommentHeader, getInheritanceTree } from "./types";
+import { Class, Property, File, getCommentHeader, getInheritanceTree } from "../types";
 
 const typeMaps = {
     "string": "string",
