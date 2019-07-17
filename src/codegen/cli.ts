@@ -9,7 +9,8 @@ const supportedTargets = {
     cpp: 'generate for C++',
     hx: 'generate for Haxe',
     ts: 'generate for TypeScript',
-    js: 'generate for JavaScript'
+    js: 'generate for JavaScript',
+    java: 'generate for Java',
 }
 
 function displayHelp() {
@@ -57,7 +58,7 @@ if (!args.output) {
 
 let generator;
 try {
-    generator = require('./' + targetId).generate;
+    generator = require('./languages/' + targetId).generate;
 } catch (e) {
     console.error("You must provide a valid generator as argument, such as: --csharp, --haxe or --cpp");
     displayHelp();
