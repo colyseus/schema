@@ -70,33 +70,37 @@ function generateProperty(prop: Property, indent: string = "") {
     if (prop.childType) {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
 
+        if (prop.type !== "ref" && isUpcaseFirst) {
+            ctorArgs = `${prop.childType}.class`;
+        }
+
         if(prop.type === "ref") {
             langType = (isUpcaseFirst)
                 ? prop.childType
                 : typeMaps[prop.childType];
 
-        } else if(prop.type === "array") {
-            if (isUpcaseFirst) {
-                ctorArgs = `${prop.childType}.class`;
-                typeArgs += `/ref`;
-            }
+            initializer = `new ${langType}${(prop.type !== "ref" && isUpcaseFirst) ? "<>" : ""}(${ctorArgs})`;
 
+        } else if(prop.type === "array") {
             langType = (isUpcaseFirst)
-                ? `ArraySchema<>`
-                : `ArraySchema<${typeMaps[prop.childType]}>`;
+                ? `ArraySchema<${prop.childType}>`
+                : `ArraySchema`;
+
+            initializer = `new ArraySchema${(isUpcaseFirst) ? "<>" : ""}(${ctorArgs})`;
 
         } else if(prop.type === "map") {
-            if (isUpcaseFirst) {
-                ctorArgs = `${prop.childType}.class`;
-                typeArgs += `/ref`;
-            }
-
             langType = (isUpcaseFirst)
-                ? `MapSchema<>`
-                : `MapSchema<${typeMaps[prop.childType]}>`;
+                ? `MapSchema<${prop.childType}>`
+                : `MapSchema`;
+
+            initializer = `new MapSchema${(isUpcaseFirst) ? "<>" : ""}(${ctorArgs})`;
         }
 
-        initializer = `new ${langType}(${ctorArgs})`;
+        if (prop.type !== "ref") {
+            typeArgs += (isUpcaseFirst)
+                ? `/ref`
+                : `/${prop.childType}`;
+        }
 
     } else {
         langType = typeMaps[prop.type];
