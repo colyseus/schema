@@ -63,10 +63,17 @@ export class ArraySchema<T=any> extends Array<T> {
 
     splice(start: number, deleteCount?: number, ...insert: T[]) {
         const removedItems = Array.prototype.splice.apply(this, arguments);
+        const movedItems = this.filter((item, idx) => {
+            return idx >= start + deleteCount - 1;
+        })
 
         removedItems.map(removedItem => {
             delete (removedItem as any).$changes.parent;
         });
+
+        movedItems.map(movedItem => {
+            (movedItem as any).$changes.parentField--;
+        })
 
         return removedItems;
     }

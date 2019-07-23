@@ -55,7 +55,7 @@ describe("ArraySchema", () => {
         }
     });
 
-    xit("updates all items custom `idx` after removing middle item", () => {
+    it("updates all items `idx` props after removing middle item", () => {
         /**
          * In this scenario, after splicing middle item, I'm updating
          * each item's `idx` property, to reflect its current "index".
@@ -84,12 +84,13 @@ describe("ArraySchema", () => {
 
         const state = new State();
         const decodedState = new State();
+        decodedState.decode(state.encodeAll());
 
-        state.player1.items.push(new Item("Item 1", 0));
-        state.player1.items.push(new Item("Item 2", 1));
-        state.player1.items.push(new Item("Item 3", 2));
-        state.player1.items.push(new Item("Item 4", 3));
-        state.player1.items.push(new Item("Item 5", 4));
+        state.player1.items.push(new Item("Item 0", 0));
+        state.player1.items.push(new Item("Item 1", 1));
+        state.player1.items.push(new Item("Item 2", 2));
+        state.player1.items.push(new Item("Item 3", 3));
+        state.player1.items.push(new Item("Item 4", 4));
         decodedState.decode(state.encodeAll());
         assert.equal(decodedState.player1.items.length, 5);
 
@@ -100,13 +101,15 @@ describe("ArraySchema", () => {
         assert.equal(decodedState.player1.items.length, 4);
         
         // Update `idx` of each item
-        state.player1.items.forEach((item, idx) => item.idx = idx);
+        state.player1.items
+            .forEach((item, idx) => item.idx = idx);
+        // After below encoding, Item 4 is not marked as `changed`
         decodedState.decode(state.encode());
 
         const resultPreEncoding = state.player1.items
-            .map(stringifyItem);
+            .map(stringifyItem).join(',');
         const resultPostEncoding = decodedState.player1.items
-            .map(stringifyItem);
+            .map(stringifyItem).join(',');
 
         // Ensure all data is perserved and `idx` is updated for each item
         assert.equal(
@@ -116,7 +119,7 @@ describe("ArraySchema", () => {
         );
     })
 
-    xit("updates an item after removing another", () => {
+    it("updates an item after removing another", () => {
         class Item extends Schema {
             @type("string") name: string;
             constructor(name) {
@@ -133,16 +136,18 @@ describe("ArraySchema", () => {
 
         const state = new State();
         const decodedState = new State();
+        decodedState.decode(state.encodeAll());
 
         state.player.items.push(new Item("Item 1"));
         state.player.items.push(new Item("Item 2"));
         state.player.items.push(new Item("Item 3"));
+        state.player.items.push(new Item("Item 4"));
+        state.player.items.push(new Item("Item 5"));
         decodedState.decode(state.encodeAll());
 
         // Remove Item 2
         const [ removedItem ] = state.player.items.splice(1, 1);
         assert.equal(removedItem.name, "Item 2");
-        // If you disable below decoding, the later assertions pass (?!)
         decodedState.decode(state.encode());
         
         // Update `name` of remaining item
