@@ -491,9 +491,13 @@ export abstract class Schema {
                 // total of items in the array
                 encode.number(bytes, value.length);
 
-                const arrayChanges = ((encodeAll || client)
-                    ? value.$changes.allChanges
-                    : value.$changes.changes).filter(index => this[`_${field}`][index] !== undefined);
+                const arrayChanges = (
+                    (encodeAll || client)
+                        ? value.$changes.allChanges
+                        : value.$changes.changes
+                    )
+                    .filter(index => this[`_${field}`][index] !== undefined)
+                    .sort((a, b) => a - b);
 
                 // ensure number of changes doesn't exceed array length
                 const numChanges = arrayChanges.length;
