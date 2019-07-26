@@ -143,11 +143,14 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         deleteProperty: (obj, prop) => {
                             const deletedValue = obj[prop];
 
-                            // TODO:
-                            // remove deleteIndex of property being deleted as well.
+                            if (isMap && deletedValue !== undefined) {
+                                obj.$changes.deleteIndex(deletedValue);
+                                obj.$changes.deleteIndexChange(deletedValue);
 
-                            // obj.$changes.deleteIndex(deletedValue);
-                            // obj.$changes.deleteIndexChange(deletedValue);
+                                if (deletedValue.$changes) { // deletedValue may be a primitive value
+                                    delete deletedValue.$changes.parent;
+                                }
+                            }
 
                             delete obj[prop];
 

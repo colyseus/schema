@@ -98,9 +98,9 @@ describe("ArraySchema", () => {
         // Remove one item
         state.player1.items.splice(2, 1);
         decodedState.decode(state.encode());
-        
+
         assert.equal(decodedState.player1.items.length, 4);
-        
+
         // Update `idx` of each item
         state.player1.items
             .forEach((item, idx) => item.idx = idx);
@@ -150,7 +150,7 @@ describe("ArraySchema", () => {
         const [ removedItem ] = state.player.items.splice(1, 1);
         assert.equal(removedItem.name, "Item 2");
         decodedState.decode(state.encode());
-        
+
         // Update `name` of remaining item
         const preEncoding = state.player.items[1].name = "Item 3 changed!";
         decodedState.decode(state.encode());
@@ -199,7 +199,7 @@ describe("ArraySchema", () => {
         const [itemThree] = state.items.splice(2, 1);
         state.items.forEach(updateItem);
         decodedState.decode(state.encodeAll());
-        
+
         assert.strictEqual(state.items[0].name, 'Item One');
         assert.strictEqual(state.items[1].name, 'Item Two');
         assert.strictEqual(state.items[2].name, 'Item Four');
