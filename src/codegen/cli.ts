@@ -7,7 +7,7 @@ import { File } from "./types";
 const supportedTargets = {
     csharp: 'generate for C#/Unity',
     cpp: 'generate for C++',
-    hx: 'generate for Haxe',
+    haxe: 'generate for Haxe',
     ts: 'generate for TypeScript',
     js: 'generate for JavaScript',
     java: 'generate for Java',
