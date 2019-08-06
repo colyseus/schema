@@ -62,7 +62,7 @@ describe("MapSchema", () => {
         done();
     });
 
-    xit("should allow to remove and set an item in the same place", () => {
+    it("should allow to remove and set an item in the same place", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>();
         state.mapOfPlayers['one'] = new Player("Jake");

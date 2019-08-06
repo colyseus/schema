@@ -150,6 +150,8 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                                 if (deletedValue.$changes) { // deletedValue may be a primitive value
                                     delete deletedValue.$changes.parent;
                                 }
+
+                                obj._indexes.delete(prop);
                             }
 
                             delete obj[prop];
