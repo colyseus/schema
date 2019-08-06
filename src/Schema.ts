@@ -232,7 +232,7 @@ export abstract class Schema {
                     //     (value[newIndex] === undefined && valueRef[newIndex] === undefined)
                     // ) && indexChangedFrom === undefined;
 
-                    let isNew = (!hasIndexChange && !value[newIndex]) || (hasIndexChange && indexChangedFrom === undefined);
+                    let isNew = (!hasIndexChange && value[newIndex] === undefined) || (hasIndexChange && indexChangedFrom === undefined);
 
                     if ((type as any).prototype instanceof Schema) {
                         let item: Schema;
@@ -335,7 +335,7 @@ export abstract class Schema {
                         : decode.string(bytes, it);
 
                     let item;
-                    let isNew = (!hasIndexChange && !valueRef[newKey]) || (hasIndexChange && previousKey === undefined && hasMapIndex);
+                    let isNew = (!hasIndexChange && valueRef[newKey] === undefined) || (hasIndexChange && previousKey === undefined && hasMapIndex);
 
                     if (isNew && isSchemaType) {
                         item = this.createTypeInstance(bytes, it, type as typeof Schema);

@@ -227,6 +227,40 @@ describe("Change API", () => {
             sinon.assert.calledOnce(onChangeSpy);
             sinon.assert.calledOnce(onItemRemoveSpy);
         });
+
+        it("should call onAdd / onChance correctly for 0's", () => {
+            class GridState extends Schema {
+                @type(["number"]) grid: ArraySchema<number>;
+            }
+
+            const state = new GridState();
+            state.grid = new ArraySchema(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+            const decodedState = new GridState();
+            decodedState.grid = new ArraySchema<number>();
+            decodedState.grid.onAdd = function (item, index) {};
+            decodedState.grid.onChange = function (item, index) {};
+
+            const onAddSpy = sinon.spy(decodedState.grid, "onAdd");
+            const onChangeSpy = sinon.spy(decodedState.grid, "onChange");
+
+            decodedState.decode(state.encode());
+
+            state.grid[0] = 1;
+            decodedState.decode(state.encode());
+
+            state.grid[2] = 1;
+            decodedState.decode(state.encode());
+
+            state.grid[5] = 1;
+            decodedState.decode(state.encode());
+
+            state.grid[5] = 0;
+            decodedState.decode(state.encode());
+
+            sinon.assert.callCount(onAddSpy, 12);
+            sinon.assert.callCount(onChangeSpy, 4);
+        });
     });
 
     describe("MapSchema", () => {
@@ -373,7 +407,7 @@ describe("Change API", () => {
             assert.equal(decodedState.mapOfPlayers['food10'].x, 10);
             assert.equal(decodedState.mapOfPlayers['player'].x, 11);
 
-            /* 
+            /*
              * CHANGESET
              */
             state.mapOfPlayers['player'].x += 1;
@@ -392,7 +426,7 @@ describe("Change API", () => {
             assert.equal(decodedState.mapOfPlayers['food10'].x, 10);
             assert.equal(decodedState.mapOfPlayers['player'].x, 12);
 
-            /* 
+            /*
              * CHANGESET
              */
             keyAddition = 'food11';
@@ -419,7 +453,7 @@ describe("Change API", () => {
             assert.equal(decodedState.mapOfPlayers['food11'].x, 11);
             assert.equal(decodedState.mapOfPlayers['player'].x, 13);
 
-            /* 
+            /*
              * CHANGESET
              */
 
@@ -441,8 +475,8 @@ describe("Change API", () => {
             assert.equal(decodedState.mapOfPlayers['food11'].x, 11);
             assert.equal(decodedState.mapOfPlayers['player'].x, 14);
 
-            /* 
-             * ADDS SECOND DECODER 
+            /*
+             * ADDS SECOND DECODER
              */
             const secondDecodedState = new State();
             secondDecodedState.decode(state.encodeAll());
