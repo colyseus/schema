@@ -1,6 +1,7 @@
 import * as assert from "assert";
 
-import { Schema, type, Reflection, MapSchema } from "../src";
+import { Schema, type, MapSchema } from "../src";
+import { defineTypes } from "../src/annotations";
 
 describe("Definition", () => {
 
@@ -35,4 +36,17 @@ describe("Definition", () => {
         assert.deepEqual(Object.keys(obj), []);
     });
 
+    describe("defineTypes", () => {
+        it("should be equivalent", () => {
+            class MyExistingStructure extends Schema {}
+            defineTypes(MyExistingStructure, { name: "string" });
+
+            const state = new MyExistingStructure();
+            (state as any).name = "hello world!";
+
+            const decodedState = new MyExistingStructure();
+            decodedState.decode(state.encode());
+            assert.equal((decodedState as any).name, "hello world!");
+        });
+    });
 });
