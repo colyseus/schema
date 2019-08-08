@@ -1,7 +1,4 @@
 import { ChangeTree } from './ChangeTree';
-
-import { ArraySchema } from './types/ArraySchema';
-import { MapSchema } from './types/MapSchema';
 import { Schema } from './Schema';
 
 /**
@@ -237,4 +234,11 @@ export function filter(cb: FilterCallback): PropertyDecorator  {
 
         constructor._filters[field] = cb;
     }
+}
+
+export function defineTypes(target: typeof Schema, fields: {[property: string]: DefinitionType}) {
+    for (let field in fields) {
+        type(fields[field])(target.prototype, field);
+    }
+    return target;
 }

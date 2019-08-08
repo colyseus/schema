@@ -13,6 +13,7 @@ export {
     // Annotations
     type,
     filter,
+    defineTypes,
 
     // Types
     Context,
