@@ -2,7 +2,7 @@
 // THIS FILE HAS BEEN GENERATED AUTOMATICALLY
 // DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING
 // 
-// GENERATED USING @colyseus/schema 0.4.34
+// GENERATED USING @colyseus/schema 0.4.48
 // 
 #ifndef __SCHEMA_CODEGEN_PRIMITIVETYPES_H__
 #define __SCHEMA_CODEGEN_PRIMITIVETYPES_H__ 1
@@ -46,6 +46,10 @@ public:
 		this->_types = {{0, "int8"}, {1, "uint8"}, {2, "int16"}, {3, "uint16"}, {4, "int32"}, {5, "uint32"}, {6, "int64"}, {7, "uint64"}, {8, "float32"}, {9, "float64"}, {10, "number"}, {11, "number"}, {12, "number"}, {13, "number"}, {14, "number"}, {15, "number"}, {16, "number"}, {17, "number"}, {18, "number"}, {19, "number"}, {20, "string"}, {21, "boolean"}};
 		this->_childPrimitiveTypes = {};
 		this->_childSchemaTypes = {};
+	}
+
+	~PrimitiveTypes() {
+		
 	}
 
 protected:

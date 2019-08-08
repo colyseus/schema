@@ -2,7 +2,7 @@
 // THIS FILE HAS BEEN GENERATED AUTOMATICALLY
 // DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING
 // 
-// GENERATED USING @colyseus/schema 0.4.34
+// GENERATED USING @colyseus/schema 0.4.48
 // 
 #ifndef __SCHEMA_CODEGEN_ARRAYSCHEMATYPES_H__
 #define __SCHEMA_CODEGEN_ARRAYSCHEMATYPES_H__ 1
@@ -28,6 +28,13 @@ public:
 		this->_types = {{0, "array"}, {1, "array"}, {2, "array"}, {3, "array"}};
 		this->_childPrimitiveTypes = {{1, "number"}, {2, "string"}, {3, "int32"}};
 		this->_childSchemaTypes = {{0, typeid(IAmAChild)}};
+	}
+
+	~ArraySchemaTypes() {
+		delete this->arrayOfSchemas;
+		delete this->arrayOfNumbers;
+		delete this->arrayOfStrings;
+		delete this->arrayOfInt32;
 	}
 
 protected:

@@ -107,6 +107,10 @@ ${klass.properties.map(prop => generateProperty(prop)).join("\n")}
 \t\tthis->_childSchemaTypes = ${generateAllChildSchemaTypes(allProperties)};
 \t}
 
+\t~${klass.name}() {
+\t\t${generateDestructors(allProperties).join("\n\t\t")}
+\t}
+
 protected:
 ${Object.keys(propertiesPerType).map(type =>
     generateGettersAndSetters(klass, type, propertiesPerType[type])).
@@ -269,6 +273,16 @@ function generateAllChildPrimitiveTypes(properties: Property[]) {
             return null;
         }
     }).filter(r => r !== null).join(", ")}}`
+}
+
+function generateDestructors(properties: Property[]) {
+    return properties.map((property, i) => {
+        if (property.childType) {
+            return `delete this->${property.name};`;
+        } else {
+            return null;
+        }
+    }).filter(r => r !== null);
 }
 
 function getAllProperties (klass: Class, allClasses: Class[]) {

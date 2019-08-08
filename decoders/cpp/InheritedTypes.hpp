@@ -2,7 +2,7 @@
 // THIS FILE HAS BEEN GENERATED AUTOMATICALLY
 // DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING
 // 
-// GENERATED USING @colyseus/schema 0.4.34
+// GENERATED USING @colyseus/schema 0.4.48
 // 
 #ifndef __SCHEMA_CODEGEN_INHERITEDTYPES_H__
 #define __SCHEMA_CODEGEN_INHERITEDTYPES_H__ 1
@@ -30,6 +30,13 @@ public:
 		this->_types = {{0, "ref"}, {1, "ref"}, {2, "ref"}, {3, "ref"}};
 		this->_childPrimitiveTypes = {};
 		this->_childSchemaTypes = {{0, typeid(Entity)}, {1, typeid(Player)}, {2, typeid(Bot)}, {3, typeid(Entity)}};
+	}
+
+	~InheritedTypes() {
+		delete this->entity;
+		delete this->player;
+		delete this->bot;
+		delete this->any;
 	}
 
 protected:

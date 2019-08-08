@@ -2,7 +2,7 @@
 // THIS FILE HAS BEEN GENERATED AUTOMATICALLY
 // DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING
 // 
-// GENERATED USING @colyseus/schema 0.4.34
+// GENERATED USING @colyseus/schema 0.4.48
 // 
 #ifndef __SCHEMA_CODEGEN_PLAYER_H__
 #define __SCHEMA_CODEGEN_PLAYER_H__ 1
@@ -25,6 +25,10 @@ public:
 		this->_types = {{0, "number"}, {1, "number"}, {2, "string"}};
 		this->_childPrimitiveTypes = {};
 		this->_childSchemaTypes = {};
+	}
+
+	~Player() {
+		
 	}
 
 protected:

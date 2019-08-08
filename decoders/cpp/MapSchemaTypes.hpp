@@ -2,7 +2,7 @@
 // THIS FILE HAS BEEN GENERATED AUTOMATICALLY
 // DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING
 // 
-// GENERATED USING @colyseus/schema 0.4.34
+// GENERATED USING @colyseus/schema 0.4.48
 // 
 #ifndef __SCHEMA_CODEGEN_MAPSCHEMATYPES_H__
 #define __SCHEMA_CODEGEN_MAPSCHEMATYPES_H__ 1
@@ -28,6 +28,13 @@ public:
 		this->_types = {{0, "map"}, {1, "map"}, {2, "map"}, {3, "map"}};
 		this->_childPrimitiveTypes = {{1, "number"}, {2, "string"}, {3, "int32"}};
 		this->_childSchemaTypes = {{0, typeid(IAmAChild)}};
+	}
+
+	~MapSchemaTypes() {
+		delete this->mapOfSchemas;
+		delete this->mapOfNumbers;
+		delete this->mapOfStrings;
+		delete this->mapOfInt32;
 	}
 
 protected:

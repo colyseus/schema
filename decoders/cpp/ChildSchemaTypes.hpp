@@ -2,7 +2,7 @@
 // THIS FILE HAS BEEN GENERATED AUTOMATICALLY
 // DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING
 // 
-// GENERATED USING @colyseus/schema 0.4.34
+// GENERATED USING @colyseus/schema 0.4.48
 // 
 #ifndef __SCHEMA_CODEGEN_CHILDSCHEMATYPES_H__
 #define __SCHEMA_CODEGEN_CHILDSCHEMATYPES_H__ 1
@@ -26,6 +26,11 @@ public:
 		this->_types = {{0, "ref"}, {1, "ref"}};
 		this->_childPrimitiveTypes = {};
 		this->_childSchemaTypes = {{0, typeid(IAmAChild)}, {1, typeid(IAmAChild)}};
+	}
+
+	~ChildSchemaTypes() {
+		delete this->child;
+		delete this->secondChild;
 	}
 
 protected:
