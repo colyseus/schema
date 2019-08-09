@@ -69,7 +69,7 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
 
     const allProperties = getAllProperties(klass, allClasses);
     const createInstanceMethod = (allRefs.length === 0) ? "" :
-    `\tSchema* createInstance(std::type_index type) {
+    `\tinline Schema* createInstance(std::type_index type) {
 \t\t${generateFieldIfElseChain(allRefs,
     (property) => `type == typeid(${property.childType})`,
     (property) => `return new ${property.childType}();`,
@@ -188,7 +188,7 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
 \t\treturn ${klass.extends}::${getMethodName}(field);
 \t}
 
-\tvoid ${setMethodName}(string field, ${langType} value)
+\tinline void ${setMethodName}(string field, ${langType} value)
 \t{
 \t\t${generateFieldIfElseChain(properties,
     (property) => `field == "${property.name}"`,
