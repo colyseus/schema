@@ -30,6 +30,21 @@ export class ArraySchema<T=any> extends Array<T> {
                 }
             },
 
+            toJSON: {
+                value: () => {
+                    const arr = [];
+                    for (let i = 0; i < this.length; i++) {
+                        const objAt = this[i] as any;
+                        arr.push(
+                            (typeof (objAt.toJSON) === "function")
+                                ? objAt.toJSON()
+                                : objAt
+                        );
+                    }
+                    return arr;
+                }
+            },
+
             clone: {
                 value: () => {
                     const arr = new ArraySchema(...this);

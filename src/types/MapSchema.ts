@@ -37,6 +37,18 @@ export class MapSchema<T=any> {
                 }
             },
 
+            toJSON: {
+                value: () => {
+                    const map: any = {};
+                    for (let key in this) {
+                        map[key] = (typeof(this[key].toJSON) === "function")
+                            ? this[key].toJSON()
+                            : this[key];
+                    }
+                    return map;
+                }
+            },
+
             _indexes: { value: new Map<string, number>(), enumerable: false, writable: true },
             _updateIndexes: {
                 value: () => {

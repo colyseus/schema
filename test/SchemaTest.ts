@@ -1112,4 +1112,31 @@ describe("Schema", () => {
             assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
         });
     });
+
+    describe("toJSON()", () => {
+        it("should return child structures as JSON", () => {
+            const state = new State();
+            state.fieldString = "string";
+            state.fieldNumber = 10;
+
+            state.player = new Player();
+            state.player.name = "Jake";
+            state.player.x = 10;
+
+            state.mapOfPlayers = new MapSchema();
+            state.mapOfPlayers['one'] = new Player("Cyberhalk", 100, 50);
+
+            state.arrayOfPlayers = new ArraySchema();
+            state.arrayOfPlayers.push(new Player("Katarina"))
+
+            assert.deepEqual(state.toJSON(), {
+                fieldString: 'string',
+                fieldNumber: 10,
+                player: { name: 'Jake', x: 10 },
+                arrayOfPlayers: [{ name: 'Katarina' }],
+                mapOfPlayers: { one: { name: 'Cyberhalk', x: 100, y: 50 } }
+            })
+        });
+
+    });
 });

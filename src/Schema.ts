@@ -709,7 +709,11 @@ export abstract class Schema {
         const schema = this._schema;
         const obj = {}
         for (let field in schema) {
-            obj[field] = this[`_${field}`];
+            if (typeof(this[field]) !== "undefined") {
+                obj[field] = (typeof (this[field].toJSON) === "function")
+                    ? this[field].toJSON()
+                    : this[`_${field}`];
+            }
         }
         return obj;
     }
