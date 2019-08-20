@@ -357,6 +357,27 @@ describe("Change API", () => {
             sinon.assert.calledOnce(onRemoveSpy);
         });
 
+        xit("should allow onAdd using primitive types", () => {
+            class MapWithPrimitive extends Schema {
+                @type({map: "boolean"}) mapOfBool = new MapSchema<boolean>();
+            }
+
+            const state = new MapWithPrimitive();
+            state.mapOfBool['one'] = true;
+
+            const decodedState = new MapWithPrimitive();
+            decodedState.mapOfBool.onAdd = function(value, key) { console.log("ON ADD", value, key); }
+            const onAddSpy = sinon.spy(decodedState.mapOfBool, 'onAdd');
+
+            decodedState.decode(state.encodeAll());
+
+            state.mapOfBool['two'] = true;
+            decodedState.decode(state.encode());
+
+            sinon.assert.calledTwice(onAddSpy);
+            console.log(decodedState.toJSON());
+        });
+
         it("should not loose reference when add / remove is performed at once", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema({
