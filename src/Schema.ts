@@ -381,7 +381,7 @@ export abstract class Schema {
                     if (isNew) {
                         if (valueRef.onAdd) {
                             try {
-                                valueRef.onAdd(item, newKey);
+                                valueRef.onAdd(value[newKey], newKey);
                             } catch (e) {
                                 Schema.onError(e);
                             }
@@ -389,7 +389,7 @@ export abstract class Schema {
 
                     } else if (valueRef.onChange) {
                         try {
-                            valueRef.onChange(item, newKey);
+                            valueRef.onChange(value[newKey], newKey);
                         } catch (e) {
                             Schema.onError(e);
                         }
