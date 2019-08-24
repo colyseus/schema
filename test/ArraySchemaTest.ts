@@ -339,4 +339,39 @@ describe("ArraySchema", () => {
         console.log(decodedState.player2.items.map(item => item.name));
     });
 
+    it("test splicing an ArraySchema of primitive values", () => {
+        class Player extends Schema {
+            @type(["string"]) itemIds = new ArraySchema<string>();
+        }
+        class State extends Schema {
+            @type(Player) player = new Player();
+        }
+
+        const state = new State();
+        const decodedState = new State();
+        decodedState.decode(state.encodeAll());
+
+        state.player.itemIds.push("Item 1");
+        state.player.itemIds.push("Item 2");
+        state.player.itemIds.push("Item 3");
+        state.player.itemIds.push("Item 4");
+        state.player.itemIds.push("Item 5");
+        decodedState.decode(state.encodeAll());
+
+        // Remove Item 2
+        const [ removedItem ] = state.player.itemIds.splice(1, 1);
+        assert.strictEqual(removedItem, "Item 2");
+        decodedState.decode(state.encode());
+
+        // Update remaining item
+        const preEncoding = state.player.itemIds[1] = "Item 3 changed!";
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(
+            decodedState.player.itemIds[1],
+            preEncoding,
+            `new name of Item 3 was not reflected during recent encoding/decoding.`
+        );
+    });
+
 });
