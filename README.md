@@ -156,9 +156,7 @@ const encodedStateSchema = Reflection.encode(new MyState());
 const myState = Reflection.decode(encodedStateSchema);
 ```
 
-### Data filters (experimental)
-
-When using with [Colyseus 0.10](https://github.com/colyseus/colyseus), you may provide a `@filter` per field, to filter out what you don't want to serialize for a specific client.
+### Planned feature: Data filters (not supported atm)
 
 On the example below, we are filtering entities which are close to the player entity.
 
