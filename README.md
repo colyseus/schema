@@ -16,7 +16,7 @@
   </a>
 </div>
 
-Decoders currently available for JavaScript, LUA, C# and Haxe.
+Decoders currently available for JavaScript, LUA, C#, C++ and Haxe.
 
 ## Defining Schema
 
