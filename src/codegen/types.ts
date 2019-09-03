@@ -41,7 +41,15 @@ export class Context {
     }
 
     private isSchemaClass(klass: Class) {
-        return klass.properties.length > 0;
+        let isSchema: boolean = false;
+
+        let currentClass = klass;
+        while (!isSchema && currentClass) {
+            isSchema = currentClass.extends === "Schema";
+            currentClass = this.getParentClass(currentClass);
+        }
+
+        return isSchema
     }
 }
 

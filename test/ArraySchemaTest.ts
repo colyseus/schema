@@ -2,7 +2,7 @@ import * as sinon from "sinon";
 import * as assert from "assert";
 
 import { State, Player } from "./Schema";
-import { ArraySchema, Schema, type } from "../src";
+import { ArraySchema, Schema, type, Reflection } from "../src";
 import { logChangeTree } from "./helpers/logging";
 
 describe("ArraySchema", () => {
@@ -339,7 +339,7 @@ describe("ArraySchema", () => {
         console.log(decodedState.player2.items.map(item => item.name));
     });
 
-    it("test splicing an ArraySchema of primitive values", () => {
+    it("should splice an ArraySchema of primitive values", () => {
         class Player extends Schema {
             @type(["string"]) itemIds = new ArraySchema<string>();
         }

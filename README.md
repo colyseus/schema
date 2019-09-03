@@ -218,13 +218,13 @@ You can generate the client-side schema files based on the TypeScript schema def
 
 ```
 # C#/Unity
-schema-codegen ./schemas/State.ts --output ./unity-project/ --cs
+schema-codegen ./schemas/State.ts --output ./unity-project/ --csharp
 
 # C/C++
 schema-codegen ./schemas/State.ts --output ./cpp-project/ --cpp
 
 # Haxe
-schema-codegen ./schemas/State.ts --output ./haxe-project/ --hx
+schema-codegen ./schemas/State.ts --output ./haxe-project/ --haxe
 ```
 
 ## Benchmarks:
