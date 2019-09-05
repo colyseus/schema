@@ -9,11 +9,11 @@
   },
   "scripts": {
     "test": "mocha --require ts-node/register test/**Test.ts",
-    "generate-csharp-test-1": "schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --csharp --output ../colyseus-unity3d/Assets/Tests/Schema/PrimitiveTypes",
-    "generate-csharp-test-2": "schema-codegen test-external/ChildSchemaTypes.ts --namespace SchemaTest.ChildSchemaTypes --csharp --output ../colyseus-unity3d/Assets/Tests/Schema/ChildSchemaTypes",
-    "generate-csharp-test-3": "schema-codegen test-external/ArraySchemaTypes.ts --namespace SchemaTest.ArraySchemaTypes --csharp --output ../colyseus-unity3d/Assets/Tests/Schema/ArraySchemaTypes",
-    "generate-csharp-test-4": "schema-codegen test-external/MapSchemaTypes.ts --namespace SchemaTest.MapSchemaTypes --csharp --output ../colyseus-unity3d/Assets/Tests/Schema/MapSchemaTypes",
-    "generate-csharp-test-5": "schema-codegen test-external/InheritedTypes.ts --namespace SchemaTest.InheritedTypes --csharp --output ../colyseus-unity3d/Assets/Tests/Schema/InheritedTypes",
+    "generate-csharp-test-1": "schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/PrimitiveTypes",
+    "generate-csharp-test-2": "schema-codegen test-external/ChildSchemaTypes.ts --namespace SchemaTest.ChildSchemaTypes --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/ChildSchemaTypes",
+    "generate-csharp-test-3": "schema-codegen test-external/ArraySchemaTypes.ts --namespace SchemaTest.ArraySchemaTypes --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/ArraySchemaTypes",
+    "generate-csharp-test-4": "schema-codegen test-external/MapSchemaTypes.ts --namespace SchemaTest.MapSchemaTypes --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/MapSchemaTypes",
+    "generate-csharp-test-5": "schema-codegen test-external/InheritedTypes.ts --namespace SchemaTest.InheritedTypes --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/InheritedTypes",
     "generate-csharp-test-cases": "npm run generate-csharp-test-1 && npm run generate-csharp-test-2 && npm run generate-csharp-test-3 && npm run generate-csharp-test-4 && npm run generate-csharp-test-5",
     "watch": "tsc -w",
     "prepublish": "tsc"
