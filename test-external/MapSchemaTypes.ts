@@ -23,14 +23,36 @@ state.mapOfSchemas['one'].y = 200;
 state.mapOfSchemas['two'] = new IAmAChild();
 state.mapOfSchemas['two'].x = 300;
 state.mapOfSchemas['two'].y = 400;
+state.mapOfSchemas['three'] = new IAmAChild();
+state.mapOfSchemas['three'].x = 500;
+state.mapOfSchemas['three'].y = 600;
 
 state.mapOfStrings['one'] = "One";
 state.mapOfStrings['two'] = "Two";
+state.mapOfStrings['three'] = "Three";
 
 state.mapOfInt32['one'] = 1000;
 state.mapOfInt32['two'] = -1000;
+state.mapOfInt32['three'] = 2000;
 
-const bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
+let bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
+
+console.log("MapSchemaTypes =>");
+console.log(`{ ${bytes.join(", ")} }`);
+
+delete state.mapOfNumbers['two'];
+delete state.mapOfNumbers['three'];
+
+delete state.mapOfSchemas['two'];
+delete state.mapOfSchemas['three'];
+
+delete state.mapOfStrings['two'];
+delete state.mapOfStrings['three'];
+
+delete state.mapOfInt32['two'];
+delete state.mapOfInt32['three'];
+
+bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
 
 console.log("MapSchemaTypes =>");
 console.log(`{ ${bytes.join(", ")} }`);
