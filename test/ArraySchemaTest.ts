@@ -56,6 +56,20 @@ describe("ArraySchema", () => {
         }
     });
 
+    it("should allow to `filter` and then `sort`", () => {
+        const state = new State();
+        state.arrayOfPlayers = new ArraySchema<Player>();
+        state.arrayOfPlayers.push(new Player("One", 10, 0));
+        state.arrayOfPlayers.push(new Player("Two", 30, 0));
+        state.arrayOfPlayers.push(new Player("Three", 20, 0));
+
+        assert.doesNotThrow(() => {
+            state.arrayOfPlayers
+                .filter(p => p.x >= 20)
+                .sort((a, b) => b.x - a.x);
+        }, "arraySchema.filter().sort() shouldn't throw errors");
+    });
+
     it("updates all items `idx` props after removing middle item", () => {
         /**
          * In this scenario, after splicing middle item, I'm updating

@@ -76,9 +76,18 @@ export class ArraySchema<T=any> extends Array<T> {
         return this;
     }
 
+    filter(callbackfn: (value: T, index: number, array: T[]) => unknown, thisArg?: any): ArraySchema<T> {
+        const filtered = super.filter(callbackfn);
+
+        // TODO: apply removed items on $changes
+        (filtered as any).$changes = this.$changes;
+
+        return filtered as ArraySchema<T>;
+    }
+
     splice(start: number, deleteCount?: number, ...insert: T[]) {
         const removedItems = Array.prototype.splice.apply(this, arguments);
-        const movedItems = this.filter((item, idx) => {
+        const movedItems = Array.prototype.filter.call(this, (item, idx) => {
             return idx >= start + deleteCount - 1;
         });
 
