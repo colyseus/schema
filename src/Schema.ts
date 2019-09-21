@@ -182,7 +182,7 @@ export abstract class Schema {
                 change = [];
 
                 const valueRef: ArraySchema = this[`_${field}`] || new ArraySchema();
-                value = valueRef.clone();
+                value = valueRef.clone(true);
 
                 const newLength = decode.number(bytes, it);
                 const numChanges = Math.min(decode.number(bytes, it), newLength);
@@ -298,7 +298,7 @@ export abstract class Schema {
                 type = (type as any).map;
 
                 const valueRef: MapSchema = this[`_${field}`] || new MapSchema();
-                value = valueRef.clone();
+                value = valueRef.clone(true);
 
                 const length = decode.number(bytes, it);
                 hasChange = (length > 0);
@@ -675,7 +675,17 @@ export abstract class Schema {
         const cloned = new ((this as any).constructor);
         const schema = this._schema;
         for (let field in schema) {
-            cloned[field] = this[field];
+            if (
+                typeof (this[field]) === "object" &&
+                typeof (this[field].clone) === "function"
+            ) {
+                // deep clone
+                cloned[field] = this[field].clone();
+
+            } else {
+                // primitive values
+                cloned[field] = this[field];
+            }
         }
         return cloned;
     }

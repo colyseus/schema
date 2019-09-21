@@ -1113,6 +1113,39 @@ describe("Schema", () => {
         });
     });
 
+    describe("clone()", () => {
+        it("should allow to clone deep structures", () => {
+            const state = new DeepState();
+            state.map['one'] = new DeepMap();
+
+            const deepChild = new DeepChild();
+            deepChild.entity.name = "Player one";
+            deepChild.entity.another.position = new Position(100, 200, 300);
+            state.map['one'].arrayOfChildren.push(deepChild);
+
+            const decodedState = new DeepState();
+            decodedState.decode(state.encodeAll());
+
+            state.map['two'] = state.map['one'].clone();
+            state.map['two'].arrayOfChildren[0].entity.name = "Player two";
+            state.map['two'].arrayOfChildren[0].entity.another.position.x = 200;
+            state.map['two'].arrayOfChildren[0].entity.another.position.y = 300;
+            state.map['two'].arrayOfChildren[0].entity.another.position.z = 400;
+
+            decodedState.decode(state.encode());
+
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.name, "Player one");
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
+            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
+
+            assert.equal(decodedState.map['two'].arrayOfChildren[0].entity.name, "Player two");
+            assert.equal(decodedState.map['two'].arrayOfChildren[0].entity.another.position.x, 200);
+            assert.equal(decodedState.map['two'].arrayOfChildren[0].entity.another.position.y, 300);
+            assert.equal(decodedState.map['two'].arrayOfChildren[0].entity.another.position.z, 400);
+        });
+    });
+
     describe("toJSON()", () => {
         it("should return child structures as JSON", () => {
             const state = new State();

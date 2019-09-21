@@ -16,12 +16,30 @@ export class MapSchema<T=any> {
             onChange:     { value: undefined, enumerable: false, writable: true },
 
             clone: {
-                value: () => {
-                    const map = Object.assign(new MapSchema(), this);
-                    map.onAdd = this.onAdd;
-                    map.onRemove = this.onRemove;
-                    map.onChange = this.onChange;
-                    return map;
+                value: (isDecoding?: boolean) => {
+                    let cloned: MapSchema;
+
+                    if (isDecoding) {
+                        // client-side
+                        cloned = Object.assign(new MapSchema(), this);
+                        cloned.onAdd = this.onAdd;
+                        cloned.onRemove = this.onRemove;
+                        cloned.onChange = this.onChange;
+
+                    } else {
+                        // server-side
+                        const cloned = new MapSchema();
+                        for (let key in this) {
+                            if (typeof (this[key]) === "object") {
+                                cloned[key] = this[key].clone();
+
+                            } else {
+                                cloned[key] = this[key];
+                            }
+                        }
+                    }
+
+                    return cloned;
                 }
             },
 
@@ -67,7 +85,7 @@ export class MapSchema<T=any> {
 
     [key: string]: T | any;
 
-    clone: () => MapSchema<T>;
+    clone: (isDecoding?: boolean) => MapSchema<T>;
 
     onAdd: (item: T, key: string) => void;
     onRemove: (item: T, key: string) => void;

@@ -1,4 +1,5 @@
 import { ChangeTree } from "../ChangeTree";
+import { Schema } from "../Schema";
 
 export class ArraySchema<T=any> extends Array<T> {
     protected $sorting: boolean;
@@ -46,18 +47,32 @@ export class ArraySchema<T=any> extends Array<T> {
             },
 
             clone: {
-                value: () => {
-                    const arr = new ArraySchema(...this);
-                    arr.onAdd = this.onAdd;
-                    arr.onRemove = this.onRemove;
-                    arr.onChange = this.onChange;
-                    return arr;
+                value: (isDecoding?: boolean) => {
+                    let cloned: ArraySchema;
+
+                    if (isDecoding) {
+                        cloned = new ArraySchema(...this);
+                        cloned.onAdd = this.onAdd;
+                        cloned.onRemove = this.onRemove;
+                        cloned.onChange = this.onChange;
+
+                    } else {
+                        cloned = new ArraySchema(...this.map(item => {
+                            if (typeof (item) === "object") {
+                                return (item as any as Schema).clone();
+                            } else {
+                                return item;
+                            }
+                        }));
+                    }
+
+                    return cloned;
                 }
             }
         });
     }
 
-    clone: () => ArraySchema<T>;
+    clone: (isDecoding?: boolean) => ArraySchema<T>;
     sort(compareFn?: (a: T, b: T) => number): this {
         this.$sorting = true;
         super.sort(compareFn);
