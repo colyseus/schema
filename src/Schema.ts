@@ -557,7 +557,8 @@ export abstract class Schema {
 
                 encode.number(bytes, keys.length)
 
-                const previousKeys = Object.keys(this[`_${field}`]); // FIXME: this is costly!
+                // const previousKeys = Object.keys(this[`_${field}`]); // this is costly!
+                const previousKeys = value.$changes.allChanges;
                 const isChildSchema = typeof((type as any).map) !== "string";
                 const numChanges = keys.length;
 
@@ -598,7 +599,6 @@ export abstract class Schema {
                         encode.number(bytes, mapItemIndex);
 
                     } else {
-                        // TODO: remove item
                         encode.string(bytes, key);
                     }
 
@@ -611,6 +611,8 @@ export abstract class Schema {
                         encodePrimitiveType((type as any).map, bytes, item, this, field);
 
                     } else {
+                        // TODO: remove item
+                        // this[`_${field}`]._indexes.delete(key);
                         encode.uint8(bytes, NIL);
                     }
 

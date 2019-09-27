@@ -78,6 +78,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
          */
         const isArray = Array.isArray(type);
         const isMap = !isArray && (type as any).map;
+        const isSchema = (typeof(constructor._schema[field]) === "function");
 
         const fieldCached = `_${field}`;
 
@@ -112,6 +113,10 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                                     }
                                     obj.$changes.mapIndex(setValue, key);
                                 }
+
+                                // if (isMap) {
+                                //     obj._indexes.delete(prop);
+                                // }
 
                                 if (setValue instanceof Schema) {
                                     // new items are flagged with all changes
@@ -168,7 +173,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
                 this[fieldCached] = value;
 
-                if (Array.isArray(constructor._schema[field])) {
+                if (isArray) {
                     // directly assigning an array of items as value.
                     this.$changes.change(field);
                     value.$changes = new ChangeTree(field, this.$changes);
@@ -182,7 +187,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         value.$changes.change(i);
                     }
 
-                } else if ((constructor._schema[field] as any).map) {
+                } else if (isMap) {
                     // directly assigning a map
                     value.$changes = new ChangeTree(field, this.$changes);
                     this.$changes.change(field);
@@ -196,7 +201,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         value.$changes.change(key);
                     }
 
-                } else if (typeof(constructor._schema[field]) === "function") {
+                } else if (isSchema) {
                     // directly assigning a `Schema` object
                     // value may be set to null
                     this.$changes.change(field);

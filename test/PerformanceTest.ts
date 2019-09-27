@@ -46,7 +46,7 @@ describe("Performance", () => {
             for (let i = 0; i < totalItems; i++) {
                 state.mapOfPlayers["player" + i] = new Player("Player " + i, getRandomNumber(), getRandomNumber());
             }
-        }, `inserting ${totalItems} items to map`, 2600); // TODO: improve this value!
+        }, `inserting ${totalItems} items to map`, 2700); // TODO: improve this value!
 
         assertExecutionTime(() => state.encode(), `encoding ${totalItems} map entries`, 150);
 
@@ -55,6 +55,6 @@ describe("Performance", () => {
         player.y = getRandomNumber();
 
         // TODO: improve this value
-        assertExecutionTime(() => state.encode(), "encoding a single map item change", 10);
+        assertExecutionTime(() => state.encode(), "encoding a single map item change", 15);
     });
 });
