@@ -357,7 +357,7 @@ describe("Change API", () => {
             sinon.assert.calledOnce(onRemoveSpy);
         });
 
-        xit("should allow onAdd using primitive types", () => {
+        it("should allow onAdd using primitive types", () => {
             class MapWithPrimitive extends Schema {
                 @type({map: "boolean"}) mapOfBool = new MapSchema<boolean>();
             }

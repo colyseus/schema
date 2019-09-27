@@ -58,12 +58,14 @@ export class ChangeTree {
     }
 
     mapIndex(instance: any, key: FieldKey) {
-        if (!this.indexMap) {
-            this.indexMap = new Map<any, FieldKey>();
-            this.indexChange = new Map<any, FieldKey>();
-        }
+        if (typeof instance === "object") {
+            if (!this.indexMap) {
+                this.indexMap = new Map<any, FieldKey>();
+                this.indexChange = new Map<any, FieldKey>();
+            }
 
-        this.indexMap.set(instance, key);
+            this.indexMap.set(instance, key);
+        }
     }
 
     getIndex (instance: any) {
@@ -75,7 +77,9 @@ export class ChangeTree {
     }
 
     mapIndexChange(instance: any, key: FieldKey) {
-        this.indexChange.set(instance, key);
+        if (typeof instance === "object") {
+            this.indexChange.set(instance, key);
+        }
     }
 
     getIndexChange (instance: any) {
