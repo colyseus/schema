@@ -83,4 +83,24 @@ describe("MapSchema", () => {
         assert.equal(decodedState.mapOfPlayers['two'].name, "Katarina 2");
     });
 
+    xit("removing items should have as very few bytes", () => {
+        const state = new State();
+        state.mapOfPlayers = new MapSchema<Player>();
+        state.mapOfPlayers['one'] = new Player("Jake");
+        state.mapOfPlayers['two'] = new Player("Katarina");
+        state.mapOfPlayers['three'] = new Player("Tarquinn");
+        state.mapOfPlayers['four'] = new Player("Snake");
+
+        state.encode();
+
+        delete state.mapOfPlayers['one'];
+        delete state.mapOfPlayers['two'];
+        delete state.mapOfPlayers['three'];
+        delete state.mapOfPlayers['four'];
+
+        const encoded = state.encode();
+
+        assert.deepEqual([ 4, 4, 0, 192, 1, 192, 2, 192, 3, 192 ], encoded);
+    });
+
 });
