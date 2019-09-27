@@ -14,6 +14,7 @@ export class ChangeTree {
      */
     indexMap: Map<any, FieldKey>;
     indexChange: Map<any, FieldKey>;
+    deletedKeys: any = {};
 
     /**
      * parent link & field name
@@ -73,7 +74,12 @@ export class ChangeTree {
     }
 
     deleteIndex(instance: any) {
+        this.deletedKeys[this.indexMap.get(instance)] = true;
         this.indexMap.delete(instance);
+    }
+
+    isDeleted(key: any) {
+        return this.deletedKeys[key] !== undefined;
     }
 
     mapIndexChange(instance: any, key: FieldKey) {
@@ -122,6 +128,7 @@ export class ChangeTree {
     discard() {
         this.changed = false;
         this.changes = [];
+        this.deletedKeys = {};
 
         if (this.indexChange) {
             this.indexChange.clear();

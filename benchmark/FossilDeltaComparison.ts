@@ -1,4 +1,4 @@
-import { Schema, type } from "../src/annotations";
+import { Schema, type } from "../src";
 import * as nanoid from "nanoid";
 import * as msgpack from "notepack.io";
 import * as fossildelta from "fossil-delta";

@@ -427,15 +427,9 @@ export abstract class Schema {
     encode(root: Schema = this, encodeAll = false, client?: Client) {
         let encodedBytes = [];
 
-        const endStructure = () => {
-            if (this !== root) {
-                encodedBytes.push(END_OF_STRUCTURE);
-            }
-        }
-
         // skip if nothing has changed
         if (!this.$changes.changed && !encodeAll) {
-            endStructure();
+            this._encodeEndOfStructure(this, root, encodedBytes);
             return encodedBytes;
         }
 
@@ -478,7 +472,7 @@ export abstract class Schema {
 
                     this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
 
-                    bytes = bytes.concat((value as Schema).encode(root, encodeAll, client));
+                    bytes.push(...(value as Schema).encode(root, encodeAll, client));
 
                 } else {
                     // value has been removed
@@ -535,7 +529,7 @@ export abstract class Schema {
 
                         assertInstanceType(item, type[0] as typeof Schema, this, field);
                         this.tryEncodeTypeId(bytes, type[0] as typeof Schema, item.constructor as typeof Schema);
-                        bytes = bytes.concat(item.encode(root, encodeAll, client));
+                        bytes.push(...item.encode(root, encodeAll, client));
 
                     } else {
                         encode.number(bytes, index);
@@ -563,13 +557,15 @@ export abstract class Schema {
 
                 encode.number(bytes, keys.length)
 
-                const previousKeys = Object.keys(this[`_${field}`]);
+                // const previousKeys = Object.keys(this[`_${field}`]); // this is costly!
+                const previousKeys = value.$changes.allChanges;
                 const isChildSchema = typeof((type as any).map) !== "string";
+                const numChanges = keys.length;
 
                 // assert MapSchema was provided
                 assertInstanceType(this[`_${field}`], MapSchema, this, field);
 
-                for (let i = 0; i < keys.length; i++) {
+                for (let i = 0; i < numChanges; i++) {
                     const key = (typeof(keys[i]) === "number" && previousKeys[keys[i]]) || keys[i];
                     const item = this[`_${field}`][key];
 
@@ -596,26 +592,34 @@ export abstract class Schema {
                             encode.number(bytes, this[`_${field}`]._indexes.get(indexChange));
                         }
 
-                        mapItemIndex = this[`_${field}`]._indexes.get(key);
+                        /**
+                         * - Allow item replacement
+                         * - Allow to use the index of a deleted item to encode as NIL
+                         */
+                        mapItemIndex = (!value.$changes.isDeleted(key) || !item)
+                            ? this[`_${field}`]._indexes.get(key)
+                            : undefined;
                     }
 
                     if (mapItemIndex !== undefined) {
                         encode.number(bytes, mapItemIndex);
 
                     } else {
-                        // TODO: remove item
                         encode.string(bytes, key);
                     }
 
                     if (item && isChildSchema) {
                         assertInstanceType(item, (type as any).map, this, field);
                         this.tryEncodeTypeId(bytes, (type as any).map, item.constructor as typeof Schema);
-                        bytes = bytes.concat(item.encode(root, encodeAll, client));
+                        bytes.push(...item.encode(root, encodeAll, client));
 
                     } else if (item !== undefined) {
                         encodePrimitiveType((type as any).map, bytes, item, this, field);
 
                     } else {
+                        // TODO: remove item
+                        // console.log("REMOVE KEY INDEX", { key });
+                        // this[`_${field}`]._indexes.delete(key);
                         encode.uint8(bytes, NIL);
                     }
 
@@ -624,8 +628,9 @@ export abstract class Schema {
                 if (!encodeAll) {
                     value.$changes.discard();
 
-                    // TODO: track array/map indexes per client?
+                    // TODO: track array/map indexes per client (for filtering)?
                     if (!client) {
+                        // TODO: do not iterate though all MapSchema indexes here.
                         this[`_${field}`]._updateIndexes();
                     }
                 }
@@ -650,7 +655,7 @@ export abstract class Schema {
         }
 
         // flag end of Schema object structure
-        endStructure();
+        this._encodeEndOfStructure(this, root, encodedBytes);
 
         if (!encodeAll && !client) {
             this.$changes.discard();
@@ -726,6 +731,12 @@ export abstract class Schema {
             }
         }
         return obj;
+    }
+
+    private _encodeEndOfStructure(instance: Schema, root: Schema, bytes: number[]) {
+        if (instance !== root) {
+            bytes.push(END_OF_STRUCTURE);
+        }
     }
 
     private tryEncodeTypeId (bytes: number[], type: typeof Schema, targetType: typeof Schema) {
