@@ -592,7 +592,13 @@ export abstract class Schema {
                             encode.number(bytes, this[`_${field}`]._indexes.get(indexChange));
                         }
 
-                        mapItemIndex = this[`_${field}`]._indexes.get(key);
+                        /**
+                         * - Allow item replacement
+                         * - Allow to use the index of a deleted item to encode as NIL
+                         */
+                        mapItemIndex = (!value.$changes.isDeleted(key) || !item)
+                            ? this[`_${field}`]._indexes.get(key)
+                            : undefined;
                     }
 
                     if (mapItemIndex !== undefined) {
@@ -612,6 +618,7 @@ export abstract class Schema {
 
                     } else {
                         // TODO: remove item
+                        // console.log("REMOVE KEY INDEX", { key });
                         // this[`_${field}`]._indexes.delete(key);
                         encode.uint8(bytes, NIL);
                     }

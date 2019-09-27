@@ -153,7 +153,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                                     delete deletedValue.$changes.parent;
                                 }
 
-                                obj._indexes.delete(prop);
+                                // obj._indexes.delete(prop);
                             }
 
                             delete obj[prop];

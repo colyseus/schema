@@ -83,7 +83,7 @@ describe("MapSchema", () => {
         assert.equal(decodedState.mapOfPlayers['two'].name, "Katarina 2");
     });
 
-    xit("removing items should have as very few bytes", () => {
+    it("removing items should have as very few bytes", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>();
         state.mapOfPlayers['one'] = new Player("Jake");
