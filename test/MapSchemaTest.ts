@@ -83,6 +83,31 @@ describe("MapSchema", () => {
         assert.equal(decodedState.mapOfPlayers['two'].name, "Katarina 2");
     });
 
+    it("should allow map of primitive types", () => {
+        class Player extends Schema {
+            @type({ map: "number" }) mapOfNumbers = new MapSchema<number>();
+        }
+        class State extends Schema {
+            @type({ map: Player }) mapOfPlayers = new MapSchema<Player>();
+        }
+
+        const state = new State();
+        state.mapOfPlayers['one'] = new Player();
+        state.mapOfPlayers['one'].mapOfNumbers['2'] = 2;
+        state.mapOfPlayers['one'].mapOfNumbers['3'] = 3;
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        assert.deepEqual(decodedState.toJSON(), {
+            mapOfPlayers: {
+                one: {
+                    mapOfNumbers: { 2: 2, 3: 3 }
+                }
+            }
+        });
+    });
+
     it("removing items should have as very few bytes", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>();
