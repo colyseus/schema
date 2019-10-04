@@ -631,7 +631,7 @@ export abstract class Schema {
                     // TODO: track array/map indexes per client (for filtering)?
                     if (!client) {
                         // TODO: do not iterate though all MapSchema indexes here.
-                        this[`_${field}`]._updateIndexes();
+                        this[`_${field}`]._updateIndexes(value.$changes.allChanges);
                     }
                 }
 

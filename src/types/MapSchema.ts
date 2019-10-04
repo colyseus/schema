@@ -69,11 +69,11 @@ export class MapSchema<T=any> {
 
             _indexes: { value: new Map<string, number>(), enumerable: false, writable: true },
             _updateIndexes: {
-                value: () => {
+                value: (allKeys) => {
                     let index: number = 0;
 
                     let indexes = new Map<string, number>();
-                    for (let key in this) {
+                    for (let key of allKeys) {
                         indexes.set(key, index++);
                     }
 
@@ -94,5 +94,5 @@ export class MapSchema<T=any> {
     triggerAll: () => void;
 
     _indexes: Map<string, number>;
-    _updateIndexes: () => void;
+    _updateIndexes: (keys: string[]) => void;
 }

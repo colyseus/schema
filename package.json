@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "0.4.57",
+  "version": "0.4.58",
   "description": "Schema-based binary serializer / de-serializer.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -14,7 +14,8 @@
     "generate-csharp-test-3": "schema-codegen test-external/ArraySchemaTypes.ts --namespace SchemaTest.ArraySchemaTypes --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/ArraySchemaTypes",
     "generate-csharp-test-4": "schema-codegen test-external/MapSchemaTypes.ts --namespace SchemaTest.MapSchemaTypes --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/MapSchemaTypes",
     "generate-csharp-test-5": "schema-codegen test-external/InheritedTypes.ts --namespace SchemaTest.InheritedTypes --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/InheritedTypes",
-    "generate-csharp-test-cases": "npm run generate-csharp-test-1 && npm run generate-csharp-test-2 && npm run generate-csharp-test-3 && npm run generate-csharp-test-4 && npm run generate-csharp-test-5",
+    "generate-csharp-test-6": "schema-codegen test-external/MapSchemaInt8.ts --namespace SchemaTest.MapSchemaInt8 --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/MapSchemaInt8",
+    "generate-csharp-test-cases": "npm run generate-csharp-test-1 && npm run generate-csharp-test-2 && npm run generate-csharp-test-3 && npm run generate-csharp-test-4 && npm run generate-csharp-test-5 && npm run generate-csharp-test-6",
     "watch": "tsc -w",
     "prepublish": "tsc"
   },
