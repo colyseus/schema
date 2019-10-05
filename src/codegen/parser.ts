@@ -43,26 +43,43 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             break;
 
         case ts.SyntaxKind.Identifier:
-            if (node.getText() === decoratorName && node.parent.kind !== ts.SyntaxKind.ImportSpecifier) {
-                /**
-                 * TypeScript source file (`.ts`)
-                 */
+            if (
+                node.getText() === decoratorName &&
+                node.parent.kind !== ts.SyntaxKind.ImportSpecifier &&
+                node.parent.kind !== ts.SyntaxKind.BindingElement
+            ) {
                 const prop: any = node.parent.parent.parent;
                 const propDecorator = node.parent.parent.parent.decorators;
 
-                // ignore if "type" identifier doesn't have a decorator.
-                if (!propDecorator) { break; }
+                // using as decorator
+                if (propDecorator) {
+                    /**
+                     * Calling `@type()` as decorator
+                     */
+                    const typeDecorator: any = propDecorator.find((decorator => {
+                        return (decorator.expression as any).expression.escapedText === decoratorName;
+                    })).expression;
 
-                const typeDecorator: any = propDecorator.find((decorator => {
-                    return (decorator.expression as any).expression.escapedText === decoratorName;
-                })).expression;
+                    const property = new Property();
+                    property.name = prop.name.escapedText;
+                    currentClass.addProperty(property);
 
-                const property = new Property();
-                property.name = prop.name.escapedText;
-                currentClass.addProperty(property);
+                    const typeArgument = typeDecorator.arguments[0];
+                    defineProperty(property, typeArgument);
 
-                const typeArgument = typeDecorator.arguments[0];
-                defineProperty(property, typeArgument);
+                } else {
+                    /**
+                     * Calling `type()` as a regular method
+                     */
+                    const property = new Property();
+                    property.name = prop.expression.arguments[1].text;
+                    currentClass.addProperty(property);
+
+                    const typeArgument = prop.expression.expression.arguments[0];
+                    defineProperty(property, typeArgument);
+
+                }
+
 
             } else if (
                 node.getText() === "defineTypes" &&
@@ -70,6 +87,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             ) {
                 /**
                  * JavaScript source file (`.js`)
+                 * Using `defineTypes()`
                  */
                 const callExpression = node.parent as ts.CallExpression;
 
