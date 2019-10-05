@@ -37,8 +37,8 @@ state.bot.y = 150;
 state.bot.name = "Bot";
 state.bot.power = 200;
 
-// state.any = new Bot();
-// (state.any as Bot).power = 100;
+state.any = new Bot();
+(state.any as Bot).power = 100;
 
 const bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
 console.log("InheritedTypes =>");
