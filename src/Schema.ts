@@ -99,6 +99,7 @@ export abstract class Schema {
     static _schema: Definition;
     static _indexes: {[field: string]: number};
     static _filters: {[field: string]: FilterCallback};
+    static _deprecated: {[field: string]: boolean};
     static _descriptors: PropertyDescriptorMap & ThisType<any>;
 
     static onError(e) {
@@ -127,6 +128,7 @@ export abstract class Schema {
     get _descriptors () { return (this.constructor as typeof Schema)._descriptors; }
     get _indexes () { return (this.constructor as typeof Schema)._indexes; }
     get _filters () { return (this.constructor as typeof Schema)._filters; }
+    get _deprecated () { return (this.constructor as typeof Schema)._deprecated; }
 
     get $changed () { return this.$changes.changed; }
 
@@ -165,7 +167,11 @@ export abstract class Schema {
             let change: any; // for triggering onChange
             let hasChange = false;
 
-            if ((type as any)._schema) {
+            if (!field) {
+                continue;
+
+            } else if ((type as any)._schema) {
+
                 if (decode.nilCheck(bytes, it)) {
                     it.offset++;
                     value = null;
@@ -436,6 +442,7 @@ export abstract class Schema {
         const schema = this._schema;
         const indexes = this._indexes;
         const filters = this._filters;
+        const deprecated = this._deprecated;
         const changes = (encodeAll || client)
             ? this.$changes.allChanges
             : this.$changes.changes;
@@ -722,9 +729,11 @@ export abstract class Schema {
 
     toJSON () {
         const schema = this._schema;
+        const deprecated = this._deprecated;
+
         const obj = {}
         for (let field in schema) {
-            if (this[field] !== null && typeof(this[field]) !== "undefined") {
+            if (!deprecated[field] && this[field] !== null && typeof (this[field]) !== "undefined") {
                 obj[field] = (typeof (this[field].toJSON) === "function")
                     ? this[field].toJSON()
                     : this[`_${field}`];

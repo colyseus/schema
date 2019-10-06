@@ -67,10 +67,18 @@ export function type (type: DefinitionType, context: Context = globalContext): P
             constructor._schema = Object.assign({}, constructor._schema || {});
             constructor._indexes = Object.assign({}, constructor._indexes || {});
             constructor._descriptors = Object.assign({}, constructor._descriptors || {});
+            constructor._deprecated = Object.assign({}, constructor._deprecated || {});
         }
 
         constructor._indexes[field] = Object.keys(constructor._schema).length;
         constructor._schema[field] = type;
+
+        /**
+         * skip if descriptor already exists for this field (`@deprecated()`)
+         */
+        if (constructor._descriptors[field]) {
+            return;
+        }
 
         /**
          * TODO: `isSchema` / `isArray` / `isMap` is repeated on many places!
@@ -238,6 +246,27 @@ export function filter(cb: FilterCallback): PropertyDecorator  {
         }
 
         constructor._filters[field] = cb;
+    }
+}
+
+/**
+ * `@deprecated()` flag a field as deprecated.
+ * The previous `@type()` annotation should remain along with this one.
+ */
+
+export function deprecated(throws: boolean = true, context: Context = globalContext): PropertyDecorator {
+    return function (target: typeof Schema, field: string) {
+        const constructor = target.constructor as typeof Schema;
+        constructor._deprecated[field] = true;
+
+        if (throws) {
+            constructor._descriptors[field] = {
+                get: function () { throw new Error(`${field} is deprecated.`); },
+                set: function (this: Schema, value: any) { /* throw new Error(`${field} is deprecated.`); */ },
+                enumerable: false,
+                configurable: true
+            };
+        }
     }
 }
 

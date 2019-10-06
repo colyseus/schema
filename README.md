@@ -133,6 +133,16 @@ mapOfNumbers: MapSchema<number>;
 mapOfStrings: MapSchema<string>;
 ```
 
+### Backwards/forwards compability
+
+Backwards/fowards compatibility is possible by declaring new fields at the
+end of existing structures, and earlier declarations to not be removed, but
+be marked `@deprecated()` when needed.
+
+This is particularly useful for native-compiled targets, such as C#, C++,
+Haxe, etc - where the client-side can potentially not have the most
+up-to-date version of the schema definitions.
+
 ### Reflection
 
 The Schema definitions can encode itself through `Reflection`. You can have the

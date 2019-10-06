@@ -76,6 +76,7 @@ export class Property {
     name: string;
     type: string;
     childType: string;
+    deprecated?: boolean;
 }
 
 export interface File {

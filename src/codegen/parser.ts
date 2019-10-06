@@ -3,6 +3,7 @@ import { readFileSync } from "fs";
 import { Class, Property, Context } from "./types";
 
 let currentClass: Class;
+let currentProperty: Property;
 
 function defineProperty(property: Property, initializer: any) {
     if (ts.isIdentifier(initializer)) {
@@ -44,6 +45,15 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
         case ts.SyntaxKind.Identifier:
             if (
+                node.getText() === "deprecated" &&
+                node.parent.kind !== ts.SyntaxKind.ImportSpecifier
+            ) {
+                currentProperty = new Property();
+                currentProperty.deprecated = true;
+                break;
+            }
+
+            if (
                 node.getText() === decoratorName &&
                 node.parent.kind !== ts.SyntaxKind.ImportSpecifier &&
                 node.parent.kind !== ts.SyntaxKind.BindingElement
@@ -60,7 +70,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                         return (decorator.expression as any).expression.escapedText === decoratorName;
                     })).expression;
 
-                    const property = new Property();
+                    const property = currentProperty || new Property();
                     property.name = prop.name.escapedText;
                     currentClass.addProperty(property);
 
@@ -71,13 +81,12 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     /**
                      * Calling `type()` as a regular method
                      */
-                    const property = new Property();
+                    const property = currentProperty || new Property();
                     property.name = prop.expression.arguments[1].text;
                     currentClass.addProperty(property);
 
                     const typeArgument = prop.expression.expression.arguments[0];
                     defineProperty(property, typeArgument);
-
                 }
 
 
@@ -98,17 +107,20 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                 for (let i=0; i<types.properties.length; i++) {
                     const prop = types.properties[i];
 
-                    const property = new Property();
+                    const property = currentProperty || new Property();
                     property.name = prop.name.escapedText;
                     currentClass.addProperty(property);
 
                     defineProperty(property, prop.initializer);
                 }
+
             }
 
             if (node.parent.kind === ts.SyntaxKind.ClassDeclaration) {
                 currentClass.name = node.getText();
             }
+
+            currentProperty = undefined;
 
             break;
     }

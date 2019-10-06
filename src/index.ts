@@ -12,6 +12,7 @@ export {
 export {
     // Annotations
     type,
+    deprecated,
     filter,
     defineTypes,
 

@@ -97,6 +97,8 @@ function generateProperty(prop: Property, indent: string = "") {
 
     property += ` ${langType} ${prop.name}`;
 
-    return `\t${indent}[Type(${prop.index}, ${typeArgs})]
-\t${indent}${property} = ${initializer};`
+    let ret = (prop.deprecated) ? `\t\t[System.Obsolete("field '${prop.name}' is deprecated.", true)]\n` : '';
+
+    return ret + `\t${indent}[Type(${prop.index}, ${typeArgs})]
+\t${indent}${property} = ${initializer};`;
 }
