@@ -266,9 +266,10 @@ Practical Colyseus issues this should solve:
 
 ## Inspiration:
 
+- [Protocol Buffers](https://developers.google.com/protocol-buffers)
+- [flatbuffers](https://google.github.io/flatbuffers/flatbuffers_white_paper.html)
 - [schemapack](https://github.com/phretaddin/schemapack/)
 - [avro](https://avro.apache.org/docs/current/spec.html)
-- [flatbuffers](https://google.github.io/flatbuffers/flatbuffers_white_paper.html)
 
 
 ## License
