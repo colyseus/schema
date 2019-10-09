@@ -11,10 +11,10 @@ describe("ArraySchema", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema<Player>();
         state.arrayOfPlayers.push(new Player("One", 10, 0));
-        state.arrayOfPlayers.push(new Player("Two", 30, 0));
-        state.arrayOfPlayers.push(new Player("Three", 20, 0));
-        state.arrayOfPlayers.push(new Player("Four", 50, 0));
-        state.arrayOfPlayers.push(new Player("Five", 40, 0));
+        state.arrayOfPlayers.push(new Player("Two", 30, 1));
+        state.arrayOfPlayers.push(new Player("Three", 20, 2));
+        state.arrayOfPlayers.push(new Player("Four", 50, 3));
+        state.arrayOfPlayers.push(new Player("Five", 40, 4));
 
         const decodedState = new State();
         decodedState.arrayOfPlayers = new ArraySchema<Player>();
@@ -29,7 +29,7 @@ describe("ArraySchema", () => {
         sinon.assert.callCount(onAddSpy, 5);
         sinon.assert.callCount(onChangeSpy, 0);
 
-        state.arrayOfPlayers.sort((a, b) => 1);
+        state.arrayOfPlayers.sort((a, b) => b.y - a.y);
 
         const encoded = state.encode();
         assert.equal(encoded.length, 23, "should encode only index changes");
