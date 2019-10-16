@@ -11,6 +11,7 @@ const supportedTargets = {
     ts: 'generate for TypeScript',
     js: 'generate for JavaScript',
     java: 'generate for Java',
+    lua: 'generate for LUA',
 }
 
 function displayHelp() {
