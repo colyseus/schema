@@ -22,19 +22,9 @@ export class ChangeTree {
     parent: ChangeTree;
     parentField: FieldKey;
 
-    linkedTrees: ChangeTree[] = [];
-
-    protected trackAllChanges: boolean;
-
-    constructor (parentField: FieldKey = null, parent?: ChangeTree, trackAllChanges: boolean = false) {
+    constructor (parentField: FieldKey = null, parent?: ChangeTree) {
         this.parent = parent;
         this.parentField = parentField;
-
-        this.trackAllChanges = trackAllChanges;
-    }
-
-    link(linkedTree: ChangeTree) {
-        this.linkedTrees.push(linkedTree);
     }
 
     change(field: FieldKey, isDelete: boolean = false) {
