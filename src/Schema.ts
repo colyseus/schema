@@ -229,12 +229,6 @@ export abstract class Schema {
                         hasIndexChange = true;
                     }
 
-                    // // Simplified method?
-                    // let isNew = (
-                    //     (value[newIndex] !== valueRef[newIndex]) ||
-                    //     (value[newIndex] === undefined && valueRef[newIndex] === undefined)
-                    // ) && indexChangedFrom === undefined;
-
                     let isNew = (!hasIndexChange && value[newIndex] === undefined) || (hasIndexChange && indexChangedFrom === undefined);
 
                     if ((type as any).prototype instanceof Schema) {
@@ -450,11 +444,6 @@ export abstract class Schema {
             const value = this[`_${field}`];
             const fieldIndex = indexes[field];
 
-            // // skip unchagned fields
-            // if (value === undefined) {
-            //     continue;
-            // }
-
             let bytes: number[] = [];
 
             if (value === undefined) {
@@ -659,11 +648,6 @@ export abstract class Schema {
                         continue;
                     }
                 }
-
-                // const isNil = (value === undefined);
-                // if (isNil) {
-                //     encode.uint8(bytes, NIL);
-                // }
 
                 encode.number(bytes, fieldIndex);
                 encodePrimitiveType(type as PrimitiveType, bytes, value, this, field)
