@@ -3,7 +3,7 @@ import * as assert from "assert";
 
 import { State, Player } from "./Schema";
 import { ArraySchema, Schema, type, Reflection } from "../src";
-import { logChangeTree } from "./helpers/logging";
+import { logChangeTree } from "./helpers/test_helpers";
 
 describe("ArraySchema", () => {
 

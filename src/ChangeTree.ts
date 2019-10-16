@@ -64,8 +64,10 @@ export class ChangeTree {
     }
 
     deleteIndex(instance: any) {
-        this.deletedKeys[this.indexMap.get(instance)] = true;
-        this.indexMap.delete(instance);
+        if (typeof instance === "object") {
+            this.deletedKeys[this.indexMap.get(instance)] = true;
+            this.indexMap.delete(instance);
+        }
     }
 
     isDeleted(key: any) {
@@ -83,7 +85,9 @@ export class ChangeTree {
     }
 
     deleteIndexChange(instance: any) {
-        this.indexChange.delete(instance);
+        if (typeof instance === "object") {
+            this.indexChange.delete(instance);
+        }
     }
 
     changeAll(obj: Schema | ArraySchema | MapSchema) {
@@ -104,13 +108,17 @@ export class ChangeTree {
                     obj[field].$changes.parent = this;
                 }
 
-                this.change(field);
+                if (obj[field] !== undefined) {
+                    this.change(field);
+                }
             }
 
         } else {
             const keys = Object.keys(obj);
             for (const key of keys) {
-                this.change(key);
+                if (obj[key] !== undefined) {
+                    this.change(key);
+                }
             }
         }
     }

@@ -76,7 +76,7 @@ describe("Schema", () => {
             data.uint64 = Number.MAX_SAFE_INTEGER;
 
             const encoded = data.encode();
-            console.log(encoded)
+            assert.deepEqual(encoded, [0, 255, 255, 255, 255, 255, 255, 31, 0]);
 
             const decoded = new Data();
             decoded.decode(encoded);

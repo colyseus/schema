@@ -71,10 +71,9 @@ function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any, 
 
     if (encodeFunc) {
         encodeFunc(bytes, value);
-        return true;
 
     } else {
-        return false;
+        throw new EncodeSchemaError(`a '${type}' was expected, but ${value} was provided in ${klass.constructor.name}#${field}`);
     }
 }
 
@@ -152,6 +151,7 @@ export abstract class Schema {
         }
 
         while (it.offset < totalBytes) {
+            const isNil = decode.nilCheck(bytes, it) && ++it.offset;
             const index = bytes[it.offset++];
 
             if (index === END_OF_STRUCTURE) {
@@ -170,16 +170,13 @@ export abstract class Schema {
             if (!field) {
                 continue;
 
+            } else if (isNil) {
+                value = null;
+                hasChange = true;
+
             } else if ((type as any)._schema) {
-
-                if (decode.nilCheck(bytes, it)) {
-                    it.offset++;
-                    value = null;
-
-                } else {
-                    value = this[`_${field}`] || this.createTypeInstance(bytes, it, type as typeof Schema);
-                    value.decode(bytes, it);
-                }
+                value = this[`_${field}`] || this.createTypeInstance(bytes, it, type as typeof Schema);
+                value.decode(bytes, it);
 
                 hasChange = true;
 
@@ -194,8 +191,7 @@ export abstract class Schema {
                 const numChanges = Math.min(decode.number(bytes, it), newLength);
                 hasChange = (numChanges > 0);
 
-                // FIXME: this may not be reliable. possibly need to encode this variable during
-                // serializagion
+                // FIXME: this may not be reliable. possibly need to encode this variable during serialization
                 let hasIndexChange = false;
 
                 // ensure current array has the same length as encoded one
@@ -223,6 +219,7 @@ export abstract class Schema {
                 }
 
                 for (let i = 0; i < numChanges; i++) {
+                    const isNilItem = decode.nilCheck(bytes, it) && ++it.offset;
                     const newIndex = decode.number(bytes, it);
 
                     let indexChangedFrom: number; // index change check
@@ -258,9 +255,7 @@ export abstract class Schema {
                             isNew = true;
                         }
 
-                        if (decode.nilCheck(bytes, it)) {
-                            it.offset++;
-
+                        if (isNilItem) {
                             if (valueRef.onRemove) {
                                 try {
                                     valueRef.onRemove(item, newIndex);
@@ -325,6 +320,8 @@ export abstract class Schema {
                         break;
                     }
 
+                    const isNilItem = decode.nilCheck(bytes, it) && ++it.offset;
+
                     // index change check
                     let previousKey: string;
                     if (decode.indexChangeCheck(bytes, it)) {
@@ -353,9 +350,7 @@ export abstract class Schema {
                         item = valueRef[newKey]
                     }
 
-                    if (decode.nilCheck(bytes, it)) {
-                        it.offset++;
-
+                    if (isNilItem) {
                         if (item && item.onRemove) {
                             try {
                                 item.onRemove();
@@ -442,7 +437,6 @@ export abstract class Schema {
         const schema = this._schema;
         const indexes = this._indexes;
         const filters = this._filters;
-        const deprecated = this._deprecated;
         const changes = (encodeAll || client)
             ? this.$changes.allChanges
             : this.$changes.changes;
@@ -456,14 +450,18 @@ export abstract class Schema {
             const value = this[`_${field}`];
             const fieldIndex = indexes[field];
 
-            // skip unchagned fields
-            if (value === undefined) {
-                continue;
-            }
+            // // skip unchagned fields
+            // if (value === undefined) {
+            //     continue;
+            // }
 
             let bytes: number[] = [];
 
-            if ((type as any)._schema) {
+            if (value === undefined) {
+                encode.uint8(bytes, NIL);
+                encode.number(bytes, fieldIndex);
+
+            } else if ((type as any)._schema) {
                 if (client && filter) {
                     // skip if not allowed by custom filter
                     if (!filter.call(this, client, value, root)) {
@@ -471,19 +469,19 @@ export abstract class Schema {
                     }
                 }
 
-                encode.number(bytes, fieldIndex);
+                if (!value) {
+                    // value has been removed
+                    encode.uint8(bytes, NIL);
+                    encode.number(bytes, fieldIndex);
 
-                // encode child object
-                if (value) {
+                } else {
+                    // encode child object
+                    encode.number(bytes, fieldIndex);
                     assertInstanceType(value, type as typeof Schema, this, field);
 
                     this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
 
                     bytes.push(...(value as Schema).encode(root, encodeAll, client));
-
-                } else {
-                    // value has been removed
-                    encode.uint8(bytes, NIL);
                 }
 
             } else if (Array.isArray(type)) {
@@ -523,6 +521,15 @@ export abstract class Schema {
                         }
                     }
 
+                    const isNil = (item === undefined);
+
+                    /**
+                     * Invert NIL to prevent collision with data starting with NIL byte
+                     */
+                    if (isNil) {
+                        encode.uint8(bytes, NIL);
+                    }
+
                     if (isChildSchema) { // is array of Schema
                         encode.number(bytes, index);
 
@@ -538,13 +545,9 @@ export abstract class Schema {
                         this.tryEncodeTypeId(bytes, type[0] as typeof Schema, item.constructor as typeof Schema);
                         bytes.push(...item.encode(root, encodeAll, client));
 
-                    } else {
+                    } else if (!isNil) {
                         encode.number(bytes, index);
-
-                        if (!encodePrimitiveType(type[0], bytes, item, this, field)) {
-                            console.log("cannot encode", schema[field]);
-                            continue;
-                        }
+                        encodePrimitiveType(type[0], bytes, item, this, field);
                     }
                 }
 
@@ -608,6 +611,19 @@ export abstract class Schema {
                             : undefined;
                     }
 
+                    const isNil = (item === undefined);
+
+                    /**
+                     * Invert NIL to prevent collision with data starting with NIL byte
+                     */
+                    if (isNil) {
+
+                        // TODO: remove item
+                        // console.log("REMOVE KEY INDEX", { key });
+                        // this[`_${field}`]._indexes.delete(key);
+                        encode.uint8(bytes, NIL);
+                    }
+
                     if (mapItemIndex !== undefined) {
                         encode.number(bytes, mapItemIndex);
 
@@ -620,14 +636,8 @@ export abstract class Schema {
                         this.tryEncodeTypeId(bytes, (type as any).map, item.constructor as typeof Schema);
                         bytes.push(...item.encode(root, encodeAll, client));
 
-                    } else if (item !== undefined) {
+                    } else if (!isNil) {
                         encodePrimitiveType((type as any).map, bytes, item, this, field);
-
-                    } else {
-                        // TODO: remove item
-                        // console.log("REMOVE KEY INDEX", { key });
-                        // this[`_${field}`]._indexes.delete(key);
-                        encode.uint8(bytes, NIL);
                     }
 
                 }
@@ -650,12 +660,13 @@ export abstract class Schema {
                     }
                 }
 
-                encode.number(bytes, fieldIndex);
+                // const isNil = (value === undefined);
+                // if (isNil) {
+                //     encode.uint8(bytes, NIL);
+                // }
 
-                if (!encodePrimitiveType(type as PrimitiveType, bytes, value, this, field)) {
-                    console.log("cannot encode", schema[field]);
-                    continue;
-                }
+                encode.number(bytes, fieldIndex);
+                encodePrimitiveType(type as PrimitiveType, bytes, value, this, field)
             }
 
             encodedBytes = [...encodedBytes, ...bytes];

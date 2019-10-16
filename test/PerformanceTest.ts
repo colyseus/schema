@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import { State, Player } from "./Schema";
 import { ArraySchema, MapSchema } from "../src";
+import { IS_COVERAGE } from "./helpers/test_helpers";
 
 const getRandomNumber = (max: number = 2000) => Math.floor(Math.random() * max);
 
@@ -8,7 +9,12 @@ function assertExecutionTime(cb: Function, message: string, threshold: number) {
     const now = Date.now();
     cb();
     const diff = Date.now() - now;
+
     console.log(`${message} took ${diff}ms`)
+
+    // allow increased threshold on code coverage
+    if (IS_COVERAGE) { threshold *= 1.5; }
+
     assert.ok(diff <= threshold, `${message} exceeded ${threshold}ms. took: ${diff}ms`);
 }
 

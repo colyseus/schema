@@ -7,7 +7,7 @@
         "declaration": true,
         "experimentalDecorators": true,
         "noImplicitAny": false,
-        "sourceMap": false
+        "sourceMap": true
     },
     "include": [
       "src/**/*.ts"

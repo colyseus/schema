@@ -80,7 +80,7 @@ describe("Spec / Protocol", () => {
     });
 
     describe("dynamic numbers", () => {
-        xit("string should't collide with number", () => {
+        it("string should't collide with number", () => {
             for (let i = 0; i <= 1024; i++) {
                 const bytes = [];
                 encode.string(bytes, i.toString());

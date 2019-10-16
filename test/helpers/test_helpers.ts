@@ -1,5 +1,7 @@
 import { ChangeTree } from "../../src/ChangeTree";
 
+export const IS_COVERAGE = process.argv.find(arg => arg.indexOf("--recursive") !== -1);
+
 export const logChangeTree = (tree: ChangeTree) => {
     if (!tree) return '{empty}'
     const logMap = (map: Map<any, string | number | symbol>) => {
