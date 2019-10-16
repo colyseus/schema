@@ -76,28 +76,28 @@ export function utf8Write(view, offset, str) {
 }
 
 export function int8(bytes, value) {
-  bytes.push(value);
+  bytes.push(value & 255);
 };
 
 export function uint8(bytes, value) {
-  bytes.push(value);
+  bytes.push(value & 255);
 };
 
 export function int16(bytes, value) {
-  bytes.push(value);
-  bytes.push(value >> 8);
+  bytes.push(value & 255);
+  bytes.push((value >> 8) & 255);
 };
 
 export function uint16(bytes, value) {
-  bytes.push(value);
-  bytes.push(value >> 8);
+  bytes.push(value & 255);
+  bytes.push((value >> 8) & 255);
 };
 
 export function int32(bytes, value) {
-  bytes.push(value);
-  bytes.push(value >> 8);
-  bytes.push(value >> 16);
-  bytes.push(value >> 24);
+  bytes.push(value & 255);
+  bytes.push((value >> 8) & 255);
+  bytes.push((value >> 16) & 255);
+  bytes.push((value >> 24) & 255);
 };
 
 export function uint32(bytes, value) {
@@ -105,10 +105,10 @@ export function uint32(bytes, value) {
   const b3 = value >> 16;
   const b2 = value >> 8;
   const b1 = value;
-  bytes.push(b1);
-  bytes.push(b2);
-  bytes.push(b3);
-  bytes.push(b4);
+  bytes.push(b1 & 255);
+  bytes.push(b2 & 255);
+  bytes.push(b3 & 255);
+  bytes.push(b4 & 255);
 };
 
 export function int64(bytes, value) {

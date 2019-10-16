@@ -22,7 +22,7 @@ describe("Schema", () => {
                 stringValue: 'string',
                 intValue: 'number',
             });
-            assert.deepEqual(data.encode(), [0, 173, 105, 110, 105, 116, 105, 97, 108, 32, 118, 97, 108, 117, 101, 1, 205, 300, 1]);
+            assert.deepEqual(data.encode(), [0, 173, 105, 110, 105, 116, 105, 97, 108, 32, 118, 97, 108, 117, 101, 1, 205, 44, 1]);
         });
 
         it("uint8", () => {
@@ -48,7 +48,7 @@ describe("Schema", () => {
             data.uint16 = 65500;
 
             let encoded = data.encode();
-            assert.deepEqual(encoded, [ 0, 65500, 255 ]);
+            assert.deepEqual(encoded, [ 0, 220, 255 ]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -62,7 +62,7 @@ describe("Schema", () => {
             data.uint32 = 4294967290;
 
             let encoded = data.encode();
-            assert.deepEqual(encoded, [0, 4294967290, -1, -1, -1]);
+            assert.deepEqual(encoded, [0, 250, 255, 255, 255]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -90,7 +90,7 @@ describe("Schema", () => {
             data.int8 = -128;
 
             let encoded = data.encode();
-            assert.deepEqual(encoded, [0, -128]);
+            assert.deepEqual(encoded, [0, 128]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -143,7 +143,7 @@ describe("Schema", () => {
             data.float32 = 24.5;
 
             let encoded = data.encode();
-            assert.deepEqual(encoded, [ 0, 1103364096, 4310016, 16836, 65 ]);
+            assert.deepEqual(encoded, [0, 0, 0, 196, 65]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -157,7 +157,7 @@ describe("Schema", () => {
             data.float64 = 24.5;
 
             let encoded = data.encode();
-            assert.deepEqual(encoded, [ 0, 0, 0, 0, 0, 1077444608, 4208768, 16440, 64 ]);
+            assert.deepEqual(encoded, [0, 0, 0, 0, 0, 0, 128, 56, 64]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -775,7 +775,7 @@ describe("Schema", () => {
             state.arrayOfNumbers = new ArraySchema(0, 144, 233, 377, 610, 987, 1597, 2584);
 
             let encoded = state.encode();
-            assert.deepEqual(encoded, [ 0, 8, 8, 0, 0, 1, 204, 144, 2, 204, 233, 3, 205, 377, 1, 4, 205, 610, 2, 5, 205, 987, 3, 6, 205, 1597, 6, 7, 205, 2584, 10 ] );
+            assert.deepEqual(encoded, [0, 8, 8, 0, 0, 1, 204, 144, 2, 204, 233, 3, 205, 121, 1, 4, 205, 98, 2, 5, 205, 219, 3, 6, 205, 61, 6, 7, 205, 24, 10]);
 
             const decodedState = new MyState();
             decodedState.decode(encoded);
@@ -785,7 +785,7 @@ describe("Schema", () => {
             // mutate array
             state.arrayOfNumbers.push(999999);
             encoded = state.encode();
-            assert.deepEqual(encoded, [ 0, 9, 1, 8, 206, 999999, 3906, 15, 0 ]);
+            assert.deepEqual(encoded, [0, 9, 1, 8, 206, 63, 66, 15, 0]);
 
             decodedState.decode(encoded);
             assert.deepEqual(decodedState.arrayOfNumbers, [0, 144, 233, 377, 610, 987, 1597, 2584, 999999]);
@@ -1042,7 +1042,7 @@ describe("Schema", () => {
             let jakeX = Math.random() * 2000;
             state.mapOfPlayers['jake'].x = jakeX;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.mapOfPlayers['jake'].x, jakeX);
+            assert.equal(decodedState.mapOfPlayers['jake'].x.toFixed(3), jakeX.toFixed(3));
 
             delete state.mapOfPlayers['jake'];
         });
