@@ -13,7 +13,7 @@ function assertExecutionTime(cb: Function, message: string, threshold: number) {
     console.log(`${message} took ${diff}ms`)
 
     // allow increased threshold on code coverage
-    if (IS_COVERAGE) { threshold *= 1.5; }
+    if (IS_COVERAGE) { threshold *= 2; }
 
     assert.ok(diff <= threshold, `${message} exceeded ${threshold}ms. took: ${diff}ms`);
 }

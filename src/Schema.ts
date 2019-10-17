@@ -78,14 +78,7 @@ function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any, 
 }
 
 function decodePrimitiveType (type: string, bytes: number[], it: decode.Iterator) {
-    const decodeFunc = decode[type as string];
-
-    if (decodeFunc) {
-        return decodeFunc(bytes, it);
-
-    } else {
-        return null;
-    }
+    return decode[type as string](bytes, it);
 }
 
 /**
@@ -219,7 +212,6 @@ export abstract class Schema {
                 }
 
                 for (let i = 0; i < numChanges; i++) {
-                    const isNilItem = decode.nilCheck(bytes, it) && ++it.offset;
                     const newIndex = decode.number(bytes, it);
 
                     let indexChangedFrom: number; // index change check
@@ -247,18 +239,6 @@ export abstract class Schema {
                         if (!item) {
                             item = this.createTypeInstance(bytes, it, type as typeof Schema);
                             isNew = true;
-                        }
-
-                        if (isNilItem) {
-                            if (valueRef.onRemove) {
-                                try {
-                                    valueRef.onRemove(item, newIndex);
-                                } catch (e) {
-                                    Schema.onError(e);
-                                }
-                            }
-
-                            continue;
                         }
 
                         item.decode(bytes, it);
@@ -510,15 +490,6 @@ export abstract class Schema {
                         }
                     }
 
-                    const isNil = (item === undefined);
-
-                    /**
-                     * Invert NIL to prevent collision with data starting with NIL byte
-                     */
-                    if (isNil) {
-                        encode.uint8(bytes, NIL);
-                    }
-
                     if (isChildSchema) { // is array of Schema
                         encode.number(bytes, index);
 
@@ -534,7 +505,7 @@ export abstract class Schema {
                         this.tryEncodeTypeId(bytes, type[0] as typeof Schema, item.constructor as typeof Schema);
                         bytes.push(...item.encode(root, encodeAll, client));
 
-                    } else if (!isNil) {
+                    } else if (item !== undefined) {
                         encode.number(bytes, index);
                         encodePrimitiveType(type[0], bytes, item, this, field);
                     }

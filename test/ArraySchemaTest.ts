@@ -7,6 +7,45 @@ import { logChangeTree } from "./helpers/test_helpers";
 
 describe("ArraySchema", () => {
 
+    it("should trigger onAdd / onChange / onRemove", () => {
+        const state = new State();
+        state.arrayOfPlayers = new ArraySchema<Player>();
+        state.arrayOfPlayers.push(new Player("One", 10, 0));
+        state.arrayOfPlayers.push(new Player("Two", 30, 1));
+        state.arrayOfPlayers.push(new Player("Three", 20, 2));
+
+        const decodedState = new State();
+        decodedState.arrayOfPlayers = new ArraySchema<Player>();
+
+        decodedState.arrayOfPlayers.onAdd = function(item, i) {};
+        const onAddSpy = sinon.spy(decodedState.arrayOfPlayers, 'onAdd');
+
+        decodedState.arrayOfPlayers.onChange = function(item, i) {};
+        const onChangeSpy = sinon.spy(decodedState.arrayOfPlayers, 'onChange');
+
+        decodedState.arrayOfPlayers.onRemove = function(item, i) {};
+        const onRemoveSpy = sinon.spy(decodedState.arrayOfPlayers, 'onRemove');
+
+        decodedState.decode(state.encode());
+        sinon.assert.callCount(onAddSpy, 3);
+        sinon.assert.callCount(onChangeSpy, 0);
+        sinon.assert.callCount(onRemoveSpy, 0);
+
+        state.arrayOfPlayers[0].x += 100;
+        state.arrayOfPlayers.push(new Player("Four", 50, 3));
+        state.arrayOfPlayers.push(new Player("Five", 40, 4));
+
+        decodedState.decode(state.encode());
+        sinon.assert.callCount(onAddSpy, 5);
+        sinon.assert.callCount(onChangeSpy, 1);
+        sinon.assert.callCount(onRemoveSpy, 0);
+
+        state.arrayOfPlayers.pop();
+        state.arrayOfPlayers.pop();
+        decodedState.decode(state.encode());
+        sinon.assert.callCount(onRemoveSpy, 2);
+    });
+
     it("should allow .sort()", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema<Player>();
