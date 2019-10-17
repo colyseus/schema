@@ -60,14 +60,9 @@ function assertInstanceType(value: Schema, type: typeof Schema | typeof ArraySch
 }
 
 function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any, klass: Schema, field: string) {
+    assertType(value, type as string, klass, field);
+
     const encodeFunc = encode[type as string];
-
-    if (value === undefined) {
-        bytes.push(NIL);
-
-    } else {
-        assertType(value, type as string, klass, field);
-    }
 
     if (encodeFunc) {
         encodeFunc(bytes, value);
