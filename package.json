@@ -62,7 +62,8 @@
     ],
     "include": [ "src", "test" ],
     "reporter": [
-      "html"
+      "html",
+      "lcov"
     ],
     "all": true
   }
