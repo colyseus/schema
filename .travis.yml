@@ -4,9 +4,6 @@ node_js:
   - 12
 install:
   - 'npm install'
-env:
-  global:
-    - CC_TEST_REPORTER_ID=deb3beb4aa0b5ae548b8c16e75342a9f87a96782d82aa67d58bd087757cc4cce
 before_script:
   - curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
   - chmod +x ./cc-test-reporter
