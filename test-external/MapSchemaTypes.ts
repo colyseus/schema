@@ -15,7 +15,7 @@ class MapSchemaTypes extends Schema {
 const state = new MapSchemaTypes();
 state.mapOfNumbers['one'] = 1;
 state.mapOfNumbers['two'] = 2;
-state.mapOfNumbers['three'] = 3;
+state.mapOfNumbers['three'] = 3520;
 
 state.mapOfSchemas['one'] = new IAmAChild();
 state.mapOfSchemas['one'].x = 100;
@@ -31,7 +31,7 @@ state.mapOfStrings['one'] = "One";
 state.mapOfStrings['two'] = "Two";
 state.mapOfStrings['three'] = "Three";
 
-state.mapOfInt32['one'] = 1000;
+state.mapOfInt32['one'] = 3520;
 state.mapOfInt32['two'] = -1000;
 state.mapOfInt32['three'] = 2000;
 

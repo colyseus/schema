@@ -40,7 +40,7 @@ state.int32 = -2147483648;
 state.uint32 = 4294967295;
 state.int64 = -9223372036854775808;
 state.uint64 = Number.MAX_SAFE_INTEGER; // 9007199254740991
-state.float32 = -3.40282347e+38;
+state.float32 = -3.40282347e+37;
 state.float64 = 1.7976931348623157e+308;
 
 state.varint_int8 = -128;
@@ -52,7 +52,7 @@ state.varint_uint32 = 4294967295;
 state.varint_int64 = -9223372036854775808;
 state.varint_uint64 = Number.MAX_SAFE_INTEGER; // 9007199254740991
 state.varint_float32 = -3.40282347e+38;
-state.varint_float64 = 1.7976931348623157e+308;
+state.varint_float64 = 1.7976931348623157e+307;
 
 state.str = "Hello world";
 state.boolean = true;
