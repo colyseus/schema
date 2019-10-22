@@ -1,5 +1,11 @@
 import { Class, Property, File, getCommentHeader, getInheritanceTree } from "../types";
 
+/**
+    TODO:
+    - Support inheritance
+    - Support importing Schema dependencies
+*/
+
 const typeMaps = {
     "string": "string",
     "number": "number",
@@ -37,17 +43,17 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     });
 
 // TOOD: inheritance
-// ${allRefs.
-//     filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
-//     map(ref => ref.childType).
-//     concat(getInheritanceTree(klass, allClasses, false).map(klass => klass.name)).
-//     filter(distinct).
-//     map(childType => `const ${childType} = require("./${childType}");`).
-//     join("\n")}
 
     return `${getCommentHeader().replace(/\/\//mg, "--")}
 
 local schema = require 'colyseus.serialization.schema.schema'
+${allRefs.
+    filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
+    map(ref => ref.childType).
+    concat(getInheritanceTree(klass, allClasses, false).map(klass => klass.name)).
+    filter(distinct).
+    map(childType => `local ${childType} = require '${(namespace ? `${namespace}.` : '')}${childType}'`).
+    join("\n")}
 
 local ${klass.name} = schema.define({
 ${klass.properties.map(prop => generatePropertyDeclaration(prop)).join(",\n")},
@@ -84,13 +90,19 @@ function generatePropertyDeclaration(prop: Property) {
         }
 
         if(prop.type === "ref") {
-            typeArgs = `${prop.childType}`;
+            typeArgs = (isUpcaseFirst)
+                ? `${prop.childType}`
+                : `"${prop.childType}"`;
 
         } else if(prop.type === "array") {
-            typeArgs = `{ ${prop.childType} }`;
+            typeArgs = (isUpcaseFirst)
+                ? `{ ${prop.childType} }`
+                : `{ "${prop.childType}" }`;
 
         } else if(prop.type === "map") {
-            typeArgs = `{ map = ${prop.childType} }`;
+            typeArgs = (isUpcaseFirst)
+                ? `{ map = ${prop.childType} }`
+                : `{ map = "${prop.childType}" }`;
         }
 
     } else {
