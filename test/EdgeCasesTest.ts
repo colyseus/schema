@@ -6,7 +6,7 @@ import { State, Player } from "./Schema";
 
 describe("Edge cases", () => {
 
-    xit("NIL check should not collide", () => {
+    it("NIL check should not collide", () => {
         class State extends Schema {
             @type("int32") num: number;
             @type({ map: "int32" }) mapOfNum = new MapSchema<number>();
@@ -35,6 +35,17 @@ describe("Edge cases", () => {
             num: 3520,
             mapOfNum: { one: 3520 },
             arrayOfNum: [3520]
+        });
+
+        state.num = undefined;
+        delete state.mapOfNum['one'];
+        state.arrayOfNum.pop();
+
+        decodedState.decode(state.encode());
+
+        assert.deepEqual(decodedState.toJSON(), {
+            mapOfNum: {},
+            arrayOfNum: []
         });
     });
 

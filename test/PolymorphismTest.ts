@@ -75,6 +75,8 @@ describe("Polymorphism", () => {
         state.entityHolder.entity = null;
         decodedState.decode(state.encodeAll());
 
+        assert.ok(!decodedState.entityHolder.entity);
+
         state.entityHolder.entity = createEnemy();
 
         decodedState.decode(state.encodeAll());

@@ -27,14 +27,14 @@ state.arrayOfSchemas.push(item2);
 state.arrayOfNumbers.push(0);
 state.arrayOfNumbers.push(10);
 state.arrayOfNumbers.push(20);
-state.arrayOfNumbers.push(30);
+state.arrayOfNumbers.push(3520);
 
 state.arrayOfStrings.push("one");
 state.arrayOfStrings.push("two");
 state.arrayOfStrings.push("three");
 
 state.arrayOfInt32.push(1000);
-state.arrayOfInt32.push(2000);
+state.arrayOfInt32.push(3520);
 state.arrayOfInt32.push(-3000);
 
 

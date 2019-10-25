@@ -125,7 +125,7 @@ describe("MapSchema", () => {
 
         const encoded = state.encode();
 
-        assert.deepEqual([ 4, 4, 0, 192, 1, 192, 2, 192, 3, 192 ], encoded);
+        assert.deepEqual([4, 4, 192, 0, 192, 1, 192, 2, 192, 3], encoded);
     });
 
 });
