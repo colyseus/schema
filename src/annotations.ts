@@ -270,9 +270,9 @@ export function deprecated(throws: boolean = true, context: Context = globalCont
     }
 }
 
-export function defineTypes(target: typeof Schema, fields: {[property: string]: DefinitionType}) {
+export function defineTypes(target: typeof Schema, fields: {[property: string]: DefinitionType}, context: Context = globalContext) {
     for (let field in fields) {
-        type(fields[field])(target.prototype, field);
+        type(fields[field], context)(target.prototype, field);
     }
     return target;
 }
