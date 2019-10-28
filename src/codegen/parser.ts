@@ -30,7 +30,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
             const heritageClauses = (node as ts.ClassLikeDeclarationBase).heritageClauses;
             if (heritageClauses && heritageClauses.length > 0) {
-                currentClass.extends = heritageClauses[0].types[0].getText();
+                currentClass.extends = heritageClauses[0].types[0].expression.getText();
             }
 
             context.addClass(currentClass);
