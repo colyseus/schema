@@ -29,7 +29,7 @@ describe("Performance", () => {
             for (let i = 0; i < totalItems; i++) {
                 state.arrayOfPlayers.push(new Player("Player " + i, getRandomNumber(), getRandomNumber()));
             }
-        }, `inserting ${totalItems} items to array`, 1400); // 1200, TODO: improve this!
+        }, `inserting ${totalItems} items to array`, 1500); // 1200, TODO: improve this!
 
         assertExecutionTime(() => state.encode(), `encoding ${totalItems} array entries`, 250); // 190
 
