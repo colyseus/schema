@@ -31,7 +31,7 @@ describe("Performance", () => {
             }
         }, `inserting ${totalItems} items to array`, 1400); // 1200, TODO: improve this!
 
-        assertExecutionTime(() => state.encode(), `encoding ${totalItems} array entries`, 210); // 190
+        assertExecutionTime(() => state.encode(), `encoding ${totalItems} array entries`, 250); // 190
 
         const player: Player = state.arrayOfPlayers[Math.round(totalItems / 2)];
         player.x = getRandomNumber();
