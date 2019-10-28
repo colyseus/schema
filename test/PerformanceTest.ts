@@ -54,13 +54,13 @@ describe("Performance", () => {
             }
         }, `inserting ${totalItems} items to map`, 3500); // 2700, TODO: improve this value!
 
-        assertExecutionTime(() => state.encode(), `encoding ${totalItems} map entries`, 170); // 150
+        assertExecutionTime(() => state.encode(), `encoding ${totalItems} map entries`, 300); // 150
 
         const player: Player = state.mapOfPlayers[`player${Math.floor(totalItems / 2)}`];
         player.x = getRandomNumber();
         player.y = getRandomNumber();
 
         // TODO: improve this value
-        assertExecutionTime(() => state.encode(), "encoding a single map item change", 15);
+        assertExecutionTime(() => state.encode(), "encoding a single map item change", 30); // 15
     });
 });
