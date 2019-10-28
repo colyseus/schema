@@ -29,7 +29,7 @@ describe("Performance", () => {
             for (let i = 0; i < totalItems; i++) {
                 state.arrayOfPlayers.push(new Player("Player " + i, getRandomNumber(), getRandomNumber()));
             }
-        }, `inserting ${totalItems} items to array`, 1200); // TODO: improve this!
+        }, `inserting ${totalItems} items to array`, 1400); // 1200, TODO: improve this!
 
         assertExecutionTime(() => state.encode(), `encoding ${totalItems} array entries`, 210); // 190
 
@@ -52,7 +52,7 @@ describe("Performance", () => {
             for (let i = 0; i < totalItems; i++) {
                 state.mapOfPlayers["player" + i] = new Player("Player " + i, getRandomNumber(), getRandomNumber());
             }
-        }, `inserting ${totalItems} items to map`, 2700); // TODO: improve this value!
+        }, `inserting ${totalItems} items to map`, 3500); // 2700, TODO: improve this value!
 
         assertExecutionTime(() => state.encode(), `encoding ${totalItems} map entries`, 170); // 150
 
