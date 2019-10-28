@@ -1,8 +1,5 @@
-import * as fs from "fs";
-import * as path from "path";
 import argv from "./argv";
-import { parseFiles } from "./parser";
-import { File } from "./types";
+import { generate } from "./api";
 
 const supportedTargets = {
     csharp: 'generate for C#/Unity',
@@ -47,34 +44,21 @@ for (let target in supportedTargets) {
     }
 }
 
-let decoratorName = "type";
-if (args.decorator) {
-    decoratorName = args.decorator;
-}
-
 if (!args.output) {
     console.error("You must provide a valid --output directory.");
     displayHelp();
 }
 
-let generator;
 try {
-    generator = require('./languages/' + targetId).generate;
+    args.files = args._;
+    generate(targetId, {
+        files: args._,
+        decorator: args.decorator,
+        output: args.output,
+        namespace: args.namespace
+    });
+
 } catch (e) {
-    console.error("You must provide a valid generator as argument, such as: --csharp, --haxe or --cpp");
+    console.error(e.message);
     displayHelp();
 }
-
-if (!fs.existsSync(args.output)) {
-    console.log("Creating", args.output, "directory");
-    fs.mkdirSync(args.output);
-}
-
-const classes = parseFiles(args._, decoratorName);
-const files = generator(classes, args);
-
-files.forEach((file: File) => {
-    const outputPath = path.resolve(args.output, file.name);
-    fs.writeFileSync(outputPath, file.content);
-    console.log("generated:", file.name);
-});

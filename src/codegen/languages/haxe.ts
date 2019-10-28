@@ -1,4 +1,5 @@
 import { Class, Property, File, getCommentHeader } from "../types";
+import { GenerateOptions } from "../api";
 
 const typeMaps = {
     "string": "String",
@@ -32,20 +33,10 @@ const typeInitializer = {
     "float64": "0",
 }
 
-/**
- * C++ Code Generator
- */
-
-const capitalize = (s) => {
-    if (typeof s !== 'string') return ''
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}
-const distinct = (value, index, self) => self.indexOf(value) === index;
-
-export function generate (classes: Class[], args: any): File[] {
+export function generate (classes: Class[], options: GenerateOptions): File[] {
     return classes.map(klass => ({
         name: klass.name + ".hx",
-        content: generateClass(klass, args.namespace, classes)
+        content: generateClass(klass, options.namespace, classes)
     }));
 }
 

@@ -1,4 +1,5 @@
 import { Class, Property, File, getCommentHeader, getInheritanceTree } from "../types";
+import { GenerateOptions } from "../api";
 
 /**
     TODO:
@@ -24,10 +25,10 @@ const typeMaps = {
 
 const distinct = (value, index, self) => self.indexOf(value) === index;
 
-export function generate (classes: Class[], args: any): File[] {
+export function generate (classes: Class[], options: GenerateOptions): File[] {
     return classes.map(klass => ({
         name: klass.name + ".lua",
-        content: generateClass(klass, args.namespace, classes)
+        content: generateClass(klass, options.namespace, classes)
     }));
 }
 
