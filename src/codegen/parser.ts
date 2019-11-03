@@ -1,9 +1,12 @@
 import * as ts from "typescript";
+import * as path from "path";
 import { readFileSync } from "fs";
 import { Class, Property, Context } from "./types";
 
 let currentClass: Class;
 let currentProperty: Property;
+
+let globalContext: Context;
 
 function defineProperty(property: Property, initializer: any) {
     if (ts.isIdentifier(initializer)) {
@@ -25,6 +28,15 @@ function defineProperty(property: Property, initializer: any) {
 
 function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
     switch (node.kind) {
+        case ts.SyntaxKind.ImportClause:
+            const specifier = (node.parent as any).moduleSpecifier;
+            if (specifier && (specifier.text as string).startsWith('.'))  {
+                const currentDir = path.dirname(node.getSourceFile().fileName);
+                const pathToImport = path.resolve(currentDir, specifier.text);
+                parseFiles([pathToImport], decoratorName, globalContext);
+            }
+            break;
+
         case ts.SyntaxKind.ClassDeclaration:
             currentClass = new Class();
 
@@ -36,11 +48,8 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             context.addClass(currentClass);
             break;
 
-        // case ts.SyntaxKind.PropertyDeclaration:
-        //     break;
-
         case ts.SyntaxKind.ExtendsKeyword:
-            console.log(node.getText());
+            // console.log(node.getText());
             break;
 
         case ts.SyntaxKind.Identifier:
@@ -53,13 +62,17 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                 break;
             }
 
-            if (
-                node.getText() === decoratorName &&
-                node.parent.kind !== ts.SyntaxKind.ImportSpecifier &&
-                node.parent.kind !== ts.SyntaxKind.BindingElement
-            ) {
+            if (node.getText() === decoratorName) {
                 const prop: any = node.parent.parent.parent;
                 const propDecorator = node.parent.parent.parent.decorators;
+                const hasExpression = prop.expression && prop.expression.arguments;
+
+                /**
+                 * neither a `@type()` decorator or `type()` call. skip.
+                 */
+                if (!propDecorator && !hasExpression) {
+                    break;
+                }
 
                 // using as decorator
                 if (propDecorator) {
@@ -128,12 +141,51 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
     ts.forEachChild(node, (n) => inspectNode(n, context, decoratorName));
 }
 
-export function parseFiles(fileNames: string[], decoratorName: string = "type"): Class[] {
-    const context = new Context();
+let parsedFiles: { [filename: string]: boolean };
+
+export function parseFiles(fileNames: string[], decoratorName: string = "type", context: Context = new Context()): Class[] {
+    /**
+     * Re-set globalContext for each test case
+     */
+    if (globalContext !== context) {
+        parsedFiles = {};
+        globalContext = context;
+    }
 
     fileNames.forEach((fileName) => {
-        let sourceFile = ts.createSourceFile(fileName, readFileSync(fileName).toString(), ts.ScriptTarget.ES2018, true);
-        inspectNode(sourceFile, context, decoratorName);
+        let sourceFile: ts.Node;
+        let sourceFileName: string;
+
+        const fileNameAlternatives = [];
+
+        if (!fileName.endsWith(".ts")) {
+            fileNameAlternatives.push(`${fileName}.ts`);
+            fileNameAlternatives.push(`${fileName}/index.ts`);
+
+        } else {
+            fileNameAlternatives.push(fileName);
+        }
+
+        for (let i = 0; i < fileNameAlternatives.length; i++) {
+            try {
+                sourceFileName = path.resolve(fileNameAlternatives[i]);
+
+                if (parsedFiles[sourceFileName]) {
+                    break;
+                }
+
+                sourceFile = ts.createSourceFile(sourceFileName, readFileSync(sourceFileName).toString(), ts.ScriptTarget.Latest, true);
+                parsedFiles[sourceFileName] = true;
+
+                break;
+            } catch (e) {
+                // console.log(`${fileNameAlternatives[i]} => ${e.message}`);
+            }
+        }
+
+        if (sourceFile) {
+            inspectNode(sourceFile, context, decoratorName);
+        }
     });
 
     return context.getSchemaClasses();

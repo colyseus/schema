@@ -14,7 +14,10 @@ describe("schema-codegen", () => {
         fs.mkdirSync(OUTPUT_DIR);
     });
 
-    after(() => rimraf.sync(OUTPUT_DIR));
+    afterEach(() => {
+        rimraf.sync(OUTPUT_DIR)
+        fs.mkdirSync(OUTPUT_DIR);
+    });
 
     it("should generate 3 files", async () => {
         const inputFiles = glob.sync(path.resolve(INPUT_DIR, "*.ts"));
@@ -26,5 +29,17 @@ describe("schema-codegen", () => {
 
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
         assert.equal(3, outputFiles.length);
+    });
+
+    it("should auto-import related schema files", async () => {
+        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Inheritance.ts"));
+
+        generate("csharp", {
+            files: inputFiles,
+            output: OUTPUT_DIR
+        });
+
+        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        assert.equal(2, outputFiles.length);
     });
 });
