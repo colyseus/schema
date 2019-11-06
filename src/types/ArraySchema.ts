@@ -5,7 +5,7 @@ export class ArraySchema<T=any> extends Array<T> {
     protected $sorting: boolean;
     protected $changes: ChangeTree;
 
-    // static get [Symbol.species](): any { return ArraySchema; }
+    static get [Symbol.species](): any { return ArraySchema; }
 
     constructor (...items: T[]) {
         super(...items);
@@ -51,7 +51,8 @@ export class ArraySchema<T=any> extends Array<T> {
                     let cloned: ArraySchema;
 
                     if (isDecoding) {
-                        cloned = new ArraySchema(...this);
+                        // cloned = ArraySchema.of(...this) as ArraySchema;
+                        cloned = this.slice(0) as ArraySchema;
                         cloned.onAdd = this.onAdd;
                         cloned.onRemove = this.onRemove;
                         cloned.onChange = this.onChange;

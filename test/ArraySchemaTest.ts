@@ -427,4 +427,33 @@ describe("ArraySchema", () => {
         );
     });
 
+    it("should allow ArraySchema of repeated primitive values", () => {
+        class State extends Schema {
+            @type(["string"]) strings = new ArraySchema<string>();
+            @type(["number"]) floats = new ArraySchema<number>();
+            @type(["number"]) numbers = new ArraySchema<number>();
+        };
+
+        const state = new State();
+        state.numbers.push(1);
+        state.floats.push(Math.PI);
+        state.strings.push("one");
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        assert.deepEqual(["one"], decodedState.strings);
+        assert.deepEqual([Math.PI], decodedState.floats);
+        assert.deepEqual([1], decodedState.numbers);
+
+        state.numbers.push(1);
+        state.floats.push(Math.PI);
+        state.strings.push("one");
+        decodedState.decode(state.encode());
+
+        assert.deepEqual(["one", "one"], decodedState.strings);
+        assert.deepEqual([Math.PI, Math.PI], decodedState.floats);
+        assert.deepEqual([1, 1], decodedState.numbers);
+    });
+
 });
