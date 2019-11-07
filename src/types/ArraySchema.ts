@@ -51,8 +51,7 @@ export class ArraySchema<T=any> extends Array<T> {
                     let cloned: ArraySchema;
 
                     if (isDecoding) {
-                        // cloned = ArraySchema.of(...this) as ArraySchema;
-                        cloned = this.slice(0) as ArraySchema;
+                        cloned = ArraySchema.of(...this) as ArraySchema;
                         cloned.onAdd = this.onAdd;
                         cloned.onRemove = this.onRemove;
                         cloned.onChange = this.onChange;
