@@ -105,13 +105,22 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
             } else if (
                 node.getText() === "defineTypes" &&
-                node.parent.kind === ts.SyntaxKind.CallExpression
+                (
+                    node.parent.kind === ts.SyntaxKind.CallExpression ||
+                    node.parent.kind === ts.SyntaxKind.PropertyAccessExpression
+                )
             ) {
                 /**
                  * JavaScript source file (`.js`)
                  * Using `defineTypes()`
                  */
-                const callExpression = node.parent as ts.CallExpression;
+                const callExpression = (node.parent.kind === ts.SyntaxKind.PropertyAccessExpression)
+                    ? node.parent.parent as ts.CallExpression
+                    : node.parent as ts.CallExpression;
+
+                if (callExpression.kind !== ts.SyntaxKind.CallExpression) {
+                    break;
+                }
 
                 const className = callExpression.arguments[0].getText()
                 currentClass.name = className;
@@ -158,7 +167,7 @@ export function parseFiles(fileNames: string[], decoratorName: string = "type", 
 
         const fileNameAlternatives = [];
 
-        if (!fileName.endsWith(".ts")) {
+        if (!fileName.endsWith(".ts") && !fileName.endsWith(".js")) {
             fileNameAlternatives.push(`${fileName}.ts`);
             fileNameAlternatives.push(`${fileName}/index.ts`);
 

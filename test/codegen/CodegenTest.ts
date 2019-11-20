@@ -42,4 +42,16 @@ describe("schema-codegen", () => {
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
         assert.equal(2, outputFiles.length);
     });
+
+    it("should support using 'type' along with `defineTypes`", async () => {
+        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "DefineTypes.js"));
+
+        generate("csharp", {
+            files: inputFiles,
+            output: OUTPUT_DIR
+        });
+
+        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        assert.equal(1, outputFiles.length);
+    });
 });
