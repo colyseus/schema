@@ -98,14 +98,18 @@ function generateProperty(prop: Property) {
                 ? `ArraySchema<${prop.childType}>`
                 : `ArraySchema<${typeMaps[prop.childType]}>`;
             initializer = `new ${langType}()`;
-            typeArgs = `[ ${prop.childType} ]`;
+            typeArgs = (isUpcaseFirst)
+                ? `[ ${prop.childType} ]`
+                : `[ "${prop.childType}" ]`;
 
         } else if(prop.type === "map") {
             langType = (isUpcaseFirst)
                 ? `MapSchema<${prop.childType}>`
                 : `MapSchema<${typeMaps[prop.childType]}>`;
             initializer = `new ${langType}()`;
-            typeArgs = `{ map: ${prop.childType} }`;
+            typeArgs = (isUpcaseFirst)
+                ? `{ map: ${prop.childType} }`
+                : `{ map: "${prop.childType}" }`;
         }
 
     } else {
