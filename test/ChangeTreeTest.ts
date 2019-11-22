@@ -8,7 +8,7 @@ describe("ChangeTree", () => {
     it("simple relationship", () => {
         const root = new ChangeTree();
 
-        const child = new ChangeTree("child");
+        const child = new ChangeTree({}, "child");
         child.parent = root;
 
         child.change("x");
@@ -36,8 +36,8 @@ describe("ChangeTree", () => {
         state.game = new Game(0, 1);
 
         const changes: ChangeTree = (state.game as any).$changes;
-        assert.deepEqual(changes.changes, ['state'])
-        assert.deepEqual(changes.allChanges, ['state'])
+        assert.deepEqual(changes.changes, [0])
+        assert.deepEqual(changes.allChanges, [0])
     });
 
 });

@@ -1,4 +1,5 @@
 import * as sinon from "sinon";
+import * as util from "util";
 import * as assert from "assert";
 
 import { type } from './../src/annotations';
@@ -693,5 +694,51 @@ describe("Change API", () => {
         });
     });
 
+
+    describe("callback order", () => {
+        class MyState extends Schema {
+            @type("string") str: string;
+            @type("number") num: number;
+            @type(["number"]) arrOfNumbers = new ArraySchema<number>();
+            @type([Player]) arrOfPlayers = new ArraySchema<Player>();
+            @type({ map: Player }) mapOfPlayers = new MapSchema<Player>();
+        }
+
+        it("previous fields should be available during later field's callbacks", () => {
+            const state = new MyState();
+
+            state.str = "Hello world";
+            state.num = 10;
+
+            state.arrOfNumbers.push(10);
+            state.arrOfNumbers.push(20);
+
+            state.arrOfPlayers.push(new Player("Jake", 0, 0));
+            state.arrOfPlayers.push(new Player("Snake", 10, 10));
+
+            state.mapOfPlayers['katarina'] = new Player("Katarina", 20, 20);
+
+            const decodedState = new MyState();
+
+            let strs: string[] = [];
+            let nums: number[] = [];
+            let mapOfPlayersDuringArrOfPlayers: number[] = [];
+
+            decodedState.arrOfPlayers.onAdd = function(item, index) {
+                strs.push(decodedState.str);
+                nums.push(decodedState.num);
+                mapOfPlayersDuringArrOfPlayers.push(Object.keys(decodedState.mapOfPlayers).length);
+            }
+
+            const encoded = state.encode();
+
+            // console.log(util.inspect(encoded, true, 4));
+            decodedState.decode(encoded);
+
+            assert.deepEqual(strs, ["Hello world", "Hello world"]);
+            assert.deepEqual(nums, [10, 10]);
+        });
+
+    });
 
 });

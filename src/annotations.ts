@@ -66,11 +66,14 @@ export function type (type: DefinitionType, context: Context = globalContext): P
             // support inheritance
             constructor._schema = Object.assign({}, constructor._schema || {});
             constructor._indexes = Object.assign({}, constructor._indexes || {});
+            constructor._fieldsByIndex = Object.assign({}, constructor._fieldsByIndex || {});
             constructor._descriptors = Object.assign({}, constructor._descriptors || {});
             constructor._deprecated = Object.assign({}, constructor._deprecated || {});
         }
 
-        constructor._indexes[field] = Object.keys(constructor._schema).length;
+        const index = Object.keys(constructor._schema).length;
+        constructor._fieldsByIndex[index] = field;
+        constructor._indexes[field] = index;
         constructor._schema[field] = type;
 
         /**
@@ -129,7 +132,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                                 if (setValue instanceof Schema) {
                                     // new items are flagged with all changes
                                     if (!setValue.$changes.parent) {
-                                        setValue.$changes = new ChangeTree(key, obj.$changes);
+                                        setValue.$changes = new ChangeTree(setValue._indexes, key, obj.$changes);
                                         setValue.$changes.changeAll(setValue);
                                     }
 
@@ -184,11 +187,11 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 if (isArray) {
                     // directly assigning an array of items as value.
                     this.$changes.change(field);
-                    value.$changes = new ChangeTree(field, this.$changes);
+                    value.$changes = new ChangeTree({}, field, this.$changes);
 
                     for (let i = 0; i < value.length; i++) {
                         if (value[i] instanceof Schema) {
-                            value[i].$changes = new ChangeTree(i, value.$changes);
+                            value[i].$changes = new ChangeTree(value[i]._indexes, i, value.$changes);
                             value[i].$changes.changeAll(value[i]);
                         }
                         value.$changes.mapIndex(value[i], i);
@@ -197,12 +200,12 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
                 } else if (isMap) {
                     // directly assigning a map
-                    value.$changes = new ChangeTree(field, this.$changes);
+                    value.$changes = new ChangeTree({}, field, this.$changes);
                     this.$changes.change(field);
 
                     for (let key in value) {
                         if (value[key] instanceof Schema) {
-                            value[key].$changes = new ChangeTree(key, value.$changes);
+                            value[key].$changes = new ChangeTree(value[key]._indexes, key, value.$changes);
                             value[key].$changes.changeAll(value[key]);
                         }
                         value.$changes.mapIndex(value[key], key);
@@ -215,7 +218,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     this.$changes.change(field);
 
                     if (value) {
-                        value.$changes = new ChangeTree(field, this.$changes);
+                        value.$changes = new ChangeTree(value._indexes, field, this.$changes);
                         value.$changes.changeAll(value);
                     }
 

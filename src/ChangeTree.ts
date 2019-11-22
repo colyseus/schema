@@ -2,9 +2,11 @@ import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
-type FieldKey = string | number | symbol;
+type FieldKey = string | number;
 
 export class ChangeTree {
+    fieldIndexes: {[field: string]: number};
+
     changed: boolean = false;
     changes: FieldKey[] = [];
     allChanges: FieldKey[] = [];
@@ -22,12 +24,17 @@ export class ChangeTree {
     parent: ChangeTree;
     parentField: FieldKey;
 
-    constructor (parentField: FieldKey = null, parent?: ChangeTree) {
+    constructor(indexes: { [field: string]: number } = {}, parentField: FieldKey = null, parent?: ChangeTree) {
+        this.fieldIndexes = indexes;
+
         this.parent = parent;
         this.parentField = parentField;
     }
 
-    change(field: FieldKey, isDelete: boolean = false) {
+    change(fieldName: FieldKey, isDelete: boolean = false) {
+        const fieldIndex = this.fieldIndexes[fieldName];
+        const field = (typeof(fieldIndex) === "number") ? fieldIndex : fieldName;
+
         this.changed = true;
 
         if (this.changes.indexOf(field) === -1) {

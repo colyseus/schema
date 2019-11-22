@@ -8,6 +8,7 @@ import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
 import { ChangeTree } from "./ChangeTree";
+import { StringLiteral } from 'typescript';
 
 export interface DataChange<T=any> {
     field: string;
@@ -85,6 +86,7 @@ export abstract class Schema {
 
     static _schema: Definition;
     static _indexes: {[field: string]: number};
+    static _fieldsByIndex: {[index: number]: string};
     static _filters: {[field: string]: FilterCallback};
     static _deprecated: {[field: string]: boolean};
     static _descriptors: PropertyDescriptorMap & ThisType<any>;
@@ -102,7 +104,11 @@ export abstract class Schema {
     constructor(...args: any[]) {
         // fix enumerability of fields for end-user
         Object.defineProperties(this, {
-            $changes: { value: new ChangeTree(), enumerable: false, writable: true },
+            $changes: {
+                value: new ChangeTree(this._indexes),
+                enumerable: false,
+                writable: true
+            },
         });
 
         const descriptors = this._descriptors;
@@ -114,6 +120,7 @@ export abstract class Schema {
     get _schema () { return (this.constructor as typeof Schema)._schema; }
     get _descriptors () { return (this.constructor as typeof Schema)._descriptors; }
     get _indexes () { return (this.constructor as typeof Schema)._indexes; }
+    get _fieldsByIndex() { return (this.constructor as typeof Schema)._fieldsByIndex }
     get _filters () { return (this.constructor as typeof Schema)._filters; }
     get _deprecated () { return (this.constructor as typeof Schema)._deprecated; }
 
@@ -123,13 +130,7 @@ export abstract class Schema {
         const changes: DataChange[] = [];
 
         const schema = this._schema;
-        const indexes = this._indexes;
-
-        const fieldsByIndex = {}
-        Object.keys(indexes).forEach((key) => {
-            const value = indexes[key];
-            fieldsByIndex[value] = key
-        })
+        const fieldsByIndex = this._fieldsByIndex;
 
         const totalBytes = bytes.length;
 
@@ -405,13 +406,16 @@ export abstract class Schema {
 
         const schema = this._schema;
         const indexes = this._indexes;
+        const fieldsByIndex = this._fieldsByIndex;
         const filters = this._filters;
-        const changes = (encodeAll || client)
-            ? this.$changes.allChanges
-            : this.$changes.changes;
+        const changes = (
+            (encodeAll || client)
+                ? this.$changes.allChanges
+                : this.$changes.changes
+        ).sort();
 
         for (let i = 0, l = changes.length; i < l; i++) {
-            const field = changes[i] as string;
+            const field = fieldsByIndex[changes[i]] || changes[i] as string;
 
             const type = schema[field];
             const filter = (filters && filters[field]);
