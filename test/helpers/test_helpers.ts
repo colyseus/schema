@@ -13,7 +13,7 @@ export const logChangeTree = (tree: ChangeTree) => {
     }
     return `
 {
-  changes:  [${tree.changes}]
+  changes:  [${Array.from(tree.changes)}]
   indexMap: {
     ${logMap(tree.indexMap).join(`\n    `)}
   }

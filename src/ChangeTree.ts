@@ -8,8 +8,8 @@ export class ChangeTree {
     fieldIndexes: {[field: string]: number};
 
     changed: boolean = false;
-    changes: FieldKey[] = [];
-    allChanges: FieldKey[] = [];
+    changes = new Set<FieldKey>();
+    allChanges = new Set<FieldKey>();
 
     /**
      * `MapSchema` / `ArraySchema`
@@ -36,18 +36,14 @@ export class ChangeTree {
         const field = (typeof(fieldIndex) === "number") ? fieldIndex : fieldName;
 
         this.changed = true;
+        this.changes.add(field);
 
-        if (this.changes.indexOf(field) === -1) {
-            this.changes.push(field);
-        }
+        if (!isDelete) {
+            this.allChanges.add(field);
 
-        const allChangesIndex = this.allChanges.indexOf(field);
-        if (!isDelete && allChangesIndex === -1) {
-            this.allChanges.push(field);
-
-        } else if (isDelete && allChangesIndex >= 0) {
+        } else if (isDelete) {
             // discard all-changes for removed items.
-            this.allChanges.splice(allChangesIndex, 1);
+            this.allChanges.delete(field);
         }
 
         if (this.parent) {
@@ -132,7 +128,7 @@ export class ChangeTree {
 
     discard() {
         this.changed = false;
-        this.changes = [];
+        this.changes.clear();
         this.deletedKeys = {};
 
         if (this.indexChange) {

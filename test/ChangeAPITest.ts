@@ -29,18 +29,19 @@ describe("Change API", () => {
 
         it("should trigger onChange with multiple values", () => {
             const state = new State();
-            state.fieldNumber = 50;
             state.fieldString = "Hello world!";
+            state.fieldNumber = 50;
 
             const decodedState = new State();
             decodedState.onChange = function (changes: DataChange[]) {
                 assert.equal(changes.length, 2);
-                assert.equal(changes[0].field, "fieldNumber");
-                assert.equal(changes[0].value, 50);
+
+                assert.equal(changes[0].field, "fieldString");
+                assert.equal(changes[0].value, "Hello world!");
                 assert.equal(changes[0].previousValue, undefined);
 
-                assert.equal(changes[1].field, "fieldString");
-                assert.equal(changes[1].value, "Hello world!");
+                assert.equal(changes[1].field, "fieldNumber");
+                assert.equal(changes[1].value, 50);
                 assert.equal(changes[1].previousValue, undefined);
             }
             let onChangeSpy = sinon.spy(decodedState, 'onChange');
@@ -53,13 +54,14 @@ describe("Change API", () => {
 
             decodedState.onChange = function (changes: DataChange[]) {
                 assert.equal(changes.length, 2);
-                assert.equal(changes[0].field, "fieldNumber");
-                assert.equal(changes[0].value, 100);
-                assert.equal(changes[0].previousValue, 50);
 
-                assert.equal(changes[1].field, "fieldString");
-                assert.equal(changes[1].value, "Again");
-                assert.equal(changes[1].previousValue, "Hello world!");
+                assert.equal(changes[0].field, "fieldString");
+                assert.equal(changes[0].value, "Again");
+                assert.equal(changes[0].previousValue, "Hello world!");
+
+                assert.equal(changes[1].field, "fieldNumber");
+                assert.equal(changes[1].value, 100);
+                assert.equal(changes[1].previousValue, 50);
             }
             onChangeSpy = sinon.spy(decodedState, 'onChange');
 
