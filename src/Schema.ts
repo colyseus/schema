@@ -637,16 +637,16 @@ export abstract class Schema {
         return bytes;
     }
 
-    encodeFiltered(client: Client) {
-        return this.encode(this, false, client);
+    encodeFiltered(client: Client, bytes?: number[]) {
+        return this.encode(this, false, client, bytes);
     }
 
-    encodeAll () {
-        return this.encode(this, true);
+    encodeAll (bytes?: number[]) {
+        return this.encode(this, true, undefined, bytes);
     }
 
-    encodeAllFiltered (client: Client) {
-        return this.encode(this, true, client);
+    encodeAllFiltered (client: Client, bytes?: number[]) {
+        return this.encode(this, true, client, bytes);
     }
 
     clone () {
