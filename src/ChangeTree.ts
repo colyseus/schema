@@ -24,7 +24,11 @@ export class ChangeTree {
     parent: ChangeTree;
     parentField: FieldKey;
 
-    constructor(indexes: { [field: string]: number } = {}, parentField: FieldKey = null, parent?: ChangeTree) {
+    constructor(
+        indexes: { [field: string]: number } = {},
+        parentField: FieldKey = null,
+        parent?: ChangeTree
+    ) {
         this.fieldIndexes = indexes;
 
         this.parent = parent;

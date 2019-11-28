@@ -395,9 +395,7 @@ export abstract class Schema {
         return this;
     }
 
-    encode(root: Schema = this, encodeAll = false, client?: Client) {
-        const bytes = [];
-
+    encode(root: Schema = this, encodeAll = false, client?: Client, bytes: number[] = []) {
         // skip if nothing has changed
         if (!this.$changes.changed && !encodeAll) {
             this._encodeEndOfStructure(this, root, bytes);
@@ -448,7 +446,7 @@ export abstract class Schema {
 
                     this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
 
-                    bytes.push(...(value as Schema).encode(root, encodeAll, client));
+                    (value as Schema).encode(root, encodeAll, client, bytes);
                 }
 
             } else if (Array.isArray(type)) {
@@ -503,7 +501,8 @@ export abstract class Schema {
 
                         assertInstanceType(item, type[0] as typeof Schema, this, field);
                         this.tryEncodeTypeId(bytes, type[0] as typeof Schema, item.constructor as typeof Schema);
-                        bytes.push(...item.encode(root, encodeAll, client));
+
+                        (item as Schema).encode(root, encodeAll, client, bytes);
 
                     } else if (item !== undefined) {
                         encode.number(bytes, index);
@@ -597,7 +596,7 @@ export abstract class Schema {
                     if (item && isChildSchema) {
                         assertInstanceType(item, (type as any).map, this, field);
                         this.tryEncodeTypeId(bytes, (type as any).map, item.constructor as typeof Schema);
-                        bytes.push(...item.encode(root, encodeAll, client));
+                        (item as Schema).encode(root, encodeAll, client, bytes);
 
                     } else if (!isNil) {
                         encodePrimitiveType((type as any).map, bytes, item, this, field);

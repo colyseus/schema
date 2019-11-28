@@ -101,7 +101,7 @@ export class Unit extends Schema {
   @type("number")
   y: number;
 
-  @filter(function(this: Unit, client: any, value: Inventory, root: StateWithFilter) {
+  @filter(function(this: Unit, client: any, value: Unit['inventory'], root: StateWithFilter) {
     return root.units[client.sessionId] === this;
   })
   @type(Inventory)
