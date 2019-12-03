@@ -22,7 +22,11 @@ export type PrimitiveType =
 
 export type DefinitionType = ( PrimitiveType | PrimitiveType[] | { map: PrimitiveType });
 export type Definition = { [field: string]: DefinitionType };
-export type FilterCallback = (this: Schema, client: Client, instance: Schema, root?: Schema) => boolean;
+export type FilterCallback<
+    T extends Schema = any,
+    V extends Schema = any,
+    R extends Schema = any
+> = (this: T, client: Client, value: V, root?: R) => boolean;
 
 // Colyseus integration
 export type Client = { sessionId: string } & any;
@@ -237,13 +241,14 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 /**
  * `@filter()` decorator for defining data filters per client
  */
-export function filter(cb: FilterCallback): PropertyDecorator  {
+
+export function filter<T extends Schema, V extends Schema, R extends Schema>(cb: FilterCallback<T, V, R>): PropertyDecorator {
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
 
         /*
-        * static filters
-        */
+         * static filters
+         */
         if (!constructor._filters) {
             constructor._filters = {};
         }
