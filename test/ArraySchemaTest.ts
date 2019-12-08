@@ -302,6 +302,67 @@ describe("ArraySchema", () => {
         assert.strictEqual((state.items as any).$changes.indexMap.get(state.items[4]), 4);
     });
 
+
+    it("keeps items in order after splicing multiple items in one go", () => {
+        class Item extends Schema {
+            @type("string") name: string;
+            constructor(name) {
+                super();
+                this.name = name;
+            }
+        }
+        class Player extends Schema {
+            @type([Item]) items = new ArraySchema<Item>();
+        }
+        class State extends Schema {
+            @type(Player) player = new Player();
+        }
+
+        const state = new State();
+        const decodedState = new State();
+        decodedState.decode(state.encodeAll());
+
+        state.player.items.push(new Item("Item 1"));
+        state.player.items.push(new Item("Item 2"));
+        state.player.items.push(new Item("Item 3"));
+        state.player.items.push(new Item("Item 4"));
+        state.player.items.push(new Item("Item 5"));
+        state.player.items.push(new Item("Item 6"));
+        state.player.items.push(new Item("Item 7"));
+        decodedState.decode(state.encodeAll());
+
+        // Remove Items 2 and 3 in one splice execution
+        const [ removedItem2, removedItem3 ] = state.player.items.splice(1, 2);
+        assert.equal(removedItem2.name, "Item 2");
+        assert.equal(removedItem3.name, "Item 3");
+        assert.equal(state.player.items.length, 5);
+
+        decodedState.decode(state.encode());
+
+        assert.equal(decodedState.player.items.length, 5);
+
+        const expectedA = [1, 4, 5, 6, 7];
+        decodedState.player.items.forEach((item, index) => {
+            assert.equal(item.name, `Item ${expectedA[index]}`);
+        })
+
+        // Remove Items 4 and 5 in two separate splice executions
+        const [ removedItem4 ] = state.player.items.splice(1, 1);
+        const [ removedItem5 ] = state.player.items.splice(1, 1);
+        assert.equal(removedItem4.name, "Item 4");
+        assert.equal(removedItem5.name, "Item 5");
+        assert.equal(state.player.items.length, 3);
+
+        decodedState.decode(state.encode());
+
+        assert.equal(decodedState.player.items.length, 3);
+
+        const expectedB = [1, 6, 7];
+        decodedState.player.items.forEach((item, index) => {
+            assert.equal(item.name, `Item ${expectedB[index]}`);
+        })
+    });
+
     it("should allow to transfer object between ArraySchema", () => {
         class Item extends Schema {
             @type("uint8") id: number;
