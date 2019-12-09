@@ -302,6 +302,55 @@ describe("ArraySchema", () => {
         assert.strictEqual((state.items as any).$changes.indexMap.get(state.items[4]), 4);
     });
 
+    it("multiple splices in one go", () => {
+        const stringifyItem = i => `[${i.idx}] ${i.name} (${i.id})`;
+
+        class Item extends Schema {
+            @type("string") name: string;
+            constructor(name) {
+                super();
+                this.name = name;
+            }
+        }
+        class Player extends Schema {
+            @type([Item]) items = new ArraySchema<Item>();
+        }
+        class State extends Schema {
+            @type(Player) player = new Player();
+        }
+
+        const state = new State();
+        const decodedState = new State();
+
+        decodedState.decode(state.encode());
+
+        state.player.items.push(new Item("Item 1"));
+        state.player.items.push(new Item("Item 2"));
+        const item3 = new Item("Item 3")
+        state.player.items.push(item3);
+
+        decodedState.decode(state.encode());
+
+        // ========================================
+
+        // Remove Items 1 and 2 in two separate splice executions
+        const [ removedItem1 ] = state.player.items.splice(0, 1);
+        // It was at index 2
+        assert.equal((state.player.items as any).$changes.indexChange.get(item3), 2);
+
+        const [ removedItem2 ] = state.player.items.splice(0, 1);
+        // It STILL was at index 2, no decode yet happened
+        assert.equal((state.player.items as any).$changes.indexChange.get(item3), 2);
+
+        decodedState.decode(state.encode());
+
+        const resultPreDecoding = state.player.items.map(stringifyItem).join(', ')
+        const resultPostDecoding = decodedState.player.items.map(stringifyItem).join(', ')
+        assert.equal(resultPreDecoding, resultPostDecoding);
+
+        assert.equal(decodedState.player.items.length, 1);
+        assert.equal(decodedState.player.items[0].name, `Item 3`);
+    });
 
     it("keeps items in order after splicing multiple items in one go", () => {
         class Item extends Schema {
@@ -327,37 +376,43 @@ describe("ArraySchema", () => {
         state.player.items.push(new Item("Item 3"));
         state.player.items.push(new Item("Item 4"));
         state.player.items.push(new Item("Item 5"));
-        state.player.items.push(new Item("Item 6"));
-        state.player.items.push(new Item("Item 7"));
-        decodedState.decode(state.encodeAll());
-
-        // Remove Items 2 and 3 in one splice execution
-        const [ removedItem2, removedItem3 ] = state.player.items.splice(1, 2);
-        assert.equal(removedItem2.name, "Item 2");
-        assert.equal(removedItem3.name, "Item 3");
         assert.equal(state.player.items.length, 5);
+        decodedState.decode(state.encodeAll());
+        assert.equal(decodedState.player.items.length, 5);
+        // ========================================
+
+        // Remove Item 1
+        const [ removedItem1 ] = state.player.items.splice(0, 1);
+        assert.equal(removedItem1.name, "Item 1");
+        assert.equal(state.player.items.length, 4);
+
+        assert.strictEqual((state.player.items as any).$changes.indexMap.get(state.player.items[0]), 0);
+        assert.strictEqual((state.player.items as any).$changes.indexMap.get(state.player.items[1]), 1);
+        assert.strictEqual((state.player.items as any).$changes.indexMap.get(state.player.items[2]), 2);
+        assert.strictEqual((state.player.items as any).$changes.indexMap.get(state.player.items[3]), 3);
 
         decodedState.decode(state.encode());
 
-        assert.equal(decodedState.player.items.length, 5);
+        assert.equal(decodedState.player.items.length, 4);
 
-        const expectedA = [1, 4, 5, 6, 7];
+        const expectedA = [2, 3, 4, 5];
         decodedState.player.items.forEach((item, index) => {
             assert.equal(item.name, `Item ${expectedA[index]}`);
         })
+        // ========================================
 
-        // Remove Items 4 and 5 in two separate splice executions
-        const [ removedItem4 ] = state.player.items.splice(1, 1);
-        const [ removedItem5 ] = state.player.items.splice(1, 1);
-        assert.equal(removedItem4.name, "Item 4");
-        assert.equal(removedItem5.name, "Item 5");
-        assert.equal(state.player.items.length, 3);
+        // Remove Items 2 and 3 in two separate splice executions
+        const [ removedItem2 ] = state.player.items.splice(0, 1);
+        const [ removedItem3 ] = state.player.items.splice(0, 1);
+
+        assert.equal(removedItem2.name, "Item 2");
+        assert.equal(removedItem3.name, "Item 3");
+        assert.equal(state.player.items.length, 2);
 
         decodedState.decode(state.encode());
 
-        assert.equal(decodedState.player.items.length, 3);
-
-        const expectedB = [1, 6, 7];
+        assert.equal(decodedState.player.items.length, 2);
+        const expectedB = [4, 5];
         decodedState.player.items.forEach((item, index) => {
             assert.equal(item.name, `Item ${expectedB[index]}`);
         })

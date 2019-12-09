@@ -81,9 +81,9 @@ export class ChangeTree {
         return this.deletedKeys[key] !== undefined;
     }
 
-    mapIndexChange(instance: any, key: FieldKey) {
-        if (typeof instance === "object") {
-            this.indexChange.set(instance, key);
+    mapIndexChange(instance: any, previousKey: FieldKey) {
+        if (typeof instance === "object" && !this.indexChange.has(instance)) {
+            this.indexChange.set(instance, previousKey);
         }
     }
 

@@ -107,19 +107,24 @@ export class ArraySchema<T=any> extends Array<T> {
         });
 
         removedItems.map(removedItem => {
+            const $changes = removedItem && (removedItem as any).$changes;
             // If the removed item is a schema we need to update it.
-            if (removedItem && (removedItem as any).$changes) {
-                (removedItem as any).$changes.parent.deleteIndex(removedItem);
-                (removedItem as any).$changes.parent.deleteIndexChange(removedItem);
-                delete (removedItem as any).$changes.parent;
+            if ($changes) {
+                $changes.parent.deleteIndex(removedItem);
+                delete $changes.parent;
             }
         });
 
         movedItems.forEach(movedItem => {
             // If the moved item is a schema we need to update it.
-            if (movedItem && (movedItem as any).$changes) {
-                (movedItem as any).$changes.parentField--;
+            const $changes = movedItem && (movedItem as any).$changes;
+
+            if ($changes) {
+                // Update current index in parent, so subsequent changes in
+                // this item's properties are correctly reflected.
+                $changes.parentField--;
             }
+
         });
 
         return removedItems;

@@ -454,13 +454,13 @@ export abstract class Schema {
 
                 encode.number(bytes, fieldIndex);
 
-                // total of items in the array
+                // total number of items in the array
                 encode.number(bytes, value.length);
 
                 const arrayChanges = Array.from(
-                        (encodeAll || client)
-                            ? $changes.allChanges
-                            : $changes.changes
+                    (encodeAll || client)
+                        ? $changes.allChanges
+                        : $changes.changes
                     )
                     .filter(index => this[_field][index] !== undefined)
                     .sort((a: number, b: number) => a - b);
@@ -504,7 +504,7 @@ export abstract class Schema {
 
                         (item as Schema).encode(root, encodeAll, client, bytes);
 
-                    } else if (item !== undefined) {
+                    } else if (item !== undefined) { // is array of primitives
                         encode.number(bytes, index);
                         encodePrimitiveType(type[0], bytes, item, this, field);
                     }
