@@ -24,7 +24,7 @@ export type DefinitionType = ( PrimitiveType | PrimitiveType[] | { map: Primitiv
 export type Definition = { [field: string]: DefinitionType };
 export type FilterCallback<
     T extends Schema = any,
-    V extends Schema = any,
+    V = any,
     R extends Schema = any
 > = (this: T, client: Client, value: V, root?: R) => boolean;
 
