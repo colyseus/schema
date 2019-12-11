@@ -127,5 +127,48 @@ describe("MapSchema", () => {
 
         assert.deepEqual([4, 4, 192, 0, 192, 1, 192, 2, 192, 3], encoded);
     });
+    it("should consider the field of map schema value change.", (done) => {
+        class Player extends Schema {
+            @type("string") id:string
+            @type("string") name: string;
+            @type('uint16') age:number;
+            @type("string") next: string;
+            constructor(id:string){
+                super()
+                this.id = id;
+            }
+        }
+        class State extends Schema {
+            @type({map: Player}) players = new MapSchema<Player>();
+        }
+        const state = new State();
+        const decodeState = new State()
+        const playerOne = new Player("76355");
+        state.players[playerOne.id] = playerOne;
+        playerOne.name = "Player One!";
+        playerOne.age = 100;
+        playerOne.next = playerOne.id;//1->1;
+        console.log(decodeState.decode(state.encode()).toJSON());
 
+        const playerTwo = new Player("8848");
+        state.players[playerTwo.id] = playerTwo
+        playerTwo.name = "Player Two!";
+        playerTwo.age = 200;
+        playerOne.next = playerTwo.id;//1->2;
+        playerTwo.next = playerOne.id;//2->1;
+        console.log(decodeState.decode(state.encode()).toJSON());
+
+        const playerThree = new Player("8658");
+        state.players[playerThree.id] = playerThree
+        playerThree.name = "Player Three!";
+        playerThree.age = 300;
+        playerOne.next = playerTwo.id;//1->2;
+        playerTwo.next = playerThree.id;//2->3
+        playerThree.next = playerOne.id;//3->1 
+        console.log(decodeState.decode(state.encode()).toJSON());
+        assert.equal(decodeState.players['76355'].next,'8848');//1->2
+        assert.equal(decodeState.players['8848'].next,'8658');//2->3
+        assert.equal(decodeState.players['8658'].next,'76355')//3->1
+        done();
+    });
 });

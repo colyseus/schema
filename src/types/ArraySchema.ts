@@ -77,7 +77,7 @@ export class ArraySchema<T=any> extends Array<T> {
         this.$sorting = true;
         super.sort(compareFn);
 
-        const changes = Array.from(this.$changes.changes);
+        const changes = this.$changes && Array.from(this.$changes.changes);
         for (const key of changes) {
             // track index change
             const previousIndex = this.$changes.getIndex(this[key]);
