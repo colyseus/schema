@@ -708,6 +708,49 @@ export abstract class Schema {
         return obj;
     }
 
+    discardAllChanges() {
+        const schema = this._schema;
+        const changes = this.$changes.changes;
+
+        for (const field in changes) {
+            const type = schema[field];
+            const value = changes[field];
+
+            // skip unchagned fields
+            if (value === undefined) { continue; }
+
+            if ((type as any)._schema) {
+                (value as Schema).discardAllChanges();
+
+            } else if (Array.isArray(type)) {
+                // encode Array of type
+                for (let i = 0, l = value.length; i < l; i++) {
+                    const index = value[i];
+                    const item = this[`_${field}`][index];
+
+                    if (typeof(type[0]) !== "string") { // is array of Schema
+                        (item as Schema).discardAllChanges()
+                    }
+                }
+
+            } else if ((type as any).map) {
+                const keys = value;
+                const mapKeys = Object.keys(this[`_${field}`]);
+
+                for (let i = 0; i < keys.length; i++) {
+                    const key = mapKeys[keys[i]] || keys[i];
+                    const item = this[`_${field}`][key];
+
+                    if (item instanceof Schema) {
+                        item.discardAllChanges();
+                    }
+                }
+            }
+        }
+
+        this.$changes.discard();
+    }
+
     private _encodeEndOfStructure(instance: Schema, root: Schema, bytes: number[]) {
         if (instance !== root) {
             bytes.push(END_OF_STRUCTURE);
