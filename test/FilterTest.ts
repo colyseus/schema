@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import * as sinon from "sinon";
-import { MapSchema, Reflection } from "../src";
+import { MapSchema, Reflection, DataChange } from "../src";
 
 import { StateWithFilter, Unit, Inventory } from "./Schema";
 
@@ -163,5 +163,26 @@ describe("@filter", () => {
 
         sinon.assert.calledThrice(onAddSpy);
         // assert.deepEqual(Object.keys(decoded2.unitsWithDistanceFilter), ['one', 'two', 'three', 'four']);
+    });
+
+    it("should not trigger `onChange` if field haven't changed", () => {
+        const state = new StateWithFilter();
+        state.filteredNumber = 10;
+
+        const client1 = { sessionId: "one" };
+
+        const decoded1 = new StateWithFilter();
+        decoded1.decode(state.encodeFiltered(client1));
+
+        let changes: DataChange[];
+
+        decoded1.onChange = (changelist) => changes = changelist;
+
+        state.unfilteredString = "20";
+        decoded1.decode(state.encodeFiltered(client1));
+
+        assert.deepEqual([
+            { field: 'unfilteredString', value: '20', previousValue: undefined }
+        ], changes);
     });
 });

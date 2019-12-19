@@ -370,7 +370,10 @@ export abstract class Schema {
 
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
-                hasChange = true;
+
+                // FIXME: should not even have encoded if value haven't changed in the first place!
+                // check FilterTest.ts: "should not trigger `onChange` if field haven't changed"
+                hasChange = (value !== this[_field]);
             }
 
             if (hasChange && this.onChange) {
