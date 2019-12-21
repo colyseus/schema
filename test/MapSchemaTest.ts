@@ -128,6 +128,33 @@ describe("MapSchema", () => {
         assert.deepEqual([4, 4, 192, 0, 192, 1, 192, 2, 192, 3], encoded);
     });
 
+    it("should not encode item if added and removed at the same patch", (done) => {
+        const state = new State();
+        state.mapOfPlayers = new MapSchema<Player>();
+        state.mapOfPlayers['one'] = new Player("Jake", 10, 10);
+
+        const decodedState = new State();
+        decodedState.mapOfPlayers = new MapSchema<Player>();
+
+        let hasError = false;
+        decodedState.mapOfPlayers.onRemove = function(item, key) {
+            hasError = true;
+            done("onRemove should not be called here.");
+        }
+        decodedState.decode(state.encode());
+
+        state.mapOfPlayers['one'].x++;
+        state.mapOfPlayers['two'] = new Player("Snake", 10, 10);
+        delete state.mapOfPlayers['two'];
+
+        const patchBytes = state.encode();
+        assert.deepEqual([ 4, 1, 0, 1, 11, 193 ], patchBytes);
+
+        decodedState.decode(patchBytes);
+
+        if (!hasError) { done(); }
+    });
+
     xit("should consider the field of map schema value change.", (done) => {
 
         class Player extends Schema {
