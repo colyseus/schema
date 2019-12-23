@@ -46,17 +46,17 @@ export class ChangeTree {
             this.allChanges.add(field);
 
         } else if (isDelete) {
-            if (this.changes.has(field))  {
-                /**
-                 * un-flag a change if item has been added AND removed in the same patch.
-                 * (https://github.com/colyseus/colyseus-unity3d/issues/103)
-                 */
-                this.changes.delete(field);
+            // if (this.changes.has(field))  {
+            //     /**
+            //      * un-flag a change if item has been added AND removed in the same patch.
+            //      * (https://github.com/colyseus/colyseus-unity3d/issues/103)
+            //      */
+            //     this.changes.delete(field);
 
-            } else {
+            // } else {
                 this.changed = true;
                 this.changes.add(field);
-            }
+            // }
 
             // discard all-changes for removed items.
             this.allChanges.delete(field);

@@ -128,7 +128,7 @@ describe("MapSchema", () => {
         assert.deepEqual([4, 4, 192, 0, 192, 1, 192, 2, 192, 3], encoded);
     });
 
-    it("should not encode item if added and removed at the same patch", (done) => {
+    xit("should not encode item if added and removed at the same patch", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>();
         state.mapOfPlayers['one'] = new Player("Jake", 10, 10);
@@ -136,11 +136,9 @@ describe("MapSchema", () => {
         const decodedState = new State();
         decodedState.mapOfPlayers = new MapSchema<Player>();
 
-        let hasError = false;
-        decodedState.mapOfPlayers.onRemove = function(item, key) {
-            hasError = true;
-            done("onRemove should not be called here.");
-        }
+        decodedState.mapOfPlayers.onRemove = function(item, key) {}
+        const onRemoveSpy = sinon.spy(decodedState.mapOfPlayers, 'onRemove');
+
         decodedState.decode(state.encode());
 
         state.mapOfPlayers['one'].x++;
@@ -151,8 +149,13 @@ describe("MapSchema", () => {
         assert.deepEqual([ 4, 1, 0, 1, 11, 193 ], patchBytes);
 
         decodedState.decode(patchBytes);
+        sinon.assert.notCalled(onRemoveSpy);
 
-        if (!hasError) { done(); }
+        state.mapOfPlayers['one'].x++;
+        delete state.mapOfPlayers['one'];
+
+        decodedState.decode(state.encode());
+        sinon.assert.calledOnce(onRemoveSpy);
     });
 
     xit("should consider the field of map schema value change.", (done) => {
