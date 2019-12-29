@@ -108,7 +108,7 @@ ${klass.properties.map(prop => generateProperty(prop)).join("\n")}
 \t\tthis->_childSchemaTypes = ${generateAllChildSchemaTypes(allProperties)};
 \t}
 
-\t~${klass.name}() {
+\tvirtual ~${klass.name}() {
 \t\t${generateDestructors(allProperties).join("\n\t\t")}
 \t}
 
