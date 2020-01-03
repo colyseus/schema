@@ -12,11 +12,11 @@ export function dumpChanges(schema: Schema) {
     for (const fieldIndex of Array.from($changes.changes)) {
         const field = fieldsByIndex[fieldIndex] || fieldIndex;
 
-        if (schema[field] instanceof MapSchema) {
-            // const $changes: ChangeTree = schema[field].$changes;
-            dump[field] = dumpChanges(schema[field]);
-
-        } else if (schema[field] instanceof ArraySchema) {
+        if (
+            schema[field] instanceof MapSchema ||
+            schema[field] instanceof ArraySchema ||
+            schema[field] instanceof Schema
+        ) {
             dump[field] = dumpChanges(schema[field]);
 
         } else {
