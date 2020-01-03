@@ -2,6 +2,9 @@ export { Schema, DataChange } from "./Schema";
 export { MapSchema } from "./types/MapSchema";
 export { ArraySchema } from "./types/ArraySchema";
 
+// Utils
+export { dumpChanges } from "./utils";
+
 // Reflection
 export {
     Reflection,
