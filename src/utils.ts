@@ -7,7 +7,7 @@ export function dumpChanges(schema: Schema) {
     const dump = {};
 
     const $changes: ChangeTree = (schema as any).$changes;
-    const fieldsByIndex = schema._fieldsByIndex || {};
+    const fieldsByIndex = schema['_fieldsByIndex'] || {};
 
     for (const fieldIndex of Array.from($changes.changes)) {
         const field = fieldsByIndex[fieldIndex] || fieldIndex;

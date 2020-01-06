@@ -8,6 +8,7 @@ import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
 import { ChangeTree } from "./ChangeTree";
+import { NonFunctionProps } from './types/HelperTypes';
 
 export interface DataChange<T=any> {
     field: string;
@@ -122,16 +123,16 @@ export abstract class Schema {
         }
     }
 
-    get _schema () { return (this.constructor as typeof Schema)._schema; }
-    get _descriptors () { return (this.constructor as typeof Schema)._descriptors; }
-    get _indexes () { return (this.constructor as typeof Schema)._indexes; }
-    get _fieldsByIndex() { return (this.constructor as typeof Schema)._fieldsByIndex }
-    get _filters () { return (this.constructor as typeof Schema)._filters; }
-    get _deprecated () { return (this.constructor as typeof Schema)._deprecated; }
+    protected get _schema () { return (this.constructor as typeof Schema)._schema; }
+    protected get _descriptors () { return (this.constructor as typeof Schema)._descriptors; }
+    protected get _indexes () { return (this.constructor as typeof Schema)._indexes; }
+    protected get _fieldsByIndex() { return (this.constructor as typeof Schema)._fieldsByIndex }
+    protected get _filters () { return (this.constructor as typeof Schema)._filters; }
+    protected get _deprecated () { return (this.constructor as typeof Schema)._deprecated; }
 
     get $changed () { return this.$changes.changed; }
 
-    public listen <K extends keyof this>(attr: K, callback: (change: DataChange<this[K]>) => void) {
+    public listen <K extends NonFunctionProps<this>>(attr: K, callback: (change: DataChange<this[K]>) => void) {
         this.$listeners[attr as string] = callback;
     }
 

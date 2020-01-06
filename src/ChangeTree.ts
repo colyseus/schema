@@ -111,7 +111,7 @@ export class ChangeTree {
 
     changeAll(obj: Schema | ArraySchema | MapSchema) {
         if (obj instanceof Schema) {
-            const schema = obj._schema;
+            const schema = obj['_schema'];
             for (const field in schema) {
 
                 // ensure ArraySchema and MapSchema already initialized
