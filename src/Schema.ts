@@ -95,6 +95,7 @@ export abstract class Schema {
     }
 
     protected $changes: ChangeTree;
+    protected $listeners: { [field: string]: (change: DataChange) => void } = {};
 
     public onChange?(changes: DataChange[]);
     public onRemove?();
@@ -124,6 +125,10 @@ export abstract class Schema {
     get _deprecated () { return (this.constructor as typeof Schema)._deprecated; }
 
     get $changed () { return this.$changes.changed; }
+
+    public listen <K extends keyof this>(attr: K, callback: (change: DataChange<this[K]>) => void) {
+        this.$listeners[attr as string] = callback;
+    }
 
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
         const changes: DataChange[] = [];
@@ -376,12 +381,21 @@ export abstract class Schema {
                 hasChange = (value !== this[_field]);
             }
 
-            if (hasChange && this.onChange) {
-                changes.push({
+            const hasDataListener = this.$listeners[field];
+            if (hasChange && (this.onChange || hasDataListener)) {
+                const dataChange: DataChange = {
                     field,
                     value: change || value,
                     previousValue: this[_field]
-                });
+                };
+
+                if (hasDataListener) {
+                    this.$listeners[field](dataChange);
+                }
+
+                if (this.onChange) {
+                    changes.push(dataChange);
+                }
             }
 
             this[_field] = value;

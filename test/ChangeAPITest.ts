@@ -23,8 +23,13 @@ describe("Change API", () => {
 
             const onChangeSpy = sinon.spy(decodedState, 'onChange');
 
+            const fieldNumberChange =  (change) => assert.ok(change.value === 50);
+            const onFieldNumberChangeSpy = sinon.spy(fieldNumberChange);
+            decodedState.listen("fieldNumber", onFieldNumberChangeSpy);
+
             decodedState.decode(state.encode());
             sinon.assert.calledOnce(onChangeSpy);
+            sinon.assert.calledOnce(onFieldNumberChangeSpy);
         });
 
         it("should trigger onChange with multiple values", () => {
