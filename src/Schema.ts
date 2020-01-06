@@ -95,7 +95,7 @@ export abstract class Schema {
     }
 
     protected $changes: ChangeTree;
-    protected $listeners: { [field: string]: (change: DataChange) => void } = {};
+    protected $listeners: { [field: string]: (change: DataChange) => void };
 
     public onChange?(changes: DataChange[]);
     public onRemove?();
@@ -106,6 +106,11 @@ export abstract class Schema {
         Object.defineProperties(this, {
             $changes: {
                 value: new ChangeTree(this._indexes),
+                enumerable: false,
+                writable: true
+            },
+            $listeners: {
+                value: {},
                 enumerable: false,
                 writable: true
             },
