@@ -387,33 +387,18 @@ export abstract class Schema {
                 hasChange = (value !== this[_field]);
             }
 
-            const hasDataListener = this.$listeners[field];
-            if (hasChange && (this.onChange || hasDataListener)) {
-                const dataChange: DataChange = {
+            if (hasChange && (this.onChange || this.$listeners[field])) {
+                changes.push({
                     field,
                     value: change || value,
                     previousValue: this[_field]
-                };
-
-                if (hasDataListener) {
-                    this.$listeners[field](dataChange);
-                }
-
-                if (this.onChange) {
-                    changes.push(dataChange);
-                }
+                });
             }
 
             this[_field] = value;
         }
 
-        if (this.onChange && changes.length > 0) {
-            try {
-                this.onChange(changes);
-            } catch (e) {
-                Schema.onError(e);
-            }
-        }
+        this._triggerChanges(changes);
 
         return this;
     }
@@ -796,5 +781,30 @@ export abstract class Schema {
         } else {
             return new (type as any)();
         }
+    }
+
+    private _triggerChanges(changes: DataChange[]) {
+        if (changes.length > 0) {
+            for (let i = 0; i < changes.length; i++) {
+                const change = changes[i];
+                const listener = this.$listeners[change.field];
+                if (listener) {
+                    try {
+                        listener(change);
+                    } catch (e) {
+                        Schema.onError(e);
+                    }
+                }
+            }
+
+            if (this.onChange) {
+                try {
+                    this.onChange(changes);
+                } catch (e) {
+                    Schema.onError(e);
+                }
+            }
+        }
+
     }
 }
