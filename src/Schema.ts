@@ -96,7 +96,7 @@ export abstract class Schema {
     }
 
     protected $changes: ChangeTree;
-    protected $listeners: { [field: string]: (change: DataChange) => void };
+    protected $listeners: { [field: string]: (value: any, previousValue: any) => void };
 
     public onChange?(changes: DataChange[]);
     public onRemove?();
@@ -132,7 +132,7 @@ export abstract class Schema {
 
     get $changed () { return this.$changes.changed; }
 
-    public listen <K extends NonFunctionProps<this>>(attr: K, callback: (change: DataChange<this[K]>) => void) {
+    public listen <K extends NonFunctionProps<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
         this.$listeners[attr as string] = callback;
     }
 
@@ -790,7 +790,7 @@ export abstract class Schema {
                 const listener = this.$listeners[change.field];
                 if (listener) {
                     try {
-                        listener(change);
+                        listener(change.value, change.previousValue);
                     } catch (e) {
                         Schema.onError(e);
                     }
