@@ -184,5 +184,11 @@ describe("@filter", () => {
         assert.deepEqual([
             { field: 'unfilteredString', value: '20', previousValue: undefined }
         ], changes);
+
+        state.filteredNumber = 11;
+        decoded1.decode(state.encodeFiltered(client1));
+        assert.deepEqual([
+            { field: 'filteredNumber', value: 11, previousValue: 10 }
+        ], changes);
     });
 });

@@ -51,7 +51,7 @@ describe("Reflection", () => {
         const state = new State();
         const stateReflected = Reflection.decode(Reflection.encode(state)) as State;
 
-        assert.deepEqual(state._indexes, stateReflected._indexes);
+        assert.deepEqual(state['_indexes'], stateReflected['_indexes']);
 
         state.fieldString = "Hello world!";
         state.fieldNumber = 10;
@@ -63,7 +63,7 @@ describe("Reflection", () => {
         state.arrayOfPlayers = new ArraySchema(new Player("in array", 4, 4));
 
         stateReflected.decode(state.encode());
-        
+
         assert.equal(stateReflected.fieldString, "Hello world!");
         assert.equal(stateReflected.fieldNumber, 10);
 
@@ -118,8 +118,8 @@ describe("Reflection", () => {
         const encodedReflection = Reflection.encode(state);
 
         const decodedState = Reflection.decode(encodedReflection) as MyState;
-        assert.deepEqual(Object.keys(decodedState._schema.points[0]._schema), ['x', 'y'])
-        assert.deepEqual(Object.keys(decodedState._schema.players[0]._schema), ['x', 'y', 'name'])
+        assert.deepEqual(Object.keys(decodedState['_schema'].points[0]._schema), ['x', 'y'])
+        assert.deepEqual(Object.keys(decodedState['_schema'].players[0]._schema), ['x', 'y', 'name'])
     });
 
     it("should reflect map of primitive type", () => {
@@ -156,19 +156,19 @@ describe("Reflection", () => {
 
     it("should reflect and be able to use multiple structures of primitive tyes", () => {
         class MyState extends Schema {
-            @type("string") 
+            @type("string")
             currentTurn: string;
 
-            @type({ map: "number" }) 
+            @type({ map: "number" })
             players: MapSchema<number>;
 
-            @type(["number"]) 
+            @type(["number"])
             board: ArraySchema<number>;
 
-            @type("string") 
+            @type("string")
             winner: string;
 
-            @type("boolean") 
+            @type("boolean")
             draw: boolean;
         }
 

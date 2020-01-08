@@ -9,6 +9,7 @@ import { MapSchema } from "./types/MapSchema";
 
 import { ChangeTree } from "./ChangeTree";
 import { NonFunctionProps } from './types/HelperTypes';
+import { EventEmitter } from './events/EventEmitter';
 
 export interface DataChange<T=any> {
     field: string;
@@ -96,7 +97,7 @@ export abstract class Schema {
     }
 
     protected $changes: ChangeTree;
-    protected $listeners: { [field: string]: (value: any, previousValue: any) => void };
+    protected $listeners: { [field: string]: EventEmitter<(a: any, b: any) => void> };
 
     public onChange?(changes: DataChange[]);
     public onRemove?();
@@ -133,7 +134,10 @@ export abstract class Schema {
     get $changed () { return this.$changes.changed; }
 
     public listen <K extends NonFunctionProps<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
-        this.$listeners[attr as string] = callback;
+        if (!this.$listeners[attr as string]) {
+            this.$listeners[attr as string] = new EventEmitter();
+        }
+        this.$listeners[attr as string].register(callback);
     }
 
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
@@ -790,7 +794,7 @@ export abstract class Schema {
                 const listener = this.$listeners[change.field];
                 if (listener) {
                     try {
-                        listener(change.value, change.previousValue);
+                        listener.invoke(change.value, change.previousValue);
                     } catch (e) {
                         Schema.onError(e);
                     }
