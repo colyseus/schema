@@ -722,11 +722,13 @@ export abstract class Schema {
 
     discardAllChanges() {
         const schema = this._schema;
-        const changes = this.$changes.changes;
+        const changes = Array.from(this.$changes.changes);
+        const fieldsByIndex = this._fieldsByIndex;
 
-        for (const field in changes) {
+        for (const index in changes) {
+            const field = fieldsByIndex[index];
             const type = schema[field];
-            const value = changes[field];
+            const value = this[field];
 
             // skip unchagned fields
             if (value === undefined) { continue; }

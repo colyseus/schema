@@ -2,7 +2,7 @@ import * as sinon from "sinon";
 import * as util from "util";
 import * as assert from "assert";
 
-import { type } from './../src/annotations';
+import { type, filter } from './../src/annotations';
 import { State, Player } from "./Schema";
 import { Schema, MapSchema, ArraySchema, DataChange } from "../src";
 
@@ -658,6 +658,36 @@ describe("Change API", () => {
         });
     });
 
+    describe("with filters", () => {
+        class Round extends Schema {
+            @type(["number"]) scores = new ArraySchema<number>(0, 0);
+        }
+
+        class State extends Schema {
+            @filter(() => true)
+            @type("number") timer: number;
+            @type(Round) currentRound: Round = new Round();
+        }
+
+        it("should not trigger unchanged fields", () => {
+            let changesTriggered: number = 0;
+
+            const state = new State();
+            state.timer = 10;
+
+            const decodedState = new State();
+            decodedState.currentRound.listen("scores", () => changesTriggered++);
+
+            do {
+                state.timer--;
+                decodedState.decode(state.encodeFiltered({}));
+                state.discardAllChanges();
+            } while (state.timer > 0);
+
+            assert.equal(1, changesTriggered);
+        });
+    });
+
     describe("triggerAll", () => {
         it("should trigger onChange on Schema instance", () => {
             const state = new State();
@@ -700,7 +730,6 @@ describe("Change API", () => {
             sinon.assert.notCalled(onRemoveSpy);
         });
     });
-
 
     describe("callback order", () => {
         class MyState extends Schema {
