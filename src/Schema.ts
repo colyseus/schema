@@ -742,7 +742,7 @@ export abstract class Schema {
                     const index = value[i];
                     const item = this[`_${field}`][index];
 
-                    if (typeof(type[0]) !== "string") { // is array of Schema
+                    if (typeof(type[0]) !== "string" && item) { // is array of Schema
                         (item as Schema).discardAllChanges()
                     }
                 }
