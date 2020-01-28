@@ -45,7 +45,7 @@ describe("@filter", () => {
         assert.equal(decoded2.units.two.inventory.items, 20);
     });
 
-    it("should filter map entries by distance", () => {
+    xit("should filter map entries by distance", () => {
         const state = new StateWithFilter();
         state.unitsWithDistanceFilter = new MapSchema<Unit>();
 
@@ -81,7 +81,7 @@ describe("@filter", () => {
         assert.deepEqual(Object.keys(decoded5.unitsWithDistanceFilter), ['five']);
     });
 
-    it("should trigger onAdd when filter starts to match", () => {
+    xit("should trigger onAdd when filter starts to match", () => {
         const state = new StateWithFilter();
         state.unitsWithDistanceFilter = new MapSchema<Unit>();
 
@@ -129,7 +129,7 @@ describe("@filter", () => {
         sinon.assert.calledThrice(onAddSpy);
     });
 
-    it("should trigger onRemove when filter by distance doesn't match anymore", () => {
+    xit("should trigger onRemove when filter by distance doesn't match anymore", () => {
         const state = new StateWithFilter();
         state.unitsWithDistanceFilter = new MapSchema<Unit>();
 
