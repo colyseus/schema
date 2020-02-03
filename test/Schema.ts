@@ -137,7 +137,8 @@ export class StateWithFilter extends Schema {
   @type({ map: Bullet })
   bullets: MapSchema<Bullet>;
 
-  @filter(filters.byDistance)
+//   @filter(filters.byDistance)
+  @filter((client) => client.sessionId === "three")
   @type({ map: Unit })
   unitsWithDistanceFilter = new MapSchema<Unit>();
 

@@ -419,7 +419,7 @@ export abstract class Schema {
         const fieldsByIndex = this._fieldsByIndex;
         const filters = this._filters;
         const changes = Array.from(
-            (encodeAll || client)
+            (encodeAll) //  || client
                 ? this.$changes.allChanges
                 : this.$changes.changes
         ).sort();
@@ -464,13 +464,20 @@ export abstract class Schema {
             } else if (Array.isArray(type)) {
                 const $changes: ChangeTree = value.$changes;
 
+                if (client && filter) {
+                    // skip if not allowed by custom filter
+                    if (!filter.call(this, client, value, root)) {
+                        continue;
+                    }
+                }
+
                 encode.number(bytes, fieldIndex);
 
                 // total number of items in the array
                 encode.number(bytes, value.length);
 
                 const arrayChanges = Array.from(
-                    (encodeAll || client)
+                    (encodeAll) //  || client
                         ? $changes.allChanges
                         : $changes.changes
                     )
@@ -493,12 +500,15 @@ export abstract class Schema {
                     const index = arrayChanges[j];
                     const item = this[_field][index];
 
-                    if (client && filter) {
-                        // skip if not allowed by custom filter
-                        if (!filter.call(this, client, item, root)) {
-                            continue;
-                        }
-                    }
+                    /**
+                     * TODO: filter array by items instead of the whole object
+                     */
+                    // if (client && filter) {
+                    //     // skip if not allowed by custom filter
+                    //     if (!filter.call(this, client, item, root)) {
+                    //         continue;
+                    //     }
+                    // }
 
                     if (isChildSchema) { // is array of Schema
                         encode.number(bytes, index);
@@ -522,19 +532,26 @@ export abstract class Schema {
                     }
                 }
 
-                if (!encodeAll) {
+                if (!encodeAll && !client) {
                     $changes.discard();
                 }
 
             } else if ((type as any).map) {
                 const $changes: ChangeTree = value.$changes;
 
+                if (client && filter) {
+                    // skip if not allowed by custom filter
+                    if (!filter.call(this, client, value, root)) {
+                        continue;
+                    }
+                }
+
                 // encode Map of type
                 encode.number(bytes, fieldIndex);
 
                 // TODO: during `encodeAll`, removed entries are not going to be encoded
                 const keys = Array.from(
-                    (encodeAll || client)
+                    (encodeAll) //  || client
                         ? $changes.allChanges
                         : $changes.changes
                 );
@@ -555,12 +572,15 @@ export abstract class Schema {
 
                     let mapItemIndex: number = undefined;
 
-                    if (client && filter) {
-                        // skip if not allowed by custom filter
-                        if (!filter.call(this, client, item, root)) {
-                            continue;
-                        }
-                    }
+                    /**
+                     * TODO: filter map by items instead of the whole object
+                     */
+                    // if (client && filter) {
+                    //     // skip if not allowed by custom filter
+                    //     if (!filter.call(this, client, item, root)) {
+                    //         continue;
+                    //     }
+                    // }
 
                     if (encodeAll) {
                         if (item === undefined) {
@@ -616,14 +636,13 @@ export abstract class Schema {
 
                 }
 
-                if (!encodeAll) {
+                if (!encodeAll && !client) {
                     $changes.discard();
 
                     // TODO: track array/map indexes per client (for filtering)?
-                    if (!client) {
-                        // TODO: do not iterate though all MapSchema indexes here.
-                        this[_field]._updateIndexes(previousKeys);
-                    }
+
+                    // TODO: do not iterate though all MapSchema indexes here.
+                    this[_field]._updateIndexes(previousKeys);
                 }
 
             } else {
@@ -737,7 +756,6 @@ export abstract class Schema {
                 (value as Schema).discardAllChanges();
 
             } else if (Array.isArray(type)) {
-                // encode Array of type
                 for (let i = 0, l = value.length; i < l; i++) {
                     const index = value[i];
                     const item = this[`_${field}`][index];
@@ -746,6 +764,8 @@ export abstract class Schema {
                         (item as Schema).discardAllChanges()
                     }
                 }
+
+                value.$changes.discard();
 
             } else if ((type as any).map) {
                 const keys = value;
@@ -759,6 +779,8 @@ export abstract class Schema {
                         item.discardAllChanges();
                     }
                 }
+
+                value.$changes.discard();
             }
         }
 

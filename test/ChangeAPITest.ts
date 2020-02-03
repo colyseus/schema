@@ -661,30 +661,47 @@ describe("Change API", () => {
     describe("with filters", () => {
         class Round extends Schema {
             @type(["number"]) scores = new ArraySchema<number>(0, 0);
+            @type(["number"]) totals = new ArraySchema<number>(0, 0);
         }
 
         class State extends Schema {
             @filter(() => true)
             @type("number") timer: number;
+
             @type(Round) currentRound: Round = new Round();
         }
 
         it("should not trigger unchanged fields", () => {
-            let changesTriggered: number = 0;
+            let totalFieldChanges: number = 0;
+            let scoresFieldChanges: number = 0;
 
             const state = new State();
             state.timer = 10;
 
             const decodedState = new State();
-            decodedState.currentRound.listen("scores", () => changesTriggered++);
+
+            decodedState.currentRound.listen("scores", () => scoresFieldChanges++);
+            decodedState.currentRound.listen("totals", () => totalFieldChanges++);
 
             do {
                 state.timer--;
+
+                state.currentRound.scores[0]++;
+                state.currentRound.scores[1]++;
+
                 decodedState.decode(state.encodeFiltered({}));
                 state.discardAllChanges();
             } while (state.timer > 0);
 
-            assert.equal(1, changesTriggered);
+            // set 'totals' field once.
+            state.currentRound.totals[0] = 100;
+            state.currentRound.totals[1] = 100;
+
+            decodedState.decode(state.encodeFiltered({}));
+            state.discardAllChanges();
+
+            assert.equal(2, totalFieldChanges);
+            assert.equal(10, scoresFieldChanges);
         });
     });
 
