@@ -755,7 +755,7 @@ export abstract class Schema {
                     const key = mapKeys[keys[i]] || keys[i];
                     const item = this[`_${field}`][key];
 
-                    if (item instanceof Schema) {
+                    if (item instanceof Schema && item) {
                         item.discardAllChanges();
                     }
                 }

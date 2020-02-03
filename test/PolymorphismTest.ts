@@ -120,4 +120,27 @@ describe("Polymorphism", () => {
         assert.ok(decodedState.mapOfEntities['player-2'] instanceof Entity);
         assert.ok(decodedState.mapOfEntities['player-2'] instanceof Player);
     });
+
+    it("should allow generics", () => {
+        abstract class BaseConfig extends Schema {
+            @type("string") default: string = "default";
+        }
+        class ConcreteConfig extends BaseConfig {
+            @type("number") specific: number = 0;
+        }
+        class GameRoomState<RoomConfigType extends BaseConfig = any> extends Schema {
+            @type(BaseConfig)
+            roomConfig: RoomConfigType;
+        }
+
+        const state = new GameRoomState<ConcreteConfig>();
+        state.roomConfig = new ConcreteConfig();
+        state.roomConfig.specific = 20;
+
+        const decodedState = new GameRoomState<ConcreteConfig>();
+        decodedState.decode(state.encode());
+
+        assert.equal("default", decodedState.roomConfig.default);
+        assert.equal(20, decodedState.roomConfig.specific);
+    });
 });
