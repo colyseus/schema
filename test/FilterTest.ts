@@ -21,7 +21,8 @@ describe("@filter", () => {
 
     it("should filter property outside of root", () => {
         const state = new StateWithFilter();
-        state.units = new MapSchema<Unit>();
+        state.filteredNumber = 10;
+
         state.units.one = new Unit();
         state.units.one.inventory = new Inventory();
         state.units.one.inventory.items = 10;
@@ -40,9 +41,11 @@ describe("@filter", () => {
 
         assert.equal(decoded1.units.one.inventory.items, 10);
         assert.equal(decoded1.units.two.inventory, undefined);
+        assert.equal(decoded1.filteredNumber, 10);
 
         assert.equal(decoded2.units.one.inventory, undefined);
         assert.equal(decoded2.units.two.inventory.items, 20);
+        assert.equal(decoded2.filteredNumber, undefined);
     });
 
     xit("should filter map entries by distance", () => {
