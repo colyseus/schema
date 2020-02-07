@@ -90,7 +90,12 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     const typeArgument = typeDecorator.arguments[0];
                     defineProperty(property, typeArgument);
 
-                } else {
+                } else if (
+                    prop.expression.arguments &&
+                    prop.expression.arguments[1] &&
+                    prop.expression.expression.arguments &&
+                    prop.expression.expression.arguments[0]
+                ) {
                     /**
                      * Calling `type()` as a regular method
                      */
