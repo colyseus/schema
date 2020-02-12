@@ -1,5 +1,7 @@
 import { ChangeTree } from './ChangeTree';
 import { Schema } from './Schema';
+import { ArraySchema } from './types/ArraySchema';
+import { MapSchema } from './types/MapSchema';
 
 /**
  * Data types
@@ -113,6 +115,14 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                  * Create Proxy for array or map items
                  */
                 if (isArray || isMap) {
+                    if (isArray && !(value instanceof ArraySchema)) {
+                        value = new ArraySchema(...value);
+                    }
+
+                    if (isMap && !(value instanceof MapSchema)) {
+                        value = new MapSchema(value);
+                    }
+
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, setValue) => {

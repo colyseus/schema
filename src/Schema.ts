@@ -122,6 +122,11 @@ export abstract class Schema {
         if (descriptors) {
             Object.defineProperties(this, descriptors);
         }
+
+        // Assign initial values
+        if (args[0]) {
+            Object.assign(this, args[0]);
+        }
     }
 
     protected get _schema () { return (this.constructor as typeof Schema)._schema; }
