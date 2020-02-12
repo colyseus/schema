@@ -138,6 +138,10 @@ export abstract class Schema {
             this.$listeners[attr as string] = new EventEmitter();
         }
         this.$listeners[attr as string].register(callback);
+
+        // return un-register callback.
+        return () =>
+            this.$listeners[attr as string].remove(callback);
     }
 
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
