@@ -794,4 +794,18 @@ describe("Change API", () => {
 
     });
 
+    describe(".listen()", () => {
+        it("TypeScript should recognize boolean properties", () => {
+            class State extends Schema {
+                @type("boolean")
+                bool: boolean;
+            }
+
+            const state = new State();
+            state.listen("bool", () => {});
+
+            assert.ok(true, "This piece of code should compile.");
+        });
+    });
+
 });

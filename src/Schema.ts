@@ -8,7 +8,7 @@ import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
 import { ChangeTree } from "./ChangeTree";
-import { NonFunctionProps } from './types/HelperTypes';
+import { NonFunctionProps, NonFunctionPropNames } from './types/HelperTypes';
 import { EventEmitter } from './events/EventEmitter';
 
 export interface DataChange<T=any> {
@@ -133,7 +133,7 @@ export abstract class Schema {
 
     get $changed () { return this.$changes.changed; }
 
-    public listen <K extends NonFunctionProps<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
+    public listen <K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
         if (!this.$listeners[attr as string]) {
             this.$listeners[attr as string] = new EventEmitter();
         }
