@@ -704,10 +704,6 @@ export abstract class Schema {
     }
 
     triggerAll() {
-        if (!this.onChange) {
-            return;
-        }
-
         const changes: DataChange[] = [];
         const schema = this._schema;
 
@@ -722,7 +718,8 @@ export abstract class Schema {
         }
 
         try {
-            this.onChange(changes);
+            this._triggerChanges(changes);
+
         } catch (e) {
             Schema.onError(e);
         }
