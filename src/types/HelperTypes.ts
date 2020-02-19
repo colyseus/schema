@@ -27,3 +27,8 @@ export type NonFunctionProps<T> = {
         'true': never
     }[IsFunction<T[K]>]
 }[keyof T];
+
+export type NonFunctionPropNames<T> = {
+    [K in keyof T]: T[K] extends Function ? never : K
+}[keyof T];
+
