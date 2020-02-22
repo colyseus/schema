@@ -195,13 +195,15 @@ export abstract class Schema {
 
                 const newLength = decode.number(bytes, it);
                 const numChanges = Math.min(decode.number(bytes, it), newLength);
-                hasChange = (numChanges > 0);
+
+                const hasRemoval = (value.length > newLength);
+                hasChange = (numChanges > 0) || hasRemoval;
 
                 // FIXME: this may not be reliable. possibly need to encode this variable during serialization
                 let hasIndexChange = false;
 
                 // ensure current array has the same length as encoded one
-                if (value.length > newLength) {
+                if (hasRemoval) {
                     // decrease removed items from number of changes.
                     // no need to iterate through them, as they're going to be removed.
 
