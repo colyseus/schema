@@ -172,7 +172,6 @@ export abstract class Schema {
             let type = schema[field];
             let value: any;
 
-            let change: any; // for triggering onChange
             let hasChange = false;
 
             if (!field) {
@@ -190,7 +189,6 @@ export abstract class Schema {
 
             } else if (Array.isArray(type)) {
                 type = type[0];
-                change = [];
 
                 const valueRef: ArraySchema = this[_field] || new ArraySchema();
                 value = valueRef.clone(true);
@@ -279,8 +277,6 @@ export abstract class Schema {
                             Schema.onError(e);
                         }
                     }
-
-                    change.push(value[newIndex]);
                 }
 
 
@@ -398,7 +394,7 @@ export abstract class Schema {
             if (hasChange && (this.onChange || this.$listeners[field])) {
                 changes.push({
                     field,
-                    value: change || value,
+                    value,
                     previousValue: this[_field]
                 });
             }

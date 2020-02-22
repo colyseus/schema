@@ -23,7 +23,7 @@ describe("Change API", () => {
 
             const onChangeSpy = sinon.spy(decodedState, 'onChange');
 
-            const fieldNumberChange =  (change) => assert.ok(change.value === 50);
+            const fieldNumberChange =  (value, previousValue) => assert.ok(value === 50);
             const onFieldNumberChangeSpy = sinon.spy(fieldNumberChange);
             decodedState.listen("fieldNumber", onFieldNumberChangeSpy);
 
@@ -161,9 +161,8 @@ describe("Change API", () => {
             decodedState.onChange = function (changes: DataChange[]) {
                 assert.equal(changes.length, 1);
                 assert.equal(changes[0].field, "arrayOfPlayers");
-                assert.equal(changes[0].value.length, 1);
-
-                assert.equal(changes[0].value[0].name, "Snake Sanders");
+                assert.equal(changes[0].value.length, 3);
+                assert.equal(changes[0].value[2].name, "Snake Sanders");
             }
 
             onChangeSpy = sinon.spy(decodedState, 'onChange');
