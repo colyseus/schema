@@ -1006,23 +1006,32 @@ describe("Schema", () => {
             assert.equal(decodedState.player.y, 100);
         });
 
-        it("should trigger error when assigning plain maps or arrays", () => {
+        it("should transform plain array into ArraySchema", () => {
             class MyState extends Schema {
-                @type({ map: "string" }) map = new MapSchema<string>();
                 @type([ "string" ]) array = new ArraySchema<string>();
             }
 
-            assert.throws(() => {
-                const state = new MyState();
-                (state as any).map = {};
-                state.encode();
-            }, /a 'MapSchema' was expected/ig);
+            const state = new MyState();
+            state.array = ["hello"] as ArraySchema;
+            assert.ok(state.array instanceof ArraySchema);
 
-            assert.throws(() => {
-                const state = new MyState();
-                (state as any).array = [];
-                state.encode();
-            }, /a 'ArraySchema' was expected/ig);
+            const decoded = new MyState();
+            decoded.decode(state.encode());
+            assert.deepEqual(["hello"], decoded.array);
+        });
+
+        it("should transform plain map into MapSchema", () => {
+            class MyState extends Schema {
+                @type({ map: "string" }) map = new MapSchema<string>();
+            }
+
+            const state = new MyState();
+            (state as any).map = { one: "hello" };
+            assert.ok(state.map instanceof MapSchema);
+
+            const decoded = new MyState();
+            decoded.decode(state.encode());
+            assert.deepEqual({one: "hello"}, decoded.map);
         });
     })
 

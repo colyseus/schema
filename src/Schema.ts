@@ -8,7 +8,7 @@ import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
 import { ChangeTree } from "./ChangeTree";
-import { NonFunctionProps, NonFunctionPropNames } from './types/HelperTypes';
+import { NonFunctionPropNames } from './types/HelperTypes';
 import { EventEmitter } from './events/EventEmitter';
 
 export interface DataChange<T=any> {
