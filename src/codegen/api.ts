@@ -32,6 +32,10 @@ export function generate(targetId: string, options: GenerateOptions) {
     if (!options.decorator) { options.decorator = "type"; }
 
     const classes = parseFiles(options.files, options.decorator);
+
+    // Post-process classes before generating
+    classes.forEach(klass => klass.postProcessing());
+
     const files = generator(classes, options);
 
     files.forEach((file: File) => {
