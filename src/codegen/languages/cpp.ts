@@ -181,7 +181,7 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
         typeCast = `(MapSchema<char*> *)`;
     }
 
-    return `\tinline ${langType} ${getMethodName}(string field)
+    return `\tinline ${langType} ${getMethodName}(const string &field)
 \t{
 \t\t${generateFieldIfElseChain(properties,
     (property) => `field == "${property.name}"`,
@@ -189,7 +189,7 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
 \t\treturn ${klass.extends}::${getMethodName}(field);
 \t}
 
-\tinline void ${setMethodName}(string field, ${langType} value)
+\tinline void ${setMethodName}(const string &field, ${langType} value)
 \t{
 \t\t${generateFieldIfElseChain(properties,
     (property) => `field == "${property.name}"`,
