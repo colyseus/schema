@@ -268,6 +268,40 @@ describe("Change API", () => {
             sinon.assert.callCount(onAddSpy, 12);
             sinon.assert.callCount(onChangeSpy, 4);
         });
+
+        xit("should call onAdd when replacing items", () => {
+            class Card extends Schema {
+                @type("number") num: number;
+                constructor(num: number) {
+                    super();
+                    this.num = num;
+                }
+            }
+
+            class Player extends Schema {
+                @type([Card]) cards = new ArraySchema<Card>();
+            }
+
+            class CardGameState extends Schema {
+                @type(Player) player = new Player();
+            }
+
+            const decodedState = new CardGameState();
+
+            decodedState.player.cards.onAdd = () => {};
+            const onAddSpy = sinon.spy(decodedState.player.cards, "onAdd");
+
+            const state = new CardGameState();
+            state.player.cards.push(new Card(1));
+
+            decodedState.decode(state.encode());
+            sinon.assert.callCount(onAddSpy, 1);
+
+            state.player.cards.splice(0, 1);
+            state.player.cards.push(new Card(2));
+            decodedState.decode(state.encode());
+            sinon.assert.callCount(onAddSpy, 2);
+        });
     });
 
     describe("MapSchema", () => {
