@@ -242,7 +242,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
  * `@filter()` decorator for defining data filters per client
  */
 
-export function filter<T extends Schema, V extends Schema, R extends Schema>(cb: FilterCallback<T, V, R>): PropertyDecorator {
+export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback<T, V, R>): PropertyDecorator {
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
 
