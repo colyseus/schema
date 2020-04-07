@@ -77,14 +77,16 @@ export class ArraySchema<T=any> extends Array<T> {
         this.$sorting = true;
         super.sort(compareFn);
 
-        const changes = Array.from(this.$changes.changes);
-        for (const key of changes) {
-            // track index change
-            const previousIndex = this.$changes.getIndex(this[key]);
-            if (previousIndex !== undefined) {
-                this.$changes.mapIndexChange(this[key], previousIndex);
+        if (this.$changes) { // allow to .slice() + .sort()
+            const changes = Array.from(this.$changes.changes);
+            for (const key of changes) {
+                // track index change
+                const previousIndex = this.$changes.getIndex(this[key]);
+                if (previousIndex !== undefined) {
+                    this.$changes.mapIndexChange(this[key], previousIndex);
+                }
+                this.$changes.mapIndex(this[key], key);
             }
-            this.$changes.mapIndex(this[key], key);
         }
 
         this.$sorting = false;
