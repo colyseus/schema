@@ -1,6 +1,15 @@
 import { ChangeTree } from "../ChangeTree";
 import { Schema } from "../Schema";
 
+const updatedRemovedItem = removedItem => {
+    const $changes = removedItem && (removedItem as any).$changes;
+    // If the removed item is a schema we need to update it.
+    if ($changes) {
+        $changes.parent.deleteIndex(removedItem);
+        delete $changes.parent;
+    }
+}
+
 export class ArraySchema<T=any> extends Array<T> {
     protected $sorting: boolean;
     protected $changes: ChangeTree;
@@ -94,12 +103,31 @@ export class ArraySchema<T=any> extends Array<T> {
     }
 
     filter(callbackfn: (value: T, index: number, array: T[]) => unknown, thisArg?: any): ArraySchema<T> {
-        const filtered = super.filter(callbackfn);
+        const keepItems = Array.prototype.filter.call(this, (item, idx) => {
+          return callbackfn(item, idx, this);
+        })
 
-        // TODO: apply removed items on $changes
-        (filtered as any).$changes = this.$changes;
+        const removedItems = Array.prototype.filter.call(this, (item, idx) => {
+          return !callbackfn(item, idx, this);
+        })
 
-        return filtered as ArraySchema<T>;
+        removedItems.forEach(updatedRemovedItem);
+
+        // treat all kept items as moved to ensure index is right
+        let result = new ArraySchema<T>();
+        result.$changes = this.$changes;
+
+        keepItems.forEach((movedItem, index) => {
+          // If the moved item is a schema we need to update it.
+          const $changes = movedItem && (movedItem as any).$changes;
+
+          if ($changes) {
+              $changes.parentField = index;
+          }
+          result.push(movedItem)
+        });
+
+        return result
     }
 
     splice(start: number, deleteCount?: number, ...insert: T[]) {
@@ -108,14 +136,7 @@ export class ArraySchema<T=any> extends Array<T> {
             return idx >= start + deleteCount - 1;
         });
 
-        removedItems.map(removedItem => {
-            const $changes = removedItem && (removedItem as any).$changes;
-            // If the removed item is a schema we need to update it.
-            if ($changes) {
-                $changes.parent.deleteIndex(removedItem);
-                delete $changes.parent;
-            }
-        });
+        removedItems.map(updatedRemovedItem);
 
         movedItems.forEach(movedItem => {
             // If the moved item is a schema we need to update it.
