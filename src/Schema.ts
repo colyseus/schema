@@ -177,7 +177,6 @@ export abstract class Schema {
             let type = schema[field];
             let value: any;
 
-            let change: any; // for triggering onChange
             let hasChange = false;
 
             if (!field) {
@@ -195,20 +194,21 @@ export abstract class Schema {
 
             } else if (Array.isArray(type)) {
                 type = type[0];
-                change = [];
 
                 const valueRef: ArraySchema = this[_field] || new ArraySchema();
                 value = valueRef.clone(true);
 
                 const newLength = decode.number(bytes, it);
                 const numChanges = Math.min(decode.number(bytes, it), newLength);
-                hasChange = (numChanges > 0);
+
+                const hasRemoval = (value.length > newLength);
+                hasChange = (numChanges > 0) || hasRemoval;
 
                 // FIXME: this may not be reliable. possibly need to encode this variable during serialization
                 let hasIndexChange = false;
 
                 // ensure current array has the same length as encoded one
-                if (value.length > newLength) {
+                if (hasRemoval) {
                     // decrease removed items from number of changes.
                     // no need to iterate through them, as they're going to be removed.
 
@@ -284,8 +284,6 @@ export abstract class Schema {
                             Schema.onError(e);
                         }
                     }
-
-                    change.push(value[newIndex]);
                 }
 
 
@@ -403,7 +401,7 @@ export abstract class Schema {
             if (hasChange && (this.onChange || this.$listeners[field])) {
                 changes.push({
                     field,
-                    value: change || value,
+                    value,
                     previousValue: this[_field]
                 });
             }

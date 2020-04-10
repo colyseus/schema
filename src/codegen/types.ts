@@ -60,14 +60,24 @@ export class Class {
     extends: string;
 
     addProperty(property: Property) {
-        let parentKlass: Class = this;
         property.index = this.properties.length;
-
-        while ((parentKlass = this.context.classes.find(k => k.name === parentKlass.extends))) {
-            property.index += parentKlass.properties.length;
-        }
-
         this.properties.push(property);
+    }
+
+    postProcessing() {
+        /**
+         * Ensure the proprierties `index` are correct using inheritance
+         */
+        let parentKlass: Class = this;
+
+        while (
+            parentKlass &&
+            (parentKlass = this.context.classes.find(k => k.name === parentKlass.extends))
+        ) {
+            this.properties.forEach(prop => {
+                prop.index += parentKlass.properties.length;
+            });
+        }
     }
 }
 

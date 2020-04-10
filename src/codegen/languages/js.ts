@@ -57,18 +57,6 @@ ${klass.properties.
     filter(prop => prop.childType !== undefined).
     map(prop => "        " + generatePropertyInitializer(prop)).join("\n")}
     }
-
-    onChange (changes) {
-        // onChange logic here.
-    }
-
-    onAdd () {
-        // onAdd logic here.
-    }
-
-    onRemove () {
-        // onRemove logic here.
-    }
 }
 ${klass.properties.map(prop => generatePropertyDeclaration(klass.name, prop)).join("\n")}
 

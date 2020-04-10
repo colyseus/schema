@@ -50,25 +50,6 @@ ${allRefs.
 
 export class ${klass.name} extends ${klass.extends} {
 ${klass.properties.map(prop => `    ${generateProperty(prop)}`).join("\n")}
-
-    constructor () {
-        super();
-
-        // initialization logic here.
-    }
-
-    onChange (changes: DataChange[]) {
-        // onChange logic here.
-    }
-
-    onAdd () {
-        // onAdd logic here.
-    }
-
-    onRemove () {
-        // onRemove logic here.
-    }
-
 }
 `;
 }

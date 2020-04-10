@@ -23,7 +23,7 @@ describe("Change API", () => {
 
             const onChangeSpy = sinon.spy(decodedState, 'onChange');
 
-            const fieldNumberChange =  (change) => assert.ok(change.value === 50);
+            const fieldNumberChange =  (value, previousValue) => assert.ok(value === 50);
             const onFieldNumberChangeSpy = sinon.spy(fieldNumberChange);
             decodedState.listen("fieldNumber", onFieldNumberChangeSpy);
 
@@ -161,9 +161,8 @@ describe("Change API", () => {
             decodedState.onChange = function (changes: DataChange[]) {
                 assert.equal(changes.length, 1);
                 assert.equal(changes[0].field, "arrayOfPlayers");
-                assert.equal(changes[0].value.length, 1);
-
-                assert.equal(changes[0].value[0].name, "Snake Sanders");
+                assert.equal(changes[0].value.length, 3);
+                assert.equal(changes[0].value[2].name, "Snake Sanders");
             }
 
             onChangeSpy = sinon.spy(decodedState, 'onChange');
@@ -268,6 +267,40 @@ describe("Change API", () => {
 
             sinon.assert.callCount(onAddSpy, 12);
             sinon.assert.callCount(onChangeSpy, 4);
+        });
+
+        xit("should call onAdd when replacing items", () => {
+            class Card extends Schema {
+                @type("number") num: number;
+                constructor(num: number) {
+                    super();
+                    this.num = num;
+                }
+            }
+
+            class Player extends Schema {
+                @type([Card]) cards = new ArraySchema<Card>();
+            }
+
+            class CardGameState extends Schema {
+                @type(Player) player = new Player();
+            }
+
+            const decodedState = new CardGameState();
+
+            decodedState.player.cards.onAdd = () => {};
+            const onAddSpy = sinon.spy(decodedState.player.cards, "onAdd");
+
+            const state = new CardGameState();
+            state.player.cards.push(new Card(1));
+
+            decodedState.decode(state.encode());
+            sinon.assert.callCount(onAddSpy, 1);
+
+            state.player.cards.splice(0, 1);
+            state.player.cards.push(new Card(2));
+            decodedState.decode(state.encode());
+            sinon.assert.callCount(onAddSpy, 2);
         });
     });
 

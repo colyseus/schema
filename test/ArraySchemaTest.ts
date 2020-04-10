@@ -572,4 +572,9 @@ describe("ArraySchema", () => {
         assert.deepEqual([1, 1], decodedState.numbers);
     });
 
+    it("should allow slice() + sort()", () => {
+        const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
+        assert.doesNotThrow(() => arr.slice(0).sort());
+    });
+
 });
