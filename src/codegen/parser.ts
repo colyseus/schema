@@ -1,9 +1,9 @@
 import * as ts from "typescript";
 import * as path from "path";
 import { readFileSync } from "fs";
-import { Class, Property, Context } from "./types";
+import { IStructure, Class, Interface, Property, Context } from "./types";
 
-let currentClass: Class;
+let currentStructure: IStructure;
 let currentProperty: Property;
 
 let globalContext: Context;
@@ -38,18 +38,34 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             break;
 
         case ts.SyntaxKind.ClassDeclaration:
-            currentClass = new Class();
+            currentStructure = new Class();
 
             const heritageClauses = (node as ts.ClassLikeDeclarationBase).heritageClauses;
             if (heritageClauses && heritageClauses.length > 0) {
-                currentClass.extends = heritageClauses[0].types[0].expression.getText();
+                (currentStructure as Class).extends = heritageClauses[0].types[0].expression.getText();
             }
 
-            context.addClass(currentClass);
+            context.addStructure(currentStructure);
+            break;
+
+        case ts.SyntaxKind.InterfaceDeclaration:
+            // console.log(node);
+            currentStructure = new Interface();
+            currentStructure.name = (node as ts.TypeParameterDeclaration).name.escapedText.toString();
+
+            context.addStructure(currentStructure);
             break;
 
         case ts.SyntaxKind.ExtendsKeyword:
             // console.log(node.getText());
+            break;
+
+        case ts.SyntaxKind.PropertySignature:
+            // define a property of an interface
+            const property = new Property();
+            property.name = (node as any).name.escapedText.toString();
+            property.type = (node as any).type.getText();
+            currentStructure.addProperty(property);
             break;
 
         case ts.SyntaxKind.Identifier:
@@ -85,7 +101,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
                     const property = currentProperty || new Property();
                     property.name = prop.name.escapedText;
-                    currentClass.addProperty(property);
+                    currentStructure.addProperty(property);
 
                     const typeArgument = typeDecorator.arguments[0];
                     defineProperty(property, typeArgument);
@@ -101,7 +117,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                      */
                     const property = currentProperty || new Property();
                     property.name = prop.expression.arguments[1].text;
-                    currentClass.addProperty(property);
+                    currentStructure.addProperty(property);
 
                     const typeArgument = prop.expression.expression.arguments[0];
                     defineProperty(property, typeArgument);
@@ -128,7 +144,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                 }
 
                 const className = callExpression.arguments[0].getText()
-                currentClass.name = className;
+                currentStructure.name = className;
 
                 const types = callExpression.arguments[1] as any;
                 for (let i=0; i<types.properties.length; i++) {
@@ -136,7 +152,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
                     const property = currentProperty || new Property();
                     property.name = prop.name.escapedText;
-                    currentClass.addProperty(property);
+                    currentStructure.addProperty(property);
 
                     defineProperty(property, prop.initializer);
                 }
@@ -144,7 +160,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             }
 
             if (node.parent.kind === ts.SyntaxKind.ClassDeclaration) {
-                currentClass.name = node.getText();
+                currentStructure.name = node.getText();
             }
 
             currentProperty = undefined;
@@ -157,7 +173,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
 let parsedFiles: { [filename: string]: boolean };
 
-export function parseFiles(fileNames: string[], decoratorName: string = "type", context: Context = new Context()): Class[] {
+export function parseFiles(fileNames: string[], decoratorName: string = "type", context: Context = new Context()) {
     /**
      * Re-set globalContext for each test case
      */
@@ -202,5 +218,5 @@ export function parseFiles(fileNames: string[], decoratorName: string = "type", 
         }
     });
 
-    return context.getSchemaClasses();
+    return context.getStructures();
 }

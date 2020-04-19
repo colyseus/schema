@@ -14,26 +14,36 @@ export function getCommentHeader(singleLineComment: string = "//") {
 
 export class Context {
     classes: Class[] = [];
+    interfaces: Interface[] = [];
 
-    getSchemaClasses() {
-        return this.classes.filter(klass => {
-            if (this.isSchemaClass(klass)) {
-                return true;
-            } else {
-                let parentClass = klass;
-                while (parentClass = this.getParentClass(parentClass)) {
-                    if (this.isSchemaClass(parentClass)) {
-                        return true;
+    getStructures() {
+        return {
+            classes: this.classes.filter(klass => {
+                if (this.isSchemaClass(klass)) {
+                    return true;
+                } else {
+                    let parentClass = klass;
+                    while (parentClass = this.getParentClass(parentClass)) {
+                        if (this.isSchemaClass(parentClass)) {
+                            return true;
+                        }
                     }
                 }
-            }
-            return false;
-        });
+                return false;
+            }),
+            interfaces: this.interfaces,
+        };
     }
 
-    addClass(currentClass: Class) {
-        currentClass.context = this;
-        this.classes.push(currentClass);
+    addStructure(structure: IStructure) {
+        structure.context = this;
+
+        if (structure instanceof Class) {
+            this.classes.push(structure);
+
+        } else if (structure instanceof Interface) {
+            this.interfaces.push(structure);
+        }
     }
 
     private getParentClass(klass: Class) {
@@ -53,7 +63,24 @@ export class Context {
     }
 }
 
-export class Class {
+export interface IStructure {
+    context: Context;
+    name: string;
+    properties: Property[];
+    addProperty(property: Property);
+}
+
+export class Interface implements IStructure {
+    context: Context;
+    name: string;
+    properties: Property[] = [];
+
+    addProperty(property: Property) {
+        this.properties.push(property);
+    }
+}
+
+export class Class implements IStructure {
     context: Context;
     name: string;
     properties: Property[] = [];
