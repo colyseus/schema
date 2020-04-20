@@ -49,11 +49,17 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             break;
 
         case ts.SyntaxKind.InterfaceDeclaration:
-            // console.log(node);
-            currentStructure = new Interface();
-            currentStructure.name = (node as ts.TypeParameterDeclaration).name.escapedText.toString();
+            //
+            // Only generate Interfaces if it has "Message" on its name.
+            // Example: MyMessage
+            //
+            const interfaceName = (node as ts.TypeParameterDeclaration).name.escapedText.toString();
+            if (interfaceName.indexOf("Message") !== -1) {
+                currentStructure = new Interface();
+                currentStructure.name = interfaceName;
 
-            context.addStructure(currentStructure);
+                context.addStructure(currentStructure);
+            }
             break;
 
         case ts.SyntaxKind.ExtendsKeyword:
@@ -61,11 +67,22 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             break;
 
         case ts.SyntaxKind.PropertySignature:
-            // define a property of an interface
-            const property = new Property();
-            property.name = (node as any).name.escapedText.toString();
-            property.type = (node as any).type.getText();
-            currentStructure.addProperty(property);
+            if (currentStructure instanceof Interface) {
+                const interfaceDeclaration = node.parent;
+
+                if (
+                    currentStructure.name !== (interfaceDeclaration as ts.TypeParameterDeclaration).name.escapedText.toString()
+                ) {
+                    // skip if property if for a another interface than the one we're interested in.
+                    break;
+                }
+
+                // define a property of an interface
+                const property = new Property();
+                property.name = (node as any).name.escapedText.toString();
+                property.type = (node as any).type.getText();
+                currentStructure.addProperty(property);
+            }
             break;
 
         case ts.SyntaxKind.Identifier:
