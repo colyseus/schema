@@ -2,7 +2,7 @@ import * as sinon from "sinon";
 import * as assert from "assert";
 
 import { State, Player } from "./Schema";
-import { ArraySchema, Schema, type, Reflection } from "../src";
+import { ArraySchema, Schema, type, Reflection, filter, MapSchema } from "../src";
 import { logChangeTree } from "./helpers/test_helpers";
 
 describe("ArraySchema", () => {
@@ -107,6 +107,54 @@ describe("ArraySchema", () => {
                 .filter(p => p.x >= 20)
                 .sort((a, b) => b.x - a.x);
         }, "arraySchema.filter().sort() shouldn't throw errors");
+    });
+
+    it("filter should not mutate the structure", () => {
+        class Card extends Schema {
+            @filter(function(this: Card, client, value, root) {
+                return true;
+            })
+            @type("number") number: number;
+
+            constructor(n?) {
+                super();
+                if (n) this.number = n;
+            }
+        }
+
+        class Player extends Schema {
+            @type([Card]) cards = new ArraySchema<Card>();
+        }
+
+        class StateWithFilter extends Schema {
+            @type({map: Player}) players = new MapSchema<Player>();
+        }
+
+        const state = new StateWithFilter();
+        state.players['one'] = new Player();
+        state.players['one'].cards.push(new Card(1));
+        state.players['one'].cards.push(new Card(3));
+        state.players['one'].cards.push(new Card(2));
+        state.players['one'].cards.push(new Card(5));
+        state.players['one'].cards.push(new Card(4));
+
+        const decodedState = new StateWithFilter();
+        decodedState.decode(state.encodeAllFiltered({}));
+
+        assert.deepEqual([1, 3, 2, 5, 4], decodedState.players['one'].cards.map(c => c.number));
+        assert.equal(5, decodedState.players['one'].cards.length);
+
+        const filteredCards = state.players['one'].cards.filter((card) => card.number >= 3);
+        filteredCards.sort((a, b) => b.number - a.number);
+
+        decodedState.decode(state.encodeFiltered({}));
+        assert.equal(5, decodedState.players['one'].cards.length);
+        assert.deepEqual([1, 3, 2, 5, 4], decodedState.players['one'].cards.map(c => c.number));
+
+        state.players['one'].cards = filteredCards;
+        decodedState.decode(state.encodeFiltered({}));
+        assert.equal(3, decodedState.players['one'].cards.length);
+        assert.deepEqual([5, 4, 3], decodedState.players['one'].cards.map(c => c.number));
     });
 
     it("updates all items `idx` props after removing middle item", () => {
