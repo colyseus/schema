@@ -57,5 +57,20 @@ state.arrayOfStrings.pop();
 
 bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
 
+console.log(state.arrayOfNumbers.length)
+console.log(state.arrayOfSchemas.length)
+console.log(state.arrayOfInt32.length)
+console.log(state.arrayOfStrings.length)
+
+console.log("ArraySchemaTypes =>");
+console.log(`{ ${bytes.join(", ")} }`);
+
+state.arrayOfSchemas = new ArraySchema();
+state.arrayOfNumbers = new ArraySchema();
+state.arrayOfInt32 = new ArraySchema();
+state.arrayOfStrings = new ArraySchema();
+
+bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
+
 console.log("ArraySchemaTypes =>");
 console.log(`{ ${bytes.join(", ")} }`);
