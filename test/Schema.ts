@@ -85,6 +85,11 @@ export class DeepState extends Schema {
   map = new MapSchema<DeepMap>();
 }
 
+export class DeepState2 extends Schema {
+
+  @type({ map: Another })
+  mapOfEntities: MapSchema<Another>;
+}
 
 /**
  * Filters example

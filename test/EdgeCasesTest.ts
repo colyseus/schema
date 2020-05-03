@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as nanoid from "nanoid";
 import { MapSchema, Schema, type, ArraySchema } from "../src";
 
-import { State, Player } from "./Schema";
+import { State, Player, DeepEntity, DeepState2, Another } from "./Schema";
 
 describe("Edge cases", () => {
 
@@ -116,5 +116,34 @@ describe("Edge cases", () => {
 
         decodedState3.decode(state.encode());
         assert.equal(JSON.stringify(decodedState3), JSON.stringify(decodedState4));
+    });
+
+    
+    it("MapSchema: deep entities by index begining with non-zero number", () => {
+        const idx1 = 'd';
+        const idx2 = '7'; // has to start with a digit 1-9
+        const state = new DeepState2();
+
+        state.mapOfEntities = new MapSchema<Another>();
+
+        const e1 = new Another(); 
+        state.mapOfEntities[idx1] = e1;
+
+        const e2 = new Another(); 
+        state.mapOfEntities[idx2] = e2; 
+
+        state.encodeAll();
+
+        const state1 = new DeepState2();
+        state1.decode(state.encodeAll());
+
+        
+        for (let i = 0; i < 100; i++) {
+            state.mapOfEntities[idx2].position.x += 100;
+            state.mapOfEntities[idx1].position.x -= 100;
+            state1.decode(state.encode());
+        }
+
+        assert.equal(JSON.stringify(state1.mapOfEntities['d']), JSON.stringify(state.mapOfEntities['d']));
     });
 });
