@@ -1,4 +1,4 @@
-import { Class, Property, File, getCommentHeader, getInheritanceTree, Context } from "../types";
+import { Class, Property, File, getCommentHeader, getInheritanceTree, Context, Interface } from "../types";
 import { GenerateOptions } from "../api";
 
 const typeMaps = {
@@ -20,10 +20,16 @@ const typeMaps = {
 const distinct = (value, index, self) => self.indexOf(value) === index;
 
 export function generate (context: Context, options: GenerateOptions): File[] {
-    return context.classes.map(klass => ({
-        name: klass.name + ".ts",
-        content: generateClass(klass, options.namespace, context.classes)
-    }));
+    return [
+        ...context.classes.map(structure => ({
+            name: structure.name + ".ts",
+            content: generateClass(structure, options.namespace, context.classes)
+        })),
+        ...context.interfaces.map(structure => ({
+            name: structure.name + ".ts",
+            content: generateInterface(structure, options.namespace, context.classes),
+        }))
+    ];
 }
 
 function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
@@ -99,4 +105,14 @@ function generateProperty(prop: Property) {
     }
 
     return `@type(${typeArgs}) public ${prop.name}: ${langType}${(initializer) ? ` = ${initializer}` : ""};`
+}
+
+
+function generateInterface(structure: Interface, namespace: string, allClasses: Class[]) {
+    return `${getCommentHeader()}
+
+export interface ${structure.name} {
+${structure.properties.map(prop => `    ${prop.name}: ${prop.type};`).join("\n")}
+}
+`;
 }
