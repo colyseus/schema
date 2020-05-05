@@ -620,9 +620,15 @@ describe("ArraySchema", () => {
         assert.deepEqual([1, 1], decodedState.numbers);
     });
 
-    it("should allow slice() + sort()", () => {
+    it("should allow sort() unbound array", () => {
+        const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
+        assert.doesNotThrow(() => arr.sort());
+    });
+
+    it("should allow slice() + sort() unbound array", () => {
         const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
         assert.doesNotThrow(() => arr.slice(0).sort());
     });
+
 
 });
