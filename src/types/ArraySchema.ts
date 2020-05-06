@@ -7,6 +7,10 @@ export class ArraySchema<T=any> extends Array<T> {
 
     static get [Symbol.species](): any { return ArraySchema; }
 
+    static is(type: any) {
+        return Array.isArray(type);
+    }
+
     constructor (...items: T[]) {
         super(...items);
 

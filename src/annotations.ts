@@ -95,7 +95,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
          */
         const isArray = Array.isArray(type);
         const isMap = !isArray && (type as any).map;
-        const isSchema = (typeof(constructor._schema[field]) === "function");
+        const isSchema = (typeof(type) === "function");
 
         const fieldCached = `_${field}`;
 

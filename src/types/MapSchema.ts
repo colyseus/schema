@@ -3,6 +3,10 @@ import { ChangeTree } from "../ChangeTree";
 export class MapSchema<T=any> {
     protected $changes: ChangeTree;
 
+    static is(type: any) {
+        return type['map'] !== undefined;
+    }
+
     constructor (obj: any = {}) {
         for (let key in obj) {
             this[key] = obj[key];

@@ -96,6 +96,10 @@ export abstract class Schema {
         console.error(e);
     }
 
+    static is(type: any) {
+        return type['_schema'] !== undefined;
+    }
+
     protected $changes: ChangeTree;
     protected $listeners: { [field: string]: EventEmitter<(a: any, b: any) => void> };
 
@@ -186,13 +190,13 @@ export abstract class Schema {
                 value = null;
                 hasChange = true;
 
-            } else if ((type as any)._schema) {
+            } else if (Schema.is(type)) {
                 value = this[_field] || this.createTypeInstance(bytes, it, type as typeof Schema);
                 value.decode(bytes, it);
 
                 hasChange = true;
 
-            } else if (Array.isArray(type)) {
+            } else if (ArraySchema.is(type)) {
                 type = type[0];
 
                 const valueRef: ArraySchema = this[_field] || new ArraySchema();
@@ -287,7 +291,7 @@ export abstract class Schema {
                 }
 
 
-            } else if ((type as any).map) {
+            } else if (MapSchema.is(type)) {
                 type = (type as any).map;
 
                 const valueRef: MapSchema = this[_field] || new MapSchema();
@@ -445,7 +449,7 @@ export abstract class Schema {
                 encode.uint8(bytes, NIL);
                 encode.number(bytes, fieldIndex);
 
-            } else if ((type as any)._schema) {
+            } else if (Schema.is(type)) {
                 if (client && filter) {
                     // skip if not allowed by custom filter
                     if (!filter.call(this, client, value, root)) {
@@ -468,7 +472,7 @@ export abstract class Schema {
                     (value as Schema).encode(root, encodeAll, client, bytes);
                 }
 
-            } else if (Array.isArray(type)) {
+            } else if (ArraySchema.is(type)) {
                 const $changes: ChangeTree = value.$changes;
 
                 if (client && filter) {
@@ -543,7 +547,7 @@ export abstract class Schema {
                     $changes.discard();
                 }
 
-            } else if ((type as any).map) {
+            } else if (MapSchema.is(type)) {
                 const $changes: ChangeTree = value.$changes;
 
                 if (client && filter) {
@@ -759,7 +763,7 @@ export abstract class Schema {
             if ((type as any)._schema) {
                 (value as Schema).discardAllChanges();
 
-            } else if (Array.isArray(type)) {
+            } else if (ArraySchema.is(type)) {
                 for (let i = 0, l = value.length; i < l; i++) {
                     const index = value[i];
                     const item = this[`_${field}`][index];
@@ -771,7 +775,7 @@ export abstract class Schema {
 
                 value.$changes.discard();
 
-            } else if ((type as any).map) {
+            } else if (MapSchema.is(type)) {
                 const keys = value;
                 const mapKeys = Object.keys(this[`_${field}`]);
 

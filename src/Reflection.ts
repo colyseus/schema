@@ -51,16 +51,14 @@ export class Reflection extends Schema {
                     fieldType = schema[fieldName];
 
                 } else {
-                    const isSchema = typeof (schema[fieldName]) === "function";
-                    const isArray = Array.isArray(schema[fieldName]);
-                    const isMap = !isArray && (schema[fieldName] as any).map;
-
+                    const type = schema[fieldName];
                     let childTypeSchema: typeof Schema;
-                    if (isSchema) {
+
+                    if (Schema.is(type)) {
                         fieldType = "ref";
                         childTypeSchema = schema[fieldName];
 
-                    } else if (isArray) {
+                    } else if (ArraySchema.is(type)) {
                         fieldType = "array";
 
                         if (typeof(schema[fieldName][0]) === "string") {
@@ -70,7 +68,7 @@ export class Reflection extends Schema {
                             childTypeSchema = schema[fieldName][0];
                         }
 
-                    } else if (isMap) {
+                    } else if (MapSchema.is(type)) {
                         fieldType = "map";
 
                         if (typeof(schema[fieldName].map) === "string") {
