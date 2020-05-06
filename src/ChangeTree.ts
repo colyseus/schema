@@ -152,6 +152,10 @@ export class ChangeTree {
         }
     }
 
+    clone() {
+        return new ChangeTree(this.fieldIndexes, this.parentField, undefined);
+    }
+
 /*
     markAsUnchanged() {
         const schema = this._schema;

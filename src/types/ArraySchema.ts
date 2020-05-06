@@ -96,8 +96,7 @@ export class ArraySchema<T=any> extends Array<T> {
     filter(callbackfn: (value: T, index: number, array: T[]) => unknown, thisArg?: any): ArraySchema<T> {
         const filtered = super.filter(callbackfn);
 
-        // TODO: apply removed items on $changes
-        (filtered as any).$changes = this.$changes;
+        (filtered as any).$changes = this.$changes.clone();
 
         return filtered as ArraySchema<T>;
     }

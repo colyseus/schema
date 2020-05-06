@@ -1,4 +1,4 @@
-import { Class, Property, File, getCommentHeader } from "../types";
+import { Class, Property, File, getCommentHeader, Context } from "../types";
 import { GenerateOptions } from "../api";
 
 const typeMaps = {
@@ -37,8 +37,8 @@ const typeInitializer = {
  * C# Code Generator
  */
 
-export function generate (classes: Class[], options: GenerateOptions): File[] {
-    return classes.map(klass => ({
+export function generate (context: Context, options: GenerateOptions): File[] {
+    return context.classes.map(klass => ({
         name: klass.name + ".java",
         content: generateClass(klass, options.namespace)
     }));

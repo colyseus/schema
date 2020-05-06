@@ -1,5 +1,6 @@
-import { Class, Property, File, getCommentHeader } from "../types";
+import { Class, Property, File, getCommentHeader, Interface } from "../types";
 import { GenerateOptions } from "../api";
+import { Context } from "../types";
 
 const typeMaps = {
     "string": "string",
@@ -37,11 +38,17 @@ const typeInitializer = {
  * C# Code Generator
  */
 
-export function generate (classes: Class[], options: GenerateOptions): File[] {
-    return classes.map(klass => ({
-        name: klass.name + ".cs",
-        content: generateClass(klass, options.namespace)
-    }));
+export function generate (context: Context, options: GenerateOptions): File[] {
+    return [
+        ...context.classes.map(structure => ({
+            name: `${structure.name}.cs`,
+            content: generateClass(structure, options.namespace)
+        })),
+        ...context.interfaces.map(structure => ({
+            name: `${structure.name}.cs`,
+            content: generateInterface(structure, options.namespace)
+        }))
+    ];
 }
 
 function generateClass(klass: Class, namespace: string) {
@@ -102,4 +109,17 @@ function generateProperty(prop: Property, indent: string = "") {
 
     return ret + `\t${indent}[Type(${prop.index}, ${typeArgs})]
 \t${indent}${property} = ${initializer};`;
+}
+
+function generateInterface(struct: Interface, namespace: string) {
+    const indent = (namespace) ? "\t" : "";
+    return `${getCommentHeader()}
+
+using Colyseus.Schema;
+${namespace ? `\nnamespace ${namespace} {` : ""}
+${indent}public class ${struct.name} {
+${struct.properties.map(prop => `\t${indent}public ${typeMaps[prop.type]} ${prop.name};`).join("\n")}
+${indent}}
+${namespace ? "}" : ""}
+`;
 }

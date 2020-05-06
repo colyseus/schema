@@ -1,5 +1,16 @@
 import { Schema, type, ArraySchema, MapSchema, filter } from "../src";
 
+// interface IUser {
+//     name: string;
+// }
+
+// interface ResponseMessage {
+//     user: IUser,
+//     str: string;
+//     n: number;
+//     shortcode: {[id: string]: string};
+// }
+
 /**
  * No filters example
  */
