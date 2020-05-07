@@ -4,6 +4,11 @@ import { MapSchema } from "./types/MapSchema";
 
 type FieldKey = string | number;
 
+export interface FieldCache {
+    beginIndex: number;
+    endIndex: number;
+}
+
 export class ChangeTree {
     fieldIndexes: {[field: string]: number};
 
@@ -23,6 +28,8 @@ export class ChangeTree {
      */
     parent: ChangeTree;
     parentField: FieldKey;
+
+    caches: {[field: number]: FieldCache} = {};
 
     constructor(
         indexes: { [field: string]: number } = {},
@@ -140,6 +147,10 @@ export class ChangeTree {
                 }
             }
         }
+    }
+
+    cache(field: number, beginIndex: number, endIndex: number) {
+        this.caches[field] = { beginIndex, endIndex };
     }
 
     discard() {

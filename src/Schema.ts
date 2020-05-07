@@ -418,7 +418,7 @@ export abstract class Schema {
         return this;
     }
 
-    encode(root: Schema = this, encodeAll = false, client?: Client, bytes: number[] = []) {
+    encode(root: Schema = this, encodeAll = false, bytes: number[] = [], useFilters: boolean = false) {
         // skip if nothing has changed
         if (!this.$changes.changed && !encodeAll) {
             this._encodeEndOfStructure(this, root, bytes);
@@ -445,18 +445,14 @@ export abstract class Schema {
             const value = this[_field];
             const fieldIndex = indexes[field];
 
+            // cache begin index if `useFilters`
+            const beginIndex = bytes.length;
+
             if (value === undefined) {
                 encode.uint8(bytes, NIL);
                 encode.number(bytes, fieldIndex);
 
             } else if (Schema.is(type)) {
-                if (client && filter) {
-                    // skip if not allowed by custom filter
-                    if (!filter.call(this, client, value, root)) {
-                        continue;
-                    }
-                }
-
                 if (!value) {
                     // value has been removed
                     encode.uint8(bytes, NIL);
@@ -469,18 +465,11 @@ export abstract class Schema {
 
                     this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
 
-                    (value as Schema).encode(root, encodeAll, client, bytes);
+                    (value as Schema).encode(root, encodeAll, bytes, useFilters);
                 }
 
             } else if (ArraySchema.is(type)) {
                 const $changes: ChangeTree = value.$changes;
-
-                if (client && filter) {
-                    // skip if not allowed by custom filter
-                    if (!filter.call(this, client, value, root)) {
-                        continue;
-                    }
-                }
 
                 encode.number(bytes, fieldIndex);
 
@@ -511,16 +500,6 @@ export abstract class Schema {
                     const index = arrayChanges[j];
                     const item = this[_field][index];
 
-                    /**
-                     * TODO: filter array by items instead of the whole object
-                     */
-                    // if (client && filter) {
-                    //     // skip if not allowed by custom filter
-                    //     if (!filter.call(this, client, item, root)) {
-                    //         continue;
-                    //     }
-                    // }
-
                     if (isChildSchema) { // is array of Schema
                         encode.number(bytes, index);
 
@@ -535,7 +514,7 @@ export abstract class Schema {
                         assertInstanceType(item, type[0] as typeof Schema, this, field);
                         this.tryEncodeTypeId(bytes, type[0] as typeof Schema, item.constructor as typeof Schema);
 
-                        (item as Schema).encode(root, encodeAll, client, bytes);
+                        (item as Schema).encode(root, encodeAll, bytes, useFilters);
 
                     } else if (item !== undefined) { // is array of primitives
                         encode.number(bytes, index);
@@ -543,19 +522,12 @@ export abstract class Schema {
                     }
                 }
 
-                if (!encodeAll && !client) {
+                if (!encodeAll && !useFilters) {
                     $changes.discard();
                 }
 
             } else if (MapSchema.is(type)) {
                 const $changes: ChangeTree = value.$changes;
-
-                if (client && filter) {
-                    // skip if not allowed by custom filter
-                    if (!filter.call(this, client, value, root)) {
-                        continue;
-                    }
-                }
 
                 // encode Map of type
                 encode.number(bytes, fieldIndex);
@@ -582,16 +554,6 @@ export abstract class Schema {
                     const item = this[_field][key];
 
                     let mapItemIndex: number = undefined;
-
-                    /**
-                     * TODO: filter map by items instead of the whole object
-                     */
-                    // if (client && filter) {
-                    //     // skip if not allowed by custom filter
-                    //     if (!filter.call(this, client, item, root)) {
-                    //         continue;
-                    //     }
-                    // }
 
                     if (encodeAll) {
                         if (item === undefined) {
@@ -639,7 +601,7 @@ export abstract class Schema {
                     if (item && isChildSchema) {
                         assertInstanceType(item, (type as any).map, this, field);
                         this.tryEncodeTypeId(bytes, (type as any).map, item.constructor as typeof Schema);
-                        (item as Schema).encode(root, encodeAll, client, bytes);
+                        (item as Schema).encode(root, encodeAll, bytes, useFilters);
 
                     } else if (!isNil) {
                         encodePrimitiveType((type as any).map, bytes, item, this, field);
@@ -647,7 +609,7 @@ export abstract class Schema {
 
                 }
 
-                if (!encodeAll && !client) {
+                if (!encodeAll && !useFilters) {
                     $changes.discard();
 
                     // TODO: track array/map indexes per client (for filtering)?
@@ -657,39 +619,43 @@ export abstract class Schema {
                 }
 
             } else {
-                if (client && filter) {
-                    // skip if not allowed by custom filter
-                    if (!filter.call(this, client, value, root)) {
-                        continue;
-                    }
-                }
-
                 encode.number(bytes, fieldIndex);
                 encodePrimitiveType(type as PrimitiveType, bytes, value, this, field)
             }
+
+            if (useFilters) {
+                // cache begin index
+                const endIndex = bytes.length;
+                this.$changes.cache(fieldIndex, beginIndex, endIndex)
+            }
+
         }
 
         // flag end of Schema object structure
         this._encodeEndOfStructure(this, root, bytes);
 
-        if (!encodeAll && !client) {
+        if (!encodeAll && !useFilters) {
             this.$changes.discard();
         }
 
         return bytes;
     }
 
-    encodeFiltered(client: Client, bytes?: number[]) {
-        return this.encode(this, false, client, bytes);
-    }
+    // encodeFiltered(client: Client, bytes?: number[]) {
+    //     return this.encode(this, false, client, bytes);
+    // }
 
     encodeAll (bytes?: number[]) {
-        return this.encode(this, true, undefined, bytes);
+        return this.encode(this, true, bytes);
     }
 
-    encodeAllFiltered (client: Client, bytes?: number[]) {
-        return this.encode(this, true, client, bytes);
+    applyFilters(bytes: number[], client: Client) {
+        return [];
     }
+
+    // encodeAllFiltered (client: Client, bytes?: number[]) {
+    //     return this.encode(this, true, client, bytes);
+    // }
 
     clone () {
         const cloned = new ((this as any).constructor);
