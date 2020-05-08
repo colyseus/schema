@@ -110,8 +110,8 @@ describe("Change API", () => {
             sinon.assert.calledOnce(onChangeSpy);
             sinon.assert.calledOnce(playerSpy);
         });
-
-        it("should trigger onChange when removing child object", () => {
+        
+        it("should trigger onChange when setting child object to null", () => {
             const state = new State();
             state.player = new Player("Jake", 10, 10);
 
@@ -126,6 +126,27 @@ describe("Change API", () => {
             let onChangeSpy = sinon.spy(decodedState, 'onChange');
 
             state.player = null;
+            decodedState.decode(state.encode());
+
+            sinon.assert.calledOnce(onChangeSpy);
+        });
+
+        it("should trigger onChange when deleting child object", () => {
+            const state = new State();
+            state.player = new Player("Jake", 10, 10);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            decodedState.onChange = function (changes: DataChange[]) {
+                console.log(changes);
+                assert.equal(changes.length, 1);
+                assert.equal(changes[0].field, "player");
+                assert.equal(changes[0].value, undefined);
+            }
+            let onChangeSpy = sinon.spy(decodedState, 'onChange');
+
+            delete state.player;
             decodedState.decode(state.encode());
 
             sinon.assert.calledOnce(onChangeSpy);
