@@ -704,38 +704,38 @@ describe("Change API", () => {
             @type(Round) currentRound: Round = new Round();
         }
 
-        it("should not trigger unchanged fields", () => {
-            let totalFieldChanges: number = 0;
-            let scoresFieldChanges: number = 0;
+        // it("should not trigger unchanged fields", () => {
+        //     let totalFieldChanges: number = 0;
+        //     let scoresFieldChanges: number = 0;
 
-            const state = new State();
-            state.timer = 10;
+        //     const state = new State();
+        //     state.timer = 10;
 
-            const decodedState = new State();
+        //     const decodedState = new State();
 
-            decodedState.currentRound.listen("scores", () => scoresFieldChanges++);
-            decodedState.currentRound.listen("totals", () => totalFieldChanges++);
+        //     decodedState.currentRound.listen("scores", () => scoresFieldChanges++);
+        //     decodedState.currentRound.listen("totals", () => totalFieldChanges++);
 
-            do {
-                state.timer--;
+        //     do {
+        //         state.timer--;
 
-                state.currentRound.scores[0]++;
-                state.currentRound.scores[1]++;
+        //         state.currentRound.scores[0]++;
+        //         state.currentRound.scores[1]++;
 
-                decodedState.decode(state.encodeFiltered({}));
-                state.discardAllChanges();
-            } while (state.timer > 0);
+        //         decodedState.decode(state.encodeFiltered({}));
+        //         state.discardAllChanges();
+        //     } while (state.timer > 0);
 
-            // set 'totals' field once.
-            state.currentRound.totals[0] = 100;
-            state.currentRound.totals[1] = 100;
+        //     // set 'totals' field once.
+        //     state.currentRound.totals[0] = 100;
+        //     state.currentRound.totals[1] = 100;
 
-            decodedState.decode(state.encodeFiltered({}));
-            state.discardAllChanges();
+        //     decodedState.decode(state.encodeFiltered({}));
+        //     state.discardAllChanges();
 
-            assert.equal(2, totalFieldChanges);
-            assert.equal(10, scoresFieldChanges);
-        });
+        //     assert.equal(2, totalFieldChanges);
+        //     assert.equal(10, scoresFieldChanges);
+        // });
     });
 
     describe("triggerAll", () => {

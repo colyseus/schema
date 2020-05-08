@@ -5,35 +5,42 @@ import { Player } from "./Schema";
 import { Client } from "../src/annotations";
 
 describe("@filter", () => {
-    it("should filter property inside root", () => {
+
+    it("should filter direct properties on root state", () => {
         class State extends Schema {
-            @type("string") str: string = "hello";
+            @type("string") str: string;
 
             @filter(function(this: State, client: Client, value, root) {
                 return client.sessionId === "two";
             })
-            @type("number") num: number = 1;
+            @type("number") num: number;
         }
 
         const state = new State();
+        state.str = "hello";
+        state.num = 1;
 
         const encoded = state.encode(undefined, undefined, undefined, true);
         console.log(state['$changes'].caches);
         console.log(encoded)
         // const encodedBuffer = Buffer.from(encoded);
 
+        const full = new State();
+        full.decode(encoded);
+
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
 
-        // const decoded1 = (new State()).decode(state.applyFilters(encodedBuffer, client1));
-        // const decoded2 = (new State()).decode(state.applyFilters(encodedBuffer, client2));
+        const decoded1 = (new State()).decode(state.applyFilters(encoded, client1));
+        const decoded2 = (new State()).decode(state.applyFilters(encoded, client2));
 
-        // assert.equal("hello", decoded1.str);
-        // assert.equal("hello", decoded2.str);
+        assert.equal("hello", decoded1.str);
+        assert.equal("hello", decoded2.str);
 
-        // assert.equal(undefined, decoded1.num);
-        // assert.equal(1, decoded2.num);
+        assert.equal(undefined, decoded1.num);
+        assert.equal(1, decoded2.num);
     });
+
 
     // it("should filter property outside of root", () => {
     //     const state = new StateWithFilter();
