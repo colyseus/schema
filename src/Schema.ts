@@ -624,9 +624,8 @@ export abstract class Schema {
             }
 
             if (useFilters) {
-                // cache begin index
-                const endIndex = bytes.length;
-                this.$changes.cache(fieldIndex, beginIndex, endIndex)
+                // cache begin / end index
+                this.$changes.cache(fieldIndex, beginIndex, bytes.length)
             }
 
         }
@@ -649,44 +648,42 @@ export abstract class Schema {
         return this.encode(this, true, bytes);
     }
 
-    applyFilters(encodedBytes: number[], client: Client, filteredBytes: number[] = [],  root = this, encodeAll: boolean = false) {
-        // skip if nothing has changed
-        if (!this.$changes.changed) {
-            return filteredBytes;
-        }
+    applyFilters(encodedBytes: number[], client: Client, root = this, encodeAll: boolean = false) {
+        let filteredBytes: number[] = [];
 
         const schema = this._schema;
-        const indexes = this._indexes;
         const fieldsByIndex = this._fieldsByIndex;
         const filters = this._filters;
-        const changes = Array.from(
-            (encodeAll)
-                ? this.$changes.allChanges
-                : this.$changes.changes
-        ).sort();
 
-        for (let i = 0, l = changes.length; i < l; i++) {
-            const field = fieldsByIndex[changes[i]] || changes[i] as string;
-            const _field = `_${field}`;
+        for (let index in this.$changes.caches) {
+            const fieldIndex = parseInt(index);
+            const cache = this.$changes.caches[fieldIndex];
+            const field = fieldsByIndex[fieldIndex];
 
             const type = schema[field];
             const filter = (filters && filters[field]);
+            const _field = `_${field}`;
             const value = this[_field];
-            const fieldIndex = indexes[field];
 
-            const cache = this.$changes.caches[fieldIndex];
-            if (!cache) {
-                throw new Error(`${field} not cached.`);
-            }
+            console.log( {field, filter, cache});
 
             if (filter && !filter.call(this, client, value, root)) {
+                console.log("SKIP", field, "AT", fieldIndex)
                 continue;
             }
 
-            console.log(field, cache);
-
             if (Schema.is(type)) {
-                filteredBytes = [...filteredBytes, ...encodedBytes.slice(cache.beginIndex, cache.endIndex)];
+                console.log("IS SCHEMA", {type, field, cache})
+                filteredBytes.push(fieldIndex);
+
+                if (value) {
+                    filteredBytes = [
+                        ...filteredBytes,
+                        ...(value as Schema).applyFilters(encodedBytes, client, root, encodeAll)
+                    ];
+                } else {
+                    filteredBytes = [...filteredBytes, ...encodedBytes.slice(cache.beginIndex, cache.endIndex)];
+                }
 
             } else if (ArraySchema.is(type)) {
                 const $changes: ChangeTree = value.$changes;
@@ -712,9 +709,6 @@ export abstract class Schema {
 
                 const isChildSchema = typeof(type[0]) !== "string";
 
-                // assert ArraySchema was provided
-                assertInstanceType(this[_field], ArraySchema, this, field);
-
                 // encode Array of type
                 for (let j = 0; j < numChanges; j++) {
                     const index = arrayChanges[j];
@@ -731,10 +725,9 @@ export abstract class Schema {
                             }
                         }
 
-                        assertInstanceType(item, type[0] as typeof Schema, this, field);
                         this.tryEncodeTypeId(encodedBytes, type[0] as typeof Schema, item.constructor as typeof Schema);
 
-                        (item as Schema).applyFilters(encodedBytes, client, filteredBytes, root, encodeAll)
+                        (item as Schema).applyFilters(encodedBytes, client, root, encodeAll)
 
                     } else if (item !== undefined) { // is array of primitives
                         encode.number(encodedBytes, index);
@@ -761,9 +754,6 @@ export abstract class Schema {
                 const previousKeys = Array.from($changes.allChanges);
                 const isChildSchema = typeof((type as any).map) !== "string";
                 const numChanges = keys.length;
-
-                // assert MapSchema was provided
-                assertInstanceType(this[_field], MapSchema, this, field);
 
                 for (let i = 0; i < numChanges; i++) {
                     const key = keys[i];
@@ -815,9 +805,8 @@ export abstract class Schema {
                     }
 
                     if (item && isChildSchema) {
-                        assertInstanceType(item, (type as any).map, this, field);
                         this.tryEncodeTypeId(encodedBytes, (type as any).map, item.constructor as typeof Schema);
-                        (item as Schema).applyFilters(encodedBytes, client, filteredBytes, root, encodeAll)
+                        (item as Schema).applyFilters(encodedBytes, client, root, encodeAll)
 
                     } else if (!isNil) {
                         encodePrimitiveType((type as any).map, encodedBytes, item, this, field);
@@ -829,6 +818,8 @@ export abstract class Schema {
                 filteredBytes = [...filteredBytes, ...encodedBytes.slice(cache.beginIndex, cache.endIndex)];
             }
         }
+
+        filteredBytes.push(END_OF_STRUCTURE);
 
         return filteredBytes;
     }

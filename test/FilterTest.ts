@@ -4,7 +4,67 @@ import { Schema, type, filter, MapSchema, Reflection, DataChange } from "../src"
 import { Player } from "./Schema";
 import { Client } from "../src/annotations";
 
+function debugBytes(bytes: number[], name: string = '') {
+    console.log(`--------- BEGIN BYTES --------- ${name}`);
+    bytes.forEach((byte, i) => console.log({ i, byte }));
+    console.log('---------- END BYTES ----------');
+}
+
 describe("@filter", () => {
+    it("should filter property outside root", () => {
+        class Player extends Schema {
+            @filter(function(this: Player, client: Client, value, root: State) {
+                return (
+                    (root.playerOne === this && client.sessionId === "one") ||
+                    (root.playerTwo === this && client.sessionId === "two")
+                );
+            })
+            @type("string") name: string;
+        }
+
+        class State extends Schema {
+            @type(Player) playerOne: Player;
+            @type(Player) playerTwo: Player;
+        }
+
+        const state = new State();
+        state.playerOne = new Player();
+        state.playerOne.name = "Jake";
+
+        state.playerTwo = new Player();
+        state.playerTwo.name = "Katarina";
+
+        const encoded = state.encode(undefined, undefined, undefined, true);
+
+        debugBytes(encoded);
+
+        const full = new State();
+        full.decode(encoded);
+
+        const client1 = { sessionId: "one" };
+        const client2 = { sessionId: "two" };
+
+        console.log("--------------\nAPPLY CLIENT 1\n--------------");
+        const filtered1 = state.applyFilters(encoded, client1);
+        const decoded1 = (new State()).decode(filtered1);
+        debugBytes(filtered1, "FILTERED 1");
+        console.log("--------------\nAPPLY CLIENT 2\n--------------");
+        const filtered2 = state.applyFilters(encoded, client2);
+        const decoded2 = (new State()).decode(filtered2);
+        debugBytes(filtered2, "FILTERED 2");
+
+        console.log({
+            decoded1: decoded1.toJSON(),
+            decoded2: decoded2.toJSON(),
+            full: full.toJSON()
+        });
+
+        assert.equal("Jake", decoded1.playerOne.name);
+        assert.equal(undefined, decoded1.playerTwo.name);
+
+        assert.equal(undefined, decoded2.playerOne.name);
+        assert.equal("Katarina", decoded2.playerTwo.name);
+    });
 
     it("should filter direct properties on root state", () => {
         class State extends Schema {
@@ -21,9 +81,6 @@ describe("@filter", () => {
         state.num = 1;
 
         const encoded = state.encode(undefined, undefined, undefined, true);
-        console.log(state['$changes'].caches);
-        console.log(encoded)
-        // const encodedBuffer = Buffer.from(encoded);
 
         const full = new State();
         full.decode(encoded);
