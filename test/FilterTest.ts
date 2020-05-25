@@ -1,7 +1,5 @@
 import * as assert from "assert";
-import * as sinon from "sinon";
-import { Schema, type, filter, MapSchema, Reflection, DataChange } from "../src";
-import { Player } from "./Schema";
+import { Schema, type, filter, ArraySchema, MapSchema, Reflection, DataChange } from "../src";
 import { Client } from "../src/annotations";
 
 function debugBytes(bytes: number[], name: string = '') {
@@ -96,6 +94,56 @@ describe("@filter", () => {
 
         assert.equal(undefined, decoded1.num);
         assert.equal(1, decoded2.num);
+    });
+
+    it("should filter array items", () => {
+        class Player extends Schema {
+            @type("string") name: string;
+        }
+
+        class State extends Schema {
+            @filter(function(this: Player, client: Client, value, root: State) {
+                return (this.name === client.sessionId);
+            })
+            @type([Player]) players = new ArraySchema<Player>();
+        }
+
+        const state = new State();
+        console.log(state.players);
+        state.players.push(new Player({ name: "one" }));
+        state.players.push(new Player({ name: "two" }));
+        state.players.push(new Player({ name: "three" }));
+
+        const encoded = state.encode(undefined, undefined, undefined, true);
+
+        debugBytes(encoded);
+
+        const full = new State();
+        full.decode(encoded);
+
+        const client1 = { sessionId: "one" };
+        const client2 = { sessionId: "two" };
+
+        console.log("--------------\nAPPLY CLIENT 1\n--------------");
+        const filtered1 = state.applyFilters(encoded, client1);
+        const decoded1 = (new State()).decode(filtered1);
+        debugBytes(filtered1, "FILTERED 1");
+        console.log("--------------\nAPPLY CLIENT 2\n--------------");
+        const filtered2 = state.applyFilters(encoded, client2);
+        const decoded2 = (new State()).decode(filtered2);
+        debugBytes(filtered2, "FILTERED 2");
+
+        console.log({
+            decoded1: decoded1.toJSON(),
+            decoded2: decoded2.toJSON(),
+            full: full.toJSON()
+        });
+
+        assert.equal("one", decoded1.players[0].name);
+        assert.equal(1, decoded1.players.length);
+
+        assert.equal("two", decoded2.players[0].name);
+        assert.equal(1, decoded2.players.length);
     });
 
 

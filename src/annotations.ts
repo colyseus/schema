@@ -93,9 +93,9 @@ export function type (type: DefinitionType, context: Context = globalContext): P
          * TODO: `isSchema` / `isArray` / `isMap` is repeated on many places!
          * need to refactor all of them.
          */
-        const isArray = Array.isArray(type);
-        const isMap = !isArray && (type as any).map;
-        const isSchema = (typeof(type) === "function");
+        const isArray = ArraySchema.is(type);
+        const isMap = !isArray && MapSchema.is(type);
+        const isSchema = Schema.is(type);
 
         const fieldCached = `_${field}`;
 
