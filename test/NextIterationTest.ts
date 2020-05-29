@@ -1,3 +1,4 @@
+import * as util from "util";
 import * as assert from "assert";
 
 import { ChangeTree } from "../src/ChangeTree";
@@ -26,7 +27,7 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.arr, ['one', 'twotwo', 'three']);
     });
 
-    it("add and modify a map item", () => {
+    xit("add and modify a map item", () => {
         class State extends Schema {
             @type({ map: "number" })
             map = new Map<string, number>();
@@ -47,6 +48,38 @@ describe("Next Iteration", () => {
 
         decoded.decode(encoded.encode());
         assert.deepEqual(decoded.map.get("two"), 22);
+    });
+
+    it("encoding / decoding deep items", () => {
+        class Item extends Schema {
+            @type("string") name: string;
+        }
+
+        class Player extends Schema {
+            @type({ map: Item }) items = new Map<string, Item>();
+        }
+
+        class State extends Schema {
+            @type({ map: Player }) players = new Map<string, Player>();
+        }
+
+        const encoded = new State();
+
+        const one = new Player();
+        const i1 = new Item();
+        i1.name = "player one item 1";
+        one.items.set("i1", i1);
+        encoded.players.set("one", one);
+
+        const two = new Player();
+        const i2 = new Item();
+        i2.name = "player two item 2";
+        two.items.set("i2", i2);
+        encoded.players.set("two", two);
+
+        const decoded = new State();
+        decoded.decode(encoded.encode());
+        console.log(util.inspect(decoded.toJSON(), true, Infinity));
     });
 
     xit("simple relationship", () => {

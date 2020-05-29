@@ -96,10 +96,6 @@ export class MapSchema<V=any> {
             this.$changes.change(key);
         }
 
-        // const existing = this.has(key);
-        // if (!existing) {
-        // }
-
         this.$map.set(key, value);
 
         return this;

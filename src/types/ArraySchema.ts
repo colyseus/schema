@@ -4,7 +4,7 @@ import { Schema } from "../Schema";
 export class ArraySchema<T=any> extends Array<T> {
     protected $sorting: boolean;
     protected $changes: ChangeTree;
-    protected $cache: Map<number, T> = new Map<number, T>();
+    // protected $cache: Map<number, T> = new Map<number, T>();
 
     static get [Symbol.species](): any { return ArraySchema; }
 

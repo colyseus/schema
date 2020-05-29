@@ -101,6 +101,8 @@ export abstract class Schema {
     }
 
     protected $changes: ChangeTree;
+    // protected $root: ChangeSet;
+
     protected $listeners: { [field: string]: EventEmitter<(a: any, b: any) => void> };
 
     public onChange?(changes: DataChange[]);
