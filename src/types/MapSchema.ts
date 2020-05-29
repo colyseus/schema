@@ -1,15 +1,23 @@
 import { ChangeTree } from "../ChangeTree";
 
-export class MapSchema<T=any> {
+type K = string; // TODO: allow to specify K generic on MapSchema.
+
+export class MapSchema<V=any> {
     protected $changes: ChangeTree;
+    protected $map: Map<string, V> = new Map<string, V>();
 
     static is(type: any) {
         return type['map'] !== undefined;
     }
 
-    constructor (obj: any = {}) {
-        for (let key in obj) {
-            this[key] = obj[key];
+    constructor (obj: Map<string, V> | any = {}) {
+        if (obj instanceof Map) {
+            obj.forEach((v, k) => this.set(k, v));
+
+        } else {
+            for (const k in obj) {
+                this.set(k, obj[k]);
+            }
         }
 
         Object.defineProperties(this, {
@@ -33,14 +41,13 @@ export class MapSchema<T=any> {
                     } else {
                         // server-side
                         const cloned = new MapSchema();
-                        for (let key in this) {
-                            if (typeof (this[key]) === "object") {
-                                cloned[key] = this[key].clone();
-
+                        this.forEach((value, key) => {
+                            if (typeof (value) === "object") {
+                                cloned.set(key, value['clone']());
                             } else {
-                                cloned[key] = this[key];
+                                cloned.set(key, value);
                             }
-                        }
+                        })
                     }
 
                     return cloned;
@@ -49,24 +56,21 @@ export class MapSchema<T=any> {
 
             triggerAll: {
                 value: () => {
-                    if (!this.onAdd) {
-                        return;
-                    }
-
-                    for (let key in this) {
-                        this.onAdd(this[key], key);
-                    }
+                    if (!this.onAdd) { return; }
+                    this.forEach((value, key) => this.onAdd(value, key));
                 }
             },
 
             toJSON: {
                 value: () => {
                     const map: any = {};
-                    for (let key in this) {
-                        map[key] = (typeof(this[key].toJSON) === "function")
-                            ? this[key].toJSON()
-                            : this[key];
-                    }
+
+                    this.forEach((value, key) => {
+                        map[key] = (typeof (value['toJSON']) === "function")
+                            ? value['toJSON']()
+                            : value;
+                    });
+
                     return map;
                 }
             },
@@ -87,13 +91,64 @@ export class MapSchema<T=any> {
         });
     }
 
-    [key: string]: T | any;
+    set(key: K, value: V) {
+        if (this.$changes) {
+            this.$changes.change(key);
+        }
 
-    clone: (isDecoding?: boolean) => MapSchema<T>;
+        // const existing = this.has(key);
+        // if (!existing) {
+        // }
 
-    onAdd: (item: T, key: string) => void;
-    onRemove: (item: T, key: string) => void;
-    onChange: (item: T, key: string) => void;
+        this.$map.set(key, value);
+
+        return this;
+    }
+
+    get(key: K) {
+        return this.$map.get(key);
+    }
+
+    delete(key: K) {
+        if (this.$changes) {
+            this.$changes.delete(key);
+        }
+
+        return this.$map.delete(key);
+    }
+
+    clear() {
+        this.$map.clear();
+    }
+
+    has (key: K) {
+        return this.$map.has(key);
+    }
+
+    forEach(callbackfn: (value: V, key: K, map: Map<K, V>) => void) {
+        this.$map.forEach(callbackfn);
+    }
+
+    entries () {
+        return this.$map.entries();
+    }
+
+    keys () {
+        return this.$map.keys();
+    }
+
+    get size () {
+        return this.$map.size;
+    }
+
+    //
+    // Decoding utilities
+    //
+    clone: (isDecoding?: boolean) => MapSchema<V>;
+
+    onAdd: (item: V, key: string) => void;
+    onRemove: (item: V, key: string) => void;
+    onChange: (item: V, key: string) => void;
 
     triggerAll: () => void;
 

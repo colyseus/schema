@@ -85,14 +85,8 @@ export function type (type: DefinitionType, context: Context = globalContext): P
         /**
          * skip if descriptor already exists for this field (`@deprecated()`)
          */
-        if (constructor._descriptors[field]) {
-            return;
-        }
+        if (constructor._descriptors[field]) { return; }
 
-        /**
-         * TODO: `isSchema` / `isArray` / `isMap` is repeated on many places!
-         * need to refactor all of them.
-         */
         const isArray = ArraySchema.is(type);
         const isMap = !isArray && MapSchema.is(type);
         const isSchema = Schema.is(type);
@@ -114,15 +108,24 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 /**
                  * Create Proxy for array or map items
                  */
-                if (isArray || isMap) {
-                    if (isArray && !(value instanceof ArraySchema)) {
-                        value = new ArraySchema(...value);
-                    }
 
-                    if (isMap && !(value instanceof MapSchema)) {
-                        value = new MapSchema(value);
-                    }
+                // skip if value is the same as cached.
+                if (value === this[fieldCached]) {
+                    return;
+                }
 
+                // automaticallty transform Array into ArraySchema
+                if (isArray && !(value instanceof ArraySchema)) {
+                    value = new ArraySchema(...value);
+                }
+
+                // automaticallty transform Map into MapSchema
+                if (isMap && !(value instanceof MapSchema)) {
+                    value = new MapSchema(value);
+                }
+
+                // if (isArray || isMap) {
+                if (isArray) {
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, setValue) => {
@@ -139,10 +142,6 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                                     obj.$changes.mapIndex(setValue, key);
                                 }
 
-                                // if (isMap) {
-                                //     obj._indexes.delete(prop);
-                                // }
-
                                 if (setValue instanceof Schema) {
                                     // new items are flagged with all changes
                                     if (!setValue.$changes.parent) {
@@ -156,10 +155,6 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
                                 // apply change on ArraySchema / MapSchema
                                 obj.$changes.change(key);
-
-                            } else if (setValue !== obj[prop]) {
-                                // console.log("SET NEW LENGTH:", setValue);
-                                // console.log("PREVIOUS LENGTH: ", obj[prop]);
                             }
 
                             obj[prop] = setValue;
@@ -191,14 +186,11 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     });
                 }
 
-                // skip if value is the same as cached.
-                if (value === this[fieldCached]) {
-                    return;
-                }
-
                 this[fieldCached] = value;
 
                 if (isArray) {
+                    console.log("ASSIGNING AN ARRAY");
+
                     // directly assigning an array of items as value.
                     this.$changes.change(field);
                     value.$changes = new ChangeTree({}, field, this.$changes);
@@ -213,20 +205,25 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     }
 
                 } else if (isMap) {
+                    console.log("ASSIGNING A MAP");
+
                     // directly assigning a map
                     value.$changes = new ChangeTree({}, field, this.$changes);
                     this.$changes.change(field);
 
-                    for (let key in value) {
-                        if (value[key] instanceof Schema) {
-                            value[key].$changes = new ChangeTree(value[key]._indexes, key, value.$changes);
-                            value[key].$changes.changeAll(value[key]);
+                    (value as MapSchema).forEach((val, key) => {
+                        console.log("FLAG AS CHANGED:", key);
+                        if (val instanceof Schema) {
+                            val.$changes = new ChangeTree(val._indexes, key, value.$changes);
+                            val.$changes.changeAll(val);
                         }
-                        value.$changes.mapIndex(value[key], key);
+                        value.$changes.mapIndex(val, key);
                         value.$changes.change(key);
-                    }
+                    });
 
                 } else if (isSchema) {
+                    console.log("ASSIGNING A SCHEMA");
+
                     // directly assigning a `Schema` object
                     // value may be set to null
                     this.$changes.change(field);

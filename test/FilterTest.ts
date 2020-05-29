@@ -109,7 +109,6 @@ describe("@filter", () => {
         }
 
         const state = new State();
-        console.log(state.players);
         state.players.push(new Player({ name: "one" }));
         state.players.push(new Player({ name: "two" }));
         state.players.push(new Player({ name: "three" }));

@@ -722,14 +722,14 @@ describe("Schema", () => {
              */
 
             // are Player and State unchanged?
-            assert.equal((state.player as any).$changed, false);
-            assert.equal((state as any).$changed, false);
+            assert.equal((state.player as any).$changes.changed, false);
+            assert.equal((state as any).$changes.changed, false);
 
             state.player.x = 30;
 
             // Player and State should've changes!
-            assert.equal((state.player as any).$changed, true);
-            assert.equal((state as any).$changed, true);
+            assert.equal((state.player as any).$changes.changed, true);
+            assert.equal((state as any).$changes.changed, true);
 
             const serializedChanges = state.encode();
 

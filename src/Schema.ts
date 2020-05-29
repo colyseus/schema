@@ -127,10 +127,19 @@ export abstract class Schema {
             Object.defineProperties(this, descriptors);
         }
 
+        //
         // Assign initial values
+        //
         if (args[0]) {
-            Object.assign(this, args[0]);
+            this.assign(args[0]);
         }
+    }
+
+    public assign(
+        props: { [prop in NonFunctionPropNames<this>]: this[prop] }
+    ) {
+        Object.assign(this, props);
+        return this;
     }
 
     protected get _schema () { return (this.constructor as typeof Schema)._schema; }
@@ -139,8 +148,6 @@ export abstract class Schema {
     protected get _fieldsByIndex() { return (this.constructor as typeof Schema)._fieldsByIndex }
     protected get _filters () { return (this.constructor as typeof Schema)._filters; }
     protected get _deprecated () { return (this.constructor as typeof Schema)._deprecated; }
-
-    get $changed () { return this.$changes.changed; }
 
     public listen <K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
         if (!this.$listeners[attr as string]) {
@@ -304,7 +311,8 @@ export abstract class Schema {
                 // serializagion
                 let hasIndexChange = false;
 
-                const previousKeys = Object.keys(valueRef);
+                const previousKeys = Array.from(valueRef.keys());
+                console.log("DECODING MAP:", { value, valueRef, length, previousKeys });
 
                 for (let i = 0; i < length; i++) {
                     // `encodeAll` may indicate a higher number of indexes it actually encodes
@@ -336,14 +344,16 @@ export abstract class Schema {
                     let item;
                     let isNew = (!hasIndexChange && valueRef[newKey] === undefined) || (hasIndexChange && previousKey === undefined && hasMapIndex);
 
+                    console.log({ newKey, isNew, hasMapIndex });
+
                     if (isNew && isSchemaType) {
                         item = this.createTypeInstance(bytes, it, type as typeof Schema);
 
                     } else if (previousKey !== undefined) {
-                        item = valueRef[previousKey];
+                        item = valueRef.get(previousKey);
 
                     } else {
-                        item = valueRef[newKey]
+                        item = valueRef.get(newKey);
                     }
 
                     if (isNilItem) {
@@ -364,15 +374,15 @@ export abstract class Schema {
                             }
                         }
 
-                        delete value[newKey];
+                        value.delete(newKey);
                         continue;
 
                     } else if (!isSchemaType) {
-                        value[newKey] = decodePrimitiveType(type as string, bytes, it);
+                        value.set(newKey, decodePrimitiveType(type as string, bytes, it));
 
                     } else {
                         item.decode(bytes, it);
-                        value[newKey] = item;
+                        value.set(newKey, item);
                     }
 
                     if (isNew) {
@@ -428,7 +438,6 @@ export abstract class Schema {
         const schema = this._schema;
         const indexes = this._indexes;
         const fieldsByIndex = this._fieldsByIndex;
-        const filters = this._filters;
         const changes = Array.from(
             (encodeAll)
                 ? this.$changes.allChanges
@@ -436,12 +445,10 @@ export abstract class Schema {
         ).sort();
 
         for (let i = 0, l = changes.length; i < l; i++) {
-            const field = fieldsByIndex[changes[i]] || changes[i] as string;
+            const field = fieldsByIndex[changes[i]];
             const _field = `_${field}`;
 
             const type = schema[field];
-            const filter = (filters && filters[field]);
-            // const value = (filter && this.$allChanges[field]) || changes[field];
             const value = this[_field];
             const fieldIndex = indexes[field];
 
@@ -464,7 +471,6 @@ export abstract class Schema {
                     assertInstanceType(value, type as typeof Schema, this, field);
 
                     this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
-
                     (value as Schema).encode(root, encodeAll, bytes, useFilters);
                 }
 
@@ -492,6 +498,8 @@ export abstract class Schema {
 
                 const isChildSchema = typeof(type[0]) !== "string";
 
+                console.log({ arrayChanges, numChanges, isChildSchema, arrayLength: value.length });
+
                 // assert ArraySchema was provided
                 assertInstanceType(this[_field], ArraySchema, this, field);
 
@@ -500,10 +508,12 @@ export abstract class Schema {
                     const index = arrayChanges[j];
                     const item = this[_field][index];
 
+                    console.log({ index, item });
+
                     if (isChildSchema) { // is array of Schema
                         encode.number(bytes, index);
 
-                        if (!encodeAll)  {
+                        if (!encodeAll) {
                             const indexChange = $changes.getIndexChange(item);
                             if (indexChange !== undefined) {
                                 encode.uint8(bytes, INDEX_CHANGE);
@@ -546,14 +556,18 @@ export abstract class Schema {
                 const isChildSchema = typeof((type as any).map) !== "string";
                 const numChanges = keys.length;
 
+                console.log("ENCODE MAP =>", { keys, numChanges, previousKeys, isChildSchema });
+
                 // assert MapSchema was provided
                 assertInstanceType(this[_field], MapSchema, this, field);
 
                 for (let i = 0; i < numChanges; i++) {
                     const key = keys[i];
-                    const item = this[_field][key];
+                    const item = this[_field].get(key);
 
                     let mapItemIndex: number = undefined;
+
+                    console.log("ENCODING MAP ITEM", { key, item });
 
                     if (encodeAll) {
                         if (item === undefined) {
@@ -576,6 +590,8 @@ export abstract class Schema {
                         mapItemIndex = (!$changes.isDeleted(key) || !item)
                             ? this[_field]._indexes.get(key)
                             : undefined;
+
+                        console.log({ indexChange, mapItemIndex });
                     }
 
                     const isNil = (item === undefined);

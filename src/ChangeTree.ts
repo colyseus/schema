@@ -29,6 +29,7 @@ export class ChangeTree {
     parent: ChangeTree;
     parentField: FieldKey;
 
+    // cached indexes for filtering
     caches: {[field: number]: FieldCache} = {};
 
     constructor(
@@ -72,6 +73,14 @@ export class ChangeTree {
         if (this.parent) {
             this.parent.change(this.parentField);
         }
+    }
+
+    delete (fieldName: FieldKey) {
+        const fieldIndex = this.fieldIndexes[fieldName];
+        const field = (typeof(fieldIndex) === "number") ? fieldIndex : fieldName;
+
+        this.changed = true;
+        this.changes.add(field);
     }
 
     mapIndex(instance: any, key: FieldKey) {
