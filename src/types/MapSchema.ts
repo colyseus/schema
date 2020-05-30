@@ -4,7 +4,7 @@ type K = string; // TODO: allow to specify K generic on MapSchema.
 
 export class MapSchema<V=any> {
     protected $changes: ChangeTree;
-    protected $map: Map<string, V> = new Map<string, V>();
+    protected $items: Map<string, V> = new Map<string, V>();
 
     static is(type: any) {
         return type['map'] !== undefined;
@@ -96,13 +96,13 @@ export class MapSchema<V=any> {
             this.$changes.change(key);
         }
 
-        this.$map.set(key, value);
+        this.$items.set(key, value);
 
         return this;
     }
 
     get(key: K) {
-        return this.$map.get(key);
+        return this.$items.get(key);
     }
 
     delete(key: K) {
@@ -110,31 +110,31 @@ export class MapSchema<V=any> {
             this.$changes.delete(key);
         }
 
-        return this.$map.delete(key);
+        return this.$items.delete(key);
     }
 
     clear() {
-        this.$map.clear();
+        this.$items.clear();
     }
 
     has (key: K) {
-        return this.$map.has(key);
+        return this.$items.has(key);
     }
 
     forEach(callbackfn: (value: V, key: K, map: Map<K, V>) => void) {
-        this.$map.forEach(callbackfn);
+        this.$items.forEach(callbackfn);
     }
 
     entries () {
-        return this.$map.entries();
+        return this.$items.entries();
     }
 
     keys () {
-        return this.$map.keys();
+        return this.$items.keys();
     }
 
     get size () {
-        return this.$map.size;
+        return this.$items.size;
     }
 
     //

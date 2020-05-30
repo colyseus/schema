@@ -1,5 +1,5 @@
 import { Schema } from "./";
-import { ChangeTree } from "./ChangeTree";
+import { ChangeTree } from "./changes/ChangeTree";
 import { MapSchema } from "./types/MapSchema";
 import { ArraySchema } from "./types/ArraySchema";
 
@@ -9,7 +9,7 @@ export function dumpChanges(schema: Schema) {
     const $changes: ChangeTree = (schema as any).$changes;
     const fieldsByIndex = schema['_fieldsByIndex'] || {};
 
-    for (const fieldIndex of Array.from($changes.changes)) {
+    for (const fieldIndex of Array.from($changes.changes.keys())) {
         const field = fieldsByIndex[fieldIndex] || fieldIndex;
 
         if (

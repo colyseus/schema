@@ -14,11 +14,12 @@ export const logChangeTree = (tree: ChangeTree) => {
     return `
 {
   changes:  [${Array.from(tree.changes)}]
-  indexMap: {
-    ${logMap(tree.indexMap).join(`\n    `)}
-  }
-  indexChange: {
-    ${logMap(tree.indexChange).join(`\n    `)}
-  }
 }\n`
+
+//   indexMap: {
+//     ${logMap(tree.indexMap).join(`\n    `)}
+//   }
+//   indexChange: {
+//     ${logMap(tree.indexChange).join(`\n    `)}
+//   }
 }

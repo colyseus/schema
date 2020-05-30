@@ -50,7 +50,16 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.map.get("two"), 22);
     });
 
-    it("encoding / decoding deep items", () => {
+    it("should encode string", () => {
+        class State extends Schema {
+            @type("string") str: string;
+        }
+        const state = new State();
+        state.str = "Hello";
+        console.log(state.encode());
+    });
+
+    xit("encoding / decoding deep items", () => {
         class Item extends Schema {
             @type("string") name: string;
         }
@@ -77,44 +86,13 @@ describe("Next Iteration", () => {
         two.items.set("i2", i2);
         encoded.players.set("two", two);
 
+        const patch = encoded.encode();
+        console.log("ENCODED =>", patch);
+
         const decoded = new State();
-        decoded.decode(encoded.encode());
+        console.log("\n>> WILL DECODE\n");
+        decoded.decode(patch);
         console.log(util.inspect(decoded.toJSON(), true, Infinity));
-    });
-
-    xit("simple relationship", () => {
-        const root = new ChangeTree();
-
-        const child = new ChangeTree({}, "child");
-        child.parent = root;
-
-        child.change("x");
-
-        assert.equal(root.changed, true);
-        assert.equal(child.changed, true);
-
-        assert.deepEqual(Array.from(root.changes), ['child'])
-        assert.deepEqual(Array.from(child.changes), ['x'])
-    });
-
-    xit("should not identify changes on untyped properties", () => {
-        class Game extends Schema {
-            @type('string')
-            state: string = "starting";
-            privProperty: number = 50;
-        }
-
-        class State extends Schema {
-            @type(Game)
-            game: Game;
-        }
-
-        const state = new State();
-        state.game = new Game(0, 1);
-
-        const changes: ChangeTree = (state.game as any).$changes;
-        assert.deepEqual(Array.from(changes.changes), [0])
-        assert.deepEqual(Array.from(changes.allChanges), [0])
     });
 
 });

@@ -191,15 +191,13 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 const $root = this.$changes.root;
 
                 if (isArray) {
-                    console.log("ASSIGNING AN ARRAY");
-
                     // directly assigning an array of items as value.
                     this.$changes.change(field);
-                    value.$changes = new ChangeTree({}, this.$changes, $root);
+                    value.$changes = new ChangeTree(value, {}, this.$changes, $root);
 
                     for (let i = 0; i < value.length; i++) {
                         if (value[i] instanceof Schema) {
-                            value[i].$changes = new ChangeTree(value[i]._indexes, value.$changes, $root);
+                            value[i].$changes = new ChangeTree(value[i], value[i]._indexes, value.$changes, $root);
                             value[i].$changes.changeAll(value[i]);
                         }
                         value.$changes.mapIndex(value[i], i);
@@ -207,16 +205,14 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     }
 
                 } else if (isMap) {
-                    console.log("ASSIGNING A MAP");
-
                     // directly assigning a map
-                    value.$changes = new ChangeTree({}, this.$changes, $root);
+                    value.$changes = new ChangeTree(value, {}, this.$changes, $root);
                     this.$changes.change(field);
 
                     (value as MapSchema).forEach((val, key) => {
                         console.log("FLAG AS CHANGED:", key);
                         if (val instanceof Schema) {
-                            val.$changes = new ChangeTree(val._indexes, value.$changes, $root);
+                            val.$changes = new ChangeTree(val, val._indexes, value.$changes, $root);
                             // val.$changes.changeAll(val);
                         }
                         // value.$changes.mapIndex(val, key);
@@ -224,14 +220,12 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     });
 
                 } else if (isSchema) {
-                    console.log("ASSIGNING A SCHEMA");
-
                     // directly assigning a `Schema` object
                     // value may be set to null
                     this.$changes.change(field);
 
                     if (value) {
-                        value.$changes = new ChangeTree(value._indexes, this.$changes, $root);
+                        value.$changes = new ChangeTree(value, value._indexes, this.$changes, $root);
                         // value.$changes.changeAll(value);
                     }
 
