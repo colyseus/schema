@@ -129,33 +129,33 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, setValue) => {
-                            if (prop !== "length" && (prop as string).indexOf("$") !== 0) {
-                                // ensure new value has a parent
-                                const key = (isArray) ? Number(prop) : String(prop);
+                            // if (prop !== "length" && (prop as string).indexOf("$") !== 0) {
+                            //     // ensure new value has a parent
+                            //     const key = (isArray) ? Number(prop) : String(prop);
 
-                                if (!obj.$sorting) {
-                                    // track index change
-                                    const previousIndex = obj.$changes.getIndex(setValue);
-                                    if (previousIndex !== undefined) {
-                                        obj.$changes.mapIndexChange(setValue, previousIndex);
-                                    }
-                                    obj.$changes.mapIndex(setValue, key);
-                                }
+                            //     if (!obj.$sorting) {
+                            //         // track index change
+                            //         const previousIndex = obj.$changes.getIndex(setValue);
+                            //         if (previousIndex !== undefined) {
+                            //             obj.$changes.mapIndexChange(setValue, previousIndex);
+                            //         }
+                            //         obj.$changes.mapIndex(setValue, key);
+                            //     }
 
-                                if (setValue instanceof Schema) {
-                                    // new items are flagged with all changes
-                                    if (!setValue.$changes.parent) {
-                                        setValue.$changes = new ChangeTree(setValue._indexes, key, obj.$changes);
-                                        setValue.$changes.changeAll(setValue);
-                                    }
+                            //     if (setValue instanceof Schema) {
+                            //         // new items are flagged with all changes
+                            //         if (!setValue.$changes.parent) {
+                            //             setValue.$changes = new ChangeTree(setValue._indexes, key, obj.$changes);
+                            //             setValue.$changes.changeAll(setValue);
+                            //         }
 
-                                } else {
-                                    obj[prop] = setValue;
-                                }
+                            //     } else {
+                            //         obj[prop] = setValue;
+                            //     }
 
-                                // apply change on ArraySchema / MapSchema
-                                obj.$changes.change(key);
-                            }
+                            //     // apply change on ArraySchema / MapSchema
+                            //     obj.$changes.change(key);
+                            // }
 
                             obj[prop] = setValue;
 
@@ -165,21 +165,21 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         deleteProperty: (obj, prop) => {
                             const deletedValue = obj[prop];
 
-                            if (isMap && deletedValue !== undefined) {
-                                obj.$changes.deleteIndex(deletedValue);
-                                obj.$changes.deleteIndexChange(deletedValue);
+                            // if (isMap && deletedValue !== undefined) {
+                            //     obj.$changes.deleteIndex(deletedValue);
+                            //     obj.$changes.deleteIndexChange(deletedValue);
 
-                                if (deletedValue.$changes) { // deletedValue may be a primitive value
-                                    delete deletedValue.$changes.parent;
-                                }
+                            //     if (deletedValue.$changes) { // deletedValue may be a primitive value
+                            //         delete deletedValue.$changes.parent;
+                            //     }
 
-                                // obj._indexes.delete(prop);
-                            }
+                            //     // obj._indexes.delete(prop);
+                            // }
 
                             delete obj[prop];
 
                             const key = (isArray) ? Number(prop) : String(prop);
-                            obj.$changes.change(key, true);
+                            obj.$changes.delete(key);
 
                             return true;
                         },
@@ -188,16 +188,18 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
                 this[fieldCached] = value;
 
+                const $root = this.$changes.root;
+
                 if (isArray) {
                     console.log("ASSIGNING AN ARRAY");
 
                     // directly assigning an array of items as value.
                     this.$changes.change(field);
-                    value.$changes = new ChangeTree({}, field, this.$changes);
+                    value.$changes = new ChangeTree({}, this.$changes, $root);
 
                     for (let i = 0; i < value.length; i++) {
                         if (value[i] instanceof Schema) {
-                            value[i].$changes = new ChangeTree(value[i]._indexes, i, value.$changes);
+                            value[i].$changes = new ChangeTree(value[i]._indexes, value.$changes, $root);
                             value[i].$changes.changeAll(value[i]);
                         }
                         value.$changes.mapIndex(value[i], i);
@@ -208,16 +210,16 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     console.log("ASSIGNING A MAP");
 
                     // directly assigning a map
-                    value.$changes = new ChangeTree({}, field, this.$changes);
+                    value.$changes = new ChangeTree({}, this.$changes, $root);
                     this.$changes.change(field);
 
                     (value as MapSchema).forEach((val, key) => {
                         console.log("FLAG AS CHANGED:", key);
                         if (val instanceof Schema) {
-                            val.$changes = new ChangeTree(val._indexes, key, value.$changes);
-                            val.$changes.changeAll(val);
+                            val.$changes = new ChangeTree(val._indexes, value.$changes, $root);
+                            // val.$changes.changeAll(val);
                         }
-                        value.$changes.mapIndex(val, key);
+                        // value.$changes.mapIndex(val, key);
                         value.$changes.change(key);
                     });
 
@@ -229,8 +231,8 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     this.$changes.change(field);
 
                     if (value) {
-                        value.$changes = new ChangeTree(value._indexes, field, this.$changes);
-                        value.$changes.changeAll(value);
+                        value.$changes = new ChangeTree(value._indexes, this.$changes, $root);
+                        // value.$changes.changeAll(value);
                     }
 
                 } else {
