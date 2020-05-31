@@ -1,6 +1,9 @@
 lib
 package-lock.json
 
+# Tests
+coverage/
+
 # Mac
 .DS_Store
 .vscode/

@@ -444,6 +444,17 @@ export abstract class Schema {
             const ref = change.ref;
             const indexes = change.indexes;
 
+            console.log("changetree:", change);
+
+            //
+            // assign changes to a parent.
+            //
+            if (change.parent) {
+                console.log("ASSIGN_TO_PARENT =>", change.parent.uniqueId);
+                encode.uint8(bytes, ASSIGN_TO_PARENT);
+                encode.number(bytes, change.parent.uniqueId);
+            }
+
             const changes = (encodeAll)
                 ? Array.from(change.allChanges)
                 : Array.from(change.changes.keys());

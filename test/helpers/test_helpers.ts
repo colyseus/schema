@@ -1,4 +1,4 @@
-import { ChangeTree } from "../../src/ChangeTree";
+import { ChangeTree } from "../../src/changes/ChangeTree";
 
 export const IS_COVERAGE = process.argv.find(arg => arg.indexOf("--recursive") !== -1);
 

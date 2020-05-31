@@ -1,4 +1,4 @@
-import { ChangeTree } from "../ChangeTree";
+import { ChangeTree } from "../changes/ChangeTree";
 
 type K = string; // TODO: allow to specify K generic on MapSchema.
 

@@ -1,7 +1,7 @@
 import * as util from "util";
 import * as assert from "assert";
 
-import { ChangeTree } from "../src/ChangeTree";
+import { ChangeTree } from "../src/changes/ChangeTree";
 import { Schema, type, MapSchema, ArraySchema } from "../src";
 
 describe("Next Iteration", () => {
@@ -51,11 +51,21 @@ describe("Next Iteration", () => {
     });
 
     it("should encode string", () => {
+        class Player extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+
         class State extends Schema {
             @type("string") str: string;
-        }
+            @type("number") num: number;
+            @type(Player) player: Player;
+        };
+
         const state = new State();
         state.str = "Hello";
+        state.num = 10;
+
         console.log(state.encode());
     });
 

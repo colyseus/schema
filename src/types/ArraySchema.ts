@@ -1,4 +1,4 @@
-import { ChangeTree } from "../ChangeTree";
+import { ChangeTree } from "../changes/ChangeTree";
 import { Schema } from "../Schema";
 
 export class ArraySchema<T=any> extends Array<T> {

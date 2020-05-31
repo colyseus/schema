@@ -1,4 +1,4 @@
-import { ChangeTree } from './ChangeTree';
+import { ChangeTree } from './changes/ChangeTree';
 import { Schema } from './Schema';
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema } from './types/MapSchema';
