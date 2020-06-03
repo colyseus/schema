@@ -10,6 +10,7 @@ import { MapSchema } from "./types/MapSchema";
 import { ChangeTree } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
 import { EventEmitter } from './events/EventEmitter';
+import { Ref } from './changes/Root';
 
 export interface DataChange<T=any> {
     field: string;
@@ -162,31 +163,34 @@ export abstract class Schema {
             this.$listeners[attr as string].remove(callback);
     }
 
-    decode(bytes, it: decode.Iterator = { offset: 0 }) {
+    // decode(bytes, it: decode.Iterator = { offset: 0 }, ref: Ref = this) {
+    decode(bytes, it: decode.Iterator = { offset: 0 }, ref: Schema = this) {
         const $root = this.$changes.root;
 
         const changes: DataChange[] = [];
 
-        const schema = this._schema;
-        const fieldsByIndex = this._fieldsByIndex;
+        const schema = ref._schema;
+        const fieldsByIndex = ref._fieldsByIndex;
 
         const totalBytes = bytes.length;
 
-        // skip TYPE_ID of existing instances
-        if (bytes[it.offset] === TYPE_ID) {
-            it.offset += 2;
-        }
+        // // skip TYPE_ID of existing instances
+        // if (bytes[it.offset] === TYPE_ID) {
+        //     it.offset += 2;
+        // }
 
         while (it.offset < totalBytes) {
-            const isNil = decode.nilCheck(bytes, it) && ++it.offset;
-            const index = bytes[it.offset++];
+            const byte = bytes[it.offset++];
 
-            if (index === END_OF_STRUCTURE) {
+            if (byte === END_OF_STRUCTURE) {
                 // reached end of strucutre. skip.
                 break;
             }
 
-            const field = fieldsByIndex[index];
+            const operation = (byte >> 6) << 6;
+            const fieldIndex = byte % (operation || 256);
+
+            const field = fieldsByIndex[fieldIndex];
             const _field = `_${field}`;
 
             let type = schema[field];
@@ -197,13 +201,17 @@ export abstract class Schema {
             if (!field) {
                 continue;
 
-            } else if (isNil) {
+            } else if (operation === OPERATION.DELETE) {
                 value = null;
                 hasChange = true;
 
             } else if (Schema.is(type)) {
-                value = this[_field] || this.createTypeInstance(bytes, it, type as typeof Schema);
-                value.decode(bytes, it);
+                value = ref[_field] || this.createTypeInstance(bytes, it, type as typeof Schema);
+
+                const refId = decode.number(bytes, it);
+                $root.refs.set(refId, value);
+
+                value.decode(bytes, it, value);
 
                 hasChange = true;
 
@@ -410,21 +418,22 @@ export abstract class Schema {
 
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
+                console.log("DECODE PRIMITIVE TYPE:", { field, value });
 
                 // FIXME: should not even have encoded if value haven't changed in the first place!
                 // check FilterTest.ts: "should not trigger `onChange` if field haven't changed"
-                hasChange = (value !== this[_field]);
+                hasChange = (value !== ref[_field]);
             }
 
-            if (hasChange && (this.onChange || this.$listeners[field])) {
+            if (hasChange && (this.onChange || ref.$listeners[field])) {
                 changes.push({
                     field,
                     value,
-                    previousValue: this[_field]
+                    previousValue: ref[_field]
                 });
             }
 
-            this[_field] = value;
+            ref[_field] = value;
         }
 
         this._triggerChanges(changes);
@@ -453,9 +462,10 @@ export abstract class Schema {
             const ref = change.ref as Schema;
             // const indexes = change.indexes;
 
-            if (change.uniqueId !== undefined) {
-                console.log("Structure id =>", change.uniqueId);
-                encode.number(bytes, change.uniqueId);
+            // root `refId` is skipped.
+            if (change.refId > 0) {
+                console.log("Structure id =>", change.refId);
+                encode.number(bytes, change.refId);
             }
 
             // console.log("changetree:", change);

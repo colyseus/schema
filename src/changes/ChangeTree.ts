@@ -19,7 +19,7 @@ export interface FieldCache {
 }
 
 export class ChangeTree {
-    uniqueId: number;
+    refId: number;
 
     changes = new Map<number, ChangeOperation>();
     allChanges = new Set<number>();
@@ -56,7 +56,7 @@ export class ChangeTree {
 
     set root(value: Root) {
         this._root = value;
-        this.uniqueId = this._root.nextUniqueId++;
+        this.refId = this._root.nextUniqueId++;
     }
     get root () { return this._root; }
 
