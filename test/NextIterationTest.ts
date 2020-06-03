@@ -51,9 +51,14 @@ describe("Next Iteration", () => {
     });
 
     it("should encode string", () => {
+        class Item extends Schema {
+            @type("number") damage: number;
+        }
+
         class Player extends Schema {
             @type("number") x: number;
             @type("number") y: number;
+            @type(Item) item: Item;
         }
 
         class State extends Schema {
@@ -66,7 +71,21 @@ describe("Next Iteration", () => {
         state.str = "Hello";
         state.num = 10;
 
-        console.log(state.encode());
+        const player = new Player();
+        player.x = 10;
+        player.y = 20;
+
+        player.item = new Item();
+        player.item.damage = 5;
+
+        state.player = player;
+
+        const encoded = state.encode();
+        console.log("Length:", encoded.length, "=>", encoded);
+
+        const decoded = new State();
+        decoded.decode(encoded);
+        console.log("DECODED =>", decoded.toJSON());
     });
 
     xit("encoding / decoding deep items", () => {

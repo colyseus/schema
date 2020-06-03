@@ -190,6 +190,7 @@ export class State extends Schema {
 
 ## Limitations and best practices
 
+- Each `Schema` structure can hold up to `64` fields. If you need more fields, use nested structures.
 - `NaN` or `null` numbers are encoded as `0`
 - `null` strings are encoded as `""`
 - `Infinity` numbers are encoded as `Number.MAX_SAFE_INTEGER`
@@ -199,7 +200,6 @@ export class State extends Schema {
   - Both encoder (server) and decoder (client) must have same schema definition.
   - The order of the fields must be the same.
 - Avoid manipulating indexes of an array. This result in at least `2` extra bytes for each index change. **Example:** If you have an array of 20 items, and remove the first item (through `shift()`) this means `38` extra bytes to be serialized.
-- Avoid moving keys of maps. As of arrays, it adds `2` extra bytes per key move.
 
 ## Decoding / Listening for changes
 

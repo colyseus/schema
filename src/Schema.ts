@@ -1,4 +1,4 @@
-import { END_OF_STRUCTURE, NIL, INDEX_CHANGE, ASSIGN_TO_PARENT, TYPE_ID } from './spec';
+import { END_OF_STRUCTURE, NIL, INDEX_CHANGE, TYPE_ID, OPERATION } from './spec';
 import { Definition, FilterCallback, Client, PrimitiveType, Context } from "./annotations";
 
 import * as encode from "./encoding/encode";
@@ -163,6 +163,8 @@ export abstract class Schema {
     }
 
     decode(bytes, it: decode.Iterator = { offset: 0 }) {
+        const $root = this.$changes.root;
+
         const changes: DataChange[] = [];
 
         const schema = this._schema;
@@ -430,72 +432,73 @@ export abstract class Schema {
         return this;
     }
 
-    encode(root: Schema = this, encodeAll = false, bytes: number[] = [], useFilters: boolean = false) {
+    encode(
+        root: Schema = this,
+        encodeAll = false,
+        bytes: number[] = [],
+        useFilters: boolean = false,
+    ) {
         const $root = root.$changes.root;
 
-        const changeTrees = (this === root)
-            ? Array.from($root.changes)
-            : [this.$changes];
+        // const changeTrees = (isRoot)
+        //     ? Array.from($root.changes)
+        //     : [this.$changes];
 
-        // console.log({ changeTrees });
+        const changeTrees = Array.from($root.changes);
+
+        console.log("CHANGE TREES =>", changeTrees);
 
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const change = changeTrees[i];
-            const ref = change.ref;
-            const indexes = change.indexes;
+            const ref = change.ref as Schema;
+            // const indexes = change.indexes;
 
-            console.log("changetree:", change);
-
-            //
-            // assign changes to a parent.
-            //
-            if (change.parent) {
-                console.log("ASSIGN_TO_PARENT =>", change.parent.uniqueId);
-                encode.uint8(bytes, ASSIGN_TO_PARENT);
-                encode.number(bytes, change.parent.uniqueId);
+            if (change.uniqueId !== undefined) {
+                console.log("Structure id =>", change.uniqueId);
+                encode.number(bytes, change.uniqueId);
             }
+
+            // console.log("changetree:", change);
 
             const changes = (encodeAll)
                 ? Array.from(change.allChanges)
                 : Array.from(change.changes.keys());
 
-            changes.forEach((fieldIndex) => {
+            for (let j = 0, cl = changes.length; j < cl; j++) {
+                const fieldIndex = changes[j];
                 const operation = change.changes.get(fieldIndex);
 
-                const schema = this._schema;
-                const fieldsByIndex = this._fieldsByIndex;
+                const schema = ref._schema;
+                const fieldsByIndex = ref._fieldsByIndex;
 
                 const field = fieldsByIndex[fieldIndex];
                 const _field = `_${field}`;
 
                 const type = schema[field];
-                const value = this[_field];
+                const value = ref[_field];
 
                 console.log({ field, type, value, operation });
 
                 // cache begin index if `useFilters`
                 const beginIndex = bytes.length;
 
-                if (value === undefined) {
-                    encode.uint8(bytes, NIL);
-                    encode.number(bytes, fieldIndex);
+                // encode field index + operation
+                encode.uint8(bytes, fieldIndex | operation.op);
 
-                } else if (Schema.is(type)) {
-                    if (!value) {
-                        // value has been removed
-                        encode.uint8(bytes, NIL);
-                        encode.number(bytes, fieldIndex);
+                if (operation.op === OPERATION.DELETE) {
+                    continue;
+                }
 
-                    } else {
-                        // encode child object
-                        encode.number(bytes, fieldIndex);
-                        assertInstanceType(value, type as typeof Schema, this, field);
+                if (Schema.is(type)) {
+                    // encode child object
+                    assertInstanceType(value, type as typeof Schema, ref, field);
+                    this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
 
-                        this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
-                        (value as Schema).encode(root, encodeAll, bytes, useFilters);
-                    }
+                    // console.log("ENCODING CHILD SCHEMA:");
+                    // (value as Schema).encode(root, encodeAll, bytes, useFilters);
 
                 } else if (ArraySchema.is(type)) {
+                    console.log("ENCODING ARRAY!");
                     const $changes: ChangeTree = value.$changes;
 
                     encode.number(bytes, fieldIndex);
@@ -508,7 +511,7 @@ export abstract class Schema {
                             ? Array.from($changes.allChanges)
                             : Array.from($changes.changes.keys())
                         )
-                        .filter(index => this[_field][index] !== undefined)
+                        .filter(index => ref[_field][index] !== undefined)
                         .sort((a: number, b: number) => a - b);
 
                     // ensure number of changes doesn't exceed array length
@@ -522,12 +525,12 @@ export abstract class Schema {
                     // console.log({ arrayChanges, numChanges, isChildSchema, arrayLength: value.length });
 
                     // assert ArraySchema was provided
-                    assertInstanceType(this[_field], ArraySchema, this, field);
+                    assertInstanceType(ref[_field], ArraySchema, ref, field);
 
                     // encode Array of type
                     for (let j = 0; j < numChanges; j++) {
                         const index = arrayChanges[j];
-                        const item = this[_field][index];
+                        const item = ref[_field][index];
 
                         // console.log({ index, item });
 
@@ -542,14 +545,14 @@ export abstract class Schema {
                                 // }
                             }
 
-                            assertInstanceType(item, type[0] as typeof Schema, this, field);
+                            assertInstanceType(item, type[0] as typeof Schema, ref, field);
                             this.tryEncodeTypeId(bytes, type[0] as typeof Schema, item.constructor as typeof Schema);
 
                             (item as Schema).encode(root, encodeAll, bytes, useFilters);
 
                         } else if (item !== undefined) { // is array of primitives
                             encode.number(bytes, index);
-                            encodePrimitiveType(type[0], bytes, item, this, field);
+                            encodePrimitiveType(type[0], bytes, item, ref, field);
                         }
                     }
 
@@ -558,6 +561,7 @@ export abstract class Schema {
                     }
 
                 } else if (MapSchema.is(type)) {
+                    console.log("ENCODING MAP!");
                     const $changes: ChangeTree = value.$changes;
 
                     // encode Map of type
@@ -572,7 +576,7 @@ export abstract class Schema {
 
                     encode.number(bytes, keys.length)
 
-                    // const previousKeys = Object.keys(this[_field]); // this is costly!
+                    // const previousKeys = Object.keys(ref[_field]); // this is costly!
                     const previousKeys = Array.from($changes.allChanges);
                     const isChildSchema = typeof((type as any).map) !== "string";
                     const numChanges = keys.length;
@@ -580,11 +584,11 @@ export abstract class Schema {
                     // console.log("ENCODE MAP =>", { keys, numChanges, previousKeys, isChildSchema });
 
                     // assert MapSchema was provided
-                    assertInstanceType(this[_field], MapSchema, this, field);
+                    assertInstanceType(ref[_field], MapSchema, ref, field);
 
                     for (let i = 0; i < numChanges; i++) {
                         const key = keys[i];
-                        const item = this[_field].get(key);
+                        const item = ref[_field].get(key);
 
                         let mapItemIndex: number = undefined;
 
@@ -601,7 +605,7 @@ export abstract class Schema {
                             // const indexChange = $changes.getIndexChange(item);
                             // if (item && indexChange !== undefined) {
                             //     encode.uint8(bytes, INDEX_CHANGE);
-                            //     encode.number(bytes, this[_field]._indexes.get(indexChange));
+                            //     encode.number(bytes, ref[_field]._indexes.get(indexChange));
                             // }
 
                             /**
@@ -609,7 +613,7 @@ export abstract class Schema {
                              * - Allow to use the index of a deleted item to encode as NIL
                              */
                             // mapItemIndex = (!$changes.isDeleted(key) || !item)
-                            //     ? this[_field]._indexes.get(key)
+                            //     ? ref[_field]._indexes.get(key)
                             //     : undefined;
 
                             // console.log({ indexChange, mapItemIndex });
@@ -624,7 +628,7 @@ export abstract class Schema {
 
                             // TODO: remove item
                             // console.log("REMOVE KEY INDEX", { key });
-                            // this[_field]._indexes.delete(key);
+                            // ref[_field]._indexes.delete(key);
                             encode.uint8(bytes, NIL);
                         }
 
@@ -636,12 +640,12 @@ export abstract class Schema {
                         }
 
                         if (item && isChildSchema) {
-                            assertInstanceType(item, (type as any).map, this, field);
+                            assertInstanceType(item, (type as any).map, ref, field);
                             this.tryEncodeTypeId(bytes, (type as any).map, item.constructor as typeof Schema);
                             (item as Schema).encode(root, encodeAll, bytes, useFilters);
 
                         } else if (!isNil) {
-                            encodePrimitiveType((type as any).map, bytes, item, this, field);
+                            encodePrimitiveType((type as any).map, bytes, item, ref, field);
                         }
 
                     }
@@ -652,28 +656,26 @@ export abstract class Schema {
                         // TODO: track array/map indexes per client (for filtering)?
 
                         // TODO: do not iterate though all MapSchema indexes here.
-                        this[_field]._updateIndexes(previousKeys);
+                        ref[_field]._updateIndexes(previousKeys);
                     }
 
                 } else {
-                    encode.number(bytes, fieldIndex);
-                    encodePrimitiveType(type as PrimitiveType, bytes, value, this, field)
+                    console.log("ENCODING PRIMITIVE", { type, value, field });
+                    encodePrimitiveType(type as PrimitiveType, bytes, value, ref, field)
                 }
 
                 if (useFilters) {
                     // cache begin / end index
                     $root.cache(fieldIndex as number, beginIndex, bytes.length)
                 }
+            }
 
+            // flag end of Schema object structure
+            this._encodeEndOfStructure(ref, root, bytes);
 
-            });
-        }
-
-        // flag end of Schema object structure
-        this._encodeEndOfStructure(this, root, bytes);
-
-        if (!encodeAll && !useFilters) {
-            this.$changes.discard();
+            if (!encodeAll && !useFilters) {
+                change.discard();
+            }
         }
 
         return bytes;

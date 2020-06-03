@@ -24,6 +24,11 @@ export class Root {
         this.allChanges.add(change);
     }
 
+    delete (change: ChangeTree) {
+        this.changes.delete(change);
+        this.allChanges.delete(change);
+    }
+
     cache(field: number, beginIndex: number, endIndex: number) {
         this.caches[field] = { beginIndex, endIndex };
     }

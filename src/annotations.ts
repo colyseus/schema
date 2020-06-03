@@ -189,16 +189,20 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 this[fieldCached] = value;
 
                 const $root = this.$changes.root;
+                // TODO: don't create a new ChangeTree - just update the root & parent.
 
                 if (isArray) {
                     // directly assigning an array of items as value.
                     this.$changes.change(field);
-                    value.$changes = new ChangeTree(value, {}, this.$changes, $root);
+
+                    value.$changes.setParent(this.$changes, $root);
+                    // value.$changes = new ChangeTree(value, {}, this.$changes, $root);
 
                     for (let i = 0; i < value.length; i++) {
                         if (value[i] instanceof Schema) {
-                            value[i].$changes = new ChangeTree(value[i], value[i]._indexes, value.$changes, $root);
-                            value[i].$changes.changeAll(value[i]);
+                            value[i].$changes.setParent(value.$changes, $root);
+                            // value[i].$changes = new ChangeTree(value[i], value[i]._indexes, value.$changes, $root);
+                            // value[i].$changes.changeAll(value[i]);
                         }
                         value.$changes.mapIndex(value[i], i);
                         value.$changes.change(i);
@@ -206,13 +210,13 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
                 } else if (isMap) {
                     // directly assigning a map
-                    value.$changes = new ChangeTree(value, {}, this.$changes, $root);
+                    value.$changes.setParent(this.$changes, $root);
                     this.$changes.change(field);
 
                     (value as MapSchema).forEach((val, key) => {
                         console.log("FLAG AS CHANGED:", key);
                         if (val instanceof Schema) {
-                            val.$changes = new ChangeTree(val, val._indexes, value.$changes, $root);
+                            val.$changes.setParent(value.$changes, $root);
                             // val.$changes.changeAll(val);
                         }
                         // value.$changes.mapIndex(val, key);
@@ -225,8 +229,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     this.$changes.change(field);
 
                     if (value) {
-                        value.$changes = new ChangeTree(value, value._indexes, this.$changes, $root);
-                        // value.$changes.changeAll(value);
+                        value.$changes.setParent(this.$changes, $root);
                     }
 
                 } else {
