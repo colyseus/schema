@@ -183,6 +183,7 @@ export abstract class Schema {
             const byte = bytes[it.offset++];
 
             if (byte === END_OF_STRUCTURE) {
+                console.log("REACHED!");
                 // reached end of strucutre. skip.
                 break;
             }
@@ -202,14 +203,23 @@ export abstract class Schema {
                 continue;
 
             } else if (operation === OPERATION.DELETE) {
+                //
+                // TODO: remove from $root.refs
+                //
+
                 value = null;
                 hasChange = true;
 
             } else if (Schema.is(type)) {
-                value = ref[_field] || this.createTypeInstance(bytes, it, type as typeof Schema);
-
                 const refId = decode.number(bytes, it);
-                $root.refs.set(refId, value);
+
+                if (operation === OPERATION.ADD) {
+                    value = this.createTypeInstance(bytes, it, type as typeof Schema);
+                    $root.refs.set(refId, value);
+
+                } else {
+                    value = $root.refs.get(refId);
+                }
 
                 value.decode(bytes, it, value);
 

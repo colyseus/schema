@@ -1,7 +1,6 @@
 import { Ref, Root } from "./Root";
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
-import { getJSDocReadonlyTag } from "typescript";
 
 // type FieldKey = string | number;
 
@@ -112,6 +111,7 @@ export class ChangeTree {
 
     discard() {
         this.changes.clear();
+        this.root.delete(this);
     }
 
     clone() {
