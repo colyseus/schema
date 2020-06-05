@@ -2,7 +2,7 @@ import * as util from "util";
 import * as assert from "assert";
 
 import { ChangeTree } from "../src/changes/ChangeTree";
-import { Schema, type, MapSchema, ArraySchema } from "../src";
+import { Schema, type, MapSchema, ArraySchema, filter } from "../src";
 
 describe("Next Iteration", () => {
 
@@ -50,7 +50,7 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.map.get("two"), 22);
     });
 
-    it("should encode string", () => {
+    xit("should encode string", () => {
         class Item extends Schema {
             @type("number") damage: number;
         }
@@ -80,12 +80,99 @@ describe("Next Iteration", () => {
 
         state.player = player;
 
-        const encoded = state.encode();
-        console.log("Length:", encoded.length, "=>", encoded);
+        let encoded = state.encode();
+        console.log("Full encode, length =>", encoded.length, "=>", encoded);
 
         const decoded = new State();
         decoded.decode(encoded);
         console.log("DECODED =>", decoded.toJSON());
+
+        state.num = 1;
+        state.player.x = 2;
+        state.player.item.damage = 6;
+
+        console.log("\n\nWILL ENCODE PATCH\n\n")
+        encoded = state.encode();
+
+        console.log("Patch encode, length:", encoded.length, "=>", encoded);
+        console.log("\n\nWILL DECODE\n\n")
+
+        decoded.decode(encoded);
+        console.log("DECODED =>", decoded.toJSON());
+    });
+
+    it("should encode filtered", () => {
+        class Item extends Schema {
+            @type("number") damage: number;
+        }
+
+        class Player extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+            @type(Item) item: Item;
+        }
+
+        class State extends Schema {
+            @filter(function(client) { return client.sessionId === "two"; })
+            @type("string") str: string;
+
+            @filter(function(client) { return client.sessionId === "two"; })
+            @type("number") num: number;
+
+            @filter(function(client) { return client.sessionId === "one"; })
+            @type(Player) player: Player;
+        };
+
+        const client1: any = { sessionId: "one" };
+        const client2: any = { sessionId: "two" };
+
+        const state = new State();
+        state.str = "Hello";
+        state.num = 10;
+
+        const player = new Player();
+        player.x = 10;
+        player.y = 20;
+
+        player.item = new Item();
+        player.item.damage = 5;
+
+        state.player = player;
+
+        let encoded = state.encode(undefined, undefined, undefined, true);
+        console.log("Full encode, length =>", encoded.length, "=>", encoded);
+
+        console.log("\n\nAPPLY FILTERS FOR CLIENT 1");
+
+        const encoded1 = state.applyFilters(encoded, client1);
+        console.log("Encode filtered (1), length =>", encoded1.length, "=>", encoded1);
+
+        console.log("\n\nAPPLY FILTERS FOR CLIENT 2");
+
+        const encoded2 = state.applyFilters(encoded, client2);
+        console.log("Encode filtered (2), length =>", encoded2.length, "=>", encoded2);
+
+        const decoded1 = new State();
+        decoded1.decode(encoded1);
+
+        const decoded2 = new State();
+        decoded2.decode(encoded2);
+
+        console.log("DECODED 1 =>", decoded1.toJSON());
+        console.log("DECODED 2 =>", decoded2.toJSON());
+
+        // state.num = 1;
+        // state.player.x = 2;
+        // state.player.item.damage = 6;
+
+        // console.log("\n\nWILL ENCODE PATCH\n\n")
+        // encoded = state.encode();
+
+        // console.log("Patch encode, length:", encoded.length, "=>", encoded);
+        // console.log("\n\nWILL DECODE\n\n")
+
+        // decoded.decode(encoded);
+        // console.log("DECODED =>", decoded.toJSON());
     });
 
     xit("encoding / decoding deep items", () => {

@@ -1,4 +1,4 @@
-import { END_OF_STRUCTURE, NIL, INDEX_CHANGE, TYPE_ID, OPERATION } from './spec';
+import { SWITCH_TO_STRUCTURE, NIL, INDEX_CHANGE, TYPE_ID, OPERATION } from './spec';
 import { Definition, FilterCallback, Client, PrimitiveType, Context } from "./annotations";
 
 import * as encode from "./encoding/encode";
@@ -148,7 +148,7 @@ export abstract class Schema {
     protected get _schema () { return (this.constructor as typeof Schema)._schema; }
     protected get _descriptors () { return (this.constructor as typeof Schema)._descriptors; }
     protected get _indexes () { return (this.constructor as typeof Schema)._indexes; }
-    protected get _fieldsByIndex() { return (this.constructor as typeof Schema)._fieldsByIndex }
+    protected get _fieldsByIndex() { return (this.constructor as typeof Schema)._fieldsByIndex; }
     protected get _filters () { return (this.constructor as typeof Schema)._filters; }
     protected get _deprecated () { return (this.constructor as typeof Schema)._deprecated; }
 
@@ -164,15 +164,14 @@ export abstract class Schema {
     }
 
     // decode(bytes, it: decode.Iterator = { offset: 0 }, ref: Ref = this) {
-    decode(bytes, it: decode.Iterator = { offset: 0 }, ref: Schema = this) {
+    decode(bytes, it: decode.Iterator = { offset: 0 }, ref?: Schema, changes: DataChange[] = []) {
         const $root = this.$changes.root;
-
-        const changes: DataChange[] = [];
-
-        const schema = ref._schema;
-        const fieldsByIndex = ref._fieldsByIndex;
-
         const totalBytes = bytes.length;
+
+        let schema: Definition;
+        let fieldsByIndex: {[index: number]: string};
+
+        console.log("REFS =>", Array.from($root.refs));
 
         // // skip TYPE_ID of existing instances
         // if (bytes[it.offset] === TYPE_ID) {
@@ -180,13 +179,29 @@ export abstract class Schema {
         // }
 
         while (it.offset < totalBytes) {
-            const byte = bytes[it.offset++];
+            let byte = bytes[it.offset++];
 
-            if (byte === END_OF_STRUCTURE) {
-                console.log("REACHED!");
-                // reached end of strucutre. skip.
-                break;
+            if (byte === SWITCH_TO_STRUCTURE) {
+                const refId = decode.number(bytes, it);
+                console.log("SWITCH_TO_STRUCTURE", { refId });
+                console.log("decode refID =>", refId);
+                if (!$root.refs.has(refId)) {
+                    console.log("refId", refId, "does not exist.");
+                    $root.refs.set(refId, this);
+                    ref = this;
+
+                } else {
+                    console.log("refId", refId, "exists!");
+                    ref = $root.refs.get(refId) as Schema;
+                }
+
+                schema = ref._schema;
+                fieldsByIndex = ref._fieldsByIndex;
+
+                continue;
             }
+
+            // console.log({ byte });
 
             const operation = (byte >> 6) << 6;
             const fieldIndex = byte % (operation || 256);
@@ -198,6 +213,8 @@ export abstract class Schema {
             let value: any;
 
             let hasChange = false;
+
+            console.log("decode:", { field, fieldIndex, operation: OPERATION[operation] });
 
             if (!field) {
                 continue;
@@ -212,6 +229,7 @@ export abstract class Schema {
 
             } else if (Schema.is(type)) {
                 const refId = decode.number(bytes, it);
+                console.log("decode =>", { refId, offset: it.offset });
 
                 if (operation === OPERATION.ADD) {
                     value = this.createTypeInstance(bytes, it, type as typeof Schema);
@@ -221,7 +239,7 @@ export abstract class Schema {
                     value = $root.refs.get(refId);
                 }
 
-                value.decode(bytes, it, value);
+                // value.decode(bytes, it, value);
 
                 hasChange = true;
 
@@ -341,7 +359,7 @@ export abstract class Schema {
                     // TODO: do not encode a higher number than actual encoded entries
                     if (
                         bytes[it.offset] === undefined ||
-                        bytes[it.offset] === END_OF_STRUCTURE
+                        bytes[it.offset] === SWITCH_TO_STRUCTURE
                     ) {
                         break;
                     }
@@ -428,7 +446,6 @@ export abstract class Schema {
 
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
-                console.log("DECODE PRIMITIVE TYPE:", { field, value });
 
                 // FIXME: should not even have encoded if value haven't changed in the first place!
                 // check FilterTest.ts: "should not trigger `onChange` if field haven't changed"
@@ -448,7 +465,7 @@ export abstract class Schema {
 
         this._triggerChanges(changes);
 
-        return this;
+        return changes;
     }
 
     encode(
@@ -458,14 +475,7 @@ export abstract class Schema {
         useFilters: boolean = false,
     ) {
         const $root = root.$changes.root;
-
-        // const changeTrees = (isRoot)
-        //     ? Array.from($root.changes)
-        //     : [this.$changes];
-
         const changeTrees = Array.from($root.changes);
-
-        console.log("CHANGE TREES =>", changeTrees);
 
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const change = changeTrees[i];
@@ -473,10 +483,9 @@ export abstract class Schema {
             // const indexes = change.indexes;
 
             // root `refId` is skipped.
-            if (change.refId > 0) {
-                console.log("Structure id =>", change.refId);
-                encode.number(bytes, change.refId);
-            }
+            console.log("encode, refId =>", change.refId);
+            encode.uint8(bytes, SWITCH_TO_STRUCTURE);
+            encode.number(bytes, change.refId);
 
             // console.log("changetree:", change);
 
@@ -506,16 +515,19 @@ export abstract class Schema {
                 encode.uint8(bytes, fieldIndex | operation.op);
 
                 if (operation.op === OPERATION.DELETE) {
+                    // TODO: delete from $root.cache
                     continue;
                 }
 
                 if (Schema.is(type)) {
-                    // encode child object
                     assertInstanceType(value, type as typeof Schema, ref, field);
                     this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
 
-                    // console.log("ENCODING CHILD SCHEMA:");
-                    // (value as Schema).encode(root, encodeAll, bytes, useFilters);
+                    //
+                    // Encode refId for this instance.
+                    // The actual instance is going to be encoded on next `changeTree` iteration.
+                    //
+                    encode.number(bytes, value.$changes.refId);
 
                 } else if (ArraySchema.is(type)) {
                     console.log("ENCODING ARRAY!");
@@ -680,18 +692,14 @@ export abstract class Schema {
                     }
 
                 } else {
-                    console.log("ENCODING PRIMITIVE", { type, value, field });
                     encodePrimitiveType(type as PrimitiveType, bytes, value, ref, field)
                 }
 
                 if (useFilters) {
                     // cache begin / end index
-                    $root.cache(fieldIndex as number, beginIndex, bytes.length)
+                    change.cache(fieldIndex as number, beginIndex, bytes.length)
                 }
             }
-
-            // flag end of Schema object structure
-            this._encodeEndOfStructure(ref, root, bytes);
 
             if (!encodeAll && !useFilters) {
                 change.discard();
@@ -710,16 +718,22 @@ export abstract class Schema {
     }
 
     applyFilters(encodedBytes: number[], client: Client, root = this, encodeAll: boolean = false) {
-        const $root = root.$changes.root;
         let filteredBytes: number[] = [];
+        const enqueuedStrutures: Schema[] = [];
 
         const schema = this._schema;
         const fieldsByIndex = this._fieldsByIndex;
         const filters = this._filters;
 
-        for (let index in $root.caches) {
+        encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
+        encode.number(filteredBytes, this.$changes.refId);
+
+        console.log("CACHES:", this.$changes.caches);
+
+        for (let index in this.$changes.caches) {
             const fieldIndex = parseInt(index);
-            const cache = $root.caches[fieldIndex];
+            const change = this.$changes.changes.get(fieldIndex);
+            const cache = this.$changes.caches[fieldIndex];
             const field = fieldsByIndex[fieldIndex];
 
             const type = schema[field];
@@ -736,15 +750,11 @@ export abstract class Schema {
 
             if (Schema.is(type)) {
                 console.log("IS SCHEMA", {type, field, cache})
-                filteredBytes.push(fieldIndex);
+                encode.uint8(filteredBytes, fieldIndex | change.op);
 
-                if (value) {
-                    filteredBytes = [
-                        ...filteredBytes,
-                        ...(value as Schema).applyFilters(encodedBytes, client, root, encodeAll)
-                    ];
-                } else {
-                    filteredBytes = [...filteredBytes, ...encodedBytes.slice(cache.beginIndex, cache.endIndex)];
+                if (change.op !== OPERATION.DELETE) {
+                    encode.number(filteredBytes, value.$changes.refId);
+                    enqueuedStrutures.push(value);
                 }
 
             } else if (ArraySchema.is(type)) {
@@ -881,7 +891,13 @@ export abstract class Schema {
             }
         }
 
-        filteredBytes.push(END_OF_STRUCTURE);
+        console.log("Enqueued structures =>", enqueuedStrutures);
+        enqueuedStrutures.forEach(structure => {
+            filteredBytes = [
+                ...filteredBytes,
+                ...(structure as Schema).applyFilters(encodedBytes, client, root, encodeAll)
+            ];
+        })
 
         return filteredBytes;
     }
@@ -996,7 +1012,7 @@ export abstract class Schema {
 
     private _encodeEndOfStructure(instance: Schema, root: Schema, bytes: number[]) {
         if (instance !== root) {
-            bytes.push(END_OF_STRUCTURE);
+            bytes.push(SWITCH_TO_STRUCTURE);
         }
     }
 
@@ -1008,14 +1024,21 @@ export abstract class Schema {
     }
 
     private createTypeInstance (bytes: number[], it: decode.Iterator, type: typeof Schema): Schema {
+        let instance: Schema;
+
         if (bytes[it.offset] === TYPE_ID) {
             it.offset++;
             const anotherType = (this.constructor as typeof Schema)._context.get(decode.uint8(bytes, it));
-            return new (anotherType as any)();
+            instance = new (anotherType as any)();
 
         } else {
-            return new (type as any)();
+            instance = new (type as any)();
         }
+
+        // assign root on $changes
+        instance.$changes.root = this.$changes.root;
+
+        return instance;
     }
 
     private _triggerChanges(changes: DataChange[]) {

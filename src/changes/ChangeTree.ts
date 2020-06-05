@@ -23,6 +23,9 @@ export class ChangeTree {
     changes = new Map<number, ChangeOperation>();
     allChanges = new Set<number>();
 
+    // cached indexes for filtering
+    caches: {[field: number]: FieldCache} = {};
+
     constructor(
         public ref: Ref,
         public indexes: { [field: string]: number } = {},
@@ -101,6 +104,9 @@ export class ChangeTree {
         this.changes.set(index, { op: OPERATION.DELETE, index });
         this.allChanges.delete(index);
 
+        // delete cache
+        delete this.caches[index];
+
         //
         // delete child from root changes.
         //
@@ -112,6 +118,10 @@ export class ChangeTree {
     discard() {
         this.changes.clear();
         this.root.delete(this);
+    }
+
+    cache(field: number, beginIndex: number, endIndex: number) {
+        this.caches[field] = { beginIndex, endIndex };
     }
 
     clone() {

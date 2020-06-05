@@ -1,4 +1,7 @@
-export const END_OF_STRUCTURE = 0xc1; // 193 (msgpack spec: never used)
+export const PUSH_STRUCTURE = 190;
+export const POP_STRUCTURE = 191;
+export const SWITCH_TO_STRUCTURE = 0xc1; // 193
+
 export const NIL = 0xc0; // 192
 export const INDEX_CHANGE = 0xd4; // 212
 export const TYPE_ID = 0xd5; // 213

@@ -16,9 +16,6 @@ export class Root {
     changes = new Set<ChangeTree>();
     allChanges = new Set<ChangeTree>();
 
-    // cached indexes for filtering
-    caches: {[field: number]: FieldCache} = {};
-
     dirty(change: ChangeTree) {
         this.changes.add(change);
         this.allChanges.add(change);
@@ -27,10 +24,6 @@ export class Root {
     delete (change: ChangeTree) {
         this.changes.delete(change);
         this.allChanges.delete(change);
-    }
-
-    cache(field: number, beginIndex: number, endIndex: number) {
-        this.caches[field] = { beginIndex, endIndex };
     }
 }
 

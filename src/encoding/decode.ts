@@ -1,4 +1,4 @@
-import { NIL, INDEX_CHANGE } from "../spec";
+import { NIL, INDEX_CHANGE, SWITCH_TO_STRUCTURE } from "../spec";
 /**
  * Copyright (c) 2018 Endel Dreyer
  * Copyright (c) 2014 Ion Drive Software Ltd.
@@ -266,6 +266,10 @@ export function arrayCheck (bytes, it: Iterator) {
 
 export function nilCheck(bytes, it: Iterator) {
   return bytes[it.offset] === NIL;
+}
+
+export function switchStructureCheck(bytes, it: Iterator) {
+  return bytes[it.offset] === SWITCH_TO_STRUCTURE;
 }
 
 export function indexChangeCheck(bytes, it: Iterator) {
