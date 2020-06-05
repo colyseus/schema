@@ -144,12 +144,12 @@ describe("Next Iteration", () => {
 
         console.log("\n\nAPPLY FILTERS FOR CLIENT 1");
 
-        const encoded1 = state.applyFilters(encoded, client1);
+        let encoded1 = state.applyFilters(encoded, client1);
         console.log("Encode filtered (1), length =>", encoded1.length, "=>", encoded1);
 
         console.log("\n\nAPPLY FILTERS FOR CLIENT 2");
 
-        const encoded2 = state.applyFilters(encoded, client2);
+        let encoded2 = state.applyFilters(encoded, client2);
         console.log("Encode filtered (2), length =>", encoded2.length, "=>", encoded2);
 
         const decoded1 = new State();
@@ -161,18 +161,30 @@ describe("Next Iteration", () => {
         console.log("DECODED 1 =>", decoded1.toJSON());
         console.log("DECODED 2 =>", decoded2.toJSON());
 
-        // state.num = 1;
-        // state.player.x = 2;
-        // state.player.item.damage = 6;
+        state.discardAllChanges();
 
-        // console.log("\n\nWILL ENCODE PATCH\n\n")
-        // encoded = state.encode();
+        state.num = 1;
+        state.player.x = 2;
+        state.player.item.damage = 6;
 
-        // console.log("Patch encode, length:", encoded.length, "=>", encoded);
-        // console.log("\n\nWILL DECODE\n\n")
+        console.log("\n\nWILL ENCODE PATCH\n\n")
+        encoded = state.encode(undefined, undefined, undefined, true);
 
-        // decoded.decode(encoded);
-        // console.log("DECODED =>", decoded.toJSON());
+        console.log("Patch encode, length:", encoded.length, "=>", encoded);
+        console.log("\n\nWILL DECODE\n\n")
+
+        encoded1 = state.applyFilters(encoded, client1);
+        console.log("Encode filtered (1), length =>", encoded1.length, "=>", encoded1);
+
+        encoded2 = state.applyFilters(encoded, client2);
+        console.log("Encode filtered (2), length =>", encoded2.length, "=>", encoded2);
+
+        decoded1.decode(encoded1);
+        decoded2.decode(encoded2);
+
+        console.log("DECODED 1 =>", decoded1.toJSON());
+        console.log("DECODED 2 =>", decoded2.toJSON());
+
     });
 
     xit("encoding / decoding deep items", () => {

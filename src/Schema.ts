@@ -730,9 +730,7 @@ export abstract class Schema {
 
         console.log("CACHES:", this.$changes.caches);
 
-        for (let index in this.$changes.caches) {
-            const fieldIndex = parseInt(index);
-            const change = this.$changes.changes.get(fieldIndex);
+        this.$changes.changes.forEach((change, fieldIndex) => {
             const cache = this.$changes.caches[fieldIndex];
             const field = fieldsByIndex[fieldIndex];
 
@@ -741,11 +739,11 @@ export abstract class Schema {
             const _field = `_${field}`;
             const value = this[_field];
 
-            console.log( {field, filter, cache});
+            console.log({ field, filter, change, cache });
 
             if (filter && !filter.call(this, client, value, root)) {
                 console.log("SKIP", field, "AT", fieldIndex)
-                continue;
+                return;
             }
 
             if (Schema.is(type)) {
@@ -889,7 +887,7 @@ export abstract class Schema {
             } else {
                 filteredBytes = [...filteredBytes, ...encodedBytes.slice(cache.beginIndex, cache.endIndex)];
             }
-        }
+        });
 
         console.log("Enqueued structures =>", enqueuedStrutures);
         enqueuedStrutures.forEach(structure => {
