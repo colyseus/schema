@@ -1,10 +1,15 @@
 import { ChangeTree } from "../changes/ChangeTree";
+import { Schema } from "../Schema";
 
 type K = string; // TODO: allow to specify K generic on MapSchema.
 
 export class MapSchema<V=any> {
     protected $changes: ChangeTree;
+
     protected $items: Map<string, V> = new Map<string, V>();
+    protected $indexes: Map<number, string> = new Map<number, string>();
+
+    protected $refId: number;
 
     static is(type: any) {
         return type['map'] !== undefined;
@@ -21,7 +26,12 @@ export class MapSchema<V=any> {
         }
 
         Object.defineProperties(this, {
-            $changes:     { value: undefined, enumerable: false, writable: true },
+            $changes:     {
+                value: new ChangeTree(this, {}),
+                enumerable: false,
+                writable: true
+            },
+            $refId:       { value: 0,         enumerable: false, writable: true },
 
             onAdd:        { value: undefined, enumerable: false, writable: true },
             onRemove:     { value: undefined, enumerable: false, writable: true },
@@ -92,11 +102,17 @@ export class MapSchema<V=any> {
     }
 
     set(key: K, value: V) {
-        if (this.$changes) {
-            this.$changes.change(key);
-        }
-
         this.$items.set(key, value);
+
+        // set "index" for reference.
+        const index = (value instanceof Schema)
+            ? value['$changes'].refId
+            : this.$refId++
+
+        this.$changes.indexes[key] = index;
+        this.$indexes.set(index, key);
+
+        this.$changes.change(key);
 
         return this;
     }
@@ -135,6 +151,10 @@ export class MapSchema<V=any> {
 
     get size () {
         return this.$items.size;
+    }
+
+    protected getByIndex(index: number) {
+        return this.$items.get(this.$indexes.get(index));
     }
 
     //

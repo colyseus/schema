@@ -189,13 +189,16 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 this[fieldCached] = value;
 
                 const $root = this.$changes.root;
-                // TODO: don't create a new ChangeTree - just update the root & parent.
 
                 if (isArray) {
                     // directly assigning an array of items as value.
                     this.$changes.change(field);
 
-                    value.$changes.setParent(this.$changes, $root);
+                    value.$changes.setParent(
+                        this.$changes,
+                        $root,
+                        constructor._schema[field],
+                    );
                     // value.$changes = new ChangeTree(value, {}, this.$changes, $root);
 
                     for (let i = 0; i < value.length; i++) {
@@ -210,13 +213,21 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
                 } else if (isMap) {
                     // directly assigning a map
-                    value.$changes.setParent(this.$changes, $root);
+                    value.$changes.setParent(
+                        this.$changes,
+                        $root,
+                        (constructor._schema[field] as any).map,
+                    );
+
                     this.$changes.change(field);
 
                     (value as MapSchema).forEach((val, key) => {
                         console.log("FLAG AS CHANGED:", key);
                         if (val instanceof Schema) {
-                            val.$changes.setParent(value.$changes, $root);
+                            val.$changes.setParent(
+                                value.$changes,
+                                $root,
+                            );
                             // val.$changes.changeAll(val);
                         }
                         // value.$changes.mapIndex(val, key);
@@ -229,7 +240,11 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     this.$changes.change(field);
 
                     if (value) {
-                        value.$changes.setParent(this.$changes, $root);
+                        value.$changes.setParent(
+                            this.$changes,
+                            $root,
+                            constructor._schema[field],
+                        );
                     }
 
                 } else {

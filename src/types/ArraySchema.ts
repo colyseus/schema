@@ -18,7 +18,11 @@ export class ArraySchema<T=any> extends Array<T> {
         Object.setPrototypeOf(this, Object.create(ArraySchema.prototype));
         Object.defineProperties(this, {
             $sorting:     { value: undefined, enumerable: false, writable: true },
-            $changes:     { value: undefined, enumerable: false, writable: true },
+            $changes:     {
+                value: new ChangeTree(this, {}),
+                enumerable: false,
+                writable: true
+            },
 
             onAdd:        { value: undefined, enumerable: false, writable: true },
             onRemove:     { value: undefined, enumerable: false, writable: true },

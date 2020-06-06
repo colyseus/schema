@@ -1,6 +1,7 @@
 import { Ref, Root } from "./Root";
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
+import { DefinitionType, PrimitiveType } from "../annotations";
 
 // type FieldKey = string | number;
 
@@ -20,6 +21,9 @@ export interface FieldCache {
 export class ChangeTree {
     refId: number;
 
+    dynamicIndexes: boolean;
+    childType: PrimitiveType;
+
     changes = new Map<number, ChangeOperation>();
     allChanges = new Set<number>();
 
@@ -33,11 +37,22 @@ export class ChangeTree {
         protected _root?: Root,
     ) {
         this.setParent(parent, _root || new Root());
+
+        //
+        // Use "dynamic indexes" for:
+        // MapSchema / ArraySchema / SetSchema
+        //
+        this.dynamicIndexes = !(ref instanceof Schema);
     }
 
-    setParent(parent: ChangeTree, root: Root) {
+    setParent(
+        parent: ChangeTree,
+        root: Root,
+        childType?: PrimitiveType,
+    ) {
         this.parent = parent;
         this.root = root;
+        this.childType = childType;
 
         //
         // assign same parent on child structures
@@ -91,6 +106,14 @@ export class ChangeTree {
         this.allChanges.add(index);
 
         this.root.dirty(this);
+    }
+
+    getType(index: number) {
+
+    }
+
+    getValue(index: number) {
+        return this.ref['getByIndex'](index);
     }
 
     delete(fieldName: string | number) {

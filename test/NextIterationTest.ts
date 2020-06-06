@@ -27,26 +27,37 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.arr, ['one', 'twotwo', 'three']);
     });
 
-    xit("add and modify a map item", () => {
+    it("add and modify a map item", () => {
         class State extends Schema {
             @type({ map: "number" })
             map = new Map<string, number>();
         }
 
-        const encoded = new State();
-        encoded.map.set("one", 1);
-        encoded.map.set("two", 2);
-        encoded.map.set("three", 3);
+        const state = new State();
+        state.map.set("one", 1);
+        state.map.set("two", 2);
+        state.map.set("three", 3);
 
         const decoded = new State();
-        decoded.decode(encoded.encode());
+
+        let encoded = state.encode();
+        console.log("ENCODED (full):", encoded);
+
+        console.log("\n\nWILL DECODE:\n");
+        decoded.decode(encoded);
+
         assert.deepEqual(decoded.map.get("one"), 1);
         assert.deepEqual(decoded.map.get("two"), 2);
         assert.deepEqual(decoded.map.get("three"), 3);
 
-        encoded.map.set("two", 22);
+        state.map.set("two", 22);
 
-        decoded.decode(encoded.encode());
+        encoded = state.encode();
+        console.log("ENCODED (patch):", encoded);
+
+        console.log("\n\nWILL DECODE:\n");
+        decoded.decode(encoded);
+
         assert.deepEqual(decoded.map.get("two"), 22);
     });
 
@@ -101,7 +112,7 @@ describe("Next Iteration", () => {
         console.log("DECODED =>", decoded.toJSON());
     });
 
-    it("should encode filtered", () => {
+    xit("should encode filtered", () => {
         class Item extends Schema {
             @type("number") damage: number;
         }
