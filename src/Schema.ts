@@ -56,13 +56,24 @@ function assertType(value: any, type: string, klass: Schema, field: string | num
     }
 }
 
-function assertInstanceType(value: Schema, type: typeof Schema | typeof ArraySchema | typeof MapSchema, klass: Schema, field: string | number) {
+function assertInstanceType(
+    value: Schema,
+    type: typeof Schema | typeof ArraySchema | typeof MapSchema,
+    klass: Schema,
+    field: string | number,
+) {
     if (!(value instanceof type)) {
         throw new EncodeSchemaError(`a '${type.name}' was expected, but '${(value as any).constructor.name}' was provided in ${klass.constructor.name}#${field}`);
     }
 }
 
-function encodePrimitiveType (type: PrimitiveType, bytes: number[], value: any, klass: Schema, field: string | number) {
+function encodePrimitiveType(
+    type: PrimitiveType,
+    bytes: number[],
+    value: any,
+    klass: Schema,
+    field: string | number,
+) {
     assertType(value, type as string, klass, field);
 
     const encodeFunc = encode[type as string];
@@ -163,8 +174,12 @@ export abstract class Schema {
             this.$listeners[attr as string].remove(callback);
     }
 
-    // decode(bytes, it: decode.Iterator = { offset: 0 }, ref: Ref = this) {
-    decode(bytes, it: decode.Iterator = { offset: 0 }, ref?: Schema | MapSchema | ArraySchema, changes: DataChange[] = []) {
+    decode(
+        bytes: number[],
+        it: decode.Iterator = { offset: 0 },
+        ref?: Ref,
+        changes: DataChange[] = [],
+    ) {
         const $root = this.$changes.root;
         const totalBytes = bytes.length;
 
@@ -414,23 +429,21 @@ export abstract class Schema {
 
             encode.uint8(bytes, SWITCH_TO_STRUCTURE);
             encode.number(bytes, changeTree.refId);
-            console.log("SWITCH TO STRUCTURE, refId =>", bytes);
 
             const changes = (encodeAll)
                 ? Array.from(changeTree.allChanges)
                 : Array.from(changeTree.changes.keys());
 
             for (let j = 0, cl = changes.length; j < cl; j++) {
-                console.log("CHANGES =>", changeTree.changes);
                 const fieldIndex = changes[j];
                 const operation = changeTree.changes.get(fieldIndex);
-
-                console.log("CHANGETREE_TYPE", changeTree.childType);
 
                 const field = (ref._fieldsByIndex && ref._fieldsByIndex[fieldIndex]) || fieldIndex;
                 const _field = `_${field}`;
 
                 const type = changeTree.childType || ref._schema[field];
+                console.log("FIELD TYPE:", {field, type});
+                console.log("changeTree.childType =>", changeTree.childType);
 
                 // const type = changeTree.getType(fieldIndex);
                 const value = changeTree.getValue(fieldIndex);
@@ -545,7 +558,6 @@ export abstract class Schema {
                     // The actual instance is going to be encoded on next `changeTree` iteration.
                     //
                     encode.number(bytes, value.$changes.refId);
-                    console.log("ENCODE MAP refId =>", bytes);
 
                 } else {
                     encodePrimitiveType(type as PrimitiveType, bytes, value, ref, field)
@@ -580,8 +592,6 @@ export abstract class Schema {
         encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
         encode.number(filteredBytes, this.$changes.refId);
 
-        console.log("CACHES:", this.$changes.caches);
-
         this.$changes.changes.forEach((change, fieldIndex) => {
             const cache = this.$changes.caches[fieldIndex];
             const field = fieldsByIndex[fieldIndex];
@@ -598,146 +608,21 @@ export abstract class Schema {
                 return;
             }
 
-            if (Schema.is(type)) {
-                console.log("IS SCHEMA", {type, field, cache})
-                encode.uint8(filteredBytes, fieldIndex | change.op);
-
-                if (change.op !== OPERATION.DELETE) {
-                    encode.number(filteredBytes, value.$changes.refId);
-                    enqueuedStrutures.push(value);
-                }
-
-            } else if (ArraySchema.is(type)) {
-                const $changes: ChangeTree = value.$changes;
-
-                encode.number(encodedBytes, fieldIndex);
-
-                // total number of items in the array
-                encode.number(encodedBytes, value.length);
-
-                const arrayChanges = Array.from(
-                    (encodeAll)
-                        ? Array.from($changes.allChanges)
-                        : Array.from($changes.changes.keys())
-                    )
-                    .filter(index => this[_field][index] !== undefined)
-                    .sort((a: number, b: number) => a - b);
-
-                // ensure number of changes doesn't exceed array length
-                const numChanges = arrayChanges.length;
-
-                // number of changed items
-                encode.number(encodedBytes, numChanges);
-
-                const isChildSchema = typeof(type[0]) !== "string";
-
-                // encode Array of type
-                for (let j = 0; j < numChanges; j++) {
-                    const index = arrayChanges[j];
-                    const item = this[_field][index];
-
-                    if (isChildSchema) { // is array of Schema
-                        encode.number(encodedBytes, index);
-
-                        if (!encodeAll)  {
-                            // const indexChange = $changes.getIndexChange(item);
-                            // if (indexChange !== undefined) {
-                            //     encode.uint8(encodedBytes, INDEX_CHANGE);
-                            //     encode.number(encodedBytes, indexChange);
-                            // }
-                        }
-
-                        this.tryEncodeTypeId(encodedBytes, type[0] as typeof Schema, item.constructor as typeof Schema);
-
-                        (item as Schema).applyFilters(encodedBytes, client, root, encodeAll)
-
-                    } else if (item !== undefined) { // is array of primitives
-                        encode.number(encodedBytes, index);
-                        encodePrimitiveType(type[0], encodedBytes, item, this, field);
-                    }
-                }
-
-            } else if (MapSchema.is(type)) {
-                const $changes: ChangeTree = value.$changes;
-
-                // encode Map of type
-                encode.number(encodedBytes, fieldIndex);
-
-                // TODO: during `encodeAll`, removed entries are not going to be encoded
-                const keys = Array.from(
-                    (encodeAll)
-                        ? Array.from($changes.allChanges)
-                        : Array.from($changes.changes.keys())
-                );
-
-                encode.number(encodedBytes, keys.length)
-
-                // const previousKeys = Object.keys(this[_field]); // this is costly!
-                const previousKeys = Array.from($changes.allChanges);
-                const isChildSchema = typeof((type as any).map) !== "string";
-                const numChanges = keys.length;
-
-                for (let i = 0; i < numChanges; i++) {
-                    const key = keys[i];
-                    const item = this[_field][key];
-
-                    let mapItemIndex: number = undefined;
-
-                    if (encodeAll) {
-                        if (item === undefined) {
-                            // previously deleted items are skipped during `encodeAll`
-                            continue;
-                        }
-
-                    } else {
-                        // // encode index change
-                        // const indexChange = $changes.getIndexChange(item);
-                        // if (item && indexChange !== undefined) {
-                        //     encode.uint8(encodedBytes, INDEX_CHANGE);
-                        //     encode.number(encodedBytes, this[_field]._indexes.get(indexChange));
-                        // }
-
-                        /**
-                         * - Allow item replacement
-                         * - Allow to use the index of a deleted item to encode as NIL
-                         */
-                        // mapItemIndex = (!$changes.isDeleted(key) || !item)
-                        //     ? this[_field]._indexes.get(key)
-                        //     : undefined;
-                    }
-
-                    const isNil = (item === undefined);
-
-                    /**
-                     * Invert NIL to prevent collision with data starting with NIL byte
-                     */
-                    if (isNil) {
-
-                        // TODO: remove item
-                        // console.log("REMOVE KEY INDEX", { key });
-                        // this[_field]._indexes.delete(key);
-                        encode.uint8(encodedBytes, NIL);
-                    }
-
-                    if (mapItemIndex !== undefined) {
-                        encode.number(encodedBytes, mapItemIndex);
-
-                    } else {
-                        encode.string(encodedBytes, key);
-                    }
-
-                    if (item && isChildSchema) {
-                        this.tryEncodeTypeId(encodedBytes, (type as any).map, item.constructor as typeof Schema);
-                        (item as Schema).applyFilters(encodedBytes, client, root, encodeAll)
-
-                    } else if (!isNil) {
-                        encodePrimitiveType((type as any).map, encodedBytes, item, this, field);
-                    }
-
-                }
+            if (change.op === OPERATION.DELETE) {
+                encode.uint8(filteredBytes, change.op);
+                encode.number(filteredBytes, fieldIndex);
+                return;
 
             } else {
                 filteredBytes = [...filteredBytes, ...encodedBytes.slice(cache.beginIndex, cache.endIndex)];
+            }
+
+            //
+            // value is a Ref (Schema, MapSchema, etc)
+            // - enqueue it for applying filters too.
+            //
+            if (value['$changes'] !== undefined) {
+                enqueuedStrutures.push(value);
             }
         });
 

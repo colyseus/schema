@@ -245,7 +245,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         value.$changes.setParent(
                             this.$changes,
                             $root,
-                            constructor._schema[field],
+                            // constructor._schema[field],
                         );
                     }
 
