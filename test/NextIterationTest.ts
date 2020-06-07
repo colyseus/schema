@@ -27,7 +27,7 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.arr, ['one', 'twotwo', 'three']);
     });
 
-    it("add and modify a map item", () => {
+    xit("add and modify a map item", () => {
         class State extends Schema {
             @type({ map: "number" })
             map = new Map<string, number>();
@@ -41,26 +41,73 @@ describe("Next Iteration", () => {
         const decoded = new State();
 
         let encoded = state.encode();
-        console.log("ENCODED (FULL), bytes =>", encoded.length, encoded);
-
-        console.log("\n\nWILL DECODE:\n");
         decoded.decode(encoded);
 
         assert.deepEqual(decoded.map.get("one"), 1);
         assert.deepEqual(decoded.map.get("two"), 2);
         assert.deepEqual(decoded.map.get("three"), 3);
-        console.log("DECODED =>", decoded.toJSON());
 
         state.map.set("two", 22);
 
-        console.log("\n\nWILL ENCODE PATCH:\n");
         encoded = state.encode();
-        console.log("ENCODED (PATCH), bytes =>", encoded.length, encoded);
-
-        console.log("\n\nWILL DECODE:\n");
         decoded.decode(encoded);
 
         assert.deepEqual(decoded.map.get("two"), 22);
+    });
+
+    it("add and modify a filtered map item", () => {
+        class State extends Schema {
+            @filter(function(client, value, root) {
+                return client.sessionId === value;
+            })
+            @type({ map: "number" })
+            map = new Map<string, number>();
+        }
+
+        const state = new State();
+        state.map.set("one", 1);
+        state.map.set("two", 2);
+        state.map.set("three", 3);
+
+        const client1 = { sessionId: "one" };
+        const client2 = { sessionId: "two" };
+        const client3 = { sessionId: "three" };
+
+        const decoded1 = new State();
+        const decoded2 = new State();
+        const decoded3 = new State();
+
+        let encoded = state.encode(undefined, undefined, undefined, true);
+
+        console.log("ENCODED (FULL)", encoded.length, encoded);
+
+        let encoded1 = state.applyFilters(encoded, client1);
+        console.log("ENCODED (CLIENT 1)", encoded1.length, encoded1);
+
+        let encoded2 = state.applyFilters(encoded, client2);
+        console.log("ENCODED (CLIENT 2)", encoded2.length, encoded2);
+
+        let encoded3 = state.applyFilters(encoded, client3);
+        console.log("ENCODED (CLIENT 3)", encoded3.length, encoded3);
+
+        decoded1.decode(encoded1);
+        assert.equal(decoded1.map.size, 1);
+        assert.equal(decoded1.map.get("one"), 1);
+
+        decoded2.decode(encoded2);
+        assert.equal(decoded2.map.size, 1);
+        assert.equal(decoded2.map.get("two"), 2);
+
+        decoded3.decode(encoded3);
+        assert.equal(decoded3.map.size, 1);
+        assert.equal(decoded3.map.get("three"), 3);
+
+        // state.map.set("two", 22);
+
+        // encoded = state.encode();
+        // decoded1.decode(encoded);
+
+        assert.deepEqual(decoded1.map.get("two"), 22);
     });
 
     xit("should encode string", () => {

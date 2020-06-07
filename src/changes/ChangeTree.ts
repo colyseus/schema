@@ -109,7 +109,7 @@ export class ChangeTree {
     }
 
     getType(index: number) {
-
+        throw new Error("not implemented");
     }
 
     //
@@ -117,13 +117,6 @@ export class ChangeTree {
     //
     getValue(index: number) {
         return this.ref['getByIndex'](index);
-    }
-
-    //
-    // used during `.decode()`
-    //
-    setValue(index: number, value: any, dynamicIndex: string | number) {
-        this.ref
     }
 
     delete(fieldName: string | number) {

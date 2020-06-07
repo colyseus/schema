@@ -69,6 +69,8 @@ export function type (type: DefinitionType, context: Context = globalContext): P
         if (!context.has(constructor)) {
             context.add(constructor);
 
+            // TODO: move all this stuff to its own holder object.
+
             // support inheritance
             constructor._schema = Object.assign({}, constructor._schema || {});
             constructor._indexes = Object.assign({}, constructor._indexes || {});

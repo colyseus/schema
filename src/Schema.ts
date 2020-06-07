@@ -583,10 +583,8 @@ export abstract class Schema {
 
     applyFilters(encodedBytes: number[], client: Client, root = this, encodeAll: boolean = false) {
         let filteredBytes: number[] = [];
-        const enqueuedStrutures: Schema[] = [];
 
-        const schema = this._schema;
-        const fieldsByIndex = this._fieldsByIndex;
+        const enqueuedStrutures: Schema[] = [];
         const filters = this._filters;
 
         encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
@@ -594,17 +592,14 @@ export abstract class Schema {
 
         this.$changes.changes.forEach((change, fieldIndex) => {
             const cache = this.$changes.caches[fieldIndex];
-            const field = fieldsByIndex[fieldIndex];
 
-            const type = schema[field];
+            const value = this.$changes.getValue(fieldIndex);
             const filter = (filters && filters[field]);
-            const _field = `_${field}`;
-            const value = this[_field];
 
-            console.log({ field, filter, change, cache });
+            console.log({ fieldIndex, filter, change, cache });
 
             if (filter && !filter.call(this, client, value, root)) {
-                console.log("SKIP", field, "AT", fieldIndex)
+                console.log("SKIPPING", fieldIndex)
                 return;
             }
 
