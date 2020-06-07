@@ -105,6 +105,7 @@ export class MapSchema<V=any> {
         this.$items.set(key, value);
 
         //
+        // (encoding)
         // set a unique id to relate directly with this key/value.
         //
         if (!this.$changes.indexes[key]) {
@@ -156,6 +157,10 @@ export class MapSchema<V=any> {
 
     get size () {
         return this.$items.size;
+    }
+
+    protected setIndex(index: number, key: string) {
+        this.$indexes.set(index, key);
     }
 
     protected getByIndex(index: number) {

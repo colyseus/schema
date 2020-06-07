@@ -112,8 +112,18 @@ export class ChangeTree {
 
     }
 
+    //
+    // used during `.encode()`
+    //
     getValue(index: number) {
         return this.ref['getByIndex'](index);
+    }
+
+    //
+    // used during `.decode()`
+    //
+    setValue(index: number, value: any, dynamicIndex: string | number) {
+        this.ref
     }
 
     delete(fieldName: string | number) {

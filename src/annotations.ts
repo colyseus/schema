@@ -212,6 +212,8 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     }
 
                 } else if (isMap) {
+                    console.log("DIRECTLY ASSIGNING A MAP, type =>", (constructor._schema[field] as any).map);
+
                     // directly assigning a map
                     value.$changes.setParent(
                         this.$changes,
