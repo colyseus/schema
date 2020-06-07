@@ -524,6 +524,16 @@ export abstract class Schema {
                 // encode field index + operation
                 encode.number(bytes, fieldIndex | operation.op);
 
+                // encode "alias" for dynamic fields (maps)
+                if (changeTree.dynamicIndexes && operation.op === OPERATION.ADD) {
+                    const map = changeTree.ref as MapSchema;
+                    const dynamicIndex = map['$indexes'].get(fieldIndex);
+
+                    console.log("ENCODE DYNAMIC INDEX:", { dynamicIndex });
+
+                    encode.string(bytes, dynamicIndex);
+                }
+
                 if (operation.op === OPERATION.DELETE) {
                     // TODO: delete from $root.cache
                     continue;

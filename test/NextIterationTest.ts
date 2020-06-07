@@ -41,19 +41,19 @@ describe("Next Iteration", () => {
         const decoded = new State();
 
         let encoded = state.encode();
-        console.log("ENCODED (full):", encoded);
+        console.log("ENCODED (FULL), bytes =>", encoded.length, encoded);
 
-        console.log("\n\nWILL DECODE:\n");
-        decoded.decode(encoded);
+        // console.log("\n\nWILL DECODE:\n");
+        // decoded.decode(encoded);
 
-        assert.deepEqual(decoded.map.get("one"), 1);
-        assert.deepEqual(decoded.map.get("two"), 2);
-        assert.deepEqual(decoded.map.get("three"), 3);
+        // assert.deepEqual(decoded.map.get("one"), 1);
+        // assert.deepEqual(decoded.map.get("two"), 2);
+        // assert.deepEqual(decoded.map.get("three"), 3);
 
         state.map.set("two", 22);
 
         encoded = state.encode();
-        console.log("ENCODED (patch):", encoded);
+        console.log("ENCODED (PATCH), bytes =>", encoded.length, encoded);
 
         console.log("\n\nWILL DECODE:\n");
         decoded.decode(encoded);

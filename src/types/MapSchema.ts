@@ -104,13 +104,18 @@ export class MapSchema<V=any> {
     set(key: K, value: V) {
         this.$items.set(key, value);
 
-        // set "index" for reference.
-        const index = (value instanceof Schema)
-            ? value['$changes'].refId
-            : this.$refId++
+        //
+        // set a unique id to relate directly with this key/value.
+        //
+        if (!this.$changes.indexes[key]) {
+            // set "index" for reference.
+            const index = (value instanceof Schema)
+                ? value['$changes'].refId
+                : this.$refId++
 
-        this.$changes.indexes[key] = index;
-        this.$indexes.set(index, key);
+            this.$changes.indexes[key] = index;
+            this.$indexes.set(index, key);
+        }
 
         this.$changes.change(key);
 
