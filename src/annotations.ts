@@ -44,8 +44,7 @@ export class SchemaDefinition {
     fieldsByIndex: { [index: number]: string };
 
     filters: { [field: string]: FilterCallback };
-    // childFilters are used on Map/Array/Set items.
-    childFilters: { [field: string]: FilterCallback };
+    childFilters: { [field: string]: FilterCallback }; // childFilters are used on Map, Array, Set items.
 
     deprecated: { [field: string]: boolean };
     descriptors: PropertyDescriptorMap & ThisType<any>;
@@ -87,9 +86,7 @@ export class SchemaDefinition {
             ArraySchema.is(type) ||
             MapSchema.is(type)
         ) {
-            if (!this.childFilters) {
-                this.childFilters = {};
-            }
+            if (!this.childFilters) { this.childFilters = {}; }
 
             this.childFilters[index] = cb;
 

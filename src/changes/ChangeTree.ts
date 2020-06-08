@@ -20,8 +20,6 @@ export interface FieldCache {
 
 export class ChangeTree {
     refId: number;
-
-    dynamicIndexes: boolean; // FIXME: maybe this is not necessary.
     childType: PrimitiveType;
 
     changes = new Map<number, ChangeOperation>();
@@ -37,12 +35,6 @@ export class ChangeTree {
         protected _root?: Root,
     ) {
         this.setParent(parent, _root || new Root());
-
-        //
-        // Use "dynamic indexes" for:
-        // MapSchema / ArraySchema / SetSchema
-        //
-        this.dynamicIndexes = !(ref instanceof Schema);
     }
 
     setParent(

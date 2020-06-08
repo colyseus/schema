@@ -107,9 +107,14 @@ describe("Next Iteration", () => {
         assert.equal(decoded3.map.size, 1);
         assert.equal(decoded3.map.get("three"), 3);
 
+        // discard previous changes
+        state.discardAllChanges();
+
         // mutate "two" key.
         state.map.set("two", 22);
         encoded = state.encode(undefined, undefined, undefined, true);
+
+        console.log("\n\n>> PREVIOUS CHANGES HAVE BEEN DISCARDED\n\n");
 
         encoded1 = state.applyFilters(encoded, client1);
         console.log("ENCODED (CLIENT 1)", encoded1.length, encoded1);

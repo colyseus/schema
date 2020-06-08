@@ -187,27 +187,19 @@ export abstract class Schema {
             if (byte === SWITCH_TO_STRUCTURE) {
                 const refId = decode.number(bytes, it);
 
-                console.log("SWITCH_TO_STRUCTURE", { refId });
-
                 if (!$root.refs.has(refId)) {
-                    console.log("refId", refId, "does not exist.");
                     $root.refs.set(refId, this);
                     ref = this;
 
                 } else {
-                    console.log("refId", refId, "exists!");
                     ref = $root.refs.get(refId) as Schema;
                 }
 
                 continue;
             }
 
-            console.log({ byte, ref });
-
             const operation = byte;
             const fieldIndex = decode.number(bytes, it);
-
-            console.log({ fieldIndex, operation: OPERATION[operation] });
 
             const field = (ref['_fieldsByIndex'] && ref['_fieldsByIndex'][fieldIndex]) || fieldIndex;
             const _field = `_${field}`;
@@ -226,8 +218,6 @@ export abstract class Schema {
                 ref['setIndex'](field, dynamicIndex as string);
             }
 
-            console.log("WILL DECODE FIELD:", { field });
-
             if (field === undefined) {
                 continue;
 
@@ -241,7 +231,6 @@ export abstract class Schema {
 
             } else if (Schema.is(type)) {
                 const refId = decode.number(bytes, it);
-                console.log("decode =>", { refId, offset: it.offset });
 
                 if (operation === OPERATION.ADD) {
                     value = this.createTypeInstance(bytes, it, type as typeof Schema);
@@ -380,8 +369,6 @@ export abstract class Schema {
                 });
             }
 
-            console.log("SET", field, "TO", value);
-
             if (ref instanceof Schema) {
                 ref[_field] = value;
 
@@ -438,13 +425,9 @@ export abstract class Schema {
                 const _field = `_${field}`;
 
                 const type = changeTree.childType || ref._schema[field];
-                console.log("FIELD TYPE:", {field, type});
-                console.log("changeTree.childType =>", changeTree.childType);
 
                 // const type = changeTree.getType(fieldIndex);
                 const value = changeTree.getValue(fieldIndex);
-
-                console.log({ field, type, value, operation });
 
                 // cache begin index if `useFilters`
                 const beginIndex = bytes.length;
@@ -577,62 +560,59 @@ export abstract class Schema {
         return this.encode(this, true, bytes);
     }
 
-    applyFilters(encodedBytes: number[], client: Client, root = this, childFilter?: FilterCallback) {
+    applyFilters(encodedBytes: number[], client: Client, root = this) {
         let filteredBytes: number[] = [];
 
-        const enqueuedRefs: ({ ref: Ref, childFilter?: FilterCallback })[] = [];
-        const filters = this._filters;
+        console.log("applyFilters(), CHANGES => ", this.$changes.changes);
 
-        encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
-        encode.number(filteredBytes, this.$changes.refId);
+        const changeTrees = Array.from(this.$changes.root.changes);
 
-        this.$changes.changes.forEach((change, fieldIndex) => {
-            const cache = this.$changes.caches[fieldIndex];
-            const value = this.$changes.getValue(fieldIndex);
+        for (let i = 0, l = changeTrees.length; i < l; i++) {
+            const changeTree = changeTrees[i];
+            const ref = changeTree.ref as Schema;
+            const filters = ref._filters;
 
-            if (childFilter) {
-                const ref = this as any as MapSchema;
-                const parent = ref['$changes'].parent.ref;
+            encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
+            encode.number(filteredBytes, ref.$changes.refId);
 
-                if (!childFilter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
-                    console.log("SKIPPING", fieldIndex)
-                    return;
+            changeTree.changes.forEach((change, fieldIndex) => {
+                const cache = ref.$changes.caches[fieldIndex];
+                const value = ref.$changes.getValue(fieldIndex);
+
+                if (
+                    ref instanceof MapSchema ||
+                    ref instanceof ArraySchema
+                ) {
+                    const parent = ref['$changes'].parent.ref as Schema;
+                    // parent._childFilters[]
+
+                    // TODO: get filter from previous structure
+                    const filter = undefined;
+
+                    if (filter && !filter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
+                        console.log("SKIPPING", fieldIndex)
+                        return;
+                    }
+
+                } else {
+                    const filter = (filters && filters[fieldIndex]);
+
+                    if (filter && !filter.call(this, client, value, root)) {
+                        console.log("SKIPPING", fieldIndex)
+                        return;
+                    }
                 }
 
-            } else {
-                const filter = (filters && filters[fieldIndex]);
-                console.log("HAS FILTER?", filter);
-                if (filter && !filter.call(this, client, value, root)) {
-                    console.log("SKIPPING", fieldIndex)
+                if (change.op === OPERATION.DELETE) {
+                    encode.uint8(filteredBytes, change.op);
+                    encode.number(filteredBytes, fieldIndex);
                     return;
+
+                } else {
+                    filteredBytes = [...filteredBytes, ...encodedBytes.slice(cache.beginIndex, cache.endIndex)];
                 }
-            }
-
-            if (change.op === OPERATION.DELETE) {
-                encode.uint8(filteredBytes, change.op);
-                encode.number(filteredBytes, fieldIndex);
-                return;
-
-            } else {
-                filteredBytes = [...filteredBytes, ...encodedBytes.slice(cache.beginIndex, cache.endIndex)];
-            }
-
-            //
-            // value is a Ref (Schema, MapSchema, etc)
-            // enqueue it for applying filters too.
-            //
-            if (value['$changes'] !== undefined) {
-                enqueuedRefs.push({ ref: value, childFilter: this._childFilters[fieldIndex] });
-            }
-        });
-
-        console.log("Enqueued structures =>", enqueuedRefs);
-        enqueuedRefs.forEach((ref) => {
-            filteredBytes = [
-                ...filteredBytes,
-                ...Schema.prototype.applyFilters.call(ref.ref, encodedBytes, client, root, ref.childFilter)
-            ];
-        })
+            });
+        }
 
         return filteredBytes;
     }
