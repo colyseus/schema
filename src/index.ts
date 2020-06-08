@@ -17,6 +17,7 @@ export {
     type,
     deprecated,
     filter,
+    filterChildren,
     defineTypes,
 
     // Types

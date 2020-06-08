@@ -21,7 +21,7 @@ export interface FieldCache {
 export class ChangeTree {
     refId: number;
 
-    dynamicIndexes: boolean;
+    dynamicIndexes: boolean; // FIXME: maybe this is not necessary.
     childType: PrimitiveType;
 
     changes = new Map<number, ChangeOperation>();

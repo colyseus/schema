@@ -156,6 +156,7 @@ export abstract class Schema {
     protected get _indexes () { return (this.constructor as typeof Schema)._definition.indexes; }
     protected get _fieldsByIndex() { return (this.constructor as typeof Schema)._definition.fieldsByIndex; }
     protected get _filters () { return (this.constructor as typeof Schema)._definition.filters; }
+    protected get _childFilters () { return (this.constructor as typeof Schema)._definition.childFilters; }
     protected get _deprecated () { return (this.constructor as typeof Schema)._definition.deprecated; }
 
     public listen <K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
@@ -576,10 +577,10 @@ export abstract class Schema {
         return this.encode(this, true, bytes);
     }
 
-    applyFilters(encodedBytes: number[], client: Client, root = this, encodeAll: boolean = false) {
+    applyFilters(encodedBytes: number[], client: Client, root = this, childFilter?: FilterCallback) {
         let filteredBytes: number[] = [];
 
-        const enqueuedStrutures: Schema[] = [];
+        const enqueuedRefs: ({ ref: Ref, childFilter?: FilterCallback })[] = [];
         const filters = this._filters;
 
         encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
@@ -587,15 +588,28 @@ export abstract class Schema {
 
         this.$changes.changes.forEach((change, fieldIndex) => {
             const cache = this.$changes.caches[fieldIndex];
-
             const value = this.$changes.getValue(fieldIndex);
-            const filter = (filters && filters[field]);
 
-            console.log({ fieldIndex, filter, change, cache });
 
-            if (filter && !filter.call(this, client, value, root)) {
-                console.log("SKIPPING", fieldIndex)
-                return;
+            if (childFilter) {
+                const ref = this as any as MapSchema;
+                console.log("HAS CHILD FILTER!", {
+                    key: ref['$indexes'].get(fieldIndex),
+                    value,
+                });
+
+                if (!childFilter.call(this, client, ref['$indexes'].get(fieldIndex), value, root)) {
+                    console.log("SKIPPING", fieldIndex)
+                    return;
+                }
+
+            } else {
+                const filter = (filters && filters[fieldIndex]);
+                console.log("HAS FILTER?", filter);
+                if (filter && !filter.call(this, client, value, root)) {
+                    console.log("SKIPPING", fieldIndex)
+                    return;
+                }
             }
 
             if (change.op === OPERATION.DELETE) {
@@ -609,18 +623,18 @@ export abstract class Schema {
 
             //
             // value is a Ref (Schema, MapSchema, etc)
-            // - enqueue it for applying filters too.
+            // enqueue it for applying filters too.
             //
             if (value['$changes'] !== undefined) {
-                enqueuedStrutures.push(value);
+                enqueuedRefs.push({ ref: value, childFilter: this._childFilters[fieldIndex] });
             }
         });
 
-        console.log("Enqueued structures =>", enqueuedStrutures);
-        enqueuedStrutures.forEach(structure => {
+        console.log("Enqueued structures =>", enqueuedRefs);
+        enqueuedRefs.forEach((ref) => {
             filteredBytes = [
                 ...filteredBytes,
-                ...(structure as Schema).applyFilters(encodedBytes, client, root, encodeAll)
+                ...Schema.prototype.applyFilters.call(ref.ref, encodedBytes, client, root, ref.childFilter)
             ];
         })
 

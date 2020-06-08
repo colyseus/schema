@@ -2,7 +2,7 @@ import * as util from "util";
 import * as assert from "assert";
 
 import { ChangeTree } from "../src/changes/ChangeTree";
-import { Schema, type, MapSchema, ArraySchema, filter } from "../src";
+import { Schema, type, MapSchema, ArraySchema, filter, filterChildren } from "../src";
 
 describe("Next Iteration", () => {
 
@@ -57,9 +57,14 @@ describe("Next Iteration", () => {
 
     it("add and modify a filtered map item", () => {
         class State extends Schema {
-            @filter(function(client, value, root) {
-                return client.sessionId === value;
+            @filterChildren(function(client, key, value, root) {
+                console.log("RUNNING FILTER:", { client, key, value });
+                return client.sessionId === key;
             })
+
+            // @filter(function(client, value, root) {
+            //     return client.sessionId === value;
+            // })
             @type({ map: "number" })
             map = new Map<string, number>();
         }
@@ -102,12 +107,29 @@ describe("Next Iteration", () => {
         assert.equal(decoded3.map.size, 1);
         assert.equal(decoded3.map.get("three"), 3);
 
-        // state.map.set("two", 22);
+        // mutate "two" key.
+        state.map.set("two", 22);
+        encoded = state.encode(undefined, undefined, undefined, true);
 
-        // encoded = state.encode();
-        // decoded1.decode(encoded);
+        encoded1 = state.applyFilters(encoded, client1);
+        console.log("ENCODED (CLIENT 1)", encoded1.length, encoded1);
 
-        assert.deepEqual(decoded1.map.get("two"), 22);
+        encoded2 = state.applyFilters(encoded, client2);
+        console.log("ENCODED (CLIENT 2)", encoded2.length, encoded2);
+
+        encoded3 = state.applyFilters(encoded, client3);
+        console.log("ENCODED (CLIENT 3)", encoded3.length, encoded3);
+
+        decoded1.decode(encoded1);
+        assert.equal(decoded1.map.size, 1);
+
+        decoded2.decode(encoded2);
+        assert.equal(decoded2.map.size, 1);
+        assert.deepEqual(decoded2.map.get("two"), 22);
+
+        decoded3.decode(encoded3);
+        assert.equal(decoded3.map.size, 1);
+
     });
 
     xit("should encode string", () => {

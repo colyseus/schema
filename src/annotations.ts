@@ -30,27 +30,76 @@ export type FilterCallback<
     R extends Schema = any
 > = (this: T, client: Client, value: V, root?: R) => boolean;
 
+export type FilterChildrenCallback<
+    T extends Schema = any,
+    K = any,
+    V = any,
+    R extends Schema = any
+> = (this: T, client: Client, key: K, value: V, root?: R) => boolean;
+
 export class SchemaDefinition {
     schema: Definition;
+
     indexes: { [field: string]: number };
     fieldsByIndex: { [index: number]: string };
+
     filters: { [field: string]: FilterCallback };
+    // childFilters are used on Map/Array/Set items.
+    childFilters: { [field: string]: FilterCallback };
+
     deprecated: { [field: string]: boolean };
     descriptors: PropertyDescriptorMap & ThisType<any>;
 
-    static extend(parent: SchemaDefinition) {
-        const extended = new SchemaDefinition();
+    static create(parent?: SchemaDefinition) {
+        const definition = new SchemaDefinition();
 
         // support inheritance
-        if (parent) {
-            extended.schema = Object.assign({}, parent.schema || {});
-            extended.indexes = Object.assign({}, parent.indexes || {});
-            extended.fieldsByIndex = Object.assign({}, parent.fieldsByIndex || {});
-            extended.descriptors = Object.assign({}, parent.descriptors || {});
-            extended.deprecated = Object.assign({}, parent.deprecated || {});
+        definition.schema = Object.assign({}, parent && parent.schema || {});
+        definition.indexes = Object.assign({}, parent && parent.indexes || {});
+        definition.fieldsByIndex = Object.assign({}, parent && parent.fieldsByIndex || {});
+        definition.descriptors = Object.assign({}, parent && parent.descriptors || {});
+        definition.deprecated = Object.assign({}, parent && parent.deprecated || {});
+
+        return definition;
+    }
+
+    addField(field: string, type: DefinitionType) {
+        console.log("ADD FIELD", field, type);
+        const index = this.getNextFieldIndex();
+        this.fieldsByIndex[index] = field;
+        this.indexes[field] = index;
+        this.schema[field] = type;
+    }
+
+    addFilter(field: string, cb: FilterCallback) {
+        if (!this.filters) {
+            this.filters = {};
         }
 
-        return extended;
+        this.filters[this.indexes[field]] = cb;
+    }
+
+    addChildrenFilter(field: string, cb: FilterChildrenCallback) {
+        const type = this.schema[field];
+        const index = this.indexes[field];
+
+        if (
+            ArraySchema.is(type) ||
+            MapSchema.is(type)
+        ) {
+            if (!this.childFilters) {
+                this.childFilters = {};
+            }
+
+            this.childFilters[index] = cb;
+
+        } else {
+            console.warn(`@filterChildren: field '${field}' can't have children. Ignoring filter.`);
+        }
+    }
+
+    getNextFieldIndex() {
+        return Object.keys(this.schema || {}).length;
     }
 }
 
@@ -94,20 +143,11 @@ export function type (type: DefinitionType, context: Context = globalContext): P
             context.add(constructor);
 
             // support inheritance
-            if (constructor._definition) {
-                constructor._definition = SchemaDefinition.extend(constructor._definition);
-
-            } else {
-                constructor._definition = new SchemaDefinition()
-            }
+            constructor._definition = SchemaDefinition.create(constructor._definition);
         }
 
         const definition = constructor._definition;
-
-        const index = Object.keys(definition.schema).length;
-        definition.fieldsByIndex[index] = field;
-        definition.indexes[field] = index;
-        definition.schema[field] = type;
+        definition.addField(field, type);
 
         /**
          * skip if descriptor already exists for this field (`@deprecated()`)
@@ -296,17 +336,18 @@ export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
         const definition = constructor._definition;
-
-        /*
-         * static filters
-         */
-        if (!definition.filters) {
-            definition.filters = {};
-        }
-
-        definition.filters[field] = cb;
+        definition.addFilter(field, cb);
     }
 }
+
+export function filterChildren<T extends Schema, K, V, R extends Schema>(cb: FilterChildrenCallback<T, K, V, R>): PropertyDecorator {
+    return function (target: any, field: string) {
+        const constructor = target.constructor as typeof Schema;
+        const definition = constructor._definition;
+        definition.addChildrenFilter(field, cb);
+    }
+}
+
 
 /**
  * `@deprecated()` flag a field as deprecated.
