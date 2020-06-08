@@ -590,15 +590,11 @@ export abstract class Schema {
             const cache = this.$changes.caches[fieldIndex];
             const value = this.$changes.getValue(fieldIndex);
 
-
             if (childFilter) {
                 const ref = this as any as MapSchema;
-                console.log("HAS CHILD FILTER!", {
-                    key: ref['$indexes'].get(fieldIndex),
-                    value,
-                });
+                const parent = ref['$changes'].parent.ref;
 
-                if (!childFilter.call(this, client, ref['$indexes'].get(fieldIndex), value, root)) {
+                if (!childFilter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
                     console.log("SKIPPING", fieldIndex)
                     return;
                 }

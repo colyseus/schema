@@ -58,7 +58,7 @@ describe("Next Iteration", () => {
     it("add and modify a filtered map item", () => {
         class State extends Schema {
             @filterChildren(function(client, key, value, root) {
-                console.log("RUNNING FILTER:", { client, key, value });
+                console.log("RUNNING FILTER:", { this: this, client, key, value });
                 return client.sessionId === key;
             })
 
