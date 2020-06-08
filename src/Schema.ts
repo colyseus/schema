@@ -1,5 +1,5 @@
-import { SWITCH_TO_STRUCTURE, NIL, INDEX_CHANGE, TYPE_ID, OPERATION } from './spec';
-import { Definition, FilterCallback, Client, PrimitiveType, Context } from "./annotations";
+import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
+import { Definition, FilterCallback, Client, PrimitiveType, Context, SchemaDefinition } from "./annotations";
 
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
@@ -97,12 +97,7 @@ export abstract class Schema {
     static _typeid: number;
     static _context: Context;
 
-    static _schema: Definition;
-    static _indexes: {[field: string]: number};
-    static _fieldsByIndex: {[index: number]: string};
-    static _filters: {[field: string]: FilterCallback};
-    static _deprecated: {[field: string]: boolean};
-    static _descriptors: PropertyDescriptorMap & ThisType<any>;
+    static _definition: SchemaDefinition;
 
     static onError(e) {
         console.error(e);
@@ -156,12 +151,12 @@ export abstract class Schema {
         return this;
     }
 
-    protected get _schema () { return (this.constructor as typeof Schema)._schema; }
-    protected get _descriptors () { return (this.constructor as typeof Schema)._descriptors; }
-    protected get _indexes () { return (this.constructor as typeof Schema)._indexes; }
-    protected get _fieldsByIndex() { return (this.constructor as typeof Schema)._fieldsByIndex; }
-    protected get _filters () { return (this.constructor as typeof Schema)._filters; }
-    protected get _deprecated () { return (this.constructor as typeof Schema)._deprecated; }
+    protected get _schema () { return (this.constructor as typeof Schema)._definition.schema; }
+    protected get _descriptors () { return (this.constructor as typeof Schema)._definition.descriptors; }
+    protected get _indexes () { return (this.constructor as typeof Schema)._definition.indexes; }
+    protected get _fieldsByIndex() { return (this.constructor as typeof Schema)._definition.fieldsByIndex; }
+    protected get _filters () { return (this.constructor as typeof Schema)._definition.filters; }
+    protected get _deprecated () { return (this.constructor as typeof Schema)._definition.deprecated; }
 
     public listen <K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
         if (!this.$listeners[attr as string]) {

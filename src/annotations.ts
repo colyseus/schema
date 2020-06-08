@@ -30,6 +30,30 @@ export type FilterCallback<
     R extends Schema = any
 > = (this: T, client: Client, value: V, root?: R) => boolean;
 
+export class SchemaDefinition {
+    schema: Definition;
+    indexes: { [field: string]: number };
+    fieldsByIndex: { [index: number]: string };
+    filters: { [field: string]: FilterCallback };
+    deprecated: { [field: string]: boolean };
+    descriptors: PropertyDescriptorMap & ThisType<any>;
+
+    static extend(parent: SchemaDefinition) {
+        const extended = new SchemaDefinition();
+
+        // support inheritance
+        if (parent) {
+            extended.schema = Object.assign({}, parent.schema || {});
+            extended.indexes = Object.assign({}, parent.indexes || {});
+            extended.fieldsByIndex = Object.assign({}, parent.fieldsByIndex || {});
+            extended.descriptors = Object.assign({}, parent.descriptors || {});
+            extended.deprecated = Object.assign({}, parent.deprecated || {});
+        }
+
+        return extended;
+    }
+}
+
 // Colyseus integration
 export type Client = { sessionId: string } & any;
 
@@ -69,25 +93,26 @@ export function type (type: DefinitionType, context: Context = globalContext): P
         if (!context.has(constructor)) {
             context.add(constructor);
 
-            // TODO: move all this stuff to its own holder object.
-
             // support inheritance
-            constructor._schema = Object.assign({}, constructor._schema || {});
-            constructor._indexes = Object.assign({}, constructor._indexes || {});
-            constructor._fieldsByIndex = Object.assign({}, constructor._fieldsByIndex || {});
-            constructor._descriptors = Object.assign({}, constructor._descriptors || {});
-            constructor._deprecated = Object.assign({}, constructor._deprecated || {});
+            if (constructor._definition) {
+                constructor._definition = SchemaDefinition.extend(constructor._definition);
+
+            } else {
+                constructor._definition = new SchemaDefinition()
+            }
         }
 
-        const index = Object.keys(constructor._schema).length;
-        constructor._fieldsByIndex[index] = field;
-        constructor._indexes[field] = index;
-        constructor._schema[field] = type;
+        const definition = constructor._definition;
+
+        const index = Object.keys(definition.schema).length;
+        definition.fieldsByIndex[index] = field;
+        definition.indexes[field] = index;
+        definition.schema[field] = type;
 
         /**
          * skip if descriptor already exists for this field (`@deprecated()`)
          */
-        if (constructor._descriptors[field]) { return; }
+        if (definition.descriptors[field]) { return; }
 
         const isArray = ArraySchema.is(type);
         const isMap = !isArray && MapSchema.is(type);
@@ -95,13 +120,13 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
         const fieldCached = `_${field}`;
 
-        constructor._descriptors[fieldCached] = {
+        definition.descriptors[fieldCached] = {
             enumerable: false,
             configurable: false,
             writable: true,
         };
 
-        constructor._descriptors[field] = {
+        definition.descriptors[field] = {
             get: function () {
                 return this[fieldCached];
             },
@@ -199,7 +224,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     value.$changes.setParent(
                         this.$changes,
                         $root,
-                        constructor._schema[field],
+                        definition.schema[field],
                     );
                     // value.$changes = new ChangeTree(value, {}, this.$changes, $root);
 
@@ -214,13 +239,13 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     }
 
                 } else if (isMap) {
-                    console.log("DIRECTLY ASSIGNING A MAP, type =>", (constructor._schema[field] as any).map);
+                    console.log("DIRECTLY ASSIGNING A MAP, type =>", (definition.schema[field] as any).map);
 
                     // directly assigning a map
                     value.$changes.setParent(
                         this.$changes,
                         $root,
-                        (constructor._schema[field] as any).map,
+                        (definition.schema[field] as any).map,
                     );
 
                     this.$changes.change(field);
@@ -247,7 +272,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         value.$changes.setParent(
                             this.$changes,
                             $root,
-                            // constructor._schema[field],
+                            // definition.schema[field],
                         );
                     }
 
@@ -270,15 +295,16 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback<T, V, R>): PropertyDecorator {
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
+        const definition = constructor._definition;
 
         /*
          * static filters
          */
-        if (!constructor._filters) {
-            constructor._filters = {};
+        if (!definition.filters) {
+            definition.filters = {};
         }
 
-        constructor._filters[field] = cb;
+        definition.filters[field] = cb;
     }
 }
 
@@ -290,10 +316,12 @@ export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback
 export function deprecated(throws: boolean = true, context: Context = globalContext): PropertyDecorator {
     return function (target: typeof Schema, field: string) {
         const constructor = target.constructor as typeof Schema;
-        constructor._deprecated[field] = true;
+        const definition = constructor._definition;
+
+        definition.deprecated[field] = true;
 
         if (throws) {
-            constructor._descriptors[field] = {
+            definition.descriptors[field] = {
                 get: function () { throw new Error(`${field} is deprecated.`); },
                 set: function (this: Schema, value: any) { /* throw new Error(`${field} is deprecated.`); */ },
                 enumerable: false,
