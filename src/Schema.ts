@@ -563,10 +563,7 @@ export abstract class Schema {
     applyFilters(encodedBytes: number[], client: Client, root = this) {
         let filteredBytes: number[] = [];
 
-        console.log("applyFilters(), CHANGES => ", this.$changes.changes);
-
         const changeTrees = Array.from(this.$changes.root.changes);
-
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];
             const ref = changeTree.ref as Schema;
@@ -576,6 +573,12 @@ export abstract class Schema {
             encode.number(filteredBytes, ref.$changes.refId);
 
             changeTree.changes.forEach((change, fieldIndex) => {
+                if (change.op === OPERATION.DELETE) {
+                    encode.uint8(filteredBytes, change.op);
+                    encode.number(filteredBytes, fieldIndex);
+                    return;
+                }
+
                 const cache = ref.$changes.caches[fieldIndex];
                 const value = ref.$changes.getValue(fieldIndex);
 
@@ -600,23 +603,12 @@ export abstract class Schema {
                     }
                 }
 
-                if (change.op === OPERATION.DELETE) {
-                    encode.uint8(filteredBytes, change.op);
-                    encode.number(filteredBytes, fieldIndex);
-                    return;
-
-                } else {
-                    filteredBytes = [...filteredBytes, ...encodedBytes.slice(cache.beginIndex, cache.endIndex)];
-                }
+                filteredBytes = filteredBytes.concat(encodedBytes.slice(cache.beginIndex, cache.endIndex));
             });
         }
 
         return filteredBytes;
     }
-
-    // encodeAllFiltered (client: Client, bytes?: number[]) {
-    //     return this.encode(this, true, client, bytes);
-    // }
 
     clone () {
         const cloned = new ((this as any).constructor);
