@@ -15,16 +15,7 @@ export class MapSchema<V=any> {
         return type['map'] !== undefined;
     }
 
-    constructor (obj: Map<string, V> | any = {}) {
-        if (obj instanceof Map) {
-            obj.forEach((v, k) => this.set(k, v));
-
-        } else {
-            for (const k in obj) {
-                this.set(k, obj[k]);
-            }
-        }
-
+    constructor (initialValues?: Map<string, V> | any) {
         Object.defineProperties(this, {
             $changes:     {
                 value: new ChangeTree(this, {}),
@@ -84,21 +75,19 @@ export class MapSchema<V=any> {
                     return map;
                 }
             },
-
-            _indexes: { value: new Map<string, number>(), enumerable: false, writable: true },
-            _updateIndexes: {
-                value: (allKeys) => {
-                    let index: number = 0;
-
-                    let indexes = new Map<string, number>();
-                    for (let key of allKeys) {
-                        indexes.set(key, index++);
-                    }
-
-                    this._indexes = indexes;
-                }
-            },
         });
+
+        if (initialValues) {
+            if (initialValues instanceof Map) {
+                initialValues.forEach((v, k) => this.set(k, v));
+
+            } else {
+                for (const k in initialValues) {
+                    this.set(k, initialValues[k]);
+                }
+            }
+        }
+
     }
 
     set(key: K, value: V) {
@@ -177,7 +166,4 @@ export class MapSchema<V=any> {
     onChange: (item: V, key: string) => void;
 
     triggerAll: () => void;
-
-    _indexes: Map<string, number>;
-    _updateIndexes: (keys: string[]) => void;
 }
