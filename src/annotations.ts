@@ -40,6 +40,10 @@ export type FilterChildrenCallback<
 export class SchemaDefinition {
     schema: Definition;
 
+    //
+    // TODO: use a "field" structure combining all these properties per-field.
+    //
+
     indexes: { [field: string]: number };
     fieldsByIndex: { [index: number]: string };
 
@@ -93,6 +97,10 @@ export class SchemaDefinition {
         } else {
             console.warn(`@filterChildren: field '${field}' can't have children. Ignoring filter.`);
         }
+    }
+
+    getChildrenFilter(field: string) {
+        return this.childFilters && this.childFilters[this.indexes[field]];
     }
 
     getNextFieldIndex() {
@@ -262,6 +270,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         this.$changes,
                         $root,
                         definition.schema[field],
+                        definition.getChildrenFilter(field),
                     );
                     // value.$changes = new ChangeTree(value, {}, this.$changes, $root);
 
@@ -283,6 +292,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         this.$changes,
                         $root,
                         (definition.schema[field] as any).map,
+                        definition.getChildrenFilter(field),
                     );
 
                     this.$changes.change(field);

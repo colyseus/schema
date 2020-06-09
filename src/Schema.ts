@@ -584,10 +584,7 @@ export abstract class Schema {
                     ref instanceof ArraySchema
                 ) {
                     const parent = ref['$changes'].parent.ref as Schema;
-                    // parent._childFilters[]
-
-                    // TODO: get filter from previous structure
-                    const filter = undefined;
+                    const filter = changeTree.childrenFilter;
 
                     if (filter && !filter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
                         console.log("SKIPPING", fieldIndex)

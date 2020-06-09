@@ -1,7 +1,7 @@
 import { Ref, Root } from "./Root";
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
-import { DefinitionType, PrimitiveType } from "../annotations";
+import { DefinitionType, PrimitiveType, FilterChildrenCallback } from "../annotations";
 
 // type FieldKey = string | number;
 
@@ -20,7 +20,10 @@ export interface FieldCache {
 
 export class ChangeTree {
     refId: number;
+
+    // TODO: use a single combined reference to all schema field configs here.
     childType: PrimitiveType;
+    childrenFilter: FilterChildrenCallback;
 
     changes = new Map<number, ChangeOperation>();
     allChanges = new Set<number>();
@@ -41,10 +44,13 @@ export class ChangeTree {
         parent: ChangeTree,
         root: Root,
         childType?: PrimitiveType,
+        childrenFilter?: FilterChildrenCallback,
     ) {
         this.parent = parent;
         this.root = root;
+
         this.childType = childType;
+        this.childrenFilter = childrenFilter;
 
         //
         // assign same parent on child structures

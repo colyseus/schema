@@ -95,7 +95,7 @@ export class Reflection extends Schema {
         for (let typeid in types) {
             const type = new ReflectionType();
             type.id = Number(typeid);
-            buildType(type, types[typeid]._schema);
+            buildType(type, types[typeid]._definition.schema);
         }
 
         return reflection.encodeAll();
@@ -148,8 +148,8 @@ export class Reflection extends Schema {
          * auto-initialize referenced types on root type
          * to allow registering listeners immediatelly on client-side
          */
-        for (let fieldName in rootType._schema) {
-            const fieldType = rootType._schema[fieldName];
+        for (let fieldName in rootType._definition.schema) {
+            const fieldType = rootType._definition.schema[fieldName];
 
             if (typeof(fieldType) !== "string") {
                 const isSchema = typeof (fieldType) === "function";
