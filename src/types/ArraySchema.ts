@@ -19,7 +19,7 @@ export class ArraySchema<T=any> extends Array<T> {
         Object.defineProperties(this, {
             $sorting:     { value: undefined, enumerable: false, writable: true },
             $changes:     {
-                value: new ChangeTree(this, {}),
+                value: new ChangeTree(this),
                 enumerable: false,
                 writable: true
             },

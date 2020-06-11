@@ -44,14 +44,14 @@ export class SchemaDefinition {
     // TODO: use a "field" structure combining all these properties per-field.
     //
 
-    indexes: { [field: string]: number };
-    fieldsByIndex: { [index: number]: string };
+    indexes: { [field: string]: number } = {};
+    fieldsByIndex: { [index: number]: string } = {};
 
-    filters: { [field: string]: FilterCallback };
-    childFilters: { [field: string]: FilterCallback }; // childFilters are used on Map, Array, Set items.
+    filters: { [field: string]: FilterCallback } = {};
+    childFilters: { [field: string]: FilterCallback } = {}; // childFilters are used on Map, Array, Set items.
 
-    deprecated: { [field: string]: boolean };
-    descriptors: PropertyDescriptorMap & ThisType<any>;
+    deprecated: { [field: string]: boolean } = {};
+    descriptors: PropertyDescriptorMap & ThisType<any> = {};
 
     static create(parent?: SchemaDefinition) {
         const definition = new SchemaDefinition();
@@ -67,7 +67,6 @@ export class SchemaDefinition {
     }
 
     addField(field: string, type: DefinitionType) {
-        console.log("ADD FIELD", field, type);
         const index = this.getNextFieldIndex();
         this.fieldsByIndex[index] = field;
         this.indexes[field] = index;
@@ -161,7 +160,6 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
         const isArray = ArraySchema.is(type);
         const isMap = !isArray && MapSchema.is(type);
-        const isSchema = Schema.is(type);
 
         const fieldCached = `_${field}`;
 
@@ -259,73 +257,14 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 }
 
                 this[fieldCached] = value;
+                this.$changes.change(field);
 
-                const $root = this.$changes.root;
-
-                if (isArray) {
-                    // directly assigning an array of items as value.
-                    this.$changes.change(field);
-
-                    value.$changes.setParent(
-                        this.$changes,
-                        $root,
-                        definition.schema[field],
-                        definition.getChildrenFilter(field),
+                if (value['$changes']) {
+                    (value['$changes'] as ChangeTree).setParent(
+                        this,
+                        this.$changes.root,
+                        this._definition.indexes[field],
                     );
-                    // value.$changes = new ChangeTree(value, {}, this.$changes, $root);
-
-                    for (let i = 0; i < value.length; i++) {
-                        if (value[i] instanceof Schema) {
-                            value[i].$changes.setParent(value.$changes, $root);
-                            // value[i].$changes = new ChangeTree(value[i], value[i]._indexes, value.$changes, $root);
-                            // value[i].$changes.changeAll(value[i]);
-                        }
-                        value.$changes.mapIndex(value[i], i);
-                        value.$changes.change(i);
-                    }
-
-                } else if (isMap) {
-                    console.log("DIRECTLY ASSIGNING A MAP, type =>", (definition.schema[field] as any).map);
-
-                    // directly assigning a map
-                    value.$changes.setParent(
-                        this.$changes,
-                        $root,
-                        (definition.schema[field] as any).map,
-                        definition.getChildrenFilter(field),
-                    );
-
-                    this.$changes.change(field);
-
-                    (value as MapSchema).forEach((val, key) => {
-                        console.log("FLAG AS CHANGED:", key);
-                        if (val instanceof Schema) {
-                            val.$changes.setParent(
-                                value.$changes,
-                                $root,
-                            );
-                            // val.$changes.changeAll(val);
-                        }
-                        // value.$changes.mapIndex(val, key);
-                        value.$changes.change(key);
-                    });
-
-                } else if (isSchema) {
-                    // directly assigning a `Schema` object
-                    // value may be set to null
-                    this.$changes.change(field);
-
-                    if (value) {
-                        value.$changes.setParent(
-                            this.$changes,
-                            $root,
-                            // definition.schema[field],
-                        );
-                    }
-
-                } else {
-                    // directly assigning a primitive type
-                    this.$changes.change(field);
                 }
             },
 

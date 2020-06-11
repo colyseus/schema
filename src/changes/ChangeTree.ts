@@ -1,9 +1,12 @@
-import { Ref, Root } from "./Root";
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
-import { DefinitionType, PrimitiveType, FilterChildrenCallback } from "../annotations";
+import { DefinitionType, PrimitiveType, FilterChildrenCallback, SchemaDefinition } from "../annotations";
+import { MapSchema } from "../types/MapSchema";
+import { ArraySchema } from "../types/ArraySchema";
 
 // type FieldKey = string | number;
+
+export type Ref = Schema | ArraySchema | MapSchema;
 
 export interface ChangeOperation {
     op: OPERATION,
@@ -18,8 +21,33 @@ export interface FieldCache {
     endIndex: number;
 }
 
+
+//
+// Root holds all schema references by unique id
+//
+export class Root {
+    nextUniqueId: number = 0;
+    refs = new Map<number, Ref>();
+
+    changes = new Set<ChangeTree>();
+    allChanges = new Set<ChangeTree>();
+
+    dirty(change: ChangeTree) {
+        this.changes.add(change);
+        this.allChanges.add(change);
+    }
+
+    delete (change: ChangeTree) {
+        this.changes.delete(change);
+        this.allChanges.delete(change);
+    }
+}
+
 export class ChangeTree {
     refId: number;
+
+    indexes: {[index: string]: any};
+    parentIndex?: number;
 
     // TODO: use a single combined reference to all schema field configs here.
     childType: PrimitiveType;
@@ -33,55 +61,107 @@ export class ChangeTree {
 
     constructor(
         public ref: Ref,
-        public indexes: { [field: string]: number } = {},
-        public parent?: ChangeTree,
+        public parent?: Ref,
         protected _root?: Root,
     ) {
-        this.setParent(parent, _root || new Root());
+        this.setParent(parent, _root);
     }
 
     setParent(
-        parent: ChangeTree,
-        root: Root,
-        childType?: PrimitiveType,
-        childrenFilter?: FilterChildrenCallback,
+        parent: Ref,
+        root?: Root,
+        parentIndex?: number,
     ) {
+        if (!this.indexes) {
+            this.indexes = (this.ref instanceof Schema)
+                ? this.ref['_definition'].indexes
+                : {};
+        }
+
         this.parent = parent;
+        this.parentIndex = parentIndex;
+
+        // avoid setting parent with empty `root`
+        if (!root) { return; }
+
+        // console.log("setParent:", this.ref.constructor.name, { parent });
+
         this.root = root;
 
-        this.childType = childType;
-        this.childrenFilter = childrenFilter;
+        // this.childType = childType;
+        // this.childrenFilter = childrenFilter;
 
         //
         // assign same parent on child structures
         //
-        for (let field in this.indexes) {
-            if (this.ref[field] instanceof Schema) {
-                this.ref[field].$changes.setParent(parent, root);
+        if (this.ref instanceof Schema) {
+            const definition: SchemaDefinition = this.ref['_definition'];
+
+            for (let field in definition.schema) {
+                const value = this.ref[field];
+
+                // TODO: MapSchema child is also treated here.
+
+                // if (value instanceof Schema) {
+                if (value && value['$changes']) {
+                    const parentIndex = definition.indexes[field];
+
+                    value['$changes'].setParent(
+                        this.ref,
+                        root,
+                        parentIndex
+                    );
+                }
+
+                //
+                // flag all not-null fields for encoding.
+                //
+                if (value !== undefined && value !== null) {
+                    this.change(field);
+                }
             }
 
-            //
-            // flag all not-null fields for encoding.
-            //
-            if (this.ref[field] !== undefined && this.ref[field] !== null) {
-                this.change(field);
-            }
+        } else if (this.ref instanceof MapSchema) {
+            this.ref.forEach((value, key) => {
+                if (value instanceof Schema) {
+                    const changeTreee = value['$changes'];
+                    // const parentIndex = definition.indexes[field];
+
+                    changeTreee.setParent(
+                        this.ref,
+                        this.root,
+                        // parentIndex,
+                    );
+
+                    // const parentDefinition = (this.parent as Schema)['_definition'];
+                    // changeTreee.childType = parentDefinition.schema[parentDefinition.fieldsByIndex[this.parentIndex]]
+                }
+                // value.$changes.change(key);
+            });
+
+        } else if (this.ref instanceof ArraySchema) {
+
+        // } else if (this.ref instanceof SetSchema) {
         }
     }
 
     set root(value: Root) {
         this._root = value;
         this.refId = this._root.nextUniqueId++;
+
+        if (this.changes.size > 0) {
+            this._root?.dirty(this);
+        }
     }
+
     get root () { return this._root; }
 
     change(fieldName: string | number) {
-        // const index = this.indexes[fieldName];
-        // const field = (typeof(index) === "number") ? index : fieldName;
-
         const index = (typeof (fieldName) === "number")
             ? fieldName
             : this.indexes[fieldName];
+
+        this.assertValidIndex(index, fieldName);
 
         const op = (this.allChanges.has(index))
             ? OPERATION.REPLACE
@@ -103,11 +183,26 @@ export class ChangeTree {
 
         this.allChanges.add(index);
 
-        this.root.dirty(this);
+        this._root?.dirty(this);
     }
 
     getType(index: number) {
-        throw new Error("not implemented");
+        if (this.ref['_definition']) {
+            const definition = (this.ref as Schema)['_definition'];
+            return definition.schema[ definition.fieldsByIndex[index] ];
+
+        } else {
+            const definition = (this.parent as Schema)['_definition'];
+            const parentType = definition.schema[ definition.fieldsByIndex[this.parentIndex] ];
+
+            //
+            // Get the child type from parent structure.
+            // - ["string"] => "string"
+            // - { map: "string" } => "string"
+            // - { set: "string" } => "string"
+            //
+            return Object.values(parentType)[0];
+        }
     }
 
     //
@@ -118,12 +213,11 @@ export class ChangeTree {
     }
 
     delete(fieldName: string | number) {
-        // const fieldIndex = this.indexes[fieldName];
-        // const field = (typeof (fieldIndex) === "number") ? fieldIndex : fieldName;
-
         const index = (typeof (fieldName) === "number")
             ? fieldName
             : this.indexes[fieldName];
+
+        this.assertValidIndex(index, fieldName);
 
         this.changes.set(index, { op: OPERATION.DELETE, index });
         this.allChanges.delete(index);
@@ -149,7 +243,13 @@ export class ChangeTree {
     }
 
     clone() {
-        return new ChangeTree(this.ref, this.indexes, this.parent, this.root);
+        return new ChangeTree(this.ref, this.parent, this.root);
+    }
+
+    protected assertValidIndex(index: number, fieldName: string | number) {
+        if (index === undefined) {
+            throw new Error(`ChangeTree: missing index for field "${fieldName}"`);
+        }
     }
 
 }

@@ -1,5 +1,5 @@
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { Definition, FilterCallback, Client, PrimitiveType, Context, SchemaDefinition } from "./annotations";
+import { Client, PrimitiveType, Context, SchemaDefinition, DefinitionType } from "./annotations";
 
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
@@ -7,10 +7,9 @@ import * as decode from "./encoding/decode";
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
-import { ChangeTree } from "./changes/ChangeTree";
+import { ChangeTree, Root, Ref } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
 import { EventEmitter } from './events/EventEmitter';
-import { Ref } from './changes/Root';
 
 export interface DataChange<T=any> {
     field: number | string;
@@ -103,8 +102,11 @@ export abstract class Schema {
         console.error(e);
     }
 
-    static is(type: any) {
-        return type['_schema'] !== undefined;
+    static is(type: DefinitionType) {
+        return (
+            type['_definition'] &&
+            type['_definition'].schema !== undefined
+        );
     }
 
     protected $changes: ChangeTree;
@@ -120,10 +122,11 @@ export abstract class Schema {
         // fix enumerability of fields for end-user
         Object.defineProperties(this, {
             $changes: {
-                value: new ChangeTree(this, this._indexes),
+                value: new ChangeTree(this, undefined, new Root()),
                 enumerable: false,
                 writable: true
             },
+
             $listeners: {
                 value: {},
                 enumerable: false,
@@ -151,13 +154,14 @@ export abstract class Schema {
         return this;
     }
 
-    protected get _schema () { return (this.constructor as typeof Schema)._definition.schema; }
-    protected get _descriptors () { return (this.constructor as typeof Schema)._definition.descriptors; }
-    protected get _indexes () { return (this.constructor as typeof Schema)._definition.indexes; }
-    protected get _fieldsByIndex() { return (this.constructor as typeof Schema)._definition.fieldsByIndex; }
-    protected get _filters () { return (this.constructor as typeof Schema)._definition.filters; }
-    protected get _childFilters () { return (this.constructor as typeof Schema)._definition.childFilters; }
-    protected get _deprecated () { return (this.constructor as typeof Schema)._definition.deprecated; }
+    protected get _definition () { return (this.constructor as typeof Schema)._definition; }
+    protected get _schema () { return this._definition.schema; }
+    protected get _descriptors () { return this._definition.descriptors; }
+    protected get _indexes () { return this._definition.indexes; }
+    protected get _fieldsByIndex() { return this._definition.fieldsByIndex; }
+    protected get _filters () { return this._definition.filters; }
+    protected get _childFilters () { return this._definition.childFilters; }
+    protected get _deprecated () { return this._definition.deprecated; }
 
     public listen <K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
         if (!this.$listeners[attr as string]) {
@@ -179,13 +183,14 @@ export abstract class Schema {
         const $root = this.$changes.root;
         const totalBytes = bytes.length;
 
-        console.log("REFS =>", Array.from($root.refs));
+        console.log("DECODING, REFS =>", Array.from($root.refs));
 
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
 
             if (byte === SWITCH_TO_STRUCTURE) {
                 const refId = decode.number(bytes, it);
+                console.log("SWITCH_TO_STRUCTURE", { refId });
 
                 if (!$root.refs.has(refId)) {
                     $root.refs.set(refId, this);
@@ -201,20 +206,26 @@ export abstract class Schema {
             const operation = byte;
             const fieldIndex = decode.number(bytes, it);
 
-            const field = (ref['_fieldsByIndex'] && ref['_fieldsByIndex'][fieldIndex]) || fieldIndex;
+            const changeTree: ChangeTree = ref['$changes'];
+            const isSchema = ref['_definition'];
+
+            const field = (isSchema)
+                ? (ref['_fieldsByIndex'] && ref['_fieldsByIndex'][fieldIndex])
+                : fieldIndex;
+
             const _field = `_${field}`;
 
-            let type = ref['$changes'].childType || ref['_schema'][field];
+            let type = changeTree.getType(fieldIndex);
             let value: any;
+
+            console.log({ ref: ref.constructor.name, field, fieldIndex, type });
 
             let dynamicIndex: number | string;
             let hasChange = false;
 
-            if (
-                ref['$changes'].childType &&
-                operation === OPERATION.ADD
-            ) {
+            if (!isSchema && operation === OPERATION.ADD) {
                 dynamicIndex = decode.string(bytes, it);
+                console.log({ dynamicIndex });
                 ref['setIndex'](field, dynamicIndex as string);
             }
 
@@ -240,8 +251,6 @@ export abstract class Schema {
                     value = $root.refs.get(refId);
                 }
 
-                // value.decode(bytes, it, value);
-
                 hasChange = true;
 
             } else if (ArraySchema.is(type)) {
@@ -250,108 +259,105 @@ export abstract class Schema {
                 const valueRef: ArraySchema = this[_field] || new ArraySchema();
                 value = valueRef.clone(true);
 
-                const newLength = decode.number(bytes, it);
-                const numChanges = Math.min(decode.number(bytes, it), newLength);
+                // const newLength = decode.number(bytes, it);
+                // const numChanges = Math.min(decode.number(bytes, it), newLength);
 
-                const hasRemoval = (value.length > newLength);
-                hasChange = (numChanges > 0) || hasRemoval;
+                // const hasRemoval = (value.length > newLength);
+                // hasChange = (numChanges > 0) || hasRemoval;
 
-                // FIXME: this may not be reliable. possibly need to encode this variable during serialization
-                let hasIndexChange = false;
+                // // FIXME: this may not be reliable. possibly need to encode this variable during serialization
+                // let hasIndexChange = false;
 
-                // ensure current array has the same length as encoded one
-                if (hasRemoval) {
-                    // decrease removed items from number of changes.
-                    // no need to iterate through them, as they're going to be removed.
+                // // ensure current array has the same length as encoded one
+                // if (hasRemoval) {
+                //     // decrease removed items from number of changes.
+                //     // no need to iterate through them, as they're going to be removed.
 
-                    Array.prototype.splice.call(value, newLength).forEach((itemRemoved, i) => {
-                        if (itemRemoved && itemRemoved.onRemove) {
-                            try {
-                                itemRemoved.onRemove();
-                            } catch (e) {
-                                Schema.onError(e);
-                            }
-                        }
+                //     Array.prototype.splice.call(value, newLength).forEach((itemRemoved, i) => {
+                //         if (itemRemoved && itemRemoved.onRemove) {
+                //             try {
+                //                 itemRemoved.onRemove();
+                //             } catch (e) {
+                //                 Schema.onError(e);
+                //             }
+                //         }
 
-                        if (valueRef.onRemove) {
-                            try {
-                                valueRef.onRemove(itemRemoved, newLength + i);
-                            } catch (e) {
-                                Schema.onError(e);
-                            }
-                        }
-                    });
-                }
+                //         if (valueRef.onRemove) {
+                //             try {
+                //                 valueRef.onRemove(itemRemoved, newLength + i);
+                //             } catch (e) {
+                //                 Schema.onError(e);
+                //             }
+                //         }
+                //     });
+                // }
 
-                for (let i = 0; i < numChanges; i++) {
-                    const newIndex = decode.number(bytes, it);
+                // for (let i = 0; i < numChanges; i++) {
+                //     const newIndex = decode.number(bytes, it);
 
-                    let indexChangedFrom: number; // index change check
-                    if (decode.indexChangeCheck(bytes, it)) {
-                        decode.uint8(bytes, it);
-                        indexChangedFrom = decode.number(bytes, it);
-                        hasIndexChange = true;
-                    }
+                //     let indexChangedFrom: number; // index change check
+                //     if (decode.indexChangeCheck(bytes, it)) {
+                //         decode.uint8(bytes, it);
+                //         indexChangedFrom = decode.number(bytes, it);
+                //         hasIndexChange = true;
+                //     }
 
-                    let isNew = (!hasIndexChange && value[newIndex] === undefined) || (hasIndexChange && indexChangedFrom === undefined);
+                //     let isNew = (!hasIndexChange && value[newIndex] === undefined) || (hasIndexChange && indexChangedFrom === undefined);
 
-                    if ((type as any).prototype instanceof Schema) {
-                        let item: Schema;
+                //     if ((type as any).prototype instanceof Schema) {
+                //         let item: Schema;
 
-                        if (isNew) {
-                            item = this.createTypeInstance(bytes, it, type as typeof Schema);
+                //         if (isNew) {
+                //             item = this.createTypeInstance(bytes, it, type as typeof Schema);
 
-                        } else if (indexChangedFrom !== undefined) {
-                            item = valueRef[indexChangedFrom];
+                //         } else if (indexChangedFrom !== undefined) {
+                //             item = valueRef[indexChangedFrom];
 
-                        } else {
-                            item = valueRef[newIndex]
-                        }
+                //         } else {
+                //             item = valueRef[newIndex]
+                //         }
 
-                        if (!item) {
-                            item = this.createTypeInstance(bytes, it, type as typeof Schema);
-                            isNew = true;
-                        }
+                //         if (!item) {
+                //             item = this.createTypeInstance(bytes, it, type as typeof Schema);
+                //             isNew = true;
+                //         }
 
-                        item.decode(bytes, it);
-                        value[newIndex] = item;
+                //         item.decode(bytes, it);
+                //         value[newIndex] = item;
 
-                    } else {
-                        value[newIndex] = decodePrimitiveType(type as string, bytes, it);
-                    }
+                //     } else {
+                //         value[newIndex] = decodePrimitiveType(type as string, bytes, it);
+                //     }
 
-                    if (isNew) {
-                        if (valueRef.onAdd) {
-                            try {
-                                valueRef.onAdd(value[newIndex], newIndex);
-                            } catch (e) {
-                                Schema.onError(e);
-                            }
-                        }
+                //     if (isNew) {
+                //         if (valueRef.onAdd) {
+                //             try {
+                //                 valueRef.onAdd(value[newIndex], newIndex);
+                //             } catch (e) {
+                //                 Schema.onError(e);
+                //             }
+                //         }
 
-                    } else if (valueRef.onChange) {
-                        try {
-                            valueRef.onChange(value[newIndex], newIndex);
-                        } catch (e) {
-                            Schema.onError(e);
-                        }
-                    }
-                }
-
+                //     } else if (valueRef.onChange) {
+                //         try {
+                //             valueRef.onChange(value[newIndex], newIndex);
+                //         } catch (e) {
+                //             Schema.onError(e);
+                //         }
+                //     }
+                // }
 
             } else if (MapSchema.is(type)) {
-                const childType = (type as any).map;
-
                 const valueRef: MapSchema = this[_field] || new MapSchema();
                 value = valueRef.clone(true);
 
                 const refId = decode.number(bytes, it);
                 $root.refs.set(refId, value);
-
-                (value.$changes as ChangeTree).childType = childType;
+                console.log("DECODE MAP!", { refId });
 
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
+                console.log("DECODE PRIMITIVE TYPE", {value});
                 hasChange = true;
             }
 
@@ -367,6 +373,14 @@ export abstract class Schema {
                     value,
                     previousValue: ref[_field]
                 });
+            }
+
+            if (value['$changes']) {
+                value['$changes'].setParent(
+                    changeTree.ref,
+                    changeTree.root,
+                    fieldIndex,
+                );
             }
 
             if (ref instanceof Schema) {
@@ -396,26 +410,31 @@ export abstract class Schema {
             ? Array.from($root.allChanges)
             : Array.from($root.changes);
 
-        console.log("ChangeTrees =>", changeTrees);
-
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];
             const ref = changeTree.ref as Schema;
-            // const indexes = change.indexes;
 
             // root `refId` is skipped.
-            console.log("ENCODE, refId =>", changeTree.refId, {
+            encode.uint8(bytes, SWITCH_TO_STRUCTURE);
+            encode.number(bytes, changeTree.refId);
+
+            console.log("SWITCH_TO_STRUCTURE", { ref: ref.constructor.name, refId: changeTree.refId });
+
+            const changes = (encodeAll)
+                ? Array.from(changeTree.allChanges)
+                : Array.from(changeTree.changes.keys());
+
+            console.log("CHANGES =>", {
+                changes,
+                definition: ref['_definition'],
                 isSchema: ref instanceof Schema,
                 isMap: ref instanceof MapSchema,
                 isArray: ref instanceof ArraySchema,
             });
 
-            encode.uint8(bytes, SWITCH_TO_STRUCTURE);
-            encode.number(bytes, changeTree.refId);
-
-            const changes = (encodeAll)
-                ? Array.from(changeTree.allChanges)
-                : Array.from(changeTree.changes.keys());
+            if (ref instanceof MapSchema) {
+                console.log("ENCODING MAP!", { size: ref.size, changes, });
+            }
 
             for (let j = 0, cl = changes.length; j < cl; j++) {
                 const fieldIndex = changes[j];
@@ -424,7 +443,8 @@ export abstract class Schema {
                 const field = (ref._fieldsByIndex && ref._fieldsByIndex[fieldIndex]) || fieldIndex;
                 const _field = `_${field}`;
 
-                const type = changeTree.childType || ref._schema[field];
+                // const type = changeTree.childType || ref._schema[field];
+                const type = changeTree.getType(fieldIndex);
 
                 // const type = changeTree.getType(fieldIndex);
                 const value = changeTree.getValue(fieldIndex);
@@ -444,9 +464,7 @@ export abstract class Schema {
                     operation.op === OPERATION.ADD
                 ) {
                     const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
-
                     console.log("ENCODE DYNAMIC INDEX:", { dynamicIndex });
-
                     encode.string(bytes, dynamicIndex);
                 }
 
@@ -466,8 +484,12 @@ export abstract class Schema {
                     encode.number(bytes, value.$changes.refId);
 
                 } else if (ArraySchema.is(type)) {
-                    console.log("ENCODING ARRAY!");
                     const $changes: ChangeTree = value.$changes;
+
+                    console.log("ENCODING ARRAY!", {
+                        size: (value as ArraySchema).length,
+                        $changes,
+                    });
 
                     // total number of items in the array
                     encode.number(bytes, value.length);
@@ -488,8 +510,6 @@ export abstract class Schema {
 
                     const isChildSchema = typeof(type[0]) !== "string";
 
-                    // console.log({ arrayChanges, numChanges, isChildSchema, arrayLength: value.length });
-
                     // assert ArraySchema was provided
                     assertInstanceType(ref[_field], ArraySchema, ref, field);
 
@@ -497,8 +517,6 @@ export abstract class Schema {
                     for (let j = 0; j < numChanges; j++) {
                         const index = arrayChanges[j];
                         const item = ref[_field][index];
-
-                        // console.log({ index, item });
 
                         if (isChildSchema) { // is array of Schema
                             encode.number(bytes, index);
@@ -563,24 +581,52 @@ export abstract class Schema {
     applyFilters(encodedBytes: number[], client: Client, root = this) {
         let filteredBytes: number[] = [];
 
-        const changeTrees = Array.from(this.$changes.root.changes);
+        const refIdsDissallowed = new Set<number>();
+        const refIdsAllowed = new Set<number>([0]);
+
+        // sort by refId, from lower to higher.
+        const changeTrees = Array.from(this.$changes.root.changes).sort((a,b) => {
+            return a.refId - b.refId;
+        });
+
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];
+
+            // TODO: need to have the reference to parent field index & filter
+            // call filter on this structure has well.
+
+            if (!refIdsAllowed.has(changeTree.refId)) {
+                console.log("NOT ALLOWED. REALLY?!");
+
+                const parent = changeTree.parent;
+                const filter = (changeTree.parent as Schema)._filters[changeTree.parentIndex]
+                console.log({
+                    parent,
+                    parentIndex: changeTree.parentIndex,
+                    filter
+                });
+                // const filter = changeTree.parent.ref as Schema;
+
+                // skip not allowed refIds
+                continue;
+            }
+
+            // const parent = changeTree.parent;
+            // if (parent)
+
             const ref = changeTree.ref as Schema;
             const filters = ref._filters;
+
+            console.log("APPLYING FILTERS, SWITCH_TO_STRUCTURE:", ref);
 
             encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
             encode.number(filteredBytes, ref.$changes.refId);
 
             changeTree.changes.forEach((change, fieldIndex) => {
-                if (change.op === OPERATION.DELETE) {
-                    encode.uint8(filteredBytes, change.op);
-                    encode.number(filteredBytes, fieldIndex);
-                    return;
-                }
-
                 const cache = ref.$changes.caches[fieldIndex];
                 const value = ref.$changes.getValue(fieldIndex);
+
+                console.log("CHANGE:", { change, fieldIndex, value });
 
                 if (
                     ref instanceof MapSchema ||
@@ -603,7 +649,22 @@ export abstract class Schema {
                     }
                 }
 
-                filteredBytes = filteredBytes.concat(encodedBytes.slice(cache.beginIndex, cache.endIndex));
+                if (value['$changes']) {
+                    refIdsAllowed.add(value['$changes'].refId);
+                }
+
+                //
+                // Deleting fields: encode the operation + field index
+                //
+                if (change.op === OPERATION.DELETE) {
+                    encode.uint8(filteredBytes, change.op);
+                    encode.number(filteredBytes, fieldIndex);
+                    return;
+
+                } else {
+                    filteredBytes = filteredBytes.concat(encodedBytes.slice(cache.beginIndex, cache.endIndex));
+
+                }
             });
         }
 
