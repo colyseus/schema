@@ -406,9 +406,14 @@ export abstract class Schema {
     ) {
         const $root = root.$changes.root;
 
-        const changeTrees = (encodeAll)
-            ? Array.from($root.allChanges)
-            : Array.from($root.changes);
+        // sort by refId, from lower to higher.
+        const changeTrees = (
+            (encodeAll)
+                ? Array.from($root.allChanges)
+                : Array.from($root.changes)
+        ).sort((a,b) => {
+            return a.refId - b.refId;
+        });
 
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];

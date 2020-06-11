@@ -1,5 +1,4 @@
 import { ChangeTree } from "../changes/ChangeTree";
-import { Schema } from "../Schema";
 
 type K = string; // TODO: allow to specify K generic on MapSchema.
 
@@ -94,6 +93,9 @@ export class MapSchema<V=any> {
         this.$items.set(key, value);
 
         const isRef = (value['$changes']) !== undefined;
+        if (isRef) {
+            (value['$changes'] as ChangeTree).setParent(this, this.$changes.root);
+        }
 
         //
         // (encoding)
@@ -106,6 +108,7 @@ export class MapSchema<V=any> {
                 ? value['$changes'].refId
                 : this.$refId++
 
+            // console.log("ROOT?", value['$changes'].root);
             console.log(`MapSchema#set() =>`, { isRef, key, index, value });
 
             this.$changes.indexes[key] = index;
@@ -113,10 +116,6 @@ export class MapSchema<V=any> {
         }
 
         this.$changes.change(key);
-
-        if (isRef) {
-            (value['$changes'] as ChangeTree).setParent(this, this.$changes.root);
-        }
 
         return this;
     }
@@ -126,10 +125,7 @@ export class MapSchema<V=any> {
     }
 
     delete(key: K) {
-        if (this.$changes) {
-            this.$changes.delete(key);
-        }
-
+        this.$changes.delete(key);
         return this.$items.delete(key);
     }
 

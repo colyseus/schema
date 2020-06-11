@@ -19,7 +19,7 @@ export const logChangeTree = (tree: ChangeTree) => {
 
     return `
 {
-  changeTrees: [ ${changeTrees.map(t => t.ref.constructor.name)} ]
+  changeTrees: [ ${changeTrees.map(t => `${t.ref.constructor.name} (${t.refId})`).join(", ")} ]
 }\n`
 
 //   indexMap: {
