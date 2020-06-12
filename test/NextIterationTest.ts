@@ -237,7 +237,7 @@ describe("Next Iteration", () => {
         assert.ok(state.players.get("one")['$changes'].parent === state.players as any, "state.players['one'] parent should be state.players");
     });
 
-    it("should encode filtered", () => {
+    xit("should encode filtered", () => {
         class Item extends Schema {
             @type("number") damage: number;
         }
@@ -278,13 +278,13 @@ describe("Next Iteration", () => {
         let encoded = state.encode(undefined, undefined, undefined, true);
         console.log("Full encode, length =>", encoded.length, "=>", encoded);
 
-        // console.log("\n\nAPPLY FILTERS FOR CLIENT 1");
+        console.log("\n\nAPPLY FILTERS FOR CLIENT 1");
 
-        // let encoded1 = state.applyFilters(encoded, client1);
-        // console.log("Encode filtered (1), length =>", encoded1.length, "=>", encoded1);
+        let encoded1 = state.applyFilters(encoded, client1);
+        console.log("Encode filtered (1), length =>", encoded1.length, "=>", encoded1);
 
-        // const decoded1 = new State();
-        // decoded1.decode(encoded1);
+        const decoded1 = new State();
+        decoded1.decode(encoded1);
 
         console.log("\n\nAPPLY FILTERS FOR CLIENT 2");
 
@@ -295,7 +295,7 @@ describe("Next Iteration", () => {
         decoded2.decode(encoded2);
         assert.equal("Hello", decoded2.str);
 
-        // console.log("DECODED 1 =>", decoded1.toJSON());
+        console.log("DECODED 1 =>", decoded1.toJSON());
         console.log("DECODED 2 =>", decoded2.toJSON());
 
         state.discardAllChanges();
@@ -310,20 +310,20 @@ describe("Next Iteration", () => {
         console.log("Patch encode, length:", encoded.length, "=>", encoded);
         console.log("\n\nWILL DECODE\n\n")
 
-        // encoded1 = state.applyFilters(encoded, client1);
-        // console.log("Encode filtered (1), length =>", encoded1.length, "=>", encoded1);
-        // decoded1.decode(encoded1);
+        encoded1 = state.applyFilters(encoded, client1);
+        console.log("Encode filtered (1), length =>", encoded1.length, "=>", encoded1);
+        decoded1.decode(encoded1);
 
-        // encoded2 = state.applyFilters(encoded, client2);
-        // console.log("Encode filtered (2), length =>", encoded2.length, "=>", encoded2);
-        // decoded2.decode(encoded2);
-        // assert.equal(1, decoded2.num);
+        encoded2 = state.applyFilters(encoded, client2);
+        console.log("Encode filtered (2), length =>", encoded2.length, "=>", encoded2);
+        decoded2.decode(encoded2);
+        assert.equal(1, decoded2.num);
 
-        // assert.equal(2, decoded1.player.x);
-        // assert.equal(6, decoded1.player.item.damage);
+        assert.equal(2, decoded1.player.x);
+        assert.equal(6, decoded1.player.item.damage);
 
-        // console.log("DECODED 1 =>", decoded1.toJSON());
-        // console.log("DECODED 2 =>", decoded2.toJSON());
+        console.log("DECODED 1 =>", decoded1.toJSON());
+        console.log("DECODED 2 =>", decoded2.toJSON());
     });
 
     xit("encoding / decoding deep items", () => {

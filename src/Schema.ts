@@ -471,35 +471,39 @@ export abstract class Schema {
 
         console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({ ref: c.ref.constructor.name, changes: c.changes })));
 
+        changetrees:
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];
-
-            // TODO: need to have the reference to parent field index & filter
-            // call filter on this structure has well.
 
             if (refIdsDissallowed.has(changeTree.refId))  {
                 continue;
             }
 
             //
-            // TODO: check for all parents.
+            // parent structure may be filtered out.
+            // check the @filter() of parent structures.
             //
             if (!refIdsAllowed.has(changeTree.refId)) {
-                const parent = changeTree.parent;
-                const filter = (changeTree.parent as Schema)._filters[changeTree.parentIndex]
+                let parent: Ref = changeTree.parent;
+                while (parent) {
 
-                if (filter && !filter.call(parent, client, changeTree.ref, root)) {
-                    console.log("DISSALLOWED REFID =>", {
-                        refId: changeTree.refId,
-                        ref: changeTree.ref.constructor.name,
-                    });
-                    refIdsDissallowed.add(changeTree.refId);
-                    continue;
+                    // TODO: check for filterChildren
 
-                } else {
-                    console.log(changeTree.ref.constructor.name, "IS ALLOWED!");
-                    refIdsAllowed.add(changeTree.refId);
+                    const filter = (parent as Schema)._filters[changeTree.parentIndex]
+
+                    if (filter && !filter.call(parent, client, changeTree.ref, root)) {
+                        refIdsDissallowed.add(changeTree.refId);
+                        continue changetrees;
+
+                    } else {
+                        console.log(changeTree.ref.constructor.name, "IS ALLOWED!");
+                    }
+
+                    parent = parent['$changes'].parent;
                 }
+
+                // TODO: add `refIdsAllowed` during the while loop somehow.
+                refIdsAllowed.add(changeTree.refId);
             }
 
             const ref = changeTree.ref as Schema;
