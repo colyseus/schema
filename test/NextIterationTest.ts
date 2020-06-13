@@ -56,7 +56,7 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.map.get("two"), 22);
     });
 
-    it.only("MapSchema should be backwards-compatible with @colyseus/schema 0.5", () => {
+    it("MapSchema should be backwards-compatible with @colyseus/schema 0.5", () => {
         class State extends Schema {
             @type({ map: "number" })
             map = new MapSchema<number>();
@@ -361,7 +361,7 @@ describe("Next Iteration", () => {
         assert.ok(state['$changes'].parent === undefined, "State parent should be 'undefined'");
         assert.ok(state.player['$changes'].parent === state, "Player parent should be State");
         assert.ok(state.player.item['$changes'].parent === player, "Item parent should be Player");
-        assert.ok(state.players.get("one")['$changes'].parent === state.players as any, "state.players['one'] parent should be state.players");
+        assert.ok(state.players.get("one")['$changes'].parent['$changes'].refId === state.players['$changes'].refId as any, "state.players['one'] parent should be state.players");
     });
 
     it("should encode filtered", () => {
