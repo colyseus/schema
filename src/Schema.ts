@@ -482,8 +482,12 @@ export abstract class Schema {
             }
 
             //
-            // parent structure may be filtered out.
-            // check the @filter() of parent structures.
+            // FIXME: this entire block should be removed in the future in favor
+            // of a more direct relationship to avoid visiting parent structures
+            // unecessarily
+            //
+            // parent structure may be filtered out. check the @filter() of
+            // parent structures.
             //
             if (!refIdsAllowed.has(changeTree.refId)) {
                 let currentRef: Ref = changeTree.ref;
