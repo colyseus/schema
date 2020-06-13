@@ -251,6 +251,8 @@ export class ChangeTree {
         if (this.ref[fieldName] instanceof Schema) {
             this.root.delete(this.ref[fieldName].$changes);
         }
+
+        this._root?.dirty(this);
     }
 
     discard() {

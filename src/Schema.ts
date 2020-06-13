@@ -236,6 +236,10 @@ export abstract class Schema {
                 //
                 // TODO: remove from $root.refs
                 //
+                console.log("DELETE OPERATION!", {
+                    ref, type, _field, fieldIndex,
+                });
+                ref['deleteByIndex'](fieldIndex);
 
                 value = null;
                 hasChange = true;
@@ -286,21 +290,34 @@ export abstract class Schema {
                 });
             }
 
-            if (value['$changes']) {
-                value['$changes'].setParent(
-                    changeTree.ref,
-                    changeTree.root,
-                    fieldIndex,
-                );
+            if (value) {
+                if (value['$changes']) {
+                    value['$changes'].setParent(
+                        changeTree.ref,
+                        changeTree.root,
+                        fieldIndex,
+                    );
+                }
+
+                if (ref instanceof Schema) {
+                    ref[field] = value;
+
+                    //
+                    // FIXME: use `_field` instead of `field`.
+                    //
+                    // `field` is going to use the setter of the PropertyDescriptor
+                    // and create a proxy for array/map. This is only useful for
+                    // backwards-compatibility with @colyseus/schema@0.5.x
+                    //
+                    // // ref[_field] = value;
+
+                } else if (ref instanceof MapSchema) {
+                    const key = ref['$indexes'].get(field);
+                    ref.set(key, value);
+                }
             }
 
-            if (ref instanceof Schema) {
-                ref[_field] = value;
 
-            } else if (ref instanceof MapSchema) {
-                const key = ref['$indexes'].get(field);
-                ref.set(key, value);
-            }
 
         }
 
@@ -668,6 +685,10 @@ export abstract class Schema {
 
     protected getByIndex(index: number) {
         return this[this._fieldsByIndex[index]];
+    }
+
+    protected deleteByIndex(index: number) {
+        delete this[this._fieldsByIndex[index]];
     }
 
     private tryEncodeTypeId (bytes: number[], type: typeof Schema, targetType: typeof Schema) {

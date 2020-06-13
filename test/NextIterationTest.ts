@@ -56,6 +56,44 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.map.get("two"), 22);
     });
 
+    it.only("MapSchema should be backwards-compatible with @colyseus/schema 0.5", () => {
+        class State extends Schema {
+            @type({ map: "number" })
+            map = new MapSchema<number>();
+        }
+
+        const state = new State();
+        state.map["one"] = 1;
+        state.map["two"] = 2;
+
+        const decoded = new State();
+        decoded.decode(state.encode());
+
+        console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
+
+        console.log("\n\nLETS ASSERT!\n\n");
+        assert.equal(2, decoded.map.size);
+        assert.equal(1, decoded.map.get("one"));
+        assert.equal(2, decoded.map.get("two"));
+
+        console.log("MAP =>", decoded.map);
+        assert.equal(1, decoded.map["one"]);
+        assert.equal(2, decoded.map["two"]);
+
+        delete state.map['one'];
+
+        const encoded = state.encode();
+
+        console.log("\n\nLETS DECODE!!", encoded.length, encoded);
+        decoded.decode(encoded);
+
+        console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
+
+        assert.equal(1, decoded.map.size);
+        assert.equal(undefined, decoded.map["one"]);
+        assert.equal(2, decoded.map["two"]);
+    });
+
     it("add and modify a filtered primitive map item", () => {
         class State extends Schema {
             @filterChildren(function(client, key, value, root) {

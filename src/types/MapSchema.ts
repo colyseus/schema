@@ -108,8 +108,7 @@ export class MapSchema<V=any> {
                 ? value['$changes'].refId
                 : this.$refId++
 
-            // console.log("ROOT?", value['$changes'].root);
-            console.log(`MapSchema#set() =>`, { isRef, key, index, value });
+            // console.log(`MapSchema#set() =>`, { isRef, key, index, value });
 
             this.$changes.indexes[key] = index;
 
@@ -164,6 +163,12 @@ export class MapSchema<V=any> {
 
     protected getByIndex(index: number) {
         return this.$items.get(this.$indexes.get(index));
+    }
+
+    protected deleteByIndex(index: number) {
+        const key = this.$indexes.get(index);
+        this.$items.delete(key);
+        this.$indexes.delete(index);
     }
 
     //

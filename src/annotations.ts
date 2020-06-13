@@ -194,8 +194,32 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     value = new MapSchema(value);
                 }
 
-                // if (isArray || isMap) {
-                if (isArray) {
+                //
+                // compatibility with @colyseus/schema 0.5.x
+                // allow accessing map["key"]
+                //
+                if (isMap) {
+                    value = new Proxy(value, {
+                        get: (obj, prop) => {
+                            if (typeof (obj[prop]) === "undefined") {
+                                return obj.get(prop);
+
+                            } else {
+                                return obj[prop];
+                            }
+                        },
+
+                        set: (obj, prop, setValue) => {
+                            return obj.set(prop, setValue);
+                        },
+
+                        deleteProperty: (obj, prop) => {
+                            obj.delete(prop);
+                            return true;
+                        },
+                    });
+
+                } else if (isArray) {
                     value = new Proxy(value, {
                         get: (obj, prop) => obj[prop],
                         set: (obj, prop, setValue) => {
@@ -259,6 +283,10 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 this[fieldCached] = value;
                 this.$changes.change(field);
 
+                //
+                // call setParent() recursively for this and its child
+                // structures.
+                //
                 if (value['$changes']) {
                     (value['$changes'] as ChangeTree).setParent(
                         this,
