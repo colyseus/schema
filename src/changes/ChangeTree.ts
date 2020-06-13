@@ -1,6 +1,6 @@
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
-import { DefinitionType, PrimitiveType, FilterChildrenCallback, SchemaDefinition } from "../annotations";
+import { PrimitiveType, FilterChildrenCallback, SchemaDefinition } from "../annotations";
 import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";
 
@@ -256,6 +256,21 @@ export class ChangeTree {
     discard() {
         this.changes.clear();
         this.root.delete(this);
+    }
+
+    /**
+     * Recursively discard all changes from this, and child structures.
+     */
+    discardAll() {
+        this.changes.forEach((change) => {
+            const value = this.getValue(change.index);
+
+            if (value['$changes']) {
+                value['$changes'].discardAll();
+            }
+        });
+
+        this.discard();
     }
 
     cache(field: number, beginIndex: number, endIndex: number) {

@@ -467,7 +467,11 @@ export abstract class Schema {
             return a.refId - b.refId;
         });
 
-        console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({ ref: c.ref.constructor.name, changes: c.changes })));
+        console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({
+            ref: c.ref.constructor.name,
+            refId: c.refId,
+            changes: c.changes
+        })));
 
         changetrees:
         for (let i = 0, l = changeTrees.length; i < l; i++) {
@@ -483,45 +487,66 @@ export abstract class Schema {
             //
             if (!refIdsAllowed.has(changeTree.refId)) {
                 let currentRef: Ref = changeTree.ref;
+                let childRef: Ref;
+
+                //
+                // This checks for a child Schema with @filterChildren() /
+                // @filter() attached on the parent structure.
+                //
+                // TODO: improve/refactor, there are too many duplicated code below:
+                // - Checking for @filter() on parent structure
+                // - Checking for @filterChildren() on parent structure
+                // - (later) Checking for @filter() on THIS structure
+                // - (later) Checking for @filterChildren() on THIS structure
+                //
 
                 while (currentRef) {
                     if (currentRef instanceof Schema) {
                         const filter = currentRef['$changes'].getParentFilter();
 
                         if (filter && !filter.call(currentRef, client, changeTree.ref, root)) {
-                            console.log("TRUE");
                             refIdsDissallowed.add(changeTree.refId);
                             continue changetrees;
-                        } else {
-                            console.log("FALSE");
                         }
 
-                    } else {
+                    } else if (childRef) {
                         const filter = currentRef['$changes'].getChildrenFilter();
+                        const parentIndex = childRef['$changes'].parentIndex;
 
-                        console.log("CHILD FILTER!", {
-                            filter: filter,
-                            parentIndex: changeTree.parentIndex,
-                            index: currentRef['$indexes'].get(changeTree.parentIndex)
-                        })
-                        // if (filter && !filter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
-                        //     console.log("SKIPPING", fieldIndex)
-                        //     return;
-                        // }
-
+                        if (
+                            filter &&
+                            !filter.call(
+                                currentRef['$changes'].parent,
+                                client,
+                                currentRef['$indexes'].get(parentIndex),
+                                currentRef['$changes'].getValue(parentIndex),
+                                root
+                            )
+                        ) {
+                            refIdsDissallowed.add(changeTree.refId);
+                            continue changetrees;
+                        }
                     }
 
+                    childRef = currentRef;
                     currentRef = currentRef['$changes'].parent;
                 }
 
-                // TODO: add `refIdsAllowed` during the while loop somehow.
+                //
+                // All parents have been checked and no filter/filterChildren
+                // detected for this structure
+                //
+
                 refIdsAllowed.add(changeTree.refId);
             }
 
             const ref = changeTree.ref as Schema;
             const filters = ref._filters;
 
-            // console.log("APPLYING FILTERS, SWITCH_TO_STRUCTURE:", ref);
+            console.log("APPLY FILTERS, SWITCH_TO_STRUCTURE:", {
+                ref: ref.constructor.name,
+                refId: changeTree.refId
+            });
 
             encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
             encode.number(filteredBytes, ref.$changes.refId);
@@ -538,7 +563,9 @@ export abstract class Schema {
                     const filter = changeTree.getChildrenFilter();
 
                     if (filter && !filter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
-                        // TODO: add to refIdsDissallowed (if it's a Ref)
+                        if (value['$changes']) {
+                            refIdsDissallowed.add(value['$changes'].refId);;
+                        }
                         return;
                     }
 
@@ -546,7 +573,9 @@ export abstract class Schema {
                     const filter = (filters && filters[fieldIndex]);
 
                     if (filter && !filter.call(this, client, value, root)) {
-                        // TODO: add to refIdsDissallowed (if it's a Ref)
+                        if (value['$changes']) {
+                            refIdsDissallowed.add(value['$changes'].refId);;
+                        }
                         return;
                     }
                 }
@@ -630,51 +659,7 @@ export abstract class Schema {
     }
 
     discardAllChanges() {
-        const schema = this._schema;
-        const changes = Array.from(this.$changes.changes);
-        const fieldsByIndex = this._fieldsByIndex;
-
-        for (const index in changes) {
-            const field = fieldsByIndex[index];
-            const type = schema[field];
-            const value = this[field];
-
-            // skip unchagned fields
-            if (value === undefined) { continue; }
-
-            if ((type as any)._schema) {
-                (value as Schema).discardAllChanges();
-
-            } else if (ArraySchema.is(type)) {
-                for (let i = 0, l = value.length; i < l; i++) {
-                    const index = value[i];
-                    const item = this[`_${field}`][index];
-
-                    if (typeof(type[0]) !== "string" && item) { // is array of Schema
-                        (item as Schema).discardAllChanges()
-                    }
-                }
-
-                value.$changes.discard();
-
-            } else if (MapSchema.is(type)) {
-                const keys = value;
-                const mapKeys = Object.keys(this[`_${field}`]);
-
-                for (let i = 0; i < keys.length; i++) {
-                    const key = mapKeys[keys[i]] || keys[i];
-                    const item = this[`_${field}`][key];
-
-                    if (item instanceof Schema && item) {
-                        item.discardAllChanges();
-                    }
-                }
-
-                value.$changes.discard();
-            }
-        }
-
-        this.$changes.discard();
+        this.$changes.discardAll();
     }
 
     protected getByIndex(index: number) {

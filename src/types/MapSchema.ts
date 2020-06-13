@@ -112,6 +112,11 @@ export class MapSchema<V=any> {
             console.log(`MapSchema#set() =>`, { isRef, key, index, value });
 
             this.$changes.indexes[key] = index;
+
+            if (isRef) {
+                value['$changes'].parentIndex = index;
+            }
+
             this.$indexes.set(index, key);
         }
 

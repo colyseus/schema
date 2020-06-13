@@ -132,7 +132,7 @@ describe("Next Iteration", () => {
         assert.equal(decoded3.map.size, 1);
     });
 
-    it.only("add and modify a filtered Schema map item", () => {
+    it("add and modify a filtered Schema map item", () => {
         class Player extends Schema {
             @type("number") x: number;
             @type("number") y: number;
@@ -165,6 +165,8 @@ describe("Next Iteration", () => {
         let encoded1 = state.applyFilters(encoded, client1);
         console.log("ENCODED (CLIENT 1)", encoded1.length, encoded1);
 
+        console.log("\n\nWILL APPLY FILTERS!\n\n");
+
         let encoded2 = state.applyFilters(encoded, client2);
         console.log("ENCODED (CLIENT 2)", encoded2.length, encoded2);
 
@@ -182,6 +184,10 @@ describe("Next Iteration", () => {
         decoded3.decode(encoded3);
         assert.equal(decoded3.map.size, 1);
         assert.equal(decoded3.map.get("three").x, 3);
+
+        console.log("DECODED 1 =>", util.inspect(decoded1.toJSON(), true, Infinity));
+        console.log("DECODED 2 =>", util.inspect(decoded2.toJSON(), true, Infinity));
+        console.log("DECODED 3 =>", util.inspect(decoded3.toJSON(), true, Infinity));
 
         // discard previous changes
         state.discardAllChanges();
@@ -215,6 +221,10 @@ describe("Next Iteration", () => {
         decoded3.decode(encoded3);
         assert.equal(decoded3.map.size, 1);
         assert.deepEqual(decoded3.map.get("three").x, 33);
+
+        console.log("DECODED 1 =>", util.inspect(decoded1.toJSON(), true, Infinity));
+        console.log("DECODED 2 =>", util.inspect(decoded2.toJSON(), true, Infinity));
+        console.log("DECODED 3 =>", util.inspect(decoded3.toJSON(), true, Infinity));
     });
 
     it("should encode string", () => {
