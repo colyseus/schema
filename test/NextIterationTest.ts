@@ -28,7 +28,7 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.arr, ['one', 'twotwo', 'three']);
     });
 
-    xit("add and modify a map item", () => {
+    it("add and modify a map item", () => {
         class State extends Schema {
             @type({ map: "number" })
             map = new Map<string, number>();
@@ -56,10 +56,9 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.map.get("two"), 22);
     });
 
-    xit("add and modify a filtered map item", () => {
+    it("add and modify a filtered map item", () => {
         class State extends Schema {
             @filterChildren(function(client, key, value, root) {
-                console.log("RUNNING FILTER:", { this: this, client, key, value });
                 return client.sessionId === key;
             })
 
@@ -135,10 +134,9 @@ describe("Next Iteration", () => {
 
         decoded3.decode(encoded3);
         assert.equal(decoded3.map.size, 1);
-
     });
 
-    xit("should encode string", () => {
+    it("should encode string", () => {
         class Item extends Schema {
             @type("number") damage: number;
         }
@@ -189,7 +187,7 @@ describe("Next Iteration", () => {
         console.log("DECODED =>", decoded.toJSON());
     });
 
-    xit("instances should share parent/root references", () => {
+    it("instances should share parent/root references", () => {
         class Skill extends Schema {
             @type("number") damage: number;
         }
@@ -237,7 +235,7 @@ describe("Next Iteration", () => {
         assert.ok(state.players.get("one")['$changes'].parent === state.players as any, "state.players['one'] parent should be state.players");
     });
 
-    xit("should encode filtered", () => {
+    it("should encode filtered", () => {
         class Item extends Schema {
             @type("number") damage: number;
         }
@@ -295,7 +293,7 @@ describe("Next Iteration", () => {
         decoded2.decode(encoded2);
         assert.equal("Hello", decoded2.str);
 
-        console.log("DECODED 1 =>", decoded1.toJSON());
+        // console.log("DECODED 1 =>", decoded1.toJSON());
         console.log("DECODED 2 =>", decoded2.toJSON());
 
         state.discardAllChanges();
@@ -326,7 +324,7 @@ describe("Next Iteration", () => {
         console.log("DECODED 2 =>", decoded2.toJSON());
     });
 
-    xit("encoding / decoding deep items", () => {
+    it("encoding / decoding deep items", () => {
         class Item extends Schema {
             @type("string") name: string;
         }

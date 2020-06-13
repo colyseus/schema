@@ -205,6 +205,26 @@ export class ChangeTree {
         }
     }
 
+    getChildrenFilter() {
+        return (this.parent as Schema)['_childFilters'][this.parentIndex];;
+    }
+
+    getParentFilter() {
+        const parent = this.parent;
+
+        if (!parent) {
+            return;
+        }
+
+        if (parent['_definition']) {
+            return (parent as Schema)['_filters'][this.parentIndex];
+
+        } else {
+            return (parent['$changes'].parent as Schema)['_childFilters'][this.parentIndex];
+        }
+
+    }
+
     //
     // used during `.encode()`
     //
