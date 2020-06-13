@@ -56,15 +56,11 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.map.get("two"), 22);
     });
 
-    it("add and modify a filtered map item", () => {
+    it("add and modify a filtered primitive map item", () => {
         class State extends Schema {
             @filterChildren(function(client, key, value, root) {
                 return client.sessionId === key;
             })
-
-            // @filter(function(client, value, root) {
-            //     return client.sessionId === value;
-            // })
             @type({ map: "number" })
             map = new Map<string, number>();
         }
@@ -134,6 +130,91 @@ describe("Next Iteration", () => {
 
         decoded3.decode(encoded3);
         assert.equal(decoded3.map.size, 1);
+    });
+
+    it.only("add and modify a filtered Schema map item", () => {
+        class Player extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+        class State extends Schema {
+            @filterChildren(function(client, key: string, value: Player, root: State) {
+                return client.sessionId === key;
+            })
+            @type({ map: Player })
+            map = new Map<string, Player>();
+        }
+
+        const state = new State();
+        state.map.set("one", new Player().assign({ x: 1, y: 1 }));
+        state.map.set("two", new Player().assign({ x: 2, y: 2 }));
+        state.map.set("three", new Player().assign({ x: 3, y: 3 }));
+
+        const client1 = { sessionId: "one" };
+        const client2 = { sessionId: "two" };
+        const client3 = { sessionId: "three" };
+
+        const decoded1 = new State();
+        const decoded2 = new State();
+        const decoded3 = new State();
+
+        let encoded = state.encode(undefined, undefined, undefined, true);
+
+        console.log("ENCODED (FULL)", encoded.length, encoded);
+
+        let encoded1 = state.applyFilters(encoded, client1);
+        console.log("ENCODED (CLIENT 1)", encoded1.length, encoded1);
+
+        let encoded2 = state.applyFilters(encoded, client2);
+        console.log("ENCODED (CLIENT 2)", encoded2.length, encoded2);
+
+        let encoded3 = state.applyFilters(encoded, client3);
+        console.log("ENCODED (CLIENT 3)", encoded3.length, encoded3);
+
+        decoded1.decode(encoded1);
+        assert.equal(decoded1.map.size, 1);
+        assert.equal(decoded1.map.get("one").x, 1);
+
+        decoded2.decode(encoded2);
+        assert.equal(decoded2.map.size, 1);
+        assert.equal(decoded2.map.get("two").x, 2);
+
+        decoded3.decode(encoded3);
+        assert.equal(decoded3.map.size, 1);
+        assert.equal(decoded3.map.get("three").x, 3);
+
+        // discard previous changes
+        state.discardAllChanges();
+
+        // mutate all items
+        state.map.get("one").x = 11;
+        state.map.get("two").x = 22;
+        state.map.get("three").x = 33;
+
+        encoded = state.encode(undefined, undefined, undefined, true);
+
+        console.log("\n\n>> PREVIOUS CHANGES HAVE BEEN DISCARDED\n\n");
+
+        encoded1 = state.applyFilters(encoded, client1);
+        console.log("ENCODED (CLIENT 1)", encoded1.length, encoded1);
+
+        encoded2 = state.applyFilters(encoded, client2);
+        console.log("ENCODED (CLIENT 2)", encoded2.length, encoded2);
+
+        encoded3 = state.applyFilters(encoded, client3);
+        console.log("ENCODED (CLIENT 3)", encoded3.length, encoded3);
+
+        decoded1.decode(encoded1);
+        assert.equal(decoded1.map.size, 1);
+        assert.deepEqual(decoded1.map.get("one").x, 11);
+
+        decoded2.decode(encoded2);
+        assert.equal(decoded2.map.size, 1);
+        assert.deepEqual(decoded2.map.get("two").x, 22);
+
+        decoded3.decode(encoded3);
+        assert.equal(decoded3.map.size, 1);
+        assert.deepEqual(decoded3.map.get("three").x, 33);
     });
 
     it("should encode string", () => {
