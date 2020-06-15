@@ -251,13 +251,15 @@ export abstract class Schema {
 
             } else if (Schema.is(type)) {
                 const refId = decode.number(bytes, it);
+                value = $root.refs.get(refId);
 
                 if (operation === OPERATION.ADD) {
-                    value = this.createTypeInstance(bytes, it, type as typeof Schema);
-                    $root.refs.set(refId, value);
+                    const childType = this.getSchemaType(bytes, it);
 
-                } else {
-                    value = $root.refs.get(refId);
+                    if (!value) {
+                        value = this.createTypeInstance(bytes, it, childType || type as typeof Schema);
+                        $root.refs.set(refId, value);
+                    }
                 }
 
                 hasChange = true;
@@ -354,7 +356,8 @@ export abstract class Schema {
 
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];
-            const ref = changeTree.ref as Schema;
+            const ref = changeTree.ref;
+            const isSchema = (ref instanceof Schema);
 
             // root `refId` is skipped.
             encode.uint8(bytes, SWITCH_TO_STRUCTURE);
@@ -379,7 +382,10 @@ export abstract class Schema {
                 const fieldIndex = changes[j];
                 const operation = changeTree.changes.get(fieldIndex);
 
-                const field = (ref._fieldsByIndex && ref._fieldsByIndex[fieldIndex]) || fieldIndex;
+                const field = (ref instanceof Schema)
+                    ? ref._fieldsByIndex && ref._fieldsByIndex[fieldIndex]
+                    : fieldIndex;
+
                 const _field = `_${field}`;
 
                 // const type = changeTree.childType || ref._schema[field];
@@ -398,35 +404,48 @@ export abstract class Schema {
                 //
                 // encode "alias" for dynamic fields (maps)
                 //
-                if (
-                    !(changeTree.ref instanceof Schema) &&
-                    operation.op === OPERATION.ADD
-                ) {
-                    const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
-                    console.log("DYNAMIC INDEX:", { dynamicIndex, typeOf: typeof(dynamicIndex) });
-                    if (typeof(dynamicIndex) === "string") {
+                if (!isSchema && operation.op === OPERATION.ADD) {
+                    if (ref instanceof MapSchema) {
                         //
                         // MapSchema dynamic key
                         //
+                        const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
                         encode.string(bytes, dynamicIndex);
 
-                    } else {
+                    } else if (ref instanceof ArraySchema) {
                         //
                         // ArraySchema dynamic key
                         //
+                        const dynamicIndex = ref['$indexes'].get(fieldIndex);
+
+                        console.log("DYNAMIC INDEX:", {
+                            dynamicIndex,
+                            fieldIndex,
+                            $indexes: changeTree.ref['$indexes'],
+                            typeOf: typeof (dynamicIndex)
+                        });
+
                         encode.number(bytes, dynamicIndex);
                     }
                 }
 
+                console.log("ENCODE FIELD", {
+                    ref: ref.constructor.name,
+                    type,
+                    field,
+                    value,
+                    op: OPERATION[operation.op]
+                })
+
                 if (operation.op === OPERATION.DELETE) {
+                    //
                     // TODO: delete from $root.cache
+                    //
                     continue;
                 }
 
                 if (Schema.is(type)) {
-                    assertInstanceType(value, type as typeof Schema, ref, field);
-
-                    this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
+                    assertInstanceType(value, type as typeof Schema, ref as Schema, field);
 
                     //
                     // Encode refId for this instance.
@@ -434,11 +453,16 @@ export abstract class Schema {
                     //
                     encode.number(bytes, value.$changes.refId);
 
+                    // Try to encode inherited TYPE_ID if it's an ADD operation.
+                    if (operation.op === OPERATION.ADD) {
+                        this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
+                    }
+
                 } else if (ArraySchema.is(type)) {
                     //
                     // ensure a ArraySchema has been provided
                     //
-                    assertInstanceType(ref[_field], ArraySchema, ref, field);
+                    assertInstanceType(ref[_field], ArraySchema, ref as Schema, field);
 
                     //
                     // Encode refId for this instance.
@@ -450,7 +474,7 @@ export abstract class Schema {
                     //
                     // ensure a MapSchema has been provided
                     //
-                    assertInstanceType(ref[_field], MapSchema, ref, field);
+                    assertInstanceType(ref[_field], MapSchema, ref as Schema, field);
 
                     //
                     // Encode refId for this instance.
@@ -459,10 +483,10 @@ export abstract class Schema {
                     encode.number(bytes, value.$changes.refId);
 
                 } else {
-                    encodePrimitiveType(type as PrimitiveType, bytes, value, ref, field);
+                    encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field);
 
                     const tempBytes = [];
-                    encodePrimitiveType(type as PrimitiveType, tempBytes, value, ref, field);
+                    encodePrimitiveType(type as PrimitiveType, tempBytes, value, ref as Schema, field);
 
                     // console.log("ENCODE PRIMITIVE TYPE:", {
                     //     ref: ref.constructor.name,
@@ -715,17 +739,19 @@ export abstract class Schema {
         }
     }
 
-    private createTypeInstance (bytes: number[], it: decode.Iterator, type: typeof Schema): Schema {
-        let instance: Schema;
+    private getSchemaType(bytes: number[], it: decode.Iterator): typeof Schema {
+        let type: typeof Schema;
 
         if (bytes[it.offset] === TYPE_ID) {
             it.offset++;
-            const anotherType = (this.constructor as typeof Schema)._context.get(decode.uint8(bytes, it));
-            instance = new (anotherType as any)();
-
-        } else {
-            instance = new (type as any)();
+            type = (this.constructor as typeof Schema)._context.get(decode.uint8(bytes, it));
         }
+
+        return type;
+    }
+
+    private createTypeInstance (bytes: number[], it: decode.Iterator, type: typeof Schema): Schema {
+        let instance: Schema = new (type as any)();
 
         // assign root on $changes
         instance.$changes.root = this.$changes.root;

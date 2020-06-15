@@ -6,7 +6,7 @@ import { logChangeTree } from "./helpers/test_helpers";
 
 describe("Next Iteration", () => {
 
-    it("add and modify an array item", () => {
+    it("add and modify an primary array item", () => {
         class State extends Schema {
             @type(["string"])
             arr: string[];
@@ -41,6 +41,59 @@ describe("Next Iteration", () => {
         decoded.decode(encoded);
 
         assert.deepEqual(decoded.arr['$items'], ['one', 't', 'three']);
+    });
+
+    it("add and modify an Schema array item", () => {
+        class Player extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+
+        class State extends Schema {
+            @type([Player])
+            players: Player[];
+        }
+
+        const state = new State().assign({ players: [] });
+
+        const p1 = new Player();
+        p1.x = 1;
+        p1.y = 1;
+        state.players.push(p1);
+
+        const p2 = new Player();
+        p2.x = 2;
+        p2.y = 2;
+        state.players.push(p2);
+
+        const p3 = new Player();
+        p3.x = 3;
+        p3.y = 3;
+        state.players.push(p3);
+
+        console.log("\n\nLETS ENCODE:");
+        let encoded = state.encode();
+
+        console.log("\n\nLETS DECODE:");
+
+        const decoded = new State();
+        decoded.decode(encoded);
+        assert.deepEqual(decoded.players.map(p => p.x), [1, 2, 3]);
+
+        console.log("\n\nDISCARDING CHANGES...");
+
+        // discard previous changes
+        state.discardAllChanges();
+
+        state.players[0].x = 11;
+
+        console.log("\n\nLETS ENCODE:");
+        encoded = state.encode();
+
+        console.log("\n\nLETS DECODE:", encoded.length, encoded);
+        decoded.decode(encoded);
+
+        assert.deepEqual(decoded.players.map(p => p.x), [11, 2, 3]);
     });
 
     it("add and modify a map item", () => {
@@ -107,6 +160,42 @@ describe("Next Iteration", () => {
         assert.equal(1, decoded.map.size);
         assert.equal(undefined, decoded.map["one"]);
         assert.equal(2, decoded.map["two"]);
+    });
+
+    it.only("should re-use the same Schema reference across the structure", () => {
+        class Player extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+
+        class State extends Schema {
+            @type(Player) player;
+            @type({ map: Player }) players = new Map<string, Player>();
+        }
+
+        const player = new Player();
+        player.x = 1;
+        player.y = 2;
+
+        const state = new State();
+        state.player = player;
+        state.players.set("one", player);
+        state.players.set("two", player);
+        state.players.set("three", player);
+
+        console.log("\n\nWILL ENCODE:");
+        let encoded = state.encode();
+
+        console.log("\n\nWILL DECODE:", encoded.length, encoded);
+
+        const decoded = new State();
+        decoded.decode(encoded);
+
+        console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
+
+        assert.equal(decoded.player, decoded.players.get("one"));
+        assert.equal(decoded.player, decoded.players.get("two"));
+        assert.equal(decoded.player, decoded.players.get("three"));
     });
 
     it("add and modify a filtered primitive map item", () => {
