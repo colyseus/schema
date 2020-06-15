@@ -414,18 +414,9 @@ export abstract class Schema {
 
                     } else if (ref instanceof ArraySchema) {
                         //
-                        // ArraySchema dynamic key
+                        // ArraySchema key
                         //
-                        const dynamicIndex = ref['$indexes'].get(fieldIndex);
-
-                        console.log("DYNAMIC INDEX:", {
-                            dynamicIndex,
-                            fieldIndex,
-                            $indexes: changeTree.ref['$indexes'],
-                            typeOf: typeof (dynamicIndex)
-                        });
-
-                        encode.number(bytes, dynamicIndex);
+                        encode.number(bytes, fieldIndex);
                     }
                 }
 
@@ -712,8 +703,8 @@ export abstract class Schema {
         const obj = {}
         for (let field in schema) {
             if (!deprecated[field] && this[field] !== null && typeof (this[field]) !== "undefined") {
-                obj[field] = (typeof (this[field].toJSON) === "function")
-                    ? this[field].toJSON()
+                obj[field] = (typeof (this[field]['toJSON']) === "function")
+                    ? this[field]['toJSON']()
                     : this[`_${field}`];
             }
         }

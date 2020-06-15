@@ -43,7 +43,7 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.arr['$items'], ['one', 't', 'three']);
     });
 
-    it("add and modify an Schema array item", () => {
+    it.only("add and modify an Schema array item", () => {
         class Player extends Schema {
             @type("number") x: number;
             @type("number") y: number;
@@ -78,7 +78,11 @@ describe("Next Iteration", () => {
 
         const decoded = new State();
         decoded.decode(encoded);
-        assert.deepEqual(decoded.players.map(p => p.x), [1, 2, 3]);
+
+        console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
+        console.log("decoded.players.map(p => p.x):", decoded.players.map(p => p.x));
+
+        assert.equal(JSON.stringify(decoded.players.map(p => p.x)), "[1,2,3]");
 
         console.log("\n\nDISCARDING CHANGES...");
 
@@ -93,7 +97,7 @@ describe("Next Iteration", () => {
         console.log("\n\nLETS DECODE:", encoded.length, encoded);
         decoded.decode(encoded);
 
-        assert.deepEqual(decoded.players.map(p => p.x), [11, 2, 3]);
+        assert.equal(JSON.stringify(decoded.players.map(p => p.x)), "[11,2,3]");
     });
 
     it("add and modify a map item", () => {
@@ -162,7 +166,7 @@ describe("Next Iteration", () => {
         assert.equal(2, decoded.map["two"]);
     });
 
-    it.only("should re-use the same Schema reference across the structure", () => {
+    it("should re-use the same Schema reference across the structure", () => {
         class Player extends Schema {
             @type("number") x: number;
             @type("number") y: number;

@@ -405,7 +405,8 @@ export class ArraySchema<T=any> implements Array<T> {
     }
 
     protected getByIndex(index: number) {
-        return this.$items[this.$indexes.get(index)];
+        // return this.$items[this.$indexes.get(index)];
+        return this.$items[index];
     }
 
     setAt(key: number, item: T) {
@@ -416,9 +417,7 @@ export class ArraySchema<T=any> implements Array<T> {
         }
 
         // set "index" for reference.
-        const index = (isRef)
-            ? item['$changes'].refId
-            : this.$refId++
+        const index = this.$refId++;
 
         if (isRef) {
             item['$changes'].parentIndex = index;
