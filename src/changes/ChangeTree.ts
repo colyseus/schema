@@ -140,8 +140,24 @@ export class ChangeTree {
             });
 
         } else if (this.ref instanceof ArraySchema) {
+            this.ref.forEach((value, key) => {
+                console.log("SETTING PARENT BY REF:", { key, value });
+                if (value instanceof Schema) {
+                    const changeTreee = value['$changes'];
+                    // const parentIndex = definition.indexes[field];
 
-        // } else if (this.ref instanceof SetSchema) {
+                    changeTreee.setParent(
+                        this.ref,
+                        this.root,
+                        // parentIndex,
+                    );
+
+                    // const parentDefinition = (this.parent as Schema)['_definition'];
+                    // changeTreee.childType = parentDefinition.schema[parentDefinition.fieldsByIndex[this.parentIndex]]
+                }
+                // value.$changes.change(key);
+            });
+
         }
     }
 
