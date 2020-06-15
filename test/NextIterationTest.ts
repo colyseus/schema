@@ -1,31 +1,46 @@
 import * as util from "util";
 import * as assert from "assert";
 
-import { ChangeTree } from "../src/changes/ChangeTree";
 import { Schema, type, MapSchema, ArraySchema, filter, filterChildren } from "../src";
 import { logChangeTree } from "./helpers/test_helpers";
 
 describe("Next Iteration", () => {
 
-    xit("add and modify an array item", () => {
+    it("add and modify an array item", () => {
         class State extends Schema {
             @type(["string"])
-            arr: string[]
+            arr: string[];
         }
 
-        const encoded = new State({ arr: [] });
-        encoded.arr.push("one");
-        encoded.arr.push("two");
-        encoded.arr.push("three");
+        const state = new State({ arr: [] });
+        console.log("ARR =>", state.arr);
+        state.arr.push("one");
+        state.arr.push("two");
+        state.arr.push("three");
+
+        console.log("\n\nLETS ENCODE:");
+        let encoded = state.encode();
+
+        console.log("\n\nLETS DECODE:");
 
         const decoded = new State();
-        decoded.decode(encoded.encode());
-        assert.deepEqual(decoded.arr, ['one', 'two', 'three']);
+        decoded.decode(encoded);
+        assert.deepEqual(decoded.arr['$items'], ['one', 'two', 'three']);
 
-        encoded.arr[1] = "twotwo";
-        decoded.decode(encoded.encode());
+        console.log("\n\nDISCARDING CHANGES...");
 
-        assert.deepEqual(decoded.arr, ['one', 'twotwo', 'three']);
+        // discard previous changes
+        state.discardAllChanges();
+
+        state.arr[1] = "t";
+
+        console.log("\n\nLETS ENCODE:");
+        encoded = state.encode();
+
+        console.log("\n\nLETS DECODE:", encoded.length, encoded);
+        decoded.decode(encoded);
+
+        assert.deepEqual(decoded.arr['$items'], ['one', 't', 'three']);
     });
 
     it("add and modify a map item", () => {

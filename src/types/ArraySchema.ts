@@ -2,62 +2,27 @@ import { ChangeTree } from "../changes/ChangeTree";
 import { Schema } from "../Schema";
 
 export class ArraySchema<T=any> implements Array<T> {
-    protected $sorting: boolean;
-    protected $changes: ChangeTree;
+    protected $changes: ChangeTree = new ChangeTree(this);
 
-    protected $items: Array<T> = new Array<T>();
+    protected $items: Array<T> = [];
     protected $indexes: Map<number, number> = new Map<number, number>();
 
-    protected $refId: number;
+    protected $refId: number = 0;
 
     [n: number]: T;
+
+    //
+    // Decoding callbacks
+    //
+    public onAdd?: (item: T, index: number) => void;
+    public onRemove?: (item: T, index: number) => void;
+    public onChange?: (item: T, index: number) => void;
 
     static is(type: any) {
         return Array.isArray(type);
     }
 
     constructor (...items: T[]) {
-        Object.defineProperties(this, {
-            $sorting:     { value: undefined, enumerable: false, writable: true },
-            $changes:     {
-                value: new ChangeTree(this),
-                enumerable: false,
-                writable: true
-            },
-            $refId:       { value: 0,         enumerable: false, writable: true },
-
-            onAdd:        { value: undefined, enumerable: false, writable: true },
-            onRemove:     { value: undefined, enumerable: false, writable: true },
-            onChange:     { value: undefined, enumerable: false, writable: true },
-
-            triggerAll: {
-                value: () => {
-                    if (!this.onAdd) {
-                        return;
-                    }
-
-                    for (let i = 0; i < this.length; i++) {
-                        this.onAdd(this[i], i);
-                    }
-                }
-            },
-
-            toJSON: {
-                value: () => {
-                    const arr = [];
-                    for (let i = 0; i < this.length; i++) {
-                        const objAt = this[i] as any;
-                        arr.push(
-                            (typeof (objAt.toJSON) === "function")
-                                ? objAt.toJSON()
-                                : objAt
-                        );
-                    }
-                    return arr;
-                }
-            },
-        });
-
         this.push(...items);
     }
 
@@ -86,26 +51,7 @@ export class ArraySchema<T=any> implements Array<T> {
         let length: number;
 
         for (const item of items) {
-            const isRef = (item['$changes']) !== undefined;
-
-            // set "index" for reference.
-            const index = (isRef)
-                ? item['$changes'].refId
-                : this.$refId++
-
-            if (isRef) {
-                item['$changes'].parentIndex = index;
-            }
-
-            length = this.$items.push(item);
-
-            const key = length - 1;
-            this.$changes.indexes[key] = index;
-            this.$indexes.set(index, key);
-
-            console.log(`ArraySchema#push() =>`, { isRef, key, index, item });
-
-            this.$changes.change(key);
+            this.setAt(this.length, item);
         }
 
         return length;
@@ -143,7 +89,7 @@ export class ArraySchema<T=any> implements Array<T> {
         //
         // TODO: touch `$changes`
         //
-        this.$items.shift();
+        return this.$items.shift();
     }
 
     /**
@@ -165,8 +111,6 @@ export class ArraySchema<T=any> implements Array<T> {
      * ```
      */
     sort(compareFn?: (a: T, b: T) => number): this {
-        this.$sorting = true;
-
         this.$items.sort(compareFn);
 
         if (this.$changes) { // allow to .slice() + .sort()
@@ -180,8 +124,6 @@ export class ArraySchema<T=any> implements Array<T> {
             //     this.$changes.mapIndex(this[key], key);
             // }
         }
-
-        this.$sorting = false;
 
         return this;
     }
@@ -458,9 +400,58 @@ export class ArraySchema<T=any> implements Array<T> {
         return this.$items.includes(searchElement, fromIndex);
     }
 
-    onAdd: (item: T, index: number) => void;
-    onRemove: (item: T, index: number) => void;
-    onChange: (item: T, index: number) => void;
+    protected setIndex(index: number, key: number) {
+        this.$indexes.set(index, key);
+    }
 
-    triggerAll: () => void;
+    protected getByIndex(index: number) {
+        return this.$items[this.$indexes.get(index)];
+    }
+
+    setAt(key: number, item: T) {
+        const isRef = (item['$changes']) !== undefined;
+
+        // set "index" for reference.
+        const index = (isRef)
+            ? item['$changes'].refId
+            : this.$refId++
+
+        if (isRef) {
+            item['$changes'].parentIndex = index;
+        }
+
+        this.$items[key] = item;
+
+        this.$changes.indexes[key] = index;
+        this.$indexes.set(index, key);
+
+        console.log(`ArraySchema#push() =>`, { isRef, key, index, item });
+
+        this.$changes.change(key);
+    }
+
+    triggerAll() {
+        if (!this.onAdd) { return; }
+        for (let i = 0; i < this.length; i++) {
+            this.onAdd(this[i], i);
+        }
+    }
+
+    toJSON() {
+        const arr = [];
+        for (let i = 0; i < this.length; i++) {
+            const objAt = this.$items[i];
+            arr.push(
+                (typeof (objAt['toJSON']) === "function")
+                    ? objAt['toJSON']()
+                    : objAt
+            );
+        }
+        return arr;
+    }
+
+    toArray() {
+        return this.$items;
+    }
+
 }

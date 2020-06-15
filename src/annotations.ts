@@ -184,6 +184,8 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     return;
                 }
 
+                console.log({ isMap, isArray });
+
                 // automaticallty transform Array into ArraySchema
                 if (isArray && !(value instanceof ArraySchema)) {
                     value = new ArraySchema(...value);
@@ -221,59 +223,39 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
                 } else if (isArray) {
                     value = new Proxy(value, {
-                        get: (obj, prop) => obj[prop],
+                        get: (obj, prop) => {
+                            if (!isNaN(prop as any)) {
+                                console.log(`GET $items[${String(prop)}]`);
+                                return obj.$items[prop];
+
+                            } else {
+                                return obj[prop];
+                            }
+                        },
+
                         set: (obj, prop, setValue) => {
-                            // if (prop !== "length" && (prop as string).indexOf("$") !== 0) {
-                            //     // ensure new value has a parent
-                            //     const key = (isArray) ? Number(prop) : String(prop);
+                            console.log("SETTING TO ARRAY", { prop, setValue });
 
-                            //     if (!obj.$sorting) {
-                            //         // track index change
-                            //         const previousIndex = obj.$changes.getIndex(setValue);
-                            //         if (previousIndex !== undefined) {
-                            //             obj.$changes.mapIndexChange(setValue, previousIndex);
-                            //         }
-                            //         obj.$changes.mapIndex(setValue, key);
-                            //     }
+                            if (!isNaN(prop as any)) { // https://stackoverflow.com/a/175787/892698
+                                obj.setAt(Number(prop), setValue);
 
-                            //     if (setValue instanceof Schema) {
-                            //         // new items are flagged with all changes
-                            //         if (!setValue.$changes.parent) {
-                            //             setValue.$changes = new ChangeTree(setValue._indexes, key, obj.$changes);
-                            //             setValue.$changes.changeAll(setValue);
-                            //         }
-
-                            //     } else {
-                            //         obj[prop] = setValue;
-                            //     }
-
-                            //     // apply change on ArraySchema / MapSchema
-                            //     obj.$changes.change(key);
-                            // }
-
-                            obj[prop] = setValue;
+                            } else {
+                                obj[prop] = setValue;
+                            }
 
                             return true;
                         },
 
                         deleteProperty: (obj, prop) => {
-                            const deletedValue = obj[prop];
+                            if (typeof(prop) === "number") {
+                                //
+                                // TOOD: touch `$changes`
+                                //
+                                delete obj.$items[prop];
 
-                            // if (isMap && deletedValue !== undefined) {
-                            //     obj.$changes.deleteIndex(deletedValue);
-                            //     obj.$changes.deleteIndexChange(deletedValue);
-
-                            //     if (deletedValue.$changes) { // deletedValue may be a primitive value
-                            //         delete deletedValue.$changes.parent;
-                            //     }
-
-                            //     // obj._indexes.delete(prop);
-                            // }
-
-                            delete obj[prop];
-
-                            const key = (isArray) ? Number(prop) : String(prop);
-                            obj.$changes.delete(key);
+                            } else {
+                                delete obj[prop];
+                            }
 
                             return true;
                         },

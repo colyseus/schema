@@ -150,6 +150,9 @@ export abstract class Schema {
     public assign(
         props: { [prop in NonFunctionPropNames<this>]: this[prop] }
     ) {
+        //
+        // TODO: recursivelly assign child Schema structures.
+        //
         Object.assign(this, props);
         return this;
     }
@@ -183,14 +186,12 @@ export abstract class Schema {
         const $root = this.$changes.root;
         const totalBytes = bytes.length;
 
-        // console.log("DECODING, REFS =>", Array.from($root.refs));
-
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
 
             if (byte === SWITCH_TO_STRUCTURE) {
                 const refId = decode.number(bytes, it);
-                // console.log("SWITCH_TO_STRUCTURE", { refId });
+                console.log("SWITCH_TO_STRUCTURE", { refId });
 
                 if (!$root.refs.has(refId)) {
                     $root.refs.set(refId, this);
@@ -218,15 +219,22 @@ export abstract class Schema {
             let type = changeTree.getType(fieldIndex);
             let value: any;
 
-            // console.log({ ref: ref.constructor.name, field, fieldIndex, type });
+            console.log({
+                ref: ref.constructor.name,
+                field,
+                fieldIndex,
+                type,
+                operation: OPERATION[operation]
+            });
 
             let dynamicIndex: number | string;
             let hasChange = false;
 
             if (!isSchema && operation === OPERATION.ADD) {
-                dynamicIndex = decode.string(bytes, it);
-                console.log("DYNAMIC INDEX:", { dynamicIndex });
-                ref['setIndex'](field, dynamicIndex as string);
+                dynamicIndex = (decode.stringCheck(bytes, it))
+                    ? decode.string(bytes, it)
+                    : decode.number(bytes, it);
+                ref['setIndex'](field, dynamicIndex);
             }
 
             if (field === undefined) {
@@ -236,9 +244,6 @@ export abstract class Schema {
                 //
                 // TODO: remove from $root.refs
                 //
-                console.log("DELETE OPERATION!", {
-                    ref, type, _field, fieldIndex,
-                });
                 ref['deleteByIndex'](fieldIndex);
 
                 value = null;
@@ -314,10 +319,14 @@ export abstract class Schema {
                 } else if (ref instanceof MapSchema) {
                     const key = ref['$indexes'].get(field);
                     ref.set(key, value);
+
+                } else if (ref instanceof ArraySchema) {
+                    const key = ref['$indexes'].get(field);
+                    console.log("SETTING FOR ArraySchema =>", { field, key, value });
+                    // ref[key] = value;
+                    ref.setAt(key, value);
                 }
             }
-
-
 
         }
 
@@ -357,6 +366,7 @@ export abstract class Schema {
                 ? Array.from(changeTree.allChanges)
                 : Array.from(changeTree.changes.keys());
 
+
             console.log("CHANGES =>", {
                 changes,
                 definition: ref['_definition'],
@@ -364,10 +374,6 @@ export abstract class Schema {
                 isMap: ref instanceof MapSchema,
                 isArray: ref instanceof ArraySchema,
             });
-
-            if (ref instanceof MapSchema) {
-                console.log("ENCODING MAP!", { size: ref.size, changes, });
-            }
 
             for (let j = 0, cl = changes.length; j < cl; j++) {
                 const fieldIndex = changes[j];
@@ -393,12 +399,23 @@ export abstract class Schema {
                 // encode "alias" for dynamic fields (maps)
                 //
                 if (
-                    changeTree.ref instanceof MapSchema &&
+                    !(changeTree.ref instanceof Schema) &&
                     operation.op === OPERATION.ADD
                 ) {
                     const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
-                    console.log("ENCODE DYNAMIC INDEX:", { dynamicIndex });
-                    encode.string(bytes, dynamicIndex);
+                    console.log("DYNAMIC INDEX:", { dynamicIndex, typeOf: typeof(dynamicIndex) });
+                    if (typeof(dynamicIndex) === "string") {
+                        //
+                        // MapSchema dynamic key
+                        //
+                        encode.string(bytes, dynamicIndex);
+
+                    } else {
+                        //
+                        // ArraySchema dynamic key
+                        //
+                        encode.number(bytes, dynamicIndex);
+                    }
                 }
 
                 if (operation.op === OPERATION.DELETE) {
@@ -447,12 +464,12 @@ export abstract class Schema {
                     const tempBytes = [];
                     encodePrimitiveType(type as PrimitiveType, tempBytes, value, ref, field);
 
-                    console.log("ENCODE PRIMITIVE TYPE:", {
-                        ref: ref.constructor.name,
-                        field,
-                        value,
-                        bytes: tempBytes,
-                    })
+                    // console.log("ENCODE PRIMITIVE TYPE:", {
+                    //     ref: ref.constructor.name,
+                    //     field,
+                    //     value,
+                    //     bytes: tempBytes,
+                    // })
                 }
 
                 if (useFilters) {
@@ -564,10 +581,10 @@ export abstract class Schema {
             const ref = changeTree.ref as Schema;
             const filters = ref._filters;
 
-            console.log("APPLY FILTERS, SWITCH_TO_STRUCTURE:", {
-                ref: ref.constructor.name,
-                refId: changeTree.refId
-            });
+            // console.log("APPLY FILTERS, SWITCH_TO_STRUCTURE:", {
+            //     ref: ref.constructor.name,
+            //     refId: changeTree.refId
+            // });
 
             encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
             encode.number(filteredBytes, ref.$changes.refId);
