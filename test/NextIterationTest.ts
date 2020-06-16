@@ -43,7 +43,7 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.arr['$items'], ['one', 't', 'three']);
     });
 
-    it.only("add and modify an Schema array item", () => {
+    it("add and modify an Schema array item", () => {
         class Player extends Schema {
             @type("number") x: number;
             @type("number") y: number;

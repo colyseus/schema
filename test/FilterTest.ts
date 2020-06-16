@@ -44,11 +44,14 @@ describe("@filter", () => {
 
         console.log("--------------\nAPPLY CLIENT 1\n--------------");
         const filtered1 = state.applyFilters(encoded, client1);
-        const decoded1 = (new State()).decode(filtered1);
+        const decoded1 = new State();
+        decoded1.decode(filtered1);
         debugBytes(filtered1, "FILTERED 1");
+
         console.log("--------------\nAPPLY CLIENT 2\n--------------");
         const filtered2 = state.applyFilters(encoded, client2);
-        const decoded2 = (new State()).decode(filtered2);
+        const decoded2 = new State();
+        decoded2.decode(filtered2);
         debugBytes(filtered2, "FILTERED 2");
 
         console.log({
@@ -86,8 +89,11 @@ describe("@filter", () => {
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
 
-        const decoded1 = (new State()).decode(state.applyFilters(encoded, client1));
-        const decoded2 = (new State()).decode(state.applyFilters(encoded, client2));
+        const decoded1 = new State()
+        decoded1.decode(state.applyFilters(encoded, client1));
+
+        const decoded2 = new State()
+        decoded2.decode(state.applyFilters(encoded, client2));
 
         assert.equal("hello", decoded1.str);
         assert.equal("hello", decoded2.str);
@@ -125,11 +131,14 @@ describe("@filter", () => {
 
         console.log("--------------\nAPPLY CLIENT 1\n--------------");
         const filtered1 = state.applyFilters(encoded, client1);
-        const decoded1 = (new State()).decode(filtered1);
+        const decoded1 = new State()
+        decoded1.decode(filtered1);
         debugBytes(filtered1, "FILTERED 1");
+
         console.log("--------------\nAPPLY CLIENT 2\n--------------");
         const filtered2 = state.applyFilters(encoded, client2);
-        const decoded2 = (new State()).decode(filtered2);
+        const decoded2 = new State();
+        decoded2.decode(filtered2);
         debugBytes(filtered2, "FILTERED 2");
 
         console.log({

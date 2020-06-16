@@ -263,19 +263,32 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 }
 
                 this[fieldCached] = value;
-                this.$changes.change(field);
 
-                //
-                // call setParent() recursively for this and its child
-                // structures.
-                //
-                if (value['$changes']) {
-                    (value['$changes'] as ChangeTree).setParent(
-                        this,
-                        this.$changes.root,
-                        this._definition.indexes[field],
-                    );
+                if (
+                    value !== undefined &&
+                    value !== null
+                ) {
+                    this.$changes.change(field);
+
+                    //
+                    // call setParent() recursively for this and its child
+                    // structures.
+                    //
+                    if (value['$changes']) {
+                        (value['$changes'] as ChangeTree).setParent(
+                            this,
+                            this.$changes.root,
+                            this._definition.indexes[field],
+                        );
+                    }
+
+                } else {
+                    //
+                    // Setting a field to `null` or `undefined` will delete it.
+                    //
+                    this.$changes.delete(field);
                 }
+
             },
 
             enumerable: true,

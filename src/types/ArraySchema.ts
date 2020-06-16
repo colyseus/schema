@@ -134,7 +134,11 @@ export class ArraySchema<T=any> implements Array<T> {
      * @param deleteCount The number of elements to remove.
      * @param items Elements to insert into the array in place of the deleted elements.
      */
-    splice(start: number, deleteCount: number, ...items: T[]): T[] {
+    splice(
+        start: number,
+        deleteCount: number = this.length - start,
+        ...items: T[]
+    ): T[] {
         //
         // TODO: add `items`
         //
