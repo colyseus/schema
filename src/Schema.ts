@@ -220,14 +220,6 @@ export abstract class Schema {
             let value: any;
             let previousValue: any;
 
-            // console.log({
-            //     ref: ref.constructor.name,
-            //     field,
-            //     fieldIndex,
-            //     type,
-            //     operation: OPERATION[operation]
-            // });
-
             let dynamicIndex: number | string;
             let hasChange = false;
 
@@ -319,7 +311,10 @@ export abstract class Schema {
                 });
             }
 
-            if (value) {
+            if (
+                value !== null &&
+                value !== undefined
+            ) {
                 if (value['$changes']) {
                     value['$changes'].setParent(
                         changeTree.ref,
@@ -470,6 +465,7 @@ export abstract class Schema {
                 }
 
                 if (Schema.is(type)) {
+                    console.log({ type, value, field, fieldIndex });
                     assertInstanceType(value, type as typeof Schema, ref as Schema, field);
 
                     //
@@ -513,8 +509,8 @@ export abstract class Schema {
                 } else {
                     encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field);
 
-                    const tempBytes = [];
-                    encodePrimitiveType(type as PrimitiveType, tempBytes, value, ref as Schema, field);
+                    // const tempBytes = [];
+                    // encodePrimitiveType(type as PrimitiveType, tempBytes, value, ref as Schema, field);
 
                     // console.log("ENCODE PRIMITIVE TYPE:", {
                     //     ref: ref.constructor.name,
@@ -553,17 +549,19 @@ export abstract class Schema {
             return a.refId - b.refId;
         });
 
-        // console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({
-        //     ref: c.ref.constructor.name,
-        //     refId: c.refId,
-        //     changes: c.changes
-        // })));
+        console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({
+            ref: c.ref.constructor.name,
+            refId: c.refId,
+            changes: c.changes,
+            parentIndex: c.parentIndex,
+        })));
 
         changetrees:
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];
 
             if (refIdsDissallowed.has(changeTree.refId))  {
+                console.log("REFID IS NOT ALLOWED. SKIP.", { refId: changeTree.refId })
                 continue;
             }
 
@@ -591,7 +589,11 @@ export abstract class Schema {
                 //
 
                 while (currentRef) {
-                    if (currentRef instanceof Schema) {
+                    if (
+                        // is a direct Schema -> Schema relationship
+                        currentRef instanceof Schema &&
+                       (currentRef['$changes'].parent instanceof Schema)
+                    ) {
                         const filter = currentRef['$changes'].getParentFilter();
 
                         if (filter && !filter.call(currentRef, client, changeTree.ref, root)) {
@@ -620,6 +622,11 @@ export abstract class Schema {
 
                     childRef = currentRef;
                     currentRef = currentRef['$changes'].parent;
+
+                    // break if reached root.
+                    if (!currentRef['$changes'].parent) {
+                        break;
+                    }
                 }
 
                 //

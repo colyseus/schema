@@ -81,6 +81,10 @@ export class ChangeTree {
         this.parent = parent;
         this.parentIndex = parentIndex;
 
+        // if (parentIndex !== undefined) {
+        //     this.parentIndex = parentIndex;
+        // }
+
         // avoid setting parent with empty `root`
         if (!root) { return; }
 
@@ -180,15 +184,6 @@ export class ChangeTree {
 
         const previousChange = this.changes.get(index);
 
-        // console.log("CHANGE!", {
-        //     fieldName,
-        //     index,
-        //     previousChange,
-        //     op: previousChange && OPERATION[previousChange.op]
-        // });
-
-        const willSetChange = !previousChange || previousChange.op === OPERATION.DELETE;
-
         if (!previousChange || previousChange.op === OPERATION.DELETE) {
             this.changes.set(index, {
                 op: (!previousChange)
@@ -266,7 +261,10 @@ export class ChangeTree {
             ? fieldName
             : this.indexes[fieldName];
 
-        this.assertValidIndex(index, fieldName);
+        if (index === undefined) {
+            console.warn("MapSchema: trying to delete non-existing value. ")
+            return;
+        }
 
         this.changes.set(index, { op: OPERATION.DELETE, index });
         this.allChanges.delete(index);

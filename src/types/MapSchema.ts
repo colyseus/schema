@@ -3,79 +3,25 @@ import { ChangeTree } from "../changes/ChangeTree";
 type K = string; // TODO: allow to specify K generic on MapSchema.
 
 export class MapSchema<V=any> implements Map<string, V> {
-    protected $changes: ChangeTree;
+    protected $changes: ChangeTree = new ChangeTree(this);
 
     protected $items: Map<string, V> = new Map<string, V>();
     protected $indexes: Map<number, string> = new Map<number, string>();
 
-    protected $refId: number;
+    protected $refId: number = 0;
+
+    //
+    // Decoding callbacks
+    //
+    public onAdd?: (item: V, key: string) => void;
+    public onRemove?: (item: V, key: string) => void;
+    public onChange?: (item: V, key: string) => void;
 
     static is(type: any) {
         return type['map'] !== undefined;
     }
 
     constructor (initialValues?: Map<string, V> | any) {
-        Object.defineProperties(this, {
-            $changes:     {
-                value: new ChangeTree(this),
-                enumerable: false,
-                writable: true
-            },
-            $refId:       { value: 0,         enumerable: false, writable: true },
-
-            onAdd:        { value: undefined, enumerable: false, writable: true },
-            onRemove:     { value: undefined, enumerable: false, writable: true },
-            onChange:     { value: undefined, enumerable: false, writable: true },
-
-            clone: {
-                value: (isDecoding?: boolean) => {
-                    let cloned: MapSchema;
-
-                    if (isDecoding) {
-                        // client-side
-                        cloned = Object.assign(new MapSchema(), this);
-                        cloned.onAdd = this.onAdd;
-                        cloned.onRemove = this.onRemove;
-                        cloned.onChange = this.onChange;
-
-                    } else {
-                        // server-side
-                        const cloned = new MapSchema();
-                        this.forEach((value, key) => {
-                            if (typeof (value) === "object") {
-                                cloned.set(key, value['clone']());
-                            } else {
-                                cloned.set(key, value);
-                            }
-                        })
-                    }
-
-                    return cloned;
-                }
-            },
-
-            triggerAll: {
-                value: () => {
-                    if (!this.onAdd) { return; }
-                    this.forEach((value, key) => this.onAdd(value, key));
-                }
-            },
-
-            toJSON: {
-                value: () => {
-                    const map: any = {};
-
-                    this.forEach((value, key) => {
-                        map[key] = (typeof (value['toJSON']) === "function")
-                            ? value['toJSON']()
-                            : value;
-                    });
-
-                    return map;
-                }
-            },
-        });
-
         if (initialValues) {
             if (initialValues instanceof Map) {
                 initialValues.forEach((v, k) => this.set(k, v));
@@ -107,9 +53,11 @@ export class MapSchema<V=any> implements Map<string, V> {
         if (!this.$changes.indexes[key]) {
 
             // set "index" for reference.
-            const index = (isRef)
-                ? value['$changes'].refId
-                : this.$refId++
+            const index = this.$refId++;
+
+            // const index = (isRef)
+            //     ? value['$changes'].refId
+            //     : this.$refId++
 
             // console.log(`MapSchema#set() =>`, { isRef, key, index, value });
 
@@ -178,14 +126,53 @@ export class MapSchema<V=any> implements Map<string, V> {
         this.$indexes.delete(index);
     }
 
+    protected clearAllIndexes() {
+        this.$changes.indexes = {};
+        this.$indexes.clear();
+    }
+
+    toJSON() {
+        const map: any = {};
+
+        this.forEach((value, key) => {
+            map[key] = (typeof (value['toJSON']) === "function")
+                ? value['toJSON']()
+                : value;
+        });
+
+        return map;
+    }
+
     //
     // Decoding utilities
     //
-    clone: (isDecoding?: boolean) => MapSchema<V>;
+    clone(isDecoding?: boolean): MapSchema<V> {
+        let cloned: MapSchema;
 
-    onAdd: (item: V, key: string) => void;
-    onRemove: (item: V, key: string) => void;
-    onChange: (item: V, key: string) => void;
+        if (isDecoding) {
+            // client-side
+            cloned = Object.assign(new MapSchema(), this);
+            cloned.onAdd = this.onAdd;
+            cloned.onRemove = this.onRemove;
+            cloned.onChange = this.onChange;
 
-    triggerAll: () => void;
+        } else {
+            // server-side
+            const cloned = new MapSchema();
+            this.forEach((value, key) => {
+                if (typeof (value) === "object") {
+                    cloned.set(key, value['clone']());
+                } else {
+                    cloned.set(key, value);
+                }
+            })
+        }
+
+        return cloned;
+    }
+
+    triggerAll (): void {
+        if (!this.onAdd) { return; }
+        this.forEach((value, key) => this.onAdd(value, key));
+    }
 }

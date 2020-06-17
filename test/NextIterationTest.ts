@@ -332,6 +332,7 @@ describe("Next Iteration", () => {
         }
         class State extends Schema {
             @filterChildren(function(client, key: string, value: Player, root: State) {
+                console.log("CHILD FILTER", { client, key, value });
                 return client.sessionId === key;
             })
             @type({ map: Player })
@@ -342,6 +343,11 @@ describe("Next Iteration", () => {
         state.map.set("one", new Player().assign({ x: 1, y: 1 }));
         state.map.set("two", new Player().assign({ x: 2, y: 2 }));
         state.map.set("three", new Player().assign({ x: 3, y: 3 }));
+
+        console.log("ONE, TWO, THREE, parent indexes =>");
+        console.log(state.map.get("one")['$changes'].parentIndex);
+        console.log(state.map.get("two")['$changes'].parentIndex);
+        console.log(state.map.get("three")['$changes'].parentIndex);
 
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
@@ -389,6 +395,11 @@ describe("Next Iteration", () => {
         state.map.get("one").x = 11;
         state.map.get("two").x = 22;
         state.map.get("three").x = 33;
+
+        console.log("ONE, TWO, THREE, parent indexes =>");
+        console.log(state.map.get("one")['$changes'].parentIndex);
+        console.log(state.map.get("two")['$changes'].parentIndex);
+        console.log(state.map.get("three")['$changes'].parentIndex);
 
         encoded = state.encode(undefined, undefined, undefined, true);
 

@@ -210,7 +210,18 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         },
 
                         set: (obj, prop, setValue) => {
-                            return obj.set(prop, setValue);
+                            if (
+                                (prop as string).indexOf("$") === -1 &&
+                                prop !== "onAdd" && // TODO: improve me!
+                                prop !== "onRemove" &&
+                                prop !== "onChange"
+                            ) {
+                                obj.set(prop, setValue);
+
+                            } else {
+                                obj[prop] = setValue;
+                            }
+                            return true;
                         },
 
                         deleteProperty: (obj, prop) => {
