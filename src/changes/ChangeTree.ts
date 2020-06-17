@@ -102,7 +102,6 @@ export class ChangeTree {
 
                 // TODO: MapSchema child is also treated here.
 
-                // if (value instanceof Schema) {
                 if (value && value['$changes']) {
                     const parentIndex = definition.indexes[field];
 
@@ -141,7 +140,7 @@ export class ChangeTree {
 
         } else if (this.ref instanceof ArraySchema) {
             this.ref.forEach((value, key) => {
-                console.log("SETTING PARENT BY REF:", { key, value });
+                // console.log("SETTING PARENT BY REF:", { key, value });
                 if (value instanceof Schema) {
                     const changeTreee = value['$changes'];
                     // const parentIndex = definition.indexes[field];
@@ -179,17 +178,31 @@ export class ChangeTree {
 
         this.assertValidIndex(index, fieldName);
 
-        const op = (this.allChanges.has(index))
-            ? OPERATION.REPLACE
-            : OPERATION.ADD;
+        const previousChange = this.changes.get(index);
 
-        if (!this.changes.has(index)) {
-            this.changes.set(index, { op, index })
+        // console.log("CHANGE!", {
+        //     fieldName,
+        //     index,
+        //     previousChange,
+        //     op: previousChange && OPERATION[previousChange.op]
+        // });
+
+        const willSetChange = !previousChange || previousChange.op === OPERATION.DELETE;
+
+        if (!previousChange || previousChange.op === OPERATION.DELETE) {
+            this.changes.set(index, {
+                op: (!previousChange)
+                    ? OPERATION.ADD
+                    : (previousChange.op === OPERATION.DELETE)
+                        ? OPERATION.DELETE_AND_ADD
+                        : OPERATION.REPLACE,
+                index
+            })
 
             //
             // TODO:
-            // check for ADD operation during encoding.
-            // add ASSIGN operator matching the ChangeTree ID.
+            // for better `applyFilters()`, we may need to `.touch()`
+            // parent structures here.
             //
 
             // if (this.parent) {
@@ -265,7 +278,7 @@ export class ChangeTree {
         // delete child from root changes.
         //
         if (this.ref[fieldName] instanceof Schema) {
-            this.root.delete(this.ref[fieldName].$changes);
+            this._root?.delete(this.ref[fieldName].$changes);
         }
 
         this._root?.dirty(this);

@@ -184,8 +184,6 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     return;
                 }
 
-                console.log({ isMap, isArray });
-
                 // automaticallty transform Array into ArraySchema
                 if (isArray && !(value instanceof ArraySchema)) {
                     value = new ArraySchema(...value);
@@ -225,7 +223,6 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     value = new Proxy(value, {
                         get: (obj, prop) => {
                             if (!isNaN(prop as any)) {
-                                console.log(`GET $items[${String(prop)}]`);
                                 return obj.$items[prop];
 
                             } else {
@@ -234,8 +231,6 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         },
 
                         set: (obj, prop, setValue) => {
-                            console.log("SETTING TO ARRAY", { prop, setValue });
-
                             if (!isNaN(prop as any)) { // https://stackoverflow.com/a/175787/892698
                                 obj.setAt(Number(prop), setValue);
 

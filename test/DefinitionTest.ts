@@ -25,7 +25,7 @@ describe("Definition", () => {
         obj.players['one'] = new Player();
 
         assert.deepEqual(Object.keys(obj), ['str', 'players', 'notSynched']);
-        assert.deepEqual(Object.keys(obj.players), ['one']);
+        assert.deepEqual(Array.from(obj.players.keys()), ['one']);
         assert.deepEqual(Object.keys(obj.players['one']), ['x', 'y', 'somethingPrivate']);
     });
 

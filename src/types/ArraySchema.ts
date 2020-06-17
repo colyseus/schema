@@ -1,6 +1,14 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { Schema } from "../Schema";
 
+//
+// Notes:
+// -----
+//
+// - The tsconfig.json of @colyseus/schema uses ES2018.
+// - ES2019 introduces `flatMap` / `flat`, which is not currently relevant, and caused other issues.
+//
+
 export class ArraySchema<T=any> implements Array<T> {
     protected $changes: ChangeTree = new ChangeTree(this);
 
@@ -79,6 +87,7 @@ export class ArraySchema<T=any> implements Array<T> {
         // TODO: touch `$changes`
         //
         this.$items.reverse();
+
         return this;
     }
 
@@ -265,9 +274,7 @@ export class ArraySchema<T=any> implements Array<T> {
      * @param callbackfn A function that accepts up to four arguments. The reduce method calls the callbackfn function one time for each element in the array.
      * @param initialValue If initialValue is specified, it is used as the initial value to start the accumulation. The first call to the callbackfn function provides this value as an argument instead of an array value.
      */
-    reduce(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T): T
-    reduce(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T, initialValue?: T): T
-    reduce<U>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue?: U): U {
+    reduce<U=T>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue?: U): U {
         return this.$items.reduce(callbackfn, initialValue);
     }
 
@@ -276,9 +283,7 @@ export class ArraySchema<T=any> implements Array<T> {
      * @param callbackfn A function that accepts up to four arguments. The reduceRight method calls the callbackfn function one time for each element in the array.
      * @param initialValue If initialValue is specified, it is used as the initial value to start the accumulation. The first call to the callbackfn function provides this value as an argument instead of an array value.
      */
-    reduceRight(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T): T
-    reduceRight(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T, initialValue?: T): T
-    reduceRight<U>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue?: U): U {
+    reduceRight<U=T>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue?: U): U {
         return this.$items.reduceRight(callbackfn, initialValue);
     }
 
@@ -432,7 +437,7 @@ export class ArraySchema<T=any> implements Array<T> {
         this.$changes.indexes[key] = index;
         this.$indexes.set(index, key);
 
-        console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
+        // console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
 
         this.$changes.change(key);
     }

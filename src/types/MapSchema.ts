@@ -2,7 +2,7 @@ import { ChangeTree } from "../changes/ChangeTree";
 
 type K = string; // TODO: allow to specify K generic on MapSchema.
 
-export class MapSchema<V=any> {
+export class MapSchema<V=any> implements Map<string, V> {
     protected $changes: ChangeTree;
 
     protected $items: Map<string, V> = new Map<string, V>();
@@ -86,8 +86,11 @@ export class MapSchema<V=any> {
                 }
             }
         }
-
     }
+
+    /** Iterator */
+    [Symbol.iterator](): IterableIterator<[K, V]> { return this.$items[Symbol.iterator](); }
+    get [Symbol.toStringTag]() { return this.$items[Symbol.toStringTag] }
 
     set(key: K, value: V) {
         this.$items.set(key, value);
@@ -112,11 +115,11 @@ export class MapSchema<V=any> {
 
             this.$changes.indexes[key] = index;
 
-            if (isRef) {
-                value['$changes'].parentIndex = index;
-            }
-
             this.$indexes.set(index, key);
+        }
+
+        if (isRef) {
+            value['$changes'].parentIndex = this.$changes.indexes[key];
         }
 
         this.$changes.change(key);
@@ -151,6 +154,10 @@ export class MapSchema<V=any> {
 
     keys () {
         return this.$items.keys();
+    }
+
+    values() {
+        return this.$items.values();
     }
 
     get size () {

@@ -8,7 +8,13 @@ export const TYPE_ID = 0xd5; // 213
 
 /**
 
-Encoding Schema field indexes:
+Encoding Schema field operations.
+
+Each field may have up to two operations, between:
+- ADD
+- REPLACE
+- REMOVE
+- REMOVE + ADD
 
 - First two bits are the OPERATION
 - The least 6 bits are the field index (0-63)
@@ -23,5 +29,6 @@ Encoding Schema field indexes:
 export enum OPERATION {
     ADD = parseInt("10000000", 2), // 128
     REPLACE = parseInt("00000000", 2), // 0
-    DELETE = parseInt("11000000", 2) // 192
+    DELETE = parseInt("11000000", 2), // 192
+    DELETE_AND_ADD = parseInt("11100000", 2) // 224
 }

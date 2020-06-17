@@ -191,7 +191,7 @@ export abstract class Schema {
 
             if (byte === SWITCH_TO_STRUCTURE) {
                 const refId = decode.number(bytes, it);
-                console.log("SWITCH_TO_STRUCTURE", { refId });
+                // console.log("SWITCH_TO_STRUCTURE", { refId });
 
                 if (!$root.refs.has(refId)) {
                     $root.refs.set(refId, this);
@@ -218,23 +218,45 @@ export abstract class Schema {
 
             let type = changeTree.getType(fieldIndex);
             let value: any;
+            let previousValue: any;
 
-            console.log({
-                ref: ref.constructor.name,
-                field,
-                fieldIndex,
-                type,
-                operation: OPERATION[operation]
-            });
+            // console.log({
+            //     ref: ref.constructor.name,
+            //     field,
+            //     fieldIndex,
+            //     type,
+            //     operation: OPERATION[operation]
+            // });
 
             let dynamicIndex: number | string;
             let hasChange = false;
 
-            if (!isSchema && operation === OPERATION.ADD) {
+            if (
+                !isSchema &&
+                (
+                    operation === OPERATION.ADD ||
+                    operation === OPERATION.DELETE_AND_ADD
+                )
+            ) {
                 dynamicIndex = (decode.stringCheck(bytes, it))
                     ? decode.string(bytes, it)
                     : decode.number(bytes, it);
                 ref['setIndex'](field, dynamicIndex);
+            }
+
+            //
+            // TODO: use bitwise operations to check for `DELETE` instead.
+            //
+            if (operation === OPERATION.DELETE || operation === OPERATION.DELETE_AND_ADD)
+            {
+                previousValue = ref['getByIndex'](fieldIndex);
+
+                if (operation !== OPERATION.DELETE_AND_ADD) {
+                    ref['deleteByIndex'](fieldIndex);
+                }
+
+                value = null;
+                hasChange = true;
             }
 
             if (field === undefined) {
@@ -242,18 +264,18 @@ export abstract class Schema {
 
             } else if (operation === OPERATION.DELETE) {
                 //
-                // TODO: remove from $root.refs
+                // FIXME: refactor me.
+                // Don't do anything.
                 //
-                ref['deleteByIndex'](fieldIndex);
-
-                value = null;
-                hasChange = true;
 
             } else if (Schema.is(type)) {
                 const refId = decode.number(bytes, it);
                 value = $root.refs.get(refId);
 
-                if (operation === OPERATION.ADD) {
+                if (
+                    operation === OPERATION.ADD ||
+                    operation === OPERATION.DELETE_AND_ADD
+                ) {
                     const childType = this.getSchemaType(bytes, it);
 
                     if (!value) {
@@ -324,7 +346,7 @@ export abstract class Schema {
 
                 } else if (ref instanceof ArraySchema) {
                     const key = ref['$indexes'].get(field);
-                    console.log("SETTING FOR ArraySchema =>", { field, key, value });
+                    // console.log("SETTING FOR ArraySchema =>", { field, key, value });
                     // ref[key] = value;
                     ref.setAt(key, value);
                 }
@@ -354,6 +376,11 @@ export abstract class Schema {
             return a.refId - b.refId;
         });
 
+        // console.log("ENCODE, CHANGETREES =>", changeTrees.map(c => ({
+        //     ref: c.ref.constructor.name,
+        //     refId: c.refId,
+        // })));
+
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];
             const ref = changeTree.ref;
@@ -363,20 +390,18 @@ export abstract class Schema {
             encode.uint8(bytes, SWITCH_TO_STRUCTURE);
             encode.number(bytes, changeTree.refId);
 
-            console.log("SWITCH_TO_STRUCTURE", { ref: ref.constructor.name, refId: changeTree.refId });
-
             const changes = (encodeAll)
                 ? Array.from(changeTree.allChanges)
                 : Array.from(changeTree.changes.keys());
 
 
-            console.log("CHANGES =>", {
-                changes,
-                definition: ref['_definition'],
-                isSchema: ref instanceof Schema,
-                isMap: ref instanceof MapSchema,
-                isArray: ref instanceof ArraySchema,
-            });
+            // console.log("CHANGES =>", {
+            //     changes,
+            //     definition: ref['_definition'],
+            //     isSchema: ref instanceof Schema,
+            //     isMap: ref instanceof MapSchema,
+            //     isArray: ref instanceof ArraySchema,
+            // });
 
             for (let j = 0, cl = changes.length; j < cl; j++) {
                 const fieldIndex = changes[j];
@@ -404,7 +429,16 @@ export abstract class Schema {
                 //
                 // encode "alias" for dynamic fields (maps)
                 //
-                if (!isSchema && operation.op === OPERATION.ADD) {
+                if (
+                    !isSchema &&
+                    //
+                    // TODO: use bitwise operations to check for `DELETE` instead.
+                    //
+                    (
+                        operation.op === OPERATION.ADD ||
+                        operation.op === OPERATION.DELETE_AND_ADD
+                    )
+                ) {
                     if (ref instanceof MapSchema) {
                         //
                         // MapSchema dynamic key
@@ -420,13 +454,13 @@ export abstract class Schema {
                     }
                 }
 
-                console.log("ENCODE FIELD", {
-                    ref: ref.constructor.name,
-                    type,
-                    field,
-                    value,
-                    op: OPERATION[operation.op]
-                })
+                // console.log("ENCODE FIELD", {
+                //     ref: ref.constructor.name,
+                //     type,
+                //     field,
+                //     value,
+                //     op: OPERATION[operation.op]
+                // })
 
                 if (operation.op === OPERATION.DELETE) {
                     //
@@ -445,7 +479,10 @@ export abstract class Schema {
                     encode.number(bytes, value.$changes.refId);
 
                     // Try to encode inherited TYPE_ID if it's an ADD operation.
-                    if (operation.op === OPERATION.ADD) {
+                    if (
+                        operation.op === OPERATION.ADD ||
+                        operation.op === OPERATION.DELETE_AND_ADD
+                    ) {
                         this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
                     }
 
@@ -516,11 +553,11 @@ export abstract class Schema {
             return a.refId - b.refId;
         });
 
-        console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({
-            ref: c.ref.constructor.name,
-            refId: c.refId,
-            changes: c.changes
-        })));
+        // console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({
+        //     ref: c.ref.constructor.name,
+        //     refId: c.refId,
+        //     changes: c.changes
+        // })));
 
         changetrees:
         for (let i = 0, l = changeTrees.length; i < l; i++) {
@@ -625,7 +662,7 @@ export abstract class Schema {
                 } else {
                     const filter = (filters && filters[fieldIndex]);
 
-                    if (filter && !filter.call(this, client, value, root)) {
+                    if (filter && !filter.call(ref, client, value, root)) {
                         if (value['$changes']) {
                             refIdsDissallowed.add(value['$changes'].refId);;
                         }

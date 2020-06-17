@@ -166,40 +166,87 @@ describe("Next Iteration", () => {
         assert.equal(2, decoded.map["two"]);
     });
 
-    it("should re-use the same Schema reference across the structure", () => {
-        class Player extends Schema {
-            @type("number") x: number;
-            @type("number") y: number;
-        }
+    describe("re-using Schema references", () => {
+        it("should re-use the same Schema reference across the structure", () => {
+            class Player extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+            }
 
-        class State extends Schema {
-            @type(Player) player;
-            @type({ map: Player }) players = new Map<string, Player>();
-        }
+            class State extends Schema {
+                @type(Player) player;
+                @type({ map: Player }) players = new Map<string, Player>();
+            }
 
-        const player = new Player();
-        player.x = 1;
-        player.y = 2;
+            const player = new Player();
+            player.x = 1;
+            player.y = 2;
 
-        const state = new State();
-        state.player = player;
-        state.players.set("one", player);
-        state.players.set("two", player);
-        state.players.set("three", player);
+            const state = new State();
+            state.player = player;
+            state.players.set("one", player);
+            state.players.set("two", player);
+            state.players.set("three", player);
 
-        console.log("\n\nWILL ENCODE:");
-        let encoded = state.encode();
+            console.log("\n\nWILL ENCODE:");
+            let encoded = state.encode();
 
-        console.log("\n\nWILL DECODE:", encoded.length, encoded);
+            console.log("\n\nWILL DECODE:", encoded.length, encoded);
 
-        const decoded = new State();
-        decoded.decode(encoded);
+            const decoded = new State();
+            decoded.decode(encoded);
 
-        console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
+            console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
 
-        assert.equal(decoded.player, decoded.players.get("one"));
-        assert.equal(decoded.player, decoded.players.get("two"));
-        assert.equal(decoded.player, decoded.players.get("three"));
+            assert.equal(decoded.player, decoded.players.get("one"));
+            assert.equal(decoded.player, decoded.players.get("two"));
+            assert.equal(decoded.player, decoded.players.get("three"));
+        });
+
+        it("re-using Schema references while deleting some", () => {
+            class Player extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+            }
+
+            class State extends Schema {
+                @type(Player) player;
+                @type({ map: Player }) players = new Map<string, Player>();
+            }
+
+            const player = new Player();
+            player.x = 1;
+            player.y = 2;
+
+            const state = new State();
+            state.player = player;
+            state.players.set("one", player);
+            state.players.set("two", player);
+            state.players.set("three", player);
+
+            let encoded = state.encode();
+
+            const decoded = new State();
+            decoded.decode(encoded);
+
+            assert.equal(decoded.player, decoded.players.get("one"));
+            assert.equal(decoded.player, decoded.players.get("two"));
+
+            state.player.x = 11;
+            state.player.y = 22;
+
+            state.player = undefined;
+            state.players.delete('three');
+
+            encoded = state.encode();
+            decoded.decode(encoded);
+
+            console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
+            assert.equal(decoded.players.get("one"), decoded.players.get("two"));
+            assert.equal(undefined, decoded.players.get("three"));
+            assert.equal(decoded.players.get("one").x, 11);
+            assert.equal(decoded.players.get("one").y, 22);
+        });
     });
 
     it("add and modify a filtered primitive map item", () => {

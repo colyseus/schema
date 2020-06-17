@@ -1,10 +1,11 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
+import * as util from "util";
 
 import { State, Player } from "./Schema";
 import { ArraySchema, MapSchema, type, Schema } from "../src";
 
-describe("MapSchema", () => {
+describe("MapSchema Suite", () => {
 
     it("should not consider changes after removing from the change tree", (done) => {
         class Item extends Schema {
@@ -69,15 +70,34 @@ describe("MapSchema", () => {
         state.mapOfPlayers['two'] = new Player("Katarina");
 
         const decodedState = new State();
-        decodedState.decode(state.encodeAll());
+
+        let encoded = state.encode();
+        console.log("ENCODED", encoded.length, encoded);
+
+        decodedState.decode(encoded);
+
+        assert.equal(decodedState.mapOfPlayers['one'].name, "Jake");
+        assert.equal(decodedState.mapOfPlayers['two'].name, "Katarina");
+
+        state.discardAllChanges();
 
         delete state.mapOfPlayers['one'];
         state.mapOfPlayers['one'] = new Player("Jake 2");
-        decodedState.decode(state.encode());
+
+        encoded = state.encode();
+        decodedState.decode(encoded);
+
+        state.discardAllChanges();
+
+        assert.equal(decodedState.mapOfPlayers['one'].name, "Jake 2");
+        assert.equal(decodedState.mapOfPlayers['two'].name, "Katarina");
 
         delete state.mapOfPlayers['two'];
         state.mapOfPlayers['two'] = new Player("Katarina 2");
-        decodedState.decode(state.encode());
+
+        encoded = state.encode();
+        decodedState.decode(encoded);
+        console.log("DECODED (3) =>", util.inspect(decodedState.toJSON(), true, Infinity));
 
         assert.equal(decodedState.mapOfPlayers['one'].name, "Jake 2");
         assert.equal(decodedState.mapOfPlayers['two'].name, "Katarina 2");
@@ -125,7 +145,7 @@ describe("MapSchema", () => {
 
         const encoded = state.encode();
 
-        assert.deepEqual([4, 4, 192, 0, 192, 1, 192, 2, 192, 3], encoded);
+        assert.deepEqual([193, 1, 192, 2, 192, 3, 192, 4, 192, 5], encoded);
     });
 
     xit("should not encode item if added and removed at the same patch", () => {
@@ -158,8 +178,7 @@ describe("MapSchema", () => {
         sinon.assert.calledOnce(onRemoveSpy);
     });
 
-    xit("should consider the field of map schema value change.", (done) => {
-
+    it("should consider the field of map schema value change.", (done) => {
         class Player extends Schema {
             @type("string") id:string
             @type("string") name: string;
