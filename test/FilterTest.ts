@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { Schema, type, filter, ArraySchema, MapSchema, Reflection, DataChange } from "../src";
-import { Client } from "../src/annotations";
+import { Client, filterChildren } from "../src/annotations";
 
 function debugBytes(bytes: number[], name: string = '') {
     console.log(`--------- BEGIN BYTES --------- ${name}`);
@@ -8,7 +8,7 @@ function debugBytes(bytes: number[], name: string = '') {
     console.log('---------- END BYTES ----------');
 }
 
-describe("@filter", () => {
+describe("@filter Test", () => {
     it("should filter property outside root", () => {
         class Player extends Schema {
             @filter(function(this: Player, client: Client, value, root: State) {
@@ -108,8 +108,8 @@ describe("@filter", () => {
         }
 
         class State extends Schema {
-            @filter(function(this: Player, client: Client, value, root: State) {
-                return (this.name === client.sessionId);
+            @filterChildren(function(this: Player, client: Client, key, value: Player, root: State) {
+                return (value.name === client.sessionId);
             })
             @type([Player]) players = new ArraySchema<Player>();
         }

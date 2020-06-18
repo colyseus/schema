@@ -452,7 +452,7 @@ export class ArraySchema<T=any> implements Array<T> {
         for (let i = 0; i < this.length; i++) {
             const objAt = this.$items[i];
             arr.push(
-                (typeof (objAt['toJSON']) === "function")
+                (objAt && typeof (objAt['toJSON']) === "function")
                     ? objAt['toJSON']()
                     : objAt
             );

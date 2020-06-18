@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import * as nanoid from "nanoid";
-import { MapSchema, Schema, type, ArraySchema } from "../src";
+import { MapSchema, Schema, type, ArraySchema, dumpChanges } from "../src";
 
 import { State, Player } from "./Schema";
 
@@ -80,41 +80,35 @@ describe("Edge cases", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>();
 
+        state.encodeAll(); // new client joining
+
         let i = 0;
 
-        // add 20 players
-        // for (let i = 0; i < 2; i++) { state.mapOfPlayers[nanoid(8)] = new Player("Player " + i, i * 2, i * 2); }
-
-        state.encodeAll();
-
         const decodedState1 = new State();
-        decodedState1.decode(state.encodeAll());
+        decodedState1.decode(state.encodeAll()); // new client joining
         state.mapOfPlayers[nanoid(8)] = new Player("Player " + i++, i++, i++);
 
         const decodedState2 = new State();
         state.mapOfPlayers[nanoid(8)] = new Player("Player " + i++, i++, i++);
-        decodedState2.decode(state.encodeAll());
+        decodedState2.decode(state.encodeAll()); // new client joining
 
         const decodedState3 = new State();
-        decodedState3.decode(state.encodeAll());
+        decodedState3.decode(state.encodeAll()); // new client joining
         state.mapOfPlayers[nanoid(8)] = new Player("Player " + i++, i++, i++);
 
-        // // add 20 players
-        // for (let i = 0; i < 2; i++) { state.mapOfPlayers[nanoid(8)] = new Player("Player " + i, i * 2, i * 2); }
-
-        const encoded = state.encode();
+        const encoded = state.encode(); // patch state
         decodedState1.decode(encoded);
         decodedState2.decode(encoded);
         decodedState3.decode(encoded);
 
         const decodedState4 = new State();
         state.mapOfPlayers[nanoid(8)] = new Player("Player " + i++, i++, i++);
-        decodedState4.decode(state.encodeAll());
+        decodedState4.decode(state.encodeAll()); // new client joining
 
         assert.equal(JSON.stringify(decodedState1), JSON.stringify(decodedState2));
         assert.equal(JSON.stringify(decodedState2), JSON.stringify(decodedState3));
 
-        decodedState3.decode(state.encode());
+        decodedState3.decode(state.encode()); // patch existing client.
         assert.equal(JSON.stringify(decodedState3), JSON.stringify(decodedState4));
     });
 });

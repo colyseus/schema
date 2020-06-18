@@ -1,29 +1,27 @@
 import { Schema } from "./";
-import { ChangeTree } from "./changes/ChangeTree";
-import { MapSchema } from "./types/MapSchema";
-import { ArraySchema } from "./types/ArraySchema";
+import { OPERATION } from "./spec";
 
 export function dumpChanges(schema: Schema) {
-    const dump = {};
+    const dump = [];
+    const root = schema['$changes'].root;
 
-    const $changes: ChangeTree = (schema as any).$changes;
-    const fieldsByIndex = schema['_fieldsByIndex'] || {};
+    root.changes.forEach((changeTree) => {
+        const ref = changeTree.ref;
 
-    for (const fieldIndex of Array.from($changes.changes.keys())) {
-        const field = fieldsByIndex[fieldIndex] || fieldIndex;
+        dump.push({
+            ref: changeTree.ref.constructor.name,
+            refId: changeTree.refId,
+            operations: Array.from(changeTree.changes)
+                .reduce((prev, [fieldIndex, op]) => {
+                    const key = (ref instanceof Schema)
+                        ? ref['_definition'].fieldsByIndex[op.index]
+                        : ref['$indexes'].get(fieldIndex);
 
-        if (
-            schema[field] instanceof MapSchema ||
-            schema[field] instanceof ArraySchema ||
-            schema[field] instanceof Schema
-        ) {
-            dump[field] = dumpChanges(schema[field]);
-
-        } else {
-            dump[field] = schema[field];
-        }
-
-    }
+                    prev[key] = OPERATION[op.op];
+                    return prev;
+                }, {})
+        });
+    });
 
     return dump;
 }

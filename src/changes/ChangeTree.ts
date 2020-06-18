@@ -37,6 +37,10 @@ export class Root {
         this.allChanges.add(change);
     }
 
+    discard(change: ChangeTree) {
+        this.changes.delete(change);
+    }
+
     delete (change: ChangeTree) {
         this.changes.delete(change);
         this.allChanges.delete(change);
@@ -282,7 +286,7 @@ export class ChangeTree {
 
     discard() {
         this.changes.clear();
-        this.root.delete(this);
+        this.root.discard(this);
     }
 
     /**

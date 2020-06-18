@@ -399,7 +399,10 @@ export abstract class Schema {
 
             for (let j = 0, cl = changes.length; j < cl; j++) {
                 const fieldIndex = changes[j];
-                const operation = changeTree.changes.get(fieldIndex);
+
+                const operation = (!encodeAll)
+                    ? changeTree.changes.get(fieldIndex)
+                    : { op: OPERATION.ADD, index: fieldIndex };
 
                 const field = (ref instanceof Schema)
                     ? ref._fieldsByIndex && ref._fieldsByIndex[fieldIndex]

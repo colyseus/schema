@@ -3,7 +3,7 @@ import * as assert from "assert";
 import { State, Player } from "./Schema";
 import { MapSchema, dumpChanges, ArraySchema } from "../src";
 
-describe("Utils", () => {
+describe("Utils Test", () => {
 
     it("dumpChanges -> map", () => {
         const state = new State();
@@ -11,7 +11,10 @@ describe("Utils", () => {
         state.mapOfPlayers['one'] = new Player("One", 1, 1);
 
         let dump: any = dumpChanges(state);
-        assert.ok(dump.mapOfPlayers.one);
+        assert.equal(
+            JSON.stringify(dump),
+            '[{"ref":"State","refId":0,"operations":{"mapOfPlayers":"ADD"}},{"ref":"Player","refId":2,"operations":{"name":"ADD","x":"ADD","y":"ADD"}},{"ref":"MapSchema","refId":1,"operations":{"one":"ADD"}}]'
+        );
 
         // discard changes
         state.encode();
@@ -19,7 +22,10 @@ describe("Utils", () => {
         delete state.mapOfPlayers['one'];
         dump = dumpChanges(state);
 
-        assert.ok(dump.mapOfPlayers.one === undefined);
+        assert.equal(
+            JSON.stringify(dump),
+            '[{"ref":"MapSchema","refId":1,"operations":{"one":"DELETE"}}]'
+        );
     });
 
     it("dumpChanges -> array", () => {
@@ -29,16 +35,22 @@ describe("Utils", () => {
         state.arrayOfPlayers.push(new Player("Two", 2, 2));
 
         let dump: any = dumpChanges(state);
-        assert.ok(dump.arrayOfPlayers[0]);
-        assert.ok(dump.arrayOfPlayers[1]);
+        assert.equal(
+            JSON.stringify(dump),
+            '[{"ref":"State","refId":0,"operations":{"arrayOfPlayers":"ADD"}},{"ref":"Player","refId":2,"operations":{"name":"ADD","x":"ADD","y":"ADD"}},{"ref":"ArraySchema","refId":1,"operations":{"0":"ADD","1":"ADD"}},{"ref":"Player","refId":3,"operations":{"name":"ADD","x":"ADD","y":"ADD"}}]',
+        );
 
         // discard changes
         state.encode();
 
         state.arrayOfPlayers.splice(1);
         dump = dumpChanges(state);
+        console.log(JSON.stringify(dump));
 
-        assert.ok(dump.arrayOfPlayers[0] === undefined);
+        assert.equal(
+            JSON.stringify(dump),
+            '[{"ref":"State","refId":0,"operations":{"arrayOfPlayers":"ADD"}},{"ref":"Player","refId":2,"operations":{"name":"ADD","x":"ADD","y":"ADD"}},{"ref":"ArraySchema","refId":1,"operations":{"0":"ADD","1":"ADD"}},{"ref":"Player","refId":3,"operations":{"name":"ADD","x":"ADD","y":"ADD"}}]',
+        );
     });
 
 });
