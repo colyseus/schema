@@ -3,7 +3,7 @@ import * as assert from "assert";
 import { Schema, type, MapSchema } from "../src";
 import { defineTypes } from "../src/annotations";
 
-describe("Definition", () => {
+describe("Definition Tests", () => {
 
     it("private Schema fields should be part of enumerable keys", () => {
         class Player extends Schema {

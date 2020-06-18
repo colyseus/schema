@@ -369,13 +369,11 @@ export class ArraySchema<T=any> implements Array<T> {
             cloned.onChange = this.onChange;
 
         } else {
-            cloned = new ArraySchema(...this.map(item => {
-                if (typeof (item) === "object") {
-                    return (item as any as Schema).clone();
-                } else {
-                    return item;
-                }
-            }));
+            cloned = new ArraySchema(...this.$items.map(item => (
+                (item['$changes'])
+                    ? (item as any as Schema).clone()
+                    : item
+            )));
         }
 
         return cloned;

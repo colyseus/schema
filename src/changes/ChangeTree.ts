@@ -67,6 +67,10 @@ export class ChangeTree {
         this.setParent(parent, _root);
     }
 
+    get changed () {
+        return this.changes.size > 0;
+    }
+
     setParent(
         parent: Ref,
         root?: Root,
@@ -81,19 +85,9 @@ export class ChangeTree {
         this.parent = parent;
         this.parentIndex = parentIndex;
 
-        // if (parentIndex !== undefined) {
-        //     this.parentIndex = parentIndex;
-        // }
-
         // avoid setting parent with empty `root`
         if (!root) { return; }
-
-        // console.log("setParent:", this.ref.constructor.name, { parent });
-
         this.root = root;
-
-        // this.childType = childType;
-        // this.childrenFilter = childrenFilter;
 
         //
         // assign same parent on child structures
@@ -104,8 +98,6 @@ export class ChangeTree {
             for (let field in definition.schema) {
                 const value = this.ref[field];
 
-                // TODO: MapSchema child is also treated here.
-
                 if (value && value['$changes']) {
                     const parentIndex = definition.indexes[field];
 
@@ -114,14 +106,20 @@ export class ChangeTree {
                         root,
                         parentIndex
                     );
+
+                    // // skip flagging fields for encoding if item is already on root.
+                    // if (root.changes.has(value['$changes'])) {
+                    //     continue;
+                    // }
+
                 }
 
-                //
-                // flag all not-null fields for encoding.
-                //
-                if (value !== undefined && value !== null) {
-                    this.change(field);
-                }
+                // //
+                // // flag all not-null fields for encoding.
+                // //
+                // if (value !== undefined && value !== null) {
+                //     this.change(field);
+                // }
             }
 
         } else if (this.ref instanceof MapSchema) {

@@ -96,7 +96,7 @@ export abstract class Schema {
     static _typeid: number;
     static _context: Context;
 
-    static _definition: SchemaDefinition;
+    static _definition: SchemaDefinition = SchemaDefinition.create();
 
     static onError(e) {
         console.error(e);
@@ -389,7 +389,6 @@ export abstract class Schema {
                 ? Array.from(changeTree.allChanges)
                 : Array.from(changeTree.changes.keys());
 
-
             // console.log("CHANGES =>", {
             //     changes,
             //     definition: ref['_definition'],
@@ -465,7 +464,6 @@ export abstract class Schema {
                 }
 
                 if (Schema.is(type)) {
-                    console.log({ type, value, field, fieldIndex });
                     assertInstanceType(value, type as typeof Schema, ref as Schema, field);
 
                     //
@@ -549,19 +547,19 @@ export abstract class Schema {
             return a.refId - b.refId;
         });
 
-        console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({
-            ref: c.ref.constructor.name,
-            refId: c.refId,
-            changes: c.changes,
-            parentIndex: c.parentIndex,
-        })));
+        // console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({
+        //     ref: c.ref.constructor.name,
+        //     refId: c.refId,
+        //     changes: c.changes,
+        //     parentIndex: c.parentIndex,
+        // })));
 
         changetrees:
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];
 
             if (refIdsDissallowed.has(changeTree.refId))  {
-                console.log("REFID IS NOT ALLOWED. SKIP.", { refId: changeTree.refId })
+                // console.log("REFID IS NOT ALLOWED. SKIP.", { refId: changeTree.refId })
                 continue;
             }
 

@@ -31,9 +31,12 @@ describe("Reflection", () => {
 
     it("should encode schema definitions", () => {
         const state = new State();
+
         const reflected = new Reflection();
+        reflected.decode(Reflection.encode(state));
+
         assert.equal(
-            JSON.stringify(reflected.decode(Reflection.encode(state))),
+            JSON.stringify(reflected),
             '{"types":[{"id":0,"fields":[{"name":"name","type":"string"},{"name":"x","type":"number"},{"name":"y","type":"number"}]},{"id":1,"fields":[{"name":"fieldString","type":"string"},{"name":"fieldNumber","type":"number"},{"name":"player","type":"ref","referencedType":0},{"name":"arrayOfPlayers","type":"array","referencedType":0},{"name":"mapOfPlayers","type":"map","referencedType":0}]}],"rootType":1}'
         );
     });
@@ -43,7 +46,7 @@ describe("Reflection", () => {
         const stateReflected = Reflection.decode(Reflection.encode(state)) as State;
 
         assert.equal(stateReflected.arrayOfPlayers.length, 0);
-        assert.equal(Object.keys(stateReflected.mapOfPlayers).length, 0);
+        assert.equal(Array.from(stateReflected.mapOfPlayers.keys()).length, 0);
         assert.equal(JSON.stringify(stateReflected.player), "{}");
     });
 
@@ -71,7 +74,7 @@ describe("Reflection", () => {
         assert.equal(stateReflected.player.x, 1);
         assert.equal(stateReflected.player.y, 1);
 
-        assert.equal(Object.keys(stateReflected.mapOfPlayers).length, 2);
+        assert.equal(Array.from(stateReflected.mapOfPlayers.keys()).length, 2);
         assert.equal(stateReflected.mapOfPlayers['one'].name, "player one");
         assert.equal(stateReflected.mapOfPlayers['one'].x, 2);
         assert.equal(stateReflected.mapOfPlayers['one'].y, 2);
@@ -118,8 +121,8 @@ describe("Reflection", () => {
         const encodedReflection = Reflection.encode(state);
 
         const decodedState = Reflection.decode(encodedReflection) as MyState;
-        assert.deepEqual(Object.keys(decodedState['_schema'].points[0]._schema), ['x', 'y'])
-        assert.deepEqual(Object.keys(decodedState['_schema'].players[0]._schema), ['x', 'y', 'name'])
+        assert.deepEqual(Object.keys(decodedState['_schema'].points[0]._definition.schema), ['x', 'y'])
+        assert.deepEqual(Object.keys(decodedState['_schema'].players[0]._definition.schema), ['x', 'y', 'name'])
     });
 
     it("should reflect map of primitive type", () => {

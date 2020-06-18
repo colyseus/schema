@@ -160,7 +160,7 @@ export class MapSchema<V=any> implements Map<string, V> {
             // server-side
             const cloned = new MapSchema();
             this.forEach((value, key) => {
-                if (typeof (value) === "object") {
+                if (value['$changes']) {
                     cloned.set(key, value['clone']());
                 } else {
                     cloned.set(key, value);
