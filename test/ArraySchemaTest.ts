@@ -5,7 +5,204 @@ import { State, Player } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, filter, MapSchema } from "../src";
 import { logChangeTree } from "./helpers/test_helpers";
 
-describe("ArraySchema", () => {
+describe("ArraySchema Tests", () => {
+
+    it("should encode array with two values", () => {
+        const state = new State();
+        state.arrayOfPlayers = new ArraySchema(
+            new Player("Jake Badlands"),
+            new Player("Snake Sanders"),
+        );
+
+        const decodedState = new State();
+        let encoded = state.encode();
+        // assert.deepEqual(encoded, [3, 2, 2, 0, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 1, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
+
+        decodedState.decode(encoded);
+
+        const jake = decodedState.arrayOfPlayers[0];
+        const snake = decodedState.arrayOfPlayers[1];
+
+        assert.equal(decodedState.arrayOfPlayers.length, 2);
+        assert.equal(jake.name, "Jake Badlands");
+        assert.equal(snake.name, "Snake Sanders");
+
+        state.arrayOfPlayers.push(new Player("Katarina Lyons"));
+        decodedState.decode(state.encode());
+
+        const tarquinn = decodedState.arrayOfPlayers[2];
+
+        assert.equal(decodedState.arrayOfPlayers.length, 3);
+        assert.equal(decodedState.arrayOfPlayers[0], jake);
+        assert.equal(decodedState.arrayOfPlayers[1], snake);
+        assert.equal(tarquinn.name, "Katarina Lyons");
+
+        state.arrayOfPlayers.pop();
+        state.arrayOfPlayers[0].name = "Tarquinn"
+
+        encoded = state.encode();
+        // assert.deepEqual(encoded, [3, 2, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
+
+        decodedState.decode(encoded);
+
+        assert.equal(decodedState.arrayOfPlayers.length, 2);
+        assert.equal(decodedState.arrayOfPlayers[0], jake);
+        assert.equal(decodedState.arrayOfPlayers[0].name, "Tarquinn");
+        assert.equal(decodedState.arrayOfPlayers[1], snake);
+        assert.equal(decodedState.arrayOfPlayers[2], undefined);
+    });
+
+    it("should allow to `pop` an array", () => {
+        const state = new State();
+        state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Player 3"));
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        assert.equal(decodedState.arrayOfPlayers.length, 3);
+        state.arrayOfPlayers.pop();
+
+        decodedState.decode(state.encode());
+        assert.equal(decodedState.arrayOfPlayers.length, 2);
+        assert.deepEqual(decodedState.arrayOfPlayers.map(p => p.name), ["Jake", "Snake"]);
+    });
+
+    it("should allow to `pop` an array of numbers", () => {
+        class State extends Schema {
+            @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            @type("string") str: string;
+        }
+
+        const state = new State();
+        state.arrayOfNumbers.push(1);
+        state.arrayOfNumbers.push(2);
+        state.arrayOfNumbers.push(3);
+        state.arrayOfNumbers.push(4);
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        assert.equal(decodedState.arrayOfNumbers.length, 4);
+        assert.equal(JSON.stringify(decodedState.arrayOfNumbers), '[1,2,3,4]');
+
+        state.arrayOfNumbers.pop();
+        state.str = "hello!";
+        decodedState.decode(state.encode());
+        assert.equal(decodedState.arrayOfNumbers.length, 3);
+        assert.equal(JSON.stringify(decodedState.arrayOfNumbers), '[1,2,3]');
+        assert.equal(decodedState.str, 'hello!');
+    });
+
+    it("should not encode a higher number of items than array actually have", () => {
+        // Thanks @Ramus on Discord
+        class State extends Schema {
+            @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            @type(["number"]) anotherOne = new ArraySchema<number>();
+        }
+
+        const state = new State();
+
+        state.arrayOfNumbers.push(0, 0, 0, 1, 1, 1, 2, 2, 2);
+        assert.equal(state.arrayOfNumbers.length, 9);
+        state.arrayOfNumbers = new ArraySchema<number>(...[0, 0, 0, 1, 1, 1, 2, 2, 2]);
+        assert.equal(state.arrayOfNumbers.length, 9);
+        state.anotherOne.push(state.arrayOfNumbers.pop());
+        state.anotherOne.push(state.arrayOfNumbers.pop());
+        state.anotherOne.push(state.arrayOfNumbers.pop());
+        state.anotherOne.push(state.arrayOfNumbers.pop());
+        state.anotherOne.push(state.arrayOfNumbers.pop());
+
+        assert.equal(state.arrayOfNumbers.length, 4);
+        assert.equal(state.anotherOne.length, 5);
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+        assert.equal(decodedState.arrayOfNumbers.length, 4);
+        assert.equal(decodedState.anotherOne.length, 5);
+    });
+
+    it("should allow to `shift` an array", () => {
+        const state = new State();
+        state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+        assert.equal(decodedState.arrayOfPlayers.length, 3);
+
+        const snake = decodedState.arrayOfPlayers[1];
+        const cyberhawk = decodedState.arrayOfPlayers[2];
+
+        state.arrayOfPlayers.shift();
+
+        let encoded = state.encode();
+        decodedState.decode(encoded);
+
+        assert.equal(decodedState.arrayOfPlayers.length, 2);
+        assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
+        assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
+        assert.equal(snake, decodedState.arrayOfPlayers[0]);
+        assert.equal(cyberhawk, decodedState.arrayOfPlayers[1]);
+    });
+
+    it("should allow to `splice` an array", () => {
+        const state = new State();
+        state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+        assert.equal(decodedState.arrayOfPlayers.length, 3);
+
+        const jake = decodedState.arrayOfPlayers[0];
+
+        state.arrayOfPlayers.splice(1);
+        decodedState.decode(state.encode());
+
+        assert.equal(decodedState.arrayOfPlayers.length, 1);
+        assert.equal(decodedState.arrayOfPlayers[0].name, "Jake");
+        assert.equal(jake, decodedState.arrayOfPlayers[0]);
+    });
+
+    it("should allow to `push` and `shift` an array", () => {
+        const state = new State();
+        state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+        assert.equal(decodedState.arrayOfPlayers.length, 3);
+
+        // first `push`, then `shift`
+        state.arrayOfPlayers.push(new Player("Katarina Lyons"));
+        state.arrayOfPlayers.shift();
+
+        let encoded = state.encode();
+        decodedState.decode(encoded);
+
+        assert.equal(decodedState.arrayOfPlayers.length, 3);
+        assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
+        assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
+        assert.equal(decodedState.arrayOfPlayers[2].name, "Katarina Lyons");
+    });
+
+    it("should allow to `shift` and `push` an array", () => {
+        const state = new State();
+        state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+        assert.equal(decodedState.arrayOfPlayers.length, 3);
+
+        // first `shift`, then `push`
+        state.arrayOfPlayers.shift();
+        state.arrayOfPlayers.push(new Player("Katarina Lyons"));
+
+        let encoded = state.encode();
+        decodedState.decode(encoded);
+
+        assert.equal(decodedState.arrayOfPlayers.length, 3);
+        assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
+        assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
+        assert.equal(decodedState.arrayOfPlayers[2].name, "Katarina Lyons");
+    });
 
     it("should trigger onAdd / onChange / onRemove", () => {
         const state = new State();
