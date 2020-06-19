@@ -48,7 +48,17 @@ export class ArraySchema<T=any> implements Array<T> {
         //
         // TODO: touch $changes
         //
-        return this.$items.pop();
+        const index = --this.$refId;
+
+        const value = this.$items.pop();
+        this.$changes.delete(index);
+
+        this.$indexes.delete(index);
+        delete this.$changes.indexes[index];
+
+        console.log("REMOVE ITEM AT:", { index, removedItem: value });
+
+        return value;
     }
 
     /**
@@ -250,7 +260,7 @@ export class ArraySchema<T=any> implements Array<T> {
      * @param thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value.
      */
     map<U>(callbackfn: (value: T, index: number, array: T[]) => U, thisArg?: any): U[] {
-        return new ArraySchema(...this.$items.map(callbackfn, thisArg));
+        return this.$items.map(callbackfn, thisArg);
     }
 
     /**
@@ -435,9 +445,15 @@ export class ArraySchema<T=any> implements Array<T> {
         this.$changes.indexes[key] = index;
         this.$indexes.set(index, key);
 
-        // console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
+        console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
 
         this.$changes.change(key);
+    }
+
+    protected deleteByIndex(index: number) {
+        const key = this.$indexes.get(index);
+        this.$items.splice(key, 1);
+        this.$indexes.delete(index);
     }
 
     triggerAll() {

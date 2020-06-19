@@ -371,10 +371,10 @@ export abstract class Schema {
             return a.refId - b.refId;
         });
 
-        // console.log("ENCODE, CHANGETREES =>", changeTrees.map(c => ({
-        //     ref: c.ref.constructor.name,
-        //     refId: c.refId,
-        // })));
+        console.log("ENCODE, CHANGETREES =>", changeTrees.map(c => ({
+            ref: c.ref.constructor.name,
+            refId: c.refId,
+        })));
 
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];
@@ -384,6 +384,8 @@ export abstract class Schema {
             // root `refId` is skipped.
             encode.uint8(bytes, SWITCH_TO_STRUCTURE);
             encode.number(bytes, changeTree.refId);
+
+            console.log("SWITCH_TO_STRUCTURE", { refId: changeTree.refId });
 
             const changes = (encodeAll)
                 ? Array.from(changeTree.allChanges)
@@ -451,13 +453,13 @@ export abstract class Schema {
                     }
                 }
 
-                // console.log("ENCODE FIELD", {
-                //     ref: ref.constructor.name,
-                //     type,
-                //     field,
-                //     value,
-                //     op: OPERATION[operation.op]
-                // })
+                console.log("ENCODE FIELD", {
+                    ref: ref.constructor.name,
+                    type,
+                    field,
+                    value,
+                    op: OPERATION[operation.op]
+                })
 
                 if (operation.op === OPERATION.DELETE) {
                     //

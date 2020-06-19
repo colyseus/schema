@@ -2,7 +2,7 @@ import * as sinon from "sinon";
 import * as assert from "assert";
 
 import { State, Player } from "./Schema";
-import { ArraySchema, Schema, type, Reflection, filter, MapSchema } from "../src";
+import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges } from "../src";
 import { logChangeTree } from "./helpers/test_helpers";
 
 describe("ArraySchema Tests", () => {
@@ -52,7 +52,7 @@ describe("ArraySchema Tests", () => {
         assert.equal(decodedState.arrayOfPlayers[2], undefined);
     });
 
-    it("should allow to `pop` an array", () => {
+    it("should allow to pop an array", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Player 3"));
 
@@ -67,7 +67,7 @@ describe("ArraySchema Tests", () => {
         assert.deepEqual(decodedState.arrayOfPlayers.map(p => p.name), ["Jake", "Snake"]);
     });
 
-    it("should allow to `pop` an array of numbers", () => {
+    it("should allow to pop an array of numbers", () => {
         class State extends Schema {
             @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
             @type("string") str: string;
@@ -93,6 +93,37 @@ describe("ArraySchema Tests", () => {
         assert.equal(decodedState.str, 'hello!');
     });
 
+    it("should allow using push/pop before encoding", () => {
+        class State extends Schema {
+            @type(["number"]) numbers = new ArraySchema<number>();
+        }
+
+        const state = new State();
+
+        // push from 0 to 9.
+        for (let i=0; i<9; i++) {
+            state.numbers.push(i);
+        }
+
+        // pop last 4 values.
+        state.numbers.pop();
+        state.numbers.pop();
+        state.numbers.pop();
+        state.numbers.pop();
+
+        const decoded = new State();
+        decoded.decode(state.encode());
+
+        assert.equal(decoded.numbers.length, 5);
+        assert.equal(decoded.numbers[0], 0);
+        assert.equal(decoded.numbers[1], 1);
+        assert.equal(decoded.numbers[2], 2);
+        assert.equal(decoded.numbers[3], 3);
+        assert.equal(decoded.numbers[4], 4);
+
+        console.log(decoded.toJSON());
+    });
+
     it("should not encode a higher number of items than array actually have", () => {
         // Thanks @Ramus on Discord
         class State extends Schema {
@@ -104,21 +135,35 @@ describe("ArraySchema Tests", () => {
 
         state.arrayOfNumbers.push(0, 0, 0, 1, 1, 1, 2, 2, 2);
         assert.equal(state.arrayOfNumbers.length, 9);
-        state.arrayOfNumbers = new ArraySchema<number>(...[0, 0, 0, 1, 1, 1, 2, 2, 2]);
-        assert.equal(state.arrayOfNumbers.length, 9);
-        state.anotherOne.push(state.arrayOfNumbers.pop());
-        state.anotherOne.push(state.arrayOfNumbers.pop());
-        state.anotherOne.push(state.arrayOfNumbers.pop());
-        state.anotherOne.push(state.arrayOfNumbers.pop());
-        state.anotherOne.push(state.arrayOfNumbers.pop());
+
+        //
+        // TODO: when re-assigning another ArraySchema, the previous one is
+        // still being held at the $root level.
+        //
+        // // state.arrayOfNumbers = new ArraySchema<number>(...[0, 0, 0, 1, 1, 1, 2, 2, 2]);
+        // // assert.equal(state.arrayOfNumbers.length, 9);
+
+        console.log("CHANGES (1) =>", dumpChanges(state));
+
+        for (let i = 0; i < 5; i++) {
+            const value = state.arrayOfNumbers.pop();
+            state.anotherOne.push(value);
+        }
 
         assert.equal(state.arrayOfNumbers.length, 4);
         assert.equal(state.anotherOne.length, 5);
 
+        console.log("CHANGES (2) =>", dumpChanges(state));
+
+        const encoded = state.encode();
+        console.log("ENCODED:", encoded.length, encoded);
+
         const decodedState = new State();
-        decodedState.decode(state.encode());
-        assert.equal(decodedState.arrayOfNumbers.length, 4);
+        decodedState.decode(encoded);
+
+        console.log("DECODED =>", decodedState.toJSON());
         assert.equal(decodedState.anotherOne.length, 5);
+        assert.equal(decodedState.arrayOfNumbers.length, 4);
     });
 
     it("should allow to `shift` an array", () => {

@@ -3,9 +3,9 @@ import * as assert from "assert";
 import * as util from "util";
 
 import { State, Player } from "./Schema";
-import { ArraySchema, MapSchema, type, Schema } from "../src";
+import { MapSchema, type, Schema } from "../src";
 
-describe("MapSchema Suite", () => {
+describe("MapSchema Tests", () => {
 
     it("should allow to pre-populate a Map", () => {
         const state = new State();

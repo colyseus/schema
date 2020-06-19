@@ -268,6 +268,13 @@ export class ChangeTree {
             return;
         }
 
+        console.log("$changes.delete =>", { fieldName, index });
+
+        // const previousChange = this.changes.get(index);
+        // if (!previousChange || previousChange.op !== OPERATION.ADD) {
+        //     this.changes.set(index, { op: OPERATION.DELETE, index });
+        // }
+
         this.changes.set(index, { op: OPERATION.DELETE, index });
         this.allChanges.delete(index);
 

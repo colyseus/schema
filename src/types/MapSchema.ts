@@ -80,6 +80,12 @@ export class MapSchema<V=any> implements Map<string, V> {
     }
 
     delete(key: K) {
+        //
+        // TODO: should we delete from $indexes as well?
+        //
+        // const index = this.$changes.indexes[key];
+        // this.$indexes.delete(index);
+
         this.$changes.delete(key);
         return this.$items.delete(key);
     }
