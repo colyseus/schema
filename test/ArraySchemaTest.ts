@@ -1,5 +1,6 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
+import * as util from "util";
 
 import { State, Player } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges } from "../src";
@@ -100,10 +101,8 @@ describe("ArraySchema Tests", () => {
 
         const state = new State();
 
-        // push from 0 to 9.
-        for (let i=0; i<9; i++) {
-            state.numbers.push(i);
-        }
+        // push from 10 to 19.
+        for (let i=10; i<19; i++) { state.numbers.push(i); }
 
         // pop last 4 values.
         state.numbers.pop();
@@ -115,11 +114,72 @@ describe("ArraySchema Tests", () => {
         decoded.decode(state.encode());
 
         assert.equal(decoded.numbers.length, 5);
-        assert.equal(decoded.numbers[0], 0);
-        assert.equal(decoded.numbers[1], 1);
-        assert.equal(decoded.numbers[2], 2);
-        assert.equal(decoded.numbers[3], 3);
-        assert.equal(decoded.numbers[4], 4);
+        assert.equal(decoded.numbers[0], 10);
+        assert.equal(decoded.numbers[1], 11);
+        assert.equal(decoded.numbers[2], 12);
+        assert.equal(decoded.numbers[3], 13);
+        assert.equal(decoded.numbers[4], 14);
+
+        // push from 20 to 29.
+        for (let i=20; i<29; i++) { state.numbers.push(i); }
+
+        // pop last 4 values.
+        state.numbers.pop();
+        state.numbers.pop();
+        state.numbers.pop();
+        state.numbers.pop();
+
+        decoded.decode(state.encode());
+
+        assert.equal(decoded.numbers.length, 10);
+        assert.equal(decoded.numbers[0], 10);
+        assert.equal(decoded.numbers[1], 11);
+        assert.equal(decoded.numbers[2], 12);
+        assert.equal(decoded.numbers[3], 13);
+        assert.equal(decoded.numbers[4], 14);
+        assert.equal(decoded.numbers[5], 20);
+        assert.equal(decoded.numbers[6], 21);
+        assert.equal(decoded.numbers[7], 22);
+        assert.equal(decoded.numbers[8], 23);
+        assert.equal(decoded.numbers[9], 24);
+
+        console.log(decoded.toJSON());
+    });
+
+    it("should allow using push/pop between patches", () => {
+        class State extends Schema {
+            @type(["number"]) numbers = new ArraySchema<number>();
+        }
+
+        const state = new State();
+
+        // push from 10 to 15.
+        for (let i=10; i<15; i++) { state.numbers.push(i); }
+
+        const decoded = new State();
+        decoded.decode(state.encode());
+
+        assert.equal(decoded.numbers.length, 5);
+
+        state.numbers.pop();
+        state.numbers.pop();
+
+        // push from 20 to 25.
+        for (let i=20; i<25; i++) { state.numbers.push(i); }
+
+        // remove latest ADD value
+        state.numbers.pop();
+
+        decoded.decode(state.encode());
+
+        assert.equal(decoded.numbers.length, 7);
+        assert.equal(decoded.numbers[0], 10);
+        assert.equal(decoded.numbers[1], 11);
+        assert.equal(decoded.numbers[2], 12);
+        assert.equal(decoded.numbers[3], 20);
+        assert.equal(decoded.numbers[4], 21);
+        assert.equal(decoded.numbers[5], 22);
+        assert.equal(decoded.numbers[6], 23);
 
         console.log(decoded.toJSON());
     });
@@ -166,7 +226,7 @@ describe("ArraySchema Tests", () => {
         assert.equal(decodedState.arrayOfNumbers.length, 4);
     });
 
-    it("should allow to `shift` an array", () => {
+    it("should allow to shift an array", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
 

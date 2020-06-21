@@ -1,12 +1,19 @@
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
 import { PrimitiveType, FilterChildrenCallback, SchemaDefinition } from "../annotations";
+
 import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";
+// import { CollectionSchema } from "../types/CollectionSchema";
+// import { SetSchema } from "../types/SetSchema";
 
 // type FieldKey = string | number;
 
-export type Ref = Schema | ArraySchema | MapSchema;
+export type Ref = Schema
+    | ArraySchema
+    | MapSchema;
+    // | SetSchema
+    // | CollectionSchema;
 
 export interface ChangeOperation {
     op: OPERATION,
@@ -270,12 +277,14 @@ export class ChangeTree {
 
         console.log("$changes.delete =>", { fieldName, index });
 
-        // const previousChange = this.changes.get(index);
-        // if (!previousChange || previousChange.op !== OPERATION.ADD) {
-        //     this.changes.set(index, { op: OPERATION.DELETE, index });
-        // }
+        const previousChange = this.changes.get(index);
+        if (previousChange && previousChange.op === OPERATION.ADD) {
+            this.changes.delete(index);
 
-        this.changes.set(index, { op: OPERATION.DELETE, index });
+        } else {
+            this.changes.set(index, { op: OPERATION.DELETE, index });
+        }
+
         this.allChanges.delete(index);
 
         // delete cache

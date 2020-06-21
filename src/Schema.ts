@@ -340,8 +340,8 @@ export abstract class Schema {
                     ref.set(key, value);
 
                 } else if (ref instanceof ArraySchema) {
-                    const key = ref['$indexes'].get(field);
-                    // console.log("SETTING FOR ArraySchema =>", { field, key, value });
+                    const key = ref['$indexes'][field];
+                    console.log("SETTING FOR ArraySchema =>", { field, key, value });
                     // ref[key] = value;
                     ref.setAt(key, value);
                 }

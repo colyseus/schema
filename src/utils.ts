@@ -1,5 +1,6 @@
 import { Schema } from "./";
 import { OPERATION } from "./spec";
+import { MapSchema } from "./types/MapSchema";
 
 export function dumpChanges(schema: Schema) {
     const dump = [];
@@ -15,7 +16,9 @@ export function dumpChanges(schema: Schema) {
                 .reduce((prev, [fieldIndex, op]) => {
                     const key = (ref instanceof Schema)
                         ? ref['_definition'].fieldsByIndex[op.index]
-                        : ref['$indexes'].get(fieldIndex);
+                        : (ref instanceof MapSchema)
+                            ? ref['$indexes'].get(fieldIndex)
+                            : ref['$indexes'][fieldIndex];
 
                     prev[key] = OPERATION[op.op];
                     return prev;

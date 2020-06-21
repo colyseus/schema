@@ -13,7 +13,7 @@ export class ArraySchema<T=any> implements Array<T> {
     protected $changes: ChangeTree = new ChangeTree(this);
 
     protected $items: Array<T> = [];
-    protected $indexes: Map<number, number> = new Map<number, number>();
+    protected $indexes: number[] = [];
 
     protected $refId: number = 0;
 
@@ -34,9 +34,6 @@ export class ArraySchema<T=any> implements Array<T> {
         this.push(...items);
     }
 
-    /**
-     * Gets or sets the length of the array. This is a number one higher than the highest element defined in an array.
-     */
     get length() {
         return this.$items.length;
     }
@@ -45,18 +42,13 @@ export class ArraySchema<T=any> implements Array<T> {
      * Removes the last element from an array and returns it.
      */
     pop(): T | undefined {
-        //
-        // TODO: touch $changes
-        //
-        const index = --this.$refId;
+        const index = this.$indexes.pop();
+        if (index === undefined) { return undefined; }
 
         const value = this.$items.pop();
         this.$changes.delete(index);
 
-        this.$indexes.delete(index);
         delete this.$changes.indexes[index];
-
-        console.log("REMOVE ITEM AT:", { index, removedItem: value });
 
         return value;
     }
@@ -418,12 +410,12 @@ export class ArraySchema<T=any> implements Array<T> {
     }
 
     protected setIndex(index: number, key: number) {
-        this.$indexes.set(index, key);
+        this.$indexes[index] = key;
     }
 
     protected getByIndex(index: number) {
-        // return this.$items[this.$indexes.get(index)];
-        return this.$items[index];
+        return this.$items[this.$indexes[index]];
+        // return this.$items[index];
     }
 
     setAt(key: number, item: T) {
@@ -434,26 +426,41 @@ export class ArraySchema<T=any> implements Array<T> {
         }
 
         // set "index" for reference.
-        const index = this.$refId++;
+        const index = key;
 
         if (isRef) {
             item['$changes'].parentIndex = index;
         }
 
+        // console.log(`$items[ ${key} ] = ${item}`);
+
         this.$items[key] = item;
 
         this.$changes.indexes[key] = index;
-        this.$indexes.set(index, key);
+        this.$indexes[index] = key;
 
-        console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
+        // console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
 
         this.$changes.change(key);
     }
 
     protected deleteByIndex(index: number) {
-        const key = this.$indexes.get(index);
+        const key = this.$indexes[index];
+
+        if (key === undefined) {
+            // console.log("SKIP deleteByIndex", { index, key, $indexes: this.$indexes });
+            return;
+        }
+
+        // console.log("deleteByIndex:", { key, $items: this.$items });
+
         this.$items.splice(key, 1);
-        this.$indexes.delete(index);
+        this.$indexes.splice(key, 1);
+
+        // reduce the correspondance of next items (after the deleted one)
+        for (let i = key; i < this.$indexes.length; i++) {
+            this.$indexes[i]--;
+        }
     }
 
     triggerAll() {
