@@ -97,9 +97,11 @@ export class ArraySchema<T=any> implements Array<T> {
      * Removes the first element from an array and returns it.
      */
     shift(): T | undefined {
-        //
-        // TODO: touch `$changes`
-        //
+        this.$indexes.shift();
+
+        this.$changes.delete(0);
+        this.moveIndexes(0, this.$indexes.length, -1);
+
         return this.$items.shift();
     }
 
@@ -432,14 +434,14 @@ export class ArraySchema<T=any> implements Array<T> {
             item['$changes'].parentIndex = index;
         }
 
-        // console.log(`$items[ ${key} ] = ${item}`);
+        console.log(`$items[ ${key} ] = ${item}`);
 
         this.$items[key] = item;
 
         this.$changes.indexes[key] = index;
         this.$indexes[index] = key;
 
-        // console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
+        console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
 
         this.$changes.change(key);
     }
@@ -448,18 +450,24 @@ export class ArraySchema<T=any> implements Array<T> {
         const key = this.$indexes[index];
 
         if (key === undefined) {
-            // console.log("SKIP deleteByIndex", { index, key, $indexes: this.$indexes });
+            console.log("SKIP deleteByIndex", { index, key, $indexes: this.$indexes });
             return;
         }
 
-        // console.log("deleteByIndex:", { key, $items: this.$items });
+        console.log("deleteByIndex:", { key, $items: this.$items });
 
         this.$items.splice(key, 1);
         this.$indexes.splice(key, 1);
 
-        // reduce the correspondance of next items (after the deleted one)
-        for (let i = key; i < this.$indexes.length; i++) {
-            this.$indexes[i]--;
+        this.moveIndexes(key, this.$indexes.length, -1);
+    }
+
+    protected moveIndexes(fromIndex: number, toIndex: number = this.$indexes.length, shift: number = -1) {
+        //
+        // reduce the correspondance of next items (after the removed item)
+        //
+        for (let i = fromIndex; i < this.$indexes.length; i++) {
+            this.$indexes[i] += shift;
         }
     }
 

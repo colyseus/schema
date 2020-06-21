@@ -249,7 +249,7 @@ describe("ArraySchema Tests", () => {
         assert.equal(cyberhawk, decodedState.arrayOfPlayers[1]);
     });
 
-    it("should allow to `splice` an array", () => {
+    it("should allow to splice an array", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
 
