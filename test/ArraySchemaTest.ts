@@ -87,10 +87,12 @@ describe("ArraySchema Tests", () => {
         assert.equal(JSON.stringify(decodedState.arrayOfNumbers), '[1,2,3,4]');
 
         state.arrayOfNumbers.pop();
+        state.arrayOfNumbers.pop();
+
         state.str = "hello!";
         decodedState.decode(state.encode());
-        assert.equal(decodedState.arrayOfNumbers.length, 3);
-        assert.equal(JSON.stringify(decodedState.arrayOfNumbers), '[1,2,3]');
+        assert.equal(decodedState.arrayOfNumbers.length, 2);
+        assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [1, 2]);
         assert.equal(decodedState.str, 'hello!');
     });
 
@@ -267,7 +269,7 @@ describe("ArraySchema Tests", () => {
         assert.equal(jake, decodedState.arrayOfPlayers[0]);
     });
 
-    it("should allow to `push` and `shift` an array", () => {
+    it("should allow to push and shift an array", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema(new Player("Jake"), new Player("Snake"), new Player("Cyberhawk"));
 

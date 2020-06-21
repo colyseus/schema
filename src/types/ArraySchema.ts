@@ -15,8 +15,6 @@ export class ArraySchema<T=any> implements Array<T> {
     protected $items: Array<T> = [];
     protected $indexes: number[] = [];
 
-    protected $refId: number = 0;
-
     [n: number]: T;
 
     //
@@ -152,35 +150,23 @@ export class ArraySchema<T=any> implements Array<T> {
         deleteCount: number = this.length - start,
         ...items: T[]
     ): T[] {
+
+        const removedItems = this.$items.splice(start, deleteCount, ...items);
+        const removedIndexes = this.$indexes.splice(start, deleteCount); // TODO: add new indexes here
+
+        // perform DELETE operations on reverse order.
+        removedIndexes
+            .reverse()
+            .forEach(removedIndex => {
+                delete this.$changes.indexes[removedIndex];
+                this.$changes.delete(removedIndex);
+            })
+
+        this.moveIndexes(start + deleteCount - 1);
+
         //
         // TODO: add `items`
         //
-
-        const removedItems = Array.prototype.splice.apply(this, arguments);
-        const movedItems = Array.prototype.filter.call(this, (item, idx) => {
-            return idx >= start + deleteCount - 1;
-        });
-
-        removedItems.map(removedItem => {
-            const $changes = removedItem && (removedItem as any).$changes;
-            // If the removed item is a schema we need to update it.
-            if ($changes) {
-                $changes.parent.deleteIndex(removedItem);
-                delete $changes.parent;
-            }
-        });
-
-        movedItems.forEach(movedItem => {
-            // If the moved item is a schema we need to update it.
-            const $changes = movedItem && (movedItem as any).$changes;
-
-            if ($changes) {
-                // Update current index in parent, so subsequent changes in
-                // this item's properties are correctly reflected.
-                $changes.parentField--;
-            }
-
-        });
 
         return removedItems;
     }
