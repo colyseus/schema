@@ -95,12 +95,19 @@ export class ArraySchema<T=any> implements Array<T> {
      * Removes the first element from an array and returns it.
      */
     shift(): T | undefined {
-        this.$indexes.shift();
+        // this.$indexes.shift();
 
         this.$changes.delete(0);
         this.moveIndexes(0, this.$indexes.length, -1);
 
-        return this.$items.shift();
+        const shifted = this.$items.shift();
+
+        // console.log("SHIFT", {
+        //     $items: this.$items,
+        //     $indexes: this.$indexes,
+        // });
+
+        return shifted;
     }
 
     /**
@@ -150,23 +157,45 @@ export class ArraySchema<T=any> implements Array<T> {
         deleteCount: number = this.length - start,
         ...items: T[]
     ): T[] {
+        //
+        // TODO: add `items`, consider `items.length` when moving indexes
+        //
 
-        const removedItems = this.$items.splice(start, deleteCount, ...items);
+        const previousLength = this.$items.length;
+
+        const removedItems = this.$items.splice(start, deleteCount); // , ...items
         const removedIndexes = this.$indexes.splice(start, deleteCount); // TODO: add new indexes here
 
         // perform DELETE operations on reverse order.
         removedIndexes
             .reverse()
-            .forEach(removedIndex => {
-                delete this.$changes.indexes[removedIndex];
+            .forEach((removedIndex, i) => {
+                console.log("REMOVED INDEX!", { removedIndex, i, previousLength });
                 this.$changes.delete(removedIndex);
-            })
+                delete this.$changes.indexes[removedIndex];
+
+                this.$changes.delete(previousLength - i);
+                console.log("CHANGE, DELETE =>", previousLength - i);
+            });
+
+        // decrement `index` of all "changes" after items removed.
+        Array.from(this.$changes.changes.entries()).forEach(([index, change]) => {
+            if (index > start) {
+                this.$changes.changes.delete(index);
+                console.log("CHANGE, DELETE =>", {index});
+                this.$changes.changes.set(index - deleteCount, change);
+                change.index -= deleteCount;
+            }
+        });
 
         this.moveIndexes(start + deleteCount - 1);
 
-        //
-        // TODO: add `items`
-        //
+        this.$changes.allChanges = new Set(this.$items.keys());
+        console.log("ALL CHANGES, AFTER SPLICE =>", {
+            changes: this.$changes.changes,
+            allChanges: this.$changes.allChanges,
+            $items: this.$items,
+        });
 
         return removedItems;
     }
@@ -249,14 +278,15 @@ export class ArraySchema<T=any> implements Array<T> {
      * @param thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value.
      */
     filter(callbackfn: (value: T, index: number, array: T[]) => unknown, thisArg?: any)
-    filter<S extends T>(callbackfn: (value: T, index: number, array: T[]) => value is S, thisArg?: any): ArraySchema<T> {
-        const filtered = new ArraySchema(
-            ...this.$items.filter(callbackfn, thisArg)
-        );
+    filter<S extends T>(callbackfn: (value: T, index: number, array: T[]) => value is S, thisArg?: any): T[] {
+        return this.$items.filter(callbackfn, thisArg);
+        // const filtered = new ArraySchema(
+        //     ...
+        // );
 
-        filtered.$changes = this.$changes.clone();
+        // filtered.$changes = this.$changes.clone();
 
-        return filtered;
+        // return filtered;
     }
 
     /**
@@ -420,14 +450,12 @@ export class ArraySchema<T=any> implements Array<T> {
             item['$changes'].parentIndex = index;
         }
 
-        console.log(`$items[ ${key} ] = ${item}`);
-
         this.$items[key] = item;
 
         this.$changes.indexes[key] = index;
         this.$indexes[index] = key;
 
-        console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
+        // console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
 
         this.$changes.change(key);
     }

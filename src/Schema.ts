@@ -191,7 +191,7 @@ export abstract class Schema {
 
             if (byte === SWITCH_TO_STRUCTURE) {
                 const refId = decode.number(bytes, it);
-                // console.log("SWITCH_TO_STRUCTURE", { refId });
+                console.log("SWITCH_TO_STRUCTURE", { refId });
 
                 if (!$root.refs.has(refId)) {
                     $root.refs.set(refId, this);
@@ -236,10 +236,15 @@ export abstract class Schema {
                 ref['setIndex'](field, dynamicIndex);
             }
 
+            console.log("DECODE FIELD", { field, type, operation: OPERATION[operation] });
+
             //
             // TODO: use bitwise operations to check for `DELETE` instead.
             //
-            if (operation === OPERATION.DELETE || operation === OPERATION.DELETE_AND_ADD)
+            if (
+                operation === OPERATION.DELETE ||
+                operation === OPERATION.DELETE_AND_ADD
+            )
             {
                 previousValue = ref['getByIndex'](fieldIndex);
 
@@ -264,6 +269,8 @@ export abstract class Schema {
                 const refId = decode.number(bytes, it);
                 value = $root.refs.get(refId);
 
+                console.log("IS SCHEMA", { refId, value });
+
                 if (
                     operation === OPERATION.ADD ||
                     operation === OPERATION.DELETE_AND_ADD
@@ -273,6 +280,7 @@ export abstract class Schema {
                     if (!value) {
                         value = this.createTypeInstance(bytes, it, childType || type as typeof Schema);
                         $root.refs.set(refId, value);
+                        console.log("CREATE NEW!");
                     }
                 }
 
@@ -341,7 +349,7 @@ export abstract class Schema {
 
                 } else if (ref instanceof ArraySchema) {
                     const key = ref['$indexes'][field];
-                    console.log("SETTING FOR ArraySchema =>", { field, key, value });
+                    // console.log("SETTING FOR ArraySchema =>", { field, key, value });
                     // ref[key] = value;
                     ref.setAt(key, value);
                 }
@@ -387,6 +395,7 @@ export abstract class Schema {
 
             console.log("SWITCH_TO_STRUCTURE", { refId: changeTree.refId });
 
+            // TODO: use `changes.values()` instead.
             const changes = (encodeAll)
                 ? Array.from(changeTree.allChanges)
                 : Array.from(changeTree.changes.keys());

@@ -174,8 +174,13 @@ export class ChangeTree {
     }
 
     set root(value: Root) {
+        // assigning to the same root. skip.
         this._root = value;
-        this.refId = this._root.nextUniqueId++;
+
+        // only generate new `refId` if structure is unknown.
+        if (!this._root.allChanges.has(this)) {
+            this.refId = this._root.nextUniqueId++;
+        }
 
         if (this.changes.size > 0) {
             this._root?.dirty(this);
@@ -239,7 +244,8 @@ export class ChangeTree {
     }
 
     getChildrenFilter() {
-        return (this.parent as Schema)['_childFilters'][this.parentIndex];;
+        const _childFilters = (this.parent as Schema)['_childFilters'];
+        return _childFilters && _childFilters[this.parentIndex];
     }
 
     getParentFilter() {

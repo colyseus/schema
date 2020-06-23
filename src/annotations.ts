@@ -201,7 +201,10 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 if (isMap) {
                     value = new Proxy(value, {
                         get: (obj, prop) => {
-                            if (typeof (obj[prop]) === "undefined") {
+                            if (
+                                typeof (prop) !== "symbol" && // accessing properties
+                                typeof (obj[prop]) === "undefined"
+                            ) {
                                 return obj.get(prop);
 
                             } else {
@@ -211,10 +214,8 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
                         set: (obj, prop, setValue) => {
                             if (
-                                (prop as string).indexOf("$") === -1 &&
-                                prop !== "onAdd" && // TODO: improve me!
-                                prop !== "onRemove" &&
-                                prop !== "onChange"
+                                typeof (prop) !== "symbol" &&
+                                (prop as string).indexOf("$") === -1
                             ) {
                                 obj.set(prop, setValue);
 
@@ -233,7 +234,10 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 } else if (isArray) {
                     value = new Proxy(value, {
                         get: (obj, prop) => {
-                            if (!isNaN(prop as any)) {
+                            if (
+                                typeof (prop) !== "symbol" &&
+                                !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
+                            ) {
                                 return obj.$items[prop];
 
                             } else {
@@ -243,7 +247,10 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
                         set: (obj, prop, setValue) => {
                             console.log("ARRAYSCHEMA, SET", { prop, setValue });
-                            if (!isNaN(prop as any)) { // https://stackoverflow.com/a/175787/892698
+                            if (
+                                typeof (prop) !== "symbol" &&
+                                !isNaN(prop as any)
+                            ) {
                                 obj.setAt(Number(prop), setValue);
 
                             } else {
