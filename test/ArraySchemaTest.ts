@@ -568,10 +568,6 @@ describe("ArraySchema Tests", () => {
         // Remove one item
         const [spliced] = state.player1.items.splice(2, 1);
 
-        // TODO: WE CAN'T RELEASE WITH THIS
-        state['$changes'].root.changes.delete(spliced['$changes']);
-        state['$changes'].root.allChanges.delete(spliced['$changes']);
-
         console.log("\n\nWILL ENCODE!");
 
         decodedState.decode(state.encode());

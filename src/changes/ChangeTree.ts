@@ -56,6 +56,7 @@ export class Root {
 
 export class ChangeTree {
     refId: number;
+    refCount: number = 0;
 
     indexes: {[index: string]: any};
     parentIndex?: number;
@@ -174,8 +175,21 @@ export class ChangeTree {
     }
 
     set root(value: Root) {
+        if (!value) {
+            if (--this.refCount === 0) {
+                this._root?.delete(this);
+            }
+
+        // } else if (value !== this._root) {
+        } else {
+            this.refCount++;
+        }
+
         // assigning to the same root. skip.
         this._root = value;
+
+        // skip if root is undefined.
+        if (!value) { return; }
 
         // only generate new `refId` if structure is unknown.
         if (!this._root.allChanges.has(this)) {
@@ -183,7 +197,7 @@ export class ChangeTree {
         }
 
         if (this.changes.size > 0) {
-            this._root?.dirty(this);
+            this._root.dirty(this);
         }
     }
 
@@ -283,7 +297,9 @@ export class ChangeTree {
 
         console.log("$changes.delete =>", { fieldName, index });
 
+        const previousValue = this.getValue(index);
         const previousChange = this.changes.get(index);
+
         if (previousChange && previousChange.op === OPERATION.ADD) {
             this.changes.delete(index);
 
@@ -299,8 +315,10 @@ export class ChangeTree {
         //
         // delete child from root changes.
         //
-        if (this.ref[fieldName] instanceof Schema) {
-            this._root?.delete(this.ref[fieldName].$changes);
+        if (previousValue instanceof Schema) {
+            // remove `root` reference.
+            previousValue['$changes'].root = undefined;
+            // this._root?.delete(this.ref[fieldName].$changes);
         }
 
         this._root?.dirty(this);
@@ -308,7 +326,7 @@ export class ChangeTree {
 
     discard() {
         this.changes.clear();
-        this.root.discard(this);
+        this.root?.discard(this);
     }
 
     /**

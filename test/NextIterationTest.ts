@@ -670,6 +670,7 @@ describe("Next Iteration", () => {
         }
         class State extends Schema {
             @type({ map: Player }) players = new Map<string, Player>();
+            @type(Player) player: Player;
         }
 
         const player1 = new Player();
@@ -684,18 +685,25 @@ describe("Next Iteration", () => {
 
         const decoded = new State();
         decoded.decode(state.encode());
+        assert.equal(2, decoded.players.size, "should have 2 items");
 
         const noChangesEncoded = state.encode();
 
         // remove "two"
         state.players.delete("two");
         decoded.decode(state.encode());
+        assert.equal(1, decoded.players.size, "should have 1 items");
 
         // mutate previous "two" reference.
-        player2.name = "This should not be synchronized at all.";
+        player2.name = "Not inside the Map anymore";
 
         const shouldHaveNoChanges = state.encode();
         assert.deepEqual(noChangesEncoded, shouldHaveNoChanges, "encoded result should be empty.");
+
+        state.player = player2;
+        decoded.decode(state.encode());
+
+        assert.equal("Not inside the Map anymore", decoded.player.name);
     });
 
 });
