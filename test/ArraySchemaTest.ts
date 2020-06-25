@@ -267,6 +267,11 @@ describe("ArraySchema Tests", () => {
 
         state.arrayOfPlayers.splice(1);
 
+        console.log("CHANGES =>", util.inspect({
+            $changes: state.arrayOfPlayers['$changes'],
+            $items: state.arrayOfPlayers['$items'],
+        }, true, 3, true));
+
         console.log("\n\nWILL ENCODE");
         const encoded = state.encode();
 
@@ -385,7 +390,7 @@ describe("ArraySchema Tests", () => {
         sinon.assert.callCount(onRemoveSpy, 2);
     });
 
-    it("should allow .sort()", () => {
+    it("should allow sort", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema<Player>();
         state.arrayOfPlayers.push(new Player().assign({
@@ -566,13 +571,22 @@ describe("ArraySchema Tests", () => {
         // TODO: WE CAN'T RELEASE WITH THIS
         state['$changes'].root.allChanges.delete(spliced['$changes']);
 
+        console.log("\n\nWILL ENCODE!");
+
+        console.log("CHANGES =>", {
+            $changes: state.player1.items['$changes'],
+            $items: state.player1.items['$items'],
+        });
+
+        console.log("\n\nNOW!");
+
         decodedState.decode(state.encode());
 
         assert.equal(decodedState.player1.items.length, 4);
 
         // Update `idx` of each item
-        state.player1.items
-            .forEach((item, idx) => item.idx = idx);
+        state.player1.items.forEach((item, idx) => item.idx = idx);
+
         // After below encoding, Item 4 is not marked as `changed`
         decodedState.decode(state.encode());
 
@@ -670,6 +684,11 @@ describe("ArraySchema Tests", () => {
          * Splice one item out (and remember its reference)
          */
         const [itemThree] = state.items.splice(2, 1);
+
+        console.log("CHANGES =>", util.inspect({
+            $changes: state.items['$changes'],
+            $items: state.items['$items'],
+        }, true, 3, true));
 
         state.items.forEach(updateItem);
 

@@ -1,5 +1,6 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { Schema } from "../Schema";
+import { OPERATION } from "../spec";
 
 //
 // Notes:
@@ -131,17 +132,7 @@ export class ArraySchema<T=any> implements Array<T> {
     sort(compareFn?: (a: T, b: T) => number): this {
         this.$items.sort(compareFn);
 
-        if (this.$changes) { // allow to .slice() + .sort()
-            // const changes = Array.from(this.$changes.changes);
-            // for (const key of changes) {
-            //     // track index change
-            //     const previousIndex = this.$changes.getIndex(this[key]);
-            //     if (previousIndex !== undefined) {
-            //         this.$changes.mapIndexChange(this[key], previousIndex);
-            //     }
-            //     this.$changes.mapIndex(this[key], key);
-            // }
-        }
+        this.$items.forEach((value, index) => this.setAt(index, value));
 
         return this;
     }
@@ -170,32 +161,43 @@ export class ArraySchema<T=any> implements Array<T> {
         removedIndexes
             .reverse()
             .forEach((removedIndex, i) => {
-                console.log("REMOVED INDEX!", { removedIndex, i, previousLength });
                 this.$changes.delete(removedIndex);
                 delete this.$changes.indexes[removedIndex];
 
-                this.$changes.delete(previousLength - i);
-                console.log("CHANGE, DELETE =>", previousLength - i);
+                // `pop` latest items of the array.
+                const popIndex = previousLength - i;
+                this.$changes.delete(popIndex);
+                delete this.$changes.indexes[popIndex];
             });
 
         // decrement `index` of all "changes" after items removed.
-        Array.from(this.$changes.changes.entries()).forEach(([index, change]) => {
-            if (index > start) {
-                this.$changes.changes.delete(index);
-                console.log("CHANGE, DELETE =>", {index});
-                this.$changes.changes.set(index - deleteCount, change);
-                change.index -= deleteCount;
-            }
-        });
+        Array.from(this.$changes.changes.entries()).forEach(([_, change]) => {
+                console.log("ITERATING OVER CHANGES => ", {
+                    change, start, deleteCount,
+                });
 
+                if (change.index > start) {
+                    if (change.op !== OPERATION.DELETE) {
+                        this.$changes.delete(change.index);
+                    }
+
+                    change.index -= deleteCount;
+                    this.$changes.changes.set(change.index, change);
+
+                    console.log("MOVE", change.index + deleteCount, "TO", change.index, this.$changes.changes);
+                }
+            });
+
+        console.log("MOVE INDEXES:", start + deleteCount - 1);
         this.moveIndexes(start + deleteCount - 1);
 
-        this.$changes.allChanges = new Set(this.$items.keys());
-        console.log("ALL CHANGES, AFTER SPLICE =>", {
-            changes: this.$changes.changes,
-            allChanges: this.$changes.allChanges,
+        console.log({
+            $indexes: this.$indexes,
             $items: this.$items,
-        });
+            $changes: this.$changes.changes,
+        })
+
+        this.$changes.allChanges = new Set(this.$items.keys());
 
         return removedItems;
     }
