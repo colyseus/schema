@@ -664,4 +664,38 @@ describe("Next Iteration", () => {
         assert.equal("player two item 2", decoded.players.get("two").items.get("i2").name);
     });
 
+    it("should not consider item removed from root references", () => {
+        class Player extends Schema {
+            @type("string") name: string;
+        }
+        class State extends Schema {
+            @type({ map: Player }) players = new Map<string, Player>();
+        }
+
+        const player1 = new Player();
+        player1.name = "One";
+
+        const player2 = new Player();
+        player2.name = "Two";
+
+        const state = new State();
+        state.players.set("one", player1);
+        state.players.set("two", player2);
+
+        const decoded = new State();
+        decoded.decode(state.encode());
+
+        const noChangesEncoded = state.encode();
+
+        // remove "two"
+        state.players.delete("two");
+        decoded.decode(state.encode());
+
+        // mutate previous "two" reference.
+        player2.name = "This should not be synchronized at all.";
+
+        const shouldHaveNoChanges = state.encode();
+        assert.deepEqual(noChangesEncoded, shouldHaveNoChanges, "encoded result should be empty.");
+    });
+
 });
