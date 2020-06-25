@@ -569,16 +569,10 @@ describe("ArraySchema Tests", () => {
         const [spliced] = state.player1.items.splice(2, 1);
 
         // TODO: WE CAN'T RELEASE WITH THIS
+        state['$changes'].root.changes.delete(spliced['$changes']);
         state['$changes'].root.allChanges.delete(spliced['$changes']);
 
         console.log("\n\nWILL ENCODE!");
-
-        console.log("CHANGES =>", {
-            $changes: state.player1.items['$changes'],
-            $items: state.player1.items['$items'],
-        });
-
-        console.log("\n\nNOW!");
 
         decodedState.decode(state.encode());
 
@@ -716,7 +710,7 @@ describe("ArraySchema Tests", () => {
     });
 
     it("multiple splices in one go", () => {
-        const stringifyItem = i => `[${i.idx}] ${i.name} (${i.id})`;
+        const stringifyItem = i => `${i.name}`;
 
         class Item extends Schema {
             @type("string") name: string;
@@ -739,21 +733,15 @@ describe("ArraySchema Tests", () => {
 
         state.player.items.push(new Item("Item 1"));
         state.player.items.push(new Item("Item 2"));
-        const item3 = new Item("Item 3")
-        state.player.items.push(item3);
+        state.player.items.push(new Item("Item 3"));
 
         decodedState.decode(state.encode());
 
         // ========================================
 
         // Remove Items 1 and 2 in two separate splice executions
-        const [ removedItem1 ] = state.player.items.splice(0, 1);
-        // It was at index 2
-        assert.equal((state.player.items as any).$changes.indexChange.get(item3), 2);
-
-        const [ removedItem2 ] = state.player.items.splice(0, 1);
-        // It STILL was at index 2, no decode yet happened
-        assert.equal((state.player.items as any).$changes.indexChange.get(item3), 2);
+        state.player.items.splice(0, 1);
+        state.player.items.splice(0, 1);
 
         decodedState.decode(state.encode());
 

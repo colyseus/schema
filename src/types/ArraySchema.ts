@@ -152,6 +152,12 @@ export class ArraySchema<T=any> implements Array<T> {
         // TODO: add `items`, consider `items.length` when moving indexes
         //
 
+        // console.log("BEFORE SPLICE", {
+        //     $indexes: this.$indexes,
+        //     $items: this.$items,
+        //     $changes: this.$changes.changes,
+        // })
+
         const previousLength = this.$items.length;
 
         const removedItems = this.$items.splice(start, deleteCount); // , ...items
@@ -181,21 +187,21 @@ export class ArraySchema<T=any> implements Array<T> {
                         this.$changes.delete(change.index);
                     }
 
-                    change.index -= deleteCount;
+                    change.index -= start;
                     this.$changes.changes.set(change.index, change);
 
-                    console.log("MOVE", change.index + deleteCount, "TO", change.index, this.$changes.changes);
+                    console.log("MOVE", change.index + start, "TO", change.index, this.$changes.changes);
                 }
             });
 
         console.log("MOVE INDEXES:", start + deleteCount - 1);
         this.moveIndexes(start + deleteCount - 1);
 
-        console.log({
-            $indexes: this.$indexes,
-            $items: this.$items,
-            $changes: this.$changes.changes,
-        })
+        // console.log("AFTER SPLICE", {
+        //     $indexes: this.$indexes,
+        //     $items: this.$items,
+        //     $changes: this.$changes.changes,
+        // })
 
         this.$changes.allChanges = new Set(this.$items.keys());
 
