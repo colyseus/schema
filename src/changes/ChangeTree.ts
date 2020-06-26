@@ -316,12 +316,11 @@ export class ChangeTree {
 
         console.log("$changes.delete =>", { fieldName, index, previousValue });
 
-        if (previousChange && previousChange.op === OPERATION.ADD) {
-            this.changes.delete(index);
-
-        } else {
+        // if (previousChange && previousChange.op === OPERATION.ADD) {
+        //     this.changes.delete(index);
+        // } else {
             this.changes.set(index, { op: OPERATION.DELETE, index });
-        }
+        // }
 
         this.allChanges.delete(index);
 

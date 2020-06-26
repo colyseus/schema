@@ -236,7 +236,7 @@ export abstract class Schema {
                 ref['setIndex'](field, dynamicIndex);
             }
 
-            console.log("DECODE FIELD", { field, type, operation: OPERATION[operation] });
+            // console.log("DECODE FIELD", { field, type, operation: OPERATION[operation] });
 
             //
             // TODO: use bitwise operations to check for `DELETE` instead.
@@ -269,8 +269,6 @@ export abstract class Schema {
                 const refId = decode.number(bytes, it);
                 value = $root.refs.get(refId);
 
-                console.log("IS SCHEMA", { refId, value });
-
                 if (
                     operation === OPERATION.ADD ||
                     operation === OPERATION.DELETE_AND_ADD
@@ -280,7 +278,6 @@ export abstract class Schema {
                     if (!value) {
                         value = this.createTypeInstance(bytes, it, childType || type as typeof Schema);
                         $root.refs.set(refId, value);
-                        console.log("CREATE NEW!");
                     }
                 }
 
@@ -379,10 +376,10 @@ export abstract class Schema {
             return a.refId - b.refId;
         });
 
-        console.log("ENCODE, CHANGETREES =>", changeTrees.map(c => ({
-            ref: c.ref.constructor.name,
-            refId: c.refId,
-        })));
+        // console.log("ENCODE, CHANGETREES =>", changeTrees.map(c => ({
+        //     ref: c.ref.constructor.name,
+        //     refId: c.refId,
+        // })));
 
         for (let i = 0, l = changeTrees.length; i < l; i++) {
             const changeTree = changeTrees[i];
@@ -393,7 +390,7 @@ export abstract class Schema {
             encode.uint8(bytes, SWITCH_TO_STRUCTURE);
             encode.number(bytes, changeTree.refId);
 
-            console.log("SWITCH_TO_STRUCTURE", { refId: changeTree.refId });
+            // console.log("SWITCH_TO_STRUCTURE", { refId: changeTree.refId });
 
             // TODO: use `changes.values()` instead.
             const changes = (encodeAll)
@@ -462,13 +459,13 @@ export abstract class Schema {
                     }
                 }
 
-                console.log("ENCODE FIELD", {
-                    ref: ref.constructor.name,
-                    type,
-                    field,
-                    value,
-                    op: OPERATION[operation.op]
-                })
+                // console.log("ENCODE FIELD", {
+                //     ref: ref.constructor.name,
+                //     type,
+                //     field,
+                //     value,
+                //     op: OPERATION[operation.op]
+                // })
 
                 if (operation.op === OPERATION.DELETE) {
                     //

@@ -445,17 +445,15 @@ export class ArraySchema<T=any> implements Array<T> {
     }
 
     setAt(key: number, item: T) {
-        const isRef = (item['$changes']) !== undefined;
-
-        if (isRef) {
-            (item['$changes'] as ChangeTree).setParent(this, this.$changes.root);
-        }
-
         // set "index" for reference.
         const index = key;
 
-        if (isRef) {
-            item['$changes'].parentIndex = index;
+        if (item['$changes']) {
+            (item['$changes'] as ChangeTree).setParent(
+                this,
+                this.$changes.root,
+                index,
+            );
         }
 
         this.$items[key] = item;
