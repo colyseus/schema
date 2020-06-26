@@ -141,12 +141,12 @@ export class ChangeTree {
             this.ref.forEach((value, key) => {
                 if (value instanceof Schema) {
                     const changeTreee = value['$changes'];
-                    // const parentIndex = definition.indexes[field];
+                    const parentIndex = this.ref['$changes'].indexes[key];
 
                     changeTreee.setParent(
                         this.ref,
                         this.root,
-                        // parentIndex,
+                        parentIndex,
                     );
 
                     // const parentDefinition = (this.parent as Schema)['_definition'];
@@ -160,12 +160,12 @@ export class ChangeTree {
                 // console.log("SETTING PARENT BY REF:", { key, value });
                 if (value instanceof Schema) {
                     const changeTreee = value['$changes'];
-                    // const parentIndex = definition.indexes[field];
+                    const parentIndex = this.ref['$changes'].indexes[key];
 
                     changeTreee.setParent(
                         this.ref,
                         this.root,
-                        // parentIndex,
+                        parentIndex,
                     );
 
                     // const parentDefinition = (this.parent as Schema)['_definition'];
@@ -190,6 +190,12 @@ export class ChangeTree {
             )
         ) {
             this.refCount++;
+
+            console.log("INCREASE REFCOUNT", {
+                ref: this.ref.constructor.name,
+                refCount: this.refCount,
+                root: this.root
+            });
         }
 
         if (!value) {

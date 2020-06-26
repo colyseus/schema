@@ -13,31 +13,20 @@ describe("Next Iteration", () => {
         }
 
         const state = new State({ arr: [] });
-        console.log("ARR =>", state.arr);
         state.arr.push("one");
         state.arr.push("two");
         state.arr.push("three");
 
-        console.log("\n\nLETS ENCODE:");
         let encoded = state.encode();
-
-        console.log("\n\nLETS DECODE:");
 
         const decoded = new State();
         decoded.decode(encoded);
         assert.deepEqual(decoded.arr['$items'], ['one', 'two', 'three']);
 
-        console.log("\n\nDISCARDING CHANGES...");
-
-        // discard previous changes
-        state.discardAllChanges();
-
         state.arr[1] = "t";
 
-        console.log("\n\nLETS ENCODE:");
         encoded = state.encode();
 
-        console.log("\n\nLETS DECODE:", encoded.length, encoded);
         decoded.decode(encoded);
 
         assert.deepEqual(decoded.arr['$items'], ['one', 't', 'three']);
@@ -71,30 +60,17 @@ describe("Next Iteration", () => {
         p3.y = 3;
         state.players.push(p3);
 
-        console.log("\n\nLETS ENCODE:");
         let encoded = state.encode();
-
-        console.log("\n\nLETS DECODE:");
 
         const decoded = new State();
         decoded.decode(encoded);
 
-        console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
-        console.log("decoded.players.map(p => p.x):", decoded.players.map(p => p.x));
-
         assert.equal(JSON.stringify(decoded.players.map(p => p.x)), "[1,2,3]");
-
-        console.log("\n\nDISCARDING CHANGES...");
-
-        // discard previous changes
-        state.discardAllChanges();
 
         state.players[0].x = 11;
 
-        console.log("\n\nLETS ENCODE:");
         encoded = state.encode();
 
-        console.log("\n\nLETS DECODE:", encoded.length, encoded);
         decoded.decode(encoded);
 
         assert.equal(JSON.stringify(decoded.players.map(p => p.x)), "[11,2,3]");
@@ -141,14 +117,10 @@ describe("Next Iteration", () => {
         const decoded = new State();
         decoded.decode(state.encode());
 
-        console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
-
-        console.log("\n\nLETS ASSERT!\n\n");
         assert.equal(2, decoded.map.size);
         assert.equal(1, decoded.map.get("one"));
         assert.equal(2, decoded.map.get("two"));
 
-        console.log("MAP =>", decoded.map);
         assert.equal(1, decoded.map["one"]);
         assert.equal(2, decoded.map["two"]);
 
@@ -156,10 +128,7 @@ describe("Next Iteration", () => {
 
         const encoded = state.encode();
 
-        console.log("\n\nLETS DECODE!!", encoded.length, encoded);
         decoded.decode(encoded);
-
-        console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
 
         assert.equal(1, decoded.map.size);
         assert.equal(undefined, decoded.map["one"]);
@@ -188,15 +157,10 @@ describe("Next Iteration", () => {
             state.players.set("two", player);
             state.players.set("three", player);
 
-            console.log("\n\nWILL ENCODE:");
             let encoded = state.encode();
-
-            console.log("\n\nWILL DECODE:", encoded.length, encoded);
 
             const decoded = new State();
             decoded.decode(encoded);
-
-            console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
 
             assert.equal(decoded.player, decoded.players.get("one"));
             assert.equal(decoded.player, decoded.players.get("two"));
@@ -233,18 +197,15 @@ describe("Next Iteration", () => {
             assert.equal(decoded.player, decoded.players.get("one"));
             assert.equal(decoded.player, decoded.players.get("two"));
 
-            console.log("\n\nWILL ASSIGN!");
             state.player.x = 11;
             state.player.y = 22;
 
             state.player = undefined;
             state.players.delete('three');
 
-            console.log("\n\nWILL ENCODE!\n\n")
             encoded = state.encode();
             decoded.decode(encoded);
 
-            console.log("DECODED =>", util.inspect(decoded.toJSON(), true, Infinity));
             assert.equal(decoded.players.get("one"), decoded.players.get("two"));
             assert.equal(undefined, decoded.players.get("three"));
             assert.equal(decoded.players.get("one").x, 11);
@@ -276,16 +237,9 @@ describe("Next Iteration", () => {
 
         let encoded = state.encode(undefined, undefined, undefined, true);
 
-        console.log("ENCODED (FULL)", encoded.length, encoded);
-
         let encoded1 = state.applyFilters(encoded, client1);
-        console.log("ENCODED (CLIENT 1)", encoded1.length, encoded1);
-
         let encoded2 = state.applyFilters(encoded, client2);
-        console.log("ENCODED (CLIENT 2)", encoded2.length, encoded2);
-
         let encoded3 = state.applyFilters(encoded, client3);
-        console.log("ENCODED (CLIENT 3)", encoded3.length, encoded3);
 
         decoded1.decode(encoded1);
         assert.equal(decoded1.map.size, 1);
@@ -306,16 +260,9 @@ describe("Next Iteration", () => {
         state.map.set("two", 22);
         encoded = state.encode(undefined, undefined, undefined, true);
 
-        console.log("\n\n>> PREVIOUS CHANGES HAVE BEEN DISCARDED\n\n");
-
         encoded1 = state.applyFilters(encoded, client1);
-        console.log("ENCODED (CLIENT 1)", encoded1.length, encoded1);
-
         encoded2 = state.applyFilters(encoded, client2);
-        console.log("ENCODED (CLIENT 2)", encoded2.length, encoded2);
-
         encoded3 = state.applyFilters(encoded, client3);
-        console.log("ENCODED (CLIENT 3)", encoded3.length, encoded3);
 
         decoded1.decode(encoded1);
         assert.equal(decoded1.map.size, 1);
@@ -335,7 +282,6 @@ describe("Next Iteration", () => {
         }
         class State extends Schema {
             @filterChildren(function(client, key: string, value: Player, root: State) {
-                console.log("CHILD FILTER", { client, key, value });
                 return client.sessionId === key;
             })
             @type({ map: Player })
@@ -347,11 +293,6 @@ describe("Next Iteration", () => {
         state.map.set("two", new Player().assign({ x: 2, y: 2 }));
         state.map.set("three", new Player().assign({ x: 3, y: 3 }));
 
-        console.log("ONE, TWO, THREE, parent indexes =>");
-        console.log(state.map.get("one")['$changes'].parentIndex);
-        console.log(state.map.get("two")['$changes'].parentIndex);
-        console.log(state.map.get("three")['$changes'].parentIndex);
-
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
         const client3 = { sessionId: "three" };
@@ -362,18 +303,9 @@ describe("Next Iteration", () => {
 
         let encoded = state.encode(undefined, undefined, undefined, true);
 
-        console.log("ENCODED (FULL)", encoded.length, encoded);
-
         let encoded1 = state.applyFilters(encoded, client1);
-        console.log("ENCODED (CLIENT 1)", encoded1.length, encoded1);
-
-        console.log("\n\nWILL APPLY FILTERS!\n\n");
-
         let encoded2 = state.applyFilters(encoded, client2);
-        console.log("ENCODED (CLIENT 2)", encoded2.length, encoded2);
-
         let encoded3 = state.applyFilters(encoded, client3);
-        console.log("ENCODED (CLIENT 3)", encoded3.length, encoded3);
 
         decoded1.decode(encoded1);
         assert.equal(decoded1.map.size, 1);
@@ -387,10 +319,6 @@ describe("Next Iteration", () => {
         assert.equal(decoded3.map.size, 1);
         assert.equal(decoded3.map.get("three").x, 3);
 
-        console.log("DECODED 1 =>", util.inspect(decoded1.toJSON(), true, Infinity));
-        console.log("DECODED 2 =>", util.inspect(decoded2.toJSON(), true, Infinity));
-        console.log("DECODED 3 =>", util.inspect(decoded3.toJSON(), true, Infinity));
-
         // discard previous changes
         state.discardAllChanges();
 
@@ -399,23 +327,11 @@ describe("Next Iteration", () => {
         state.map.get("two").x = 22;
         state.map.get("three").x = 33;
 
-        console.log("ONE, TWO, THREE, parent indexes =>");
-        console.log(state.map.get("one")['$changes'].parentIndex);
-        console.log(state.map.get("two")['$changes'].parentIndex);
-        console.log(state.map.get("three")['$changes'].parentIndex);
-
         encoded = state.encode(undefined, undefined, undefined, true);
 
-        console.log("\n\n>> PREVIOUS CHANGES HAVE BEEN DISCARDED\n\n");
-
         encoded1 = state.applyFilters(encoded, client1);
-        console.log("ENCODED (CLIENT 1)", encoded1.length, encoded1);
-
         encoded2 = state.applyFilters(encoded, client2);
-        console.log("ENCODED (CLIENT 2)", encoded2.length, encoded2);
-
         encoded3 = state.applyFilters(encoded, client3);
-        console.log("ENCODED (CLIENT 3)", encoded3.length, encoded3);
 
         decoded1.decode(encoded1);
         assert.equal(decoded1.map.size, 1);
@@ -428,10 +344,6 @@ describe("Next Iteration", () => {
         decoded3.decode(encoded3);
         assert.equal(decoded3.map.size, 1);
         assert.deepEqual(decoded3.map.get("three").x, 33);
-
-        console.log("DECODED 1 =>", util.inspect(decoded1.toJSON(), true, Infinity));
-        console.log("DECODED 2 =>", util.inspect(decoded2.toJSON(), true, Infinity));
-        console.log("DECODED 3 =>", util.inspect(decoded3.toJSON(), true, Infinity));
     });
 
     it("should encode string", () => {
@@ -465,24 +377,16 @@ describe("Next Iteration", () => {
         state.player = player;
 
         let encoded = state.encode();
-        console.log("Full encode, length =>", encoded.length, "=>", encoded);
 
         const decoded = new State();
         decoded.decode(encoded);
-        console.log("DECODED =>", decoded.toJSON());
 
         state.num = 1;
         state.player.x = 2;
         state.player.item.damage = 6;
 
-        console.log("\n\nWILL ENCODE PATCH\n\n")
         encoded = state.encode();
-
-        console.log("Patch encode, length:", encoded.length, "=>", encoded);
-        console.log("\n\nWILL DECODE\n\n")
-
         decoded.decode(encoded);
-        console.log("DECODED =>", decoded.toJSON());
     });
 
     it("instances should share parent/root references", () => {
@@ -572,27 +476,16 @@ describe("Next Iteration", () => {
         state.player = player;
 
         let encoded = state.encode(undefined, undefined, undefined, true);
-        console.log("Full encode, length =>", encoded.length, "=>", encoded);
-
-        console.log("\n\nAPPLY FILTERS FOR CLIENT 1");
-
         let encoded1 = state.applyFilters(encoded, client1);
-        console.log("Encode filtered (1), length =>", encoded1.length, "=>", encoded1);
 
         const decoded1 = new State();
         decoded1.decode(encoded1);
 
-        console.log("\n\nAPPLY FILTERS FOR CLIENT 2");
-
         let encoded2 = state.applyFilters(encoded, client2);
-        console.log("Encode filtered (2), length =>", encoded2.length, "=>", encoded2);
 
         const decoded2 = new State();
         decoded2.decode(encoded2);
         assert.equal("Hello", decoded2.str);
-
-        // console.log("DECODED 1 =>", decoded1.toJSON());
-        console.log("DECODED 2 =>", decoded2.toJSON());
 
         state.discardAllChanges();
 
@@ -600,26 +493,17 @@ describe("Next Iteration", () => {
         state.player.x = 2;
         state.player.item.damage = 6;
 
-        console.log("\n\nWILL ENCODE PATCH\n\n")
         encoded = state.encode(undefined, undefined, undefined, true);
 
-        console.log("Patch encode, length:", encoded.length, "=>", encoded);
-        console.log("\n\nWILL DECODE\n\n")
-
         encoded1 = state.applyFilters(encoded, client1);
-        console.log("Encode filtered (1), length =>", encoded1.length, "=>", encoded1);
         decoded1.decode(encoded1);
 
         encoded2 = state.applyFilters(encoded, client2);
-        console.log("Encode filtered (2), length =>", encoded2.length, "=>", encoded2);
         decoded2.decode(encoded2);
         assert.equal(1, decoded2.num);
 
         assert.equal(2, decoded1.player.x);
         assert.equal(6, decoded1.player.item.damage);
-
-        console.log("DECODED 1 =>", decoded1.toJSON());
-        console.log("DECODED 2 =>", decoded2.toJSON());
     });
 
     it("encoding / decoding deep items", () => {
@@ -649,16 +533,9 @@ describe("Next Iteration", () => {
         two.items.set("i2", i2);
         state.players.set("two", two);
 
-        console.log("CHANGE TREE =>", logChangeTree(state['$changes']))
-
         const patch = state.encode();
-        console.log("ENCODED =>", patch.length, patch);
-
         const decoded = new State();
-        console.log("\n>> WILL DECODE\n");
         decoded.decode(patch);
-
-        console.log(util.inspect(decoded.toJSON(), true, Infinity));
 
         assert.equal(2, decoded.players.size);
         assert.equal(1, decoded.players.get("one").items.size);
@@ -667,98 +544,159 @@ describe("Next Iteration", () => {
         assert.equal("player two item 2", decoded.players.get("two").items.get("i2").name);
     });
 
-    it("should not consider item removed from root references", () => {
-        class Player extends Schema {
-            @type("string") name: string;
-        }
-        class State extends Schema {
-            @type({ map: Player }) players = new Map<string, Player>();
-            @type(Player) player: Player;
-        }
+    describe("ChangeTree.refCount", () => {
+        it("should not consider item removed from root references", () => {
+            class Player extends Schema {
+                @type("string") name: string;
+            }
+            class State extends Schema {
+                @type({ map: Player }) players = new Map<string, Player>();
+                @type(Player) player: Player;
+            }
 
-        const player1 = new Player();
-        player1.name = "One";
+            const player1 = new Player();
+            player1.name = "One";
 
-        const player2 = new Player();
-        player2.name = "Two";
+            const player2 = new Player();
+            player2.name = "Two";
 
-        const state = new State();
-        state.players.set("one", player1);
-        state.players.set("two", player2);
+            const state = new State();
+            state.players.set("one", player1);
+            state.players.set("two", player2);
 
-        const decoded = new State();
-        decoded.decode(state.encode());
-        assert.equal(2, decoded.players.size, "should have 2 items");
+            const decoded = new State();
+            decoded.decode(state.encode());
+            assert.equal(2, decoded.players.size, "should have 2 items");
 
-        const noChangesEncoded = state.encode();
+            const noChangesEncoded = state.encode();
 
-        // remove "two"
-        state.players.delete("two");
-        decoded.decode(state.encode());
-        assert.equal(1, decoded.players.size, "should have 1 items");
+            // remove "two"
+            state.players.delete("two");
+            decoded.decode(state.encode());
+            assert.equal(1, decoded.players.size, "should have 1 items");
 
-        // mutate previous "two" reference.
-        player2.name = "Not inside the Map anymore";
+            // mutate previous "two" reference.
+            player2.name = "Not inside the Map anymore";
 
-        const shouldHaveNoChanges = state.encode();
-        assert.deepEqual(noChangesEncoded, shouldHaveNoChanges, "encoded result should be empty.");
+            const shouldHaveNoChanges = state.encode();
+            assert.deepEqual(noChangesEncoded, shouldHaveNoChanges, "encoded result should be empty.");
 
-        state.player = player2;
-        decoded.decode(state.encode());
+            state.player = player2;
+            decoded.decode(state.encode());
 
-        assert.equal("Not inside the Map anymore", decoded.player.name);
+            assert.equal("Not inside the Map anymore", decoded.player.name);
+        });
+
+        it("re-assigning schema multiple times should be allowed", () => {
+            class Player extends Schema {
+                @type("string") name: string;
+            }
+            class State extends Schema {
+                @type({ map: Player }) players = new Map<string, Player>();
+                @type(Player) player: Player;
+            }
+
+            const player1 = new Player();
+            player1.name = "One";
+
+            const state = new State();
+            state.players.set("one", player1);
+            assert.equal(1, player1['$changes'].refCount);
+
+            state.players.set("one", player1);
+            assert.equal(1, player1['$changes'].refCount);
+
+            state.players.set("one", player1);
+            assert.equal(1, player1['$changes'].refCount);
+
+            state.player = player1;
+            assert.equal(2, player1['$changes'].refCount);
+
+            state.player = player1;
+            assert.equal(2, player1['$changes'].refCount);
+
+            state.player = player1;
+            assert.equal(2, player1['$changes'].refCount);
+
+            const decoded = new State();
+            decoded.decode(state.encode());
+
+            state.players.delete("one");
+            state.player = undefined;
+
+            decoded.decode(state.encode());
+
+            assert.equal(0, player1['$changes'].refCount, "`player1` should have 0 references (refCount)");
+
+            player1.name = "This field should not be encoded!";
+            assert.equal(
+                false,
+                state['$changes'].root.allChanges.has(player1['$changes']),
+                "should not include 'player1' on list of references."
+            );
+
+            state.players.set("one", player1);
+            assert.equal(1, player1['$changes'].refCount);
+
+            state.player = player1;
+            assert.equal(2, player1['$changes'].refCount);
+
+            state.players.set("one", player1);
+            assert.equal(2, player1['$changes'].refCount);
+
+        });
+
+        it("re-assigning schema multiple times before attaching to root should be allowed", () => {
+            class Player extends Schema {
+                @type("string") name: string;
+            }
+            class Child extends Schema {
+                @type({ map: Player }) players;
+                @type(Player) player: Player;
+            }
+            class State extends Schema {
+                @type(Child) child: Child;
+            }
+
+            const players = new Map<string, Player>();
+
+            const player1 = new Player();
+            player1.name = "One";
+
+            const child = new Child();
+            players.set("one", player1);
+            players.set("one", player1);
+            players.set("one", player1);
+
+            child.players = players;
+            child.player = player1;
+            child.player = player1;
+            child.player = player1;
+
+            const state = new State();
+            console.log("\n\nATTACH CHILD TO STATE\n\n");
+            state.child = child;
+
+            const decoded = new State();
+            decoded.decode(state.encode());
+
+            state.child.players.delete("one");
+            state.child.player = undefined;
+
+            decoded.decode(state.encode());
+
+            assert.equal(0, player1['$changes'].refCount, "`player1` should have 0 references (refCount)");
+
+            player1.name = "This field should not be encoded!";
+            assert.equal(
+                false,
+                state['$changes'].root.allChanges.has(player1['$changes']),
+                "should not include 'player1' on list of references."
+            );
+
+        });
+
     });
 
-    it("re-assigning schema multiple times should be allowed", () => {
-        class Player extends Schema {
-            @type("string") name: string;
-        }
-        class State extends Schema {
-            @type({ map: Player }) players = new Map<string, Player>();
-            @type(Player) player: Player;
-        }
-
-        const player1 = new Player();
-        player1.name = "One";
-        console.log({ refCount: player1['$changes'].refCount });
-
-        const state = new State();
-        state.players.set("one", player1);
-        assert.equal(1, player1['$changes'].refCount);
-
-        state.players.set("one", player1);
-        assert.equal(1, player1['$changes'].refCount);
-
-        state.players.set("one", player1);
-        assert.equal(1, player1['$changes'].refCount);
-
-        state.player = player1;
-        assert.equal(2, player1['$changes'].refCount);
-
-        state.player = player1;
-        assert.equal(2, player1['$changes'].refCount);
-
-        state.player = player1;
-        assert.equal(2, player1['$changes'].refCount);
-
-        const decoded = new State();
-        decoded.decode(state.encode());
-
-        state.players.delete("one");
-        console.log("DELETE FROM MAP", { refCount: player1['$changes'].refCount });
-        state.player = undefined;
-        console.log("SET UNDEFINED", { refCount: player1['$changes'].refCount });
-
-        decoded.decode(state.encode());
-
-        player1.name = "This field should not be encoded!";
-        console.log("ROOT =>", state['$changes'].root);
-        assert.equal(
-            false,
-            state['$changes'].root.allChanges.has(player1['$changes']),
-            "should not include 'player1' on list of references."
-        );
-
-    });
 
 });
