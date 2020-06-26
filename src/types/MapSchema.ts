@@ -41,33 +41,30 @@ export class MapSchema<V=any> implements Map<string, V> {
     set(key: K, value: V) {
         this.$items.set(key, value);
 
+        // get "index" for this value.
+        const hasIndex = typeof(this.$changes.indexes[key]) !== "undefined";
+        const index = (hasIndex)
+            ? this.$changes.indexes[key]
+            : this.$refId++;
+
+        console.log({ key, hasIndex, index })
+
         const isRef = (value['$changes']) !== undefined;
         if (isRef) {
-            (value['$changes'] as ChangeTree).setParent(this, this.$changes.root);
+            (value['$changes'] as ChangeTree).setParent(
+                this,
+                this.$changes.root,
+                index
+            );
         }
 
         //
         // (encoding)
         // set a unique id to relate directly with this key/value.
         //
-        if (!this.$changes.indexes[key]) {
-
-            // set "index" for reference.
-            const index = this.$refId++;
-
-            // const index = (isRef)
-            //     ? value['$changes'].refId
-            //     : this.$refId++
-
-            // console.log(`MapSchema#set() =>`, { isRef, key, index, value });
-
+        if (!hasIndex) {
             this.$changes.indexes[key] = index;
-
             this.$indexes.set(index, key);
-        }
-
-        if (isRef) {
-            value['$changes'].parentIndex = this.$changes.indexes[key];
         }
 
         this.$changes.change(key);

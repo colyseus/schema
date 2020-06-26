@@ -223,6 +223,7 @@ describe("Next Iteration", () => {
             state.players.set("one", player);
             state.players.set("two", player);
             state.players.set("three", player);
+            assert.equal(4, player['$changes'].refCount, "should have 4 references");
 
             let encoded = state.encode();
 
@@ -232,12 +233,14 @@ describe("Next Iteration", () => {
             assert.equal(decoded.player, decoded.players.get("one"));
             assert.equal(decoded.player, decoded.players.get("two"));
 
+            console.log("\n\nWILL ASSIGN!");
             state.player.x = 11;
             state.player.y = 22;
 
             state.player = undefined;
             state.players.delete('three');
 
+            console.log("\n\nWILL ENCODE!\n\n")
             encoded = state.encode();
             decoded.decode(encoded);
 
@@ -704,6 +707,58 @@ describe("Next Iteration", () => {
         decoded.decode(state.encode());
 
         assert.equal("Not inside the Map anymore", decoded.player.name);
+    });
+
+    it("re-assigning schema multiple times should be allowed", () => {
+        class Player extends Schema {
+            @type("string") name: string;
+        }
+        class State extends Schema {
+            @type({ map: Player }) players = new Map<string, Player>();
+            @type(Player) player: Player;
+        }
+
+        const player1 = new Player();
+        player1.name = "One";
+        console.log({ refCount: player1['$changes'].refCount });
+
+        const state = new State();
+        state.players.set("one", player1);
+        assert.equal(1, player1['$changes'].refCount);
+
+        state.players.set("one", player1);
+        assert.equal(1, player1['$changes'].refCount);
+
+        state.players.set("one", player1);
+        assert.equal(1, player1['$changes'].refCount);
+
+        state.player = player1;
+        assert.equal(2, player1['$changes'].refCount);
+
+        state.player = player1;
+        assert.equal(2, player1['$changes'].refCount);
+
+        state.player = player1;
+        assert.equal(2, player1['$changes'].refCount);
+
+        const decoded = new State();
+        decoded.decode(state.encode());
+
+        state.players.delete("one");
+        console.log("DELETE FROM MAP", { refCount: player1['$changes'].refCount });
+        state.player = undefined;
+        console.log("SET UNDEFINED", { refCount: player1['$changes'].refCount });
+
+        decoded.decode(state.encode());
+
+        player1.name = "This field should not be encoded!";
+        console.log("ROOT =>", state['$changes'].root);
+        assert.equal(
+            false,
+            state['$changes'].root.allChanges.has(player1['$changes']),
+            "should not include 'player1' on list of references."
+        );
+
     });
 
 });

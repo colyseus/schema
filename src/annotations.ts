@@ -276,8 +276,6 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     });
                 }
 
-                this[fieldCached] = value;
-
                 if (
                     value !== undefined &&
                     value !== null
@@ -303,6 +301,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     this.$changes.delete(field);
                 }
 
+                this[fieldCached] = value;
             },
 
             enumerable: true,

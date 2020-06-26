@@ -74,9 +74,9 @@ export class ChangeTree {
     constructor(
         public ref: Ref,
         public parent?: Ref,
-        protected _root?: Root,
+        public root?: Root,
     ) {
-        this.setParent(parent, _root);
+        this.setParent(parent, root);
     }
 
     get changed () {
@@ -94,12 +94,15 @@ export class ChangeTree {
                 : {};
         }
 
+        const previousParent = this.parent;
+        const previousParentIndex = this.parentIndex;
+
         this.parent = parent;
         this.parentIndex = parentIndex;
 
         // avoid setting parent with empty `root`
         if (!root) { return; }
-        this.root = root;
+        this.setRoot(root, previousParent, previousParentIndex);
 
         //
         // assign same parent on child structures
@@ -113,10 +116,10 @@ export class ChangeTree {
                 if (value && value['$changes']) {
                     const parentIndex = definition.indexes[field];
 
-                    value['$changes'].setParent(
+                    (value['$changes'] as ChangeTree).setParent(
                         this.ref,
                         root,
-                        parentIndex
+                        parentIndex,
                     );
 
                     // // skip flagging fields for encoding if item is already on root.
@@ -174,34 +177,47 @@ export class ChangeTree {
         }
     }
 
-    set root(value: Root) {
+    setRoot(value: Root, previousParent?: Ref, previousParentIndex?: number) {
         if (!value) {
-            if (--this.refCount === 0) {
-                this._root?.delete(this);
-            }
+            this.refCount--;
 
-        // } else if (value !== this._root) {
-        } else {
+        // } else if (value !== this.root) {
+        } else if (
+            previousParent !== this.parent ||
+            (
+                previousParent === this.parent &&
+                previousParentIndex !== this.parentIndex
+            )
+        ) {
             this.refCount++;
         }
 
-        // assigning to the same root. skip.
-        this._root = value;
+        if (!value) {
+            //
+            // only remove `root` definitely when no other references holds this structure.
+            //
+            if (this.refCount === 0) {
+                this.root?.delete(this);
+                this.root = undefined;
+            }
 
-        // skip if root is undefined.
-        if (!value) { return; }
+        } else {
+            // assigning to the same root. skip.
+            this.root = value;
 
-        // only generate new `refId` if structure is unknown.
-        if (!this._root.allChanges.has(this)) {
-            this.refId = this._root.nextUniqueId++;
-        }
+            // // skip if root is undefined.
+            // if (!value) { return; }
 
-        if (this.changes.size > 0) {
-            this._root.dirty(this);
+            // only generate new `refId` if structure is unknown.
+            if (!this.root.allChanges.has(this)) {
+                this.refId = this.root.nextUniqueId++;
+            }
+
+            if (this.changes.size > 0) {
+                this.root.dirty(this);
+            }
         }
     }
-
-    get root () { return this._root; }
 
     change(fieldName: string | number) {
         const index = (typeof (fieldName) === "number")
@@ -235,7 +251,7 @@ export class ChangeTree {
 
         this.allChanges.add(index);
 
-        this._root?.dirty(this);
+        this.root?.dirty(this);
     }
 
     getType(index: number) {
@@ -295,10 +311,10 @@ export class ChangeTree {
             return;
         }
 
-        console.log("$changes.delete =>", { fieldName, index });
-
         const previousValue = this.getValue(index);
         const previousChange = this.changes.get(index);
+
+        console.log("$changes.delete =>", { fieldName, index, previousValue });
 
         if (previousChange && previousChange.op === OPERATION.ADD) {
             this.changes.delete(index);
@@ -312,16 +328,13 @@ export class ChangeTree {
         // delete cache
         delete this.caches[index];
 
-        //
-        // delete child from root changes.
-        //
-        if (previousValue instanceof Schema) {
-            // remove `root` reference.
-            previousValue['$changes'].root = undefined;
-            // this._root?.delete(this.ref[fieldName].$changes);
+        // remove `root` reference
+        if (previousValue && previousValue['$changes']) {
+            previousValue['$changes'].setRoot(undefined);
+            // this.root?.delete(this.ref[fieldName].$changes);
         }
 
-        this._root?.dirty(this);
+        this.root?.dirty(this);
     }
 
     discard() {
