@@ -191,7 +191,6 @@ export abstract class Schema {
 
             if (byte === SWITCH_TO_STRUCTURE) {
                 const refId = decode.number(bytes, it);
-                console.log("SWITCH_TO_STRUCTURE", { refId });
 
                 if (!$root.refs.has(refId)) {
                     $root.refs.set(refId, this);
@@ -200,6 +199,11 @@ export abstract class Schema {
                 } else {
                     ref = $root.refs.get(refId) as Schema;
                 }
+
+                console.log("SWITCH_TO_STRUCTURE (DECODE)", {
+                    ref: ref.constructor.name,
+                    refId,
+                });
 
                 continue;
             }
@@ -236,7 +240,7 @@ export abstract class Schema {
                 ref['setIndex'](field, dynamicIndex);
             }
 
-            // console.log("DECODE FIELD", { field, type, operation: OPERATION[operation] });
+            console.log("DECODE FIELD", { field, type, operation: OPERATION[operation] });
 
             //
             // TODO: use bitwise operations to check for `DELETE` instead.
@@ -269,6 +273,8 @@ export abstract class Schema {
                 const refId = decode.number(bytes, it);
                 value = $root.refs.get(refId);
 
+                console.log("> IS SCHEMA", { type: type.name, refId, value });
+
                 if (
                     operation === OPERATION.ADD ||
                     operation === OPERATION.DELETE_AND_ADD
@@ -278,6 +284,7 @@ export abstract class Schema {
                     if (!value) {
                         value = this.createTypeInstance(bytes, it, childType || type as typeof Schema);
                         $root.refs.set(refId, value);
+                        console.log("CREATE NEW INSTANCE", { refId, value });
                     }
                 }
 
@@ -365,32 +372,30 @@ export abstract class Schema {
         bytes: number[] = [],
         useFilters: boolean = false,
     ) {
-        const $root = root.$changes.root;
+        const refIdsVisited = new Set<number>();
 
-        // sort by refId, from lower to higher.
-        const changeTrees = (
-            (encodeAll)
-                ? Array.from($root.allChanges)
-                : Array.from($root.changes)
-        ).sort((a,b) => {
-            return a.refId - b.refId;
-        });
+        const changeTrees: ChangeTree[] = [this.$changes];
+        let numChangeTrees = 1;
 
-        // console.log("ENCODE, CHANGETREES =>", changeTrees.map(c => ({
-        //     ref: c.ref.constructor.name,
-        //     refId: c.refId,
-        // })));
-
-        for (let i = 0, l = changeTrees.length; i < l; i++) {
+        for (let i = 0; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
             const ref = changeTree.ref;
             const isSchema = (ref instanceof Schema);
 
+            // Generate unique refId for the ChangeTree.
+            changeTree.ensureRefId();
+
+            // mark this ChangeTree as visited.
+            refIdsVisited.add(changeTree.refId);
+
+            console.log("SWITCH_TO_STRUCTURE (ENCODE)", {
+                ref: ref.constructor.name,
+                refId: changeTree.refId
+            });
+
             // root `refId` is skipped.
             encode.uint8(bytes, SWITCH_TO_STRUCTURE);
             encode.number(bytes, changeTree.refId);
-
-            // console.log("SWITCH_TO_STRUCTURE", { refId: changeTree.refId });
 
             // TODO: use `changes.values()` instead.
             const changes = (encodeAll)
@@ -428,8 +433,10 @@ export abstract class Schema {
                 const beginIndex = bytes.length;
 
                 // encode field index + operation
-                encode.uint8(bytes, operation.op);
-                encode.number(bytes, fieldIndex);
+                if (operation.op !== OPERATION.TOUCH) {
+                    encode.uint8(bytes, operation.op);
+                    encode.number(bytes, fieldIndex);
+                }
 
                 //
                 // encode "alias" for dynamic fields (maps)
@@ -459,18 +466,34 @@ export abstract class Schema {
                     }
                 }
 
-                // console.log("ENCODE FIELD", {
-                //     ref: ref.constructor.name,
-                //     type,
-                //     field,
-                //     value,
-                //     op: OPERATION[operation.op]
-                // })
+                console.log("ENCODE FIELD", {
+                    ref: ref.constructor.name,
+                    type,
+                    field,
+                    value,
+                    op: OPERATION[operation.op]
+                })
 
                 if (operation.op === OPERATION.DELETE) {
                     //
                     // TODO: delete from $root.cache
                     //
+                    continue;
+                }
+
+                // Enqueue ChangeTree to be visited
+                if (
+                    value &&
+                    value['$changes'] &&
+                    !refIdsVisited.has(value['$changes'])
+                ) {
+                    changeTrees.push(value['$changes']);
+                    value['$changes'].ensureRefId();
+                    numChangeTrees++;
+                }
+
+                if (operation.op === OPERATION.TOUCH) {
+                    console.log(">>>> IT'S A TOUCH, SKIP.");
                     continue;
                 }
 
@@ -554,9 +577,10 @@ export abstract class Schema {
         const refIdsAllowed = new Set<number>([0]);
 
         // sort by refId, from lower to higher.
-        const changeTrees = Array.from(this.$changes.root.changes).sort((a,b) => {
-            return a.refId - b.refId;
-        });
+        const refIdsVisited = new Set<number>();
+
+        const changeTrees = [this.$changes];
+        let numChangeTrees = 1;
 
         // console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({
         //     ref: c.ref.constructor.name,
@@ -566,7 +590,7 @@ export abstract class Schema {
         // })));
 
         changetrees:
-        for (let i = 0, l = changeTrees.length; i < l; i++) {
+        for (let i = 0; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
 
             if (refIdsDissallowed.has(changeTree.refId))  {
@@ -574,82 +598,10 @@ export abstract class Schema {
                 continue;
             }
 
-            //
-            // FIXME: this entire block should be removed in the future in favor
-            // of a more direct relationship to avoid visiting parent structures
-            // unecessarily
-            //
-            // parent structure may be filtered out. check the @filter() of
-            // parent structures.
-            //
-            if (!refIdsAllowed.has(changeTree.refId)) {
-                let currentRef: Ref = changeTree.ref;
-                let childRef: Ref;
-
-                //
-                // This checks for a child Schema with @filterChildren() /
-                // @filter() attached on the parent structure.
-                //
-                // TODO: improve/refactor, there are too many duplicated code below:
-                // - Checking for @filter() on parent structure
-                // - Checking for @filterChildren() on parent structure
-                // - (later) Checking for @filter() on THIS structure
-                // - (later) Checking for @filterChildren() on THIS structure
-                //
-
-                while (currentRef) {
-                    if (
-                        // is a direct Schema -> Schema relationship
-                        currentRef instanceof Schema &&
-                       (currentRef['$changes'].parent instanceof Schema)
-                    ) {
-                        const filter = currentRef['$changes'].getParentFilter();
-
-                        if (filter && !filter.call(currentRef, client, changeTree.ref, root)) {
-                            refIdsDissallowed.add(changeTree.refId);
-                            continue changetrees;
-                        }
-
-                    } else if (childRef) {
-                        const filter = currentRef['$changes'].getChildrenFilter();
-                        const parentIndex = childRef['$changes'].parentIndex;
-
-                        if (
-                            filter &&
-                            !filter.call(
-                                currentRef['$changes'].parent,
-                                client,
-                                currentRef['$indexes'].get(parentIndex),
-                                currentRef['$changes'].getValue(parentIndex),
-                                root
-                            )
-                        ) {
-                            refIdsDissallowed.add(changeTree.refId);
-                            continue changetrees;
-                        }
-                    }
-
-                    childRef = currentRef;
-                    currentRef = currentRef['$changes'].parent;
-
-                    // break if reached root.
-                    if (!currentRef['$changes'].parent) {
-                        break;
-                    }
-                }
-
-                //
-                // All parents have been checked and no filter/filterChildren
-                // detected for this structure
-                //
-
-                refIdsAllowed.add(changeTree.refId);
-            }
-
             const ref = changeTree.ref as Schema;
             const filters = ref._filters;
 
-            // console.log("APPLY FILTERS, SWITCH_TO_STRUCTURE:", {
+            // console.log("SWITCH_TO_STRUCTURE (APPLY FILTERS)", {
             //     ref: ref.constructor.name,
             //     refId: changeTree.refId
             // });
@@ -661,6 +613,11 @@ export abstract class Schema {
                 const cache = ref.$changes.caches[fieldIndex];
                 const value = ref.$changes.getValue(fieldIndex);
 
+                if (value['$changes']) {
+                    changeTrees.push(value['$changes']);
+                    numChangeTrees++;
+                }
+
                 if (
                     ref instanceof MapSchema ||
                     ref instanceof ArraySchema
@@ -670,7 +627,7 @@ export abstract class Schema {
 
                     if (filter && !filter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
                         if (value['$changes']) {
-                            refIdsDissallowed.add(value['$changes'].refId);;
+                            refIdsDissallowed.add(value['$changes'].refId);
                         }
                         return;
                     }
@@ -698,7 +655,7 @@ export abstract class Schema {
                     encode.number(filteredBytes, fieldIndex);
                     return;
 
-                } else {
+                } else if (change.op !== OPERATION.TOUCH) {
                     filteredBytes = filteredBytes.concat(encodedBytes.slice(cache.beginIndex, cache.endIndex));
 
                 }
@@ -725,6 +682,15 @@ export abstract class Schema {
             }
         }
         return cloned;
+    }
+
+    destroy () {
+        //
+        // TODO:
+        //
+        // when sharing an instance on multiple places, it may be necessary to
+        // flag as "destroyed" when you'd like to make sure this instance is not
+        // going to be serialized
     }
 
     triggerAll() {

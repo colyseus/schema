@@ -47,8 +47,6 @@ export class MapSchema<V=any> implements Map<string, V> {
             ? this.$changes.indexes[key]
             : this.$refId++;
 
-        console.log({ key, hasIndex, index })
-
         const isRef = (value['$changes']) !== undefined;
         if (isRef) {
             (value['$changes'] as ChangeTree).setParent(
@@ -84,11 +82,16 @@ export class MapSchema<V=any> implements Map<string, V> {
         // this.$indexes.delete(index);
 
         this.$changes.delete(key);
+
         return this.$items.delete(key);
     }
 
     clear() {
+        // TODO: test this.
         this.$items.clear();
+
+        // touch all structures until reach root
+        this.$changes.touchParents();
     }
 
     has (key: K) {

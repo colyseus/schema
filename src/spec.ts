@@ -26,7 +26,7 @@ export enum OPERATION {
     // (224)
     DELETE_AND_ADD = parseInt("11100000", 2),
 
-    // TOUCH is used to determine hierarchy of changes during serialization.
+    // TOUCH is used to determine hierarchy of nested Schema structures during serialization.
     // touches are NOT encoded.
     // (1)
     TOUCH = parseInt("00000001", 2)

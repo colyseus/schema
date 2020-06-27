@@ -33,37 +33,43 @@ export interface FieldCache {
 // Root holds all schema references by unique id
 //
 export class Root {
-    nextUniqueId: number = 0;
-    refs = new Map<number, Ref>();
+    public refs = new Map<number, Ref>();
+    protected nextUniqueId: number = 0;
 
-    changes = new Set<ChangeTree>();
-    allChanges = new Set<ChangeTree>();
-
-    dirty(change: ChangeTree) {
-        this.changes.add(change);
-        this.allChanges.add(change);
+    getNextUniqueId() {
+        return this.nextUniqueId++;
     }
 
-    discard(change: ChangeTree) {
-        this.changes.delete(change);
-    }
+    // changes = new Set<ChangeTree>();
+    // allChanges = new Set<ChangeTree>();
 
-    delete (change: ChangeTree) {
-        this.changes.delete(change);
-        this.allChanges.delete(change);
-    }
+    // dirty(change: ChangeTree) {
+    //     this.changes.add(change);
+    //     this.allChanges.add(change);
+    // }
+
+    // discard(change: ChangeTree) {
+    //     this.changes.delete(change);
+    // }
+
+    // delete (change: ChangeTree) {
+    //     this.changes.delete(change);
+    //     this.allChanges.delete(change);
+    // }
 }
 
 export class ChangeTree {
+    ref: Ref;
     refId: number;
-    refCount: number = 0;
 
-    indexes: {[index: string]: any};
+    root?: Root;
+
+    parent?: Ref;
     parentIndex?: number;
 
-    // TODO: use a single combined reference to all schema field configs here.
-    childType: PrimitiveType;
-    childrenFilter: FilterChildrenCallback;
+    indexes: {[index: string]: any};
+
+    // refCount: number = 0;
 
     changes = new Map<number, ChangeOperation>();
     allChanges = new Set<number>();
@@ -71,11 +77,8 @@ export class ChangeTree {
     // cached indexes for filtering
     caches: {[field: number]: FieldCache} = {};
 
-    constructor(
-        public ref: Ref,
-        public parent?: Ref,
-        public root?: Root,
-    ) {
+    constructor(ref: Ref, parent?: Ref, root?: Root) {
+        this.ref = ref;
         this.setParent(parent, root);
     }
 
@@ -102,7 +105,8 @@ export class ChangeTree {
 
         // avoid setting parent with empty `root`
         if (!root) { return; }
-        this.setRoot(root, previousParent, previousParentIndex);
+        this.root = root;
+        // this.setRoot(root, previousParent, previousParentIndex);
 
         //
         // assign same parent on child structures
@@ -178,51 +182,49 @@ export class ChangeTree {
     }
 
     setRoot(value: Root, previousParent?: Ref, previousParentIndex?: number) {
-        if (!value) {
-            this.refCount--;
+        this.root = value;
 
-        // } else if (value !== this.root) {
-        } else if (
-            previousParent !== this.parent ||
-            (
-                previousParent === this.parent &&
-                previousParentIndex !== this.parentIndex
-            )
-        ) {
-            this.refCount++;
+        // if (!value) {
+        //     this.refCount--;
 
-            console.log("INCREASE REFCOUNT", {
-                ref: this.ref.constructor.name,
-                refCount: this.refCount,
-                root: this.root
-            });
-        }
+        // } else if (
+        //     previousParent !== this.parent ||
+        //     (
+        //         previousParent === this.parent &&
+        //         previousParentIndex !== this.parentIndex
+        //     )
+        // ) {
+        //     this.refCount++;
 
-        if (!value) {
-            //
-            // only remove `root` definitely when no other references holds this structure.
-            //
-            if (this.refCount === 0) {
-                this.root?.delete(this);
-                this.root = undefined;
-            }
+        //     console.log("INCREASE REFCOUNT", {
+        //         ref: this.ref.constructor.name,
+        //         refCount: this.refCount,
+        //         root: this.root
+        //     });
+        // }
 
-        } else {
-            // assigning to the same root. skip.
-            this.root = value;
+        // if (!value) {
+        //     //
+        //     // only remove `root` definitely when no other references holds this structure.
+        //     //
+        //     if (this.refCount === 0) {
+        //         this.root?.delete(this);
+        //         this.root = undefined;
+        //     }
 
-            // // skip if root is undefined.
-            // if (!value) { return; }
+        // } else {
+        //     // assigning to the same root. skip.
+        //     this.root = value;
 
-            // only generate new `refId` if structure is unknown.
-            if (!this.root.allChanges.has(this)) {
-                this.refId = this.root.nextUniqueId++;
-            }
+        //     // only generate new `refId` if structure is unknown.
+        //     if (!this.root.allChanges.has(this)) {
+        //         this.refId = this.root.nextUniqueId++;
+        //     }
 
-            if (this.changes.size > 0) {
-                this.root.dirty(this);
-            }
-        }
+        //     if (this.changes.size > 0) {
+        //         this.root.dirty(this);
+        //     }
+        // }
     }
 
     change(fieldName: string | number) {
@@ -257,7 +259,33 @@ export class ChangeTree {
 
         this.allChanges.add(index);
 
-        this.root?.dirty(this);
+        this.touchParents();
+
+        // this.root?.dirty(this);
+    }
+
+    touch(fieldName: string | number) {
+        const index = (typeof (fieldName) === "number")
+            ? fieldName
+            : this.indexes[fieldName];
+
+        this.assertValidIndex(index, fieldName);
+
+        if (!this.changes.has(index)) {
+            this.changes.set(index, { op: OPERATION.TOUCH, index });
+        }
+
+        this.allChanges.add(index);
+
+        // ensure touch is placed until the $root is found.
+        this.touchParents();
+    }
+
+    touchParents() {
+        console.log("TOUCH PARENT?", { ref: this.ref.constructor.name, parent: typeof (this.parent) });
+        if (this.parent) {
+            (this.parent['$changes'] as ChangeTree).touch(this.parentIndex);
+        }
     }
 
     getType(index: number) {
@@ -333,18 +361,20 @@ export class ChangeTree {
         // delete cache
         delete this.caches[index];
 
-        // remove `root` reference
-        if (previousValue && previousValue['$changes']) {
-            previousValue['$changes'].setRoot(undefined);
-            // this.root?.delete(this.ref[fieldName].$changes);
-        }
+        // // remove `root` reference
+        // if (previousValue && previousValue['$changes']) {
+        //     previousValue['$changes'].setRoot(undefined);
+        //     // this.root?.delete(this.ref[fieldName].$changes);
+        // }
 
-        this.root?.dirty(this);
+        this.touchParents();
+
+        // this.root?.dirty(this);
     }
 
     discard() {
         this.changes.clear();
-        this.root?.discard(this);
+        // this.root?.discard(this);
     }
 
     /**
@@ -368,6 +398,15 @@ export class ChangeTree {
 
     clone() {
         return new ChangeTree(this.ref, this.parent, this.root);
+    }
+
+    ensureRefId() {
+        // skip if refId is already set.
+        if (this.refId !== undefined) {
+            return;
+        }
+
+        this.refId = this.root.getNextUniqueId();
     }
 
     protected assertValidIndex(index: number, fieldName: string | number) {
