@@ -7,7 +7,7 @@ import * as decode from "./encoding/decode";
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
-import { ChangeTree, Root, Ref } from "./changes/ChangeTree";
+import { ChangeTree, Root, Ref, ChangeOperation } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
 import { EventEmitter } from './events/EventEmitter';
 
@@ -227,6 +227,11 @@ export abstract class Schema {
             let dynamicIndex: number | string;
             let hasChange = false;
 
+            if (operation === OPERATION.CLEAR) {
+                (ref as MapSchema).clear();
+                continue;
+            }
+
             if (
                 !isSchema &&
                 (
@@ -398,9 +403,9 @@ export abstract class Schema {
             encode.number(bytes, changeTree.refId);
 
             // TODO: use `changes.values()` instead.
-            const changes = (encodeAll)
-                ? Array.from(changeTree.allChanges)
-                : Array.from(changeTree.changes.keys());
+            const changes: ChangeOperation[] = (encodeAll)
+                ? Array.from(changeTree.allChanges).map(index => ({ op: OPERATION.ADD, index }))
+                : Array.from(changeTree.changes.values());
 
             // console.log("CHANGES =>", {
             //     changes,
@@ -411,11 +416,8 @@ export abstract class Schema {
             // });
 
             for (let j = 0, cl = changes.length; j < cl; j++) {
-                const fieldIndex = changes[j];
-
-                const operation = (!encodeAll)
-                    ? changeTree.changes.get(fieldIndex)
-                    : { op: OPERATION.ADD, index: fieldIndex };
+                const operation = changes[j];
+                const fieldIndex = operation.index;
 
                 const field = (ref instanceof Schema)
                     ? ref._fieldsByIndex && ref._fieldsByIndex[fieldIndex]
@@ -433,8 +435,15 @@ export abstract class Schema {
                 const beginIndex = bytes.length;
 
                 // encode field index + operation
-                if (operation.op !== OPERATION.TOUCH) {
+                if (operation.op > OPERATION.TOUCH) {
                     encode.uint8(bytes, operation.op);
+
+                    // custom operations
+                    if (operation.op === OPERATION.CLEAR) {
+                        continue;
+                    }
+
+                    // indexed operations
                     encode.number(bytes, fieldIndex);
                 }
 
@@ -618,6 +627,13 @@ export abstract class Schema {
                     numChangeTrees++;
                 }
 
+                // custom operations
+                if (change.op === OPERATION.CLEAR) {
+                    encode.uint8(filteredBytes, change.op);
+                    return;
+                }
+
+                // filtering out indexes fields
                 if (
                     ref instanceof MapSchema ||
                     ref instanceof ArraySchema

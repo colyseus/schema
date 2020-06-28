@@ -12,22 +12,21 @@ export const TYPE_ID = 0xd5; // 213
 export enum OPERATION {
     // add new structure/primitive
     // (128)
-    ADD = parseInt("10000000", 2),
+    ADD = 128, // 10000000,
 
     // replace structure/primitive
-    // (0)
-    REPLACE = parseInt("00000000", 2),
+    REPLACE = 1,// 00000001
 
     // delete field
-    // (192)
-    DELETE = parseInt("11000000", 2),
+    DELETE = 192, // 11000000
 
     // DELETE field, followed by an ADD
-    // (224)
-    DELETE_AND_ADD = parseInt("11100000", 2),
+    DELETE_AND_ADD = 224, // 11100000
 
     // TOUCH is used to determine hierarchy of nested Schema structures during serialization.
     // touches are NOT encoded.
-    // (1)
-    TOUCH = parseInt("00000001", 2)
+    TOUCH = 0, // 00000000
+
+    // MapSchema Operations
+    CLEAR = 10,
 }

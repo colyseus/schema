@@ -1,8 +1,6 @@
-import * as util from "util";
 import * as assert from "assert";
 
 import { Schema, type, MapSchema, ArraySchema, filter, filterChildren } from "../src";
-import { logChangeTree } from "./helpers/test_helpers";
 
 describe("Next Iteration", () => {
 

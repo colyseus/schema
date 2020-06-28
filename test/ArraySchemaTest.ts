@@ -4,7 +4,6 @@ import * as util from "util";
 
 import { State, Player } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges } from "../src";
-import { logChangeTree } from "./helpers/test_helpers";
 
 describe("ArraySchema Tests", () => {
 

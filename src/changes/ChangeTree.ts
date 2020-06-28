@@ -4,6 +4,7 @@ import { PrimitiveType, FilterChildrenCallback, SchemaDefinition } from "../anno
 
 import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";
+import { boolean } from "../encoding/encode";
 // import { CollectionSchema } from "../types/CollectionSchema";
 // import { SetSchema } from "../types/SetSchema";
 
@@ -61,6 +62,7 @@ export class Root {
 export class ChangeTree {
     ref: Ref;
     refId: number;
+    // refCount: number = 0;
 
     root?: Root;
 
@@ -69,13 +71,13 @@ export class ChangeTree {
 
     indexes: {[index: string]: any};
 
-    // refCount: number = 0;
-
     changes = new Map<number, ChangeOperation>();
     allChanges = new Set<number>();
 
     // cached indexes for filtering
     caches: {[field: number]: FieldCache} = {};
+
+    currentCustomOperation: number = 0;
 
     constructor(ref: Ref, parent?: Ref, root?: Root) {
         this.ref = ref;
@@ -97,16 +99,12 @@ export class ChangeTree {
                 : {};
         }
 
-        const previousParent = this.parent;
-        const previousParentIndex = this.parentIndex;
-
         this.parent = parent;
         this.parentIndex = parentIndex;
 
-        // avoid setting parent with empty `root`
+        // avoid setting parents with empty `root`
         if (!root) { return; }
         this.root = root;
-        // this.setRoot(root, previousParent, previousParentIndex);
 
         //
         // assign same parent on child structures
@@ -227,6 +225,10 @@ export class ChangeTree {
         // }
     }
 
+    operation(op: ChangeOperation) {
+        this.changes.set(--this.currentCustomOperation, op);
+    }
+
     change(fieldName: string | number) {
         const index = (typeof (fieldName) === "number")
             ? fieldName
@@ -244,7 +246,7 @@ export class ChangeTree {
                         ? OPERATION.DELETE_AND_ADD
                         : OPERATION.REPLACE,
                 index
-            })
+            });
 
             //
             // TODO:
@@ -312,22 +314,6 @@ export class ChangeTree {
         return _childFilters && _childFilters[this.parentIndex];
     }
 
-    getParentFilter() {
-        const parent = this.parent;
-
-        if (!parent) {
-            return;
-        }
-
-        if (parent['_definition']) {
-            return (parent as Schema)['_filters'][this.parentIndex];
-
-        } else {
-            return (parent['$changes'].parent as Schema)['_childFilters'][this.parentIndex];
-        }
-
-    }
-
     //
     // used during `.encode()`
     //
@@ -346,26 +332,19 @@ export class ChangeTree {
         }
 
         const previousValue = this.getValue(index);
-        const previousChange = this.changes.get(index);
-
         console.log("$changes.delete =>", { fieldName, index, previousValue });
 
-        // if (previousChange && previousChange.op === OPERATION.ADD) {
-        //     this.changes.delete(index);
-        // } else {
-            this.changes.set(index, { op: OPERATION.DELETE, index });
-        // }
+        this.changes.set(index, { op: OPERATION.DELETE, index });
 
         this.allChanges.delete(index);
 
         // delete cache
         delete this.caches[index];
 
-        // // remove `root` reference
-        // if (previousValue && previousValue['$changes']) {
-        //     previousValue['$changes'].setRoot(undefined);
-        //     // this.root?.delete(this.ref[fieldName].$changes);
-        // }
+        // remove `root` reference
+        if (previousValue && previousValue['$changes']) {
+            previousValue['$changes'].parent = undefined;
+        }
 
         this.touchParents();
 
@@ -374,6 +353,10 @@ export class ChangeTree {
 
     discard() {
         this.changes.clear();
+
+        // re-set `currentCustomOperation`
+        this.currentCustomOperation = 0;
+
         // this.root?.discard(this);
     }
 

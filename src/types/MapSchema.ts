@@ -1,4 +1,5 @@
 import { ChangeTree } from "../changes/ChangeTree";
+import { OPERATION } from "../spec";
 
 type K = string; // TODO: allow to specify K generic on MapSchema.
 
@@ -76,19 +77,29 @@ export class MapSchema<V=any> implements Map<string, V> {
 
     delete(key: K) {
         //
-        // TODO: should we delete from $indexes as well?
+        // TODO: add a "purge" method after .encode() runs, to cleanup removed `$indexes`
         //
-        // const index = this.$changes.indexes[key];
-        // this.$indexes.delete(index);
+        // We don't remove $indexes to allow setting the same key.
+        // (See "should allow to remove and set an item in the same place" test)
+        //
+        // // const index = this.$changes.indexes[key];
+        // // this.$indexes.delete(index);
 
         this.$changes.delete(key);
-
         return this.$items.delete(key);
     }
 
     clear() {
-        // TODO: test this.
+        // discard previous operations.
+        this.$changes.discard();
+
+        // clear previous indexes
+        this.$indexes.clear();
+
+        // clear items
         this.$items.clear();
+
+        this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
 
         // touch all structures until reach root
         this.$changes.touchParents();

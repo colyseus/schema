@@ -1,30 +1,35 @@
 import { Schema } from "./";
 import { OPERATION } from "./spec";
 import { MapSchema } from "./types/MapSchema";
+import { ChangeTree } from "./changes/ChangeTree";
 
 export function dumpChanges(schema: Schema) {
-    const dump = [];
-    const root = schema['$changes'].root;
+    const changeTrees: ChangeTree[] = [schema['$changes']];
+    let numChangeTrees = 1;
 
-    root.changes.forEach((changeTree) => {
-        const ref = changeTree.ref;
+    const dump = {};
+    let currentStructure = dump;
 
-        dump.push({
-            ref: changeTree.ref.constructor.name,
-            refId: changeTree.refId,
-            operations: Array.from(changeTree.changes)
-                .reduce((prev, [fieldIndex, op]) => {
-                    const key = (ref instanceof Schema)
-                        ? ref['_definition'].fieldsByIndex[op.index]
-                        : (ref instanceof MapSchema)
-                            ? ref['$indexes'].get(fieldIndex)
-                            : ref['$indexes'][fieldIndex];
+    for (let i = 0; i < numChangeTrees; i++) {
+        const changeTree = changeTrees[i];
 
-                    prev[key] = OPERATION[op.op];
-                    return prev;
-                }, {})
+        // TODO: this method doesn't work as expected.
+
+        changeTree.changes.forEach((change) => {
+            const ref = changeTree.ref;
+            const fieldIndex = change.index;
+
+            const field = (ref instanceof Schema)
+                ? ref['_definition'].fieldsByIndex[fieldIndex]
+                : (ref instanceof MapSchema)
+                    ? ref['$indexes'].get(fieldIndex)
+                    : ref['$indexes'][fieldIndex]
+
+
+            currentStructure[field] = changeTree.getValue(fieldIndex);
         });
-    });
+
+    }
 
     return dump;
 }
