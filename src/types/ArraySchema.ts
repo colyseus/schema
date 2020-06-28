@@ -110,7 +110,7 @@ export class ArraySchema<T=any> extends Array<T> {
         removedItems.map(removedItem => {
             const $changes = removedItem && (removedItem as any).$changes;
             // If the removed item is a schema we need to update it.
-            if ($changes) {
+            if ($changes && $changes.parent) {
                 $changes.parent.deleteIndex(removedItem);
                 delete $changes.parent;
             }
