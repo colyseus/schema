@@ -619,6 +619,13 @@ export abstract class Schema {
             encode.number(filteredBytes, ref.$changes.refId);
 
             changeTree.changes.forEach((change, fieldIndex) => {
+                // custom operations
+                if (change.op === OPERATION.CLEAR) {
+                    encode.uint8(filteredBytes, change.op);
+                    return;
+                }
+
+                // indexed operation
                 const cache = ref.$changes.caches[fieldIndex];
                 const value = ref.$changes.getValue(fieldIndex);
 
@@ -627,13 +634,6 @@ export abstract class Schema {
                     numChangeTrees++;
                 }
 
-                // custom operations
-                if (change.op === OPERATION.CLEAR) {
-                    encode.uint8(filteredBytes, change.op);
-                    return;
-                }
-
-                // filtering out indexes fields
                 if (
                     ref instanceof MapSchema ||
                     ref instanceof ArraySchema
