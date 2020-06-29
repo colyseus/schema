@@ -53,4 +53,31 @@ describe("CollectionSchema Tests", () => {
         assert.equal(0, decoded.players.size);
     });
 
+    it("clear()", () => {
+        class Player extends Schema {
+            @type("number") level: number;
+        }
+
+        class State extends Schema {
+            @type({ collection: Player })
+            players = new CollectionSchema<Player>();
+        }
+
+        const state = new State();
+        state.players.add(new Player().assign({ level: 10 }));
+        state.players.add(new Player().assign({ level: 20 }));
+        state.players.add(new Player().assign({ level: 30 }));
+        state.players.add(new Player().assign({ level: 40 }));
+        state.players.add(new Player().assign({ level: 50 }));
+
+        const decoded = new State();
+        decoded.decode(state.encode());
+        assert.equal(5, decoded.players.size);
+
+        state.players.clear();
+        decoded.decode(state.encode());
+
+        assert.equal(0, decoded.players.size);
+    });
+
 });

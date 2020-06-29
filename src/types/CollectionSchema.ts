@@ -53,12 +53,6 @@ export class CollectionSchema<V=any> {
     }
 
     remove(item: V) {
-        //
-        // TODO: should we delete from $indexes as well?
-        //
-        // const index = this.$changes.indexes[key];
-        // this.$indexes.delete(index);
-
         const entries = this.$items.entries();
 
         let index: K;
@@ -83,7 +77,19 @@ export class CollectionSchema<V=any> {
     }
 
     clear() {
+        // discard previous operations.
+        this.$changes.discard();
+
+        // clear previous indexes
+        this.$indexes.clear();
+
+        // clear items
         this.$items.clear();
+
+        this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
+
+        // touch all structures until reach root
+        this.$changes.touchParents();
     }
 
     has (value: V): boolean {
