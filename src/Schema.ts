@@ -10,6 +10,7 @@ import { MapSchema } from "./types/MapSchema";
 import { ChangeTree, Root, Ref, ChangeOperation } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
 import { EventEmitter } from './events/EventEmitter';
+import { CollectionSchema } from './types/CollectionSchema';
 
 export interface DataChange<T=any> {
     field: number | string;
@@ -57,7 +58,7 @@ function assertType(value: any, type: string, klass: Schema, field: string | num
 
 function assertInstanceType(
     value: Schema,
-    type: typeof Schema | typeof ArraySchema | typeof MapSchema,
+    type: typeof Schema | typeof ArraySchema | typeof MapSchema | typeof CollectionSchema,
     klass: Schema,
     field: string | number,
 ) {
@@ -309,6 +310,13 @@ export abstract class Schema {
                 const refId = decode.number(bytes, it);
                 $root.refs.set(refId, value);
 
+            } else if (CollectionSchema.is(type)) {
+                const valueRef: CollectionSchema = this[_field] || new CollectionSchema();
+                value = valueRef.clone(true);
+
+                const refId = decode.number(bytes, it);
+                $root.refs.set(refId, value);
+
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
                 hasChange = true;
@@ -361,6 +369,10 @@ export abstract class Schema {
                     // console.log("SETTING FOR ArraySchema =>", { field, key, value });
                     // ref[key] = value;
                     ref.setAt(key, value);
+
+                } else if (ref instanceof CollectionSchema) {
+                    const index = ref.add(value);
+                    ref['setIndex'](field, index);
                 }
             }
 
@@ -467,7 +479,10 @@ export abstract class Schema {
                         const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
                         encode.string(bytes, dynamicIndex);
 
-                    } else if (ref instanceof ArraySchema) {
+                    } else if (
+                        ref instanceof ArraySchema ||
+                        ref instanceof CollectionSchema
+                    ) {
                         //
                         // ArraySchema key
                         //
@@ -540,6 +555,18 @@ export abstract class Schema {
                     // ensure a MapSchema has been provided
                     //
                     assertInstanceType(ref[_field], MapSchema, ref as Schema, field);
+
+                    //
+                    // Encode refId for this instance.
+                    // The actual instance is going to be encoded on next `changeTree` iteration.
+                    //
+                    encode.number(bytes, value.$changes.refId);
+
+                } else if (CollectionSchema.is(type)) {
+                    //
+                    // ensure a CollectionSchema has been provided
+                    //
+                    assertInstanceType(ref[_field], CollectionSchema, ref as Schema, field);
 
                     //
                     // Encode refId for this instance.

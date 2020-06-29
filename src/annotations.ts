@@ -22,7 +22,12 @@ export type PrimitiveType =
     "float64" |
     typeof Schema;
 
-export type DefinitionType = ( PrimitiveType | PrimitiveType[] | { map: PrimitiveType });
+export type DefinitionType = PrimitiveType
+    | PrimitiveType[]
+    | { map: PrimitiveType }
+    | { collection: PrimitiveType }
+    | { set: PrimitiveType };
+
 export type Definition = { [field: string]: DefinitionType };
 export type FilterCallback<
     T extends Schema = any,

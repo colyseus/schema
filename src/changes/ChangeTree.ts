@@ -4,17 +4,16 @@ import { PrimitiveType, FilterChildrenCallback, SchemaDefinition } from "../anno
 
 import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";
-import { boolean } from "../encoding/encode";
-// import { CollectionSchema } from "../types/CollectionSchema";
+import { CollectionSchema } from "../types/CollectionSchema";
 // import { SetSchema } from "../types/SetSchema";
 
 // type FieldKey = string | number;
 
 export type Ref = Schema
     | ArraySchema
-    | MapSchema;
-    // | SetSchema
-    // | CollectionSchema;
+    | MapSchema
+    | CollectionSchema;
+    // | SetSchema;
 
 export interface ChangeOperation {
     op: OPERATION,

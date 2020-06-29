@@ -1,6 +1,8 @@
 export { Schema, DataChange } from "./Schema";
+
 export { MapSchema } from "./types/MapSchema";
 export { ArraySchema } from "./types/ArraySchema";
+export { CollectionSchema } from "./types/CollectionSchema";
 
 // Utils
 export { dumpChanges } from "./utils";
