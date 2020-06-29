@@ -73,7 +73,7 @@ export class CollectionSchema<V=any> {
         }
 
         if (index === undefined) {
-            console.warn("CollectionSchema#remove(), item not found:", item);
+            return false;
         }
 
         this.$changes.delete(index);

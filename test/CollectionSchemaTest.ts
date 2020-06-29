@@ -41,14 +41,16 @@ describe("CollectionSchema Tests", () => {
 
         const decoded = new State();
         decoded.decode(state.encode());
-
         assert.equal(1, decoded.players.size);
 
-        state.players.remove(player)
+        const removed = state.players.remove(player);
+        assert.equal(true, removed, "should return true if item has been removed successfully.");
+        assert.equal(false, state.players.remove(player), "should return false if item does not exist.");
+        assert.equal(false, state.players.remove({} as any), "should return false if item does not exist.");
+
         decoded.decode(state.encode());
 
         assert.equal(0, decoded.players.size);
     });
-
 
 });
