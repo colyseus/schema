@@ -2,6 +2,7 @@ import { ChangeTree } from './changes/ChangeTree';
 import { Schema } from './Schema';
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema } from './types/MapSchema';
+import { CollectionSchema } from './types/CollectionSchema';
 
 /**
  * Data types
@@ -91,6 +92,7 @@ export class SchemaDefinition {
         const index = this.indexes[field];
 
         if (
+            CollectionSchema.is(type) ||
             ArraySchema.is(type) ||
             MapSchema.is(type)
         ) {

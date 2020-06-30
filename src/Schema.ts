@@ -662,6 +662,7 @@ export abstract class Schema {
                 }
 
                 if (
+                    ref instanceof CollectionSchema ||
                     ref instanceof MapSchema ||
                     ref instanceof ArraySchema
                 ) {

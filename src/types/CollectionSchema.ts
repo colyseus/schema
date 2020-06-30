@@ -48,7 +48,8 @@ export class CollectionSchema<V=any> {
         return index;
     }
 
-    at(key: number) {
+    at(index: number) {
+        const key = Array.from(this.$items.keys())[index];
         return this.$items.get(key);
     }
 
@@ -137,6 +138,10 @@ export class CollectionSchema<V=any> {
 
         // touch all structures until reach root
         this.$changes.touchParents();
+    }
+
+    toArray() {
+        return Array.from(this.$items.values());
     }
 
     toJSON() {
