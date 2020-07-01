@@ -1,6 +1,6 @@
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
-import { PrimitiveType, FilterChildrenCallback, SchemaDefinition } from "../annotations";
+import { SchemaDefinition } from "../annotations";
 
 import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";

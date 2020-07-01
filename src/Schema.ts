@@ -15,8 +15,15 @@ import { CollectionSchema } from './types/CollectionSchema';
 export interface DataChange<T=any> {
     op: OPERATION,
     field: number | string;
+    dynamicIndex?: number | string;
     value: T;
     previousValue: T;
+}
+
+export interface SchemaDecoderCallbacks {
+    onAdd?: (item: any, key: any) => void;
+    onRemove?: (item: any, key: any) => void;
+    onChange?: (item: any, key: any) => void;
 }
 
 class EncodeSchemaError extends Error {}
@@ -241,17 +248,27 @@ export abstract class Schema {
                 continue;
             }
 
-            if (
-                !isSchema &&
-                (
+            if (!isSchema) {
+                previousValue = ref['getByIndex'](fieldIndex);
+
+                if (
                     operation === OPERATION.ADD ||
                     operation === OPERATION.DELETE_AND_ADD
-                )
-            ) {
-                dynamicIndex = (decode.stringCheck(bytes, it))
-                    ? decode.string(bytes, it)
-                    : decode.number(bytes, it);
-                ref['setIndex'](field, dynamicIndex);
+                ) {
+                    dynamicIndex = (decode.stringCheck(bytes, it))
+                        ? decode.string(bytes, it)
+                        : decode.number(bytes, it);
+                    ref['setIndex'](field, dynamicIndex);
+
+                } else {
+                    //
+                    // FIXME: add `getIndex()` method?
+                    //
+                    dynamicIndex = ref['$indexes'].get(fieldIndex);
+                }
+
+            } else {
+                previousValue = ref[_field];
             }
 
             console.log("DECODE FIELD", { field, type, operation: OPERATION[operation] });
@@ -264,8 +281,6 @@ export abstract class Schema {
                 operation === OPERATION.DELETE_AND_ADD
             )
             {
-                previousValue = ref['getByIndex'](fieldIndex);
-
                 if (operation !== OPERATION.DELETE_AND_ADD) {
                     ref['deleteByIndex'](fieldIndex);
                 }
@@ -305,21 +320,21 @@ export abstract class Schema {
                 // hasChange = true;
 
             } else if (ArraySchema.is(type)) {
-                const valueRef: ArraySchema = this[_field] || new ArraySchema();
+                const valueRef: ArraySchema = previousValue || new ArraySchema();
                 value = valueRef.clone(true);
 
                 const refId = decode.number(bytes, it);
                 $root.refs.set(refId, value);
 
             } else if (MapSchema.is(type)) {
-                const valueRef: MapSchema = this[_field] || new MapSchema();
+                const valueRef: MapSchema = previousValue || new MapSchema();
                 value = valueRef.clone(true);
 
                 const refId = decode.number(bytes, it);
                 $root.refs.set(refId, value);
 
             } else if (CollectionSchema.is(type)) {
-                const valueRef: CollectionSchema = this[_field] || new CollectionSchema();
+                const valueRef: CollectionSchema = previousValue || new CollectionSchema();
                 value = valueRef.clone(true);
 
                 const refId = decode.number(bytes, it);
@@ -342,8 +357,9 @@ export abstract class Schema {
                 changes.get(refId).push({
                     op: operation,
                     field,
+                    dynamicIndex,
                     value,
-                    previousValue: ref[_field]
+                    previousValue,
                 });
             // }
 
@@ -831,23 +847,56 @@ export abstract class Schema {
         allChanges.forEach((changes, refId) => {
             if (changes.length > 0) {
                 const ref = this.$changes.root.refs.get(refId);
+                const isSchema = ref instanceof Schema;
 
-                if (ref instanceof Schema) {
-                    for (let i = 0; i < changes.length; i++) {
-                        const change = changes[i];
-                        const listener = ref['$listeners'] && ref['$listeners'][change.field];
-                        if (listener) {
-                            try {
-                                listener.invoke(change.value, change.previousValue);
-                            } catch (e) {
-                                Schema.onError(e);
-                            }
+                for (let i = 0; i < changes.length; i++) {
+                    const change = changes[i];
+                    const listener = ref['$listeners'] && ref['$listeners'][change.field];
+
+                    if (!isSchema) {
+                        if (
+                            change.op === OPERATION.ADD &&
+                            !change.previousValue
+                        ) {
+                            (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
+
+                        } else if (change.op === OPERATION.DELETE) {
+                            (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex || change.field);
+
+                        } else if (change.op === OPERATION.DELETE_AND_ADD) {
+                            // TODO: refactor me!
+                            (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
+                            (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex);
+
+                        } else if (change.op === OPERATION.REPLACE) {
+                            (ref as SchemaDecoderCallbacks).onChange?.(change.value, change.dynamicIndex);
                         }
                     }
 
+                    //
+                    // trigger onRemove on child structure.
+                    //
+                    if (
+                        change.op === OPERATION.DELETE &&
+                        change.previousValue instanceof Schema &&
+                        change.previousValue.onRemove
+                    ) {
+                        change.previousValue.onRemove();
+                    }
+
+                    if (listener) {
+                        try {
+                            listener.invoke(change.value, change.previousValue);
+                        } catch (e) {
+                            Schema.onError(e);
+                        }
+                    }
+                }
+
+                if (isSchema) {
                     if (ref.onChange) {
                         try {
-                            ref.onChange(changes);
+                            (ref as Schema).onChange(changes);
                         } catch (e) {
                             Schema.onError(e);
                         }

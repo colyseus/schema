@@ -1,5 +1,5 @@
 import { ChangeTree } from "../changes/ChangeTree";
-import { Schema } from "../Schema";
+import { Schema, SchemaDecoderCallbacks } from "../Schema";
 import { OPERATION } from "../spec";
 
 //
@@ -10,7 +10,7 @@ import { OPERATION } from "../spec";
 // - ES2019 introduces `flatMap` / `flat`, which is not currently relevant, and caused other issues.
 //
 
-export class ArraySchema<T=any> implements Array<T> {
+export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
 
     protected $items: Array<T> = [];

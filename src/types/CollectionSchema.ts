@@ -1,9 +1,10 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
+import { SchemaDecoderCallbacks } from "../Schema";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
-export class CollectionSchema<V=any> {
+export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
 
     protected $items: Map<number, V> = new Map<number, V>();

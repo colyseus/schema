@@ -208,6 +208,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 if (isMap) {
                     value = new Proxy(value, {
                         get: (obj, prop) => {
+                            console.log("GETTING PROPERTY!", { prop })
                             if (
                                 typeof (prop) !== "symbol" && // accessing properties
                                 typeof (obj[prop]) === "undefined"
@@ -222,7 +223,12 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         set: (obj, prop, setValue) => {
                             if (
                                 typeof (prop) !== "symbol" &&
-                                (prop as string).indexOf("$") === -1
+                                (
+                                    (prop as string).indexOf("$") === -1 &&
+                                    prop !== "onAdd" &&
+                                    prop !== "onRemove" &&
+                                    prop !== "onChange"
+                                )
                             ) {
                                 obj.set(prop, setValue);
 

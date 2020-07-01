@@ -110,24 +110,24 @@ describe("Change API", () => {
             sinon.assert.calledOnce(playerSpy);
         });
 
-        it("should trigger onChange when removing child object", () => {
+        it("should trigger onChange and onRemove when removing child object", () => {
             const state = new State();
             state.player = new Player("Jake", 10, 10);
 
             const decodedState = new State();
             decodedState.decode(state.encode());
 
-            decodedState.onChange = function (changes: DataChange[]) {
-                // console.log(changes);
-                // assert.equal(changes.length, 1);
-                // assert.equal(changes[0].field, "player");
-            }
-            let onChangeSpy = sinon.spy(decodedState, 'onChange');
+            decodedState.onChange = function (changes: DataChange[]) {}
+            const onChangeSpy = sinon.spy(decodedState, 'onChange');
+
+            decodedState.player.onRemove = () => {};
+            const onRemoveSpy = sinon.spy(decodedState.player, 'onRemove');
 
             state.player = null;
             decodedState.decode(state.encode());
 
             sinon.assert.calledOnce(onChangeSpy);
+            sinon.assert.calledOnce(onRemoveSpy);
         });
     });
 
@@ -138,7 +138,24 @@ describe("Change API", () => {
 
             const decodedState = new State();
             decodedState.arrayOfPlayers = new ArraySchema();
-            decodedState.arrayOfPlayers.onAdd = function (player: Player) { }
+
+            let callCount: number = 0;
+            decodedState.arrayOfPlayers.onAdd = function (item: Player, key: number) {
+                if (callCount === 0) {
+                    assert.equal(item.name, "Jake Badlands");
+                    assert.equal(0, key);
+
+                } else if (callCount === 1) {
+                    assert.equal(item.name, "Katarina Lyons");
+                    assert.equal(1, key);
+
+                } else if (callCount === 2) {
+                    assert.equal(item.name, "Snake Sanders");
+                    assert.equal(2, key);
+                }
+
+                callCount++;
+            }
             const onAddPlayerSpy = sinon.spy(decodedState.arrayOfPlayers, 'onAdd');
 
             decodedState.onChange = function (changes: DataChange[]) {
@@ -152,22 +169,12 @@ describe("Change API", () => {
 
             let onChangeSpy = sinon.spy(decodedState, 'onChange');
 
-
             decodedState.decode(state.encode());
             sinon.assert.calledOnce(onChangeSpy);
 
             state.arrayOfPlayers.push(new Player("Snake Sanders"));
-            decodedState.onChange = function (changes: DataChange[]) {
-                assert.equal(changes.length, 1);
-                assert.equal(changes[0].field, "arrayOfPlayers");
-                assert.equal(changes[0].value.length, 3);
-                assert.equal(changes[0].value[2].name, "Snake Sanders");
-            }
 
-            onChangeSpy = sinon.spy(decodedState, 'onChange');
             decodedState.decode(state.encode());
-            sinon.assert.calledOnce(onChangeSpy);
-
             sinon.assert.calledThrice(onAddPlayerSpy);
         });
 
@@ -181,26 +188,40 @@ describe("Change API", () => {
             state.arrayOfNumbers = new ArraySchema(10, 20, 30, 40, 50, 60, 70);
 
             const decodedState = new MyState();
+
+            decodedState.arrayOfNumbers.onRemove = function(item, index) {};
+            const onRemoveSpy = sinon.spy(decodedState.arrayOfNumbers, 'onRemove');
+
+            decodedState.arrayOfNumbers.onAdd = function(item, index) {
+                console.log("ON ADD!", { item, index });
+            };
+            const onAddSpy = sinon.spy(decodedState.arrayOfNumbers, 'onAdd');
+
             decodedState.arrayOfNumbers.onChange = function(item, index) {}
             const onChangeSpy = sinon.spy(decodedState.arrayOfNumbers, 'onChange');
 
             decodedState.decode(state.encode());
-            assert.deepEqual(decodedState.arrayOfNumbers, [10, 20, 30, 40, 50, 60, 70]);
+
+            assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [10, 20, 30, 40, 50, 60, 70]);
+            sinon.assert.callCount(onAddSpy, 7);
 
             // mutate array
             state.arrayOfNumbers[0] = 0;
             state.arrayOfNumbers[3] = 10;
             decodedState.decode(state.encode());
 
-            assert.deepEqual(decodedState.arrayOfNumbers, [0, 20, 30, 10, 50, 60, 70]);
+            assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [0, 20, 30, 10, 50, 60, 70]);
+            sinon.assert.callCount(onChangeSpy, 2);
 
             // mutate array
             state.arrayOfNumbers[4] = 40;
             state.arrayOfNumbers[6] = 100;
             decodedState.decode(state.encode());
 
-            assert.deepEqual(decodedState.arrayOfNumbers, [0, 20, 30, 10, 40, 60, 100]);
+            assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [0, 20, 30, 10, 40, 60, 100]);
+            sinon.assert.callCount(onAddSpy, 7);
             sinon.assert.callCount(onChangeSpy, 4);
+            sinon.assert.notCalled(onRemoveSpy);
         });
 
         it("detecting onRemove on array items", () => {
@@ -321,22 +342,41 @@ describe("Change API", () => {
                 assert.equal(changes[0].value.katarina.name, "Katarina Lyons");
             }
 
-            let onChangeSpy = sinon.spy(decodedState, 'onChange');
+            decodedState.mapOfPlayers = new MapSchema();
+
+            let callCount: number = 0;
+            decodedState.mapOfPlayers.onAdd = function (item: Player, key) {
+                if (callCount === 0) {
+                    assert.equal("jake", key);
+                    assert.equal("Jake Badlands", item.name);
+
+                } else if (callCount === 1) {
+                    assert.equal("katarina", key);
+                    assert.equal("Katarina Lyons", item.name);
+
+                } else if (callCount === 3) {
+                    assert.equal("snake", key);
+                    assert.equal("Snake Sanders", item.name);
+                }
+                callCount++;
+            };
+            const onAddSpy = sinon.spy(decodedState.mapOfPlayers, 'onAdd');
+
+            const onRemoveSpy = sinon.spy((item, key) => {});
+            decodedState.mapOfPlayers.onRemove = onRemoveSpy;
+
+            const onChangeSpy = sinon.spy(decodedState, 'onChange');
             decodedState.decode(state.encode());
+
+            sinon.assert.callCount(onAddSpy, 2);
             sinon.assert.calledOnce(onChangeSpy);
 
             state.mapOfPlayers['snake'] = new Player("Snake Sanders");
-            decodedState.onChange = function (changes: DataChange[]) {
-                assert.equal(changes.length, 1);
-                assert.equal(changes[0].field, "mapOfPlayers");
-                assert.equal(Object.keys(changes[0].value).length, 3);
 
-                assert.equal(changes[0].value.snake.name, "Snake Sanders");
-            }
-
-            onChangeSpy = sinon.spy(decodedState, 'onChange');
             decodedState.decode(state.encode());
-            sinon.assert.calledOnce(onChangeSpy);
+            sinon.assert.callCount(onChangeSpy, 1);
+            sinon.assert.callCount(onAddSpy, 3);
+            sinon.assert.callCount(onRemoveSpy, 0);
         });
 
         it("detecting multiple changes on item inside a map", () => {
@@ -348,7 +388,7 @@ describe("Change API", () => {
             const decodedState = new State();
             decodedState.decode(state.encode());
 
-            decodedState.mapOfPlayers['jake'].onChange = function (changes: DataChange[]) { }
+            decodedState.mapOfPlayers['jake'].onChange = function (changes: DataChange[]) {}
             let onChangeSpy = sinon.spy(decodedState.mapOfPlayers['jake'], 'onChange');
 
             state.mapOfPlayers['jake'].x = 100;
@@ -371,11 +411,18 @@ describe("Change API", () => {
             const decodedState = new State();
             decodedState.decode(state.encode());
 
+            let addCallCount: number = 0;
             decodedState.mapOfPlayers.onAdd = function (player: Player, key: string) {
-                assert.ok(key);
+                if (addCallCount === 0) {
+                    assert.equal("snake", key);
+
+                } else if (addCallCount === 1) {
+                    assert.equal("katarina", key);
+                }
+                addCallCount++;
             }
             decodedState.mapOfPlayers.onRemove = function (player: Player, key: string) {
-                assert.ok(key);
+                assert.equal("snake", key);
             }
 
             // add two entries
@@ -412,6 +459,8 @@ describe("Change API", () => {
             decodedState.decode(state.encodeAll());
 
             state.mapOfBool['two'] = true;
+
+            console.log("\n\nWILL ENCODE AGAIN!");
             decodedState.decode(state.encode());
 
             sinon.assert.calledTwice(onAddSpy);
@@ -570,7 +619,7 @@ describe("Change API", () => {
             let encoded = state.encode();
             decodedState.decode(encoded);
 
-            assert.equal(Object.keys(decodedState.mapOfPlayers).length, 5);
+            assert.equal(decodedState.mapOfPlayers.size, 5);
             sinon.assert.callCount(onAddSpy, 5);
         });
 
@@ -585,7 +634,10 @@ describe("Change API", () => {
 
             const decodedState = new State();
             decodedState.onChange = function (changes: DataChange[]) {
+                console.log("CHANGE LIST =>", changes);
                 katarina = changes[0].value.katarina;
+                console.log("KATARINA?", changes[0].value.katarina);
+                console.log("KATARINA?", changes[0].value.get("katarina"));
                 assert.ok(katarina instanceof Player);
             }
 
