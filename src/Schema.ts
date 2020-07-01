@@ -13,6 +13,7 @@ import { EventEmitter } from './events/EventEmitter';
 import { CollectionSchema } from './types/CollectionSchema';
 
 export interface DataChange<T=any> {
+    op: OPERATION,
     field: number | string;
     value: T;
     previousValue: T;
@@ -182,16 +183,18 @@ export abstract class Schema {
         bytes: number[],
         it: decode.Iterator = { offset: 0 },
         ref?: Ref,
-        changes: DataChange[] = [],
+        changes: Map<number, DataChange[]> = new Map<number, DataChange[]>(),
     ) {
         const $root = this.$changes.root;
         const totalBytes = bytes.length;
+
+        let refId: number;
 
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
 
             if (byte === SWITCH_TO_STRUCTURE) {
-                const refId = decode.number(bytes, it);
+                refId = decode.number(bytes, it);
 
                 if (!$root.refs.has(refId)) {
                     $root.refs.set(refId, this);
@@ -200,6 +203,11 @@ export abstract class Schema {
                 } else {
                     ref = $root.refs.get(refId) as Schema;
                 }
+
+                console.log("SET REFID:", { refId });
+
+                // create empty list of changes for this refId.
+                changes.set(refId, []);
 
                 console.log("SWITCH_TO_STRUCTURE (DECODE)", {
                     ref: ref.constructor.name,
@@ -226,7 +234,7 @@ export abstract class Schema {
             let previousValue: any;
 
             let dynamicIndex: number | string;
-            let hasChange = false;
+            // let hasChange = false;
 
             if (operation === OPERATION.CLEAR) {
                 (ref as MapSchema).clear();
@@ -263,7 +271,7 @@ export abstract class Schema {
                 }
 
                 value = null;
-                hasChange = true;
+                // hasChange = true;
             }
 
             if (field === undefined) {
@@ -294,7 +302,7 @@ export abstract class Schema {
                     }
                 }
 
-                hasChange = true;
+                // hasChange = true;
 
             } else if (ArraySchema.is(type)) {
                 const valueRef: ArraySchema = this[_field] || new ArraySchema();
@@ -319,22 +327,25 @@ export abstract class Schema {
 
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
-                hasChange = true;
+                // hasChange = true;
             }
 
-            if (
-                // hasChange &&
-                (
-                    this.onChange
-                    // || ref.$listeners[field]
-                )
-            ) {
-                changes.push({
+            console.log("ADD TO CHANGES:", { refId });
+
+            // if (
+            //     // hasChange &&
+            //     (
+            //         this.onChange
+            //         // || ref.$listeners[field]
+            //     )
+            // ) {
+                changes.get(refId).push({
+                    op: operation,
                     field,
                     value,
                     previousValue: ref[_field]
                 });
-            }
+            // }
 
             if (
                 value !== null &&
@@ -744,6 +755,7 @@ export abstract class Schema {
         for (let field in schema) {
             if (this[field] !== undefined) {
                 changes.push({
+                    op: OPERATION.REPLACE,
                     field,
                     value: this[field],
                     previousValue: undefined
@@ -752,7 +764,9 @@ export abstract class Schema {
         }
 
         try {
-            this._triggerChanges(changes);
+            const allChanges = new Map<number, DataChange[]>();
+            allChanges.set(this.$changes.refId, changes);
+            this._triggerChanges(allChanges);
 
         } catch (e) {
             Schema.onError(e);
@@ -813,28 +827,35 @@ export abstract class Schema {
         return instance;
     }
 
-    private _triggerChanges(changes: DataChange[]) {
-        if (changes.length > 0) {
-            for (let i = 0; i < changes.length; i++) {
-                const change = changes[i];
-                const listener = this.$listeners[change.field];
-                if (listener) {
-                    try {
-                        listener.invoke(change.value, change.previousValue);
-                    } catch (e) {
-                        Schema.onError(e);
+    private _triggerChanges(allChanges: Map<number, DataChange[]>) {
+        allChanges.forEach((changes, refId) => {
+            if (changes.length > 0) {
+                const ref = this.$changes.root.refs.get(refId);
+
+                if (ref instanceof Schema) {
+                    for (let i = 0; i < changes.length; i++) {
+                        const change = changes[i];
+                        const listener = ref['$listeners'] && ref['$listeners'][change.field];
+                        if (listener) {
+                            try {
+                                listener.invoke(change.value, change.previousValue);
+                            } catch (e) {
+                                Schema.onError(e);
+                            }
+                        }
+                    }
+
+                    if (ref.onChange) {
+                        try {
+                            ref.onChange(changes);
+                        } catch (e) {
+                            Schema.onError(e);
+                        }
                     }
                 }
+
             }
 
-            if (this.onChange) {
-                try {
-                    this.onChange(changes);
-                } catch (e) {
-                    Schema.onError(e);
-                }
-            }
-        }
-
+        });
     }
 }

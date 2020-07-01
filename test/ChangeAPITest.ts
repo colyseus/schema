@@ -60,13 +60,13 @@ describe("Change API", () => {
             decodedState.onChange = function (changes: DataChange[]) {
                 assert.equal(changes.length, 2);
 
-                assert.equal(changes[0].field, "fieldString");
-                assert.equal(changes[0].value, "Again");
-                assert.equal(changes[0].previousValue, "Hello world!");
+                assert.equal(changes[0].field, "fieldNumber");
+                assert.equal(changes[0].value, 100);
+                assert.equal(changes[0].previousValue, 50);
 
-                assert.equal(changes[1].field, "fieldNumber");
-                assert.equal(changes[1].value, 100);
-                assert.equal(changes[1].previousValue, 50);
+                assert.equal(changes[1].field, "fieldString");
+                assert.equal(changes[1].value, "Again");
+                assert.equal(changes[1].previousValue, "Hello world!");
             }
             onChangeSpy = sinon.spy(decodedState, 'onChange');
 
@@ -82,13 +82,14 @@ describe("Change API", () => {
 
             const decodedState = new State();
             decodedState.onChange = function (changes: DataChange[]) {
+                console.log("CHANGES =>", changes);
                 assert.equal(changes.length, 1);
                 assert.equal(changes[0].field, "player");
             }
-            let onChangeSpy = sinon.spy(decodedState, 'onChange');
+            let rootOnChangeSpy = sinon.spy(decodedState, 'onChange');
 
             decodedState.decode(state.encode());
-            sinon.assert.calledOnce(onChangeSpy);
+            sinon.assert.calledOnce(rootOnChangeSpy);
 
             state.player.name = "Snake";
 
@@ -101,13 +102,11 @@ describe("Change API", () => {
             playerSpy = sinon.spy(decodedState.player, 'onChange');
 
             // overwrite `onChange` for second decode
-            decodedState.onChange = function (changes: DataChange[]) {
-                assert.equal(changes.length, 1);
-            }
-            onChangeSpy = sinon.spy(decodedState, 'onChange');
+            decodedState.onChange = function (changes: DataChange[]) {}
+            rootOnChangeSpy = sinon.spy(decodedState, 'onChange');
 
             decodedState.decode(state.encode());
-            sinon.assert.calledOnce(onChangeSpy);
+            sinon.assert.notCalled(rootOnChangeSpy);
             sinon.assert.calledOnce(playerSpy);
         });
 
