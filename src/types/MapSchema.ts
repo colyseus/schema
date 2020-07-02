@@ -4,6 +4,49 @@ import { SchemaDecoderCallbacks } from "../Schema";
 
 type K = string; // TODO: allow to specify K generic on MapSchema.
 
+export function getMapProxy(value: MapSchema) {
+    value['$proxy'] = true;
+
+    value = new Proxy(value, {
+        get: (obj, prop) => {
+            if (
+                typeof (prop) !== "symbol" && // accessing properties
+                typeof (obj[prop]) === "undefined"
+            ) {
+                return obj.get(prop as string);
+
+            } else {
+                return obj[prop];
+            }
+        },
+
+        set: (obj, prop, setValue) => {
+            if (
+                typeof (prop) !== "symbol" &&
+                (
+                    (prop as string).indexOf("$") === -1 &&
+                    prop !== "onAdd" &&
+                    prop !== "onRemove" &&
+                    prop !== "onChange"
+                )
+            ) {
+                obj.set(prop as string, setValue);
+
+            } else {
+                obj[prop] = setValue;
+            }
+            return true;
+        },
+
+        deleteProperty: (obj, prop) => {
+            obj.delete(prop as string);
+            return true;
+        },
+    });
+
+    return value;
+}
+
 export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
 

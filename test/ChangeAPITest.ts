@@ -634,10 +634,7 @@ describe("Change API", () => {
 
             const decodedState = new State();
             decodedState.onChange = function (changes: DataChange[]) {
-                console.log("CHANGE LIST =>", changes);
                 katarina = changes[0].value.katarina;
-                console.log("KATARINA?", changes[0].value.katarina);
-                console.log("KATARINA?", changes[0].value.get("katarina"));
                 assert.ok(katarina instanceof Player);
             }
 
@@ -655,7 +652,7 @@ describe("Change API", () => {
 
             onChangeSpy = sinon.spy(decodedState, 'onChange');
             decodedState.decode(state.encode());
-            sinon.assert.calledOnce(onChangeSpy);
+            sinon.assert.notCalled(onChangeSpy);
             sinon.assert.calledOnce(onItemRemoveSpy);
         });
     });
@@ -755,56 +752,59 @@ describe("Change API", () => {
             @type(Round) currentRound: Round = new Round();
         }
 
-        // it("should not trigger unchanged fields", () => {
-        //     let totalFieldChanges: number = 0;
-        //     let scoresFieldChanges: number = 0;
+        xit("should not trigger unchanged fields", () => {
+            let totalFieldChanges: number = 0;
+            let scoresFieldChanges: number = 0;
 
-        //     const state = new State();
-        //     state.timer = 10;
+            const state = new State();
+            state.timer = 10;
 
-        //     const decodedState = new State();
+            const decodedState = new State();
 
-        //     decodedState.currentRound.listen("scores", () => scoresFieldChanges++);
-        //     decodedState.currentRound.listen("totals", () => totalFieldChanges++);
+            decodedState.currentRound.listen("scores", () => scoresFieldChanges++);
+            decodedState.currentRound.listen("totals", () => totalFieldChanges++);
 
-        //     do {
-        //         state.timer--;
+            do {
+                state.timer--;
 
-        //         state.currentRound.scores[0]++;
-        //         state.currentRound.scores[1]++;
+                state.currentRound.scores[0]++;
+                state.currentRound.scores[1]++;
 
-        //         decodedState.decode(state.encodeFiltered({}));
-        //         state.discardAllChanges();
-        //     } while (state.timer > 0);
+                const encoded = state.encode(undefined, undefined, undefined, true);
+                decodedState.decode(state.applyFilters(encoded, {}));
 
-        //     // set 'totals' field once.
-        //     state.currentRound.totals[0] = 100;
-        //     state.currentRound.totals[1] = 100;
+                state.discardAllChanges();
+            } while (state.timer > 0);
 
-        //     decodedState.decode(state.encodeFiltered({}));
-        //     state.discardAllChanges();
+            // set 'totals' field once.
+            state.currentRound.totals[0] = 100;
+            state.currentRound.totals[1] = 100;
 
-        //     assert.equal(2, totalFieldChanges);
-        //     assert.equal(10, scoresFieldChanges);
-        // });
+            const encoded = state.encode(undefined, undefined, undefined, true);
+            decodedState.decode(state.applyFilters(encoded, {}));
+            state.discardAllChanges();
+
+            assert.equal(2, totalFieldChanges);
+            assert.equal(10, scoresFieldChanges);
+        });
     });
 
     describe("triggerAll", () => {
         it("should trigger onChange on Schema instance", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema<Player>();
-            state.mapOfPlayers['one'] = new Player("Endel", 100, 200);
-
-            let onChangeSpy: sinon.SinonSpy;
+            state.mapOfPlayers['one'] = new Player("Endel", 100, undefined);
 
             const decodedState = new State();
             decodedState.mapOfPlayers = new MapSchema<Player>();
-            decodedState.mapOfPlayers.onAdd = function (player, key) {
-                player.onChange = function(changes) {};
-                onChangeSpy = sinon.spy(player, 'onChange');
-                player.triggerAll();
-            };
             decodedState.decode(state.encode());
+
+            const player = decodedState.mapOfPlayers.get("one");
+            player.onChange = function(changes) {
+                assert.equal(2, changes.length);
+            };
+            const onChangeSpy = sinon.spy(player, 'onChange');
+            player.triggerAll();
 
             sinon.assert.calledOnce(onChangeSpy);
         });

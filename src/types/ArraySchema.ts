@@ -10,6 +10,61 @@ import { OPERATION } from "../spec";
 // - ES2019 introduces `flatMap` / `flat`, which is not currently relevant, and caused other issues.
 //
 
+export function getArrayProxy(value: ArraySchema) {
+    value['$proxy'] = true;
+
+    //
+    // compatibility with @colyseus/schema 0.5.x
+    // - allow `map["key"]`
+    // - allow `map["key"] = "xxx"`
+    // - allow `delete map["key"]`
+    //
+    value = new Proxy(value, {
+        get: (obj, prop) => {
+            if (
+                typeof (prop) !== "symbol" &&
+                !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
+            ) {
+                return obj['$items'][prop];
+
+            } else {
+                return obj[prop];
+            }
+        },
+
+        set: (obj, prop, setValue) => {
+            if (
+                typeof (prop) !== "symbol" &&
+                !isNaN(prop as any)
+            ) {
+                obj.setAt(Number(prop), setValue);
+
+            } else {
+                obj[prop] = setValue;
+            }
+
+            return true;
+        },
+
+        deleteProperty: (obj, prop) => {
+            if (typeof (prop) === "number") {
+
+                //
+                // TOOD: touch `$changes`
+                //
+                delete obj['$items'][prop];
+
+            } else {
+                delete obj[prop];
+            }
+
+            return true;
+        },
+    });
+
+    return value;
+}
+
 export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
 

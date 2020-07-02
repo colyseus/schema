@@ -4,8 +4,8 @@ import { Client, PrimitiveType, Context, SchemaDefinition, DefinitionType } from
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
 
-import { ArraySchema } from "./types/ArraySchema";
-import { MapSchema } from "./types/MapSchema";
+import { ArraySchema, getArrayProxy } from "./types/ArraySchema";
+import { MapSchema, getMapProxy } from "./types/MapSchema";
 
 import { ChangeTree, Root, Ref, ChangeOperation } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
@@ -241,7 +241,6 @@ export abstract class Schema {
             let previousValue: any;
 
             let dynamicIndex: number | string;
-            // let hasChange = false;
 
             if (operation === OPERATION.CLEAR) {
                 (ref as MapSchema).clear();
@@ -286,7 +285,6 @@ export abstract class Schema {
                 }
 
                 value = null;
-                // hasChange = true;
             }
 
             if (field === undefined) {
@@ -312,19 +310,22 @@ export abstract class Schema {
 
                     if (!value) {
                         value = this.createTypeInstance(bytes, it, childType || type as typeof Schema);
+                        value.$changes.refId = refId;
                         $root.refs.set(refId, value);
+
                         console.log("CREATE NEW INSTANCE", { refId, value });
                     }
                 }
-
-                // hasChange = true;
 
             } else if (ArraySchema.is(type)) {
                 const valueRef: ArraySchema = previousValue || new ArraySchema();
                 value = valueRef.clone(true);
 
                 const refId = decode.number(bytes, it);
+                value.$changes.refId = refId;
                 $root.refs.set(refId, value);
+
+                value = getArrayProxy(value);
 
             } else if (MapSchema.is(type)) {
                 const valueRef: MapSchema = previousValue || new MapSchema();
@@ -332,6 +333,8 @@ export abstract class Schema {
 
                 const refId = decode.number(bytes, it);
                 $root.refs.set(refId, value);
+
+                value = getMapProxy(value);
 
             } else if (CollectionSchema.is(type)) {
                 const valueRef: CollectionSchema = previousValue || new CollectionSchema();
@@ -342,7 +345,6 @@ export abstract class Schema {
 
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
-                // hasChange = true;
             }
 
             console.log("ADD TO CHANGES:", { refId });

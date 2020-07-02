@@ -1,7 +1,7 @@
-import { ChangeTree } from './changes/ChangeTree';
+import { ChangeTree, Ref } from './changes/ChangeTree';
 import { Schema } from './Schema';
-import { ArraySchema } from './types/ArraySchema';
-import { MapSchema } from './types/MapSchema';
+import { ArraySchema, getArrayProxy } from './types/ArraySchema';
+import { MapSchema, getMapProxy } from './types/MapSchema';
 import { CollectionSchema } from './types/CollectionSchema';
 
 /**
@@ -141,7 +141,6 @@ export const globalContext = new Context();
 /**
  * `@type()` decorator for proxies
  */
-
 export function type (type: DefinitionType, context: Context = globalContext): PropertyDecorator {
     return function (target: typeof Schema, field: string) {
         const constructor = target.constructor as typeof Schema;
@@ -191,108 +190,30 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                     return;
                 }
 
-                // automaticallty transform Array into ArraySchema
-                if (isArray && !(value instanceof ArraySchema)) {
-                    value = new ArraySchema(...value);
-                }
-
-                // automaticallty transform Map into MapSchema
-                if (isMap && !(value instanceof MapSchema)) {
-                    value = new MapSchema(value);
-                }
-
-                //
-                // compatibility with @colyseus/schema 0.5.x
-                // allow accessing map["key"]
-                //
-                if (isMap) {
-                    value = new Proxy(value, {
-                        get: (obj, prop) => {
-                            console.log("GETTING PROPERTY!", { prop })
-                            if (
-                                typeof (prop) !== "symbol" && // accessing properties
-                                typeof (obj[prop]) === "undefined"
-                            ) {
-                                return obj.get(prop);
-
-                            } else {
-                                return obj[prop];
-                            }
-                        },
-
-                        set: (obj, prop, setValue) => {
-                            if (
-                                typeof (prop) !== "symbol" &&
-                                (
-                                    (prop as string).indexOf("$") === -1 &&
-                                    prop !== "onAdd" &&
-                                    prop !== "onRemove" &&
-                                    prop !== "onChange"
-                                )
-                            ) {
-                                obj.set(prop, setValue);
-
-                            } else {
-                                obj[prop] = setValue;
-                            }
-                            return true;
-                        },
-
-                        deleteProperty: (obj, prop) => {
-                            obj.delete(prop);
-                            return true;
-                        },
-                    });
-
-                } else if (isArray) {
-                    value = new Proxy(value, {
-                        get: (obj, prop) => {
-                            if (
-                                typeof (prop) !== "symbol" &&
-                                !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
-                            ) {
-                                return obj.$items[prop];
-
-                            } else {
-                                return obj[prop];
-                            }
-                        },
-
-                        set: (obj, prop, setValue) => {
-                            console.log("ARRAYSCHEMA, SET", { prop, setValue });
-                            if (
-                                typeof (prop) !== "symbol" &&
-                                !isNaN(prop as any)
-                            ) {
-                                obj.setAt(Number(prop), setValue);
-
-                            } else {
-                                obj[prop] = setValue;
-                            }
-
-                            return true;
-                        },
-
-                        deleteProperty: (obj, prop) => {
-                            if (typeof(prop) === "number") {
-                                //
-                                // TOOD: touch `$changes`
-                                //
-                                delete obj.$items[prop];
-
-                            } else {
-                                delete obj[prop];
-                            }
-
-                            return true;
-                        },
-                    });
-                }
-
                 if (
                     value !== undefined &&
                     value !== null
                 ) {
+                    // automaticallty transform Array into ArraySchema
+                    if (isArray && !(value instanceof ArraySchema)) {
+                        value = new ArraySchema(...value);
+                    }
+
+                    // automaticallty transform Map into MapSchema
+                    if (isMap && !(value instanceof MapSchema)) {
+                        value = new MapSchema(value);
+                    }
+
+                    // try to turn provided structure into a Proxy
+                    if (value['$proxy'] === undefined) {
+                        if (isMap) {
+                            value = getMapProxy(value);
+
+                        } else if (isArray) {
+                            value = getArrayProxy(value);
+                        }
+                    }
+
                     this.$changes.change(field);
 
                     //
