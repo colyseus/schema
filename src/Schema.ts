@@ -211,15 +211,15 @@ export abstract class Schema {
                     ref = $root.refs.get(refId) as Schema;
                 }
 
-                console.log("SET REFID:", { refId });
+                // console.log("SET REFID:", { refId });
 
                 // create empty list of changes for this refId.
                 changes.set(refId, []);
 
-                console.log("SWITCH_TO_STRUCTURE (DECODE)", {
-                    ref: ref.constructor.name,
-                    refId,
-                });
+                // console.log("SWITCH_TO_STRUCTURE (DECODE)", {
+                //     ref: ref.constructor.name,
+                //     refId,
+                // });
 
                 continue;
             }
@@ -270,7 +270,7 @@ export abstract class Schema {
                 previousValue = ref[_field];
             }
 
-            console.log("DECODE FIELD", { field, type, operation: OPERATION[operation] });
+            // console.log("DECODE FIELD", { field, type, operation: OPERATION[operation] });
 
             //
             // TODO: use bitwise operations to check for `DELETE` instead.
@@ -300,11 +300,11 @@ export abstract class Schema {
                 const refId = decode.number(bytes, it);
                 value = $root.refs.get(refId);
 
-                console.log("> IS SCHEMA", { type: type.name, refId, value });
-
                 if (
-                    operation === OPERATION.ADD ||
-                    operation === OPERATION.DELETE_AND_ADD
+                    operation !== OPERATION.REPLACE
+
+                    // operation === OPERATION.ADD ||
+                    // operation === OPERATION.DELETE_AND_ADD
                 ) {
                     const childType = this.getSchemaType(bytes, it);
 
@@ -312,8 +312,6 @@ export abstract class Schema {
                         value = this.createTypeInstance(bytes, it, childType || type as typeof Schema);
                         value.$changes.refId = refId;
                         $root.refs.set(refId, value);
-
-                        console.log("CREATE NEW INSTANCE", { refId, value });
                     }
                 }
 
@@ -347,7 +345,7 @@ export abstract class Schema {
                 value = decodePrimitiveType(type as string, bytes, it);
             }
 
-            console.log("ADD TO CHANGES:", { refId });
+            // console.log("ADD TO CHANGES:", { refId });
 
             // if (
             //     // hasChange &&
@@ -434,18 +432,17 @@ export abstract class Schema {
             // mark this ChangeTree as visited.
             refIdsVisited.add(changeTree.refId);
 
-            console.log("SWITCH_TO_STRUCTURE (ENCODE)", {
-                ref: ref.constructor.name,
-                refId: changeTree.refId
-            });
+            // console.log("SWITCH_TO_STRUCTURE (ENCODE)", {
+            //     ref: ref.constructor.name,
+            //     refId: changeTree.refId
+            // });
 
             // root `refId` is skipped.
             encode.uint8(bytes, SWITCH_TO_STRUCTURE);
             encode.number(bytes, changeTree.refId);
 
-            // TODO: use `changes.values()` instead.
-            const changes: ChangeOperation[] = (encodeAll)
-                ? Array.from(changeTree.allChanges).map(index => ({ op: OPERATION.ADD, index }))
+            const changes: ChangeOperation[] | number[] = (encodeAll)
+                ? Array.from(changeTree.allChanges)
                 : Array.from(changeTree.changes.values());
 
             // console.log("CHANGES =>", {
@@ -457,11 +454,14 @@ export abstract class Schema {
             // });
 
             for (let j = 0, cl = changes.length; j < cl; j++) {
-                const operation = changes[j];
+                const operation: ChangeOperation = (encodeAll)
+                    ? { op: OPERATION.ADD, index: changes[j] as number }
+                    : changes[j] as ChangeOperation;
+
                 const fieldIndex = operation.index;
 
-                const field = (ref instanceof Schema)
-                    ? ref._fieldsByIndex && ref._fieldsByIndex[fieldIndex]
+                const field = (isSchema)
+                    ? ref['_fieldsByIndex'] && ref['_fieldsByIndex'][fieldIndex]
                     : fieldIndex;
 
                 const _field = `_${field}`;
@@ -519,13 +519,13 @@ export abstract class Schema {
                     }
                 }
 
-                console.log("ENCODE FIELD", {
-                    ref: ref.constructor.name,
-                    type,
-                    field,
-                    value,
-                    op: OPERATION[operation.op]
-                })
+                // console.log("ENCODE FIELD", {
+                //     ref: ref.constructor.name,
+                //     type,
+                //     field,
+                //     value,
+                //     op: OPERATION[operation.op]
+                // })
 
                 if (operation.op === OPERATION.DELETE) {
                     //
@@ -546,7 +546,6 @@ export abstract class Schema {
                 }
 
                 if (operation.op === OPERATION.TOUCH) {
-                    console.log(">>>> IT'S A TOUCH, SKIP.");
                     continue;
                 }
 
