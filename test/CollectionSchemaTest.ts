@@ -1,8 +1,6 @@
-import * as sinon from "sinon";
 import * as assert from "assert";
-import * as util from "util";
 
-import { Schema, type, filter, filterChildren, CollectionSchema, dumpChanges } from "../src";
+import { Schema, type, filter, filterChildren, CollectionSchema } from "../src";
 import { Client } from "../src/annotations";
 
 describe("CollectionSchema Tests", () => {

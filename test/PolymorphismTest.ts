@@ -73,13 +73,13 @@ describe("Polymorphism", () => {
         assert.equal(decodedReflectedState.entityHolder.entity.lvl, 5);
 
         state.entityHolder.entity = null;
-        decodedState.decode(state.encodeAll());
+        decodedState.decode(state.encode());
 
         assert.ok(!decodedState.entityHolder.entity);
 
         state.entityHolder.entity = createEnemy();
 
-        decodedState.decode(state.encodeAll());
+        decodedState.decode(state.encode());
         assert.ok(decodedState.entityHolder.entity instanceof Enemy);
         assert.ok(decodedState.entityHolder.entity instanceof Entity);
     });

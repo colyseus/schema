@@ -2,6 +2,7 @@ import { type, PrimitiveType, Context } from "./annotations";
 import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
+import { CollectionSchema } from "./types/CollectionSchema";
 
 const reflectionContext = new Context();
 
@@ -76,6 +77,16 @@ export class Reflection extends Schema {
 
                         } else {
                             childTypeSchema = schema[fieldName].map;
+                        }
+
+                    } else if (CollectionSchema.is(type)) {
+                        fieldType = "collection";
+
+                        if (typeof(schema[fieldName].collection) === "string") {
+                            fieldType += ":" + schema[fieldName].collection; // array:string
+
+                        } else {
+                            childTypeSchema = schema[fieldName].collection;
                         }
                     }
 

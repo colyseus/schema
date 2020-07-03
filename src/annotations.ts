@@ -134,6 +134,13 @@ export class Context {
         this.types[schema._typeid] = schema;
         this.schemas.set(schema, schema._typeid);
     }
+
+    static create() {
+        const context = new Context();
+        return function (definition: DefinitionType) {
+            return type(definition, context);
+        }
+    }
 }
 
 export const globalContext = new Context();

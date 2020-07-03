@@ -756,15 +756,6 @@ export abstract class Schema {
         return cloned;
     }
 
-    destroy () {
-        //
-        // TODO:
-        //
-        // when sharing an instance on multiple places, it may be necessary to
-        // flag as "destroyed" when you'd like to make sure this instance is not
-        // going to be serialized
-    }
-
     triggerAll() {
         const changes: DataChange[] = [];
         const schema = this._schema;

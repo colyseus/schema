@@ -199,8 +199,14 @@ describe("Next Iteration", () => {
             state.player = undefined;
             state.players.delete('three');
 
-            state.players.get("one").x = 11;
-            state.players.get("one").y = 22;
+            player.x = 11;
+            player.y = 22;
+
+            //
+            // FIXME:
+            // this is necessary to re-establish "parent" relation
+            //
+            state.players.set("two", player);
 
             console.log("\n\nWILL ENCODE DELETE + CHANGES");
 

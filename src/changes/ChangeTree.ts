@@ -61,7 +61,6 @@ export class Root {
 export class ChangeTree {
     ref: Ref;
     refId: number;
-    // refCount: number = 0;
 
     root?: Root;
 
@@ -178,52 +177,6 @@ export class ChangeTree {
         }
     }
 
-    setRoot(value: Root, previousParent?: Ref, previousParentIndex?: number) {
-        this.root = value;
-
-        // if (!value) {
-        //     this.refCount--;
-
-        // } else if (
-        //     previousParent !== this.parent ||
-        //     (
-        //         previousParent === this.parent &&
-        //         previousParentIndex !== this.parentIndex
-        //     )
-        // ) {
-        //     this.refCount++;
-
-        //     console.log("INCREASE REFCOUNT", {
-        //         ref: this.ref.constructor.name,
-        //         refCount: this.refCount,
-        //         root: this.root
-        //     });
-        // }
-
-        // if (!value) {
-        //     //
-        //     // only remove `root` definitely when no other references holds this structure.
-        //     //
-        //     if (this.refCount === 0) {
-        //         this.root?.delete(this);
-        //         this.root = undefined;
-        //     }
-
-        // } else {
-        //     // assigning to the same root. skip.
-        //     this.root = value;
-
-        //     // only generate new `refId` if structure is unknown.
-        //     if (!this.root.allChanges.has(this)) {
-        //         this.refId = this.root.nextUniqueId++;
-        //     }
-
-        //     if (this.changes.size > 0) {
-        //         this.root.dirty(this);
-        //     }
-        // }
-    }
-
     operation(op: ChangeOperation) {
         this.changes.set(--this.currentCustomOperation, op);
     }
@@ -283,7 +236,6 @@ export class ChangeTree {
     }
 
     touchParents() {
-        console.log("TOUCH PARENT?", { ref: this.ref.constructor.name, parent: typeof (this.parent) });
         if (this.parent) {
             (this.parent['$changes'] as ChangeTree).touch(this.parentIndex);
         }

@@ -89,6 +89,8 @@ describe("Reflection", () => {
     });
 
     it("should allow extending another Schema type", () => {
+        const type = Context.create();
+
         class Point extends Schema {
             @type("number") x: number;
             @type("number") y: number;
@@ -126,6 +128,8 @@ describe("Reflection", () => {
     });
 
     it("should reflect map of primitive type", () => {
+        const type = Context.create();
+
         class MyState extends Schema {
             @type({map: "string"})
             mapOfStrings: MapSchema<string> = new MapSchema();
@@ -142,6 +146,8 @@ describe("Reflection", () => {
     });
 
     it("should reflect array of primitive type", () => {
+        const type = Context.create();
+
         class MyState extends Schema {
             @type([ "string" ])
             arrayOfStrings: ArraySchema<string> = new ArraySchema();
@@ -158,6 +164,8 @@ describe("Reflection", () => {
     });
 
     it("should reflect and be able to use multiple structures of primitive tyes", () => {
+        const type = Context.create();
+
         class MyState extends Schema {
             @type("string")
             currentTurn: string;
