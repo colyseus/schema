@@ -7,6 +7,48 @@ import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges }
 
 describe("ArraySchema Tests", () => {
 
+    xit("should trigger onAdd / onRemove properly on splice", () => {
+        class Item extends Schema {
+            @type("string") name: string = "no_name";
+        }
+
+        class State extends Schema {
+            @type([Item]) items = new ArraySchema<Item>();
+        }
+
+
+        const state: State = new State();
+        state.items.push(new Item().assign({ name: "A" }));
+        state.items.push(new Item().assign({ name: "B" }));
+        state.items.push(new Item().assign({ name: "C" }));
+        state.items.push(new Item().assign({ name: "D" }));
+        state.items.push(new Item().assign({ name: "E" }));
+
+        const decodedState = new State();
+
+        decodedState.items.onAdd = function(item, i) {
+            console.log("ON ADD", { item: item.name, i });
+        }
+
+        let removedItem: Item;
+        decodedState.items.onRemove = function(item, i) {
+            removedItem = item;
+            console.log("ON REMOVE", { item: item.name, i });
+        }
+        const onRemoveSpy = sinon.spy(decodedState.items, 'onRemove');
+
+        decodedState.decode(state.encodeAll());
+
+        // state.items.shift();
+        state.items.splice(0, 1);
+
+        decodedState.decode(state.encode());
+
+        sinon.assert.calledOnce(onRemoveSpy);
+        assert.deepEqual(["B", "C", "D", "E"], decodedState.items.map(it => it.name))
+        assert.equal("A", removedItem.name);
+    });
+
     it("should encode array with two values", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema(
@@ -297,7 +339,7 @@ describe("ArraySchema Tests", () => {
         //
         // PUSH & SHIFT (1st time)
         //
-        state.arrayOfPlayers[0].name = "XXX";
+        // state.arrayOfPlayers[0].name = "XXX";
         state.arrayOfPlayers[1].name = "Snake Sanders";
         state.arrayOfPlayers.push(new Player("Katarina Lyons"));
         state.arrayOfPlayers.shift();

@@ -11,6 +11,7 @@ import { ChangeTree, Root, Ref, ChangeOperation } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
 import { EventEmitter } from './events/EventEmitter';
 import { CollectionSchema } from './types/CollectionSchema';
+import { isConstructSignatureDeclaration } from 'typescript';
 
 export interface DataChange<T=any> {
     op: OPERATION,
@@ -24,6 +25,7 @@ export interface SchemaDecoderCallbacks {
     onAdd?: (item: any, key: any) => void;
     onRemove?: (item: any, key: any) => void;
     onChange?: (item: any, key: any) => void;
+    clear();
 }
 
 class EncodeSchemaError extends Error {}
@@ -243,7 +245,7 @@ export abstract class Schema {
             let dynamicIndex: number | string;
 
             if (operation === OPERATION.CLEAR) {
-                (ref as MapSchema).clear();
+                (ref as SchemaDecoderCallbacks).clear();
                 continue;
             }
 
@@ -260,10 +262,7 @@ export abstract class Schema {
                     ref['setIndex'](field, dynamicIndex);
 
                 } else {
-                    //
-                    // FIXME: add `getIndex()` method?
-                    //
-                    dynamicIndex = ref['$indexes'].get(fieldIndex);
+                    dynamicIndex = ref['getIndex'](fieldIndex);
                 }
 
             } else {
@@ -288,6 +287,26 @@ export abstract class Schema {
             }
 
             if (field === undefined) {
+                console.warn("schema definition mismatch");
+                const nextIterator: decode.Iterator = { offset: it.offset };
+
+                while (it.offset < totalBytes) {
+                    //
+                    // keep skipping next bytes until reaches a known structure
+                    // by local decoder.
+                    //
+                    const nextByte = bytes[it.offset + 1];
+
+                    if (nextByte === SWITCH_TO_STRUCTURE) {
+                        nextIterator.offset = it.offset + 1;
+                        if ($root.refs.has(decode.number(bytes, nextIterator))) {
+                            break;
+                        }
+                    }
+
+                    it.offset++;
+                }
+
                 continue;
 
             } else if (operation === OPERATION.DELETE) {
@@ -392,10 +411,10 @@ export abstract class Schema {
                     ref.set(key, value);
 
                 } else if (ref instanceof ArraySchema) {
-                    const key = ref['$indexes'][field];
+                    // const key = ref['$indexes'][field];
                     // console.log("SETTING FOR ArraySchema =>", { field, key, value });
                     // ref[key] = value;
-                    ref.setAt(key, value);
+                    ref.setAt(field, value);
 
                 } else if (ref instanceof CollectionSchema) {
                     const index = ref.add(value);

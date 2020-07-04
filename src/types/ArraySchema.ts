@@ -69,7 +69,7 @@ export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
 
     protected $items: Array<T> = [];
-    protected $indexes: number[] = [];
+    // protected $indexes: number[] = [];
 
     [n: number]: T;
 
@@ -96,8 +96,10 @@ export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
      * Removes the last element from an array and returns it.
      */
     pop(): T | undefined {
-        const index = this.$indexes.pop();
-        if (index === undefined) { return undefined; }
+        const index = this.$items.length - 1;
+
+        // const index = this.$indexes.pop();
+        // if (index === undefined) { return undefined; }
 
         const value = this.$items.pop();
         this.$changes.delete(index);
@@ -151,17 +153,18 @@ export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
      * Removes the first element from an array and returns it.
      */
     shift(): T | undefined {
-        // this.$indexes.shift();
-
         this.$changes.delete(0);
-        this.moveIndexes(0, this.$indexes.length, -1);
+
+        // this.$indexes.shift();
+        this.moveIndexes(0, this.$items.length, -1);
 
         const shifted = this.$items.shift();
 
-        // console.log("SHIFT", {
-        //     $items: this.$items,
-        //     $indexes: this.$indexes,
-        // });
+        console.log("SHIFT", {
+            $items: this.$items,
+            // $indexes: this.$indexes,
+            $changes: this.$changes.changes,
+        });
 
         return shifted;
     }
@@ -216,20 +219,20 @@ export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
         const previousLength = this.$items.length;
 
         const removedItems = this.$items.splice(start, deleteCount); // , ...items
-        const removedIndexes = this.$indexes.splice(start, deleteCount); // TODO: add new indexes here
+        // const removedIndexes = this.$indexes.splice(start, deleteCount); // TODO: add new indexes here
 
-        // perform DELETE operations on reverse order.
-        removedIndexes
-            .reverse()
-            .forEach((removedIndex, i) => {
-                this.$changes.delete(removedIndex);
-                delete this.$changes.indexes[removedIndex];
+        // // perform DELETE operations on reverse order.
+        // removedIndexes
+        //     .reverse()
+        //     .forEach((removedIndex, i) => {
+        //         this.$changes.delete(removedIndex);
+        //         delete this.$changes.indexes[removedIndex];
 
-                // `pop` latest items of the array.
-                const popIndex = previousLength - i;
-                this.$changes.delete(popIndex);
-                delete this.$changes.indexes[popIndex];
-            });
+        //         // `pop` latest items of the array.
+        //         const popIndex = previousLength - i;
+        //         this.$changes.delete(popIndex);
+        //         delete this.$changes.indexes[popIndex];
+        //     });
 
         // decrement `index` of all "changes" after items removed.
         Array.from(this.$changes.changes.entries()).forEach(([_, change]) => {
@@ -250,7 +253,7 @@ export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
             });
 
         console.log("MOVE INDEXES:", start + deleteCount - 1);
-        this.moveIndexes(start + deleteCount - 1);
+        // this.moveIndexes(start + deleteCount - 1);
 
         // console.log("AFTER SPLICE", {
         //     $indexes: this.$indexes,
@@ -491,12 +494,17 @@ export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
     }
 
     protected setIndex(index: number, key: number) {
-        this.$indexes[index] = key;
+        // this.$indexes[index] = key;
+    }
+
+    protected getIndex(index: number) {
+        // return this.$indexes[index];
+        return index;
     }
 
     protected getByIndex(index: number) {
-        return this.$items[this.$indexes[index]];
-        // return this.$items[index];
+        // return this.$items[this.$indexes[index]];
+        return this.$items[index];
     }
 
     setAt(key: number, item: T) {
@@ -514,7 +522,7 @@ export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
         this.$items[key] = item;
 
         this.$changes.indexes[key] = index;
-        this.$indexes[index] = key;
+        // this.$indexes[index] = key;
 
         // console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
 
@@ -522,28 +530,53 @@ export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
     }
 
     protected deleteByIndex(index: number) {
-        const key = this.$indexes[index];
+        // const key = this.$indexes[index];
+        const key = index;
 
         if (key === undefined) {
-            console.log("SKIP deleteByIndex", { index, key, $indexes: this.$indexes });
+            // console.log("SKIP deleteByIndex", { index, key, $indexes: this.$indexes });
+            console.log("SKIP deleteByIndex", { index });
             return;
         }
 
         console.log("deleteByIndex:", { key, $items: this.$items });
 
         this.$items.splice(key, 1);
-        this.$indexes.splice(key, 1);
+        // this.$indexes.splice(key, 1);
 
-        this.moveIndexes(key, this.$indexes.length, -1);
+        // this.moveIndexes(key, this.$items.length, -1);
     }
 
-    protected moveIndexes(fromIndex: number, toIndex: number = this.$indexes.length, shift: number = -1) {
+    protected moveIndexes(fromIndex: number, toIndex: number = this.$items.length, shift: number = -1) {
+        console.log("MOVE INDEXES, BEFORE =>", this.$changes.changes);
+
         //
-        // reduce the correspondance of next items (after the removed item)
+        // we only move indexes when items are being removed.
+        // use reverse order to ensure no index is getting replaced.
         //
-        for (let i = fromIndex; i < this.$indexes.length; i++) {
-            this.$indexes[i] += shift;
+        for (let i = toIndex - 1; i >= fromIndex; i--) {
+            const changeAt = this.$changes.changes.get(i);
+            if (changeAt) {
+                changeAt.index += shift;
+                this.$changes.changes.set(changeAt.index + shift, changeAt);
+            } else {
+                console.warn("ITEM NOT FOUND AT", { i });
+            }
         }
+
+        console.log("MOVE INDEXES, AFTER =>", this.$changes.changes);
+
+        // //
+        // // reduce the correspondance of next items (after the removed item)
+        // //
+        // for (let i = fromIndex; i < this.$indexes.length; i++) {
+        //     this.$indexes[i] += shift;
+
+        //     // const changeAtIndex = this.$changes.changes.get(i);
+        //     // if (changeAtIndex) {
+        //     //     changeAtIndex.index += shift;
+        //     // }
+        // }
     }
 
     triggerAll() {

@@ -115,6 +115,10 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
         this.$indexes.set(index, key);
     }
 
+    protected getIndex(index: number) {
+        return this.$indexes.get(index);
+    }
+
     protected getByIndex(index: number) {
         return this.$items.get(this.$indexes.get(index));
     }
@@ -123,22 +127,6 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
         const key = this.$indexes.get(index);
         this.$items.delete(key);
         this.$indexes.delete(index);
-    }
-
-    protected clearAllIndexes() {
-        // discard previous operations.
-        this.$changes.discard();
-
-        // clear previous indexes
-        this.$indexes.clear();
-
-        // clear items
-        this.$items.clear();
-
-        this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
-
-        // touch all structures until reach root
-        this.$changes.touchParents();
     }
 
     toArray() {

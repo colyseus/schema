@@ -177,6 +177,10 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         this.$indexes.set(index, key);
     }
 
+    protected getIndex(index: number) {
+        return this.$indexes.get(index);
+    }
+
     protected getByIndex(index: number) {
         return this.$items.get(this.$indexes.get(index));
     }
@@ -185,11 +189,6 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         const key = this.$indexes.get(index);
         this.$items.delete(key);
         this.$indexes.delete(index);
-    }
-
-    protected clearAllIndexes() {
-        this.$changes.indexes = {};
-        this.$indexes.clear();
     }
 
     toJSON() {
