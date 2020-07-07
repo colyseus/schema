@@ -41,7 +41,6 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
         this.$changes.indexes[index] = index;
 
         this.$indexes.set(index, index);
-
         this.$items.set(index, value);
 
         this.$changes.change(index);
@@ -54,7 +53,7 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
         return this.$items.get(key);
     }
 
-    remove(item: V) {
+    delete(item: V) {
         const entries = this.$items.entries();
 
         let index: K;

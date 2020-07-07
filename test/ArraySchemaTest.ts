@@ -280,14 +280,20 @@ describe("ArraySchema Tests", () => {
         const snake = decodedState.arrayOfPlayers[1];
         const cyberhawk = decodedState.arrayOfPlayers[2];
 
+        // BATTLE OF MOVING INDEXES!
+
+        state.arrayOfPlayers[1].name = "Snake updated!";
+        // console.log("BEFORE SHIFT =>", state.arrayOfPlayers.toArray().map(n => n.name));
         state.arrayOfPlayers.shift();
+        // console.log("AFTER SHIFT =>", state.arrayOfPlayers.toArray().map(n => n.name));
+        state.arrayOfPlayers[1].name = "Cyberhawk updated!";
 
         let encoded = state.encode();
         decodedState.decode(encoded);
 
         assert.equal(decodedState.arrayOfPlayers.length, 2);
-        assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
-        assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
+        assert.equal(decodedState.arrayOfPlayers[0].name, "Snake updated!");
+        assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk updated!");
         assert.equal(snake, decodedState.arrayOfPlayers[0]);
         assert.equal(cyberhawk, decodedState.arrayOfPlayers[1]);
     });

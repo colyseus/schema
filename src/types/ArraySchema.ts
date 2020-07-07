@@ -156,7 +156,7 @@ export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
         this.$changes.delete(0);
 
         // this.$indexes.shift();
-        this.moveIndexes(0, this.$items.length, -1);
+        this.moveIndexes(1, this.$items.length, -1);
 
         const shifted = this.$items.shift();
 
@@ -491,6 +491,19 @@ export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
      */
     includes(searchElement: T, fromIndex?: number): boolean {
         return this.$items.includes(searchElement, fromIndex);
+    }
+
+    clear() {
+        // discard previous operations.
+        this.$changes.discard();
+
+        // clear items
+        this.$items = [];
+
+        this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
+
+        // touch all structures until reach root
+        this.$changes.touchParents();
     }
 
     protected setIndex(index: number, key: number) {

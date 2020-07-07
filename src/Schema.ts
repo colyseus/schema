@@ -6,12 +6,12 @@ import * as decode from "./encoding/decode";
 
 import { ArraySchema, getArrayProxy } from "./types/ArraySchema";
 import { MapSchema, getMapProxy } from "./types/MapSchema";
+import { CollectionSchema } from './types/CollectionSchema';
+import { SetSchema } from './types/SetSchema';
 
 import { ChangeTree, Root, Ref, ChangeOperation } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
 import { EventEmitter } from './events/EventEmitter';
-import { CollectionSchema } from './types/CollectionSchema';
-import { isConstructSignatureDeclaration } from 'typescript';
 
 export interface DataChange<T=any> {
     op: OPERATION,
@@ -26,6 +26,7 @@ export interface SchemaDecoderCallbacks {
     onRemove?: (item: any, key: any) => void;
     onChange?: (item: any, key: any) => void;
     clear();
+    decode?(byte, it: decode.Iterator);
 }
 
 class EncodeSchemaError extends Error {}
@@ -68,7 +69,11 @@ function assertType(value: any, type: string, klass: Schema, field: string | num
 
 function assertInstanceType(
     value: Schema,
-    type: typeof Schema | typeof ArraySchema | typeof MapSchema | typeof CollectionSchema,
+    type: typeof Schema
+        | typeof ArraySchema
+        | typeof MapSchema
+        | typeof CollectionSchema
+        | typeof SetSchema,
     klass: Schema,
     field: string | number,
 ) {
@@ -213,7 +218,7 @@ export abstract class Schema {
                     ref = $root.refs.get(refId) as Schema;
                 }
 
-                // console.log("SET REFID:", { refId });
+                // console.log("DECODE, SET REFID:", { refId });
 
                 // create empty list of changes for this refId.
                 changes.set(refId, []);
@@ -262,6 +267,7 @@ export abstract class Schema {
                     ref['setIndex'](field, dynamicIndex);
 
                 } else {
+                    // here
                     dynamicIndex = ref['getIndex'](fieldIndex);
                 }
 
@@ -269,7 +275,12 @@ export abstract class Schema {
                 previousValue = ref[_field];
             }
 
-            // console.log("DECODE FIELD", { field, type, operation: OPERATION[operation] });
+            // console.log("DECODE FIELD", {
+            //     field,
+            //     type,
+            //     operation: OPERATION[operation],
+            //     previousValue
+            // });
 
             //
             // TODO: use bitwise operations to check for `DELETE` instead.
@@ -287,7 +298,7 @@ export abstract class Schema {
             }
 
             if (field === undefined) {
-                console.warn("schema definition mismatch");
+                console.warn("@colyseus/schema: definition mismatch");
                 const nextIterator: decode.Iterator = { offset: it.offset };
 
                 while (it.offset < totalBytes) {
@@ -360,6 +371,13 @@ export abstract class Schema {
                 const refId = decode.number(bytes, it);
                 $root.refs.set(refId, value);
 
+            } else if (SetSchema.is(type)) {
+                const valueRef: SetSchema = previousValue || new SetSchema();
+                value = valueRef.clone(true);
+
+                const refId = decode.number(bytes, it);
+                $root.refs.set(refId, value);
+
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
             }
@@ -416,7 +434,10 @@ export abstract class Schema {
                     // ref[key] = value;
                     ref.setAt(field, value);
 
-                } else if (ref instanceof CollectionSchema) {
+                } else if (
+                    ref instanceof CollectionSchema ||
+                    ref instanceof SetSchema
+                ) {
                     const index = ref.add(value);
                     ref['setIndex'](field, index);
                 }
@@ -529,7 +550,8 @@ export abstract class Schema {
 
                     } else if (
                         ref instanceof ArraySchema ||
-                        ref instanceof CollectionSchema
+                        ref instanceof CollectionSchema ||
+                        ref instanceof SetSchema
                     ) {
                         //
                         // ArraySchema key
@@ -614,6 +636,18 @@ export abstract class Schema {
                     // ensure a CollectionSchema has been provided
                     //
                     assertInstanceType(ref[_field], CollectionSchema, ref as Schema, field);
+
+                    //
+                    // Encode refId for this instance.
+                    // The actual instance is going to be encoded on next `changeTree` iteration.
+                    //
+                    encode.number(bytes, value.$changes.refId);
+
+                } else if (SetSchema.is(type)) {
+                    //
+                    // ensure a SetSchema has been provided
+                    //
+                    assertInstanceType(ref[_field], SetSchema, ref as Schema, field);
 
                     //
                     // Encode refId for this instance.
@@ -709,8 +743,9 @@ export abstract class Schema {
                 }
 
                 if (
-                    ref instanceof CollectionSchema ||
                     ref instanceof MapSchema ||
+                    ref instanceof CollectionSchema ||
+                    ref instanceof SetSchema ||
                     ref instanceof ArraySchema
                 ) {
                     const parent = ref['$changes'].parent.ref as Schema;

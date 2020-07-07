@@ -5,15 +5,15 @@ import { SchemaDefinition } from "../annotations";
 import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";
 import { CollectionSchema } from "../types/CollectionSchema";
-// import { SetSchema } from "../types/SetSchema";
+import { SetSchema } from "../types/SetSchema";
 
 // type FieldKey = string | number;
 
 export type Ref = Schema
     | ArraySchema
     | MapSchema
-    | CollectionSchema;
-    // | SetSchema;
+    | CollectionSchema
+    | SetSchema;
 
 export interface ChangeOperation {
     op: OPERATION,
@@ -121,23 +121,15 @@ export class ChangeTree {
                         root,
                         parentIndex,
                     );
-
-                    // // skip flagging fields for encoding if item is already on root.
-                    // if (root.changes.has(value['$changes'])) {
-                    //     continue;
-                    // }
-
                 }
-
-                // //
-                // // flag all not-null fields for encoding.
-                // //
-                // if (value !== undefined && value !== null) {
-                //     this.change(field);
-                // }
             }
 
-        } else if (this.ref instanceof MapSchema) {
+        } else if (
+            this.ref instanceof MapSchema ||
+            this.ref instanceof ArraySchema ||
+            this.ref instanceof CollectionSchema ||
+            this.ref instanceof SetSchema
+        ) {
             this.ref.forEach((value, key) => {
                 if (value instanceof Schema) {
                     const changeTreee = value['$changes'];
@@ -148,31 +140,27 @@ export class ChangeTree {
                         this.root,
                         parentIndex,
                     );
-
-                    // const parentDefinition = (this.parent as Schema)['_definition'];
-                    // changeTreee.childType = parentDefinition.schema[parentDefinition.fieldsByIndex[this.parentIndex]]
                 }
-                // value.$changes.change(key);
             });
 
-        } else if (this.ref instanceof ArraySchema) {
-            this.ref.forEach((value, key) => {
-                // console.log("SETTING PARENT BY REF:", { key, value });
-                if (value instanceof Schema) {
-                    const changeTreee = value['$changes'];
-                    const parentIndex = this.ref['$changes'].indexes[key];
+        // } else if (this.ref instanceof ArraySchema) {
+        //     this.ref.forEach((value, key) => {
+        //         // console.log("SETTING PARENT BY REF:", { key, value });
+        //         if (value instanceof Schema) {
+        //             const changeTreee = value['$changes'];
+        //             const parentIndex = this.ref['$changes'].indexes[key];
 
-                    changeTreee.setParent(
-                        this.ref,
-                        this.root,
-                        parentIndex,
-                    );
+        //             changeTreee.setParent(
+        //                 this.ref,
+        //                 this.root,
+        //                 parentIndex,
+        //             );
 
-                    // const parentDefinition = (this.parent as Schema)['_definition'];
-                    // changeTreee.childType = parentDefinition.schema[parentDefinition.fieldsByIndex[this.parentIndex]]
-                }
-                // value.$changes.change(key);
-            });
+        //             // const parentDefinition = (this.parent as Schema)['_definition'];
+        //             // changeTreee.childType = parentDefinition.schema[parentDefinition.fieldsByIndex[this.parentIndex]]
+        //         }
+        //         // value.$changes.change(key);
+        //     });
 
         }
     }
@@ -199,23 +187,11 @@ export class ChangeTree {
                         : OPERATION.REPLACE,
                 index
             });
-
-            //
-            // TODO:
-            // for better `applyFilters()`, we may need to `.touch()`
-            // parent structures here.
-            //
-
-            // if (this.parent) {
-            //     this.parent.change(this.parentField);
-            // }
         }
 
         this.allChanges.add(index);
 
         this.touchParents();
-
-        // this.root?.dirty(this);
     }
 
     touch(fieldName: string | number) {
@@ -283,7 +259,7 @@ export class ChangeTree {
         }
 
         const previousValue = this.getValue(index);
-        console.log("$changes.delete =>", { fieldName, index, previousValue });
+        // console.log("$changes.delete =>", { fieldName, index, previousValue });
 
         this.changes.set(index, { op: OPERATION.DELETE, index });
 

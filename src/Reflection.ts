@@ -3,6 +3,7 @@ import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 import { CollectionSchema } from "./types/CollectionSchema";
+import { SetSchema } from "./types/SetSchema";
 
 const reflectionContext = new Context();
 
@@ -83,10 +84,19 @@ export class Reflection extends Schema {
                         fieldType = "collection";
 
                         if (typeof(schema[fieldName].collection) === "string") {
-                            fieldType += ":" + schema[fieldName].collection; // array:string
+                            fieldType += ":" + schema[fieldName].collection; // collection:string
 
                         } else {
                             childTypeSchema = schema[fieldName].collection;
+                        }
+                    } else if (SetSchema.is(type)) {
+                        fieldType = "set";
+
+                        if (typeof(schema[fieldName].set) === "string") {
+                            fieldType += ":" + schema[fieldName].set; // set:string
+
+                        } else {
+                            childTypeSchema = schema[fieldName].set;
                         }
                     }
 
@@ -140,6 +150,12 @@ export class Reflection extends Schema {
 
                     } else if (field.type.indexOf("map") === 0) {
                         type({ map: refType }, context)(schemaType.prototype, field.name);
+
+                    } else if (field.type.indexOf("collection") === 0) {
+                        type({ collection: refType }, context)(schemaType.prototype, field.name);
+
+                    } else if (field.type.indexOf("set") === 0) {
+                        type({ set: refType }, context)(schemaType.prototype, field.name);
 
                     } else if (field.type === "ref") {
                         type(refType, context)(schemaType.prototype, field.name);

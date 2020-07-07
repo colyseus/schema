@@ -3,6 +3,7 @@ import { Schema } from './Schema';
 import { ArraySchema, getArrayProxy } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
 import { CollectionSchema } from './types/CollectionSchema';
+import { SetSchema } from './types/SetSchema';
 
 /**
  * Data types
@@ -94,7 +95,8 @@ export class SchemaDefinition {
         if (
             CollectionSchema.is(type) ||
             ArraySchema.is(type) ||
-            MapSchema.is(type)
+            MapSchema.is(type) ||
+            SetSchema.is(type)
         ) {
             if (!this.childFilters) { this.childFilters = {}; }
 
@@ -221,6 +223,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                         }
                     }
 
+                    // flag the change for encoding.
                     this.$changes.change(field);
 
                     //

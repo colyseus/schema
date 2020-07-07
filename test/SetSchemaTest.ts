@@ -1,19 +1,22 @@
 import * as assert from "assert";
 
-import { Schema, type, filter, filterChildren, CollectionSchema } from "../src";
+import { Schema, type, filter, filterChildren, SetSchema } from "../src";
 import { Client } from "../src/annotations";
 
-describe("CollectionSchema Tests", () => {
+describe("SetSchema Tests", () => {
 
     it("add() primitive values", () => {
         class State extends Schema {
-            @type({ collection: "string" })
-            strings = new CollectionSchema<string>();
+            @type({ set: "string" })
+            strings = new SetSchema<string>();
         }
 
         const state = new State();
         state.strings.add("one");
+        state.strings.add("one");
         state.strings.add("two");
+        state.strings.add("two");
+        state.strings.add("three");
         state.strings.add("three");
 
         const decoded = new State();
@@ -28,8 +31,8 @@ describe("CollectionSchema Tests", () => {
         }
 
         class State extends Schema {
-            @type({ collection: Player })
-            players = new CollectionSchema<Player>();
+            @type({ set: Player })
+            players = new SetSchema<Player>();
         }
 
         const state = new State();
@@ -47,46 +50,43 @@ describe("CollectionSchema Tests", () => {
         }
 
         class State extends Schema {
-            @type({ collection: Player })
-            players = new CollectionSchema<Player>();
+            @type({ set: Player })
+            players = new SetSchema<Player>();
         }
 
         const state = new State();
+
         const player = new Player().assign({ level: 10 });
         state.players.add(player);
         state.players.add(player);
-        state.players.add(player);
-        state.players.add(player);
-        state.players.add(player);
+        assert.equal(1, state.players.size);
+
+        const player2 = new Player().assign({ level: 20 });
+        state.players.add(player2);
+        state.players.add(player2);
+        assert.equal(2, state.players.size);
 
         const decoded = new State();
         decoded.decode(state.encode());
 
-        assert.equal(5, decoded.players.size);
-        assert.equal(decoded.players.at(0), decoded.players.at(1));
-        assert.equal(decoded.players.at(1), decoded.players.at(2));
-        assert.equal(decoded.players.at(2), decoded.players.at(3));
-        assert.equal(decoded.players.at(3), decoded.players.at(4));
-        assert.equal(undefined, decoded.players.at(5));
+        assert.equal(2, decoded.players.size);
+        assert.deepEqual(decoded.players.toArray().map(v => v.level), [10, 20]);
 
         state.players.delete(player);
-        decoded.decode(state.encode());
+        assert.equal(1, state.players.size);
 
-        assert.equal(4, decoded.players.size);
-        assert.equal(decoded.players.at(0), decoded.players.at(1));
-        assert.equal(decoded.players.at(1), decoded.players.at(2));
-        assert.equal(decoded.players.at(2), decoded.players.at(3));
-        assert.equal(undefined, decoded.players.at(4));
+        decoded.decode(state.encode());
+        assert.equal(1, decoded.players.size);
     });
 
-    it("delete()", () => {
+    it("delete from Set", () => {
         class Player extends Schema {
             @type("number") level: number;
         }
 
         class State extends Schema {
-            @type({ collection: Player })
-            players = new CollectionSchema<Player>();
+            @type({ set: Player })
+            players = new SetSchema<Player>();
         }
 
         const state = new State();
@@ -98,12 +98,12 @@ describe("CollectionSchema Tests", () => {
         assert.equal(1, decoded.players.size);
 
         const removed = state.players.delete(player);
+        assert.equal(0, state.players.size);
         assert.equal(true, removed, "should return true if item has been removed successfully.");
         assert.equal(false, state.players.delete(player), "should return false if item does not exist.");
         assert.equal(false, state.players.delete({} as any), "should return false if item does not exist.");
 
         decoded.decode(state.encode());
-
         assert.equal(0, decoded.players.size);
     });
 
@@ -113,8 +113,8 @@ describe("CollectionSchema Tests", () => {
         }
 
         class State extends Schema {
-            @type({ collection: Player })
-            players = new CollectionSchema<Player>();
+            @type({ set: Player })
+            players = new SetSchema<Player>();
         }
 
         const state = new State();
@@ -143,8 +143,8 @@ describe("CollectionSchema Tests", () => {
             @filter(function(client: Client, value, root) {
                 return client.sessionId === "one";
             })
-            @type({ collection: Player })
-            players = new CollectionSchema<Player>();
+            @type({ set: Player })
+            players = new SetSchema<Player>();
         }
 
         const state = new State();
@@ -176,17 +176,14 @@ describe("CollectionSchema Tests", () => {
 
         class State extends Schema {
             @filterChildren(function (client: Client, key: number, value: Player) {
-                console.log("@filterChildren()", { client, key, value });
                 if (client.sessionId === "one") {
-                    console.log("RETURN", key % 2 === 0);
                     return key % 2 === 0;
                 } else {
-                    console.log("RETURN", key % 2 === 1);
                     return key % 2 === 1;
                 }
             })
-            @type({ collection: Player })
-            players = new CollectionSchema<Player>();
+            @type({ set: Player })
+            players = new SetSchema<Player>();
         }
 
         const state = new State();
@@ -208,10 +205,10 @@ describe("CollectionSchema Tests", () => {
         decoded2.decode(filtered2);
 
         assert.equal(1, decoded1.players.size);
-        assert.equal(1, decoded1.players.at(0).level);
+        assert.equal(1, decoded1.players.toArray()[0].level);
 
         assert.equal(1, decoded2.players.size);
-        assert.equal(2, decoded2.players.at(0).level);
+        assert.equal(2, decoded2.players.toArray()[0].level);
     });
 
     it("@filterChildren() should filter out primitive values", () => {
@@ -223,8 +220,8 @@ describe("CollectionSchema Tests", () => {
                     return value % 2 === 1;
                 }
             })
-            @type({ collection: "number" })
-            numbers = new CollectionSchema<number>();
+            @type({ set: "number" })
+            numbers = new SetSchema<number>();
         }
 
         const state = new State();

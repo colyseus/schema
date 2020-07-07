@@ -30,6 +30,10 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     }
 
     add(value: V) {
+        if (this.has(value)) {
+            return false;
+        }
+
         // set "index" for reference.
         const index = this.$refId++;
 
@@ -41,7 +45,6 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         this.$changes.indexes[index] = index;
 
         this.$indexes.set(index, index);
-
         this.$items.set(index, value);
 
         this.$changes.change(index);
@@ -49,12 +52,7 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         return index;
     }
 
-    at(index: number) {
-        const key = Array.from(this.$items.keys())[index];
-        return this.$items.get(key);
-    }
-
-    remove(item: V) {
+    delete(item: V) {
         const entries = this.$items.entries();
 
         let index: K;
@@ -95,10 +93,23 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     }
 
     has (value: V): boolean {
-        return Array.from(this.$items.values()).some((v) => v === value);
+        const values = this.$items.values();
+
+        let has = false;
+        let entry: IteratorResult<V>;
+
+        while (entry = values.next()) {
+            if (entry.done) { break; }
+            if (value === entry.value) {
+                has = true;
+                break;
+            }
+        }
+
+        return has;
     }
 
-    forEach(callbackfn: (value: V, key: K, collection: CollectionSchema<V>) => void) {
+    forEach(callbackfn: (value: V, key: K, collection: SetSchema<V>) => void) {
         this.$items.forEach((value, key, _) => callbackfn(value, key, this));
     }
 
@@ -111,8 +122,11 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     }
 
     protected setIndex(index: number, key: number) {
-        console.log("SET INDEX!", { index, key });
         this.$indexes.set(index, key);
+    }
+
+    protected getIndex(index: number) {
+        return this.$indexes.get(index);
     }
 
     protected getByIndex(index: number) {
@@ -144,19 +158,19 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     //
     // Decoding utilities
     //
-    clone(isDecoding?: boolean): CollectionSchema<V> {
-        let cloned: CollectionSchema;
+    clone(isDecoding?: boolean): SetSchema<V> {
+        let cloned: SetSchema;
 
         if (isDecoding) {
             // client-side
-            cloned = Object.assign(new CollectionSchema(), this);
+            cloned = Object.assign(new SetSchema(), this);
             cloned.onAdd = this.onAdd;
             cloned.onRemove = this.onRemove;
             cloned.onChange = this.onChange;
 
         } else {
             // server-side
-            const cloned = new CollectionSchema();
+            const cloned = new SetSchema();
             this.forEach((value) => {
                 if (value['$changes']) {
                     cloned.add(value['clone']());
