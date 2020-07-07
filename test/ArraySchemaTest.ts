@@ -125,7 +125,7 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encode());
 
         assert.equal(decodedState.arrayOfNumbers.length, 4);
-        assert.equal(JSON.stringify(decodedState.arrayOfNumbers), '[1,2,3,4]');
+        assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [1,2,3,4]);
 
         state.arrayOfNumbers.pop();
         state.arrayOfNumbers.pop();
@@ -186,7 +186,7 @@ describe("ArraySchema Tests", () => {
         assert.equal(decoded.numbers[8], 23);
         assert.equal(decoded.numbers[9], 24);
 
-        console.log(decoded.toJSON());
+        // console.log(decoded.toJSON());
     });
 
     it("should allow using push/pop between patches", () => {
@@ -224,7 +224,7 @@ describe("ArraySchema Tests", () => {
         assert.equal(decoded.numbers[5], 22);
         assert.equal(decoded.numbers[6], 23);
 
-        console.log(decoded.toJSON());
+        // console.log(decoded.toJSON());
     });
 
     it("should not encode a higher number of items than array actually have", () => {
@@ -246,7 +246,7 @@ describe("ArraySchema Tests", () => {
         // // state.arrayOfNumbers = new ArraySchema<number>(...[0, 0, 0, 1, 1, 1, 2, 2, 2]);
         // // assert.equal(state.arrayOfNumbers.length, 9);
 
-        console.log("CHANGES (1) =>", dumpChanges(state));
+        // console.log("CHANGES (1) =>", dumpChanges(state));
 
         for (let i = 0; i < 5; i++) {
             const value = state.arrayOfNumbers.pop();
@@ -256,15 +256,15 @@ describe("ArraySchema Tests", () => {
         assert.equal(state.arrayOfNumbers.length, 4);
         assert.equal(state.anotherOne.length, 5);
 
-        console.log("CHANGES (2) =>", dumpChanges(state));
+        // console.log("CHANGES (2) =>", dumpChanges(state));
 
         const encoded = state.encode();
-        console.log("ENCODED:", encoded.length, encoded);
+        // console.log("ENCODED:", encoded.length, encoded);
 
         const decodedState = new State();
         decodedState.decode(encoded);
 
-        console.log("DECODED =>", decodedState.toJSON());
+        // console.log("DECODED =>", decodedState.toJSON());
         assert.equal(decodedState.anotherOne.length, 5);
         assert.equal(decodedState.arrayOfNumbers.length, 4);
     });
@@ -314,15 +314,15 @@ describe("ArraySchema Tests", () => {
 
         state.arrayOfPlayers.splice(1);
 
-        console.log("CHANGES =>", util.inspect({
-            $changes: state.arrayOfPlayers['$changes'],
-            $items: state.arrayOfPlayers['$items'],
-        }, true, 3, true));
+        // console.log("CHANGES =>", util.inspect({
+        //     $changes: state.arrayOfPlayers['$changes'],
+        //     $items: state.arrayOfPlayers['$items'],
+        // }, true, 3, true));
 
-        console.log("\n\nWILL ENCODE");
+        // console.log("\n\nWILL ENCODE");
         const encoded = state.encode();
 
-        console.log("\n\nWILL DECODE");
+        // console.log("\n\nWILL DECODE");
         decodedState.decode(encoded);
 
         assert.equal(decodedState.arrayOfPlayers.length, 1);
@@ -615,8 +615,6 @@ describe("ArraySchema Tests", () => {
         // Remove one item
         const [spliced] = state.player1.items.splice(2, 1);
 
-        console.log("\n\nWILL ENCODE!");
-
         decodedState.decode(state.encode());
 
         assert.equal(decodedState.player1.items.length, 4);
@@ -722,10 +720,10 @@ describe("ArraySchema Tests", () => {
          */
         const [itemThree] = state.items.splice(2, 1);
 
-        console.log("CHANGES =>", util.inspect({
-            $changes: state.items['$changes'],
-            $items: state.items['$items'],
-        }, true, 3, true));
+        // console.log("CHANGES =>", util.inspect({
+        //     $changes: state.items['$changes'],
+        //     $items: state.items['$items'],
+        // }, true, 3, true));
 
         state.items.forEach(updateItem);
 

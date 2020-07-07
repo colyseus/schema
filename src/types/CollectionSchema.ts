@@ -110,7 +110,6 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
     }
 
     protected setIndex(index: number, key: number) {
-        console.log("SET INDEX!", { index, key });
         this.$indexes.set(index, key);
     }
 

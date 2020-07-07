@@ -1,6 +1,6 @@
 import { ChangeTree } from "../changes/ChangeTree";
+import { Schema, SchemaDecoderCallbacks } from "../Schema";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, Schema } from "../Schema";
 
 //
 // Notes:
@@ -9,16 +9,6 @@ import { SchemaDecoderCallbacks, Schema } from "../Schema";
 // - The tsconfig.json of @colyseus/schema uses ES2018.
 // - ES2019 introduces `flatMap` / `flat`, which is not currently relevant, and caused other issues.
 //
-
-type K = number; // TODO: allow to specify K generic on MapSchema.
-
-const DEFAULT_SORT = (a: any, b: any) => {
-    const A = a.toString();
-    const B = b.toString();
-    if (A < B) return -1;
-    else if (A > B) return 1;
-    else return 0
-}
 
 export function getArrayProxy(value: ArraySchema) {
     value['$proxy'] = true;
@@ -35,7 +25,7 @@ export function getArrayProxy(value: ArraySchema) {
                 typeof (prop) !== "symbol" &&
                 !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
             ) {
-                return obj.at(prop as number);
+                return obj['$items'][prop];
 
             } else {
                 return obj[prop];
@@ -58,7 +48,11 @@ export function getArrayProxy(value: ArraySchema) {
 
         deleteProperty: (obj, prop) => {
             if (typeof (prop) === "number") {
-                obj.deleteAt(prop);
+
+                //
+                // TOOD: touch `$changes`
+                //
+                delete obj['$items'][prop];
 
             } else {
                 delete obj[prop];
@@ -71,133 +65,86 @@ export function getArrayProxy(value: ArraySchema) {
     return value;
 }
 
-export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
+export class ArraySchema<T=any> implements Array<T>, SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
 
-    protected $items: Map<number, V> = new Map<number, V>();
-    protected $indexes: Map<number, number> = new Map<number, number>();
+    protected $items: Array<T> = [];
+    // protected $indexes: number[] = [];
 
-    protected $refId: number = 0;
-
-    [n: number]: V;
+    [n: number]: T;
 
     //
     // Decoding callbacks
     //
-    public onAdd?: (item: V, key: number) => void;
-    public onRemove?: (item: V, key: number) => void;
-    public onChange?: (item: V, key: number) => void;
+    public onAdd?: (item: T, index: number) => void;
+    public onRemove?: (item: T, index: number) => void;
+    public onChange?: (item: T, index: number) => void;
 
     static is(type: any) {
         return Array.isArray(type);
     }
 
-    constructor (...items: V[]) {
+    constructor (...items: T[]) {
         this.push(...items);
     }
 
     get length() {
-        return this.$items.size;
-    }
-
-    push(...values: V[]) {
-        let lastIndex: number;
-
-        values.forEach(value => {
-            // set "index" for reference.
-            lastIndex = this.$refId++;
-
-            this.setAt(lastIndex, value);
-        });
-
-        return lastIndex;
+        return this.$items.length;
     }
 
     /**
      * Removes the last element from an array and returns it.
      */
-    pop(): V | undefined {
-        const key = Array.from(this.$indexes.values()).pop();
-        if (key === undefined) { return undefined; }
+    pop(): T | undefined {
+        const index = this.$items.length - 1;
 
-        this.$changes.delete(key);
-        this.$indexes.delete(key);
+        // const index = this.$indexes.pop();
+        // if (index === undefined) { return undefined; }
 
-        const value = this.$items.get(key);
-        this.$items.delete(key);
+        const value = this.$items.pop();
+        this.$changes.delete(index);
+
+        delete this.$changes.indexes[index];
 
         return value;
     }
 
-    at(index: number) {
-        const key = Array.from(this.$items.keys())[index];
-        return this.$items.get(key);
-    }
+    /**
+     * Appends new elements to an array, and returns the new length of the array.
+     * @param items New elements of the Array.
+     */
+    push(...items: T[]): number {
+        let length: number;
 
-    setAt(index: number, value: V) {
-        const isRef = (value['$changes']) !== undefined;
-        if (isRef) {
-            (value['$changes'] as ChangeTree).setParent(this, this.$changes.root, index);
+        for (const item of items) {
+            this.setAt(this.length, item);
         }
 
-        this.$changes.indexes[index] = index;
-
-        this.$indexes.set(index, index);
-        this.$items.set(index, value);
-
-        this.$changes.change(index);
-    }
-
-    deleteAt(index: number) {
-        const key = Array.from(this.$items.keys())[index];
-        if (key === undefined) { return false; }
-
-        this.$changes.delete(key);
-        this.$indexes.delete(key);
-
-        return this.$items.delete(key);
-    }
-
-    clear() {
-        // discard previous operations.
-        this.$changes.discard();
-
-        // clear previous indexes
-        this.$indexes.clear();
-
-        // clear items
-        this.$items.clear();
-
-        this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
-
-        // touch all structures until reach root
-        this.$changes.touchParents();
+        return length;
     }
 
     /**
      * Combines two or more arrays.
      * @param items Additional items to add to the end of array1.
      */
-    concat(...items: (V | ConcatArray<V>)[]): V[] {
-        return new ArraySchema(...Array.from(this.$items.values()).concat(...items));
+    concat(...items: (T | ConcatArray<T>)[]): T[] {
+        return new ArraySchema(...this.$items.concat(...items));
     }
 
     /**
      * Adds all the elements of an array separated by the specified separator string.
      * @param separator A string used to separate one element of an array from the next in the resulting String. If omitted, the array elements are separated with a comma.
      */
-    join(separator?: string): string {
-        return Array.from(this.$items.values()).join(separator);
-    }
+    join(separator?: string): string { return this.$items.join(separator); }
 
     /**
      * Reverses the elements in an Array.
      */
-    reverse(): V[] {
+    reverse(): T[] {
         //
         // TODO: touch `$changes`
         //
-        // this.$items.reverse();
+        this.$items.reverse();
 
         return this;
     }
@@ -205,16 +152,21 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     /**
      * Removes the first element from an array and returns it.
      */
-    shift(): V | undefined {
-        const indexes = Array.from(this.$items.keys());
+    shift(): T | undefined {
+        this.$changes.delete(0);
 
-        const shiftAt = indexes.shift();
-        if (shiftAt === undefined) { return undefined; }
+        // this.$indexes.shift();
+        this.moveIndexes(1, this.$items.length, -1);
 
-        const value = this.at(shiftAt);
-        this.deleteAt(shiftAt);
+        const shifted = this.$items.shift();
 
-        return value;
+        console.log("SHIFT", {
+            $items: this.$items,
+            // $indexes: this.$indexes,
+            $changes: this.$changes.changes,
+        });
+
+        return shifted;
     }
 
     /**
@@ -222,8 +174,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param start The beginning of the specified portion of the array.
      * @param end The end of the specified portion of the array. This is exclusive of the element at the index 'end'.
      */
-    slice(start?: number, end?: number): V[] {
-        return new ArraySchema(...Array.from(this.$items.values()).slice(start, end));
+    slice(start?: number, end?: number): T[] {
+        return new ArraySchema(...this.$items.slice(start, end));
     }
 
     /**
@@ -235,13 +187,10 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * [11,2,22,1].sort((a, b) => a - b)
      * ```
      */
-    sort(compareFn: (a: V, b: V) => number = DEFAULT_SORT): this {
-        const sortedItems = Array.from(this.$items.entries());
-        sortedItems.sort((a, b) => compareFn(a[1], b[1]));
+    sort(compareFn?: (a: T, b: T) => number): this {
+        this.$items.sort(compareFn);
 
-        sortedItems.forEach(([index, item]) => {
-            this.setAt(index, item);
-        });
+        this.$items.forEach((value, index) => this.setAt(index, value));
 
         return this;
     }
@@ -255,34 +204,78 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     splice(
         start: number,
         deleteCount: number = this.length - start,
-        ...items: V[]
-    ): V[] {
-        throw new Error("ArraySchema#splice() not implemented.");
+        ...items: T[]
+    ): T[] {
+        //
+        // TODO: add `items`, consider `items.length` when moving indexes
+        //
 
-        return this;
+        // console.log("BEFORE SPLICE", {
+        //     $indexes: this.$indexes,
+        //     $items: this.$items,
+        //     $changes: this.$changes.changes,
+        // })
 
-        // TODO:
-        // return removedItems;
+        const previousLength = this.$items.length;
+
+        const removedItems = this.$items.splice(start, deleteCount); // , ...items
+        // const removedIndexes = this.$indexes.splice(start, deleteCount); // TODO: add new indexes here
+
+        // // perform DELETE operations on reverse order.
+        // removedIndexes
+        //     .reverse()
+        //     .forEach((removedIndex, i) => {
+        //         this.$changes.delete(removedIndex);
+        //         delete this.$changes.indexes[removedIndex];
+
+        //         // `pop` latest items of the array.
+        //         const popIndex = previousLength - i;
+        //         this.$changes.delete(popIndex);
+        //         delete this.$changes.indexes[popIndex];
+        //     });
+
+        // decrement `index` of all "changes" after items removed.
+        Array.from(this.$changes.changes.entries()).forEach(([_, change]) => {
+                console.log("ITERATING OVER CHANGES => ", {
+                    change, start, deleteCount,
+                });
+
+                if (change.index > start) {
+                    if (change.op !== OPERATION.DELETE) {
+                        this.$changes.delete(change.index);
+                    }
+
+                    change.index -= start;
+                    this.$changes.changes.set(change.index, change);
+
+                    console.log("MOVE", change.index + start, "TO", change.index, this.$changes.changes);
+                }
+            });
+
+        console.log("MOVE INDEXES:", start + deleteCount - 1);
+        // this.moveIndexes(start + deleteCount - 1);
+
+        // console.log("AFTER SPLICE", {
+        //     $indexes: this.$indexes,
+        //     $items: this.$items,
+        //     $changes: this.$changes.changes,
+        // })
+
+        this.$changes.allChanges = new Set(this.$items.keys());
+
+        return removedItems;
     }
 
     /**
      * Inserts new elements at the start of an array.
      * @param items  Elements to insert at the start of the Array.
      */
-    unshift(...items: V[]): number {
-        const indexes = Array.from(this.$items.keys());
-        const addCount = items.length;
-
-        items.forEach((item, i) => {
-            const previousIndex = indexes[i];
-            const previousValue = this.$items.get(previousIndex);
-
-            this.setAt(previousIndex, item);
-            if (previousValue)
-            this.push()
-        });
-
-        return this.length;
+    unshift(...items: T[]): number {
+        //
+        // TODO: touch $changes
+        //
+        const result = this.$items.unshift(...items);
+        return result;
     }
 
     /**
@@ -290,8 +283,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the search starts at index 0.
      */
-    indexOf(searchElement: V, fromIndex?: number): number {
-        return Array.from(this.$items.values()).indexOf(searchElement, fromIndex);
+    indexOf(searchElement: T, fromIndex?: number): number {
+        return this.$items.indexOf(searchElement, fromIndex);
     }
 
     /**
@@ -299,8 +292,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the search starts at the last index in the array.
      */
-    lastIndexOf(searchElement: V, fromIndex?: number): number {
-        return Array.from(this.$items.values()).indexOf(searchElement, fromIndex);
+    lastIndexOf(searchElement: T, fromIndex?: number): number {
+        return this.$items.indexOf(searchElement, fromIndex);
     }
 
     /**
@@ -311,8 +304,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param thisArg An object to which the this keyword can refer in the callbackfn function.
      * If thisArg is omitted, undefined is used as the this value.
      */
-    every(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean {
-        return Array.from(this.$items.values()).every(callbackfn, thisArg);
+    every(callbackfn: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean {
+        return this.$items.every(callbackfn, thisArg);
     }
 
     /**
@@ -323,8 +316,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param thisArg An object to which the this keyword can refer in the callbackfn function.
      * If thisArg is omitted, undefined is used as the this value.
      */
-    some(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean {
-        return Array.from(this.$items.values()).some(callbackfn, thisArg);
+    some(callbackfn: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean {
+        return this.$items.some(callbackfn, thisArg);
     }
 
     /**
@@ -332,8 +325,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param callbackfn  A function that accepts up to three arguments. forEach calls the callbackfn function one time for each element in the array.
      * @param thisArg  An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value.
      */
-    forEach(callbackfn: (value: V, index: number, array: V[]) => void, thisArg?: any): void {
-        Array.from(this.$items.values()).forEach(callbackfn, thisArg);
+    forEach(callbackfn: (value: T, index: number, array: T[]) => void, thisArg?: any): void {
+        this.$items.forEach(callbackfn, thisArg);
     }
 
     /**
@@ -341,8 +334,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.
      * @param thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value.
      */
-    map<U>(callbackfn: (value: V, index: number, array: V[]) => U, thisArg?: any): U[] {
-        return Array.from(this.$items.values()).map(callbackfn, thisArg);
+    map<U>(callbackfn: (value: T, index: number, array: T[]) => U, thisArg?: any): U[] {
+        return this.$items.map(callbackfn, thisArg);
     }
 
     /**
@@ -350,9 +343,16 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param callbackfn A function that accepts up to three arguments. The filter method calls the callbackfn function one time for each element in the array.
      * @param thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value.
      */
-    filter(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any)
-    filter<S extends V>(callbackfn: (value: V, index: number, array: V[]) => value is S, thisArg?: any): V[] {
-        return Array.from(this.$items.values()).filter(callbackfn, thisArg);
+    filter(callbackfn: (value: T, index: number, array: T[]) => unknown, thisArg?: any)
+    filter<S extends T>(callbackfn: (value: T, index: number, array: T[]) => value is S, thisArg?: any): T[] {
+        return this.$items.filter(callbackfn, thisArg);
+        // const filtered = new ArraySchema(
+        //     ...
+        // );
+
+        // filtered.$changes = this.$changes.clone();
+
+        // return filtered;
     }
 
     /**
@@ -360,8 +360,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param callbackfn A function that accepts up to four arguments. The reduce method calls the callbackfn function one time for each element in the array.
      * @param initialValue If initialValue is specified, it is used as the initial value to start the accumulation. The first call to the callbackfn function provides this value as an argument instead of an array value.
      */
-    reduce<U=V>(callbackfn: (previousValue: U, currentValue: V, currentIndex: number, array: V[]) => U, initialValue?: U): U {
-        return Array.from(this.$items.values()).reduce(callbackfn, initialValue);
+    reduce<U=T>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue?: U): U {
+        return this.$items.reduce(callbackfn, initialValue);
     }
 
     /**
@@ -369,8 +369,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param callbackfn A function that accepts up to four arguments. The reduceRight method calls the callbackfn function one time for each element in the array.
      * @param initialValue If initialValue is specified, it is used as the initial value to start the accumulation. The first call to the callbackfn function provides this value as an argument instead of an array value.
      */
-    reduceRight<U=V>(callbackfn: (previousValue: U, currentValue: V, currentIndex: number, array: V[]) => U, initialValue?: U): U {
-        return Array.from(this.$items.values()).reduceRight(callbackfn, initialValue);
+    reduceRight<U=T>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue?: U): U {
+        return this.$items.reduceRight(callbackfn, initialValue);
     }
 
     /**
@@ -382,9 +382,9 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param thisArg If provided, it will be used as the this value for each invocation of
      * predicate. If it is not provided, undefined is used instead.
      */
-    find<S extends V>(predicate: (this: void, value: V, index: number, obj: V[]) => value is S, thisArg?: any): S | undefined
-    find(predicate: (value: V, index: number, obj: V[]) => unknown, thisArg?: any): V | undefined {
-        return Array.from(this.$items.values()).find(predicate, thisArg);
+    find<S extends T>(predicate: (this: void, value: T, index: number, obj: T[]) => value is S, thisArg?: any): S | undefined
+    find(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): T | undefined {
+        return this.$items.find(predicate, thisArg);
     }
 
     /**
@@ -396,8 +396,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param thisArg If provided, it will be used as the this value for each invocation of
      * predicate. If it is not provided, undefined is used instead.
      */
-    findIndex(predicate: (value: V, index: number, obj: V[]) => unknown, thisArg?: any): number {
-        return Array.from(this.$items.values()).findIndex(predicate, thisArg);
+    findIndex(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): number {
+        return this.$items.findIndex(predicate, thisArg);
     }
 
     /**
@@ -408,12 +408,11 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param end index to stop filling the array at. If end is negative, it is treated as
      * length+end.
      */
-    fill(value: V, start?: number, end?: number): this {
+    fill(value: T, start?: number, end?: number): this {
         //
-        // TODO
+        // TODO: touch `$changes`.
         //
-        throw new Error("ArraySchema#fill() not implemented");
-        // this.$items.fill(value, start, end);
+        this.$items.fill(value, start, end);
 
         return this;
     }
@@ -429,9 +428,10 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      */
     copyWithin(target: number, start: number, end?: number): this {
         //
-        // TODO
+        // TODO: touch `$changes`.
         //
-        throw new Error("ArraySchema#copyWithin() not implemented");
+        this.$items.copyWithin(target, start, end);
+
         return this;
     }
 
@@ -445,87 +445,17 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      */
     toLocaleString(): string { return this.$items.toLocaleString() };
 
-    /** Iterator */
-    [Symbol.iterator](): IterableIterator<V> {
-        return Array.from(this.$items.values())[Symbol.iterator]();
-    }
-
-    [Symbol.unscopables]() {
-        return this.$items[Symbol.unscopables]();
-    }
-
-    /**
-     * Returns an iterable of key, value pairs for every entry in the array
-     */
-    entries(): IterableIterator<[number, V]> { return this.$items.entries(); }
-
-    /**
-     * Returns an iterable of keys in the array
-     */
-    keys(): IterableIterator<number> { return this.$items.keys(); }
-
-    /**
-     * Returns an iterable of values in the array
-     */
-    values(): IterableIterator<V> { return this.$items.values(); }
-
-    /**
-     * Determines whether an array includes a certain element, returning true or false as appropriate.
-     * @param searchElement The element to search for.
-     * @param fromIndex The position in this array at which to begin searching for searchElement.
-     */
-    includes(searchElement: V, fromIndex?: number): boolean {
-        return Array.from(this.$items.values()).includes(searchElement, fromIndex);
-    }
-
-    get size () {
-        return this.$items.size;
-    }
-
-    protected setIndex(index: number, key: number) {
-        this.$indexes.set(index, key);
-    }
-
-    protected getIndex(index: number) {
-        return this.$indexes.get(index);
-    }
-
-    protected getByIndex(index: number) {
-        return this.$items.get(this.$indexes.get(index));
-    }
-
-    protected deleteByIndex(index: number) {
-        const key = this.$indexes.get(index);
-        this.$items.delete(key);
-        this.$indexes.delete(index);
-    }
-
-    toArray() {
-        return Array.from(this.$items.values());
-    }
-
-    toJSON() {
-        return this.toArray().map((value) => {
-            return (typeof (value['toJSON']) === "function")
-                ? value['toJSON']()
-                : value;
-        });
-    }
-
-    //
-    // Decoding utilities
-    //
-    clone(isDecoding?: boolean): ArraySchema<V> {
+    clone(isDecoding?: boolean): ArraySchema<T> {
         let cloned: ArraySchema;
 
         if (isDecoding) {
-            cloned = new ArraySchema(...Array.from(this.$items.values()));
+            cloned = new ArraySchema(...this.$items);
             cloned.onAdd = this.onAdd;
             cloned.onRemove = this.onRemove;
             cloned.onChange = this.onChange;
 
         } else {
-            cloned = new ArraySchema(...this.map(item => (
+            cloned = new ArraySchema(...this.$items.map(item => (
                 (item['$changes'])
                     ? (item as any as Schema).clone()
                     : item
@@ -535,8 +465,155 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
         return cloned;
     };
 
-    triggerAll (): void {
-        if (!this.onAdd) { return; }
-        this.forEach((value, key) => this.onAdd(value, key));
+    /** Iterator */
+    [Symbol.iterator](): IterableIterator<T> { return this.$items[Symbol.iterator](); }
+    [Symbol.unscopables]() { return this.$items[Symbol.unscopables](); }
+
+    /**
+     * Returns an iterable of key, value pairs for every entry in the array
+     */
+    entries(): IterableIterator<[number, T]> { return this.$items.entries(); }
+
+    /**
+     * Returns an iterable of keys in the array
+     */
+    keys(): IterableIterator<number> { return this.$items.keys(); }
+
+    /**
+     * Returns an iterable of values in the array
+     */
+    values(): IterableIterator<T> { return this.$items.values(); }
+
+    /**
+     * Determines whether an array includes a certain element, returning true or false as appropriate.
+     * @param searchElement The element to search for.
+     * @param fromIndex The position in this array at which to begin searching for searchElement.
+     */
+    includes(searchElement: T, fromIndex?: number): boolean {
+        return this.$items.includes(searchElement, fromIndex);
     }
+
+    clear() {
+        // discard previous operations.
+        this.$changes.discard();
+
+        // clear items
+        this.$items = [];
+
+        this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
+
+        // touch all structures until reach root
+        this.$changes.touchParents();
+    }
+
+    protected setIndex(index: number, key: number) {
+        // this.$indexes[index] = key;
+    }
+
+    protected getIndex(index: number) {
+        // return this.$indexes[index];
+        return index;
+    }
+
+    protected getByIndex(index: number) {
+        // return this.$items[this.$indexes[index]];
+        return this.$items[index];
+    }
+
+    setAt(key: number, item: T) {
+        // set "index" for reference.
+        const index = key;
+
+        if (item['$changes']) {
+            (item['$changes'] as ChangeTree).setParent(
+                this,
+                this.$changes.root,
+                index,
+            );
+        }
+
+        this.$items[key] = item;
+
+        this.$changes.indexes[key] = index;
+        // this.$indexes[index] = key;
+
+        // console.log(`ArraySchema#setAt() =>`, { isRef, key, index, item });
+
+        this.$changes.change(key);
+    }
+
+    protected deleteByIndex(index: number) {
+        // const key = this.$indexes[index];
+        const key = index;
+
+        if (key === undefined) {
+            // console.log("SKIP deleteByIndex", { index, key, $indexes: this.$indexes });
+            console.log("SKIP deleteByIndex", { index });
+            return;
+        }
+
+        console.log("deleteByIndex:", { key, $items: this.$items });
+
+        this.$items.splice(key, 1);
+        // this.$indexes.splice(key, 1);
+
+        // this.moveIndexes(key, this.$items.length, -1);
+    }
+
+    protected moveIndexes(fromIndex: number, toIndex: number = this.$items.length, shift: number = -1) {
+        console.log("MOVE INDEXES, BEFORE =>", this.$changes.changes);
+
+        //
+        // we only move indexes when items are being removed.
+        // use reverse order to ensure no index is getting replaced.
+        //
+        for (let i = toIndex - 1; i >= fromIndex; i--) {
+            const changeAt = this.$changes.changes.get(i);
+            if (changeAt) {
+                changeAt.index += shift;
+                this.$changes.changes.set(changeAt.index + shift, changeAt);
+            } else {
+                console.warn("ITEM NOT FOUND AT", { i });
+            }
+        }
+
+        console.log("MOVE INDEXES, AFTER =>", this.$changes.changes);
+
+        // //
+        // // reduce the correspondance of next items (after the removed item)
+        // //
+        // for (let i = fromIndex; i < this.$indexes.length; i++) {
+        //     this.$indexes[i] += shift;
+
+        //     // const changeAtIndex = this.$changes.changes.get(i);
+        //     // if (changeAtIndex) {
+        //     //     changeAtIndex.index += shift;
+        //     // }
+        // }
+    }
+
+    triggerAll() {
+        if (!this.onAdd) { return; }
+        for (let i = 0; i < this.length; i++) {
+            this.onAdd(this[i], i);
+        }
+    }
+
+    toJSON() {
+        const arr = [];
+        for (let i = 0; i < this.length; i++) {
+            const objAt = this.$items[i];
+            arr.push(
+                (objAt && typeof (objAt['toJSON']) === "function")
+                    ? objAt['toJSON']()
+                    : objAt
+            );
+        }
+        return arr;
+    }
+
+    toArray() {
+        return this.$items;
+    }
+
 }

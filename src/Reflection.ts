@@ -56,6 +56,9 @@ export class Reflection extends Schema {
                     const type = schema[fieldName];
                     let childTypeSchema: typeof Schema;
 
+                    //
+                    // TODO: refactor below.
+                    //
                     if (Schema.is(type)) {
                         fieldType = "ref";
                         childTypeSchema = schema[fieldName];
@@ -89,6 +92,7 @@ export class Reflection extends Schema {
                         } else {
                             childTypeSchema = schema[fieldName].collection;
                         }
+
                     } else if (SetSchema.is(type)) {
                         fieldType = "set";
 

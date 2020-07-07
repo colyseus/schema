@@ -346,17 +346,21 @@ export abstract class Schema {
                 }
 
             } else if (ArraySchema.is(type)) {
-                const valueRef: ArraySchema = previousValue || new ArraySchema();
+                const valueRef: ArraySchema = (operation === OPERATION.REPLACE)
+                    ? previousValue || new ArraySchema()
+                    : new ArraySchema();
                 value = valueRef.clone(true);
 
                 const refId = decode.number(bytes, it);
-                value.$changes.refId = refId;
+                // value.$changes.refId = refId;
                 $root.refs.set(refId, value);
 
                 value = getArrayProxy(value);
 
             } else if (MapSchema.is(type)) {
-                const valueRef: MapSchema = previousValue || new MapSchema();
+                const valueRef: MapSchema = (operation === OPERATION.REPLACE)
+                    ? previousValue || new MapSchema()
+                    : new MapSchema();
                 value = valueRef.clone(true);
 
                 const refId = decode.number(bytes, it);
@@ -365,14 +369,18 @@ export abstract class Schema {
                 value = getMapProxy(value);
 
             } else if (CollectionSchema.is(type)) {
-                const valueRef: CollectionSchema = previousValue || new CollectionSchema();
+                const valueRef: CollectionSchema = (operation === OPERATION.REPLACE)
+                    ? previousValue || new CollectionSchema()
+                    : new CollectionSchema();
                 value = valueRef.clone(true);
 
                 const refId = decode.number(bytes, it);
                 $root.refs.set(refId, value);
 
             } else if (SetSchema.is(type)) {
-                const valueRef: SetSchema = previousValue || new SetSchema();
+                const valueRef: SetSchema = (operation === OPERATION.REPLACE)
+                    ? previousValue || new SetSchema()
+                    : new SetSchema();
                 value = valueRef.clone(true);
 
                 const refId = decode.number(bytes, it);

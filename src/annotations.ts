@@ -205,6 +205,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 ) {
                     // automaticallty transform Array into ArraySchema
                     if (isArray && !(value instanceof ArraySchema)) {
+                        console.log("INSTANTIATE NEW ARRAYSCHEMA!");
                         value = new ArraySchema(...value);
                     }
 
