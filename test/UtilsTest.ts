@@ -13,7 +13,7 @@ describe("Utils Test", () => {
         let dump: any = dumpChanges(state);
         assert.equal(
             JSON.stringify(dump),
-            '[{"ref":"State","refId":0,"operations":{"mapOfPlayers":"ADD"}},{"ref":"Player","refId":2,"operations":{"name":"ADD","x":"ADD","y":"ADD"}},{"ref":"MapSchema","refId":1,"operations":{"one":"ADD"}}]'
+            '{"mapOfPlayers":{"one":{"name":"One","x":1,"y":1}}}'
         );
 
         // discard changes
@@ -24,7 +24,7 @@ describe("Utils Test", () => {
 
         assert.equal(
             JSON.stringify(dump),
-            '[{"ref":"MapSchema","refId":1,"operations":{"one":"DELETE"}}]'
+            '{"mapOfPlayers":{}}'
         );
     });
 
@@ -37,7 +37,7 @@ describe("Utils Test", () => {
         let dump: any = dumpChanges(state);
         assert.equal(
             JSON.stringify(dump),
-            '[{"ref":"State","refId":0,"operations":{"arrayOfPlayers":"ADD"}},{"ref":"Player","refId":2,"operations":{"name":"ADD","x":"ADD","y":"ADD"}},{"ref":"ArraySchema","refId":1,"operations":{"0":"ADD","1":"ADD"}},{"ref":"Player","refId":3,"operations":{"name":"ADD","x":"ADD","y":"ADD"}}]',
+            '{"arrayOfPlayers":[{"name":"One","x":1,"y":1},{"name":"Two","x":2,"y":2}]}',
         );
 
         // discard changes
@@ -49,7 +49,7 @@ describe("Utils Test", () => {
 
         assert.equal(
             JSON.stringify(dump),
-            '[{"ref":"State","refId":0,"operations":{"arrayOfPlayers":"ADD"}},{"ref":"Player","refId":2,"operations":{"name":"ADD","x":"ADD","y":"ADD"}},{"ref":"ArraySchema","refId":1,"operations":{"0":"ADD","1":"ADD"}},{"ref":"Player","refId":3,"operations":{"name":"ADD","x":"ADD","y":"ADD"}}]',
+            '{"arrayOfPlayers":[{"name":"One","x":1,"y":1}]}',
         );
     });
 
