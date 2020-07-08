@@ -312,18 +312,11 @@ describe("ArraySchema Tests", () => {
 
         const jake = decodedState.arrayOfPlayers[0];
 
-        state.arrayOfPlayers.splice(1);
+        const removedItems = state.arrayOfPlayers.splice(1);
+        assert.equal(2, removedItems.length);
+        assert.deepEqual(['Snake', 'Cyberhawk'], removedItems.map((player) => player.name));
 
-        // console.log("CHANGES =>", util.inspect({
-        //     $changes: state.arrayOfPlayers['$changes'],
-        //     $items: state.arrayOfPlayers['$items'],
-        // }, true, 3, true));
-
-        // console.log("\n\nWILL ENCODE");
-        const encoded = state.encode();
-
-        // console.log("\n\nWILL DECODE");
-        decodedState.decode(encoded);
+        decodedState.decode(state.encode());
 
         assert.equal(decodedState.arrayOfPlayers.length, 1);
         assert.equal("Jake", decodedState.arrayOfPlayers[0].name);
@@ -394,7 +387,7 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(encoded);
 
         assert.equal(decodedState.arrayOfPlayers.length, 2);
-        assert.equal(decodedState.arrayOfPlayers[0].name, "Snake");
+        assert.equal(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
         assert.equal(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
     });
 
@@ -614,6 +607,7 @@ describe("ArraySchema Tests", () => {
 
         // Remove one item
         const [spliced] = state.player1.items.splice(2, 1);
+        assert.equal("Item 2", spliced.name);
 
         decodedState.decode(state.encode());
 
@@ -828,11 +822,6 @@ describe("ArraySchema Tests", () => {
         assert.equal(removedItem1.name, "Item 1");
         assert.equal(state.player.items.length, 4);
 
-        assert.strictEqual((state.player.items as any).$changes.indexMap.get(state.player.items[0]), 0);
-        assert.strictEqual((state.player.items as any).$changes.indexMap.get(state.player.items[1]), 1);
-        assert.strictEqual((state.player.items as any).$changes.indexMap.get(state.player.items[2]), 2);
-        assert.strictEqual((state.player.items as any).$changes.indexMap.get(state.player.items[3]), 3);
-
         decodedState.decode(state.encode());
 
         assert.equal(decodedState.player.items.length, 4);
@@ -985,13 +974,16 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encodeAll());
 
         // Remove Item 2
-        const [ removedItem ] = state.player.itemIds.splice(1, 1);
-        assert.strictEqual(removedItem, "Item 2");
+        const removedItems = state.player.itemIds.splice(1, 1);
+        assert.strictEqual(removedItems.length, 1);
+        assert.strictEqual(removedItems[0], "Item 2");
         decodedState.decode(state.encode());
 
         // Update remaining item
         const preEncoding = state.player.itemIds[1] = "Item 3 changed!";
         decodedState.decode(state.encode());
+
+        assert.equal(4, decodedState.player.itemIds.length);
 
         assert.strictEqual(
             decodedState.player.itemIds[1],

@@ -7,7 +7,7 @@ describe("Next Iteration", () => {
     it("add and modify an primary array item", () => {
         class State extends Schema {
             @type(["string"])
-            arr: string[];
+            arr: ArraySchema<string>;
         }
 
         const state = new State({ arr: [] });
@@ -19,7 +19,7 @@ describe("Next Iteration", () => {
 
         const decoded = new State();
         decoded.decode(encoded);
-        assert.deepEqual(decoded.arr['$items'], ['one', 'two', 'three']);
+        assert.deepEqual(decoded.arr.toArray(), ['one', 'two', 'three']);
 
         state.arr[1] = "t";
 
@@ -27,7 +27,7 @@ describe("Next Iteration", () => {
 
         decoded.decode(encoded);
 
-        assert.deepEqual(decoded.arr['$items'], ['one', 't', 'three']);
+        assert.deepEqual(decoded.arr.toArray(), ['one', 't', 'three']);
     });
 
     it("add and modify an Schema array item", () => {
@@ -95,8 +95,6 @@ describe("Next Iteration", () => {
         assert.deepEqual(decoded.map.get("three"), 3);
 
         state.map.set("two", 22);
-
-        console.log("\n\nWILL ENCODE DELETE");
 
         encoded = state.encode();
         decoded.decode(encoded);
@@ -207,8 +205,6 @@ describe("Next Iteration", () => {
             // this is necessary to re-establish "parent" relation
             //
             state.players.set("two", player);
-
-            console.log("\n\nWILL ENCODE DELETE + CHANGES");
 
             encoded = state.encode();
             decoded.decode(encoded);
@@ -334,14 +330,9 @@ describe("Next Iteration", () => {
         state.map.get("two").x = 22;
         state.map.get("three").x = 33;
 
-        console.log(">> state.$changes =>", state['$changes']);
-        console.log(">> state.map.$changes =>", state.map['$changes']);
-
         encoded = state.encode(undefined, undefined, undefined, true);
         encoded1 = state.applyFilters(encoded, client1);
         encoded2 = state.applyFilters(encoded, client2);
-
-        console.log("\n\nWILL APPLY FILTERS!");
         encoded3 = state.applyFilters(encoded, client3);
 
         decoded1.decode(encoded1);
@@ -388,7 +379,6 @@ describe("Next Iteration", () => {
         state.player = player;
 
         let encoded = state.encode();
-        console.log("ENCODED =>", encoded.length, encoded);
 
         const decoded = new State();
         decoded.decode(encoded);
@@ -585,7 +575,6 @@ describe("Next Iteration", () => {
             // remove "two"
             state.players.delete("two");
 
-            console.log("\n\nWILL ENCODE DELETE!");
             decoded.decode(state.encode());
             assert.equal(1, decoded.players.size, "should have 1 items");
 
@@ -663,7 +652,6 @@ describe("Next Iteration", () => {
             child.player = player1;
 
             const state = new State();
-            console.log("\n\nATTACH CHILD TO STATE\n\n");
             state.child = child;
 
             const decoded = new State();

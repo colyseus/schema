@@ -47,7 +47,8 @@ export function getArrayProxy(value: ArraySchema) {
                 typeof (prop) !== "symbol" &&
                 !isNaN(prop as any)
             ) {
-                obj.setAt(Number(prop), setValue);
+                const indexes = Array.from(obj['$items'].keys());
+                obj.setAt(indexes[prop] || prop, setValue);
 
             } else {
                 obj[prop] = setValue;
@@ -151,11 +152,15 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     deleteAt(index: number) {
         const key = Array.from(this.$items.keys())[index];
         if (key === undefined) { return false; }
+        return this.$deleteAt(key);
+    }
 
-        this.$changes.delete(key);
-        this.$indexes.delete(key);
+    protected $deleteAt(index) {
+        // delete at internal index
+        this.$changes.delete(index);
+        this.$indexes.delete(index);
 
-        return this.$items.delete(key);
+        return this.$items.delete(index);
     }
 
     clear() {
@@ -211,8 +216,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
         const shiftAt = indexes.shift();
         if (shiftAt === undefined) { return undefined; }
 
-        const value = this.at(shiftAt);
-        this.deleteAt(shiftAt);
+        const value = this.$items.get(shiftAt);
+        this.$deleteAt(shiftAt);
 
         return value;
     }
@@ -236,11 +241,11 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * ```
      */
     sort(compareFn: (a: V, b: V) => number = DEFAULT_SORT): this {
-        const sortedItems = Array.from(this.$items.entries());
-        sortedItems.sort((a, b) => compareFn(a[1], b[1]));
+        const indexes = Array.from(this.$items.keys());
+        const sortedItems = Array.from(this.$items.values()).sort(compareFn);
 
-        sortedItems.forEach(([index, item]) => {
-            this.setAt(index, item);
+        sortedItems.forEach((item, i) => {
+            this.setAt(indexes[i], item);
         });
 
         return this;
@@ -257,12 +262,15 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
         deleteCount: number = this.length - start,
         ...items: V[]
     ): V[] {
-        throw new Error("ArraySchema#splice() not implemented.");
+        const indexes = Array.from(this.$items.keys());
+        const removedItems: V[] = [];
 
-        return this;
+        for (let i = start; i < start + deleteCount; i++) {
+            removedItems.push(this.$items.get(indexes[i]));
+            this.$deleteAt(indexes[i]);
+        }
 
-        // TODO:
-        // return removedItems;
+        return removedItems;
     }
 
     /**

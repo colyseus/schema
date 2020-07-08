@@ -197,12 +197,13 @@ export abstract class Schema {
         bytes: number[],
         it: decode.Iterator = { offset: 0 },
         ref?: Ref,
-        changes: Map<number, DataChange[]> = new Map<number, DataChange[]>(),
+        allChanges: Map<number, DataChange[]> = new Map<number, DataChange[]>(),
     ) {
         const $root = this.$changes.root;
         const totalBytes = bytes.length;
 
         let refId: number;
+        let changes: DataChange[];
 
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
@@ -218,10 +219,10 @@ export abstract class Schema {
                     ref = $root.refs.get(refId) as Schema;
                 }
 
-                // console.log("DECODE, SET REFID:", { refId });
 
                 // create empty list of changes for this refId.
-                changes.set(refId, []);
+                changes = [];
+                allChanges.set(refId, changes);
 
                 // console.log("SWITCH_TO_STRUCTURE (DECODE)", {
                 //     ref: ref.constructor.name,
@@ -352,6 +353,22 @@ export abstract class Schema {
                 value = valueRef.clone(true);
 
                 const refId = decode.number(bytes, it);
+
+                //
+                // TODO: trigger onRemove if structure has been replaced.
+                //
+                // if (!$root.refs.has(refId) && value.length > 0) {
+                //     value.forEach((element, i) => {
+                //         changes.push({
+                //             op: OPERATION.DELETE,
+                //             field: i,
+                //             // dynamicIndex,
+                //             value: undefined,
+                //             previousValue: element,
+                //         });
+                //     });
+                // }
+
                 // value.$changes.refId = refId;
                 $root.refs.set(refId, value);
 
@@ -399,7 +416,7 @@ export abstract class Schema {
             //         // || ref.$listeners[field]
             //     )
             // ) {
-                changes.get(refId).push({
+                changes.push({
                     op: operation,
                     field,
                     dynamicIndex,
@@ -453,9 +470,9 @@ export abstract class Schema {
 
         }
 
-        this._triggerChanges(changes);
+        this._triggerChanges(allChanges);
 
-        return changes;
+        return allChanges;
     }
 
     encode(
@@ -919,8 +936,8 @@ export abstract class Schema {
 
                         } else if (change.op === OPERATION.DELETE_AND_ADD) {
                             // TODO: refactor me!
-                            (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
                             (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex);
+                            (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
 
                         } else if (change.op === OPERATION.REPLACE) {
                             (ref as SchemaDecoderCallbacks).onChange?.(change.value, change.dynamicIndex);
