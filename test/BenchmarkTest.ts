@@ -1,26 +1,10 @@
 import * as assert from "assert";
 
-import { type, filter } from './../src/annotations';
 import { State, Player } from "./Schema";
-import { Schema, MapSchema, ArraySchema, DataChange } from "../src";
+import { MapSchema } from "../src";
 
-function assertExecutionTime(time: number, cb: () => void) {
-    // warm up...
-    for (let i = 0; i < 200; i++) {
-        const now = Date.now();
-        cb();
-        const elapsedTime = Date.now() - now;
-    }
+import { assertExecutionTime } from "./helpers/test_helpers";
 
-    // return time taken to execute task
-    // const [_, now] = process.hrtime()
-    const now = Date.now();
-    cb();
-    const elapsedTime = Date.now() - now;
-    // process.hrtime()[1] - now
-
-    assert.ok(elapsedTime <= time, `took ${elapsedTime}ms (expected less than ${time}ms)`)
-}
 
 describe("Benchmark Test", () => {
     const state = new State();
@@ -37,15 +21,15 @@ describe("Benchmark Test", () => {
     });
 
     it("#encodeAll()", () => {
-        assertExecutionTime(1, () => state.encodeAll());
+        assertExecutionTime(5, () => state.encodeAll());
     });
 
     it("#encode()", () => {
         assertExecutionTime(1, () => {
             for (let i = 0; i < 200; i++) {
                 const player = state.mapOfPlayers.get("p" + i);
-                player.x++;
-                player.y++;
+                player.x = i;
+                player.y = i;
             }
             state.encode();
         });

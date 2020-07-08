@@ -637,7 +637,7 @@ export abstract class Schema {
 
                 if (operation.op === OPERATION.DELETE) {
                     //
-                    // TODO: delete from $root.cache
+                    // TODO: delete from filters cache.
                     //
                     continue;
                 }

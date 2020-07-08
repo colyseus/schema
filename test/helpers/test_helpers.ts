@@ -1,3 +1,19 @@
+import * as assert from "assert";
 
 export const IS_COVERAGE = process.argv.find(arg => arg.indexOf("--recursive") !== -1);
 
+export function assertExecutionTime(time: number, cb: () => void) {
+    // warm up...
+    for (let i = 0; i < 200; i++) {
+        cb();
+    }
+
+    // return time taken to execute task
+    // const [_, now] = process.hrtime()
+    const now = Date.now();
+    cb();
+    const elapsedTime = Date.now() - now;
+    // process.hrtime()[1] - now
+
+    assert.ok(elapsedTime <= time, `took ${elapsedTime}ms (expected less than ${time}ms)`)
+}
