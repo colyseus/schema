@@ -212,9 +212,6 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         if (isDecoding) {
             // client-side
             cloned = Object.assign(new MapSchema(), this);
-            cloned.onAdd = this.onAdd;
-            cloned.onRemove = this.onRemove;
-            cloned.onChange = this.onChange;
 
         } else {
             // server-side

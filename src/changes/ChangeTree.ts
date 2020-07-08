@@ -169,7 +169,7 @@ export class ChangeTree {
         this.changes.set(--this.currentCustomOperation, op);
     }
 
-    change(fieldName: string | number) {
+    change(fieldName: string | number, operation: OPERATION = OPERATION.ADD) {
         const index = (typeof (fieldName) === "number")
             ? fieldName
             : this.indexes[fieldName];
@@ -181,7 +181,7 @@ export class ChangeTree {
         if (!previousChange || previousChange.op === OPERATION.DELETE) {
             this.changes.set(index, {
                 op: (!previousChange)
-                    ? OPERATION.ADD
+                    ? operation
                     : (previousChange.op === OPERATION.DELETE)
                         ? OPERATION.DELETE_AND_ADD
                         : OPERATION.REPLACE,

@@ -164,7 +164,7 @@ export abstract class Schema {
     }
 
     public assign(
-        props: { [prop in NonFunctionPropNames<this>]: this[prop] }
+        props: { [prop in NonFunctionPropNames<this>]?: this[prop] }
     ) {
         //
         // TODO: recursivelly assign child Schema structures.
@@ -254,6 +254,8 @@ export abstract class Schema {
                 (ref as SchemaDecoderCallbacks).clear();
                 continue;
             }
+
+            let hasChange = true;
 
             if (!isSchema) {
                 previousValue = ref['getByIndex'](fieldIndex);
@@ -347,12 +349,20 @@ export abstract class Schema {
                 }
 
             } else if (ArraySchema.is(type)) {
-                const valueRef: ArraySchema = (operation === OPERATION.REPLACE)
-                    ? previousValue || new ArraySchema()
+                const refId = decode.number(bytes, it);
+
+                const valueRef: ArraySchema = ($root.refs.has(refId))
+                    ? previousValue
                     : new ArraySchema();
+
                 value = valueRef.clone(true);
 
-                const refId = decode.number(bytes, it);
+                // preserve schema callbacks
+                if (previousValue) {
+                    value.onAdd = previousValue.onAdd;
+                    value.onRemove = previousValue.onRemove;
+                    value.onChange = previousValue.onChange;
+                }
 
                 //
                 // TODO: trigger onRemove if structure has been replaced.
@@ -375,55 +385,63 @@ export abstract class Schema {
                 value = getArrayProxy(value);
 
             } else if (MapSchema.is(type)) {
-                const valueRef: MapSchema = (operation === OPERATION.REPLACE)
-                    ? previousValue || new MapSchema()
+                const refId = decode.number(bytes, it);
+
+                const valueRef: MapSchema = ($root.refs.has(refId))
+                    ? previousValue
                     : new MapSchema();
+
                 value = valueRef.clone(true);
 
-                const refId = decode.number(bytes, it);
-                $root.refs.set(refId, value);
+                // preserve schema callbacks
+                if (previousValue) {
+                    value.onAdd = previousValue.onAdd;
+                    value.onRemove = previousValue.onRemove;
+                    value.onChange = previousValue.onChange;
+                }
 
+                $root.refs.set(refId, value);
                 value = getMapProxy(value);
 
             } else if (CollectionSchema.is(type)) {
-                const valueRef: CollectionSchema = (operation === OPERATION.REPLACE)
-                    ? previousValue || new CollectionSchema()
+                const refId = decode.number(bytes, it);
+
+                const valueRef: CollectionSchema = ($root.refs.has(refId))
+                    ? previousValue
                     : new CollectionSchema();
+
                 value = valueRef.clone(true);
 
-                const refId = decode.number(bytes, it);
+                // preserve schema callbacks
+                if (previousValue) {
+                    value.onAdd = previousValue.onAdd;
+                    value.onRemove = previousValue.onRemove;
+                    value.onChange = previousValue.onChange;
+                }
+
                 $root.refs.set(refId, value);
 
             } else if (SetSchema.is(type)) {
-                const valueRef: SetSchema = (operation === OPERATION.REPLACE)
-                    ? previousValue || new SetSchema()
+                const refId = decode.number(bytes, it);
+
+                const valueRef: SetSchema = ($root.refs.has(refId))
+                    ? previousValue
                     : new SetSchema();
+
                 value = valueRef.clone(true);
 
-                const refId = decode.number(bytes, it);
+                // preserve schema callbacks
+                if (previousValue) {
+                    value.onAdd = previousValue.onAdd;
+                    value.onRemove = previousValue.onRemove;
+                    value.onChange = previousValue.onChange;
+                }
+
                 $root.refs.set(refId, value);
 
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
             }
-
-            // console.log("ADD TO CHANGES:", { refId });
-
-            // if (
-            //     // hasChange &&
-            //     (
-            //         this.onChange
-            //         // || ref.$listeners[field]
-            //     )
-            // ) {
-                changes.push({
-                    op: operation,
-                    field,
-                    dynamicIndex,
-                    value,
-                    previousValue,
-                });
-            // }
 
             if (
                 value !== null &&
@@ -438,6 +456,8 @@ export abstract class Schema {
                 }
 
                 if (ref instanceof Schema) {
+                    hasChange = (ref[_field] !== value);
+
                     ref[field] = value;
 
                     //
@@ -451,23 +471,45 @@ export abstract class Schema {
 
                 } else if (ref instanceof MapSchema) {
                     const key = ref['$indexes'].get(field);
+
+                    hasChange = !ref.has(key);
+
                     ref.set(key, value);
 
                 } else if (ref instanceof ArraySchema) {
                     // const key = ref['$indexes'][field];
                     // console.log("SETTING FOR ArraySchema =>", { field, key, value });
                     // ref[key] = value;
+                    hasChange = ref[field] === undefined;
+
                     ref.setAt(field, value);
 
                 } else if (
                     ref instanceof CollectionSchema ||
                     ref instanceof SetSchema
                 ) {
+                    hasChange = !ref.has(value);
+
                     const index = ref.add(value);
                     ref['setIndex'](field, index);
                 }
             }
 
+            if (
+                hasChange
+                // &&
+                // (
+                //     this.onChange || ref.$listeners[field]
+                // )
+            ) {
+                changes.push({
+                    op: operation,
+                    field,
+                    dynamicIndex,
+                    value,
+                    previousValue,
+                });
+            }
         }
 
         this._triggerChanges(allChanges);
@@ -948,7 +990,10 @@ export abstract class Schema {
                     // trigger onRemove on child structure.
                     //
                     if (
-                        change.op === OPERATION.DELETE &&
+                        (
+                            change.op === OPERATION.DELETE ||
+                            change.op === OPERATION.DELETE_AND_ADD
+                        ) &&
                         change.previousValue instanceof Schema &&
                         change.previousValue.onRemove
                     ) {

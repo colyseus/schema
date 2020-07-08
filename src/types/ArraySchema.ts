@@ -136,17 +136,20 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     }
 
     setAt(index: number, value: V) {
-        const isRef = (value['$changes']) !== undefined;
-        if (isRef) {
+        if (value['$changes'] !== undefined) {
             (value['$changes'] as ChangeTree).setParent(this, this.$changes.root, index);
         }
+
+        const operation = (this.$changes.indexes[index] !== undefined)
+            ? OPERATION.REPLACE
+            : OPERATION.ADD;
 
         this.$changes.indexes[index] = index;
 
         this.$indexes.set(index, index);
         this.$items.set(index, value);
 
-        this.$changes.change(index);
+        this.$changes.change(index, operation);
     }
 
     deleteAt(index: number) {
@@ -528,9 +531,6 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
 
         if (isDecoding) {
             cloned = new ArraySchema(...Array.from(this.$items.values()));
-            cloned.onAdd = this.onAdd;
-            cloned.onRemove = this.onRemove;
-            cloned.onChange = this.onChange;
 
         } else {
             cloned = new ArraySchema(...this.map(item => (

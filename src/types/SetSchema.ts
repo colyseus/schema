@@ -164,9 +164,6 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         if (isDecoding) {
             // client-side
             cloned = Object.assign(new SetSchema(), this);
-            cloned.onAdd = this.onAdd;
-            cloned.onRemove = this.onRemove;
-            cloned.onChange = this.onChange;
 
         } else {
             // server-side
