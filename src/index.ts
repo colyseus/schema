@@ -23,6 +23,9 @@ export {
     filterChildren,
     defineTypes,
 
+    // Internals
+    SchemaDefinition,
+
     // Types
     Context,
     PrimitiveType,
