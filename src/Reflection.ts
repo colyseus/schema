@@ -4,6 +4,7 @@ import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { SetSchema } from "./types/SetSchema";
+import * as decode from "./encoding/decode";
 
 const reflectionContext = new Context();
 
@@ -126,11 +127,11 @@ export class Reflection extends Schema {
         return reflection.encodeAll();
     }
 
-    static decode (bytes: number[]): Schema {
+    static decode (bytes: number[], it?: decode.Iterator): Schema {
         const context = new Context();
 
         const reflection = new Reflection();
-        reflection.decode(bytes);
+        reflection.decode(bytes, it);
 
         let schemaTypes = reflection.types.reduce((types, reflectionType) => {
             types[reflectionType.id] = class _ extends Schema {};

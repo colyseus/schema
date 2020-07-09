@@ -166,7 +166,7 @@ const encodedStateSchema = Reflection.encode(new MyState());
 const myState = Reflection.decode(encodedStateSchema);
 ```
 
-### Planned feature: Data filters (not supported atm)
+### Data filters 
 
 On the example below, we are filtering entities which are close to the player entity.
 
@@ -174,7 +174,7 @@ On the example below, we are filtering entities which are close to the player en
 import { Schema, type, filter } from "@colyseus/schema";
 
 export class State extends Schema {
-  @filter(function(this: State, client: any, value: Entity) {
+  @filterChildren(function(this: State, client: any, value: Entity) {
     const currentPlayer = this.entities[client.sessionId]
 
     var a = value.x - currentPlayer.x;
