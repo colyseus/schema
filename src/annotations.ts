@@ -116,12 +116,69 @@ export class SchemaDefinition {
     }
 }
 
+export function hasFilter(
+    klass: typeof Schema,
+    knownSchemas: Set<typeof Schema> = new Set<typeof Schema>()
+    // knownSchemas: WeakSet<typeof Schema> = new WeakSet<typeof Schema>()
+) {
+    const definition = klass['_definition'];
+    const schema = definition.schema;
+
+    let has = false;
+
+    // set of schemas we already checked OR are still checking
+    knownSchemas.add(klass);
+
+    for (const fieldName of Object.keys(schema)) {
+        // skip if a filter has been found
+        if (has) { break; }
+
+        if (
+            definition.filters[definition.indexes[fieldName]] ||
+            definition.childFilters[definition.indexes[fieldName]]
+        ) {
+            has = true;
+
+        } else if (typeof schema[fieldName] === 'function') {
+            const childSchema = schema[fieldName] as typeof Schema;
+
+            if (!knownSchemas.has(childSchema)) {
+                has = hasFilter(childSchema, knownSchemas);
+            }
+
+        } else if (typeof(Object.values(schema[fieldName])[0]) !== "string") {
+            //  Array.isArray(schema[fieldName])
+            const key = Object.keys(schema[fieldName])[0];
+            const childSchema = schema[fieldName][key] as typeof Schema;
+
+            if (!knownSchemas.has(childSchema)) {
+                has = hasFilter(childSchema, knownSchemas);
+            }
+
+        // } else if ((schema[fieldName] as any).map) {
+        //     if (typeof (schema[fieldName] as any).map === 'string') {
+        //         continue;
+        //     }
+        //     const childSchema = (schema[fieldName] as any).map['_schema'];
+        //     const childFilters = (schema[fieldName] as any).map['_filters'];
+
+        //     if (!knownSchemas.has(childSchema)) {
+        //         has = hasFilter(childSchema, childFilters, knownSchemas);
+        //     }
+
+        }
+    }
+
+    return has;
+}
+
 // Colyseus integration
 export type Client = { sessionId: string } & any;
 
 export class Context {
     types: {[id: number]: typeof Schema} = {};
     schemas = new Map<typeof Schema, number>();
+    useFilters: boolean = false;
 
     has(schema: typeof Schema) {
         return this.schemas.has(schema);

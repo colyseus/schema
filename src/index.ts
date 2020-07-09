@@ -22,6 +22,7 @@ export {
     filter,
     filterChildren,
     defineTypes,
+    hasFilter,
 
     // Internals
     SchemaDefinition,
