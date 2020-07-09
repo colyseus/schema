@@ -154,18 +154,6 @@ export function hasFilter(
             if (!knownSchemas.has(childSchema)) {
                 has = hasFilter(childSchema, knownSchemas);
             }
-
-        // } else if ((schema[fieldName] as any).map) {
-        //     if (typeof (schema[fieldName] as any).map === 'string') {
-        //         continue;
-        //     }
-        //     const childSchema = (schema[fieldName] as any).map['_schema'];
-        //     const childFilters = (schema[fieldName] as any).map['_filters'];
-
-        //     if (!knownSchemas.has(childSchema)) {
-        //         has = hasFilter(childSchema, childFilters, knownSchemas);
-        //     }
-
         }
     }
 
@@ -178,7 +166,6 @@ export type Client = { sessionId: string } & any;
 export class Context {
     types: {[id: number]: typeof Schema} = {};
     schemas = new Map<typeof Schema, number>();
-    useFilters: boolean = false;
 
     has(schema: typeof Schema) {
         return this.schemas.has(schema);

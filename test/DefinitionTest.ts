@@ -111,7 +111,7 @@ describe("Definition Tests", () => {
             assert.equal(false, fun());
         });
 
-        it("should find filter on more complex recursive structures", () => {
+        it("should find filter on more complex recursive structures - array", () => {
             class ContainerA extends Schema {
                 @type("string") contAName: string;
             }
@@ -128,6 +128,29 @@ describe("Definition Tests", () => {
                 defineTypes(cont, {
                     containersA: [ContainerA],
                     containersB: [ContainerB],
+                });
+            });
+
+            assert.ok(hasFilter(State));
+        });
+
+        it("should find filter on more complex recursive structures - map", () => {
+            class ContainerA extends Schema {
+                @type("string") contAName: string;
+            }
+            class ContainerB extends Schema {
+                @filter(function (client, value, root) { return true; })
+                @type("string")
+                contBName: string;
+            }
+            class State extends Schema {
+            }
+
+            const allContainers = [State, ContainerA, ContainerB];
+            allContainers.forEach((cont) => {
+                defineTypes(cont, {
+                    containersA: { map: ContainerA },
+                    containersB: { map: ContainerB },
                 });
             });
 

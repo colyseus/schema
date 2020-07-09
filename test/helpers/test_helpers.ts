@@ -8,6 +8,9 @@ export function assertExecutionTime(time: number, cb: () => void) {
         cb();
     }
 
+    // allow increased threshold on code coverage
+    if (IS_COVERAGE) { time *= 2; }
+
     // return time taken to execute task
     // const [_, now] = process.hrtime()
     const now = Date.now();
