@@ -393,8 +393,7 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param thisArg If provided, it will be used as the this value for each invocation of
      * predicate. If it is not provided, undefined is used instead.
      */
-    find<S extends V>(predicate: (this: void, value: V, index: number, obj: V[]) => value is S, thisArg?: any): S | undefined
-    find(predicate: (value: V, index: number, obj: V[]) => unknown, thisArg?: any): V | undefined {
+    find(predicate: (value: V, index: number, obj: V[]) => boolean, thisArg?: any): V | undefined {
         return Array.from(this.$items.values()).find(predicate, thisArg);
     }
 

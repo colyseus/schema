@@ -1070,4 +1070,11 @@ describe("ArraySchema Tests", () => {
         state.discardAllChanges();
     });
 
+    describe("array methods", () => {
+        it("#find()", () => {
+            const arr = new ArraySchema<number>(1,2,3,4,5);
+            assert.equal(3, arr.find((v) => v === 3));
+        })
+    })
+
 });
