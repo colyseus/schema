@@ -287,6 +287,37 @@ describe("Schema Usage", () => {
 
     });
 
+    describe("detecting changes", () => {
+        it("Schema", () => {
+            const state = new State();
+            assert.equal(false, state['$changes'].changed);
+
+            state.fieldNumber = 10;
+            assert.equal(true, state['$changes'].changed);
+
+            state.player = new Player().assign({ name: "Hello" });
+            assert.equal(true, state['$changes'].changed);
+
+            state.discardAllChanges();
+            assert.equal(false, state['$changes'].changed);
+
+            state.player.name = "Changed...";
+            assert.equal(true, state['$changes'].changed);
+        });
+
+        it("MapSchema", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>();
+            state.mapOfPlayers['one'] = new Player().assign({ name: "One" });
+
+            state.discardAllChanges();
+            assert.equal(false, state['$changes'].changed);
+
+            state.mapOfPlayers['one'].name = "Changed...";
+            assert.equal(true, state['$changes'].changed);
+        });
+    })
+
     describe("API", () => {
         it("should allow deleting non-existing items", () => {
             assert.doesNotThrow(() => {
@@ -1026,5 +1057,25 @@ describe("Schema Usage", () => {
             })
         });
 
+        it("should be able to re-construct entire schema tree", () => {
+            const state = new State();
+            state.fieldNumber = 10;
+            state.fieldString = "Hello world";
+
+            state.mapOfPlayers = new MapSchema<Player>();
+            state.mapOfPlayers['one'] = new Player().assign({ name: "Player one", x: 1, y: 1 });
+            state.mapOfPlayers['two'] = new Player().assign({ name: "Player two", x: 2, y: 2 });
+
+            state.arrayOfPlayers = new ArraySchema<Player>();
+            state.arrayOfPlayers.push(new Player().assign({name: "One"}));
+            state.arrayOfPlayers.push(new Player().assign({name: "Two"}));
+
+            state.player = new Player().assign({ name: "A player", x: 0, y: 0 });
+
+            const json = state.toJSON();
+
+            const newState = new State().assign(json);
+            assert.deepEqual(json, newState.toJSON());
+        });
     });
 });

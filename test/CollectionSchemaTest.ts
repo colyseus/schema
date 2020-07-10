@@ -260,4 +260,13 @@ describe("CollectionSchema Tests", () => {
         assert.deepEqual([1, 3, 5, 7, 9], decoded2.numbers.toArray());
     });
 
+    it("CollectionSchema.toJSON", () => {
+        const collection = new CollectionSchema<number>();
+        collection.add(1);
+        collection.add(2);
+        collection.add(3);
+
+        assert.deepEqual([1, 2, 3], collection.toJSON());
+    })
+
 });

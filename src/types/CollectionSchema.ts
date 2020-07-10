@@ -132,15 +132,17 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
     }
 
     toJSON() {
-        const map: any = {};
+        const values: V[] = [];
 
         this.forEach((value, key) => {
-            map[key] = (typeof (value['toJSON']) === "function")
-                ? value['toJSON']()
-                : value;
+            values.push(
+                (typeof (value['toJSON']) === "function")
+                    ? value['toJSON']()
+                    : value
+            );
         });
 
-        return map;
+        return values;
     }
 
     //

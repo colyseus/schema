@@ -2,9 +2,9 @@ import * as sinon from "sinon";
 import * as util from "util";
 import * as assert from "assert";
 
-import { type, filter } from './../src/annotations';
+import { type, filter, Context } from './../src/annotations';
 import { State, Player } from "./Schema";
-import { Schema, MapSchema, ArraySchema, DataChange } from "../src";
+import { Schema, MapSchema, ArraySchema, DataChange, Reflection } from "../src";
 
 describe("Change API", () => {
 
@@ -192,9 +192,7 @@ describe("Change API", () => {
             decodedState.arrayOfNumbers.onRemove = function(item, index) {};
             const onRemoveSpy = sinon.spy(decodedState.arrayOfNumbers, 'onRemove');
 
-            decodedState.arrayOfNumbers.onAdd = function(item, index) {
-                console.log("ON ADD!", { item, index });
-            };
+            decodedState.arrayOfNumbers.onAdd = function(item, index) {};
             const onAddSpy = sinon.spy(decodedState.arrayOfNumbers, 'onAdd');
 
             decodedState.arrayOfNumbers.onChange = function(item, index) {}
@@ -295,13 +293,11 @@ describe("Change API", () => {
             sinon.assert.callCount(onChangeSpy, 4);
         });
 
-        xit("should call onAdd when replacing items", () => {
+        it("should call onAdd when replacing items", () => {
+            const type = Context.create();
+
             class Card extends Schema {
                 @type("number") num: number;
-                constructor(num: number) {
-                    super();
-                    this.num = num;
-                }
             }
 
             class Player extends Schema {
@@ -312,19 +308,22 @@ describe("Change API", () => {
                 @type(Player) player = new Player();
             }
 
-            const decodedState = new CardGameState();
-
-            decodedState.player.cards.onAdd = () => {};
-            const onAddSpy = sinon.spy(decodedState.player.cards, "onAdd");
-
             const state = new CardGameState();
-            state.player.cards.push(new Card(1));
+            state.player.cards.push(new Card().assign({ num: 1 }));
+
+            const decodedState = Reflection.decode<CardGameState>(Reflection.encode(state));
+
+            let onAddSpy: sinon.SinonSpy;
+            decodedState.player.onChange = function() {
+                decodedState.player.cards.onAdd = function (item, i) {};
+                onAddSpy = sinon.spy(decodedState.player.cards, "onAdd");
+            }
 
             decodedState.decode(state.encode());
             sinon.assert.callCount(onAddSpy, 1);
 
             state.player.cards.splice(0, 1);
-            state.player.cards.push(new Card(2));
+            state.player.cards.push(new Card().assign({ num: 2 }));
             decodedState.decode(state.encode());
             sinon.assert.callCount(onAddSpy, 2);
         });
@@ -748,7 +747,7 @@ describe("Change API", () => {
             @type(Round) currentRound: Round = new Round();
         }
 
-        xit("should not trigger unchanged fields", () => {
+        it("should not trigger unchanged fields", () => {
             let totalFieldChanges: number = 0;
             let scoresFieldChanges: number = 0;
 
@@ -757,8 +756,18 @@ describe("Change API", () => {
 
             const decodedState = new State();
 
-            decodedState.currentRound.listen("scores", () => scoresFieldChanges++);
-            decodedState.currentRound.listen("totals", () => totalFieldChanges++);
+            // decodedState.currentRound.listen("scores", () => scoresFieldChanges++);
+            // decodedState.currentRound.listen("totals", () => totalFieldChanges++);
+
+            decodedState.listen("currentRound", (currentRound) => {
+                currentRound.scores.onChange = function (value, key) {
+                    scoresFieldChanges++;
+                };
+
+                currentRound.totals.onChange = function (value, key) {
+                    totalFieldChanges++;
+                };
+            });
 
             do {
                 state.timer--;
@@ -781,7 +790,8 @@ describe("Change API", () => {
             state.discardAllChanges();
 
             assert.equal(2, totalFieldChanges);
-            assert.equal(10, scoresFieldChanges);
+            assert.equal(20, scoresFieldChanges);
+            // assert.equal(10, scoresFieldChanges);
         });
     });
 

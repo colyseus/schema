@@ -257,4 +257,13 @@ describe("SetSchema Tests", () => {
         assert.deepEqual([1, 3, 5, 7, 9], decoded2.numbers.toArray());
     });
 
+    it("SetSchema.toJSON", () => {
+        const set = new SetSchema();
+        set.add("one");
+        set.add("two");
+        set.add("three");
+
+        assert.deepEqual(['one', 'two', 'three'], set.toJSON());
+    });
+
 });

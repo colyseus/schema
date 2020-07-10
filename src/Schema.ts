@@ -345,6 +345,11 @@ export abstract class Schema {
                         value = this.createTypeInstance(bytes, it, childType || type as typeof Schema);
                         value.$changes.refId = refId;
                         $root.refs.set(refId, value);
+
+                        if (previousValue) {
+                            value.onChange = previousValue.onChange;
+                            value.onRemove = previousValue.onRemove;
+                        }
                     }
                 }
 
@@ -974,11 +979,18 @@ export abstract class Schema {
                             (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
 
                         } else if (change.op === OPERATION.DELETE) {
-                            (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex || change.field);
+                            //
+                            // FIXME: `previousValue` should always be avaiiable.
+                            // ADD + DELETE operations are still encoding DELETE operation.
+                            //
+                            if (change.previousValue !== undefined) {
+                                (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex || change.field);
+                            }
 
                         } else if (change.op === OPERATION.DELETE_AND_ADD) {
-                            // TODO: refactor me!
-                            (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex);
+                            if (change.previousValue !== undefined) {
+                                (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex);
+                            }
                             (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
 
                         } else if (change.op === OPERATION.REPLACE) {

@@ -127,13 +127,13 @@ export class Reflection extends Schema {
         return reflection.encodeAll();
     }
 
-    static decode (bytes: number[], it?: decode.Iterator): Schema {
+    static decode<T extends Schema = Schema>(bytes: number[], it?: decode.Iterator): T {
         const context = new Context();
 
         const reflection = new Reflection();
         reflection.decode(bytes, it);
 
-        let schemaTypes = reflection.types.reduce((types, reflectionType) => {
+        const schemaTypes = reflection.types.reduce((types, reflectionType) => {
             types[reflectionType.id] = class _ extends Schema {};
             return types;
         }, {});
