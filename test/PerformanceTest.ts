@@ -38,7 +38,7 @@ describe("Performance", () => {
         player.y = getRandomNumber();
 
         // TODO: improve this value
-        assertExecutionTime(() => state.encode(), "encoding a single array item change", 50); // 5
+        assertExecutionTime(() => state.encode(), "encoding a single array item change", 60); // 5
     });
 
     it("MapSchema", function () {
@@ -60,6 +60,6 @@ describe("Performance", () => {
         player.y = getRandomNumber();
 
         // TODO: improve this value
-        assertExecutionTime(() => state.encode(), "encoding a single map item change", 50); // 15
+        assertExecutionTime(() => state.encode(), "encoding a single map item change", 60); // 15
     });
 });

@@ -3,7 +3,7 @@ import * as assert from "assert";
 import * as util from "util";
 
 import { State, Player } from "./Schema";
-import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges } from "../src";
+import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges, filterChildren } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -1030,5 +1030,44 @@ describe("ArraySchema Tests", () => {
         assert.doesNotThrow(() => arr.slice(0).sort());
     });
 
+    it("should filter children items", () => {
+        class Player extends Schema {
+            @type("string") name: string;
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+
+        class State extends Schema {
+            @filterChildren(function(client, key: number, value: Player) {
+                return client.sessionId === value.name;
+            })
+            @type([Player]) players = new ArraySchema<Player>();
+        }
+
+        const state = new State();
+        state.players.push(new Player().assign({ name: "one", x: 0, y: 0 }));
+        state.players.push(new Player().assign({ name: "two", x: 0, y: 0 }));
+        state.players.push(new Player().assign({ name: "three", x: 0, y: 0 }));
+
+        const fullBytes = state.encode(undefined, undefined, undefined, true);
+
+        const client1 = { sessionId: "one" };
+        const client2 = { sessionId: "two" };
+        const client3 = { sessionId: "three" };
+
+        const decoded1 = new State();
+        const decoded2 = new State();
+        const decoded3 = new State();
+
+        decoded1.decode(state.applyFilters(fullBytes, client1))
+        decoded2.decode(state.applyFilters(fullBytes, client2))
+        decoded3.decode(state.applyFilters(fullBytes, client3))
+
+        assert.equal(1, decoded1.players.length);
+        assert.equal(1, decoded2.players.length);
+        assert.equal(1, decoded3.players.length);
+
+        state.discardAllChanges();
+    });
 
 });

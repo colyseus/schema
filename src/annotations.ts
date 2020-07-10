@@ -98,7 +98,9 @@ export class SchemaDefinition {
             MapSchema.is(type) ||
             SetSchema.is(type)
         ) {
-            if (!this.childFilters) { this.childFilters = {}; }
+            if (!this.childFilters) {
+                this.childFilters = {};
+            }
 
             this.childFilters[index] = cb;
 
