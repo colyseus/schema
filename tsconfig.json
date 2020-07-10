@@ -6,6 +6,7 @@
         "target": "es5",
         "declaration": true,
         "experimentalDecorators": true,
+        "downlevelIteration": true, /*only for tests*/
         "noImplicitAny": false,
         "sourceMap": true
     },

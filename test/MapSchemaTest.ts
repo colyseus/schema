@@ -347,4 +347,27 @@ describe("MapSchema Tests", () => {
         assert.equal(decodeState.players['8658'].next,'76355')//3->1
         done();
     });
+
+    it("should iterate though map values", () => {
+        const map = new MapSchema<number>();
+        map.set("one", 1);
+        map.set("two", 2);
+        map.set("three", 3);
+        map.set("four", 4);
+        map.set("five", 5);
+
+        const keys: string[] = [];
+        const values: number[] = [];
+
+        for (const key of map.keys()) {
+            keys.push(key);
+        }
+        for (const num of map.values()) {
+            values.push(num);
+        }
+
+        assert.deepEqual(['one', 'two', 'three', 'four', 'five'], keys);
+        assert.deepEqual([1, 2, 3, 4, 5], values);
+    });
+
 });
