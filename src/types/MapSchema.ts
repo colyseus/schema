@@ -135,7 +135,7 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
 
     clear() {
         // discard previous operations.
-        this.$changes.discard();
+        this.$changes.discard(true);
 
         // clear previous indexes
         this.$indexes.clear();

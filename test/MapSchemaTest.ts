@@ -78,7 +78,7 @@ describe("MapSchema Tests", () => {
         const decoded2 = new State();
         const decoded3 = new State();
 
-        let encoded = state.encode(undefined, undefined, undefined, true);
+        let encoded = state.encode(undefined, undefined, true);
 
         let encoded1 = state.applyFilters(encoded, client1);
         let encoded2 = state.applyFilters(encoded, client2);
@@ -102,7 +102,7 @@ describe("MapSchema Tests", () => {
         // clear map
         state.map.clear();
 
-        encoded = state.encode(undefined, undefined, undefined, true);
+        encoded = state.encode(undefined, undefined, true);
         encoded1 = state.applyFilters(encoded, client1);
         encoded2 = state.applyFilters(encoded, client2);
         encoded3 = state.applyFilters(encoded, client3);

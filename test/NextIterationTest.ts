@@ -238,7 +238,7 @@ describe("Next Iteration", () => {
         const decoded2 = new State();
         const decoded3 = new State();
 
-        let encoded = state.encode(undefined, undefined, undefined, true);
+        let encoded = state.encode(undefined, undefined, true);
 
         let encoded1 = state.applyFilters(encoded, client1);
         let encoded2 = state.applyFilters(encoded, client2);
@@ -261,7 +261,7 @@ describe("Next Iteration", () => {
 
         // mutate "two" key.
         state.map.set("two", 22);
-        encoded = state.encode(undefined, undefined, undefined, true);
+        encoded = state.encode(undefined, undefined, true);
 
         encoded1 = state.applyFilters(encoded, client1);
         encoded2 = state.applyFilters(encoded, client2);
@@ -304,7 +304,7 @@ describe("Next Iteration", () => {
         const decoded2 = new State();
         const decoded3 = new State();
 
-        let encoded = state.encode(undefined, undefined, undefined, true);
+        let encoded = state.encode(undefined, undefined, true);
 
         let encoded1 = state.applyFilters(encoded, client1);
         let encoded2 = state.applyFilters(encoded, client2);
@@ -330,7 +330,7 @@ describe("Next Iteration", () => {
         state.map.get("two").x = 22;
         state.map.get("three").x = 33;
 
-        encoded = state.encode(undefined, undefined, undefined, true);
+        encoded = state.encode(undefined, undefined, true);
         encoded1 = state.applyFilters(encoded, client1);
         encoded2 = state.applyFilters(encoded, client2);
         encoded3 = state.applyFilters(encoded, client3);
@@ -477,7 +477,7 @@ describe("Next Iteration", () => {
 
         state.player = player;
 
-        let encoded = state.encode(undefined, undefined, undefined, true);
+        let encoded = state.encode(undefined, undefined, true);
         let encoded1 = state.applyFilters(encoded, client1);
 
         const decoded1 = new State();
@@ -495,7 +495,7 @@ describe("Next Iteration", () => {
         state.player.x = 2;
         state.player.item.damage = 6;
 
-        encoded = state.encode(undefined, undefined, undefined, true);
+        encoded = state.encode(undefined, undefined, true);
 
         encoded1 = state.applyFilters(encoded, client1);
         decoded1.decode(encoded1);

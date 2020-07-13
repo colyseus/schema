@@ -196,29 +196,24 @@ export abstract class Schema {
     decode(
         bytes: number[],
         it: decode.Iterator = { offset: 0 },
-        ref?: Ref,
+        ref: Ref = this,
         allChanges: Map<number, DataChange[]> = new Map<number, DataChange[]>(),
     ) {
         const $root = this.$changes.root;
         const totalBytes = bytes.length;
 
-        let refId: number;
-        let changes: DataChange[];
+        let refId: number = 0;
+        let changes: DataChange[] = [];
+
+        $root.refs.set(refId, this);
+        allChanges.set(refId, changes);
 
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
 
             if (byte === SWITCH_TO_STRUCTURE) {
                 refId = decode.number(bytes, it);
-
-                if (!$root.refs.has(refId)) {
-                    $root.refs.set(refId, this);
-                    ref = this;
-
-                } else {
-                    ref = $root.refs.get(refId) as Schema;
-                }
-
+                ref = $root.refs.get(refId) as Schema;
 
                 // create empty list of changes for this refId.
                 changes = [];
@@ -251,6 +246,14 @@ export abstract class Schema {
             let dynamicIndex: number | string;
 
             if (operation === OPERATION.CLEAR) {
+                //
+                // TODO:
+                //
+                // flag all children refId's for garbage collection.
+                // (if not a collection of primitive type)
+                //
+                // $root.removeRef(refId);
+                //
                 (ref as SchemaDecoderCallbacks).clear();
                 continue;
             }
@@ -295,6 +298,11 @@ export abstract class Schema {
             {
                 if (operation !== OPERATION.DELETE_AND_ADD) {
                     ref['deleteByIndex'](fieldIndex);
+                }
+
+                // Flag `refId` for garbage collection.
+                if (previousValue && previousValue['$changes']) {
+                    $root.removeRef(previousValue['$changes'].refId);
                 }
 
                 value = null;
@@ -344,13 +352,18 @@ export abstract class Schema {
                     if (!value) {
                         value = this.createTypeInstance(bytes, it, childType || type as typeof Schema);
                         value.$changes.refId = refId;
-                        $root.refs.set(refId, value);
 
                         if (previousValue) {
                             value.onChange = previousValue.onChange;
                             value.onRemove = previousValue.onRemove;
                         }
                     }
+
+                    if (value !== previousValue) {
+                        $root.addRef(refId, value);
+                        // $root.refs.set(refId, value);
+                    }
+
                 }
 
             } else if (ArraySchema.is(type)) {
@@ -361,6 +374,7 @@ export abstract class Schema {
                     : new ArraySchema();
 
                 value = valueRef.clone(true);
+                value.$changes.refId = refId;
 
                 // preserve schema callbacks
                 if (previousValue) {
@@ -385,7 +399,9 @@ export abstract class Schema {
                 // }
 
                 // value.$changes.refId = refId;
-                $root.refs.set(refId, value);
+
+                $root.addRef(refId, value);
+                // $root.refs.set(refId, value);
 
                 value = getArrayProxy(value);
 
@@ -397,6 +413,7 @@ export abstract class Schema {
                     : new MapSchema();
 
                 value = valueRef.clone(true);
+                value.$changes.refId = refId;
 
                 // preserve schema callbacks
                 if (previousValue) {
@@ -405,7 +422,9 @@ export abstract class Schema {
                     value.onChange = previousValue.onChange;
                 }
 
-                $root.refs.set(refId, value);
+                $root.addRef(refId, value);
+                // $root.refs.set(refId, value);
+
                 value = getMapProxy(value);
 
             } else if (CollectionSchema.is(type)) {
@@ -416,6 +435,7 @@ export abstract class Schema {
                     : new CollectionSchema();
 
                 value = valueRef.clone(true);
+                value.$changes.refId = refId;
 
                 // preserve schema callbacks
                 if (previousValue) {
@@ -424,7 +444,8 @@ export abstract class Schema {
                     value.onChange = previousValue.onChange;
                 }
 
-                $root.refs.set(refId, value);
+                $root.addRef(refId, value);
+                // $root.refs.set(refId, value);
 
             } else if (SetSchema.is(type)) {
                 const refId = decode.number(bytes, it);
@@ -434,6 +455,7 @@ export abstract class Schema {
                     : new SetSchema();
 
                 value = valueRef.clone(true);
+                value.$changes.refId = refId;
 
                 // preserve schema callbacks
                 if (previousValue) {
@@ -442,7 +464,8 @@ export abstract class Schema {
                     value.onChange = previousValue.onChange;
                 }
 
-                $root.refs.set(refId, value);
+                $root.addRef(refId, value);
+                // $root.refs.set(refId, value);
 
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
@@ -519,11 +542,13 @@ export abstract class Schema {
 
         this._triggerChanges(allChanges);
 
+        // garbage collection!
+        $root.garbageCollectDeletedRefs();
+
         return allChanges;
     }
 
     encode(
-        root: Schema = this,
         encodeAll = false,
         bytes: number[] = [],
         useFilters: boolean = false,
@@ -550,8 +575,13 @@ export abstract class Schema {
             // });
 
             // root `refId` is skipped.
-            encode.uint8(bytes, SWITCH_TO_STRUCTURE);
-            encode.number(bytes, changeTree.refId);
+            if (
+                changeTree.refId > 0 &&
+                (changeTree.changed || encodeAll)
+            ) {
+                encode.uint8(bytes, SWITCH_TO_STRUCTURE);
+                encode.number(bytes, changeTree.refId);
+            }
 
             const changes: ChangeOperation[] | number[] = (encodeAll)
                 ? Array.from(changeTree.allChanges)
@@ -756,7 +786,7 @@ export abstract class Schema {
     }
 
     encodeAll (bytes?: number[]) {
-        return this.encode(this, true, bytes);
+        return this.encode(true, bytes);
     }
 
     applyFilters(encodedBytes: number[], client: Client, root = this) {

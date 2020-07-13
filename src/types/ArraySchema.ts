@@ -168,7 +168,7 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
 
     clear() {
         // discard previous operations.
-        this.$changes.discard();
+        this.$changes.discard(true);
 
         // clear previous indexes
         this.$indexes.clear();

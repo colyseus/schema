@@ -541,7 +541,7 @@ describe("ArraySchema Tests", () => {
         state.players['one'].cards.push(new Card(5));
         state.players['one'].cards.push(new Card(4));
 
-        let encoded = state.encode(undefined, undefined, undefined, true);
+        let encoded = state.encode(undefined, undefined, true);
 
         const decodedState = new StateWithFilter();
         decodedState.decode(encoded);
@@ -558,7 +558,7 @@ describe("ArraySchema Tests", () => {
 
         // set cards array with applied filter.
         state.players['one'].cards = filteredCards;
-        encoded = state.encode(undefined, undefined, undefined, true);
+        encoded = state.encode(undefined, undefined, true);
 
         decodedState.decode(state.applyFilters(encoded, {}));
         assert.equal(3, decodedState.players['one'].cards.length);
@@ -1049,7 +1049,7 @@ describe("ArraySchema Tests", () => {
         state.players.push(new Player().assign({ name: "two", x: 0, y: 0 }));
         state.players.push(new Player().assign({ name: "three", x: 0, y: 0 }));
 
-        const fullBytes = state.encode(undefined, undefined, undefined, true);
+        const fullBytes = state.encode(undefined, undefined, true);
 
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };

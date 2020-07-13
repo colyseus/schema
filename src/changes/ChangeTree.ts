@@ -33,29 +33,60 @@ export interface FieldCache {
 // Root holds all schema references by unique id
 //
 export class Root {
+    //
+    // Relation of refId => Schema structure
+    // For direct access of structures during decoding time.
+    //
     public refs = new Map<number, Ref>();
+    public refCounts: {[refId: number]: number} = {};
+    public deletedRefs = new Set<number>();
+
     protected nextUniqueId: number = 0;
 
     getNextUniqueId() {
         return this.nextUniqueId++;
     }
 
-    // changes = new Set<ChangeTree>();
-    // allChanges = new Set<ChangeTree>();
+    // for decoding
+    addRef(refId: number, ref: Ref) {
+        this.refs.set(refId, ref);
+        this.refCounts[refId] = (this.refCounts[refId] || 0) + 1;
+        // console.log("addRef:", { refId });
+    }
 
-    // dirty(change: ChangeTree) {
-    //     this.changes.add(change);
-    //     this.allChanges.add(change);
-    // }
+    // for decoding
+    removeRef(refId) {
+        this.refCounts[refId] = this.refCounts[refId] - 1;
+        this.deletedRefs.add(refId);
+        // console.log("removeRef:", { refId });
+    }
 
-    // discard(change: ChangeTree) {
-    //     this.changes.delete(change);
-    // }
+    // for decoding
+    garbageCollectDeletedRefs() {
+        this.deletedRefs.forEach((refId) => {
+            if (this.refCounts[refId] <= 0) {
+                const ref = this.refs.get(refId);
 
-    // delete (change: ChangeTree) {
-    //     this.changes.delete(change);
-    //     this.allChanges.delete(change);
-    // }
+                // TODO: Flag child refIds for removal.
+
+                if (ref instanceof Schema) {
+                    for (const fieldName in ref['_definition'].schema) {
+                        if (
+                            typeof (ref['_definition'].schema[fieldName]) !== "string" &&
+                            ref[fieldName]['$changes']
+                        ) {
+                            this.removeRef(ref[fieldName]['$changes'].refId);
+                        }
+                    }
+                }
+
+                this.refs.delete(refId);
+            }
+        });
+
+        // clear deleted refs.
+        this.deletedRefs.clear();
+    }
 }
 
 export class ChangeTree {
@@ -69,6 +100,7 @@ export class ChangeTree {
 
     indexes: {[index: string]: any};
 
+    changed: boolean = false;
     changes = new Map<number, ChangeOperation>();
     allChanges = new Set<number>();
 
@@ -80,10 +112,6 @@ export class ChangeTree {
     constructor(ref: Ref, parent?: Ref, root?: Root) {
         this.ref = ref;
         this.setParent(parent, root);
-    }
-
-    get changed () {
-        return this.changes.size > 0;
     }
 
     setParent(
@@ -124,12 +152,7 @@ export class ChangeTree {
                 }
             }
 
-        } else if (
-            this.ref instanceof MapSchema ||
-            this.ref instanceof ArraySchema ||
-            this.ref instanceof CollectionSchema ||
-            this.ref instanceof SetSchema
-        ) {
+        } else if (typeof (this.ref) === "object") {
             this.ref.forEach((value, key) => {
                 if (value instanceof Schema) {
                     const changeTreee = value['$changes'];
@@ -142,26 +165,6 @@ export class ChangeTree {
                     );
                 }
             });
-
-        // } else if (this.ref instanceof ArraySchema) {
-        //     this.ref.forEach((value, key) => {
-        //         // console.log("SETTING PARENT BY REF:", { key, value });
-        //         if (value instanceof Schema) {
-        //             const changeTreee = value['$changes'];
-        //             const parentIndex = this.ref['$changes'].indexes[key];
-
-        //             changeTreee.setParent(
-        //                 this.ref,
-        //                 this.root,
-        //                 parentIndex,
-        //             );
-
-        //             // const parentDefinition = (this.parent as Schema)['_definition'];
-        //             // changeTreee.childType = parentDefinition.schema[parentDefinition.fieldsByIndex[this.parentIndex]]
-        //         }
-        //         // value.$changes.change(key);
-        //     });
-
         }
     }
 
@@ -191,6 +194,7 @@ export class ChangeTree {
 
         this.allChanges.add(index);
 
+        this.changed = true;
         this.touchParents();
     }
 
@@ -254,7 +258,7 @@ export class ChangeTree {
             : this.indexes[fieldName];
 
         if (index === undefined) {
-            console.warn("MapSchema: trying to delete non-existing value. ")
+            console.warn(`@colyseus/schema ${this.ref.constructor.name}: trying to delete non-existing index: ${fieldName} (${index})`);
             return;
         }
 
@@ -273,13 +277,15 @@ export class ChangeTree {
             previousValue['$changes'].parent = undefined;
         }
 
+        this.changed = true;
         this.touchParents();
 
         // this.root?.dirty(this);
     }
 
-    discard() {
+    discard(changed: boolean = false) {
         this.changes.clear();
+        this.changed = changed;
 
         // re-set `currentCustomOperation`
         this.currentCustomOperation = 0;

@@ -2,6 +2,7 @@ import * as assert from "assert";
 import { type } from "../src/annotations";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity } from "./Schema";
 import { Schema, ArraySchema, MapSchema } from "../src";
+import { stat } from "fs";
 
 describe("Schema Usage", () => {
 
@@ -302,7 +303,7 @@ describe("Schema Usage", () => {
             assert.equal(false, state['$changes'].changed);
 
             state.player.name = "Changed...";
-            assert.equal(true, state['$changes'].changed);
+            assert.equal(true, state.player['$changes'].changed);
         });
 
         it("MapSchema", () => {
@@ -314,7 +315,7 @@ describe("Schema Usage", () => {
             assert.equal(false, state['$changes'].changed);
 
             state.mapOfPlayers['one'].name = "Changed...";
-            assert.equal(true, state['$changes'].changed);
+            assert.equal(true, state.mapOfPlayers['one']['$changes'].changed);
         });
     })
 
@@ -602,7 +603,7 @@ describe("Schema Usage", () => {
 
             // Player and State should've changes!
             assert.equal(state.player['$changes'].changed, true);
-            assert.equal(state['$changes'].changed, true);
+            // assert.equal(state['$changes'].changed, true);
 
             const serializedChanges = state.encode();
 
@@ -997,6 +998,45 @@ describe("Schema Usage", () => {
             assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
             assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
         });
+    });
+
+    describe("Inheritance", () => {
+        class Action extends Schema {
+            @type("boolean") active: boolean;
+        }
+        class BattleAction extends Action {
+            @type("number") damage: number;
+        }
+        class MoveAction extends Action {
+            @type("string") targetTile: string;
+            @type("number") speed: number;
+        }
+        class State extends Schema {
+            @type(Action) action: Action;
+        }
+
+        it("using direct Schema -> Schema reference", () => {
+            const state = new State();
+            state.action = new Action().assign({ active: false });
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            assert.equal(false, decodedState.action.active);
+
+            state.action.active = true;
+            decodedState.decode(state.encode());
+            assert.equal(true, decodedState.action.active);
+
+            state.action = new BattleAction().assign({ active: false, damage: 100 });
+            decodedState.decode(state.encode());
+            assert.equal(false, decodedState.action.active);
+            assert.equal(100, (decodedState.action as BattleAction).damage);
+
+            state.action.active = true;
+            decodedState.decode(state.encode());
+            assert.equal(true, decodedState.action.active);
+        })
     });
 
     describe("clone()", () => {

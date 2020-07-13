@@ -596,6 +596,9 @@ describe("Change API", () => {
             const secondDecodedState = new State();
             secondDecodedState.decode(state.encodeAll());
 
+            console.log("decodedState =>", decodedState.toJSON());
+            console.log("secondDecodedState =>", secondDecodedState.toJSON());
+
             assert.equal(JSON.stringify(secondDecodedState), JSON.stringify(decodedState));
 
             // "food"'s onChange should NOT be called.
@@ -775,7 +778,7 @@ describe("Change API", () => {
                 state.currentRound.scores[0]++;
                 state.currentRound.scores[1]++;
 
-                const encoded = state.encode(undefined, undefined, undefined, true);
+                const encoded = state.encode(undefined, undefined, true);
                 decodedState.decode(state.applyFilters(encoded, {}));
 
                 state.discardAllChanges();
@@ -785,7 +788,7 @@ describe("Change API", () => {
             state.currentRound.totals[0] = 100;
             state.currentRound.totals[1] = 100;
 
-            const encoded = state.encode(undefined, undefined, undefined, true);
+            const encoded = state.encode(undefined, undefined, true);
             decodedState.decode(state.applyFilters(encoded, {}));
             state.discardAllChanges();
 
@@ -880,6 +883,40 @@ describe("Change API", () => {
 
             assert.deepEqual(strs, ["Hello world", "Hello world"]);
             assert.deepEqual(nums, [10, 10]);
+        });
+
+    });
+
+    describe("propagante change to parent structure", () => {
+        xit("Array -> Schema should trigger onChange on Array", () => {
+            class Item extends Schema {
+                @type("number") qty: number = 1;
+            }
+            class State extends Schema {
+                @type([Item]) items: ArraySchema<Item>;
+            }
+
+            const state = new State();
+            state.items = new ArraySchema();
+            state.items.push(new Item().assign({ qty: 1 }));
+            state.items.push(new Item().assign({ qty: 1 }));
+            state.items.push(new Item().assign({ qty: 1 }));
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+            decodedState.items.onChange = function (item, key) {}
+            const onChangeSpy = sinon.spy(decodedState.items, 'onChange');
+
+            state.items[0].qty++;
+            state.items[1].qty++;
+            state.items[2].qty++;
+
+            decodedState.decode(state.encode());
+
+            //
+            // This is not supported anymore since colyseus/schema@1.0.0
+            //
+            sinon.assert.callCount(onChangeSpy, 3);
         });
 
     });

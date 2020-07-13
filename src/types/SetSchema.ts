@@ -78,7 +78,7 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
 
     clear() {
         // discard previous operations.
-        this.$changes.discard();
+        this.$changes.discard(true);
 
         // clear previous indexes
         this.$indexes.clear();

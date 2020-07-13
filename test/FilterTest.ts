@@ -32,7 +32,7 @@ describe("@filter Test", () => {
         state.playerTwo = new Player();
         state.playerTwo.name = "Katarina";
 
-        const encoded = state.encode(undefined, undefined, undefined, true);
+        const encoded = state.encode(undefined, undefined, true);
 
         debugBytes(encoded);
 
@@ -81,7 +81,7 @@ describe("@filter Test", () => {
         state.str = "hello";
         state.num = 1;
 
-        const encoded = state.encode(undefined, undefined, undefined, true);
+        const encoded = state.encode(undefined, undefined, true);
 
         const full = new State();
         full.decode(encoded);
@@ -119,7 +119,7 @@ describe("@filter Test", () => {
         state.players.push(new Player({ name: "two" }));
         state.players.push(new Player({ name: "three" }));
 
-        const encoded = state.encode(undefined, undefined, undefined, true);
+        const encoded = state.encode(undefined, undefined, true);
 
         debugBytes(encoded);
 

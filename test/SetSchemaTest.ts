@@ -154,7 +154,7 @@ describe("SetSchema Tests", () => {
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
 
-        let encoded = state.encode(undefined, undefined, undefined, true);
+        let encoded = state.encode(undefined, undefined, true);
 
         const filtered1 = state.applyFilters(encoded, client1);
         const filtered2 = state.applyFilters(encoded, client2);
@@ -193,7 +193,7 @@ describe("SetSchema Tests", () => {
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
 
-        let encoded = state.encode(undefined, undefined, undefined, true);
+        let encoded = state.encode(undefined, undefined, true);
 
         const filtered1 = state.applyFilters(encoded, client1);
         const filtered2 = state.applyFilters(encoded, client2);
@@ -239,7 +239,7 @@ describe("SetSchema Tests", () => {
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
 
-        let encoded = state.encode(undefined, undefined, undefined, true);
+        let encoded = state.encode(undefined, undefined, true);
 
         const filtered1 = state.applyFilters(encoded, client1);
         const filtered2 = state.applyFilters(encoded, client2);
