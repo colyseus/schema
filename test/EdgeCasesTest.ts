@@ -1,10 +1,58 @@
 import * as assert from "assert";
 import * as nanoid from "nanoid";
-import { MapSchema, Schema, type, ArraySchema, dumpChanges } from "../src";
+import { MapSchema, Schema, type, ArraySchema, dumpChanges, defineTypes, Reflection, Context } from "../src";
 
 import { State, Player } from "./Schema";
 
 describe("Edge cases", () => {
+    it("Schema should support more than 256 fields", () => {
+        const maxFields = 1000;
+        class State extends Schema {};
+
+        const schema = {};
+        for (let i = 0; i < maxFields; i++) { schema[`field_${i}`] = "string"; }
+        defineTypes(State, schema);
+
+        const state = new State();
+        for (let i = 0; i < maxFields; i++) { state[`field_${i}`] = "value " + i; }
+
+        const decodedState = Reflection.decode(Reflection.encode(state));
+        decodedState.decode(state.encode());
+
+        for (let i = 0; i < maxFields; i++) {
+            assert.equal("value " + i, decodedState[`field_${i}`]);
+        }
+    });
+
+    it("Should support up to 255 schema types", () => {
+        const maxSchemaTypes = 255;
+        const context = new Context();
+        const type = Context.create(context);
+
+        class State extends Schema {}
+
+        const schemas: any = {};
+
+        for (let i = 0; i < maxSchemaTypes; i++) {
+            class Child extends Schema { @type("string") str: string; };
+            schemas[i] = Child;
+            defineTypes(State, { [`field_${i}`]: Child, }, context);
+        }
+
+        const state = new State();
+        for (let i = 0; i < maxSchemaTypes; i++) {
+            const child = new schemas[i]();
+            child.str = "value " + i;
+            state[`field_${i}`] = child;
+        }
+
+        const decodedState = Reflection.decode(Reflection.encode(state));
+        decodedState.decode(state.encode());
+
+        for (let i = 0; i < maxSchemaTypes; i++) {
+            assert.equal("value " + i, decodedState[`field_${i}`].str);
+        }
+    });
 
     it("NIL check should not collide", () => {
         class State extends Schema {

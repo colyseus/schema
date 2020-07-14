@@ -670,7 +670,7 @@ describe("Next Iteration", () => {
             player1.name = "This field should not be encoded!";
 
             const encoded = state.encode();
-            console.log("LAST ENCODE (THIS SHOULD BE EMPTY) =>", encoded.length, encoded);
+            assert.equal(0, encoded.length);
         });
 
     });
