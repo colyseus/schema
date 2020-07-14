@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { Schema, type, MapSchema, filter, hasFilter, ArraySchema } from "../src";
-import { defineTypes } from "../src/annotations";
+import { defineTypes, Context } from "../src/annotations";
 
 describe("Definition Tests", () => {
 
@@ -52,6 +52,8 @@ describe("Definition Tests", () => {
 
     describe("hasFilter()", () => {
         it("should return false", () => {
+            const type = Context.create();
+
             class State extends Schema {
                 @type("string") str: string;
             }
@@ -60,6 +62,8 @@ describe("Definition Tests", () => {
         });
 
         it("should return true", () => {
+            const type = Context.create();
+
             class State extends Schema {
                 @filter(function (client, value, root) {
                     return true;
@@ -71,6 +75,8 @@ describe("Definition Tests", () => {
         });
 
         it("should be able to navigate on recursive structures", () => {
+            const type = Context.create();
+
             class Container extends Schema {
                 @type("string") name: string;
 
@@ -87,7 +93,10 @@ describe("Definition Tests", () => {
             assert.equal(false, fun());
         });
 
-        it("should be able to navigate on more complex recursive structures", () => {
+        it("should be able to navigate on more complex recursive array structures", () => {
+            const context = new Context();
+            const type = Context.create(context);
+
             class ContainerA extends Schema {
                 @type("string") contAName: string;
             }
@@ -102,7 +111,7 @@ describe("Definition Tests", () => {
                 defineTypes(cont, {
                     containersA: [ContainerA],
                     containersB: [ContainerB],
-                });
+                }, context);
             });
 
             const fun = () => hasFilter(State);
@@ -111,7 +120,9 @@ describe("Definition Tests", () => {
             assert.equal(false, fun());
         });
 
-        it("should find filter on more complex recursive structures - array", () => {
+        it("should find filter on more complex recursive map structures", () => {
+            const type = Context.create();
+
             class ContainerA extends Schema {
                 @type("string") contAName: string;
             }
@@ -126,8 +137,8 @@ describe("Definition Tests", () => {
             const allContainers = [State, ContainerA, ContainerB];
             allContainers.forEach((cont) => {
                 defineTypes(cont, {
-                    containersA: [ContainerA],
-                    containersB: [ContainerB],
+                    containersA: { map: ContainerA },
+                    containersB: { map: ContainerB },
                 });
             });
 
@@ -135,6 +146,8 @@ describe("Definition Tests", () => {
         });
 
         it("should find filter on more complex recursive structures - map", () => {
+            const type = Context.create();
+
             class ContainerA extends Schema {
                 @type("string") contAName: string;
             }
@@ -158,6 +171,8 @@ describe("Definition Tests", () => {
         });
 
         it("should be able to navigate on maps and arrays of primitive types", () => {
+            const type = Context.create();
+
             class State extends Schema {
                 @type(["string"]) stringArr: MapSchema<string>;
                 @type(["number"]) numberArr: MapSchema<number>;

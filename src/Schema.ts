@@ -392,8 +392,6 @@ export abstract class Schema {
                 //     });
                 // }
 
-                // value.$changes.refId = refId;
-
                 $root.addRef(refId, value);
                 // $root.refs.set(refId, value);
 

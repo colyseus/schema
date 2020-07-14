@@ -86,6 +86,7 @@ export class SchemaDefinition {
         }
 
         this.filters[this.indexes[field]] = cb;
+        return true;
     }
 
     addChildrenFilter(field: string, cb: FilterChildrenCallback) {
@@ -103,6 +104,7 @@ export class SchemaDefinition {
             }
 
             this.childFilters[index] = cb;
+            return true;
 
         } else {
             console.warn(`@filterChildren: field '${field}' can't have children. Ignoring filter.`);
@@ -118,48 +120,8 @@ export class SchemaDefinition {
     }
 }
 
-export function hasFilter(
-    klass: typeof Schema,
-    knownSchemas: Set<typeof Schema> = new Set<typeof Schema>()
-    // knownSchemas: WeakSet<typeof Schema> = new WeakSet<typeof Schema>()
-) {
-    const definition = klass['_definition'];
-    const schema = definition.schema;
-
-    let has = false;
-
-    // set of schemas we already checked OR are still checking
-    knownSchemas.add(klass);
-
-    for (const fieldName of Object.keys(schema)) {
-        // skip if a filter has been found
-        if (has) { break; }
-
-        if (
-            definition.filters[definition.indexes[fieldName]] ||
-            definition.childFilters[definition.indexes[fieldName]]
-        ) {
-            has = true;
-
-        } else if (typeof schema[fieldName] === 'function') {
-            const childSchema = schema[fieldName] as typeof Schema;
-
-            if (!knownSchemas.has(childSchema)) {
-                has = hasFilter(childSchema, knownSchemas);
-            }
-
-        } else if (typeof(Object.values(schema[fieldName])[0]) !== "string") {
-            //  Array.isArray(schema[fieldName])
-            const key = Object.keys(schema[fieldName])[0];
-            const childSchema = schema[fieldName][key] as typeof Schema;
-
-            if (!knownSchemas.has(childSchema)) {
-                has = hasFilter(childSchema, knownSchemas);
-            }
-        }
-    }
-
-    return has;
+export function hasFilter(klass: typeof Schema) {
+    return klass._context.useFilters;
 }
 
 // Colyseus integration
@@ -168,6 +130,7 @@ export type Client = { sessionId: string } & any;
 export class Context {
     types: {[id: number]: typeof Schema} = {};
     schemas = new Map<typeof Schema, number>();
+    useFilters = false;
 
     has(schema: typeof Schema) {
         return this.schemas.has(schema);
@@ -183,8 +146,7 @@ export class Context {
         this.schemas.set(schema, schema._typeid);
     }
 
-    static create() {
-        const context = new Context();
+    static create(context: Context = new Context) {
         return function (definition: DefinitionType) {
             return type(definition, context);
         }
@@ -308,7 +270,10 @@ export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
         const definition = constructor._definition;
-        definition.addFilter(field, cb);
+
+        if (definition.addFilter(field, cb)) {
+            constructor._context.useFilters = true;
+        }
     }
 }
 
@@ -316,7 +281,9 @@ export function filterChildren<T extends Schema, K, V, R extends Schema>(cb: Fil
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
         const definition = constructor._definition;
-        definition.addChildrenFilter(field, cb);
+        if (definition.addChildrenFilter(field, cb)) {
+            constructor._context.useFilters = true;
+        }
     }
 }
 
@@ -344,7 +311,11 @@ export function deprecated(throws: boolean = true, context: Context = globalCont
     }
 }
 
-export function defineTypes(target: typeof Schema, fields: {[property: string]: DefinitionType}, context: Context = globalContext) {
+export function defineTypes(
+    target: typeof Schema,
+    fields: { [property: string]: DefinitionType },
+    context: Context = target._context || globalContext
+) {
     for (let field in fields) {
         type(fields[field], context)(target.prototype, field);
     }
