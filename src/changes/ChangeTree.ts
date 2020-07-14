@@ -241,8 +241,8 @@ export class ChangeTree {
     }
 
     getChildrenFilter() {
-        const _childFilters = (this.parent as Schema)['_childFilters'];
-        return _childFilters && _childFilters[this.parentIndex];
+        const childFilters = (this.parent as Schema)['_definition'].childFilters;
+        return childFilters && childFilters[this.parentIndex];
     }
 
     //

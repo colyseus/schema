@@ -150,7 +150,7 @@ export abstract class Schema {
             },
         });
 
-        const descriptors = this._descriptors;
+        const descriptors = this._definition.descriptors;
         if (descriptors) {
             Object.defineProperties(this, descriptors);
         }
@@ -171,13 +171,6 @@ export abstract class Schema {
     }
 
     protected get _definition () { return (this.constructor as typeof Schema)._definition; }
-    protected get _schema () { return this._definition.schema; }
-    protected get _descriptors () { return this._definition.descriptors; }
-    protected get _indexes () { return this._definition.indexes; }
-    protected get _fieldsByIndex() { return this._definition.fieldsByIndex; }
-    protected get _filters () { return this._definition.filters; }
-    protected get _childFilters () { return this._definition.childFilters; }
-    protected get _deprecated () { return this._definition.deprecated; }
 
     public listen <K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
         if (!this.$listeners[attr as string]) {
@@ -231,7 +224,7 @@ export abstract class Schema {
             const isSchema = ref['_definition'];
 
             const field = (isSchema)
-                ? (ref['_fieldsByIndex'] && ref['_fieldsByIndex'][fieldIndex])
+                ? (ref['_definition'].fieldsByIndex && ref['_definition'].fieldsByIndex[fieldIndex])
                 : fieldIndex;
 
             const _field = `_${field}`;
@@ -595,7 +588,7 @@ export abstract class Schema {
                 const fieldIndex = operation.index;
 
                 const field = (isSchema)
-                    ? ref['_fieldsByIndex'] && ref['_fieldsByIndex'][fieldIndex]
+                    ? ref['_definition'].fieldsByIndex && ref['_definition'].fieldsByIndex[fieldIndex]
                     : fieldIndex;
 
                 const _field = `_${field}`;
@@ -809,8 +802,8 @@ export abstract class Schema {
                 continue;
             }
 
+
             const ref = changeTree.ref as Schema;
-            const filters = ref._filters;
 
             // console.log("SWITCH_TO_STRUCTURE (APPLY FILTERS)", {
             //     ref: ref.constructor.name,
@@ -853,7 +846,7 @@ export abstract class Schema {
                     }
 
                 } else {
-                    const filter = (filters && filters[fieldIndex]);
+                    const filter = (ref._definition.filters && ref._definition.filters[fieldIndex]);
 
                     if (filter && !filter.call(ref, client, value, root)) {
                         if (value['$changes']) {
@@ -887,7 +880,7 @@ export abstract class Schema {
 
     clone () {
         const cloned = new ((this as any).constructor);
-        const schema = this._schema;
+        const schema = this._definition.schema;
         for (let field in schema) {
             if (
                 typeof (this[field]) === "object" &&
@@ -906,7 +899,7 @@ export abstract class Schema {
 
     triggerAll() {
         const changes: DataChange[] = [];
-        const schema = this._schema;
+        const schema = this._definition.schema;
 
         for (let field in schema) {
             if (this[field] !== undefined) {
@@ -930,8 +923,8 @@ export abstract class Schema {
     }
 
     toJSON () {
-        const schema = this._schema;
-        const deprecated = this._deprecated;
+        const schema = this._definition.schema;
+        const deprecated = this._definition.deprecated;
 
         const obj = {}
         for (let field in schema) {
@@ -949,11 +942,11 @@ export abstract class Schema {
     }
 
     protected getByIndex(index: number) {
-        return this[this._fieldsByIndex[index]];
+        return this[this._definition.fieldsByIndex[index]];
     }
 
     protected deleteByIndex(index: number) {
-        delete this[this._fieldsByIndex[index]];
+        delete this[this._definition.fieldsByIndex[index]];
     }
 
     private tryEncodeTypeId (bytes: number[], type: typeof Schema, targetType: typeof Schema) {

@@ -54,7 +54,7 @@ describe("Reflection", () => {
         const state = new State();
         const stateReflected = Reflection.decode(Reflection.encode(state)) as State;
 
-        assert.deepEqual(state['_indexes'], stateReflected['_indexes']);
+        assert.deepEqual(state['_definition'].indexes, stateReflected['_definition'].indexes);
 
         state.fieldString = "Hello world!";
         state.fieldNumber = 10;
@@ -123,8 +123,8 @@ describe("Reflection", () => {
         const encodedReflection = Reflection.encode(state);
 
         const decodedState = Reflection.decode(encodedReflection) as MyState;
-        assert.deepEqual(Object.keys(decodedState['_schema'].points[0]._definition.schema), ['x', 'y'])
-        assert.deepEqual(Object.keys(decodedState['_schema'].players[0]._definition.schema), ['x', 'y', 'name'])
+        assert.deepEqual(Object.keys(decodedState['_definition'].schema.points[0]._definition.schema), ['x', 'y'])
+        assert.deepEqual(Object.keys(decodedState['_definition'].schema.players[0]._definition.schema), ['x', 'y', 'name'])
     });
 
     it("should reflect map of primitive type", () => {
