@@ -2,12 +2,6 @@ import * as assert from "assert";
 import { Schema, type, filter, ArraySchema, MapSchema, Reflection, DataChange } from "../src";
 import { Client, filterChildren } from "../src/annotations";
 
-function debugBytes(bytes: number[], name: string = '') {
-    console.log(`--------- BEGIN BYTES --------- ${name}`);
-    bytes.forEach((byte, i) => console.log({ i, byte }));
-    console.log('---------- END BYTES ----------');
-}
-
 describe("@filter Test", () => {
     it("should filter property outside root", () => {
         class Player extends Schema {
@@ -34,31 +28,19 @@ describe("@filter Test", () => {
 
         const encoded = state.encode(undefined, undefined, true);
 
-        debugBytes(encoded);
-
         const full = new State();
         full.decode(encoded);
 
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
 
-        console.log("--------------\nAPPLY CLIENT 1\n--------------");
         const filtered1 = state.applyFilters(encoded, client1);
         const decoded1 = new State();
         decoded1.decode(filtered1);
-        debugBytes(filtered1, "FILTERED 1");
 
-        console.log("--------------\nAPPLY CLIENT 2\n--------------");
         const filtered2 = state.applyFilters(encoded, client2);
         const decoded2 = new State();
         decoded2.decode(filtered2);
-        debugBytes(filtered2, "FILTERED 2");
-
-        console.log({
-            decoded1: decoded1.toJSON(),
-            decoded2: decoded2.toJSON(),
-            full: full.toJSON()
-        });
 
         assert.equal("Jake", decoded1.playerOne.name);
         assert.equal(undefined, decoded1.playerTwo.name);
@@ -121,31 +103,19 @@ describe("@filter Test", () => {
 
         const encoded = state.encode(undefined, undefined, true);
 
-        debugBytes(encoded);
-
         const full = new State();
         full.decode(encoded);
 
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
 
-        console.log("--------------\nAPPLY CLIENT 1\n--------------");
         const filtered1 = state.applyFilters(encoded, client1);
         const decoded1 = new State()
         decoded1.decode(filtered1);
-        debugBytes(filtered1, "FILTERED 1");
 
-        console.log("--------------\nAPPLY CLIENT 2\n--------------");
         const filtered2 = state.applyFilters(encoded, client2);
         const decoded2 = new State();
         decoded2.decode(filtered2);
-        debugBytes(filtered2, "FILTERED 2");
-
-        console.log({
-            decoded1: decoded1.toJSON(),
-            decoded2: decoded2.toJSON(),
-            full: full.toJSON()
-        });
 
         assert.equal("one", decoded1.players[0].name);
         assert.equal(1, decoded1.players.length);
