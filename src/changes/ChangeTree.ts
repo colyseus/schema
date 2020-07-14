@@ -221,7 +221,7 @@ export class ChangeTree {
         }
     }
 
-    getType(index: number) {
+    getType(index?: number) {
         if (this.ref['_definition']) {
             const definition = (this.ref as Schema)['_definition'];
             return definition.schema[ definition.fieldsByIndex[index] ];

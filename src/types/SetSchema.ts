@@ -76,12 +76,19 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         return this.$items.delete(index);
     }
 
-    clear() {
+    clear(isDecoding?: boolean) {
         // discard previous operations.
         this.$changes.discard(true);
 
         // clear previous indexes
         this.$indexes.clear();
+
+        // flag child items for garbage collection.
+        if (isDecoding && typeof (this.$changes.getType()) !== "string") {
+            this.$items.forEach((item: V) => {
+                this.$changes.root.removeRef(item['$changes'].refId);
+            });
+        }
 
         // clear items
         this.$items.clear();

@@ -132,4 +132,37 @@ describe("Instance sharing", () => {
         const newRefCount = decodedState['$changes'].root.refs.size;
         assert.equal(refCount - 4, newRefCount);
     });
+
+    it("clearing ArraySchema", () => {
+        const state = new State();
+
+        const player1 = new Player().assign({
+            position: new Position().assign({
+                x: 10, y: 10
+            })
+        });
+        state.arrayOfPlayers.push(player1);
+        state.arrayOfPlayers.push(player1);
+        state.arrayOfPlayers.push(player1);
+
+        const player2 = new Player().assign({
+            position: new Position().assign({
+                x: 10, y: 10
+            })
+        });
+        state.arrayOfPlayers.push(player2);
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        const refCount = decodedState['$changes'].root.refs.size;
+        assert.equal(7, refCount);
+
+        state.arrayOfPlayers.clear();
+
+        decodedState.decode(state.encode());
+
+        const newRefCount = decodedState['$changes'].root.refs.size;
+        assert.equal(refCount - 4, newRefCount);
+    });
 });

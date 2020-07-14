@@ -25,7 +25,7 @@ export interface SchemaDecoderCallbacks {
     onAdd?: (item: any, key: any) => void;
     onRemove?: (item: any, key: any) => void;
     onChange?: (item: any, key: any) => void;
-    clear();
+    clear(decoding?: boolean);
     decode?(byte, it: decode.Iterator);
 }
 
@@ -166,9 +166,6 @@ export abstract class Schema {
     public assign(
         props: { [prop in NonFunctionPropNames<this>]?: this[prop] }
     ) {
-        //
-        // TODO: recursivelly assign child Schema structures.
-        //
         Object.assign(this, props);
         return this;
     }
@@ -247,14 +244,11 @@ export abstract class Schema {
 
             if (operation === OPERATION.CLEAR) {
                 //
-                // TODO:
+                // TODO: refactor me!
+                // The `.clear()` method is calling `$root.removeRef(refId)` is
+                // being called for each item inside this collection
                 //
-                // flag all children refId's for garbage collection.
-                // (if not a collection of primitive type)
-                //
-                // $root.removeRef(refId);
-                //
-                (ref as SchemaDecoderCallbacks).clear();
+                (ref as SchemaDecoderCallbacks).clear(true);
                 continue;
             }
 
