@@ -538,7 +538,7 @@ export abstract class Schema {
         bytes: number[] = [],
         useFilters: boolean = false,
     ) {
-        const refIdsVisited = new Set<number>();
+        const refIdsVisited = new WeakSet<ChangeTree>();
 
         const changeTrees: ChangeTree[] = [this.$changes];
         let numChangeTrees = 1;
@@ -552,7 +552,7 @@ export abstract class Schema {
             changeTree.ensureRefId();
 
             // mark this ChangeTree as visited.
-            refIdsVisited.add(changeTree.refId);
+            refIdsVisited.add(changeTree);
 
             // console.log("SWITCH_TO_STRUCTURE (ENCODE)", {
             //     ref: ref.constructor.name,
@@ -779,9 +779,6 @@ export abstract class Schema {
 
         const refIdsDissallowed = new Set<number>();
         const refIdsAllowed = new Set<number>([0]);
-
-        // sort by refId, from lower to higher.
-        const refIdsVisited = new Set<number>();
 
         const changeTrees = [this.$changes];
         let numChangeTrees = 1;
