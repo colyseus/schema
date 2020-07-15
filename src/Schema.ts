@@ -635,13 +635,9 @@ export abstract class Schema {
                         const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
                         encode.string(bytes, dynamicIndex);
 
-                    } else if (
-                        ref instanceof ArraySchema ||
-                        ref instanceof CollectionSchema ||
-                        ref instanceof SetSchema
-                    ) {
+                    } else {
                         //
-                        // ArraySchema key
+                        // Key from other indexed structures (Array, Collection, etc.)
                         //
                         encode.number(bytes, fieldIndex);
                     }
