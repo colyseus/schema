@@ -3,7 +3,7 @@ import * as assert from "assert";
 import * as util from "util";
 
 import { State, Player } from "./Schema";
-import { MapSchema, type, Schema, filterChildren } from "../src";
+import { MapSchema, type, Schema, filterChildren, SchemaDefinition, ArraySchema } from "../src";
 
 describe("MapSchema Tests", () => {
 
@@ -368,6 +368,66 @@ describe("MapSchema Tests", () => {
 
         assert.deepEqual(['one', 'two', 'three', 'four', 'five'], keys);
         assert.deepEqual([1, 2, 3, 4, 5], values);
+    });
+
+    it("should allow adding and removing same key multiple times", () => {
+        class Action extends Schema {
+            @type("string") type: string;
+        }
+
+        class Entity extends Schema {
+            @type("number") id: number;
+            @type(Action) action: Action;
+        }
+
+        class Item extends Entity {
+            @type("number") damage: number;
+        }
+
+        class Player extends Entity {
+            @type("number") hp: number;
+        }
+
+        class State extends Schema {
+            @type(["number"]) grid = new ArraySchema<number>();
+            @type({ map: Entity }) entities = new MapSchema<Entity>();
+        }
+
+        const state = new State();
+        state.grid.push(0, 1, 0, 1, 0, 1, 0, 1, 0);
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        state.entities.set("item1", new Item().assign({ id: 1, damage: 10 }));
+        state.entities.set("item2", new Item().assign({ id: 2, damage: 20 }));
+        state.entities.set("item3", new Item().assign({ id: 3, damage: 20 }));
+        state.entities.set("item4", new Item().assign({ id: 4, damage: 20 }));
+        state.entities.set("item5", new Item().assign({ id: 5, damage: 20 }));
+        state.entities.set("item6", new Item().assign({ id: 6, damage: 20 }));
+        state.entities.set("item7", new Item().assign({ id: 7, damage: 20 }));
+        state.entities.set("item8", new Item().assign({ id: 8, damage: 20 }));
+        state.entities.set("item9", new Item().assign({ id: 9, damage: 20 }));
+        state.entities.set("player1", new Player().assign({ id: 10, hp: 100 }));
+
+        decodedState.decode(state.encode());
+
+        state.entities.delete("item1");
+        state.entities.delete("player1");
+
+        decodedState.decode(state.encode());
+
+        const decodedState2 = new State();
+        state.entities.set("player1", new Player().assign({ id: 3, hp: 100 }));
+
+        decodedState2.decode(state.encodeAll());
+
+        state.entities.delete("item2");
+
+        decodedState2.decode(state.encode());
+
+        assert.equal(false, decodedState2.entities.has("item1"), "'item1' should've been deleted.");
+        assert.equal(false, decodedState2.entities.has("item2"), "'item2' should've been deleted.");
     });
 
 });

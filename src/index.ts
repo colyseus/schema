@@ -8,6 +8,9 @@ export { SetSchema } from "./types/SetSchema";
 // Utils
 export { dumpChanges } from "./utils";
 
+// Decoder
+export { Iterator } from "./encoding/decode";
+
 // Reflection
 export {
     Reflection,

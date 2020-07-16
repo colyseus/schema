@@ -67,12 +67,11 @@ export class Root {
             if (this.refCounts[refId] <= 0) {
                 const ref = this.refs.get(refId);
 
-                // TODO: Flag child refIds for removal.
-
                 if (ref instanceof Schema) {
                     for (const fieldName in ref['_definition'].schema) {
                         if (
                             typeof (ref['_definition'].schema[fieldName]) !== "string" &&
+                            ref[fieldName] &&
                             ref[fieldName]['$changes']
                         ) {
                             this.removeRef(ref[fieldName]['$changes'].refId);

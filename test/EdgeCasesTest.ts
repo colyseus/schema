@@ -159,4 +159,109 @@ describe("Edge cases", () => {
         decodedState3.decode(state.encode()); // patch existing client.
         assert.equal(JSON.stringify(decodedState3), JSON.stringify(decodedState4));
     });
+
+    describe("concurrency", () => {
+        it("MapSchema should support concurrent actions", (done) => {
+            class Entity extends Schema {
+                @type("number") id: number;
+            }
+            class Enemy extends Entity {
+                @type("number") level: number;
+            }
+            class State extends Schema {
+                @type({map: Entity}) entities = new MapSchema<Entity>();
+            }
+
+            function createEnemy(i: number) {
+                return new Enemy().assign({
+                    id: i,
+                    level: i * 100,
+                });
+            }
+
+            const state = new State();
+            const decodedState = new State();
+
+            decodedState.decode(state.encode());
+
+            const onAddCalledFor: string[] = [];
+            const onRemovedCalledFor: string[] = [];
+
+            decodedState.entities.onAdd = function(entity, key) {
+                onAddCalledFor.push(key);
+            };
+
+            decodedState.entities.onRemove = function(entity, key) {
+                onRemovedCalledFor.push(key);
+            };
+
+            // insert 100 items.
+            for (let i = 0; i < 100; i++) {
+                setTimeout(() => {
+                    state.entities.set("item" + i, createEnemy(i));
+                }, Math.floor(Math.random() * 10));
+            }
+
+            //
+            // after all 100 items are added. remove half of them in the same
+            // pace
+            //
+            setTimeout(() => {
+                decodedState.decode(state.encode());
+
+                const removedIndexes: string[] = [];
+                const addedIndexes: string[] = [];
+
+                for (let i = 20; i < 70; i++) {
+                    setTimeout(() => {
+                        const index = 'item' + i;
+                        removedIndexes.push(index);
+                        delete state.entities[index];
+                    }, Math.floor(Math.random() * 10));
+                }
+
+                for (let i = 100; i < 110; i++) {
+                    setTimeout(() => {
+                        const index = 'item' + i;
+                        addedIndexes.push(index);
+                        state.entities.set(index, createEnemy(i));
+                    }, Math.floor(Math.random() * 10));
+                }
+
+                setTimeout(() => {
+                    decodedState.decode(state.encode());
+                }, 5);
+
+                setTimeout(() => {
+                    decodedState.decode(state.encode());
+
+                    const expectedOnAdd: string[] = [];
+                    const expectedOnRemove: string[] = [];
+
+                    for (let i = 0; i < 110; i++) {
+                        expectedOnAdd.push('item' + i);
+
+                        if (i < 20 || i > 70) {
+                            assert.equal(i, decodedState.entities.get('item' + i).id);
+
+                        } else if (i >= 20 && i < 70) {
+                            expectedOnRemove.push('item' + i);
+                            assert.equal(false, decodedState.entities.has('item' + i));
+                        }
+                    }
+
+                    onAddCalledFor.sort((a,b) => parseInt(a.substr(4)) - parseInt(b.substr(4)));
+                    onRemovedCalledFor.sort((a,b) => parseInt(a.substr(4)) - parseInt(b.substr(4)));
+
+                    assert.deepEqual(expectedOnAdd, onAddCalledFor);
+                    assert.deepEqual(expectedOnRemove, onRemovedCalledFor);
+
+                    assert.equal(60, decodedState.entities.size);
+                    done();
+                }, 10);
+
+            }, 10);
+
+        });
+    });
 });

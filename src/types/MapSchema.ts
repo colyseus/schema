@@ -123,7 +123,7 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         //
         // TODO: add a "purge" method after .encode() runs, to cleanup removed `$indexes`
         //
-        // We don't remove $indexes to allow setting the same key.
+        // We don't remove $indexes to allow setting the same key in the same patch
         // (See "should allow to remove and set an item in the same place" test)
         //
         // // const index = this.$changes.indexes[key];

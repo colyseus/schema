@@ -131,6 +131,31 @@ describe("Change API", () => {
         });
     });
 
+    describe("Re-assignments", () => {
+        it("should not trigger change if value is changed back and forth to same value", () => {
+            class State extends Schema {
+                @type("boolean") bool: boolean;
+            }
+
+            const state = new State();
+            state.bool = false;
+
+            const decodedState = new State();
+
+            let changeCallCount: number = 0;
+            decodedState.listen("bool", (value) => changeCallCount++);
+
+            decodedState.decode(state.encode());
+
+            state.bool = true;
+            state.bool = false;
+
+            decodedState.decode(state.encode());
+
+            assert.equal(1, changeCallCount);
+        })
+    });
+
     describe("ArraySchema", () => {
         it("detecting onChange on arrays", () => {
             const state = new State();

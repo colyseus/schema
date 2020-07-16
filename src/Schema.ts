@@ -268,13 +268,6 @@ export abstract class Schema {
                 previousValue = ref[_field];
             }
 
-            // console.log("DECODE FIELD", {
-            //     field,
-            //     type,
-            //     operation: OPERATION[operation],
-            //     previousValue
-            // });
-
             //
             // TODO: use bitwise operations to check for `DELETE` instead.
             //
@@ -483,11 +476,13 @@ export abstract class Schema {
                     // // ref[_field] = value;
 
                 } else if (ref instanceof MapSchema) {
-                    const key = ref['$indexes'].get(field);
+                    // const key = ref['$indexes'].get(field);
+                    const key = dynamicIndex as string;
 
                     hasChange = !ref.has(key);
 
-                    ref.set(key, value);
+                    // ref.set(key, value);
+                    ref['$items'].set(key, value);
 
                 } else if (ref instanceof ArraySchema) {
                     // const key = ref['$indexes'][field];
