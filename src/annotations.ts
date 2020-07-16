@@ -121,7 +121,7 @@ export class SchemaDefinition {
 }
 
 export function hasFilter(klass: typeof Schema) {
-    return klass._context.useFilters;
+    return klass._context && klass._context.useFilters;
 }
 
 // Colyseus integration
