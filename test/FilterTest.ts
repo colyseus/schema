@@ -139,20 +139,14 @@ describe("@filter Test", () => {
 
         class State extends Schema {
             @filterChildren(function (client, key: string, value: Entity, root: State) {
-                console.log("@filterChildren", { key, value, client });
-
                 const currentPlayer = root.entities.get(client.sessionId);
                 if (currentPlayer) {
-                    console.log("currentPlayer =>", currentPlayer.toJSON());
-                    console.log("VALUE =>", value.toJSON());
-
                     const a = value.x - currentPlayer.x;
                     const b = value.y - currentPlayer.y;
 
                     return (Math.sqrt(a * a + b * b)) <= 10;
 
                 } else {
-                    console.log("Current player not found.");
                     return false;
                 }
 
