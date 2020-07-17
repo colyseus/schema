@@ -588,12 +588,6 @@ export abstract class Schema {
 
                 const _field = `_${field}`;
 
-                // const type = changeTree.childType || ref._schema[field];
-                const type = changeTree.getType(fieldIndex);
-
-                // const type = changeTree.getType(fieldIndex);
-                const value = changeTree.getValue(fieldIndex);
-
                 // cache begin index if `useFilters`
                 const beginIndex = bytes.length;
 
@@ -652,6 +646,12 @@ export abstract class Schema {
                     //
                     continue;
                 }
+
+                // const type = changeTree.childType || ref._schema[field];
+                const type = changeTree.getType(fieldIndex);
+
+                // const type = changeTree.getType(fieldIndex);
+                const value = changeTree.getValue(fieldIndex);
 
                 // Enqueue ChangeTree to be visited
                 if (

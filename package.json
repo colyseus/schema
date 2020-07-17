@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "1.0.0-alpha.13",
+  "version": "1.0.0-alpha.14",
   "description": "Schema-based binary serializer / de-serializer.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
