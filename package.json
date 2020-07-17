@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "1.0.0-alpha.14",
+  "version": "1.0.0-alpha.15",
   "description": "Schema-based binary serializer / de-serializer.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -50,7 +50,7 @@
     "fossil-delta": "^1.0.2",
     "glob": "^7.1.5",
     "mocha": "^5.2.0",
-    "nanoid": "^2.0.1",
+    "nanoid": "^3.1.10",
     "notepack.io": "^2.2.0",
     "nyc": "^14.1.1",
     "rimraf": "^3.0.0",

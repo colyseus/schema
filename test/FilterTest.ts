@@ -1,8 +1,11 @@
 import * as assert from "assert";
 import { Schema, type, filter, ArraySchema, MapSchema, Reflection, DataChange } from "../src";
 import { Client, filterChildren } from "../src/annotations";
+import { nanoid } from "nanoid";
+
 
 describe("@filter Test", () => {
+
     it("should filter property outside root", () => {
         class Player extends Schema {
             @filter(function(this: Player, client: Client, value, root: State) {
@@ -122,6 +125,60 @@ describe("@filter Test", () => {
 
         assert.equal("two", decoded2.players[0].name);
         assert.equal(1, decoded2.players.length);
+    });
+
+    it("should filter map items by distance", () => {
+        class Entity extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+
+        class Player extends Entity {
+            @type("number") radius: number;
+        }
+
+        class State extends Schema {
+            @filterChildren(function (client, key: string, value: Entity, root: State) {
+                console.log("@filterChildren", { key, value, client });
+
+                const currentPlayer = root.entities.get(client.sessionId);
+                if (currentPlayer) {
+                    console.log("currentPlayer =>", currentPlayer.toJSON());
+                    console.log("VALUE =>", value.toJSON());
+
+                    const a = value.x - currentPlayer.x;
+                    const b = value.y - currentPlayer.y;
+
+                    return (Math.sqrt(a * a + b * b)) <= 10;
+
+                } else {
+                    console.log("Current player not found.");
+                    return false;
+                }
+
+            })
+            @type({ map: Entity }) entities = new MapSchema<Entity>();
+        }
+
+        const state = new State();
+        state.entities.set(nanoid(), new Entity().assign({ x: 5, y: 5 }));
+        state.entities.set(nanoid(), new Entity().assign({ x: 8, y: 8 }));
+        state.entities.set(nanoid(), new Entity().assign({ x: 16, y: 16 }));
+        state.entities.set(nanoid(), new Entity().assign({ x: 20, y: 20 }));
+
+        let fullBytes = state.encodeAll(true)
+
+        const client = { sessionId: "player" };
+
+        const decodedState = new State();
+        decodedState.decode(state.applyFilters(fullBytes, client));
+
+        state.entities.set('player', new Player().assign({ x: 10, y: 10, radius: 1 }));
+
+        let patchBytes = state.encode(undefined, undefined, true);
+        decodedState.decode(state.applyFilters(patchBytes, client));
+
+        assert.equal(4, decodedState.entities.size);
     });
 
 

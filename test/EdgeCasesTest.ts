@@ -1,6 +1,6 @@
 import * as assert from "assert";
-import * as nanoid from "nanoid";
-import { MapSchema, Schema, type, ArraySchema, dumpChanges, defineTypes, Reflection, Context } from "../src";
+import { nanoid } from "nanoid";
+import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Context } from "../src";
 
 import { State, Player } from "./Schema";
 

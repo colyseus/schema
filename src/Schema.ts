@@ -761,8 +761,8 @@ export abstract class Schema {
         return bytes;
     }
 
-    encodeAll (bytes?: number[]) {
-        return this.encode(true, bytes);
+    encodeAll (useFilters?: boolean) {
+        return this.encode(true, [], useFilters);
     }
 
     applyFilters(encodedBytes: number[], client: Client, root = this) {
