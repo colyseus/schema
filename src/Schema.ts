@@ -205,6 +205,11 @@ export abstract class Schema {
                 refId = decode.number(bytes, it);
                 ref = $root.refs.get(refId) as Schema;
 
+                //
+                // Trying to access a reference that haven't been decoded yet.
+                //
+                if (!ref) { throw new Error(`"refId" not found: ${refId}`); }
+
                 // create empty list of changes for this refId.
                 changes = [];
                 allChanges.set(refId, changes);
@@ -765,23 +770,18 @@ export abstract class Schema {
         return this.encode(true, [], useFilters);
     }
 
-    applyFilters(encodedBytes: number[], client: Client, root = this) {
-        let filteredBytes: number[] = [];
-
+    applyFilters(encodedBytes: number[], client: Client, encodeAll: boolean = false) {
+        const root = this;
         const refIdsDissallowed = new Set<number>();
-        const refIdsAllowed = new Set<number>([0]);
+
+        if (!client.$refIds) { client.refIds = new WeakMap<ChangeTree, boolean>(); }
+        const client$refIds = client.$refIds;
 
         const changeTrees = [this.$changes];
         let numChangeTrees = 1;
 
-        // console.log("APPLY FILTERS, CHANGE TREES =>", changeTrees.map(c => ({
-        //     ref: c.ref.constructor.name,
-        //     refId: c.refId,
-        //     changes: c.changes,
-        //     parentIndex: c.parentIndex,
-        // })));
+        let filteredBytes: number[] = [];
 
-        changetrees:
         for (let i = 0; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
 
@@ -791,61 +791,60 @@ export abstract class Schema {
             }
 
 
-            const ref = changeTree.ref as Schema;
-
-            // console.log("SWITCH_TO_STRUCTURE (APPLY FILTERS)", {
-            //     ref: ref.constructor.name,
-            //     refId: changeTree.refId
-            // });
+            const ref = changeTree.ref as Ref;
+            const ref$changes = ref['$changes'] as ChangeTree;
 
             encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
-            encode.number(filteredBytes, ref.$changes.refId);
+            encode.number(filteredBytes, ref$changes.refId);
 
-            changeTree.changes.forEach((change, fieldIndex) => {
+            const changes: ChangeOperation[] | number[] = (encodeAll)
+                ? Array.from(changeTree.allChanges)
+                : Array.from(changeTree.changes.values());
+
+            for (let j = 0, cl = changes.length; j < cl; j++) {
+                const change: ChangeOperation = (encodeAll)
+                    ? { op: OPERATION.ADD, index: changes[j] as number }
+                    : changes[j] as ChangeOperation;
+
                 // custom operations
                 if (change.op === OPERATION.CLEAR) {
                     encode.uint8(filteredBytes, change.op);
-                    return;
+                    continue;
                 }
+
+                const fieldIndex = change.index;
 
                 // indexed operation
-                const cache = ref.$changes.caches[fieldIndex];
-                const value = ref.$changes.getValue(fieldIndex);
+                const value = ref$changes.getValue(fieldIndex);
 
-                if (value['$changes']) {
-                    changeTrees.push(value['$changes']);
-                    numChangeTrees++;
-                }
-
-                if (
-                    ref instanceof MapSchema ||
-                    ref instanceof CollectionSchema ||
-                    ref instanceof SetSchema ||
-                    ref instanceof ArraySchema
-                ) {
-                    const parent = ref['$changes'].parent.ref as Schema;
-                    const filter = changeTree.getChildrenFilter();
-
-                    if (filter && !filter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
-                        if (value['$changes']) {
-                            refIdsDissallowed.add(value['$changes'].refId);
-                        }
-                        return;
-                    }
-
-                } else {
+                if (ref instanceof Schema) {
+                    // Is a Schema!
                     const filter = (ref._definition.filters && ref._definition.filters[fieldIndex]);
 
                     if (filter && !filter.call(ref, client, value, root)) {
                         if (value['$changes']) {
                             refIdsDissallowed.add(value['$changes'].refId);;
                         }
-                        return;
+                        continue;
                     }
+
+                } else {
+                    // Is a collection! (map, array, etc.)
+                    const parent = ref$changes.parent as Ref;
+                    const filter = changeTree.getChildrenFilter();
+
+                    if (filter && !filter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
+                        if (value['$changes']) {
+                            refIdsDissallowed.add(value['$changes'].refId);
+                        }
+                        continue;
+                    }
+
                 }
 
                 if (value['$changes']) {
-                    refIdsAllowed.add(value['$changes'].refId);
+                    changeTrees.push(value['$changes']);
+                    numChangeTrees++;
                 }
 
                 //
@@ -854,13 +853,14 @@ export abstract class Schema {
                 if (change.op === OPERATION.DELETE) {
                     encode.uint8(filteredBytes, change.op);
                     encode.number(filteredBytes, fieldIndex);
-                    return;
+                    continue;
 
                 } else if (change.op !== OPERATION.TOUCH) {
+                    const cache = ref$changes.caches[fieldIndex];
                     filteredBytes = filteredBytes.concat(encodedBytes.slice(cache.beginIndex, cache.endIndex));
-
                 }
-            });
+
+            };
         }
 
         return filteredBytes;

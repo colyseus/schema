@@ -160,19 +160,38 @@ describe("@filter Test", () => {
         state.entities.set(nanoid(), new Entity().assign({ x: 16, y: 16 }));
         state.entities.set(nanoid(), new Entity().assign({ x: 20, y: 20 }));
 
-        let fullBytes = state.encodeAll(true)
+        state.encode(undefined, undefined, true);
+        state.discardAllChanges();
+
+        console.log("\n\nENCODE ALL!");
+        let fullBytes = state.encodeAll(true);
 
         const client = { sessionId: "player" };
 
         const decodedState = new State();
-        decodedState.decode(state.applyFilters(fullBytes, client));
+        decodedState.entities.onAdd = (entity, key) => console.log("Entity added =>", key, entity.toJSON());
+        decodedState.entities.onRemove = (entity, key) => console.log("Entity removed =>", key, entity.toJSON());
 
+        let filteredFullBytes = state.applyFilters(fullBytes, client, true);
+        decodedState.decode(filteredFullBytes);
+
+        // state.entities.forEach(entity => {
+        //     entity.x = entity.x + 1;
+        //     console.log(`ENTITY (refId = ${entity['$changes'].refId})`, entity.toJSON());
+        // });
         state.entities.set('player', new Player().assign({ x: 10, y: 10, radius: 1 }));
 
         let patchBytes = state.encode(undefined, undefined, true);
-        decodedState.decode(state.applyFilters(patchBytes, client));
 
-        assert.equal(4, decodedState.entities.size);
+        console.log("\n\nAPPLY FILTERS =>");
+        const filtered = state.applyFilters(patchBytes, client);
+
+        console.log("\n\nWILL DECODE");
+        decodedState.decode(filtered);
+
+        console.log(decodedState.toJSON());
+
+        // assert.equal(4, decodedState.entities.size);
     });
 
 
