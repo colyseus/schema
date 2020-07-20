@@ -166,25 +166,19 @@ const encodedStateSchema = Reflection.encode(new MyState());
 const myState = Reflection.decode(encodedStateSchema);
 ```
 
-### Data filters 
+### Data filters
 
-On the example below, we are filtering entities which are close to the player entity.
+On the example below, considering we're making a card game, we are filtering the cards to be available only for the owner of the cards, or if the card has been flagged as `"revealed"`.
 
 ```typescript
 import { Schema, type, filter } from "@colyseus/schema";
 
 export class State extends Schema {
-  @filterChildren(function(this: State, client: any, value: Entity) {
-    const currentPlayer = this.entities[client.sessionId]
-
-    var a = value.x - currentPlayer.x;
-    var b = value.y - currentPlayer.y;
-
-    return (Math.sqrt(a * a + b * b)) <= 10;
-
+  @filterChildren(function(client: any, key: string, value: Card, root: State) {
+      return (value.ownerId === client.sessionId) || value.revealed;
   })
-  @type({ map: Entity })
-  entities = new MapSchema<Entity>();
+  @type({ map: Card })
+  cards = new MapSchema<Card>();
 }
 ```
 

@@ -12,6 +12,7 @@ import { SetSchema } from './types/SetSchema';
 import { ChangeTree, Root, Ref, ChangeOperation } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
 import { EventEmitter } from './events/EventEmitter';
+import { ClientState } from './filters';
 
 export interface DataChange<T=any> {
     op: OPERATION,
@@ -774,8 +775,8 @@ export abstract class Schema {
         const root = this;
         const refIdsDissallowed = new Set<number>();
 
-        if (!client.$refIds) { client.refIds = new WeakMap<ChangeTree, boolean>(); }
-        const client$refIds = client.$refIds;
+        if (!client.$filterState) { client.$filterState = new ClientState(); }
+        const $filterState = client.$filterState as ClientState;
 
         const changeTrees = [this.$changes];
         let numChangeTrees = 1;
@@ -790,12 +791,13 @@ export abstract class Schema {
                 continue;
             }
 
-
             const ref = changeTree.ref as Ref;
-            const ref$changes = ref['$changes'] as ChangeTree;
+            const isSchema: boolean = ref instanceof Schema;
 
             encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
-            encode.number(filteredBytes, ref$changes.refId);
+            encode.number(filteredBytes, changeTree.refId);
+
+            console.log("REF:", ref.constructor.name);
 
             const changes: ChangeOperation[] | number[] = (encodeAll)
                 ? Array.from(changeTree.allChanges)
@@ -815,22 +817,27 @@ export abstract class Schema {
                 const fieldIndex = change.index;
 
                 // indexed operation
-                const value = ref$changes.getValue(fieldIndex);
+                const value = changeTree.getValue(fieldIndex);
+                const type = changeTree.getType(fieldIndex);
 
-                if (ref instanceof Schema) {
+                if (isSchema) {
                     // Is a Schema!
-                    const filter = (ref._definition.filters && ref._definition.filters[fieldIndex]);
+                    const filter = (
+                        (ref as Schema)._definition.filters &&
+                        (ref as Schema)._definition.filters[fieldIndex]
+                    );
 
                     if (filter && !filter.call(ref, client, value, root)) {
                         if (value['$changes']) {
                             refIdsDissallowed.add(value['$changes'].refId);;
                         }
                         continue;
+
                     }
 
                 } else {
                     // Is a collection! (map, array, etc.)
-                    const parent = ref$changes.parent as Ref;
+                    const parent = changeTree.parent as Ref;
                     const filter = changeTree.getChildrenFilter();
 
                     if (filter && !filter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
@@ -839,13 +846,15 @@ export abstract class Schema {
                         }
                         continue;
                     }
-
                 }
 
+                // visit child ChangeTree on further iteration.
                 if (value['$changes']) {
                     changeTrees.push(value['$changes']);
                     numChangeTrees++;
                 }
+
+                console.log("OP:", OPERATION[change.op]);
 
                 //
                 // Deleting fields: encode the operation + field index
@@ -856,8 +865,36 @@ export abstract class Schema {
                     continue;
 
                 } else if (change.op !== OPERATION.TOUCH) {
-                    const cache = ref$changes.caches[fieldIndex];
-                    filteredBytes = filteredBytes.concat(encodedBytes.slice(cache.beginIndex, cache.endIndex));
+                    const cache = changeTree.caches[fieldIndex];
+                    const bytes = encodedBytes.slice(cache.beginIndex, cache.endIndex);
+                    filteredBytes = filteredBytes.concat(bytes);
+
+                } else if (value['$changes'] && !isSchema) {
+                    console.log("manual add!", value['$changes'].refId);
+
+                    //
+                    // TODO:
+                    // - track ADD/REPLACE/DELETE instances on `$filterState`
+                    //
+
+                    encode.uint8(filteredBytes, OPERATION.ADD);
+                    encode.number(filteredBytes, fieldIndex);
+
+                    if (ref instanceof MapSchema) {
+                        //
+                        // MapSchema dynamic key
+                        //
+                        const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
+                        encode.string(filteredBytes, dynamicIndex);
+
+                    } else {
+                        //
+                        // Key from other indexed structures (Array, Collection, etc.)
+                        //
+                        encode.number(filteredBytes, fieldIndex);
+                    }
+
+                    encode.number(filteredBytes, value['$changes'].refId);
                 }
 
             };

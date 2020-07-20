@@ -7,8 +7,6 @@ import { ArraySchema } from "../types/ArraySchema";
 import { CollectionSchema } from "../types/CollectionSchema";
 import { SetSchema } from "../types/SetSchema";
 
-// type FieldKey = string | number;
-
 export type Ref = Schema
     | ArraySchema
     | MapSchema
