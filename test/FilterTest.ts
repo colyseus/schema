@@ -191,7 +191,7 @@ describe("@filter Test", () => {
 
         state.entities.forEach(entity => {
             entity.x = entity.x + 1;
-            entity.y = entity.y + 1;
+            // entity.y = entity.y + 1;
         });
         patchBytes = state.encode(undefined, undefined, true);
         decodedState.decode(state.applyFilters(patchBytes, client));

@@ -102,7 +102,7 @@ export class ChangeTree {
     allChanges = new Set<number>();
 
     // cached indexes for filtering
-    caches: {[field: number]: FieldCache} = {};
+    caches: {[field: number]: number[]} = {};
 
     currentCustomOperation: number = 0;
 
@@ -305,8 +305,9 @@ export class ChangeTree {
         this.discard();
     }
 
-    cache(field: number, beginIndex: number, endIndex: number) {
-        this.caches[field] = { beginIndex, endIndex };
+    // cache(field: number, beginIndex: number, endIndex: number) {
+    cache(field: number, cachedBytes: number[]) {
+        this.caches[field] = cachedBytes;
     }
 
     clone() {

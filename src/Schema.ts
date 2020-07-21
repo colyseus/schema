@@ -755,7 +755,7 @@ export abstract class Schema {
 
                 if (useFilters) {
                     // cache begin / end index
-                    changeTree.cache(fieldIndex as number, beginIndex, bytes.length)
+                    changeTree.cache(fieldIndex as number, bytes.slice(beginIndex));
                 }
             }
 
@@ -798,13 +798,20 @@ export abstract class Schema {
             encode.number(filteredBytes, changeTree.refId);
 
             console.log("REF:", ref.constructor.name);
+            console.log("Encode all?", (encodeAll || !$filterState.refIds.has(changeTree)));
+            let isEncodeAll = (encodeAll || !$filterState.refIds.has(changeTree));
 
-            const changes: ChangeOperation[] | number[] = (encodeAll)
+            const changes: ChangeOperation[] | number[] = (isEncodeAll)
                 ? Array.from(changeTree.allChanges)
                 : Array.from(changeTree.changes.values());
 
+            //
+            // include `changeTree` on list of known refIds by this client.
+            //
+            $filterState.refIds.add(changeTree);
+
             for (let j = 0, cl = changes.length; j < cl; j++) {
-                const change: ChangeOperation = (encodeAll)
+                const change: ChangeOperation = (isEncodeAll)
                     ? { op: OPERATION.ADD, index: changes[j] as number }
                     : changes[j] as ChangeOperation;
 
@@ -832,7 +839,6 @@ export abstract class Schema {
                             refIdsDissallowed.add(value['$changes'].refId);;
                         }
                         continue;
-
                     }
 
                 } else {
@@ -865,9 +871,8 @@ export abstract class Schema {
                     continue;
 
                 } else if (change.op !== OPERATION.TOUCH) {
-                    const cache = changeTree.caches[fieldIndex];
-                    const bytes = encodedBytes.slice(cache.beginIndex, cache.endIndex);
-                    filteredBytes = filteredBytes.concat(bytes);
+                    // const bytes = encodedBytes.slice(cache.beginIndex, cache.endIndex);
+                    filteredBytes = filteredBytes.concat(changeTree.caches[fieldIndex]);
 
                 } else if (value['$changes'] && !isSchema) {
                     console.log("manual add!", value['$changes'].refId);
