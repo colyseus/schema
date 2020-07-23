@@ -552,7 +552,7 @@ describe("ArraySchema Tests", () => {
         const filteredCards = state.players['one'].cards.filter((card) => card.number >= 3);
         filteredCards.sort((a, b) => b.number - a.number);
 
-        decodedState.decode(state.applyFilters(encoded, {}));
+        decodedState.decode(state.applyFilters({}));
         assert.equal(5, decodedState.players['one'].cards.length);
         assert.deepEqual([1, 3, 2, 5, 4], decodedState.players['one'].cards.map(c => c.number));
 
@@ -560,7 +560,7 @@ describe("ArraySchema Tests", () => {
         state.players['one'].cards = filteredCards;
         encoded = state.encode(undefined, undefined, true);
 
-        decodedState.decode(state.applyFilters(encoded, {}));
+        decodedState.decode(state.applyFilters({}));
         assert.equal(3, decodedState.players['one'].cards.length);
         assert.deepEqual([5, 4, 3], decodedState.players['one'].cards.map(c => c.number));
     });
@@ -1059,9 +1059,9 @@ describe("ArraySchema Tests", () => {
         const decoded2 = new State();
         const decoded3 = new State();
 
-        decoded1.decode(state.applyFilters(fullBytes, client1))
-        decoded2.decode(state.applyFilters(fullBytes, client2))
-        decoded3.decode(state.applyFilters(fullBytes, client3))
+        decoded1.decode(state.applyFilters(client1))
+        decoded2.decode(state.applyFilters(client2))
+        decoded3.decode(state.applyFilters(client3))
 
         assert.equal(1, decoded1.players.length);
         assert.equal(1, decoded2.players.length);

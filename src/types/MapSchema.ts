@@ -110,7 +110,7 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
             this.$indexes.set(index, key);
         }
 
-        this.$changes.change(key);
+        this.$changes.change(key, (hasIndex) ? OPERATION.REPLACE : OPERATION.ADD);
 
         return this;
     }

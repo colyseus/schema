@@ -48,7 +48,7 @@ export function getArrayProxy(value: ArraySchema) {
                 !isNaN(prop as any)
             ) {
                 const indexes = Array.from(obj['$items'].keys());
-                obj.setAt(indexes[prop] || prop, setValue);
+                obj.setAt(parseInt(indexes[prop] || prop), setValue);
 
             } else {
                 obj[prop] = setValue;

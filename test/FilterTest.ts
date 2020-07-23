@@ -38,11 +38,11 @@ describe("@filter Test", () => {
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
 
-        const filtered1 = state.applyFilters(encoded, client1);
+        const filtered1 = state.applyFilters(client1);
         const decoded1 = new State();
         decoded1.decode(filtered1);
 
-        const filtered2 = state.applyFilters(encoded, client2);
+        const filtered2 = state.applyFilters(client2);
         const decoded2 = new State();
         decoded2.decode(filtered2);
 
@@ -76,10 +76,10 @@ describe("@filter Test", () => {
         const client2 = { sessionId: "two" };
 
         const decoded1 = new State()
-        decoded1.decode(state.applyFilters(encoded, client1));
+        decoded1.decode(state.applyFilters(client1));
 
         const decoded2 = new State()
-        decoded2.decode(state.applyFilters(encoded, client2));
+        decoded2.decode(state.applyFilters(client2));
 
         assert.equal("hello", decoded1.str);
         assert.equal("hello", decoded2.str);
@@ -113,11 +113,11 @@ describe("@filter Test", () => {
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
 
-        const filtered1 = state.applyFilters(encoded, client1);
+        const filtered1 = state.applyFilters(client1);
         const decoded1 = new State()
         decoded1.decode(filtered1);
 
-        const filtered2 = state.applyFilters(encoded, client2);
+        const filtered2 = state.applyFilters(client2);
         const decoded2 = new State();
         decoded2.decode(filtered2);
 
@@ -166,7 +166,7 @@ describe("@filter Test", () => {
         state.discardAllChanges();
 
         console.log("\n\nENCODE ALL!");
-        let fullBytes = state.encodeAll(true);
+        state.encodeAll(true);
 
         const client = { sessionId: "player" };
 
@@ -174,35 +174,73 @@ describe("@filter Test", () => {
         decodedState.entities.onAdd = (entity, key) => console.log("Entity added =>", key, entity.toJSON());
         decodedState.entities.onRemove = (entity, key) => console.log("Entity removed =>", key, entity.toJSON());
 
-        let filteredFullBytes = state.applyFilters(fullBytes, client, true);
+        let filteredFullBytes = state.applyFilters(client, true);
         decodedState.decode(filteredFullBytes);
 
         state.entities.set('player', new Player().assign({ x: 10, y: 10, radius: 1 }));
 
-        let patchBytes = state.encode(undefined, undefined, true);
-        decodedState.decode(state.applyFilters(patchBytes, client));
+        state.encode(undefined, undefined, true);
+        decodedState.decode(state.applyFilters(client));
 
         console.log(decodedState.toJSON());
 
-        patchBytes = state.encode(undefined, undefined, true);
-        decodedState.decode(state.applyFilters(patchBytes, client));
+        state.encode(undefined, undefined, true);
+        decodedState.decode(state.applyFilters(client));
 
         assert.equal(1, decodedState.entities.size);
 
-        state.entities.forEach(entity => {
-            entity.x = entity.x + 1;
-            // entity.y = entity.y + 1;
-        });
-        patchBytes = state.encode(undefined, undefined, true);
-        decodedState.decode(state.applyFilters(patchBytes, client));
+        //
+        // touch all entities so they're synched again.
+        //
+        state.entities.forEach(entity => entity['$changes'].touch(0));
+
+        state.encode(undefined, undefined, true);
+        decodedState.decode(state.applyFilters(client));
         assert.equal(4, decodedState.entities.size);
 
-        console.log(decodedState.toJSON());
+        assert.deepEqual([
+            { x: 10, y: 10, radius: 1 },
+            { x: 5, y: 5 },
+            { x: 8, y: 8 },
+            { x: 16, y: 16 }
+        ], Array.from(decodedState.entities.values()).map(entity => entity.toJSON()));
 
-        // assert.equal(4, decodedState.entities.size);
+        //
+        // SECOND CLIENT
+        //
+
+        // simulate other player joined before
+        state.encode(undefined, undefined, true);
+        state.discardAllChanges();
+
+        const client2 = { sessionId: "player-2" };
+
+        const decodedState2 = new State();
+        decodedState2.entities.onAdd = (entity, key) => console.log("Entity added =>", key, entity.toJSON());
+        decodedState2.entities.onRemove = (entity, key) => console.log("Entity removed =>", key, entity.toJSON());
+
+        // simulate other player joined before
+        state.encode(undefined, undefined, true);
+        state.discardAllChanges();
+
+        decodedState2.decode(state.applyFilters(client2));
+        //
+        // touch all entities so they're synched again.
+        //
+        state.entities.forEach(entity => entity['$changes'].touch(0));
+        state.entities.set('player-2', new Player().assign({ x: 19, y: 19, radius: 1 }));
+
+        state.encode(undefined, undefined, true);
+        decodedState2.decode(state.applyFilters(client2));
+
+        assert.deepEqual([
+            { x: 16, y: 16 },
+            { x: 20, y: 20 },
+            { x: 19, y: 19, radius: 1 },
+        ], Array.from(decodedState2.entities.values()).map(entity => entity.toJSON()));
     });
 
-    it("should support DELETE operation", () => {
+    it("DELETE inside collection of Schema", () => {
         class Card extends Schema {
             @type("string") suit: string;
             @type("number") number: number;
@@ -240,6 +278,15 @@ describe("@filter Test", () => {
             }));
         }
 
+        // add 3 cards for player 'three'
+        for (let i = 20; i < 23; i++) {
+            state.cards.set('c' + i, new Card().assign({
+                suit: 'C',
+                number: i + 1,
+                ownerId: "three"
+            }));
+        }
+
         // simulate other player joined before
         state.encode(undefined, undefined, true);
         state.discardAllChanges();
@@ -248,21 +295,25 @@ describe("@filter Test", () => {
 
         const decodedState1 = new State();
         decodedState1.cards.onAdd = (card, key) => {};
-        decodedState1.cards.onRemove = (card, key) => {};
+        decodedState1.cards.onRemove = (card, key) => {
+            // console.log("decodedState1, onRemove =>", card, key);
+        };
         let client1OnAddCard = sinon.spy(decodedState1.cards, 'onAdd');
         let client1OnRemoveCard = sinon.spy(decodedState1.cards, 'onRemove');
 
-        decodedState1.decode(state.applyFilters(fullBytes, client1, true));
+        decodedState1.decode(state.applyFilters(client1, true));
         sinon.assert.callCount(client1OnAddCard, 10);
         sinon.assert.callCount(client1OnRemoveCard, 0);
 
         const decodedState2 = new State();
         decodedState2.cards.onAdd = (card, key) => {};
-        decodedState2.cards.onRemove = (card, key) => {};
+        decodedState2.cards.onRemove = (card, key) => {
+            // console.log("decodedState2, onRemove =>", card, key);
+        };
         let client2OnAddCard = sinon.spy(decodedState2.cards, 'onAdd');
         let client2OnRemoveCard = sinon.spy(decodedState2.cards, 'onRemove');
 
-        decodedState2.decode(state.applyFilters(fullBytes, client2, true));
+        decodedState2.decode(state.applyFilters(client2, true));
         sinon.assert.callCount(client2OnAddCard, 10);
         sinon.assert.callCount(client2OnRemoveCard, 0);
 
@@ -274,27 +325,202 @@ describe("@filter Test", () => {
         state.cards.get('c11').revealed = true;
         state.cards.get('c12').revealed = true;
 
-        let patchBytes = state.encode(undefined, undefined, true);
-        decodedState1.decode(state.applyFilters(patchBytes, client1));
-        decodedState2.decode(state.applyFilters(patchBytes, client2));
-
-        console.log("BEFORE DELETE!");
-        console.log("decodedState1 => ", decodedState1.toJSON());
-        console.log("decodedState2 => ", decodedState2.toJSON());
+        state.encode(undefined, undefined, true);
+        decodedState1.decode(state.applyFilters(client1));
+        decodedState2.decode(state.applyFilters(client2));
 
         sinon.assert.callCount(client1OnAddCard, 12);
         sinon.assert.callCount(client2OnAddCard, 12);
 
+        // remove 1 card from player 1
         state.cards.delete('c2');
+
+        // remove 1 card from player 2
         state.cards.delete('c12');
 
-        patchBytes = state.encode(undefined, undefined, true);
-        decodedState1.decode(state.applyFilters(patchBytes, client1));
-        decodedState2.decode(state.applyFilters(patchBytes, client2));
+        // remove 2 cards from player 3
+        state.cards.delete('c20');
+        state.cards.delete('c21');
 
-        console.log("AFTER DELETE!");
-        console.log("decodedState1 => ", decodedState1.toJSON());
-        console.log("decodedState2 => ", decodedState2.toJSON());
+        state.encode(undefined, undefined, true);
+        decodedState1.decode(state.applyFilters(client1));
+        decodedState2.decode(state.applyFilters(client2));
+
+        sinon.assert.callCount(client1OnAddCard, 12);
+        sinon.assert.callCount(client1OnRemoveCard, 2);
+
+        sinon.assert.callCount(client2OnAddCard, 12);
+        sinon.assert.callCount(client2OnRemoveCard, 2);
+
+        assert.deepEqual({
+            cards: {
+                c0: { suit: 'H', number: 1, ownerId: 'one' },
+                c1: { suit: 'H', number: 2, ownerId: 'one', revealed: true },
+                c3: { suit: 'H', number: 4, ownerId: 'one' },
+                c4: { suit: 'H', number: 5, ownerId: 'one' },
+                c5: { suit: 'H', number: 6, ownerId: 'one' },
+                c6: { suit: 'H', number: 7, ownerId: 'one' },
+                c7: { suit: 'H', number: 8, ownerId: 'one' },
+                c8: { suit: 'H', number: 9, ownerId: 'one' },
+                c9: { suit: 'H', number: 10, ownerId: 'one' },
+                c11: { suit: 'S', number: 12, ownerId: 'two', revealed: true }
+            }
+        }, decodedState1.toJSON())
+
+        assert.deepEqual({
+            cards: {
+                c10: { suit: 'S', number: 11, ownerId: 'two' },
+                c11: { suit: 'S', number: 12, ownerId: 'two', revealed: true },
+                c13: { suit: 'S', number: 14, ownerId: 'two' },
+                c14: { suit: 'S', number: 15, ownerId: 'two' },
+                c15: { suit: 'S', number: 16, ownerId: 'two' },
+                c16: { suit: 'S', number: 17, ownerId: 'two' },
+                c17: { suit: 'S', number: 18, ownerId: 'two' },
+                c18: { suit: 'S', number: 19, ownerId: 'two' },
+                c19: { suit: 'S', number: 20, ownerId: 'two' },
+                c1: { suit: 'H', number: 2, ownerId: 'one', revealed: true }
+            }
+        }, decodedState2.toJSON());
+    });
+
+    it("DELETE inside collection of primitive values", () => {
+        class State extends Schema {
+            @filterChildren(function (client: any, key: string, value: string, root: State) {
+                return value.includes(client.sessionId);
+            })
+            @type({ map: "string" }) items = new MapSchema<string>();
+        }
+
+        const client1 = { sessionId: "one" };
+        const client2 = { sessionId: "two" };
+
+        const state = new State();
+
+        // add 10 items for player 'one'
+        for (let i = 0; i < 10; i++) {
+            state.items.set('c' + i, 'one' + i);
+        }
+
+        // add 10 items for player 'two'
+        for (let i = 10; i < 20; i++) {
+            state.items.set('c' + i, 'two' + i);
+        }
+
+        // add 3 items for player 'three'
+        for (let i = 20; i < 23; i++) {
+            state.items.set('c' + i, 'three' + i);
+        }
+
+        // simulate other player joined before
+        state.encode(undefined, undefined, true);
+        state.discardAllChanges();
+
+        let fullBytes = state.encodeAll(true);
+
+        const decodedState1 = new State();
+        decodedState1.items.onAdd = (item, key) => {};
+        decodedState1.items.onChange = (item, key) => {
+            console.log("decodedState1 -> onChange", {item, key})
+        };
+        decodedState1.items.onRemove = (item, key) => {
+            // console.log("decodedState1, onRemove =>", item, key);
+        };
+        let client1OnAddCard = sinon.spy(decodedState1.items, 'onAdd');
+        let client1OnRemoveCard = sinon.spy(decodedState1.items, 'onRemove');
+
+        decodedState1.decode(state.applyFilters(client1, true));
+
+        sinon.assert.callCount(client1OnAddCard, 10);
+        sinon.assert.callCount(client1OnRemoveCard, 0);
+
+        const decodedState2 = new State();
+        decodedState2.items.onAdd = (item, key) => {};
+        decodedState2.items.onChange = (item, key) => {
+            console.log("decodedState2 -> onChange", {item, key})
+        };
+        decodedState2.items.onRemove = (item, key) => {
+            // console.log("decodedState2, onRemove =>", item, key);
+        };
+        let client2OnAddCard = sinon.spy(decodedState2.items, 'onAdd');
+        let client2OnRemoveCard = sinon.spy(decodedState2.items, 'onRemove');
+
+        decodedState2.decode(state.applyFilters(client2, true));
+
+        sinon.assert.callCount(client2OnAddCard, 10);
+        sinon.assert.callCount(client2OnRemoveCard, 0);
+
+        // reveal two items from player 1
+        state.items.set('c1', 'onetwo1');
+        state.items.set('c2', 'onetwo2');
+
+        // reveal two items from player 2
+        state.items.set('c11', 'twoone11');
+        state.items.set('c12', 'twoone12');
+
+        state.encode(undefined, undefined, true);
+        decodedState1.decode(state.applyFilters(client1));
+        decodedState2.decode(state.applyFilters(client2));
+
+        sinon.assert.callCount(client1OnAddCard, 12);
+        sinon.assert.callCount(client2OnAddCard, 12);
+
+        // remove 1 item from player 1
+        state.items.delete('c2');
+
+        // remove 1 item from player 2
+        state.items.delete('c12');
+
+        // remove 2 items from player 3
+        state.items.delete('c20');
+        state.items.delete('c21');
+
+        // change 2 items
+        state.items.set('c11', 'twoone11 changed');
+
+        state.encode(undefined, undefined, true);
+        decodedState1.decode(state.applyFilters(client1));
+        decodedState2.decode(state.applyFilters(client2));
+
+        console.log(decodedState1.toJSON());
+
+        sinon.assert.callCount(client1OnAddCard, 12);
+        sinon.assert.callCount(client1OnRemoveCard, 2);
+
+        sinon.assert.callCount(client2OnAddCard, 12);
+        sinon.assert.callCount(client2OnRemoveCard, 2);
+
+        assert.equal(undefined, decodedState1.items.get('c2'));
+        assert.equal(undefined, decodedState1.items.get('c12'));
+
+        assert.deepEqual({
+            items: {
+                c0: 'one0',
+                c1: 'onetwo1',
+                c3: 'one3',
+                c4: 'one4',
+                c5: 'one5',
+                c6: 'one6',
+                c7: 'one7',
+                c8: 'one8',
+                c9: 'one9',
+                c11: 'twoone11 changed'
+            }
+        }, decodedState1.toJSON());
+
+        assert.deepEqual({
+            items: {
+                c10: 'two10',
+                c11: 'twoone11 changed',
+                c13: 'two13',
+                c14: 'two14',
+                c15: 'two15',
+                c16: 'two16',
+                c17: 'two17',
+                c18: 'two18',
+                c19: 'two19',
+                c1: 'onetwo1'
+            }
+        }, decodedState2.toJSON());
     });
 
     // it("should filter property outside of root", () => {

@@ -240,9 +240,9 @@ describe("Next Iteration", () => {
 
         let encoded = state.encode(undefined, undefined, true);
 
-        let encoded1 = state.applyFilters(encoded, client1);
-        let encoded2 = state.applyFilters(encoded, client2);
-        let encoded3 = state.applyFilters(encoded, client3);
+        let encoded1 = state.applyFilters(client1);
+        let encoded2 = state.applyFilters(client2);
+        let encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
         assert.equal(decoded1.map.size, 1);
@@ -263,9 +263,9 @@ describe("Next Iteration", () => {
         state.map.set("two", 22);
         encoded = state.encode(undefined, undefined, true);
 
-        encoded1 = state.applyFilters(encoded, client1);
-        encoded2 = state.applyFilters(encoded, client2);
-        encoded3 = state.applyFilters(encoded, client3);
+        encoded1 = state.applyFilters(client1);
+        encoded2 = state.applyFilters(client2);
+        encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
         assert.equal(decoded1.map.size, 1);
@@ -306,9 +306,9 @@ describe("Next Iteration", () => {
 
         let encoded = state.encode(undefined, undefined, true);
 
-        let encoded1 = state.applyFilters(encoded, client1);
-        let encoded2 = state.applyFilters(encoded, client2);
-        let encoded3 = state.applyFilters(encoded, client3);
+        let encoded1 = state.applyFilters(client1);
+        let encoded2 = state.applyFilters(client2);
+        let encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
         assert.equal(decoded1.map.size, 1);
@@ -331,9 +331,9 @@ describe("Next Iteration", () => {
         state.map.get("three").x = 33;
 
         encoded = state.encode(undefined, undefined, true);
-        encoded1 = state.applyFilters(encoded, client1);
-        encoded2 = state.applyFilters(encoded, client2);
-        encoded3 = state.applyFilters(encoded, client3);
+        encoded1 = state.applyFilters(client1);
+        encoded2 = state.applyFilters(client2);
+        encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
         assert.equal(decoded1.map.size, 1);
@@ -478,12 +478,12 @@ describe("Next Iteration", () => {
         state.player = player;
 
         let encoded = state.encode(undefined, undefined, true);
-        let encoded1 = state.applyFilters(encoded, client1);
+        let encoded1 = state.applyFilters(client1);
 
         const decoded1 = new State();
         decoded1.decode(encoded1);
 
-        let encoded2 = state.applyFilters(encoded, client2);
+        let encoded2 = state.applyFilters(client2);
 
         const decoded2 = new State();
         decoded2.decode(encoded2);
@@ -497,10 +497,10 @@ describe("Next Iteration", () => {
 
         encoded = state.encode(undefined, undefined, true);
 
-        encoded1 = state.applyFilters(encoded, client1);
+        encoded1 = state.applyFilters(client1);
         decoded1.decode(encoded1);
 
-        encoded2 = state.applyFilters(encoded, client2);
+        encoded2 = state.applyFilters(client2);
         decoded2.decode(encoded2);
         assert.equal(1, decoded2.num);
 

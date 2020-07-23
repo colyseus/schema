@@ -409,6 +409,44 @@ describe("Change API", () => {
             sinon.assert.callCount(onRemoveSpy, 0);
         });
 
+        it("detecting onChange on map of primitive values", () => {
+            class State extends Schema {
+                @type({ map: "number" }) numbers = new MapSchema<number>();
+            }
+
+            const state = new State();
+            state.numbers.set('one', 1);
+            state.numbers.set('two', 2);
+
+            const decodedState = new State();
+            decodedState.numbers.onAdd = function(item, key) {}
+            const onAddSpy = sinon.spy(decodedState.numbers, 'onAdd');
+
+            decodedState.numbers.onChange = function(item, key) {}
+            const onChangeSpy = sinon.spy(decodedState.numbers, 'onChange');
+
+            decodedState.numbers.onRemove = function(item, key) {}
+            const onRemoveSpy = sinon.spy(decodedState.numbers, 'onRemove');
+            decodedState.decode(state.encode());
+
+            state.numbers.set('one', 11);
+            state.numbers.set('two', 22);
+            state.numbers.set('three', 3);
+
+            decodedState.decode(state.encode());
+
+            sinon.assert.callCount(onAddSpy, 3);
+            sinon.assert.calledTwice(onChangeSpy);
+
+            state.numbers.delete('one');
+            state.numbers.set('three', 33);
+
+            decodedState.decode(state.encode());
+            sinon.assert.callCount(onChangeSpy, 3);
+            sinon.assert.callCount(onAddSpy, 3);
+            sinon.assert.callCount(onRemoveSpy, 1);
+        });
+
         it("detecting multiple changes on item inside a map", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema({
@@ -776,25 +814,25 @@ describe("Change API", () => {
         }
 
         it("should not trigger unchanged fields", () => {
-            let totalFieldChanges: number = 0;
-            let scoresFieldChanges: number = 0;
+            let totalsChanges: number = 0;
+            let scoresAdded: number = 0;
+            let scoresChanges: number = 0;
+            let timerChanges: number = 0;
 
             const state = new State();
             state.timer = 10;
 
+            const client = {};
             const decodedState = new State();
 
-            // decodedState.currentRound.listen("scores", () => scoresFieldChanges++);
-            // decodedState.currentRound.listen("totals", () => totalFieldChanges++);
+            state.encodeAll();
+            decodedState.decode(state.applyFilters(client, true));
 
+            decodedState.listen("timer", () => timerChanges++);
             decodedState.listen("currentRound", (currentRound) => {
-                currentRound.scores.onChange = function (value, key) {
-                    scoresFieldChanges++;
-                };
-
-                currentRound.totals.onChange = function (value, key) {
-                    totalFieldChanges++;
-                };
+                currentRound.scores.onAdd = (value, key) => scoresAdded++;
+                currentRound.scores.onChange = (value, key) => scoresChanges++;
+                currentRound.totals.onChange = (value, key) => totalsChanges++;
             });
 
             do {
@@ -803,8 +841,8 @@ describe("Change API", () => {
                 state.currentRound.scores[0]++;
                 state.currentRound.scores[1]++;
 
-                const encoded = state.encode(undefined, undefined, true);
-                decodedState.decode(state.applyFilters(encoded, {}));
+                state.encode(undefined, undefined, true);
+                decodedState.decode(state.applyFilters(client));
 
                 state.discardAllChanges();
             } while (state.timer > 0);
@@ -813,13 +851,14 @@ describe("Change API", () => {
             state.currentRound.totals[0] = 100;
             state.currentRound.totals[1] = 100;
 
-            const encoded = state.encode(undefined, undefined, true);
-            decodedState.decode(state.applyFilters(encoded, {}));
+            state.encode(undefined, undefined, true);
+            decodedState.decode(state.applyFilters(client));
             state.discardAllChanges();
 
-            assert.equal(2, totalFieldChanges);
-            assert.equal(20, scoresFieldChanges);
-            // assert.equal(10, scoresFieldChanges);
+            assert.equal(10, timerChanges);
+            assert.equal(2, totalsChanges);
+            assert.equal(2, scoresAdded);
+            assert.equal(18, scoresChanges);
         });
     });
 

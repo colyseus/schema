@@ -156,8 +156,8 @@ describe("SetSchema Tests", () => {
 
         let encoded = state.encode(undefined, undefined, true);
 
-        const filtered1 = state.applyFilters(encoded, client1);
-        const filtered2 = state.applyFilters(encoded, client2);
+        const filtered1 = state.applyFilters(client1);
+        const filtered2 = state.applyFilters(client2);
 
         const decoded1 = new State();
         decoded1.decode(filtered1)
@@ -195,8 +195,8 @@ describe("SetSchema Tests", () => {
 
         let encoded = state.encode(undefined, undefined, true);
 
-        const filtered1 = state.applyFilters(encoded, client1);
-        const filtered2 = state.applyFilters(encoded, client2);
+        const filtered1 = state.applyFilters(client1);
+        const filtered2 = state.applyFilters(client2);
 
         const decoded1 = new State();
         decoded1.decode(filtered1)
@@ -241,8 +241,8 @@ describe("SetSchema Tests", () => {
 
         let encoded = state.encode(undefined, undefined, true);
 
-        const filtered1 = state.applyFilters(encoded, client1);
-        const filtered2 = state.applyFilters(encoded, client2);
+        const filtered1 = state.applyFilters(client1);
+        const filtered2 = state.applyFilters(client2);
 
         const decoded1 = new State();
         decoded1.decode(filtered1)

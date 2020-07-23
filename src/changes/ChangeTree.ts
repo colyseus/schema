@@ -184,7 +184,8 @@ export class ChangeTree {
                     ? operation
                     : (previousChange.op === OPERATION.DELETE)
                         ? OPERATION.DELETE_AND_ADD
-                        : OPERATION.REPLACE,
+                        : operation,
+                        // : OPERATION.REPLACE,
                 index
             });
         }

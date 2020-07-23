@@ -244,14 +244,12 @@ export abstract class Schema {
             if (operation === OPERATION.CLEAR) {
                 //
                 // TODO: refactor me!
-                // The `.clear()` method is calling `$root.removeRef(refId)` is
-                // being called for each item inside this collection
+                // The `.clear()` method is calling `$root.removeRef(refId)` for
+                // each item inside this collection
                 //
                 (ref as SchemaDecoderCallbacks).clear(true);
                 continue;
             }
-
-            let hasChange = true;
 
             if (!isSchema) {
                 previousValue = ref['getByIndex'](fieldIndex);
@@ -455,6 +453,8 @@ export abstract class Schema {
                 value = decodePrimitiveType(type as string, bytes, it);
             }
 
+            let hasChange = (previousValue !== value);
+
             if (
                 value !== null &&
                 value !== undefined
@@ -468,8 +468,6 @@ export abstract class Schema {
                 }
 
                 if (ref instanceof Schema) {
-                    hasChange = (ref[_field] !== value);
-
                     ref[field] = value;
 
                     //
@@ -485,8 +483,6 @@ export abstract class Schema {
                     // const key = ref['$indexes'].get(field);
                     const key = dynamicIndex as string;
 
-                    hasChange = !ref.has(key);
-
                     // ref.set(key, value);
                     ref['$items'].set(key, value);
 
@@ -494,16 +490,12 @@ export abstract class Schema {
                     // const key = ref['$indexes'][field];
                     // console.log("SETTING FOR ArraySchema =>", { field, key, value });
                     // ref[key] = value;
-                    hasChange = ref[field] === undefined;
-
                     ref.setAt(field, value);
 
                 } else if (
                     ref instanceof CollectionSchema ||
                     ref instanceof SetSchema
                 ) {
-                    hasChange = !ref.has(value);
-
                     const index = ref.add(value);
                     ref['setIndex'](field, index);
                 }
@@ -638,18 +630,13 @@ export abstract class Schema {
                     }
                 }
 
-                // console.log("ENCODE FIELD", {
-                //     ref: ref.constructor.name,
-                //     type,
-                //     field,
-                //     value,
-                //     op: OPERATION[operation.op]
-                // })
-
                 if (operation.op === OPERATION.DELETE) {
                     //
-                    // TODO: delete from filters cache.
+                    // TODO: delete from filter cache data.
                     //
+                    // if (useFilters) {
+                    //     delete changeTree.caches[fieldIndex];
+                    // }
                     continue;
                 }
 
@@ -658,6 +645,14 @@ export abstract class Schema {
 
                 // const type = changeTree.getType(fieldIndex);
                 const value = changeTree.getValue(fieldIndex);
+
+                // console.log("ENCODE FIELD", {
+                //     ref: ref.constructor.name,
+                //     type,
+                //     field,
+                //     value,
+                //     op: OPERATION[operation.op]
+                // });
 
                 // Enqueue ChangeTree to be visited
                 if (
@@ -771,12 +766,11 @@ export abstract class Schema {
         return this.encode(true, [], useFilters);
     }
 
-    applyFilters(encodedBytes: number[], client: Client, encodeAll: boolean = false) {
+    applyFilters(client: Client, encodeAll: boolean = false) {
         const root = this;
         const refIdsDissallowed = new Set<number>();
 
-        if (!client.$filterState) { client.$filterState = new ClientState(); }
-        const $filterState = client.$filterState as ClientState;
+        const $filterState = ClientState.get(client);
 
         const changeTrees = [this.$changes];
         let numChangeTrees = 1;
@@ -797,9 +791,11 @@ export abstract class Schema {
             encode.uint8(filteredBytes, SWITCH_TO_STRUCTURE);
             encode.number(filteredBytes, changeTree.refId);
 
-            console.log("REF:", ref.constructor.name);
-            console.log("Encode all?", (encodeAll || !$filterState.refIds.has(changeTree)));
-            let isEncodeAll = (encodeAll || !$filterState.refIds.has(changeTree));
+            const clientHasRefId = $filterState.refIds.has(changeTree);
+            const isEncodeAll = (encodeAll || !clientHasRefId);
+
+            // console.log("REF:", ref.constructor.name);
+            // console.log("Encode all?", isEncodeAll);
 
             const changes: ChangeOperation[] | number[] = (isEncodeAll)
                 ? Array.from(changeTree.allChanges)
@@ -808,7 +804,7 @@ export abstract class Schema {
             //
             // include `changeTree` on list of known refIds by this client.
             //
-            $filterState.refIds.add(changeTree);
+            $filterState.addRefId(changeTree);
 
             for (let j = 0, cl = changes.length; j < cl; j++) {
                 const change: ChangeOperation = (isEncodeAll)
@@ -822,6 +818,22 @@ export abstract class Schema {
                 }
 
                 const fieldIndex = change.index;
+
+                //
+                // Deleting fields: encode the operation + field index
+                //
+                if (change.op === OPERATION.DELETE) {
+                    //
+                    // DELETE operations also need to go through filtering.
+                    //
+                    // TODO: cache the previous value so we can access the value (primitive or `refId`)
+                    // (check against `$filterState.refIds`)
+                    //
+
+                    encode.uint8(filteredBytes, change.op);
+                    encode.number(filteredBytes, fieldIndex);
+                    continue;
+                }
 
                 // indexed operation
                 const value = changeTree.getValue(fieldIndex);
@@ -860,26 +872,70 @@ export abstract class Schema {
                     numChangeTrees++;
                 }
 
-                console.log("OP:", OPERATION[change.op]);
-
                 //
-                // Deleting fields: encode the operation + field index
+                // Copy cached bytes
                 //
-                if (change.op === OPERATION.DELETE) {
-                    encode.uint8(filteredBytes, change.op);
-                    encode.number(filteredBytes, fieldIndex);
-                    continue;
+                if (change.op !== OPERATION.TOUCH) {
 
-                } else if (change.op !== OPERATION.TOUCH) {
-                    // const bytes = encodedBytes.slice(cache.beginIndex, cache.endIndex);
-                    filteredBytes = filteredBytes.concat(changeTree.caches[fieldIndex]);
+                    //
+                    // TODO: refactor me!
+                    //
+                    const containerIndexes = $filterState.containerIndexes.get(changeTree)
+
+                    if (change.op === OPERATION.ADD || isSchema) {
+                        //
+                        // use cached bytes directly if is from Schema type.
+                        //
+                        filteredBytes = filteredBytes.concat(changeTree.caches[fieldIndex]);
+                        containerIndexes.add(fieldIndex);
+
+                    } else {
+                        if (containerIndexes.has(fieldIndex)) {
+                            //
+                            // use cached bytes if already has the field
+                            //
+                            filteredBytes = filteredBytes.concat(changeTree.caches[fieldIndex]);
+
+                        } else {
+                            //
+                            // force ADD operation if field is not known by this client.
+                            //
+                            containerIndexes.add(fieldIndex);
+
+                            encode.uint8(filteredBytes, OPERATION.ADD);
+                            encode.number(filteredBytes, fieldIndex);
+
+                            if (ref instanceof MapSchema) {
+                                //
+                                // MapSchema dynamic key
+                                //
+                                const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
+                                encode.string(filteredBytes, dynamicIndex);
+
+                            } else {
+                                //
+                                // Key from other indexed structures (Array, Collection, etc.)
+                                //
+                                encode.number(filteredBytes, fieldIndex);
+                            }
+
+                            if (value['$changes']) {
+                                encode.number(filteredBytes, value['$changes'].refId);
+
+                            } else {
+                                // "encodePrimitiveType" without type checking.
+                                // the type checking has been done on the first .encode() call.
+                                encode[type as string](filteredBytes, value);
+                            }
+                        }
+                    }
 
                 } else if (value['$changes'] && !isSchema) {
-                    console.log("manual add!", value['$changes'].refId);
-
                     //
                     // TODO:
                     // - track ADD/REPLACE/DELETE instances on `$filterState`
+                    // - do NOT always encode dynamicIndex for MapSchema.
+                    //   (If client already has that key, only the first index is necessary.)
                     //
 
                     encode.uint8(filteredBytes, OPERATION.ADD);
@@ -1017,10 +1073,7 @@ export abstract class Schema {
                     const listener = ref['$listeners'] && ref['$listeners'][change.field];
 
                     if (!isSchema) {
-                        if (
-                            change.op === OPERATION.ADD &&
-                            !change.previousValue
-                        ) {
+                        if (change.op === OPERATION.ADD && !change.previousValue) {
                             (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
 
                         } else if (change.op === OPERATION.DELETE) {

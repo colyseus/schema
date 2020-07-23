@@ -80,9 +80,9 @@ describe("MapSchema Tests", () => {
 
         let encoded = state.encode(undefined, undefined, true);
 
-        let encoded1 = state.applyFilters(encoded, client1);
-        let encoded2 = state.applyFilters(encoded, client2);
-        let encoded3 = state.applyFilters(encoded, client3);
+        let encoded1 = state.applyFilters(client1);
+        let encoded2 = state.applyFilters(client2);
+        let encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
         assert.equal(decoded1.map.size, 1);
@@ -103,9 +103,9 @@ describe("MapSchema Tests", () => {
         state.map.clear();
 
         encoded = state.encode(undefined, undefined, true);
-        encoded1 = state.applyFilters(encoded, client1);
-        encoded2 = state.applyFilters(encoded, client2);
-        encoded3 = state.applyFilters(encoded, client3);
+        encoded1 = state.applyFilters(client1);
+        encoded2 = state.applyFilters(client2);
+        encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
         assert.equal(decoded1.map.size, 0);
