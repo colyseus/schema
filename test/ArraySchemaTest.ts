@@ -543,6 +543,7 @@ describe("ArraySchema Tests", () => {
 
         let encoded = state.encode(undefined, undefined, true);
 
+        const client = {};
         const decodedState = new StateWithFilter();
         decodedState.decode(encoded);
 
@@ -552,7 +553,8 @@ describe("ArraySchema Tests", () => {
         const filteredCards = state.players['one'].cards.filter((card) => card.number >= 3);
         filteredCards.sort((a, b) => b.number - a.number);
 
-        decodedState.decode(state.applyFilters({}));
+
+        decodedState.decode(state.applyFilters(client));
         assert.equal(5, decodedState.players['one'].cards.length);
         assert.deepEqual([1, 3, 2, 5, 4], decodedState.players['one'].cards.map(c => c.number));
 
@@ -560,7 +562,7 @@ describe("ArraySchema Tests", () => {
         state.players['one'].cards = filteredCards;
         encoded = state.encode(undefined, undefined, true);
 
-        decodedState.decode(state.applyFilters({}));
+        decodedState.decode(state.applyFilters(client));
         assert.equal(3, decodedState.players['one'].cards.length);
         assert.deepEqual([5, 4, 3], decodedState.players['one'].cards.map(c => c.number));
     });

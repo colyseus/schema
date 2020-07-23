@@ -4,7 +4,7 @@
   <br>
 
   <p>
-    A binary schema-based serialization algorithm. <br>
+    A binary state serializer with delta encoding for games.<br>
     Although it was born to be used on <a href="https://github.com/colyseus/colyseus">Colyseus</a>, this library can be used as standalone.
   </p>
 
@@ -15,8 +15,6 @@
     <img src="https://img.shields.io/badge/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fendel&style=for-the-badge" alt="Patreon donate button"/>
   </a>
 </div>
-
-Decoders currently available for JavaScript, LUA, C#, C++ and Haxe.
 
 ## Defining Schema
 

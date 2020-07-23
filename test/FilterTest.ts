@@ -232,12 +232,26 @@ describe("@filter Test", () => {
 
         state.encode(undefined, undefined, true);
         decodedState2.decode(state.applyFilters(client2));
+        state.discardAllChanges();
+
+        console.log(decodedState2.toJSON());
 
         assert.deepEqual([
             { x: 16, y: 16 },
             { x: 20, y: 20 },
             { x: 19, y: 19, radius: 1 },
         ], Array.from(decodedState2.entities.values()).map(entity => entity.toJSON()));
+
+        // // make player 1 and player 2 see each other
+        // state.entities.get('player').x += 10;
+
+        // state.encode(undefined, undefined, true);
+
+        // console.log("\n\nREFIDS =>", Array.from(state.entities.entries()).map(([key, entity]) => [key, entity['$changes'].refId]));
+
+        // console.log("\n\nWILL APPLY FILTERS AGAIN");
+        // decodedState2.decode(state.applyFilters(client2));
+        // console.log(decodedState2.toJSON());
     });
 
     it("DELETE inside collection of Schema", () => {
