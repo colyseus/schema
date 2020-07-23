@@ -539,7 +539,7 @@ describe("@filter Test", () => {
         }, decodedState2.toJSON());
     });
 
-    it("DELETE a field of Schema", () => {
+    it("DELETE a primitive value of Schema", () => {
         const filterCard = function(this: Card, client: Client, value: any, root: State) {
             return this.revealed || root.players.get(client.sessionId).cards.includes(this);
         }
@@ -627,8 +627,177 @@ describe("@filter Test", () => {
         assert.deepEqual({ suit: 'H', number: 3, revealed: true }, decoded1.players.get('two').cards[2].toJSON())
         assert.deepEqual({ suit: 'C', number: 2, revealed: true }, decoded1.players.get('one').cards[1].toJSON())
 
+        // clear suit of all cards with index > 0
+        state.players.forEach(player => {
+            player.cards.forEach((card, i) => {
+                if (i > 0) {
+                    card.suit = undefined;
+                }
+            })
+        });
+
+        // listenn for "suit" change on both players
+        let suitChanged: number = 0;
+        decoded1.players.forEach(player => {
+            player.cards.forEach(card => {
+                card.listen("suit", (value) => suitChanged++);
+            });
+        });
+
+        decoded2.players.forEach(player => {
+            player.cards.forEach(card => {
+                card.listen("suit", (value) => suitChanged++);
+            });
+        });
+
+        state.encode(undefined, undefined, true)
+        decoded1.decode(state.applyFilters(client1));
+        decoded2.decode(state.applyFilters(client2));
+        state.discardAllChanges();
+
+        assert.equal(8, suitChanged, "should have nullified 8 cards.");
+
+        assert.deepEqual({
+            players: {
+                one: {
+                    cards: [
+                        { suit: 'S', number: 1 },
+                        { number: 2, revealed: true },
+                        { number: 3 }
+                    ]
+                },
+                two: { cards: [{}, {}, { number: 3, revealed: true }] }
+            }
+        }, decoded1.toJSON())
+
+        assert.deepEqual({
+            players: {
+                one: { cards: [{}, { number: 2, revealed: true }, {}] },
+                two: {
+                    cards: [
+                        { suit: 'S', number: 1 },
+                        { number: 2 },
+                        { number: 3, revealed: true }
+                    ]
+                }
+            }
+        }, decoded2.toJSON())
+    });
+
+    it("DELETE a direct Schema instance", () => {
+        const filterCard = function(this: Player, client: Client, value: Card, root: State) {
+            const currentPlayer = root.players.get(client.sessionId);
+            return (
+                value.revealed ||
+                [
+                    currentPlayer.card1,
+                    currentPlayer.card2,
+                    currentPlayer.card3
+                ].includes(value)
+            )
+        }
+
+        class Card extends Schema {
+            @type("string") suit: string;
+            @type("number") number: number;
+            @type("boolean") revealed: boolean;
+        }
+
+        class Player extends Schema {
+            @filter(filterCard)
+            @type(Card) card1: Card;
+
+            @filter(filterCard)
+            @type(Card) card2: Card;
+
+            @filter(filterCard)
+            @type(Card) card3: Card;
+        }
+
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+        }
+
+        const state = new State();
+
+        const client1 = { sessionId: "one" };
+        const decoded1 = new State();
+
+        const client2 = { sessionId: "two" };
+        const decoded2 = new State();
+
+        [client1, client2].forEach(client => {
+            // simulate other player joined before
+            state.encode(undefined, undefined, true);
+            state.discardAllChanges();
+
+            state.players.set(client.sessionId, new Player().assign({
+                card1: new Card().assign({ suit: "S", number: 1 }),
+                card2: new Card().assign({ suit: "C", number: 2 }),
+                card3: new Card().assign({ suit: "H", number: 3 }),
+            }));
+        });
+
+        state.encodeAll(true);
+        decoded1.decode(state.applyFilters(client1, true));
+        decoded2.decode(state.applyFilters(client2, true));
+        state.discardAllChanges();
+
         console.log(util.inspect(decoded1.toJSON(), false, 4));
         console.log(util.inspect(decoded2.toJSON(), false, 4));
+
+        assert.deepEqual({
+            players: {
+                one: {
+                    card1: { suit: 'S', number: 1 },
+                    card2: { suit: 'C', number: 2 },
+                    card3: { suit: 'H', number: 3 }
+                },
+                two: {}
+            }
+        }, decoded1.toJSON());
+
+        assert.deepEqual({
+            players: {
+                one: {},
+                two: {
+                    card1: { suit: 'S', number: 1 },
+                    card2: { suit: 'C', number: 2 },
+                    card3: { suit: 'H', number: 3 }
+                }
+            }
+        }, decoded2.toJSON());
+
+        // reveal a card on each player's hand.
+        state.players.get('one').card2.revealed = true;
+        state.players.get('two').card3.revealed = true;
+
+        state.encode(undefined, undefined, true)
+        decoded1.decode(state.applyFilters(client1));
+        decoded2.decode(state.applyFilters(client2));
+        state.discardAllChanges();
+
+        assert.deepEqual({ suit: 'H', number: 3, revealed: true }, decoded1.players.get('two').card3.toJSON())
+        assert.deepEqual({ suit: 'C', number: 2, revealed: true }, decoded1.players.get('one').card2.toJSON())
+
+        // clear suit of all cards with index > 0
+        state.players.forEach(player => {
+            player.card2 = undefined;
+            player.card3 = undefined;
+        });
+
+        state.encode(undefined, undefined, true)
+        decoded1.decode(state.applyFilters(client1));
+        decoded2.decode(state.applyFilters(client2));
+        state.discardAllChanges();
+
+        assert.deepEqual({
+            players: { one: { card1: { suit: 'S', number: 1 } }, two: {} }
+        }, decoded1.toJSON());
+
+        assert.deepEqual({
+            players: { one: {}, two: { card1: { suit: 'S', number: 1 } } }
+        }, decoded2.toJSON());
     });
 
     // it("should filter property outside of root", () => {

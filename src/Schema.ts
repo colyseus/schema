@@ -818,7 +818,10 @@ export abstract class Schema {
             ) {
                 const indexesWithFilters = (ref as Schema)._definition.indexesWithFilters;
                 indexesWithFilters.forEach(indexWithFilter => {
-                    if (!containerIndexes.has(indexWithFilter)) {
+                    if (
+                        !containerIndexes.has(indexWithFilter) &&
+                        changeTree.allChanges.has(indexWithFilter)
+                    ) {
                         if (isEncodeAll) {
                             changes.push(indexWithFilter as any);
 
@@ -870,7 +873,7 @@ export abstract class Schema {
                     );
 
                     if (filter && !filter.call(ref, client, value, root)) {
-                        if (value['$changes']) {
+                        if (value && value['$changes']) {
                             refIdsDissallowed.add(value['$changes'].refId);;
                         }
                         continue;
@@ -882,7 +885,7 @@ export abstract class Schema {
                     const filter = changeTree.getChildrenFilter();
 
                     if (filter && !filter.call(parent, client, ref['$indexes'].get(fieldIndex), value, root)) {
-                        if (value['$changes']) {
+                        if (value && value['$changes']) {
                             refIdsDissallowed.add(value['$changes'].refId);
                         }
                         continue;
