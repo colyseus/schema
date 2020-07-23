@@ -3,8 +3,7 @@ import { Client } from "../annotations";
 
 export class ClientState {
     refIds = new WeakSet<ChangeTree>();
-    // containerIndexes = new WeakMap<ChangeTree, Set<number>>();
-    containerIndexes = new Map<ChangeTree, Set<number>>();
+    containerIndexes = new WeakMap<ChangeTree, Set<number>>();
 
     addRefId(changeTree: ChangeTree) {
         if (!this.refIds.has(changeTree)) {
@@ -14,7 +13,7 @@ export class ClientState {
     }
 
     static get(client: Client) {
-        if (!client.$filterState) {
+        if (client.$filterState === undefined) {
             client.$filterState = new ClientState();
         }
 

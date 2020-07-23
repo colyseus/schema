@@ -298,7 +298,7 @@ export class ChangeTree {
         this.changes.forEach((change) => {
             const value = this.getValue(change.index);
 
-            if (value['$changes']) {
+            if (value && value['$changes']) {
                 value['$changes'].discardAll();
             }
         });

@@ -133,7 +133,6 @@ export function hasFilter(klass: typeof Schema) {
 // Colyseus integration
 export type Client = {
     sessionId: string,
-    $refIds: WeakMap<ChangeTree, boolean>,
 } & any;
 
 export class Context {
