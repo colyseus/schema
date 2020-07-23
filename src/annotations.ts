@@ -60,8 +60,9 @@ export class SchemaDefinition {
     indexes: { [field: string]: number } = {};
     fieldsByIndex: { [index: number]: string } = {};
 
-    filters: { [field: string]: FilterCallback } = {};
-    childFilters: { [field: string]: FilterChildrenCallback } = {}; // childFilters are used on Map, Array, Set items.
+    filters: { [field: string]: FilterCallback };
+    indexesWithFilters: number[];
+    childFilters: { [field: string]: FilterChildrenCallback }; // childFilters are used on Map, Array, Set items.
 
     deprecated: { [field: string]: boolean } = {};
     descriptors: PropertyDescriptorMap & ThisType<any> = {};
@@ -89,9 +90,10 @@ export class SchemaDefinition {
     addFilter(field: string, cb: FilterCallback) {
         if (!this.filters) {
             this.filters = {};
+            this.indexesWithFilters = [];
         }
-
         this.filters[this.indexes[field]] = cb;
+        this.indexesWithFilters.push(this.indexes[field]);
         return true;
     }
 
@@ -105,9 +107,7 @@ export class SchemaDefinition {
             MapSchema.is(type) ||
             SetSchema.is(type)
         ) {
-            if (!this.childFilters) {
-                this.childFilters = {};
-            }
+            if (!this.childFilters) { this.childFilters = {}; }
 
             this.childFilters[index] = cb;
             return true;

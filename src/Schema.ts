@@ -797,14 +797,37 @@ export abstract class Schema {
             // console.log("REF:", ref.constructor.name);
             // console.log("Encode all?", isEncodeAll);
 
-            const changes: ChangeOperation[] | number[] = (isEncodeAll)
-                ? Array.from(changeTree.allChanges)
-                : Array.from(changeTree.changes.values());
-
             //
             // include `changeTree` on list of known refIds by this client.
             //
             $filterState.addRefId(changeTree);
+
+            const containerIndexes = $filterState.containerIndexes.get(changeTree)
+            const changes = (isEncodeAll)
+                ? Array.from(changeTree.allChanges)
+                : Array.from(changeTree.changes.values());
+
+            //
+            // WORKAROUND: tries to re-evaluate previously not included @filter() attributes
+            // - see "DELETE a field of Schema" test case.
+            //
+            if (
+                !encodeAll &&
+                isSchema &&
+                (ref as Schema)._definition.indexesWithFilters
+            ) {
+                const indexesWithFilters = (ref as Schema)._definition.indexesWithFilters;
+                indexesWithFilters.forEach(indexWithFilter => {
+                    if (!containerIndexes.has(indexWithFilter)) {
+                        if (isEncodeAll) {
+                            changes.push(indexWithFilter as any);
+
+                        } else {
+                            changes.push({ op: OPERATION.ADD, index: indexWithFilter, } as any);
+                        }
+                    }
+                });
+            }
 
             for (let j = 0, cl = changes.length; j < cl; j++) {
                 const change: ChangeOperation = (isEncodeAll)
@@ -880,7 +903,6 @@ export abstract class Schema {
                     //
                     // TODO: refactor me!
                     //
-                    const containerIndexes = $filterState.containerIndexes.get(changeTree)
 
                     if (change.op === OPERATION.ADD || isSchema) {
                         //

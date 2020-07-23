@@ -134,7 +134,7 @@ describe("CollectionSchema Tests", () => {
         assert.equal(0, decoded.players.size);
     });
 
-    it("@filter() should filter out Collection field entirely.", () => {
+    it("@filter() should filter out Collection field entirely", () => {
         class Player extends Schema {
             @type("number") level: number;
         }
@@ -152,18 +152,15 @@ describe("CollectionSchema Tests", () => {
         state.players.add(new Player().assign({ level: 2 }));
 
         const client1 = { sessionId: "one" };
-        const client2 = { sessionId: "two" };
-
-        let encoded = state.encode(undefined, undefined, true);
-
-        const filtered1 = state.applyFilters(client1);
-        const filtered2 = state.applyFilters(client2);
-
         const decoded1 = new State();
-        decoded1.decode(filtered1)
 
+        const client2 = { sessionId: "two" };
         const decoded2 = new State();
-        decoded2.decode(filtered2);
+
+        state.encodeAll(true);
+        decoded1.decode(state.applyFilters(client1, true));
+        decoded2.decode(state.applyFilters(client2, true));
+        state.discardAllChanges();
 
         assert.equal(2, decoded1.players.size);
         assert.equal(0, decoded2.players.size);
@@ -176,12 +173,9 @@ describe("CollectionSchema Tests", () => {
 
         class State extends Schema {
             @filterChildren(function (client: Client, key: number, value: Player) {
-                console.log("@filterChildren()", { client, key, value });
                 if (client.sessionId === "one") {
-                    console.log("RETURN", key % 2 === 0);
                     return key % 2 === 0;
                 } else {
-                    console.log("RETURN", key % 2 === 1);
                     return key % 2 === 1;
                 }
             })
