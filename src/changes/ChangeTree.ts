@@ -277,18 +277,30 @@ export class ChangeTree {
 
         this.changed = true;
         this.touchParents();
-
-        // this.root?.dirty(this);
     }
 
     discard(changed: boolean = false) {
+        //
+        // Map, Array, etc:
+        // Remove cached key to ensure ADD operations is unsed instead of
+        // REPLACE in case same key is used on next patches.
+        //
+        // TODO: refactor this. this is not relevant for Collection and Set.
+        //
+        if (!(this.ref instanceof Schema)) {
+            this.changes.forEach((change) => {
+                if (change.op === OPERATION.DELETE) {
+                    const index = this.ref['getIndex'](change.index)
+                    delete this.indexes[index];
+                }
+            });
+        }
+
         this.changes.clear();
         this.changed = changed;
 
         // re-set `currentCustomOperation`
         this.currentCustomOperation = 0;
-
-        // this.root?.discard(this);
     }
 
     /**

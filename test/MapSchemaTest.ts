@@ -424,7 +424,9 @@ describe("MapSchema Tests", () => {
 
         state.entities.delete("item2");
 
-        decodedState2.decode(state.encode());
+        const encodedPatch = state.encode();
+        decodedState.decode(encodedPatch);
+        decodedState2.decode(encodedPatch);
 
         assert.equal(false, decodedState2.entities.has("item1"), "'item1' should've been deleted.");
         assert.equal(false, decodedState2.entities.has("item2"), "'item2' should've been deleted.");

@@ -45,7 +45,6 @@ describe("Utils Test", () => {
 
         state.arrayOfPlayers.splice(1);
         dump = dumpChanges(state);
-        console.log(JSON.stringify(dump));
 
         assert.equal(
             JSON.stringify(dump),

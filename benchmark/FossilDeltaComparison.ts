@@ -1,5 +1,5 @@
 import { Schema, type } from "../src";
-import * as nanoid from "nanoid";
+import { nanoid } from "nanoid";
 import * as msgpack from "@msgpack/msgpack";
 import * as fossildelta from "fossil-delta";
 import { MapSchema } from "../src/types/MapSchema";
