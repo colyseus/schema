@@ -495,6 +495,34 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
         return Array.from(this.$items.values()).includes(searchElement, fromIndex);
     }
 
+    /**
+     * Calls a defined callback function on each element of an array. Then, flattens the result into
+     * a new array.
+     * This is identical to a map followed by flat with depth 1.
+     *
+     * @param callback A function that accepts up to three arguments. The flatMap method calls the
+     * callback function one time for each element in the array.
+     * @param thisArg An object to which the this keyword can refer in the callback function. If
+     * thisArg is omitted, undefined is used as the this value.
+     */
+    // @ts-ignore
+    flatMap<U, This = undefined>(callback: (this: This, value: V, index: number, array: V[]) => U | ReadonlyArray<U>, thisArg?: This): U[] {
+        // @ts-ignore
+        throw new Error("ArraySchema#flatMap() is not supported.");
+    }
+
+    /**
+     * Returns a new array with all sub-array elements concatenated into it recursively up to the
+     * specified depth.
+     *
+     * @param depth The maximum recursion depth
+     */
+    // @ts-ignore
+    flat<A, D extends number = 1>(this: A, depth?: D): any {
+        // @ts-ignore
+        throw new Error("ArraySchema#flat() is not supported.");
+    }
+
     get size () {
         return this.$items.size;
     }

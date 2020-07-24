@@ -1076,6 +1076,16 @@ describe("ArraySchema Tests", () => {
         it("#find()", () => {
             const arr = new ArraySchema<number>(1,2,3,4,5);
             assert.equal(3, arr.find((v) => v === 3));
+        });
+
+        it("#flat", () => {
+            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
+            assert.throws(() => { arr.flat(); }, /not supported/i);
+        })
+
+        it("#flatMap", () => {
+            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
+            assert.throws(() => { arr.flatMap(() => {}); }, /not supported/i);
         })
     })
 
