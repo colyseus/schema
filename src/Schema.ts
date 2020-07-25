@@ -63,7 +63,7 @@ function assertType(value: any, type: string, klass: Schema, field: string | num
     }
 
     if (typeof (value) !== typeofTarget && (!allowNull || (allowNull && value !== null))) {
-        let foundValue = `'${JSON.stringify(value)}'${(value && value.constructor && ` (${value.constructor.name})`)}`;
+        let foundValue = `'${JSON.stringify(value)}'${(value && value.constructor && ` (${value.constructor.name})`) || ''}`;
         throw new EncodeSchemaError(`a '${typeofTarget}' was expected, but ${foundValue} was provided in ${klass.constructor.name}#${field}`);
     }
 }
