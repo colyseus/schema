@@ -989,7 +989,7 @@ export abstract class Schema {
         return filteredBytes;
     }
 
-    clone () {
+    clone (): this {
         const cloned = new ((this as any).constructor);
         const schema = this._definition.schema;
         for (let field in schema) {
