@@ -84,13 +84,15 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
     get [Symbol.toStringTag]() { return this.$items[Symbol.toStringTag] }
 
     set(key: K, value: V) {
-        this.$items.set(key, value);
-
         // get "index" for this value.
         const hasIndex = typeof(this.$changes.indexes[key]) !== "undefined";
         const index = (hasIndex)
             ? this.$changes.indexes[key]
             : this.$refId++;
+
+        let operation: OPERATION = (hasIndex)
+            ? OPERATION.REPLACE
+            : OPERATION.ADD;
 
         const isRef = (value['$changes']) !== undefined;
         if (isRef) {
@@ -108,9 +110,17 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         if (!hasIndex) {
             this.$changes.indexes[key] = index;
             this.$indexes.set(index, key);
+
+        } else if (
+            isRef && // if is schema, force ADD operation if value differ from previous one.
+            this.$items.get(key) !== value
+        ) {
+            operation = OPERATION.ADD;
         }
 
-        this.$changes.change(key, (hasIndex) ? OPERATION.REPLACE : OPERATION.ADD);
+        this.$items.set(key, value);
+
+        this.$changes.change(key, operation);
 
         return this;
     }

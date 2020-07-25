@@ -432,4 +432,66 @@ describe("MapSchema Tests", () => {
         assert.equal(false, decodedState2.entities.has("item2"), "'item2' should've been deleted.");
     });
 
+    it("should allow to move a key from one map to another", () => {
+        class Entity extends Schema {
+            @type("number") id: number;
+        }
+
+        class Item extends Entity {
+            @type("number") damage: number;
+        }
+
+        class Player extends Entity {
+            @type("number") hp: number;
+        }
+
+        class State extends Schema {
+            @type({ map: Entity }) entities = new MapSchema<Entity>();
+            @type({ map: Entity }) items = new MapSchema<Entity>();
+        }
+
+        const state = new State();
+
+        const decodedState = new State();
+        decodedState.decode(state.encodeAll());
+
+        state.entities.set("item1", new Item().assign({ id: 1, damage: 10 }));
+        state.entities.set("item2", new Item().assign({ id: 2, damage: 20 }));
+        state.entities.set("player1", new Player().assign({ id: 10, hp: 100 }));
+        state.items.set("weapon", new Item().assign({ id: 3, damage: 999 }));;
+
+        decodedState.decode(state.encode());
+
+        decodedState.entities.onAdd = function (item, key) {};
+        decodedState.entities.onChange = function (item, key) {}
+        decodedState.entities.onRemove = function (item, key) {}
+        const onEntityAddSpy = sinon.spy(decodedState.entities, 'onAdd');
+
+        decodedState.items.onAdd = function (item, key) {}
+        decodedState.items.onChange = function (item, key) {}
+        decodedState.items.onRemove = function (item, key) {}
+        const onItemsChangeSpy = sinon.spy(decodedState.items, 'onChange');
+
+        const item1 = state.entities.get("item1");
+        const previousWeapon = state.items.get("weapon");
+
+        state.items.set("weapon", item1.clone());
+        state.entities.set("item3", previousWeapon);
+
+        decodedState.decode(state.encode());
+
+        assert.deepEqual({
+            entities: {
+                item1: { id: 1, damage: 10 },
+                item2: { id: 2, damage: 20 },
+                player1: { id: 10, hp: 100 },
+                item3: { id: 3, damage: 999 }
+            },
+            items: { weapon: { id: 1, damage: 10 } }
+        }, decodedState.toJSON());
+
+        sinon.assert.calledOnce(onEntityAddSpy);
+        sinon.assert.calledOnce(onItemsChangeSpy);
+    });
+
 });

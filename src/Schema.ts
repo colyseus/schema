@@ -1116,7 +1116,10 @@ export abstract class Schema {
                             }
                             (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
 
-                        } else if (change.op === OPERATION.REPLACE) {
+                        } else if (
+                            change.op === OPERATION.REPLACE ||
+                            change.value !== change.previousValue
+                        ) {
                             (ref as SchemaDecoderCallbacks).onChange?.(change.value, change.dynamicIndex);
                         }
                     }
