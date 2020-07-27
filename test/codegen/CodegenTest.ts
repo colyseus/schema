@@ -20,7 +20,11 @@ describe("schema-codegen", () => {
     });
 
     it("should generate 3 files", async () => {
-        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "*.ts"));
+        const inputFiles = [
+            path.resolve(INPUT_DIR, "BaseSchema.ts"),
+            path.resolve(INPUT_DIR, "Inheritance.ts"),
+            path.resolve(INPUT_DIR, "Inheritance2.ts"),
+        ];
 
         generate("csharp", {
             files: inputFiles,
