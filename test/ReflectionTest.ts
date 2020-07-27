@@ -198,4 +198,22 @@ describe("Reflection", () => {
         assert.equal(JSON.stringify(decodedState),  '{"currentTurn":"one","players":{"one":1},"board":[0,0,0,0,0,0,0,0,0]}');
         assert.equal(JSON.stringify(decodedState2), '{"currentTurn":"one","players":{"one":1},"board":[0,0,0,0,0,0,0,0,0]}');
     });
+
+    it("should support an inheritance with a Schema type without fields", () => {
+        abstract class Component extends Schema {}
+        class MyComponent extends Component {
+            @type("number") num: number = Math.random();
+        }
+
+        class State extends Schema {
+            @type({ map: Component }) components = new Map<string, Component>();
+        }
+
+        const state = new State();
+        state.components.set("one", new MyComponent());
+        state.components.set("two", new MyComponent());
+
+        const decodedState = Reflection.decode(Reflection.encode(state));
+        assert.doesNotThrow(() => decodedState.decode(state.encode()));
+    });
 });

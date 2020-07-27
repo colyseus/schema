@@ -192,6 +192,16 @@ export function type (type: DefinitionType, context: Context = globalContext): P
         const isArray = ArraySchema.is(type);
         const isMap = !isArray && MapSchema.is(type);
 
+        // TODO: refactor me.
+        // Allow abstract intermediary classes with no fields to be serialized
+        // (See "should support an inheritance with a Schema type without fields" test)
+        if (typeof (type) !== "string" && !Schema.is(type)) {
+            const childType = Object.values(type)[0];
+            if (typeof(childType) !== "string" && !childType._context) {
+                context.add(childType);
+            }
+        }
+
         const fieldCached = `_${field}`;
 
         definition.descriptors[fieldCached] = {
