@@ -54,4 +54,16 @@ describe("schema-codegen", () => {
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
         assert.equal(1, outputFiles.length);
     });
+
+    it("should support generating abstract classes with no fields", async () => {
+        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "AbstractSchema.ts"));
+
+        generate("csharp", {
+            files: inputFiles,
+            output: OUTPUT_DIR
+        });
+
+        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        assert.equal(2, outputFiles.length);
+    });
 });
