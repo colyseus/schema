@@ -744,7 +744,7 @@ export abstract class Schema {
         const fieldsByIndex = this._fieldsByIndex;
 
         for (const index in changes) {
-            const field = fieldsByIndex[index];
+            const field = fieldsByIndex[changes[index]];
             const type = schema[field];
             const value = this[field];
 
