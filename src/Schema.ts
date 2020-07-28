@@ -171,7 +171,7 @@ export abstract class Schema {
 
             let type = schema[field];
             let value: any;
-
+            let previousValue = this[_field];
             let hasChange = false;
 
             if (!field) {
@@ -182,6 +182,7 @@ export abstract class Schema {
                 hasChange = true;
 
             } else if ((type as any)._schema) {
+                previousValue = previousValue && this[_field].clone();
                 value = this[_field] || this.createTypeInstance(bytes, it, type as typeof Schema);
                 value.decode(bytes, it);
 
@@ -397,7 +398,7 @@ export abstract class Schema {
                 changes.push({
                     field,
                     value,
-                    previousValue: this[_field]
+                    previousValue: previousValue
                 });
             }
 
