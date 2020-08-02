@@ -97,6 +97,15 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
         this.push(...items);
     }
 
+    set length (value: number) {
+        if (value === 0) {
+            this.clear();
+
+        } else {
+            this.splice(value, this.length - value);
+        }
+    }
+
     get length() {
         return this.$items.size;
     }

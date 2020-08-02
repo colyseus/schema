@@ -1086,7 +1086,21 @@ describe("ArraySchema Tests", () => {
         it("#flatMap", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
             assert.throws(() => { arr.flatMap(() => {}); }, /not supported/i);
-        })
+        });
+
+        it(".length = 0", () => {
+            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
+            arr.length = 0;
+
+            assert.deepEqual([], arr.toJSON());
+        });
+
+        it(".length = x", () => {
+            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
+            arr.length = 3;
+
+            assert.deepEqual([1,2,3], arr.toJSON());
+        });
     })
 
 });
