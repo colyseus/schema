@@ -299,19 +299,21 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param items  Elements to insert at the start of the Array.
      */
     unshift(...items: V[]): number {
-        const indexes = Array.from(this.$items.keys());
-        const addCount = items.length;
+        const length = this.length;
+        const addedLength = items.length;
+
+        // const indexes = Array.from(this.$items.keys());
+        const previousValues = Array.from(this.$items.values());
 
         items.forEach((item, i) => {
-            const previousIndex = indexes[i];
-            const previousValue = this.$items.get(previousIndex);
-
-            this.setAt(previousIndex, item);
-            if (previousValue)
-            this.push()
+            this.setAt(i, item);
         });
 
-        return this.length;
+        previousValues.forEach((previousValue, i) => {
+            this.setAt(addedLength + i, previousValue);
+        });
+
+        return length + addedLength;
     }
 
     /**
@@ -328,8 +330,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the search starts at the last index in the array.
      */
-    lastIndexOf(searchElement: V, fromIndex?: number): number {
-        return Array.from(this.$items.values()).indexOf(searchElement, fromIndex);
+    lastIndexOf(searchElement: V, fromIndex: number = this.length - 1): number {
+        return Array.from(this.$items.values()).lastIndexOf(searchElement, fromIndex);
     }
 
     /**
@@ -534,9 +536,9 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
         throw new Error("ArraySchema#flat() is not supported.");
     }
 
-    get size () {
-        return this.$items.size;
-    }
+    // get size () {
+    //     return this.$items.size;
+    // }
 
     protected setIndex(index: number, key: number) {
         this.$indexes.set(index, key);

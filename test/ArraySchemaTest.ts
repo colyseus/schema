@@ -136,6 +136,91 @@ describe("ArraySchema Tests", () => {
         assert.equal(decodedState.str, 'hello!');
     });
 
+    describe("ArraySchema#unshift()", () => {
+        it("only unshift", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1);
+            state.arrayOfNumbers.push(2);
+            state.arrayOfNumbers.push(3);
+            state.arrayOfNumbers.push(4);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            // state.arrayOfNumbers.push(5)
+            state.arrayOfNumbers.unshift(0);
+
+            decodedState.decode(state.encode());
+            assert.deepEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
+        });
+
+        it("push and unshift", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1);
+            state.arrayOfNumbers.push(2);
+            state.arrayOfNumbers.push(3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.arrayOfNumbers.push(4)
+            state.arrayOfNumbers.unshift(0);
+
+            decodedState.decode(state.encode());
+            assert.deepEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
+        });
+
+        it("push, unshift, pop", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1);
+            state.arrayOfNumbers.push(2);
+            state.arrayOfNumbers.push(3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.arrayOfNumbers.push(4)
+            state.arrayOfNumbers.unshift(0);
+            state.arrayOfNumbers.pop();
+
+            decodedState.decode(state.encode());
+            assert.deepEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+        });
+
+        it("push, pop, unshift", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1);
+            state.arrayOfNumbers.push(2);
+            state.arrayOfNumbers.push(3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.arrayOfNumbers.push(4)
+            state.arrayOfNumbers.pop();
+            state.arrayOfNumbers.unshift(0);
+
+            decodedState.decode(state.encode());
+            assert.deepEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+        });
+    });
+
     it("should allow using push/pop before encoding", () => {
         class State extends Schema {
             @type(["number"]) numbers = new ArraySchema<number>();
@@ -1086,7 +1171,17 @@ describe("ArraySchema Tests", () => {
 
         it("#join()", () => {
             const arr = new ArraySchema<number>(1, 2, 3);
-            assert.deepEqual("1,2,3", arr.join(","));
+            assert.equal("1,2,3", arr.join(","));
+        });
+
+        it("#indexOf()", () => {
+            const arr = new ArraySchema<number>(1, 2, 3);
+            assert.equal(1, arr.indexOf(2));
+        });
+
+        it("#lastIndexOf()", () => {
+            const arr = new ArraySchema<number>(1, 2, 3, 1, 2, 3);
+            assert.equal(4, arr.lastIndexOf(2));
         });
 
         it("#reverse()", () => {
