@@ -42,9 +42,7 @@ describe("Instance sharing", () => {
         state.player2 = player;
 
         const encoded = state.encode();
-
-        // TODO: improve me! ideally, it should be 3 bytes.
-        assert.equal(3, encoded.length);
+        assert.equal(2, encoded.length);
 
         decodedState.decode(encoded);
         assert.deepEqual({

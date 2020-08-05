@@ -18,12 +18,12 @@ export class ReflectionField extends Schema {
     @type("string", reflectionContext)
     type: string;
 
-    @type("uint8", reflectionContext)
+    @type("number", reflectionContext)
     referencedType: number;
 }
 
 export class ReflectionType extends Schema {
-    @type("uint8", reflectionContext)
+    @type("number", reflectionContext)
     id: number;
 
     @type([ ReflectionField ], reflectionContext)
@@ -34,7 +34,7 @@ export class Reflection extends Schema {
     @type([ ReflectionType ], reflectionContext)
     types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
 
-    @type("uint8", reflectionContext)
+    @type("number", reflectionContext)
     rootType: number;
 
     static encode (instance: Schema) {
@@ -107,7 +107,7 @@ export class Reflection extends Schema {
 
                     field.referencedType = (childTypeSchema)
                         ? childTypeSchema._typeid
-                        : 255;
+                        : -1;
                 }
 
                 field.type = fieldType;

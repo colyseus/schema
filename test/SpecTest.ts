@@ -1,26 +1,9 @@
 import * as assert from "assert";
 
-import { INDEX_CHANGE, NIL } from "../src/spec";
 import * as encode from "../src/encoding/encode";
 import { nilCheck, numberCheck, indexChangeCheck } from "../src/encoding/decode";
 
 describe("Spec / Protocol", () => {
-    describe("spec", () => {
-        it("INDEX_CHANGE shouldn't collide", () => {
-            const bytes = [INDEX_CHANGE];
-            assert.equal(indexChangeCheck(bytes, { offset: 0 }), true);
-            assert.equal(numberCheck(bytes, { offset: 0 }), false);
-            assert.equal(nilCheck(bytes, { offset: 0 }), false);
-        });
-
-        it("NIL shouldn't collide", () => {
-            const bytes = [NIL];
-            assert.equal(nilCheck(bytes, { offset: 0 }), true);
-            assert.equal(indexChangeCheck(bytes, { offset: 0 }), false);
-            assert.equal(numberCheck(bytes, { offset: 0 }), false);
-        });
-    });
-
     describe("primitive numbers", () => {
         it("uint8 shouldn't collide", () => {
             const bytes = [];

@@ -136,7 +136,7 @@ describe("Reflection", () => {
         }
 
         const state = new MyState();
-        const decodedState = Reflection.decode(Reflection.encode(state)) as MyState;
+        const decodedState = Reflection.decode<MyState>(Reflection.encode(state));
 
         state.mapOfStrings['one'] = "one";
         state.mapOfStrings['two'] = "two";

@@ -1,3 +1,4 @@
+import * as util from "util";
 import * as assert from "assert";
 import { nanoid } from "nanoid";
 import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Context } from "../src";
@@ -5,8 +6,8 @@ import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Context 
 import { State, Player } from "./Schema";
 
 describe("Edge cases", () => {
-    it("Schema should support more than 256 fields", () => {
-        const maxFields = 1000;
+    it("Schema should support up to 64 fields", () => {
+        const maxFields = 64;
         class State extends Schema {};
 
         const schema = {};
@@ -24,33 +25,37 @@ describe("Edge cases", () => {
         }
     });
 
-    it("Should support up to 255 schema types", () => {
-        const maxSchemaTypes = 255;
-        const context = new Context();
-        const type = Context.create(context);
+    it("should support more than 255 schema types", () => {
+        const maxSchemaTypes = 500;
+        const type = Context.create();
 
-        class State extends Schema {}
+        // @type("number") i: number;
+        class Base extends Schema { }
+        class State extends Schema {
+            @type([Base]) children = new ArraySchema<Base>();
+        }
 
         const schemas: any = {};
 
         for (let i = 0; i < maxSchemaTypes; i++) {
-            class Child extends Schema { @type("string") str: string; };
+            class Child extends Base {
+                @type("string") str: string;
+            };
             schemas[i] = Child;
-            defineTypes(State, { [`field_${i}`]: Child, }, context);
         }
 
         const state = new State();
         for (let i = 0; i < maxSchemaTypes; i++) {
             const child = new schemas[i]();
             child.str = "value " + i;
-            state[`field_${i}`] = child;
+            state.children.push(child);
         }
 
-        const decodedState = Reflection.decode(Reflection.encode(state));
+        const decodedState: State = Reflection.decode(Reflection.encode(state));
         decodedState.decode(state.encode());
 
         for (let i = 0; i < maxSchemaTypes; i++) {
-            assert.equal("value " + i, decodedState[`field_${i}`].str);
+            assert.equal("value " + i, (decodedState.children[i] as any).str);
         }
     });
 

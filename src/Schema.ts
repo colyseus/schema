@@ -215,19 +215,19 @@ export abstract class Schema {
                 changes = [];
                 allChanges.set(refId, changes);
 
-                // console.log("SWITCH_TO_STRUCTURE (DECODE)", {
-                //     ref: ref.constructor.name,
-                //     refId,
-                // });
-
                 continue;
             }
 
-            const operation = byte;
-            const fieldIndex = decode.number(bytes, it);
-
             const changeTree: ChangeTree = ref['$changes'];
-            const isSchema = ref['_definition'];
+            const isSchema = (ref['_definition'] !== undefined);
+
+            const operation = (isSchema)
+                ? (byte >> 6) << 6
+                : byte;
+
+            const fieldIndex = (isSchema)
+                ? byte % (operation || 255)
+                : decode.number(bytes, it);
 
             const field = (isSchema)
                 ? (ref['_definition'].fieldsByIndex && ref['_definition'].fieldsByIndex[fieldIndex])
@@ -345,7 +345,6 @@ export abstract class Schema {
 
                     if (value !== previousValue) {
                         $root.addRef(refId, value);
-                        // $root.refs.set(refId, value);
                     }
 
                 }
@@ -383,7 +382,6 @@ export abstract class Schema {
                 // }
 
                 $root.addRef(refId, value);
-                // $root.refs.set(refId, value);
 
                 value = getArrayProxy(value);
 
@@ -405,7 +403,6 @@ export abstract class Schema {
                 }
 
                 $root.addRef(refId, value);
-                // $root.refs.set(refId, value);
 
                 value = getMapProxy(value);
 
@@ -427,7 +424,6 @@ export abstract class Schema {
                 }
 
                 $root.addRef(refId, value);
-                // $root.refs.set(refId, value);
 
             } else if (SetSchema.is(type)) {
                 const refId = decode.number(bytes, it);
@@ -447,7 +443,6 @@ export abstract class Schema {
                 }
 
                 $root.addRef(refId, value);
-                // $root.refs.set(refId, value);
 
             } else {
                 value = decodePrimitiveType(type as string, bytes, it);
@@ -565,14 +560,6 @@ export abstract class Schema {
                 ? Array.from(changeTree.allChanges)
                 : Array.from(changeTree.changes.values());
 
-            // console.log("CHANGES =>", {
-            //     changes,
-            //     definition: ref['_definition'],
-            //     isSchema: ref instanceof Schema,
-            //     isMap: ref instanceof MapSchema,
-            //     isArray: ref instanceof ArraySchema,
-            // });
-
             for (let j = 0, cl = changes.length; j < cl; j++) {
                 const operation: ChangeOperation = (encodeAll)
                     ? { op: OPERATION.ADD, index: changes[j] as number }
@@ -590,16 +577,25 @@ export abstract class Schema {
                 const beginIndex = bytes.length;
 
                 // encode field index + operation
-                if (operation.op > OPERATION.TOUCH) {
-                    encode.uint8(bytes, operation.op);
+                if (operation.op !== OPERATION.TOUCH) {
+                    if (isSchema) {
+                        //
+                        // Compress `fieldIndex` + `operation` into a single byte.
+                        // This adds a limitaion of 64 fields per Schema structure
+                        //
+                        encode.uint8(bytes, (fieldIndex | operation.op));
 
-                    // custom operations
-                    if (operation.op === OPERATION.CLEAR) {
-                        continue;
+                    } else {
+                        encode.uint8(bytes, operation.op);
+
+                        // custom operations
+                        if (operation.op === OPERATION.CLEAR) {
+                            continue;
+                        }
+
+                        // indexed operations
+                        encode.number(bytes, fieldIndex);
                     }
-
-                    // indexed operations
-                    encode.number(bytes, fieldIndex);
                 }
 
                 //
@@ -645,14 +641,6 @@ export abstract class Schema {
 
                 // const type = changeTree.getType(fieldIndex);
                 const value = changeTree.getValue(fieldIndex);
-
-                // console.log("ENCODE FIELD", {
-                //     ref: ref.constructor.name,
-                //     type,
-                //     field,
-                //     value,
-                //     op: OPERATION[operation.op]
-                // });
 
                 // Enqueue ChangeTree to be visited
                 if (
@@ -736,16 +724,6 @@ export abstract class Schema {
 
                 } else {
                     encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field);
-
-                    // const tempBytes = [];
-                    // encodePrimitiveType(type as PrimitiveType, tempBytes, value, ref as Schema, field);
-
-                    // console.log("ENCODE PRIMITIVE TYPE:", {
-                    //     ref: ref.constructor.name,
-                    //     field,
-                    //     value,
-                    //     bytes: tempBytes,
-                    // })
                 }
 
                 if (useFilters) {
@@ -856,8 +834,14 @@ export abstract class Schema {
                     // (check against `$filterState.refIds`)
                     //
 
-                    encode.uint8(filteredBytes, change.op);
-                    encode.number(filteredBytes, fieldIndex);
+                    if (isSchema) {
+                        encode.uint8(filteredBytes, change.op | fieldIndex);
+
+                    } else {
+                        encode.uint8(filteredBytes, change.op);
+                        encode.number(filteredBytes, fieldIndex);
+
+                    }
                     continue;
                 }
 
@@ -1063,7 +1047,7 @@ export abstract class Schema {
     private tryEncodeTypeId (bytes: number[], type: typeof Schema, targetType: typeof Schema) {
         if (type._typeid !== targetType._typeid) {
             encode.uint8(bytes, TYPE_ID);
-            encode.uint8(bytes, targetType._typeid);
+            encode.number(bytes, targetType._typeid);
         }
     }
 
@@ -1072,7 +1056,7 @@ export abstract class Schema {
 
         if (bytes[it.offset] === TYPE_ID) {
             it.offset++;
-            type = (this.constructor as typeof Schema)._context.get(decode.uint8(bytes, it));
+            type = (this.constructor as typeof Schema)._context.get(decode.number(bytes, it));
         }
 
         return type;
