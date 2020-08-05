@@ -65,7 +65,10 @@ function utf8Read(bytes, offset, length) {
       }
       continue;
     }
-    throw new Error('Invalid byte ' + byte.toString(16));
+
+    console.error('Invalid byte ' + byte.toString(16));
+    // (do not throw error to avoid server/client from crashing due to hack attemps)
+    // throw new Error('Invalid byte ' + byte.toString(16));
   }
   return string;
 }
