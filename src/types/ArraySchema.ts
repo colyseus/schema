@@ -202,7 +202,7 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * Combines two or more arrays.
      * @param items Additional items to add to the end of array1.
      */
-    concat(...items: (V | ConcatArray<V>)[]): V[] {
+    concat(...items: (V | ConcatArray<V>)[]): ArraySchema<V> {
         return new ArraySchema(...Array.from(this.$items.values()).concat(...items));
     }
 
@@ -217,11 +217,13 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     /**
      * Reverses the elements in an Array.
      */
-    reverse(): V[] {
-        //
-        // TODO: touch `$changes`
-        //
-        // this.$items.reverse();
+    reverse(): ArraySchema<V> {
+        const indexes = Array.from(this.$items.keys());
+        const reversedItems = Array.from(this.$items.values()).reverse();
+
+        reversedItems.forEach((item, i) => {
+            this.setAt(indexes[i], item);
+        });
 
         return this;
     }

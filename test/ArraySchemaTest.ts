@@ -1078,6 +1078,22 @@ describe("ArraySchema Tests", () => {
             assert.equal(3, arr.find((v) => v === 3));
         });
 
+        it("#concat()", () => {
+            const arr = new ArraySchema<number>(1, 2, 3);
+            const concat = arr.concat([4, 5, 6]);
+            assert.deepEqual([1, 2, 3, 4, 5, 6], concat.toJSON());
+        });
+
+        it("#join()", () => {
+            const arr = new ArraySchema<number>(1, 2, 3);
+            assert.deepEqual("1,2,3", arr.join(","));
+        });
+
+        it("#reverse()", () => {
+            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
+            assert.deepEqual([5, 4, 3, 2, 1], arr.reverse().toJSON());
+        });
+
         it("#flat", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
             assert.throws(() => { arr.flat(); }, /not supported/i);
