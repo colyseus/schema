@@ -254,10 +254,7 @@ export abstract class Schema {
             if (!isSchema) {
                 previousValue = ref['getByIndex'](fieldIndex);
 
-                if (
-                    operation === OPERATION.ADD ||
-                    operation === OPERATION.DELETE_AND_ADD
-                ) {
+                if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
                     dynamicIndex = (decode.stringCheck(bytes, it))
                         ? decode.string(bytes, it)
                         : decode.number(bytes, it);
@@ -275,10 +272,7 @@ export abstract class Schema {
             //
             // TODO: use bitwise operations to check for `DELETE` instead.
             //
-            if (
-                operation === OPERATION.DELETE ||
-                operation === OPERATION.DELETE_AND_ADD
-            )
+            if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
             {
                 if (operation !== OPERATION.DELETE_AND_ADD) {
                     ref['deleteByIndex'](fieldIndex);
@@ -325,12 +319,7 @@ export abstract class Schema {
                 const refId = decode.number(bytes, it);
                 value = $root.refs.get(refId);
 
-                if (
-                    operation !== OPERATION.REPLACE
-
-                    // operation === OPERATION.ADD ||
-                    // operation === OPERATION.DELETE_AND_ADD
-                ) {
+                if (operation !== OPERATION.REPLACE) {
                     const childType = this.getSchemaType(bytes, it);
 
                     if (!value) {
@@ -603,13 +592,7 @@ export abstract class Schema {
                 //
                 if (
                     !isSchema &&
-                    //
-                    // TODO: use bitwise operations to check for `DELETE` instead.
-                    //
-                    (
-                        operation.op === OPERATION.ADD ||
-                        operation.op === OPERATION.DELETE_AND_ADD
-                    )
+                    (operation.op & OPERATION.ADD) == OPERATION.ADD // ADD or DELETE_AND_ADD
                 ) {
                     if (ref instanceof MapSchema) {
                         //
@@ -667,10 +650,7 @@ export abstract class Schema {
                     encode.number(bytes, value.$changes.refId);
 
                     // Try to encode inherited TYPE_ID if it's an ADD operation.
-                    if (
-                        operation.op === OPERATION.ADD ||
-                        operation.op === OPERATION.DELETE_AND_ADD
-                    ) {
+                    if ((operation.op & OPERATION.ADD) === OPERATION.ADD) {
                         this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
                     }
 
@@ -1082,7 +1062,7 @@ export abstract class Schema {
                     const listener = ref['$listeners'] && ref['$listeners'][change.field];
 
                     if (!isSchema) {
-                        if (change.op === OPERATION.ADD && !change.previousValue) {
+                        if (change.op === OPERATION.ADD && change.previousValue === undefined) {
                             (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
 
                         } else if (change.op === OPERATION.DELETE) {
@@ -1112,10 +1092,7 @@ export abstract class Schema {
                     // trigger onRemove on child structure.
                     //
                     if (
-                        (
-                            change.op === OPERATION.DELETE ||
-                            change.op === OPERATION.DELETE_AND_ADD
-                        ) &&
+                        (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
                         change.previousValue instanceof Schema &&
                         change.previousValue.onRemove
                     ) {
