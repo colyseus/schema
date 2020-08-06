@@ -1,4 +1,3 @@
-import { NIL, INDEX_CHANGE, SWITCH_TO_STRUCTURE } from "../spec";
 /**
  * Copyright (c) 2018 Endel Dreyer
  * Copyright (c) 2014 Ion Drive Software Ltd.
@@ -21,6 +20,8 @@ import { NIL, INDEX_CHANGE, SWITCH_TO_STRUCTURE } from "../spec";
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE
  */
+
+import { SWITCH_TO_STRUCTURE } from "../spec";
 
 /**
  * msgpack implementation highly based on notepack.io
@@ -267,14 +268,6 @@ export function arrayCheck (bytes, it: Iterator) {
   // return prefix;
 }
 
-export function nilCheck(bytes, it: Iterator) {
-  return bytes[it.offset] === NIL;
-}
-
 export function switchStructureCheck(bytes, it: Iterator) {
   return bytes[it.offset] === SWITCH_TO_STRUCTURE;
-}
-
-export function indexChangeCheck(bytes, it: Iterator) {
-  return bytes[it.offset] === INDEX_CHANGE;
 }
