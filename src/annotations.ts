@@ -4,6 +4,7 @@ import { ArraySchema, getArrayProxy } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
 import { CollectionSchema } from './types/CollectionSchema';
 import { SetSchema } from './types/SetSchema';
+import { getType } from './types';
 
 /**
  * Data types
@@ -26,6 +27,7 @@ export type PrimitiveType =
 
 export type DefinitionType = PrimitiveType
     | PrimitiveType[]
+    | { array: PrimitiveType }
     | { map: PrimitiveType }
     | { collection: PrimitiveType }
     | { set: PrimitiveType };
@@ -84,7 +86,9 @@ export class SchemaDefinition {
         const index = this.getNextFieldIndex();
         this.fieldsByIndex[index] = field;
         this.indexes[field] = index;
-        this.schema[field] = type;
+        this.schema[field] = (Array.isArray(type))
+            ? { array: type[0] }
+            : type;
     }
 
     addFilter(field: string, cb: FilterCallback) {
@@ -98,15 +102,10 @@ export class SchemaDefinition {
     }
 
     addChildrenFilter(field: string, cb: FilterChildrenCallback) {
-        const type = this.schema[field];
         const index = this.indexes[field];
+        const type = this.schema[field];
 
-        if (
-            CollectionSchema.is(type) ||
-            ArraySchema.is(type) ||
-            MapSchema.is(type) ||
-            SetSchema.is(type)
-        ) {
+        if (getType(Object.keys(type)[0])) {
             if (!this.childFilters) { this.childFilters = {}; }
 
             this.childFilters[index] = cb;

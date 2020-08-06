@@ -1,6 +1,7 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
+import { registerType } from ".";
 
 //
 // Notes:
@@ -595,3 +596,8 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
         this.forEach((value, key) => this.onAdd(value, key));
     }
 }
+
+registerType("array", {
+    constructor: ArraySchema,
+    getProxy: getArrayProxy,
+});

@@ -1,10 +1,11 @@
-import { type, PrimitiveType, Context } from "./annotations";
+import { type, PrimitiveType, Context, DefinitionType } from "./annotations";
 import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { SetSchema } from "./types/SetSchema";
 import * as decode from "./encoding/decode";
+import { getType } from "./types";
 
 const reflectionContext = new Context();
 
@@ -64,44 +65,14 @@ export class Reflection extends Schema {
                         fieldType = "ref";
                         childTypeSchema = schema[fieldName];
 
-                    } else if (ArraySchema.is(type)) {
-                        fieldType = "array";
+                    } else {
+                        fieldType = Object.keys(type)[0];
 
-                        if (typeof(schema[fieldName][0]) === "string") {
-                            fieldType += ":" + schema[fieldName][0]; // array:string
-
-                        } else {
-                            childTypeSchema = schema[fieldName][0];
-                        }
-
-                    } else if (MapSchema.is(type)) {
-                        fieldType = "map";
-
-                        if (typeof(schema[fieldName].map) === "string") {
-                            fieldType += ":" + schema[fieldName].map; // array:string
+                        if (typeof(type[fieldType]) === "string") {
+                            fieldType += ":" + type[fieldType]; // array:string
 
                         } else {
-                            childTypeSchema = schema[fieldName].map;
-                        }
-
-                    } else if (CollectionSchema.is(type)) {
-                        fieldType = "collection";
-
-                        if (typeof(schema[fieldName].collection) === "string") {
-                            fieldType += ":" + schema[fieldName].collection; // collection:string
-
-                        } else {
-                            childTypeSchema = schema[fieldName].collection;
-                        }
-
-                    } else if (SetSchema.is(type)) {
-                        fieldType = "set";
-
-                        if (typeof(schema[fieldName].set) === "string") {
-                            fieldType += ":" + schema[fieldName].set; // set:string
-
-                        } else {
-                            childTypeSchema = schema[fieldName].set;
+                            childTypeSchema = type[fieldType];
                         }
                     }
 
@@ -143,28 +114,21 @@ export class Reflection extends Schema {
                 const schemaType = schemaTypes[reflectionType.id];
 
                 if (field.referencedType !== undefined) {
+                    let fieldType = field.type;
                     let refType = schemaTypes[field.referencedType];
 
-                    // map or array of primitive type (255)
+                    // map or array of primitive type (-1)
                     if (!refType) {
-                        refType = field.type.split(":")[1];
+                        const typeInfo = field.type.split(":");
+                        fieldType = typeInfo[0];
+                        refType = typeInfo[1];
                     }
 
-                    if (field.type.indexOf("array") === 0) {
-                        type([ refType ], context)(schemaType.prototype, field.name);
-
-                    } else if (field.type.indexOf("map") === 0) {
-                        type({ map: refType }, context)(schemaType.prototype, field.name);
-
-                    } else if (field.type.indexOf("collection") === 0) {
-                        type({ collection: refType }, context)(schemaType.prototype, field.name);
-
-                    } else if (field.type.indexOf("set") === 0) {
-                        type({ set: refType }, context)(schemaType.prototype, field.name);
-
-                    } else if (field.type === "ref") {
+                    if (fieldType === "ref") {
                         type(refType, context)(schemaType.prototype, field.name);
 
+                    } else {
+                        type({ [fieldType]: refType } as DefinitionType, context)(schemaType.prototype, field.name);
                     }
 
                 } else {
@@ -184,17 +148,12 @@ export class Reflection extends Schema {
             const fieldType = rootType._definition.schema[fieldName];
 
             if (typeof(fieldType) !== "string") {
+                const typeDef = getType(Object.keys(fieldType)[0]);
                 const isSchema = typeof (fieldType) === "function";
-                const isArray = Array.isArray(fieldType);
-                const isMap = !isArray && (fieldType as any).map;
 
-                rootInstance[fieldName] = (isArray)
-                    ? new ArraySchema()
-                    : (isMap)
-                        ? new MapSchema()
-                        : (isSchema)
-                            ? new (fieldType as any)()
-                            : undefined;
+                rootInstance[fieldName] = (isSchema)
+                    ? new (fieldType as any)()
+                    : new typeDef.constructor();
             }
         }
 

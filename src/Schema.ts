@@ -13,6 +13,7 @@ import { ChangeTree, Root, Ref, ChangeOperation } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
 import { EventEmitter } from './events/EventEmitter';
 import { ClientState } from './filters';
+import { getType } from './types';
 
 export interface DataChange<T=any> {
     op: OPERATION,
@@ -26,6 +27,7 @@ export interface SchemaDecoderCallbacks {
     onAdd?: (item: any, key: any) => void;
     onRemove?: (item: any, key: any) => void;
     onChange?: (item: any, key: any) => void;
+    clone(decoding?: boolean): SchemaDecoderCallbacks;
     clear(decoding?: boolean);
     decode?(byte, it: decode.Iterator);
 }
@@ -337,13 +339,19 @@ export abstract class Schema {
                     }
 
                 }
+            } else if (typeof(type) === "string") {
+                //
+                // primitive value (number, string, boolean, etc)
+                //
+                value = decodePrimitiveType(type as string, bytes, it);
 
-            } else if (ArraySchema.is(type)) {
+            } else {
+                const typeDef = getType(Object.keys(type)[0]);
                 const refId = decode.number(bytes, it);
 
-                const valueRef: ArraySchema = ($root.refs.has(refId))
+                const valueRef: SchemaDecoderCallbacks = ($root.refs.has(refId))
                     ? previousValue
-                    : new ArraySchema();
+                    : new typeDef.constructor();
 
                 value = valueRef.clone(true);
                 value.$changes.refId = refId;
@@ -372,69 +380,13 @@ export abstract class Schema {
 
                 $root.addRef(refId, value);
 
-                value = getArrayProxy(value);
-
-            } else if (MapSchema.is(type)) {
-                const refId = decode.number(bytes, it);
-
-                const valueRef: MapSchema = ($root.refs.has(refId))
-                    ? previousValue
-                    : new MapSchema();
-
-                value = valueRef.clone(true);
-                value.$changes.refId = refId;
-
-                // preserve schema callbacks
-                if (previousValue) {
-                    value.onAdd = previousValue.onAdd;
-                    value.onRemove = previousValue.onRemove;
-                    value.onChange = previousValue.onChange;
+                //
+                // TODO: deprecate proxies on next version.
+                // get proxy to target value.
+                //
+                if (typeDef.getProxy) {
+                    value = typeDef.getProxy(value);
                 }
-
-                $root.addRef(refId, value);
-
-                value = getMapProxy(value);
-
-            } else if (CollectionSchema.is(type)) {
-                const refId = decode.number(bytes, it);
-
-                const valueRef: CollectionSchema = ($root.refs.has(refId))
-                    ? previousValue
-                    : new CollectionSchema();
-
-                value = valueRef.clone(true);
-                value.$changes.refId = refId;
-
-                // preserve schema callbacks
-                if (previousValue) {
-                    value.onAdd = previousValue.onAdd;
-                    value.onRemove = previousValue.onRemove;
-                    value.onChange = previousValue.onChange;
-                }
-
-                $root.addRef(refId, value);
-
-            } else if (SetSchema.is(type)) {
-                const refId = decode.number(bytes, it);
-
-                const valueRef: SetSchema = ($root.refs.has(refId))
-                    ? previousValue
-                    : new SetSchema();
-
-                value = valueRef.clone(true);
-                value.$changes.refId = refId;
-
-                // preserve schema callbacks
-                if (previousValue) {
-                    value.onAdd = previousValue.onAdd;
-                    value.onRemove = previousValue.onRemove;
-                    value.onChange = previousValue.onChange;
-                }
-
-                $root.addRef(refId, value);
-
-            } else {
-                value = decodePrimitiveType(type as string, bytes, it);
             }
 
             let hasChange = (previousValue !== value);
@@ -654,56 +606,28 @@ export abstract class Schema {
                         this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
                     }
 
-                } else if (ArraySchema.is(type)) {
+                } else if (typeof(type) === "string") {
+                    //
+                    // Primitive values
+                    //
+                    encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field);
+
+                } else {
+                    //
+                    // Custom type (MapSchema, ArraySchema, etc)
+                    //
+                    const definition = getType(Object.keys(type)[0]);
+
                     //
                     // ensure a ArraySchema has been provided
                     //
-                    assertInstanceType(ref[_field], ArraySchema, ref as Schema, field);
+                    assertInstanceType(ref[_field], definition.constructor, ref as Schema, field);
 
                     //
                     // Encode refId for this instance.
                     // The actual instance is going to be encoded on next `changeTree` iteration.
                     //
                     encode.number(bytes, value.$changes.refId);
-
-                } else if (MapSchema.is(type)) {
-                    //
-                    // ensure a MapSchema has been provided
-                    //
-                    assertInstanceType(ref[_field], MapSchema, ref as Schema, field);
-
-                    //
-                    // Encode refId for this instance.
-                    // The actual instance is going to be encoded on next `changeTree` iteration.
-                    //
-                    encode.number(bytes, value.$changes.refId);
-
-                } else if (CollectionSchema.is(type)) {
-                    //
-                    // ensure a CollectionSchema has been provided
-                    //
-                    assertInstanceType(ref[_field], CollectionSchema, ref as Schema, field);
-
-                    //
-                    // Encode refId for this instance.
-                    // The actual instance is going to be encoded on next `changeTree` iteration.
-                    //
-                    encode.number(bytes, value.$changes.refId);
-
-                } else if (SetSchema.is(type)) {
-                    //
-                    // ensure a SetSchema has been provided
-                    //
-                    assertInstanceType(ref[_field], SetSchema, ref as Schema, field);
-
-                    //
-                    // Encode refId for this instance.
-                    // The actual instance is going to be encoded on next `changeTree` iteration.
-                    //
-                    encode.number(bytes, value.$changes.refId);
-
-                } else {
-                    encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field);
                 }
 
                 if (useFilters) {

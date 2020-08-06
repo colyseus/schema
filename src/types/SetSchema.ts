@@ -1,6 +1,7 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks } from "../Schema";
+import { registerType } from ".";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
@@ -194,3 +195,7 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         this.forEach((value, key) => this.onAdd(value, key));
     }
 }
+
+registerType("set", {
+    constructor: SetSchema,
+});
