@@ -52,6 +52,47 @@ describe("MapSchema Tests", () => {
         assert.equal(0, decodedState.mapOfPlayers.size);
     });
 
+    it("should allow to CLEAR and ADD in the same patch", () => {
+        const state = new State();
+        state.mapOfPlayers = new MapSchema();
+        state.mapOfPlayers.set("one", new Player().assign({ name: "Jake", x: 0, y: 0 }))
+        state.mapOfPlayers.set("two", new Player().assign({ name: "Katarina", x: 1, y: 1 }))
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        state.mapOfPlayers.clear();
+        state.mapOfPlayers.set("three", new Player().assign({ name: "Three", x: 10, y: 10 }));
+        decodedState.decode(state.encode());
+
+        assert.deepEqual({
+            mapOfPlayers: {
+                three: { name: "Three", x: 10, y: 10 }
+            }
+        }, state.toJSON());
+    });
+
+    it("should allow to CLEAR and REPLACE in the same patch", () => {
+        const state = new State();
+        state.mapOfPlayers = new MapSchema();
+        state.mapOfPlayers.set("one", new Player().assign({ name: "Jake", x: 0, y: 0 }))
+        state.mapOfPlayers.set("two", new Player().assign({ name: "Katarina", x: 1, y: 1 }))
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        state.mapOfPlayers.clear();
+        state.mapOfPlayers.set("two", new Player().assign({ name: "Jake again", x: 10, y: 10 }));
+
+        decodedState.decode(state.encode());
+
+        assert.deepEqual({
+            mapOfPlayers: {
+                two: { name: "Jake again", x: 10, y: 10 }
+            }
+        }, state.toJSON());
+    });
+
     it("should allow to clear a Map while using filters", () => {
         class Player extends Schema {
             @type("number") x: number;

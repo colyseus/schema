@@ -81,6 +81,7 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
     clear(isDecoding?: boolean) {
         // discard previous operations.
         this.$changes.discard(true);
+        this.$changes.indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();

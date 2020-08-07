@@ -204,14 +204,22 @@ export abstract class Schema {
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
 
-            if (decode.switchStructureCheck(bytes, it)) {
+            if (byte == SWITCH_TO_STRUCTURE) {
                 refId = decode.number(bytes, it);
-                ref = $root.refs.get(refId) as Schema;
+
+                const nextRef = $root.refs.get(refId) as Schema;
+
+                // console.log("SWITCH_TO_STRUCTURE:", {
+                //     refId,
+                //     ref: (nextRef && nextRef.constructor.name)
+                // });
 
                 //
                 // Trying to access a reference that haven't been decoded yet.
                 //
-                if (!ref) { throw new Error(`"refId" not found: ${refId}`); }
+                if (!nextRef) { throw new Error(`"refId" not found: ${refId}`); }
+
+                ref = nextRef;
 
                 // create empty list of changes for this refId.
                 changes = [];
@@ -227,20 +235,6 @@ export abstract class Schema {
                 ? (byte >> 6) << 6 // "compressed" index + operation
                 : byte; // "uncompressed" index + operation (array/map items)
 
-            const fieldIndex = (isSchema)
-                ? byte % (operation || 255)
-                : decode.number(bytes, it);
-
-            const field = (isSchema)
-                ? (ref['_definition'].fieldsByIndex && ref['_definition'].fieldsByIndex[fieldIndex])
-                : fieldIndex;
-
-            let type = changeTree.getType(fieldIndex);
-            let value: any;
-            let previousValue: any;
-
-            let dynamicIndex: number | string;
-
             if (operation === OPERATION.CLEAR) {
                 //
                 // TODO: refactor me!
@@ -250,6 +244,23 @@ export abstract class Schema {
                 (ref as SchemaDecoderCallbacks).clear(true);
                 continue;
             }
+
+            const fieldIndex = (isSchema)
+                ? byte % (operation || 255)
+                : decode.number(bytes, it);
+
+            const field = (isSchema)
+                ? (ref['_definition'].fieldsByIndex && ref['_definition'].fieldsByIndex[fieldIndex])
+                : fieldIndex;
+
+            // console.log({ operation, fieldIndex, isSchema });
+
+            let type = changeTree.getType(fieldIndex);
+            let value: any;
+            let previousValue: any;
+
+            let dynamicIndex: number | string;
+
 
             if (!isSchema) {
                 previousValue = ref['getByIndex'](fieldIndex);
@@ -514,6 +525,7 @@ export abstract class Schema {
                         // This adds a limitaion of 64 fields per Schema structure
                         //
                         encode.uint8(bytes, (fieldIndex | operation.op));
+                        // console.log("(compressed) ENCODE", { operation: OPERATION[operation.op], fieldIndex });
 
                     } else {
                         encode.uint8(bytes, operation.op);
@@ -525,6 +537,8 @@ export abstract class Schema {
 
                         // indexed operations
                         encode.number(bytes, fieldIndex);
+
+                        // console.log("(uncompressed) ENCODE", { operation: OPERATION[operation.op], fieldIndex });
                     }
                 }
 

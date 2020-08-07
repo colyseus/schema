@@ -135,9 +135,11 @@ describe("Edge cases", () => {
             @type(Child) child64 = new Child();
         }
 
+        const numItems = 100;
+
         const state = new State();
-        for (let i = 0; i < 66; i++) { state.arrayOfNum.push(i); }
-        for (let i = 0; i < 66; i++) { state.mapOfNum.set(i.toString(), i); }
+        for (let i = 0; i < numItems; i++) { state.arrayOfNum.push(i); }
+        for (let i = 0; i < numItems; i++) { state.mapOfNum.set(i.toString(), i); }
 
         state.child.n = 0;
         state.child64.n = 0;
@@ -149,12 +151,12 @@ describe("Edge cases", () => {
         state.child = new Child();
         state.child.n = 1;
 
-        for (let i = 0; i < 66; i++) {
+        for (let i = 0; i < numItems; i++) {
             state.arrayOfNum[i] = undefined;
             state.arrayOfNum[i] = i * 100;
         }
 
-        for (let i = 0; i < 66; i++) {
+        for (let i = 0; i < numItems; i++) {
             state.mapOfNum.delete(i.toString());
             state.mapOfNum.set(i.toString(), i * 100);
         }
@@ -173,6 +175,17 @@ describe("Edge cases", () => {
             state.child64.n = 1;
             decodedState.decode(state.encode());
         });
+
+        state.arrayOfNum.clear();
+        // state.arrayOfNum.push(10);
+
+        state.mapOfNum.clear();
+        state.mapOfNum.set("one", 10);
+
+        assert.doesNotThrow(() => {
+            decodedState.decode(state.encode());
+        });
+
     });
 
     it("string: containing specific UTF-8 characters", () => {
