@@ -185,6 +185,7 @@ describe("Schema Usage", () => {
 
         it("varint", () => {
             class Data extends Schema {
+                @type("number") varint_minus1 = -1;
                 @type("number") varint_int8 = -128;
                 @type("number") varint_uint8 = 255;
                 @type("number") varint_int16 = -32768;
@@ -199,8 +200,11 @@ describe("Schema Usage", () => {
 
             const data = new Data();
             const decoded = new Data();
-            decoded.decode(data.encode());
 
+            const encoded = data.encode();
+            decoded.decode(encoded);
+
+            assert.equal(decoded.varint_minus1, -1);
             assert.equal(decoded.varint_int8, -128);
             assert.equal(decoded.varint_uint8, 255);
             assert.equal(decoded.varint_int16, -32768);
@@ -211,6 +215,13 @@ describe("Schema Usage", () => {
             assert.equal(decoded.varint_uint64, Number.MAX_SAFE_INTEGER);
             assert.equal(decoded.varint_float32, -3.40282347e+38);
             assert.equal(decoded.varint_float64, 1.7976931348623157e+308);
+
+            const badByteIndex = encoded.findIndex((byte) => byte < 0 || byte > 255);
+            assert.equal(
+                -1,
+                badByteIndex,
+                `invalid byte (${encoded[badByteIndex]}) at index ${badByteIndex}`
+            );
         });
 
         it("boolean", () => {

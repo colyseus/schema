@@ -250,7 +250,7 @@ export function number(bytes, value) {
 
     // negative fixnum
     if (value >= -0x20) {
-      bytes.push(value);
+      bytes.push(0xe0 | (value + 0x20));
       return 1;
     }
 
