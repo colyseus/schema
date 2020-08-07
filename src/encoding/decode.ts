@@ -269,5 +269,10 @@ export function arrayCheck (bytes, it: Iterator) {
 }
 
 export function switchStructureCheck(bytes, it: Iterator) {
-  return bytes[it.offset] === SWITCH_TO_STRUCTURE;
+  return (
+      // previous byte should be `SWITCH_TO_STRUCTURE`
+      bytes[it.offset - 1] === SWITCH_TO_STRUCTURE &&
+      // next byte should be a number
+      (bytes[it.offset] < 0x80 || (bytes[it.offset] >= 0xca && bytes[it.offset] <= 0xd3))
+  );
 }

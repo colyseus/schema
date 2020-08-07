@@ -59,47 +59,40 @@ describe("Edge cases", () => {
         }
     });
 
-    it("NIL check should not collide", () => {
+    it("SWITCH_TO_STRUCTURE check should not collide", () => {
+        //
+        // The SWITCH_TO_STRUCTURE byte is `193`
+        //
+
+        class Child extends Schema {
+            @type("number") n: number;
+        }
+
         class State extends Schema {
-            @type("int32") num: number;
-            @type({ map: "int32" }) mapOfNum = new MapSchema<number>();
             @type(["int32"]) arrayOfNum = new ArraySchema<number>();
+            @type(Child) child = new Child();
         }
 
         const state = new State();
-        state.num = 3519;
-        state.mapOfNum['one'] = 3519;
-        state.arrayOfNum[0] = 3519;
+        state.arrayOfNum.push(0);
+        state.arrayOfNum.push(1);
+        state.arrayOfNum.push(2);
+
+        state.child = new Child();
+        state.child.n = 0;
 
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        /**
-         * 3520 is encoded as [192, 13, 0, 0]
-         * (192 is the NIL byte indicator)
-         */
-        state.num = 3520;
-        state.mapOfNum['one'] = 3520;
-        state.arrayOfNum[0] = 3520;
+        state.child = undefined;
+        state.child = new Child();
+        state.child.n = 1;
 
-        decodedState.decode(state.encode());
-
-        assert.deepEqual(decodedState.toJSON(), {
-            num: 3520,
-            mapOfNum: { one: 3520 },
-            arrayOfNum: [3520]
+        assert.doesNotThrow(() => {
+            decodedState.decode(state.encode());
         });
 
-        state.num = undefined;
-        delete state.mapOfNum['one'];
-        state.arrayOfNum.pop();
-
-        decodedState.decode(state.encode());
-
-        assert.deepEqual(decodedState.toJSON(), {
-            mapOfNum: {},
-            arrayOfNum: []
-        });
+        console.log("JSON =>", decodedState.toJSON());
     });
 
     it("string: containing specific UTF-8 characters", () => {

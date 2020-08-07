@@ -1,4 +1,5 @@
-export const SWITCH_TO_STRUCTURE = 0xc1; // 193
+// export const SWITCH_TO_STRUCTURE = 0xc1; // 193
+export const SWITCH_TO_STRUCTURE = 100; // 193
 export const TYPE_ID = 0xd5; // 213
 
 /**

@@ -204,7 +204,7 @@ export abstract class Schema {
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
 
-            if (byte === SWITCH_TO_STRUCTURE) {
+            if (decode.switchStructureCheck(bytes, it)) {
                 refId = decode.number(bytes, it);
                 ref = $root.refs.get(refId) as Schema;
 
@@ -272,7 +272,7 @@ export abstract class Schema {
             }
 
             //
-            // TODO: use bitwise operations to check for `DELETE` instead.
+            // Delete operations
             //
             if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
             {
@@ -297,9 +297,7 @@ export abstract class Schema {
                     // keep skipping next bytes until reaches a known structure
                     // by local decoder.
                     //
-                    const nextByte = bytes[it.offset + 1];
-
-                    if (nextByte === SWITCH_TO_STRUCTURE) {
+                    if (decode.switchStructureCheck(bytes, it)) {
                         nextIterator.offset = it.offset + 1;
                         if ($root.refs.has(decode.number(bytes, nextIterator))) {
                             break;
