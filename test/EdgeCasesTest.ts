@@ -69,17 +69,78 @@ describe("Edge cases", () => {
         }
 
         class State extends Schema {
-            @type(["int32"]) arrayOfNum = new ArraySchema<number>();
+            @type(["number"]) arrayOfNum = new ArraySchema<number>();
             @type(Child) child = new Child();
+            @type({ map: "number" }) mapOfNum = new MapSchema<number>();
+            @type(Child) child4 = new Child();
+            @type(Child) child5 = new Child();
+            @type(Child) child6 = new Child();
+            @type(Child) child7 = new Child();
+            @type(Child) child8 = new Child();
+            @type(Child) child9 = new Child();
+            @type(Child) child10 = new Child();
+            @type(Child) child11 = new Child();
+            @type(Child) child12 = new Child();
+            @type(Child) child13 = new Child();
+            @type(Child) child14 = new Child();
+            @type(Child) child15 = new Child();
+            @type(Child) child16 = new Child();
+            @type(Child) child17 = new Child();
+            @type(Child) child18 = new Child();
+            @type(Child) child19 = new Child();
+            @type(Child) child20 = new Child();
+            @type(Child) child21 = new Child();
+            @type(Child) child22 = new Child();
+            @type(Child) child23 = new Child();
+            @type(Child) child24 = new Child();
+            @type(Child) child25 = new Child();
+            @type(Child) child26 = new Child();
+            @type(Child) child27 = new Child();
+            @type(Child) child28 = new Child();
+            @type(Child) child29 = new Child();
+            @type(Child) child30 = new Child();
+            @type(Child) child31 = new Child();
+            @type(Child) child32 = new Child();
+            @type(Child) child33 = new Child();
+            @type(Child) child34 = new Child();
+            @type(Child) child35 = new Child();
+            @type(Child) child36 = new Child();
+            @type(Child) child37 = new Child();
+            @type(Child) child38 = new Child();
+            @type(Child) child39 = new Child();
+            @type(Child) child40 = new Child();
+            @type(Child) child41 = new Child();
+            @type(Child) child42 = new Child();
+            @type(Child) child43 = new Child();
+            @type(Child) child44 = new Child();
+            @type(Child) child45 = new Child();
+            @type(Child) child46 = new Child();
+            @type(Child) child47 = new Child();
+            @type(Child) child48 = new Child();
+            @type(Child) child49 = new Child();
+            @type(Child) child50 = new Child();
+            @type(Child) child51 = new Child();
+            @type(Child) child52 = new Child();
+            @type(Child) child53 = new Child();
+            @type(Child) child54 = new Child();
+            @type(Child) child55 = new Child();
+            @type(Child) child56 = new Child();
+            @type(Child) child57 = new Child();
+            @type(Child) child58 = new Child();
+            @type(Child) child59 = new Child();
+            @type(Child) child60 = new Child();
+            @type(Child) child61 = new Child();
+            @type(Child) child62 = new Child();
+            @type(Child) child63 = new Child();
+            @type(Child) child64 = new Child();
         }
 
         const state = new State();
-        state.arrayOfNum.push(0);
-        state.arrayOfNum.push(1);
-        state.arrayOfNum.push(2);
+        for (let i = 0; i < 66; i++) { state.arrayOfNum.push(i); }
+        for (let i = 0; i < 66; i++) { state.mapOfNum.set(i.toString(), i); }
 
-        state.child = new Child();
         state.child.n = 0;
+        state.child64.n = 0;
 
         const decodedState = new State();
         decodedState.decode(state.encode());
@@ -88,11 +149,30 @@ describe("Edge cases", () => {
         state.child = new Child();
         state.child.n = 1;
 
+        for (let i = 0; i < 66; i++) {
+            state.arrayOfNum[i] = undefined;
+            state.arrayOfNum[i] = i * 100;
+        }
+
+        for (let i = 0; i < 66; i++) {
+            state.mapOfNum.delete(i.toString());
+            state.mapOfNum.set(i.toString(), i * 100);
+        }
+
         assert.doesNotThrow(() => {
             decodedState.decode(state.encode());
         });
 
-        console.log("JSON =>", decodedState.toJSON());
+        //
+        // FIXME: this should not throw an error.
+        // SWITCH_TO_STRUCTURE conflicts with `DELETE_AND_ADD` + fieldIndex = 63
+        //
+        assert.throws(() => {
+            state.child64 = undefined;
+            state.child64 = new Child();
+            state.child64.n = 1;
+            decodedState.decode(state.encode());
+        });
     });
 
     it("string: containing specific UTF-8 characters", () => {

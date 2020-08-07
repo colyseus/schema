@@ -1,5 +1,5 @@
-// export const SWITCH_TO_STRUCTURE = 0xc1; // 193
-export const SWITCH_TO_STRUCTURE = 100; // 193
+// export const SWITCH_TO_STRUCTURE = 193; (easily collides with DELETE_AND_ADD + fieldIndex = 2)
+export const SWITCH_TO_STRUCTURE = 255; // (decoding collides with DELETE_AND_ADD + fieldIndex = 63)
 export const TYPE_ID = 0xd5; // 213
 
 /**

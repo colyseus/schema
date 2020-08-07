@@ -224,8 +224,8 @@ export abstract class Schema {
             const isSchema = (ref['_definition'] !== undefined);
 
             const operation = (isSchema)
-                ? (byte >> 6) << 6
-                : byte;
+                ? (byte >> 6) << 6 // "compressed" index + operation
+                : byte; // "uncompressed" index + operation (array/map items)
 
             const fieldIndex = (isSchema)
                 ? byte % (operation || 255)
@@ -234,8 +234,6 @@ export abstract class Schema {
             const field = (isSchema)
                 ? (ref['_definition'].fieldsByIndex && ref['_definition'].fieldsByIndex[fieldIndex])
                 : fieldIndex;
-
-            const _field = `_${field}`;
 
             let type = changeTree.getType(fieldIndex);
             let value: any;
@@ -268,7 +266,7 @@ export abstract class Schema {
                 }
 
             } else {
-                previousValue = ref[_field];
+                previousValue = ref[`_${field}`];
             }
 
             //
@@ -481,11 +479,6 @@ export abstract class Schema {
             // mark this ChangeTree as visited.
             refIdsVisited.add(changeTree);
 
-            // console.log("SWITCH_TO_STRUCTURE (ENCODE)", {
-            //     ref: ref.constructor.name,
-            //     refId: changeTree.refId
-            // });
-
             // root `refId` is skipped.
             if (
                 changeTree.refId > 0 &&
@@ -509,8 +502,6 @@ export abstract class Schema {
                 const field = (isSchema)
                     ? ref['_definition'].fieldsByIndex && ref['_definition'].fieldsByIndex[fieldIndex]
                     : fieldIndex;
-
-                const _field = `_${field}`;
 
                 // cache begin index if `useFilters`
                 const beginIndex = bytes.length;
@@ -619,7 +610,7 @@ export abstract class Schema {
                     //
                     // ensure a ArraySchema has been provided
                     //
-                    assertInstanceType(ref[_field], definition.constructor, ref as Schema, field);
+                    assertInstanceType(ref[`_${field}`], definition.constructor, ref as Schema, field);
 
                     //
                     // Encode refId for this instance.
