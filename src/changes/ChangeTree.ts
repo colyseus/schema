@@ -65,6 +65,9 @@ export class Root {
             if (this.refCounts[refId] <= 0) {
                 const ref = this.refs.get(refId);
 
+                //
+                // Ensure child schema instances have their references removed as well.
+                //
                 if (ref instanceof Schema) {
                     for (const fieldName in ref['_definition'].schema) {
                         if (
@@ -75,9 +78,19 @@ export class Root {
                             this.removeRef(ref[fieldName]['$changes'].refId);
                         }
                     }
+
+                } else {
+                    const definition: SchemaDefinition = ref['$changes'].parent._definition;
+                    const type = definition.schema[definition.fieldsByIndex[ref['$changes'].parentIndex]];
+
+                    if (typeof (Object.values(type)[0]) === "function") {
+                        Array.from(ref.values())
+                            .forEach((child) => this.removeRef(child['$changes'].refId));
+                    }
                 }
 
                 this.refs.delete(refId);
+                delete this.refCounts[refId];
             }
         });
 

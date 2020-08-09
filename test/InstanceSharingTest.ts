@@ -163,4 +163,55 @@ describe("Instance sharing", () => {
         const newRefCount = decodedState['$changes'].root.refs.size;
         assert.equal(refCount - 4, newRefCount);
     });
+
+    it("replacing ArraySchema should drop previous refId", () => {
+        class State extends Schema {
+            @type(["number"]) arrayOfNumbers: number[] = new ArraySchema<number>();
+        }
+
+        const state = new State();
+        state.arrayOfNumbers.push(1, 2, 3);
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        const getRefCount = () => decodedState['$changes'].root.refs.size;
+        const firstCount = getRefCount();
+
+        state.arrayOfNumbers = [4, 5, 6];
+        decodedState.decode(state.encode());
+
+        assert.equal(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
+    });
+
+    it("replacing ArraySchema should drop children's refId's", () => {
+        const state = new State();
+        state.arrayOfPlayers.push(new Player().assign({
+            position: new Position().assign({x: 10, y: 20})
+        }));
+        state.arrayOfPlayers.push(new Player().assign({
+            position: new Position().assign({x: 20, y: 30})
+        }));
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        const getRefCount = () => decodedState['$changes'].root.refs.size;
+        const firstCount = getRefCount();
+
+        state.arrayOfPlayers = new ArraySchema<Player>();
+        state.arrayOfPlayers.push(new Player().assign({
+            position: new Position().assign({x: 10, y: 20})
+        }));
+        state.arrayOfPlayers.push(new Player().assign({
+            position: new Position().assign({x: 20, y: 30})
+        }));
+
+        decodedState.decode(state.encode());
+
+        // force garbage collection.
+        // decodedState['$changes'].root.garbageCollectDeletedRefs();
+
+        assert.equal(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
+    });
 });

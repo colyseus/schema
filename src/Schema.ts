@@ -338,6 +338,10 @@ export abstract class Schema {
                         if (previousValue) {
                             value.onChange = previousValue.onChange;
                             value.onRemove = previousValue.onRemove;
+
+                            if (refId !== previousValue['$changes'].refId) {
+                                $root.removeRef(previousValue['$changes'].refId);
+                            }
                         }
                     }
 
@@ -368,6 +372,10 @@ export abstract class Schema {
                     value.onAdd = previousValue.onAdd;
                     value.onRemove = previousValue.onRemove;
                     value.onChange = previousValue.onChange;
+
+                    if (refId !== previousValue['$changes'].refId) {
+                        $root.removeRef(previousValue['$changes'].refId);
+                    }
                 }
 
                 //

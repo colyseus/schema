@@ -1,9 +1,7 @@
-import { ChangeTree, Ref } from './changes/ChangeTree';
+import { ChangeTree } from './changes/ChangeTree';
 import { Schema } from './Schema';
 import { ArraySchema, getArrayProxy } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
-import { CollectionSchema } from './types/CollectionSchema';
-import { SetSchema } from './types/SetSchema';
 import { getType } from './types';
 
 /**

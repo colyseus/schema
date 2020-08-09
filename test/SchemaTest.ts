@@ -1,7 +1,6 @@
 import * as assert from "assert";
-import { type } from "../src/annotations";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity } from "./Schema";
-import { Schema, ArraySchema, MapSchema } from "../src";
+import { Schema, ArraySchema, MapSchema, type } from "../src";
 
 describe("Schema Usage", () => {
 
