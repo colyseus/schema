@@ -161,9 +161,7 @@ describe("Edge cases", () => {
             state.mapOfNum.set(i.toString(), i * 100);
         }
 
-        assert.doesNotThrow(() => {
-            decodedState.decode(state.encode());
-        });
+        assert.doesNotThrow(() => decodedState.decode(state.encode()));
 
         //
         // FIXME: this should not throw an error.
@@ -182,9 +180,7 @@ describe("Edge cases", () => {
         state.mapOfNum.clear();
         state.mapOfNum.set("one", 10);
 
-        assert.doesNotThrow(() => {
-            decodedState.decode(state.encode());
-        });
+        assert.doesNotThrow(() => decodedState.decode(state.encode()));
 
     });
 

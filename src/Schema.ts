@@ -209,11 +209,6 @@ export abstract class Schema {
 
                 const nextRef = $root.refs.get(refId) as Schema;
 
-                // console.log("SWITCH_TO_STRUCTURE:", {
-                //     refId,
-                //     ref: (nextRef && nextRef.constructor.name)
-                // });
-
                 //
                 // Trying to access a reference that haven't been decoded yet.
                 //
@@ -299,13 +294,13 @@ export abstract class Schema {
 
             if (field === undefined) {
                 console.warn("@colyseus/schema: definition mismatch");
-                const nextIterator: decode.Iterator = { offset: it.offset };
 
+                //
+                // keep skipping next bytes until reaches a known structure
+                // by local decoder.
+                //
+                const nextIterator: decode.Iterator = { offset: it.offset };
                 while (it.offset < totalBytes) {
-                    //
-                    // keep skipping next bytes until reaches a known structure
-                    // by local decoder.
-                    //
                     if (decode.switchStructureCheck(bytes, it)) {
                         nextIterator.offset = it.offset + 1;
                         if ($root.refs.has(decode.number(bytes, nextIterator))) {
@@ -533,7 +528,6 @@ export abstract class Schema {
                         // This adds a limitaion of 64 fields per Schema structure
                         //
                         encode.uint8(bytes, (fieldIndex | operation.op));
-                        // console.log("(compressed) ENCODE", { operation: OPERATION[operation.op], fieldIndex });
 
                     } else {
                         encode.uint8(bytes, operation.op);
@@ -545,8 +539,6 @@ export abstract class Schema {
 
                         // indexed operations
                         encode.number(bytes, fieldIndex);
-
-                        // console.log("(uncompressed) ENCODE", { operation: OPERATION[operation.op], fieldIndex });
                     }
                 }
 

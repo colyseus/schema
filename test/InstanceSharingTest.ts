@@ -186,12 +186,8 @@ describe("Instance sharing", () => {
 
     it("replacing ArraySchema should drop children's refId's", () => {
         const state = new State();
-        state.arrayOfPlayers.push(new Player().assign({
-            position: new Position().assign({x: 10, y: 20})
-        }));
-        state.arrayOfPlayers.push(new Player().assign({
-            position: new Position().assign({x: 20, y: 30})
-        }));
+        state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 10, y: 20 }) }));
+        state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 20, y: 30 }) }));
 
         const decodedState = new State();
         decodedState.decode(state.encode());
@@ -200,12 +196,8 @@ describe("Instance sharing", () => {
         const firstCount = getRefCount();
 
         state.arrayOfPlayers = new ArraySchema<Player>();
-        state.arrayOfPlayers.push(new Player().assign({
-            position: new Position().assign({x: 10, y: 20})
-        }));
-        state.arrayOfPlayers.push(new Player().assign({
-            position: new Position().assign({x: 20, y: 30})
-        }));
+        state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 10, y: 20 }) }));
+        state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 20, y: 30 }) }));
 
         decodedState.decode(state.encode());
 
