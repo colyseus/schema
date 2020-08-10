@@ -49,14 +49,12 @@ export class Root {
     addRef(refId: number, ref: Ref) {
         this.refs.set(refId, ref);
         this.refCounts[refId] = (this.refCounts[refId] || 0) + 1;
-        // console.log("addRef:", { refId });
     }
 
     // for decoding
     removeRef(refId) {
         this.refCounts[refId] = this.refCounts[refId] - 1;
         this.deletedRefs.add(refId);
-        // console.log("removeRef:", { refId });
     }
 
     // for decoding

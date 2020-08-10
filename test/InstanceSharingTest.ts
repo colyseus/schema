@@ -1,6 +1,5 @@
 import * as assert from "assert";
-import { type } from "../src/annotations";
-import { Schema, ArraySchema, MapSchema } from "../src";
+import { Schema, type, ArraySchema, MapSchema } from "../src";
 
 describe("Instance sharing", () => {
     class Position extends Schema {
@@ -184,7 +183,7 @@ describe("Instance sharing", () => {
         assert.equal(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
     });
 
-    it("replacing ArraySchema should drop children's refId's", () => {
+    it.only("replacing ArraySchema should drop children's refId's", () => {
         const state = new State();
         state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 10, y: 20 }) }));
         state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 20, y: 30 }) }));
@@ -205,5 +204,10 @@ describe("Instance sharing", () => {
         // decodedState['$changes'].root.garbageCollectDeletedRefs();
 
         assert.equal(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
+        assert.equal(
+            true,
+            Object.values(decodedState['$changes'].root.refCounts).every(refCount => refCount > 0),
+            "all refCount's should have a valid number."
+        );
     });
 });

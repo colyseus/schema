@@ -334,7 +334,10 @@ export abstract class Schema {
                             value.onChange = previousValue.onChange;
                             value.onRemove = previousValue.onRemove;
 
-                            if (refId !== previousValue['$changes'].refId) {
+                            if (
+                                previousValue['$changes'].refId &&
+                                refId !== previousValue['$changes'].refId
+                            ) {
                                 $root.removeRef(previousValue['$changes'].refId);
                             }
                         }
@@ -368,7 +371,10 @@ export abstract class Schema {
                     value.onRemove = previousValue.onRemove;
                     value.onChange = previousValue.onChange;
 
-                    if (refId !== previousValue['$changes'].refId) {
+                    if (
+                        previousValue['$changes'].refId &&
+                        refId !== previousValue['$changes'].refId
+                    ) {
                         $root.removeRef(previousValue['$changes'].refId);
                     }
                 }
@@ -466,7 +472,7 @@ export abstract class Schema {
 
         this._triggerChanges(allChanges);
 
-        // garbage collection!
+        // drop references of unused schemas
         $root.garbageCollectDeletedRefs();
 
         return allChanges;
