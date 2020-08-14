@@ -21,6 +21,10 @@ const typeMaps = {
 /**
  * C# Code Generator
  */
+const capitalize = (s) => {
+    if (typeof s !== 'string') return ''
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 export function generate (context: Context, options: GenerateOptions): File[] {
     return [
@@ -49,7 +53,7 @@ ${namespace ? "}" : ""}
 }
 
 function generateProperty(prop: Property, indent: string = "") {
-    let typeArgs = `"${prop.type}"`;
+    let typeArgs = "";
     let property = "public";
     let langType: string;
     let initializer = "";
@@ -58,22 +62,21 @@ function generateProperty(prop: Property, indent: string = "") {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
 
         if(prop.type === "ref") {
+            typeArgs += `"${prop.type}"`;
+
             langType = (isUpcaseFirst)
                 ? prop.childType
                 : typeMaps[prop.childType];
 
-        } else if (prop.type === "array") {
-            langType = (isUpcaseFirst)
-                ? `ArraySchema<${prop.childType}>`
-                : `ArraySchema<${typeMaps[prop.childType]}>`;
+        } else {
+            const containerClass = capitalize(prop.type);
 
-        } else if (prop.type === "map") {
             langType = (isUpcaseFirst)
-                ? `MapSchema<${prop.childType}>`
-                : `MapSchema<${typeMaps[prop.childType]}>`;
+                ? `${containerClass}Schema<${prop.childType}>`
+                : `${containerClass}Schema<${typeMaps[prop.childType]}>`;
+
+            typeArgs += `typeof(${langType})`;
         }
-
-        typeArgs += `, typeof(${langType})`;
 
         if (!isUpcaseFirst) {
             typeArgs += `, "${prop.childType}"`;
