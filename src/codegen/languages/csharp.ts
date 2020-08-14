@@ -85,6 +85,7 @@ function generateProperty(prop: Property, indent: string = "") {
         initializer = `new ${langType}()`;
 
     } else {
+        typeArgs += `"${prop.type}"`;
         langType = typeMaps[prop.type];
         initializer = `default(${langType})`;
     }
