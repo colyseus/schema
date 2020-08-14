@@ -208,11 +208,8 @@ describe("MapSchema Tests", () => {
         playerTwo.purchase.slots['three'] = new Item(500);
         state.encode();
 
-        console.log("PLAYER CHANGES =>", state.players['$changes']);
-
         const decodedState = new State();
         decodedState.decode(state.encodeAll());
-        console.log(decodedState.toJSON());
     });
 
     it("should allow to remove and set an item in the same place", () => {
@@ -224,8 +221,6 @@ describe("MapSchema Tests", () => {
         const decodedState = new State();
 
         let encoded = state.encode();
-        console.log("ENCODED", encoded.length, encoded);
-
         decodedState.decode(encoded);
 
         assert.equal(decodedState.mapOfPlayers['one'].name, "Jake");
@@ -249,7 +244,6 @@ describe("MapSchema Tests", () => {
 
         encoded = state.encode();
         decodedState.decode(encoded);
-        console.log("DECODED (3) =>", util.inspect(decodedState.toJSON(), true, Infinity));
 
         assert.equal(decodedState.mapOfPlayers['one'].name, "Jake 2");
         assert.equal(decodedState.mapOfPlayers['two'].name, "Katarina 2");
@@ -362,7 +356,6 @@ describe("MapSchema Tests", () => {
         playerOne.age = 100;
         playerOne.next = playerOne.id;//1->1;
         decodeState.decode(state.encode());
-        console.log(decodeState.toJSON());
 
         const playerTwo = new Player("8848");
         state.players[playerTwo.id] = playerTwo
@@ -371,7 +364,6 @@ describe("MapSchema Tests", () => {
         playerOne.next = playerTwo.id;//1->2;
         playerTwo.next = playerOne.id;//2->1;
         decodeState.decode(state.encode());
-        console.log(decodeState.toJSON());
 
         const playerThree = new Player("8658");
         state.players[playerThree.id] = playerThree
@@ -381,7 +373,6 @@ describe("MapSchema Tests", () => {
         playerTwo.next = playerThree.id;//2->3
         playerThree.next = playerOne.id;//3->1
         decodeState.decode(state.encode());
-        console.log(decodeState.toJSON());
 
         assert.equal(decodeState.players['76355'].next,'8848');//1->2
         assert.equal(decodeState.players['8848'].next,'8658');//2->3
@@ -533,6 +524,26 @@ describe("MapSchema Tests", () => {
 
         sinon.assert.calledOnce(onEntityAddSpy);
         sinon.assert.calledOnce(onItemsChangeSpy);
+    });
+
+    it("replacing MapSchema should trigger onRemove on previous items", () => {
+        class State extends Schema {
+            @type({ map: "number" }) numbers: MapSchema<number>;
+        }
+
+        const state = new State();
+        state.numbers = new MapSchema({ one: 1, two: 2, three: 3 });
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        decodedState.numbers.onRemove = function(num, i) {}
+        const onRemove = sinon.spy(decodedState.numbers, 'onRemove');
+
+        state.numbers = new MapSchema({ four: 1, five: 2, six: 3 });
+        decodedState.decode(state.encode());
+
+        sinon.assert.callCount(onRemove, 3);
     });
 
 });

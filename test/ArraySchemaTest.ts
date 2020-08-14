@@ -1136,7 +1136,7 @@ describe("ArraySchema Tests", () => {
         state.players.push(new Player().assign({ name: "two", x: 0, y: 0 }));
         state.players.push(new Player().assign({ name: "three", x: 0, y: 0 }));
 
-        const fullBytes = state.encode(undefined, undefined, true);
+        state.encode(undefined, undefined, true);
 
         const client1 = { sessionId: "one" };
         const client2 = { sessionId: "two" };
@@ -1155,6 +1155,26 @@ describe("ArraySchema Tests", () => {
         assert.equal(1, decoded3.players.length);
 
         state.discardAllChanges();
+    });
+
+    it("replacing ArraySchema should trigger onRemove on previous items", () => {
+        class State extends Schema {
+            @type(["number"]) numbers: ArraySchema<number>;
+        }
+
+        const state = new State();
+        state.numbers = new ArraySchema(1, 2, 3, 4, 5, 6);
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        decodedState.numbers.onRemove = function(num, i) {}
+        const onRemove = sinon.spy(decodedState.numbers, 'onRemove');
+
+        state.numbers = new ArraySchema(7, 8, 9);
+        decodedState.decode(state.encode());
+
+        sinon.assert.callCount(onRemove, 6);
     });
 
     describe("array methods", () => {

@@ -241,12 +241,12 @@ export abstract class Schema {
             }
 
             const fieldIndex = (isSchema)
-                ? byte % (operation || 255)
+                ? byte % (operation || 255) // if "REPLACE" operation (0), use 255
                 : decode.number(bytes, it);
 
-            const field = (isSchema)
-                ? (ref['_definition'].fieldsByIndex && ref['_definition'].fieldsByIndex[fieldIndex])
-                : fieldIndex;
+            const fieldName = (isSchema)
+                ? (ref['_definition'].fieldsByIndex[fieldIndex])
+                : "";
 
             // console.log({ operation, fieldIndex, isSchema });
 
@@ -256,7 +256,6 @@ export abstract class Schema {
 
             let dynamicIndex: number | string;
 
-
             if (!isSchema) {
                 previousValue = ref['getByIndex'](fieldIndex);
 
@@ -264,7 +263,7 @@ export abstract class Schema {
                     dynamicIndex = (decode.stringCheck(bytes, it))
                         ? decode.string(bytes, it)
                         : decode.number(bytes, it);
-                    ref['setIndex'](field, dynamicIndex);
+                    ref['setIndex'](fieldIndex, dynamicIndex);
 
                 } else {
                     // here
@@ -272,7 +271,7 @@ export abstract class Schema {
                 }
 
             } else {
-                previousValue = ref[`_${field}`];
+                previousValue = ref[`_${fieldName}`];
             }
 
             //
@@ -292,7 +291,7 @@ export abstract class Schema {
                 value = null;
             }
 
-            if (field === undefined) {
+            if (fieldName === undefined) {
                 console.warn("@colyseus/schema: definition mismatch");
 
                 //
@@ -324,10 +323,10 @@ export abstract class Schema {
                 value = $root.refs.get(refId);
 
                 if (operation !== OPERATION.REPLACE) {
-                    const childType = this.getSchemaType(bytes, it);
+                    const childType = this.getSchemaType(bytes, it, type);
 
                     if (!value) {
-                        value = this.createTypeInstance(bytes, it, childType || type as typeof Schema);
+                        value = this.createTypeInstance(childType);
                         value.$changes.refId = refId;
 
                         if (previousValue) {
@@ -376,23 +375,28 @@ export abstract class Schema {
                         refId !== previousValue['$changes'].refId
                     ) {
                         $root.removeRef(previousValue['$changes'].refId);
+
+                        //
+                        // Trigger onRemove if structure has been replaced.
+                        //
+                        const deletes: DataChange[] = [];
+                        const entries: IterableIterator<[any, any]> = previousValue.entries();
+                        let iter: IteratorResult<[any, any]>;
+                        while ((iter = entries.next()) && !iter.done) {
+                            const [key, value] = iter.value;
+                            deletes.push({
+                                op: OPERATION.DELETE,
+                                field: key,
+                                // dynamicIndex,
+                                value: undefined,
+                                previousValue: value,
+                            });
+                        }
+
+                        allChanges.set(previousValue['$changes'].refId, deletes);
                     }
                 }
 
-                //
-                // TODO: trigger onRemove if structure has been replaced.
-                //
-                // if (!$root.refs.has(refId) && value.length > 0) {
-                //     value.forEach((element, i) => {
-                //         changes.push({
-                //             op: OPERATION.DELETE,
-                //             field: i,
-                //             // dynamicIndex,
-                //             value: undefined,
-                //             previousValue: element,
-                //         });
-                //     });
-                // }
 
                 $root.addRef(refId, value);
 
@@ -420,7 +424,7 @@ export abstract class Schema {
                 }
 
                 if (ref instanceof Schema) {
-                    ref[field] = value;
+                    ref[fieldName] = value;
 
                     //
                     // FIXME: use `_field` instead of `field`.
@@ -442,14 +446,14 @@ export abstract class Schema {
                     // const key = ref['$indexes'][field];
                     // console.log("SETTING FOR ArraySchema =>", { field, key, value });
                     // ref[key] = value;
-                    ref.setAt(field, value);
+                    ref.setAt(fieldIndex, value);
 
                 } else if (
                     ref instanceof CollectionSchema ||
                     ref instanceof SetSchema
                 ) {
                     const index = ref.add(value);
-                    ref['setIndex'](field, index);
+                    ref['setIndex'](fieldIndex, index);
                 }
             }
 
@@ -462,7 +466,7 @@ export abstract class Schema {
             ) {
                 changes.push({
                     op: operation,
-                    field,
+                    field: fieldName,
                     dynamicIndex,
                     value,
                     previousValue,
@@ -964,7 +968,7 @@ export abstract class Schema {
         }
     }
 
-    private getSchemaType(bytes: number[], it: decode.Iterator): typeof Schema {
+    private getSchemaType(bytes: number[], it: decode.Iterator, defaultType: typeof Schema): typeof Schema {
         let type: typeof Schema;
 
         if (bytes[it.offset] === TYPE_ID) {
@@ -972,10 +976,10 @@ export abstract class Schema {
             type = (this.constructor as typeof Schema)._context.get(decode.number(bytes, it));
         }
 
-        return type;
+        return type || defaultType;
     }
 
-    private createTypeInstance (bytes: number[], it: decode.Iterator, type: typeof Schema): Schema {
+    private createTypeInstance (type: typeof Schema): Schema {
         let instance: Schema = new (type as any)();
 
         // assign root on $changes

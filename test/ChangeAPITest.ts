@@ -82,7 +82,6 @@ describe("Change API", () => {
 
             const decodedState = new State();
             decodedState.onChange = function (changes: DataChange[]) {
-                console.log("CHANGES =>", changes);
                 assert.equal(changes.length, 1);
                 assert.equal(changes[0].field, "player");
             }
@@ -528,11 +527,9 @@ describe("Change API", () => {
 
             state.mapOfBool['two'] = true;
 
-            console.log("\n\nWILL ENCODE AGAIN!");
             decodedState.decode(state.encode());
 
             sinon.assert.calledTwice(onAddSpy);
-            console.log(decodedState.toJSON());
         });
 
         it("should not loose reference when add / remove is performed at once", () => {
@@ -658,9 +655,6 @@ describe("Change API", () => {
              */
             const secondDecodedState = new State();
             secondDecodedState.decode(state.encodeAll());
-
-            console.log("decodedState =>", decodedState.toJSON());
-            console.log("secondDecodedState =>", secondDecodedState.toJSON());
 
             assert.equal(JSON.stringify(secondDecodedState), JSON.stringify(decodedState));
 

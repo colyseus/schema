@@ -183,7 +183,7 @@ describe("Instance sharing", () => {
         assert.equal(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
     });
 
-    it.only("replacing ArraySchema should drop children's refId's", () => {
+    it("replacing ArraySchema should drop children's refId's", () => {
         const state = new State();
         state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 10, y: 20 }) }));
         state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 20, y: 30 }) }));

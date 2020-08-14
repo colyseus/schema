@@ -57,7 +57,6 @@ describe("backwards/forwards compatibility", () => {
         }));
 
         const encoded = state.encode();
-        console.log("ENCODED:", encoded.length, encoded);
 
         const decodedStateV1 = new StateV1();
         decodedStateV1.decode(encoded);

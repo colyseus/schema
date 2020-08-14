@@ -1,6 +1,6 @@
 // export const SWITCH_TO_STRUCTURE = 193; (easily collides with DELETE_AND_ADD + fieldIndex = 2)
 export const SWITCH_TO_STRUCTURE = 255; // (decoding collides with DELETE_AND_ADD + fieldIndex = 63)
-export const TYPE_ID = 0xd5; // 213
+export const TYPE_ID = 213;
 
 /**
  * Encoding Schema field operations.

@@ -167,7 +167,6 @@ describe("@filter Test", () => {
         state.encode(undefined, undefined, true);
         state.discardAllChanges();
 
-        console.log("\n\nENCODE ALL!");
         state.encodeAll(true);
 
         const client = { sessionId: "player" };
@@ -183,8 +182,6 @@ describe("@filter Test", () => {
 
         state.encode(undefined, undefined, true);
         decodedState.decode(state.applyFilters(client));
-
-        console.log(decodedState.toJSON());
 
         state.encode(undefined, undefined, true);
         decodedState.decode(state.applyFilters(client));
@@ -235,8 +232,6 @@ describe("@filter Test", () => {
         state.encode(undefined, undefined, true);
         decodedState2.decode(state.applyFilters(client2));
         state.discardAllChanges();
-
-        console.log(decodedState2.toJSON());
 
         assert.deepEqual([
             { x: 16, y: 16 },

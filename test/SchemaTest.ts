@@ -232,7 +232,6 @@ describe("Schema Usage", () => {
             data.bool = false;
 
             let encoded = data.encode();
-            console.log("ENCODED", encoded.length, encoded);
 
             let decoded = new Data();
             decoded.decode(encoded);
@@ -241,7 +240,6 @@ describe("Schema Usage", () => {
             data.bool = true;
 
             encoded = data.encode();
-            console.log("ENCODED", encoded.length, encoded);
 
             decoded.decode(encoded);
             assert.equal(decoded.bool, true);
@@ -537,8 +535,6 @@ describe("Schema Usage", () => {
             state.mapOfPlayers['two'] = jake;
 
             const encoded = state.encode();
-            console.log("ENCODED =>", encoded.length, encoded);
-
             decodedState.decode(encoded);
 
             assert.equal(decodedState.mapOfPlayers['one'], decodedSnake);
@@ -928,8 +924,6 @@ describe("Schema Usage", () => {
             state.mapOfPlayers['jake'] = new Player("Jake");
             state.mapOfPlayers['katarina'] = new Player("Jake");
             state.encodeAll();
-
-            console.log("MAP OF PLAYERS =>", state.mapOfPlayers);
 
             const decodedState = new State();
             decodedState.decode(state.encode());
