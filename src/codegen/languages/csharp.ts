@@ -18,22 +18,6 @@ const typeMaps = {
     "float64": "double",
 }
 
-const typeInitializer = {
-    "string": '""',
-    "number": "0",
-    "boolean": "false",
-    "int8": "0",
-    "uint8": "0",
-    "int16": "0",
-    "uint16": "0",
-    "int32": "0",
-    "uint32": "0",
-    "int64": "0",
-    "uint64": "0",
-    "float32": "0",
-    "float64": "0",
-}
-
 /**
  * C# Code Generator
  */
@@ -78,21 +62,20 @@ function generateProperty(prop: Property, indent: string = "") {
                 ? prop.childType
                 : typeMaps[prop.childType];
 
-        } else if(prop.type === "array") {
+        } else if (prop.type === "array") {
             langType = (isUpcaseFirst)
                 ? `ArraySchema<${prop.childType}>`
                 : `ArraySchema<${typeMaps[prop.childType]}>`;
 
-        } else if(prop.type === "map") {
+        } else if (prop.type === "map") {
             langType = (isUpcaseFirst)
                 ? `MapSchema<${prop.childType}>`
                 : `MapSchema<${typeMaps[prop.childType]}>`;
         }
 
-        if (isUpcaseFirst) {
-            typeArgs += `, typeof(${langType})`;
+        typeArgs += `, typeof(${langType})`;
 
-        } else {
+        if (!isUpcaseFirst) {
             typeArgs += `, "${prop.childType}"`;
         }
 
@@ -100,7 +83,7 @@ function generateProperty(prop: Property, indent: string = "") {
 
     } else {
         langType = typeMaps[prop.type];
-        initializer = typeInitializer[prop.type];
+        initializer = `default(${langType})`;
     }
 
     property += ` ${langType} ${prop.name}`;
