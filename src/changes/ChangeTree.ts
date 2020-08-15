@@ -57,6 +57,12 @@ export class Root {
         this.deletedRefs.add(refId);
     }
 
+    clearRefs() {
+        this.refs.clear();
+        this.deletedRefs.clear();
+        this.refCounts = {};
+    }
+
     // for decoding
     garbageCollectDeletedRefs() {
         this.deletedRefs.forEach((refId) => {

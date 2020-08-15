@@ -68,6 +68,10 @@ function generateProperty(prop: Property, indent: string = "") {
                 ? prop.childType
                 : typeMaps[prop.childType];
 
+            if (isUpcaseFirst) {
+                typeArgs += `, typeof(${langType})`;
+            }
+
         } else {
             const containerClass = capitalize(prop.type);
 
