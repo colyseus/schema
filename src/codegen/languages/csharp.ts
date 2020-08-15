@@ -53,7 +53,7 @@ ${namespace ? "}" : ""}
 }
 
 function generateProperty(prop: Property, indent: string = "") {
-    let typeArgs = "";
+    let typeArgs = `"${prop.type}"`;
     let property = "public";
     let langType: string;
     let initializer = "";
@@ -62,15 +62,9 @@ function generateProperty(prop: Property, indent: string = "") {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
 
         if(prop.type === "ref") {
-            typeArgs += `"${prop.type}"`;
-
             langType = (isUpcaseFirst)
                 ? prop.childType
                 : typeMaps[prop.childType];
-
-            if (isUpcaseFirst) {
-                typeArgs += `, typeof(${langType})`;
-            }
 
         } else {
             const containerClass = capitalize(prop.type);
@@ -78,9 +72,9 @@ function generateProperty(prop: Property, indent: string = "") {
             langType = (isUpcaseFirst)
                 ? `${containerClass}Schema<${prop.childType}>`
                 : `${containerClass}Schema<${typeMaps[prop.childType]}>`;
-
-            typeArgs += `typeof(${langType})`;
         }
+
+        typeArgs += `, typeof(${langType})`;
 
         if (!isUpcaseFirst) {
             typeArgs += `, "${prop.childType}"`;
@@ -89,7 +83,6 @@ function generateProperty(prop: Property, indent: string = "") {
         initializer = `new ${langType}()`;
 
     } else {
-        typeArgs += `"${prop.type}"`;
         langType = typeMaps[prop.type];
         initializer = `default(${langType})`;
     }
