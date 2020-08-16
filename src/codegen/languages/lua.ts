@@ -58,7 +58,7 @@ ${allRefs.
 
 local ${klass.name} = schema.define({
 ${klass.properties.map(prop => generatePropertyDeclaration(prop)).join(",\n")},
-    ["_order"] = { ${klass.properties.map(prop => `"${prop.name}"`).join(", ")} },
+    ["_fields_by_index"] = { ${klass.properties.map(prop => `"${prop.name}"`).join(", ")} },
 
     ["on_change"] = function(changes)
         -- on change logic here
