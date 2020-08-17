@@ -96,9 +96,9 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             }
 
             if (node.getText() === decoratorName) {
-                const prop: any = node.parent.parent.parent;
-                const propDecorator = node.parent.parent.parent.decorators;
-                const hasExpression = prop.expression && prop.expression.arguments;
+                const prop: any = node.parent?.parent?.parent;
+                const propDecorator = prop?.decorators;
+                const hasExpression = prop?.expression && prop?.expression?.arguments;
 
                 /**
                  * neither a `@type()` decorator or `type()` call. skip.

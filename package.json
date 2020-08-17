@@ -17,6 +17,7 @@
     "generate-test-5": "bin/schema-codegen test-external/InheritedTypes.ts --namespace SchemaTest.InheritedTypes --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/InheritedTypes",
     "generate-test-6": "bin/schema-codegen test-external/MapSchemaInt8.ts --namespace SchemaTest.MapSchemaInt8 --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/MapSchemaInt8",
     "generate-test-7": "bin/schema-codegen test-external/BackwardsForwards.ts --namespace SchemaTest.BackwardsForwards --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/BackwardsForwards",
+    "generate-test-8": "bin/schema-codegen test-external/FilteredTypes.ts --namespace SchemaTest.FilteredTypes --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/FilteredTypes",
     "watch": "tsc -w",
     "prepublish": "tsc"
   },
