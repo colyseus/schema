@@ -98,7 +98,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             if (node.getText() === decoratorName) {
                 const prop: any = node.parent?.parent?.parent;
                 const propDecorator = prop?.decorators;
-                const hasExpression = prop?.expression && prop?.expression?.arguments;
+                const hasExpression = prop?.expression?.arguments;
 
                 /**
                  * neither a `@type()` decorator or `type()` call. skip.
@@ -124,10 +124,8 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     defineProperty(property, typeArgument);
 
                 } else if (
-                    prop.expression.arguments &&
-                    prop.expression.arguments[1] &&
-                    prop.expression.expression.arguments &&
-                    prop.expression.expression.arguments[0]
+                    prop.expression.arguments?.[1] &&
+                    prop.expression.expression.arguments?.[0]
                 ) {
                     /**
                      * Calling `type()` as a regular method
@@ -190,7 +188,11 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
 let parsedFiles: { [filename: string]: boolean };
 
-export function parseFiles(fileNames: string[], decoratorName: string = "type", context: Context = new Context()) {
+export function parseFiles(
+    fileNames: string[],
+    decoratorName: string = "type",
+    context: Context = new Context()
+) {
     /**
      * Re-set globalContext for each test case
      */
@@ -221,7 +223,13 @@ export function parseFiles(fileNames: string[], decoratorName: string = "type", 
                     break;
                 }
 
-                sourceFile = ts.createSourceFile(sourceFileName, readFileSync(sourceFileName).toString(), ts.ScriptTarget.Latest, true);
+                sourceFile = ts.createSourceFile(
+                    sourceFileName,
+                    readFileSync(sourceFileName).toString(),
+                    ts.ScriptTarget.Latest,
+                    true
+                );
+
                 parsedFiles[sourceFileName] = true;
 
                 break;
