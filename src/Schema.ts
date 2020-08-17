@@ -248,8 +248,6 @@ export abstract class Schema {
                 ? (ref['_definition'].fieldsByIndex[fieldIndex])
                 : "";
 
-            // console.log({ operation, fieldIndex, isSchema });
-
             let type = changeTree.getType(fieldIndex);
             let value: any;
             let previousValue: any;
@@ -260,9 +258,9 @@ export abstract class Schema {
                 previousValue = ref['getByIndex'](fieldIndex);
 
                 if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
-                    dynamicIndex = (decode.stringCheck(bytes, it))
+                    dynamicIndex = (ref instanceof MapSchema)
                         ? decode.string(bytes, it)
-                        : decode.number(bytes, it);
+                        : fieldIndex;
                     ref['setIndex'](fieldIndex, dynamicIndex);
 
                 } else {
@@ -387,7 +385,6 @@ export abstract class Schema {
                             deletes.push({
                                 op: OPERATION.DELETE,
                                 field: key,
-                                // dynamicIndex,
                                 value: undefined,
                                 previousValue: value,
                             });
@@ -565,12 +562,6 @@ export abstract class Schema {
                         //
                         const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
                         encode.string(bytes, dynamicIndex);
-
-                    } else {
-                        //
-                        // Key from other indexed structures (Array, Collection, etc.)
-                        //
-                        encode.number(bytes, fieldIndex);
                     }
                 }
 
@@ -837,12 +828,6 @@ export abstract class Schema {
                                 //
                                 const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
                                 encode.string(filteredBytes, dynamicIndex);
-
-                            } else {
-                                //
-                                // Key from other indexed structures (Array, Collection, etc.)
-                                //
-                                encode.number(filteredBytes, fieldIndex);
                             }
 
                             if (value['$changes']) {
@@ -873,12 +858,6 @@ export abstract class Schema {
                         //
                         const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
                         encode.string(filteredBytes, dynamicIndex);
-
-                    } else {
-                        //
-                        // Key from other indexed structures (Array, Collection, etc.)
-                        //
-                        encode.number(filteredBytes, fieldIndex);
                     }
 
                     encode.number(filteredBytes, value['$changes'].refId);

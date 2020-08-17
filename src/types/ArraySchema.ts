@@ -147,6 +147,9 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     }
 
     at(index: number) {
+        //
+        // FIXME: this should be O(1)
+        //
         const key = Array.from(this.$items.keys())[index];
         return this.$items.get(key);
     }
