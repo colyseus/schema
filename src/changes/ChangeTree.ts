@@ -195,7 +195,11 @@ export class ChangeTree {
 
         const previousChange = this.changes.get(index);
 
-        if (!previousChange || previousChange.op === OPERATION.DELETE) {
+        if (
+            !previousChange ||
+            previousChange.op === OPERATION.DELETE ||
+            previousChange.op === OPERATION.TOUCH // (mazmorra.io's BattleAction issue)
+        ) {
             this.changes.set(index, {
                 op: (!previousChange)
                     ? operation
