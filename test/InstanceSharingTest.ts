@@ -189,6 +189,7 @@ describe("Instance sharing", () => {
         state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 20, y: 30 }) }));
 
         const decodedState = new State();
+        decodedState.decode(state.encodeAll());
         decodedState.decode(state.encode());
 
         const getRefCount = () => decodedState['$changes'].root.refs.size;

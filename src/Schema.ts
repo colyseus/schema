@@ -394,8 +394,9 @@ export abstract class Schema {
                     }
                 }
 
-
-                $root.addRef(refId, value);
+                if (valueRef !== previousValue) {
+                    $root.addRef(refId, value);
+                }
 
                 //
                 // TODO: deprecate proxies on next version.
