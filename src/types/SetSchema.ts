@@ -1,6 +1,6 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks } from "../Schema";
+import { SchemaDecoderCallbacks, Schema } from "../Schema";
 import { registerType } from ".";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
@@ -51,6 +51,10 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         this.$changes.change(index);
 
         return index;
+    }
+
+    entries () {
+        return this.$items.entries();
     }
 
     delete(item: V) {
@@ -192,8 +196,7 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     }
 
     triggerAll (): void {
-        if (!this.onAdd) { return; }
-        this.forEach((value, key) => this.onAdd(value, key));
+        Schema.prototype.triggerAll.apply(this);
     }
 }
 

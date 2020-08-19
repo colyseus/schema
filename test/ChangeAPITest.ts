@@ -875,6 +875,58 @@ describe("Change API", () => {
 
             sinon.assert.calledOnce(onChangeSpy);
         });
+
+        it("should recursively trigger onAdd on collections, and onChange on its children", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>();
+            state.mapOfPlayers['one'] = new Player("Jake", 10, 20);
+            state.mapOfPlayers['two'] = new Player("Katarina", 30, 40);
+
+            const decodedState = new State();
+            decodedState.mapOfPlayers = new MapSchema<Player>();
+            decodedState.decode(state.encode());
+
+            let onAddCalled = 0;
+            let onChangeCalled = 0;
+
+            decodedState.mapOfPlayers.onAdd = function(player, key) {
+                onAddCalled++;
+                player.onChange = function(changes) {
+                    onChangeCalled++;
+                    assert.equal(3, changes.length);
+                }
+            }
+            decodedState.triggerAll();
+
+            assert.equal(2, onAddCalled, "onAdd should've been called twice.");
+            assert.equal(2, onChangeCalled, "onChange should've been called twice.");
+        });
+
+        it("collections should implement .triggerAll()", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>();
+            state.mapOfPlayers['one'] = new Player("Jake", 10, 20);
+            state.mapOfPlayers['two'] = new Player("Katarina", 30, 40);
+
+            const decodedState = new State();
+            decodedState.mapOfPlayers = new MapSchema<Player>();
+            decodedState.decode(state.encode());
+
+            let onAddCalled = 0;
+            let onChangeCalled = 0;
+
+            decodedState.mapOfPlayers.onAdd = function(player, key) {
+                onAddCalled++;
+                player.onChange = function(changes) {
+                    onChangeCalled++;
+                    assert.equal(3, changes.length);
+                }
+            }
+            decodedState.mapOfPlayers.triggerAll();
+
+            assert.equal(2, onAddCalled, "onAdd should've been called twice.");
+            assert.equal(2, onChangeCalled, "onChange should've been called twice.");
+        });
     })
 
     describe("encodeAll", () => {
