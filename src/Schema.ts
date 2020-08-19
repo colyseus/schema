@@ -340,10 +340,7 @@ export abstract class Schema {
                         }
                     }
 
-                    if (value !== previousValue) {
-                        $root.addRef(refId, value);
-                    }
-
+                    $root.addRef(refId, value, (value !== previousValue));
                 }
             } else if (typeof(type) === "string") {
                 //
@@ -394,9 +391,7 @@ export abstract class Schema {
                     }
                 }
 
-                if (valueRef !== previousValue) {
-                    $root.addRef(refId, value);
-                }
+                $root.addRef(refId, value, (valueRef !== previousValue));
 
                 //
                 // TODO: deprecate proxies on next version.

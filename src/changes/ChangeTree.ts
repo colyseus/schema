@@ -46,9 +46,12 @@ export class Root {
     }
 
     // for decoding
-    addRef(refId: number, ref: Ref) {
+    addRef(refId: number, ref: Ref, incrementCount: boolean = true) {
         this.refs.set(refId, ref);
-        this.refCounts[refId] = (this.refCounts[refId] || 0) + 1;
+
+        if (incrementCount) {
+            this.refCounts[refId] = (this.refCounts[refId] || 0) + 1;
+        }
     }
 
     // for decoding
