@@ -885,24 +885,11 @@ export abstract class Schema {
     }
 
     triggerAll() {
-        const changes: DataChange[] = [];
-        const schema = this._definition.schema;
-
-        for (let field in schema) {
-            if (this[field] !== undefined) {
-                changes.push({
-                    op: OPERATION.REPLACE,
-                    field,
-                    value: this[field],
-                    previousValue: undefined
-                });
-            }
-        }
+        const allChanges = new Map<number, DataChange[]>();
+        Schema.prototype._triggerAllFillChanges.call(this, this, allChanges);
 
         try {
-            const allChanges = new Map<number, DataChange[]>();
-            allChanges.set(this.$changes.refId, changes);
-            this._triggerChanges(allChanges);
+            Schema.prototype._triggerChanges.call(this, allChanges);
 
         } catch (e) {
             Schema.onError(e);
@@ -961,6 +948,58 @@ export abstract class Schema {
         instance.$changes.root = this.$changes.root;
 
         return instance;
+    }
+
+    private _triggerAllFillChanges(ref: Ref, allChanges: Map<number, DataChange[]>) {
+        if (allChanges.has(ref['$changes'].refId)) { return; }
+
+        const changes: DataChange[] = [];
+        allChanges.set(ref['$changes'].refId || 0, changes);
+
+        if (ref instanceof Schema) {
+            const schema = ref._definition.schema;
+
+            for (let fieldName in schema) {
+                const _field = `_${fieldName}`;
+
+                if (ref[_field] !== undefined) {
+                    changes.push({
+                        op: OPERATION.ADD,
+                        field: fieldName,
+                        value: ref[_field],
+                        previousValue: undefined
+                    });
+
+                    if (Schema.is(schema[fieldName])) {
+                        Schema.prototype._triggerAllFillChanges.call(this, ref[_field], allChanges);
+
+                    } else {
+                        const fieldType = Object.keys(schema[fieldName])[0];
+
+                        if (typeof(schema[fieldName][fieldType]) !== "string") {
+                            Schema.prototype._triggerAllFillChanges.call(this, ref[_field], allChanges);
+                        }
+                    }
+                }
+            }
+
+        } else {
+            const entries: IterableIterator<[any, any]>  = ref.entries();
+            let iter: IteratorResult<[any, any]>;
+
+            while ((iter = entries.next()) && !iter.done) {
+                const [key, value] = iter.value;
+
+                changes.push({
+                    op: OPERATION.ADD,
+                    field: key,
+                    value: value,
+                    previousValue: undefined,
+                });
+
+                Schema.prototype._triggerAllFillChanges.call(this, value, allChanges);
+            }
+        }
     }
 
     private _triggerChanges(allChanges: Map<number, DataChange[]>) {

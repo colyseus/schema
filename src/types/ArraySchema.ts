@@ -602,8 +602,7 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     };
 
     triggerAll (): void {
-        if (!this.onAdd) { return; }
-        this.forEach((value, key) => this.onAdd(value, key));
+        Schema.prototype.triggerAll.apply(this);
     }
 }
 
