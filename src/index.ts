@@ -37,3 +37,5 @@ export {
     DefinitionType,
     FilterCallback,
 } from "./annotations";
+
+export { OPERATION } from "./spec";

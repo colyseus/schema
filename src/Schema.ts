@@ -17,7 +17,7 @@ import { getType } from './types';
 
 export interface DataChange<T=any> {
     op: OPERATION,
-    field: number | string;
+    field: string;
     dynamicIndex?: number | string;
     value: T;
     previousValue: T;
