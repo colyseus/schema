@@ -330,6 +330,7 @@ export abstract class Schema {
                         if (previousValue) {
                             value.onChange = previousValue.onChange;
                             value.onRemove = previousValue.onRemove;
+                            value.$listeners = previousValue.$listeners;
 
                             if (
                                 previousValue['$changes'].refId &&
