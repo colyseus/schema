@@ -921,7 +921,7 @@ export abstract class Schema {
     }
 
     protected deleteByIndex(index: number) {
-        delete this[this._definition.fieldsByIndex[index]];
+        this[this._definition.fieldsByIndex[index]] = undefined;
     }
 
     private tryEncodeTypeId (bytes: number[], type: typeof Schema, targetType: typeof Schema) {
