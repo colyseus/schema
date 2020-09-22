@@ -106,10 +106,10 @@ export class Reflection extends Schema {
             return types;
         }, {});
 
-        reflection.types.forEach((reflectionType, i) => {
-            reflectionType.fields.forEach(field => {
-                const schemaType = schemaTypes[reflectionType.id];
+        reflection.types.forEach((reflectionType) => {
+            const schemaType = schemaTypes[reflectionType.id];
 
+            reflectionType.fields.forEach(field => {
                 if (field.referencedType !== undefined) {
                     let fieldType = field.type;
                     let refType = schemaTypes[field.referencedType];

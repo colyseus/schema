@@ -196,6 +196,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
             const childType = Object.values(type)[0];
             if (typeof(childType) !== "string" && !childType._context) {
                 context.add(childType);
+                childType._definition = SchemaDefinition.create(childType._definition);
             }
         }
 
