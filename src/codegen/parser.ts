@@ -14,7 +14,7 @@ function defineProperty(property: Property, initializer: any) {
         property.childType = initializer.text;
 
     } else if (initializer.kind == ts.SyntaxKind.ObjectLiteralExpression) {
-        property.type = "map";
+        property.type = initializer.properties[0].name.text;
         property.childType = initializer.properties[0].initializer.text;
 
     } else if (initializer.kind == ts.SyntaxKind.ArrayLiteralExpression) {
