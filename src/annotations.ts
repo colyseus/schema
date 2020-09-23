@@ -145,10 +145,14 @@ export class Context {
         return this.types[typeid];
     }
 
-    add(schema: typeof Schema) {
-        schema._typeid = this.schemas.size;
-        this.types[schema._typeid] = schema;
-        this.schemas.set(schema, schema._typeid);
+    add(schema: typeof Schema, typeid: number = this.schemas.size) {
+        // FIXME: move this to somewhere else?
+        // support inheritance
+        schema._definition = SchemaDefinition.create(schema._definition);
+
+        schema._typeid = typeid;
+        this.types[typeid] = schema;
+        this.schemas.set(schema, typeid);
     }
 
     static create(context: Context = new Context) {
@@ -173,9 +177,6 @@ export function type (type: DefinitionType, context: Context = globalContext): P
          */
         if (!context.has(constructor)) {
             context.add(constructor);
-
-            // support inheritance
-            constructor._definition = SchemaDefinition.create(constructor._definition);
         }
 
         const definition = constructor._definition;
@@ -194,9 +195,8 @@ export function type (type: DefinitionType, context: Context = globalContext): P
         // (See "should support an inheritance with a Schema type without fields" test)
         if (typeof (type) !== "string" && !Schema.is(type)) {
             const childType = Object.values(type)[0];
-            if (typeof(childType) !== "string" && !childType._context) {
+            if (typeof (childType) !== "string" && !context.has(childType)) {
                 context.add(childType);
-                childType._definition = SchemaDefinition.create(childType._definition);
             }
         }
 

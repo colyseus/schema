@@ -102,7 +102,10 @@ export class Reflection extends Schema {
         reflection.decode(bytes, it);
 
         const schemaTypes = reflection.types.reduce((types, reflectionType) => {
-            types[reflectionType.id] = class _ extends Schema {};
+            const schema: typeof Schema = class _ extends Schema {};
+            const typeid = reflectionType.id;
+            types[typeid] = schema
+            context.add(schema, typeid);
             return types;
         }, {});
 
@@ -145,12 +148,9 @@ export class Reflection extends Schema {
             const fieldType = rootType._definition.schema[fieldName];
 
             if (typeof(fieldType) !== "string") {
-                const typeDef = getType(Object.keys(fieldType)[0]);
-                const isSchema = typeof (fieldType) === "function";
-
-                rootInstance[fieldName] = (isSchema)
-                    ? new (fieldType as any)()
-                    : new typeDef.constructor();
+                rootInstance[fieldName] = (typeof (fieldType) === "function")
+                    ? new (fieldType as any)() // is a schema reference
+                    : new (getType(Object.keys(fieldType)[0])).constructor(); // is a "collection"
             }
         }
 
