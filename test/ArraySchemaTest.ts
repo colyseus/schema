@@ -1,6 +1,5 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
-import * as util from "util";
 
 import { State, Player } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges, filterChildren } from "../src";
@@ -1175,6 +1174,33 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encode());
 
         sinon.assert.callCount(onRemove, 6);
+    });
+
+    it("#clear()", () => {
+        class Point extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+        class State extends Schema {
+            @type([Point]) points = new ArraySchema<Point>();
+        }
+
+        const state = new State();
+        state.points.push(
+            new Point().assign({ x: 0, y: 0 }),
+            new Point().assign({ x: 1, y: 1 }),
+            new Point().assign({ x: 2, y: 2 }),
+        );
+
+        let decodedState = new State();
+        decodedState.decode(state.encodeAll());
+        assert.strictEqual(3, decodedState.points.length);
+
+        state.points.clear();
+
+        decodedState = new State();
+        decodedState.decode(state.encodeAll());
+        assert.strictEqual(0, decodedState.points.length);
     });
 
     describe("array methods", () => {

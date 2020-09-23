@@ -303,7 +303,7 @@ export class ChangeTree {
         this.touchParents();
     }
 
-    discard(changed: boolean = false) {
+    discard(changed: boolean = false, discardAll: boolean = false) {
         //
         // Map, Array, etc:
         // Remove cached key to ensure ADD operations is unsed instead of
@@ -322,6 +322,10 @@ export class ChangeTree {
 
         this.changes.clear();
         this.changed = changed;
+
+        if (discardAll) {
+            this.allChanges.clear();
+        }
 
         // re-set `currentCustomOperation`
         this.currentCustomOperation = 0;
