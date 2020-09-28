@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "1.0.0-alpha.56",
+  "version": "1.0.0-alpha.58",
   "description": "Binary state serializer with delta encoding for games",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -20,7 +20,7 @@
     "generate-test-8": "bin/schema-codegen test-external/FilteredTypes.ts --namespace SchemaTest.FilteredTypes --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/FilteredTypes",
     "generate-test-9": "bin/schema-codegen test-external/InstanceSharingTypes.ts --namespace SchemaTest.InstanceSharing --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/InstanceSharingTypes",
     "watch": "tsc -w",
-    "prepublish": "tsc"
+    "prepublishOnly": "tsc"
   },
   "files": [
     "lib",
