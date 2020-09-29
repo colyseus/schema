@@ -59,22 +59,22 @@ ${allRefs.
 local ${klass.name} = schema.define({
 ${klass.properties.map(prop => generatePropertyDeclaration(prop)).join(",\n")},
     ["_fields_by_index"] = { ${klass.properties.map(prop => `"${prop.name}"`).join(", ")} },
-
-    ["on_change"] = function(changes)
-        -- on change logic here
-    end,
-
-    ["on_add"] = function()
-        -- on add logic here
-     end,
-
-    ["on_remove"] = function()
-        -- on remove logic here
-    end,
 })
 
 return ${klass.name}
 `;
+
+    // ["on_change"] = function(changes)
+    //     -- on change logic here
+    // end,
+
+    // ["on_add"] = function()
+    //     -- on add logic here
+    //  end,
+
+    // ["on_remove"] = function()
+    //     -- on remove logic here
+    // end,
 }
 
 function generatePropertyDeclaration(prop: Property) {
@@ -95,15 +95,10 @@ function generatePropertyDeclaration(prop: Property) {
                 ? `${prop.childType}`
                 : `"${prop.childType}"`;
 
-        } else if(prop.type === "array") {
+        } else {
             typeArgs = (isUpcaseFirst)
-                ? `{ ${prop.childType} }`
-                : `{ "${prop.childType}" }`;
-
-        } else if(prop.type === "map") {
-            typeArgs = (isUpcaseFirst)
-                ? `{ map = ${prop.childType} }`
-                : `{ map = "${prop.childType}" }`;
+                ? `{ ${prop.type} = ${prop.childType} }`
+                : `{ ${prop.type} = "${prop.childType}" }`;
         }
 
     } else {
