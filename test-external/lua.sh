@@ -5,3 +5,5 @@ npm run generate-test-4 -- --lua --output ../colyseus-defold/test/schema/MapSche
 npm run generate-test-5 -- --lua --output ../colyseus-defold/test/schema/InheritedTypes --namespace test.schema.InheritedTypes
 npm run generate-test-6 -- --lua --output ../colyseus-defold/test/schema/MapSchemaInt8 --namespace test.schema.MapSchemaInt8
 npm run generate-test-7 -- --lua --output ../colyseus-defold/test/schema/BackwardsForwards --namespace test.schema.BackwardsForwards
+npm run generate-test-8 -- --lua --output ../colyseus-defold/test/schema/FilteredTypes --namespace test.schema.FilteredTypes
+npm run generate-test-9 -- --lua --output ../colyseus-defold/test/schema/InstanceSharingTypes --namespace test.schema.InstanceSharingTypes

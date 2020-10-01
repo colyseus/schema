@@ -5,3 +5,5 @@ npm run generate-test-4 -- --csharp --output ../colyseus-unity3d/Assets/Editor/C
 npm run generate-test-5 -- --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/InheritedTypes
 npm run generate-test-6 -- --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/MapSchemaInt8
 npm run generate-test-7 -- --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/BackwardsForwards
+npm run generate-test-8 -- --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/FilteredTypes
+npm run generate-test-9 -- --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/InstanceSharingTypes
