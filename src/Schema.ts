@@ -1016,7 +1016,7 @@ export abstract class Schema {
 
                     if (!isSchema) {
                         if (change.op === OPERATION.ADD && change.previousValue === undefined) {
-                            (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex || change.field);
+                            (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex ?? change.field);
 
                         } else if (change.op === OPERATION.DELETE) {
                             //
@@ -1024,7 +1024,7 @@ export abstract class Schema {
                             // ADD + DELETE operations are still encoding DELETE operation.
                             //
                             if (change.previousValue !== undefined) {
-                                (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex || change.field);
+                                (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex ?? change.field);
                             }
 
                         } else if (change.op === OPERATION.DELETE_AND_ADD) {
