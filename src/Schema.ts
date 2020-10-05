@@ -1016,7 +1016,7 @@ export abstract class Schema {
 
                     if (!isSchema) {
                         if (change.op === OPERATION.ADD && change.previousValue === undefined) {
-                            (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
+                            (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex || change.field);
 
                         } else if (change.op === OPERATION.DELETE) {
                             //
