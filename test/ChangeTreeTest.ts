@@ -68,8 +68,8 @@ describe("ChangeTree", () => {
         const decoded = new State();
         decoded.decode(encoded.encode());
 
-        assert.equal(decoded.stringValue, "hello world");
-        assert.equal(decoded.intValue, 10);
+        assert.strictEqual(decoded.stringValue, "hello world");
+        assert.strictEqual(decoded.intValue, 10);
     });
 
     it("remove", () => {
@@ -91,8 +91,8 @@ describe("ChangeTree", () => {
         encoded.intValue = undefined;
         decoded.decode(encoded.encode());
 
-        assert.equal(decoded.stringValue, "hello world");
-        assert.equal(decoded.intValue, undefined);
+        assert.strictEqual(decoded.stringValue, "hello world");
+        assert.strictEqual(decoded.intValue, undefined);
     });
 
     xit("should not identify changes on untyped properties", () => {

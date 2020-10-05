@@ -11,7 +11,7 @@ describe("Utils Test", () => {
         state.mapOfPlayers['one'] = new Player("One", 1, 1);
 
         let dump: any = dumpChanges(state);
-        assert.equal(
+        assert.strictEqual(
             JSON.stringify(dump),
             '{"mapOfPlayers":{"one":{"name":"One","x":1,"y":1}}}'
         );
@@ -22,7 +22,7 @@ describe("Utils Test", () => {
         delete state.mapOfPlayers['one'];
         dump = dumpChanges(state);
 
-        assert.equal(
+        assert.strictEqual(
             JSON.stringify(dump),
             '{"mapOfPlayers":{}}'
         );
@@ -35,7 +35,7 @@ describe("Utils Test", () => {
         state.arrayOfPlayers.push(new Player("Two", 2, 2));
 
         let dump: any = dumpChanges(state);
-        assert.equal(
+        assert.strictEqual(
             JSON.stringify(dump),
             '{"arrayOfPlayers":[{"name":"One","x":1,"y":1},{"name":"Two","x":2,"y":2}]}',
         );
@@ -46,7 +46,7 @@ describe("Utils Test", () => {
         state.arrayOfPlayers.splice(1);
         dump = dumpChanges(state);
 
-        assert.equal(
+        assert.strictEqual(
             JSON.stringify(dump),
             '{"arrayOfPlayers":[{"name":"One","x":1,"y":1}]}',
         );

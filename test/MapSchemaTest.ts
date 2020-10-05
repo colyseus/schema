@@ -45,11 +45,11 @@ describe("MapSchema Tests", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
-        assert.equal(2, decodedState.mapOfPlayers.size);
+        assert.strictEqual(2, decodedState.mapOfPlayers.size);
 
         state.mapOfPlayers.clear();
         decodedState.decode(state.encode());
-        assert.equal(0, decodedState.mapOfPlayers.size);
+        assert.strictEqual(0, decodedState.mapOfPlayers.size);
     });
 
     it("should allow to CLEAR and ADD in the same patch", () => {
@@ -126,16 +126,16 @@ describe("MapSchema Tests", () => {
         let encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
-        assert.equal(decoded1.map.size, 1);
-        assert.equal(decoded1.map.get("one").x, 1);
+        assert.strictEqual(decoded1.map.size, 1);
+        assert.strictEqual(decoded1.map.get("one").x, 1);
 
         decoded2.decode(encoded2);
-        assert.equal(decoded2.map.size, 1);
-        assert.equal(decoded2.map.get("two").x, 2);
+        assert.strictEqual(decoded2.map.size, 1);
+        assert.strictEqual(decoded2.map.get("two").x, 2);
 
         decoded3.decode(encoded3);
-        assert.equal(decoded3.map.size, 1);
-        assert.equal(decoded3.map.get("three").x, 3);
+        assert.strictEqual(decoded3.map.size, 1);
+        assert.strictEqual(decoded3.map.get("three").x, 3);
 
         // discard previous changes
         state.discardAllChanges();
@@ -149,13 +149,13 @@ describe("MapSchema Tests", () => {
         encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
-        assert.equal(decoded1.map.size, 0);
+        assert.strictEqual(decoded1.map.size, 0);
 
         decoded2.decode(encoded2);
-        assert.equal(decoded2.map.size, 0);
+        assert.strictEqual(decoded2.map.size, 0);
 
         decoded3.decode(encoded3);
-        assert.equal(decoded3.map.size, 0);
+        assert.strictEqual(decoded3.map.size, 0);
     });
 
     it("should not consider changes after removing from the change tree", () => {
@@ -223,8 +223,8 @@ describe("MapSchema Tests", () => {
         let encoded = state.encode();
         decodedState.decode(encoded);
 
-        assert.equal(decodedState.mapOfPlayers['one'].name, "Jake");
-        assert.equal(decodedState.mapOfPlayers['two'].name, "Katarina");
+        assert.strictEqual(decodedState.mapOfPlayers['one'].name, "Jake");
+        assert.strictEqual(decodedState.mapOfPlayers['two'].name, "Katarina");
 
         state.discardAllChanges();
 
@@ -236,8 +236,8 @@ describe("MapSchema Tests", () => {
 
         state.discardAllChanges();
 
-        assert.equal(decodedState.mapOfPlayers['one'].name, "Jake 2");
-        assert.equal(decodedState.mapOfPlayers['two'].name, "Katarina");
+        assert.strictEqual(decodedState.mapOfPlayers['one'].name, "Jake 2");
+        assert.strictEqual(decodedState.mapOfPlayers['two'].name, "Katarina");
 
         delete state.mapOfPlayers['two'];
         state.mapOfPlayers['two'] = new Player("Katarina 2");
@@ -245,8 +245,8 @@ describe("MapSchema Tests", () => {
         encoded = state.encode();
         decodedState.decode(encoded);
 
-        assert.equal(decodedState.mapOfPlayers['one'].name, "Jake 2");
-        assert.equal(decodedState.mapOfPlayers['two'].name, "Katarina 2");
+        assert.strictEqual(decodedState.mapOfPlayers['one'].name, "Jake 2");
+        assert.strictEqual(decodedState.mapOfPlayers['two'].name, "Katarina 2");
     });
 
     it("should allow map of primitive types", () => {
@@ -374,9 +374,9 @@ describe("MapSchema Tests", () => {
         playerThree.next = playerOne.id;//3->1
         decodeState.decode(state.encode());
 
-        assert.equal(decodeState.players['76355'].next,'8848');//1->2
-        assert.equal(decodeState.players['8848'].next,'8658');//2->3
-        assert.equal(decodeState.players['8658'].next,'76355')//3->1
+        assert.strictEqual(decodeState.players['76355'].next,'8848');//1->2
+        assert.strictEqual(decodeState.players['8848'].next,'8658');//2->3
+        assert.strictEqual(decodeState.players['8658'].next,'76355')//3->1
         done();
     });
 
@@ -460,8 +460,8 @@ describe("MapSchema Tests", () => {
         decodedState.decode(encodedPatch);
         decodedState2.decode(encodedPatch);
 
-        assert.equal(false, decodedState2.entities.has("item1"), "'item1' should've been deleted.");
-        assert.equal(false, decodedState2.entities.has("item2"), "'item2' should've been deleted.");
+        assert.strictEqual(false, decodedState2.entities.has("item1"), "'item1' should've been deleted.");
+        assert.strictEqual(false, decodedState2.entities.has("item2"), "'item2' should've been deleted.");
     });
 
     it("should allow to move a key from one map to another", () => {

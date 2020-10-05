@@ -36,8 +36,8 @@ describe("backwards/forwards compatibility", () => {
 
         const decodedStateV2 = new StateV2();
         decodedStateV2.decode(state.encode());
-        assert.equal("Hello world", decodedStateV2.str);
-        // assert.equal(10, decodedStateV2.countdown);
+        assert.strictEqual("Hello world", decodedStateV2.str);
+        // assert.strictEqual(10, decodedStateV2.countdown);
 
         assert.throws(() => {
             return decodedStateV2.currentTurn;
@@ -60,7 +60,7 @@ describe("backwards/forwards compatibility", () => {
 
         const decodedStateV1 = new StateV1();
         decodedStateV1.decode(encoded);
-        assert.equal("Hello world", decodedStateV1.str);
+        assert.strictEqual("Hello world", decodedStateV1.str);
     });
 
     it("should allow reflection", () => {

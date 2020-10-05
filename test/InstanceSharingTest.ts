@@ -36,12 +36,12 @@ describe("Instance sharing", () => {
             arrayOfPlayers: [],
             mapOfPlayers: {}
         }, decodedState.toJSON());
-        assert.equal(5, decodedState['$changes'].root.refs.size);
+        assert.strictEqual(5, decodedState['$changes'].root.refs.size);
 
         state.player2 = player;
 
         const encoded = state.encode();
-        assert.equal(2, encoded.length);
+        assert.strictEqual(2, encoded.length);
 
         decodedState.decode(encoded);
         assert.deepEqual({
@@ -51,7 +51,7 @@ describe("Instance sharing", () => {
             mapOfPlayers: {}
 
         }, decodedState.toJSON());
-        assert.equal(5, decodedState['$changes'].root.refs.size);
+        assert.strictEqual(5, decodedState['$changes'].root.refs.size);
 
         state.player2 = player;
         state.player1 = undefined;
@@ -64,7 +64,7 @@ describe("Instance sharing", () => {
 
         }, decodedState.toJSON());
 
-        assert.equal(5, decodedState['$changes'].root.refs.size, "Player and Position structures should remain.");
+        assert.strictEqual(5, decodedState['$changes'].root.refs.size, "Player and Position structures should remain.");
     });
 
     it("should drop reference of deleted instance when decoding", () => {
@@ -82,7 +82,7 @@ describe("Instance sharing", () => {
         decodedState.decode(state.encodeAll());
 
         const refCount = decodedState['$changes'].root.refs.size;
-        assert.equal(5, refCount);
+        assert.strictEqual(5, refCount);
         // console.log(decodedState['$changes'].root.refs);
 
         state.player1 = undefined;
@@ -91,7 +91,7 @@ describe("Instance sharing", () => {
 
         const newRefCount = decodedState['$changes'].root.refs.size;
         // console.log(decodedState['$changes'].root.refs);
-        assert.equal(refCount - 2, newRefCount);
+        assert.strictEqual(refCount - 2, newRefCount);
     });
 
     it("sharing items inside ArraySchema", () => {
@@ -117,7 +117,7 @@ describe("Instance sharing", () => {
         decodedState.decode(state.encode());
 
         const refCount = decodedState['$changes'].root.refs.size;
-        assert.equal(7, refCount);
+        assert.strictEqual(7, refCount);
 
         state.arrayOfPlayers.pop();
         state.arrayOfPlayers.pop();
@@ -127,7 +127,7 @@ describe("Instance sharing", () => {
         decodedState.decode(state.encode());
 
         const newRefCount = decodedState['$changes'].root.refs.size;
-        assert.equal(refCount - 4, newRefCount);
+        assert.strictEqual(refCount - 4, newRefCount);
     });
 
     it("clearing ArraySchema", () => {
@@ -153,14 +153,14 @@ describe("Instance sharing", () => {
         decodedState.decode(state.encode());
 
         const refCount = decodedState['$changes'].root.refs.size;
-        assert.equal(7, refCount);
+        assert.strictEqual(7, refCount);
 
         state.arrayOfPlayers.clear();
 
         decodedState.decode(state.encode());
 
         const newRefCount = decodedState['$changes'].root.refs.size;
-        assert.equal(refCount - 4, newRefCount);
+        assert.strictEqual(refCount - 4, newRefCount);
     });
 
     it("replacing ArraySchema should drop previous refId", () => {
@@ -180,7 +180,7 @@ describe("Instance sharing", () => {
         state.arrayOfNumbers = [4, 5, 6];
         decodedState.decode(state.encode());
 
-        assert.equal(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
+        assert.strictEqual(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
     });
 
     it("replacing ArraySchema should drop children's refId's", () => {
@@ -204,8 +204,8 @@ describe("Instance sharing", () => {
         // force garbage collection.
         // decodedState['$changes'].root.garbageCollectDeletedRefs();
 
-        assert.equal(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
-        assert.equal(
+        assert.strictEqual(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
+        assert.strictEqual(
             true,
             Object.values(decodedState['$changes'].root.refCounts).every(refCount => refCount > 0),
             "all refCount's should have a valid number."

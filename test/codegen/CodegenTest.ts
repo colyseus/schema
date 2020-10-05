@@ -32,7 +32,7 @@ describe("schema-codegen", () => {
         });
 
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
-        assert.equal(3, outputFiles.length);
+        assert.strictEqual(3, outputFiles.length);
     });
 
     it("should auto-import related schema files", async () => {
@@ -44,7 +44,7 @@ describe("schema-codegen", () => {
         });
 
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
-        assert.equal(2, outputFiles.length);
+        assert.strictEqual(2, outputFiles.length);
     });
 
     it("should support using 'type' along with `defineTypes`", async () => {
@@ -56,7 +56,7 @@ describe("schema-codegen", () => {
         });
 
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
-        assert.equal(1, outputFiles.length);
+        assert.strictEqual(1, outputFiles.length);
     });
 
     it("should support generating abstract classes with no fields", async () => {
@@ -68,6 +68,6 @@ describe("schema-codegen", () => {
         });
 
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
-        assert.equal(2, outputFiles.length);
+        assert.strictEqual(2, outputFiles.length);
     });
 });

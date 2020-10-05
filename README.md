@@ -193,24 +193,6 @@ export class State extends Schema {
   - The order of the fields must be the same.
 - Avoid manipulating indexes of an array. This result in at least `2` extra bytes for each index change. **Example:** If you have an array of 20 items, and remove the first item (through `shift()`) this means `38` extra bytes to be serialized.
 
-## Decoding / Listening for changes
-
-> TODO: describe how changes will arrive on array and map types
-
-```typescript
-import { DataChange } from "@colyseus/schema";
-import { State } from "./YourStateDefinition";
-
-const decodedState = new State();
-decodedState.onChange = function(changes: DataChange[]) {
-  assert.equal(changes.length, 1);
-  assert.equal(changes[0].field, "fieldNumber");
-  assert.equal(changes[0].value, 50);
-  assert.equal(changes[0].previousValue, undefined);
-}
-decodedState.decode(incomingData);
-```
-
 ## Generating client-side schema files (for strictly typed languages)
 
 > If you're using JavaScript or LUA, there's no need to bother about this.

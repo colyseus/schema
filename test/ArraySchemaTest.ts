@@ -44,7 +44,7 @@ describe("ArraySchema Tests", () => {
         sinon.assert.callCount(onAddSpy, 5);
         sinon.assert.calledOnce(onRemoveSpy);
         assert.deepEqual(["B", "C", "D", "E"], decodedState.items.map(it => it.name))
-        assert.equal("A", removedItem.name);
+        assert.strictEqual("A", removedItem.name);
     });
 
     it("should encode array with two values", () => {
@@ -63,19 +63,19 @@ describe("ArraySchema Tests", () => {
         const jake = decodedState.arrayOfPlayers[0];
         const snake = decodedState.arrayOfPlayers[1];
 
-        assert.equal(decodedState.arrayOfPlayers.length, 2);
-        assert.equal(jake.name, "Jake Badlands");
-        assert.equal(snake.name, "Snake Sanders");
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
+        assert.strictEqual(jake.name, "Jake Badlands");
+        assert.strictEqual(snake.name, "Snake Sanders");
 
         state.arrayOfPlayers.push(new Player("Katarina Lyons"));
         decodedState.decode(state.encode());
 
         const tarquinn = decodedState.arrayOfPlayers[2];
 
-        assert.equal(decodedState.arrayOfPlayers.length, 3);
-        assert.equal(decodedState.arrayOfPlayers[0], jake);
-        assert.equal(decodedState.arrayOfPlayers[1], snake);
-        assert.equal(tarquinn.name, "Katarina Lyons");
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
+        assert.strictEqual(decodedState.arrayOfPlayers[0], jake);
+        assert.strictEqual(decodedState.arrayOfPlayers[1], snake);
+        assert.strictEqual(tarquinn.name, "Katarina Lyons");
 
         state.arrayOfPlayers.pop();
         state.arrayOfPlayers[0].name = "Tarquinn"
@@ -85,11 +85,11 @@ describe("ArraySchema Tests", () => {
 
         decodedState.decode(encoded);
 
-        assert.equal(decodedState.arrayOfPlayers.length, 2);
-        assert.equal(decodedState.arrayOfPlayers[0], jake);
-        assert.equal(decodedState.arrayOfPlayers[0].name, "Tarquinn");
-        assert.equal(decodedState.arrayOfPlayers[1], snake);
-        assert.equal(decodedState.arrayOfPlayers[2], undefined);
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
+        assert.strictEqual(decodedState.arrayOfPlayers[0], jake);
+        assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Tarquinn");
+        assert.strictEqual(decodedState.arrayOfPlayers[1], snake);
+        assert.strictEqual(decodedState.arrayOfPlayers[2], undefined);
     });
 
     it("should allow to pop an array", () => {
@@ -99,11 +99,11 @@ describe("ArraySchema Tests", () => {
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        assert.equal(decodedState.arrayOfPlayers.length, 3);
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
         state.arrayOfPlayers.pop();
 
         decodedState.decode(state.encode());
-        assert.equal(decodedState.arrayOfPlayers.length, 2);
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
         assert.deepEqual(decodedState.arrayOfPlayers.map(p => p.name), ["Jake", "Snake"]);
     });
 
@@ -122,7 +122,7 @@ describe("ArraySchema Tests", () => {
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        assert.equal(decodedState.arrayOfNumbers.length, 4);
+        assert.strictEqual(decodedState.arrayOfNumbers.length, 4);
         assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [1,2,3,4]);
 
         state.arrayOfNumbers.pop();
@@ -130,9 +130,9 @@ describe("ArraySchema Tests", () => {
 
         state.str = "hello!";
         decodedState.decode(state.encode());
-        assert.equal(decodedState.arrayOfNumbers.length, 2);
+        assert.strictEqual(decodedState.arrayOfNumbers.length, 2);
         assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [1, 2]);
-        assert.equal(decodedState.str, 'hello!');
+        assert.strictEqual(decodedState.str, 'hello!');
     });
 
     describe("ArraySchema#unshift()", () => {
@@ -239,12 +239,12 @@ describe("ArraySchema Tests", () => {
         const decoded = new State();
         decoded.decode(state.encode());
 
-        assert.equal(decoded.numbers.length, 5);
-        assert.equal(decoded.numbers[0], 10);
-        assert.equal(decoded.numbers[1], 11);
-        assert.equal(decoded.numbers[2], 12);
-        assert.equal(decoded.numbers[3], 13);
-        assert.equal(decoded.numbers[4], 14);
+        assert.strictEqual(decoded.numbers.length, 5);
+        assert.strictEqual(decoded.numbers[0], 10);
+        assert.strictEqual(decoded.numbers[1], 11);
+        assert.strictEqual(decoded.numbers[2], 12);
+        assert.strictEqual(decoded.numbers[3], 13);
+        assert.strictEqual(decoded.numbers[4], 14);
 
         // push from 20 to 29.
         for (let i=20; i<29; i++) { state.numbers.push(i); }
@@ -257,17 +257,17 @@ describe("ArraySchema Tests", () => {
 
         decoded.decode(state.encode());
 
-        assert.equal(decoded.numbers.length, 10);
-        assert.equal(decoded.numbers[0], 10);
-        assert.equal(decoded.numbers[1], 11);
-        assert.equal(decoded.numbers[2], 12);
-        assert.equal(decoded.numbers[3], 13);
-        assert.equal(decoded.numbers[4], 14);
-        assert.equal(decoded.numbers[5], 20);
-        assert.equal(decoded.numbers[6], 21);
-        assert.equal(decoded.numbers[7], 22);
-        assert.equal(decoded.numbers[8], 23);
-        assert.equal(decoded.numbers[9], 24);
+        assert.strictEqual(decoded.numbers.length, 10);
+        assert.strictEqual(decoded.numbers[0], 10);
+        assert.strictEqual(decoded.numbers[1], 11);
+        assert.strictEqual(decoded.numbers[2], 12);
+        assert.strictEqual(decoded.numbers[3], 13);
+        assert.strictEqual(decoded.numbers[4], 14);
+        assert.strictEqual(decoded.numbers[5], 20);
+        assert.strictEqual(decoded.numbers[6], 21);
+        assert.strictEqual(decoded.numbers[7], 22);
+        assert.strictEqual(decoded.numbers[8], 23);
+        assert.strictEqual(decoded.numbers[9], 24);
 
         // console.log(decoded.toJSON());
     });
@@ -285,7 +285,7 @@ describe("ArraySchema Tests", () => {
         const decoded = new State();
         decoded.decode(state.encode());
 
-        assert.equal(decoded.numbers.length, 5);
+        assert.strictEqual(decoded.numbers.length, 5);
 
         state.numbers.pop();
         state.numbers.pop();
@@ -298,14 +298,14 @@ describe("ArraySchema Tests", () => {
 
         decoded.decode(state.encode());
 
-        assert.equal(decoded.numbers.length, 7);
-        assert.equal(decoded.numbers[0], 10);
-        assert.equal(decoded.numbers[1], 11);
-        assert.equal(decoded.numbers[2], 12);
-        assert.equal(decoded.numbers[3], 20);
-        assert.equal(decoded.numbers[4], 21);
-        assert.equal(decoded.numbers[5], 22);
-        assert.equal(decoded.numbers[6], 23);
+        assert.strictEqual(decoded.numbers.length, 7);
+        assert.strictEqual(decoded.numbers[0], 10);
+        assert.strictEqual(decoded.numbers[1], 11);
+        assert.strictEqual(decoded.numbers[2], 12);
+        assert.strictEqual(decoded.numbers[3], 20);
+        assert.strictEqual(decoded.numbers[4], 21);
+        assert.strictEqual(decoded.numbers[5], 22);
+        assert.strictEqual(decoded.numbers[6], 23);
 
         // console.log(decoded.toJSON());
     });
@@ -320,14 +320,14 @@ describe("ArraySchema Tests", () => {
         const state = new State();
 
         state.arrayOfNumbers.push(0, 0, 0, 1, 1, 1, 2, 2, 2);
-        assert.equal(state.arrayOfNumbers.length, 9);
+        assert.strictEqual(state.arrayOfNumbers.length, 9);
 
         //
         // TODO: when re-assigning another ArraySchema, the previous one is
         // still being held at the $root level.
         //
         // // state.arrayOfNumbers = new ArraySchema<number>(...[0, 0, 0, 1, 1, 1, 2, 2, 2]);
-        // // assert.equal(state.arrayOfNumbers.length, 9);
+        // // assert.strictEqual(state.arrayOfNumbers.length, 9);
 
         // console.log("CHANGES (1) =>", dumpChanges(state));
 
@@ -336,8 +336,8 @@ describe("ArraySchema Tests", () => {
             state.anotherOne.push(value);
         }
 
-        assert.equal(state.arrayOfNumbers.length, 4);
-        assert.equal(state.anotherOne.length, 5);
+        assert.strictEqual(state.arrayOfNumbers.length, 4);
+        assert.strictEqual(state.anotherOne.length, 5);
 
         // console.log("CHANGES (2) =>", dumpChanges(state));
 
@@ -348,8 +348,8 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(encoded);
 
         // console.log("DECODED =>", decodedState.toJSON());
-        assert.equal(decodedState.anotherOne.length, 5);
-        assert.equal(decodedState.arrayOfNumbers.length, 4);
+        assert.strictEqual(decodedState.anotherOne.length, 5);
+        assert.strictEqual(decodedState.arrayOfNumbers.length, 4);
     });
 
     it("should allow to shift an array", () => {
@@ -358,7 +358,7 @@ describe("ArraySchema Tests", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
-        assert.equal(decodedState.arrayOfPlayers.length, 3);
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
 
         const snake = decodedState.arrayOfPlayers[1];
         const cyberhawk = decodedState.arrayOfPlayers[2];
@@ -374,11 +374,11 @@ describe("ArraySchema Tests", () => {
         let encoded = state.encode();
         decodedState.decode(encoded);
 
-        assert.equal(decodedState.arrayOfPlayers.length, 2);
-        assert.equal(decodedState.arrayOfPlayers[0].name, "Snake updated!");
-        assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk updated!");
-        assert.equal(snake, decodedState.arrayOfPlayers[0]);
-        assert.equal(cyberhawk, decodedState.arrayOfPlayers[1]);
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
+        assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Snake updated!");
+        assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Cyberhawk updated!");
+        assert.strictEqual(snake, decodedState.arrayOfPlayers[0]);
+        assert.strictEqual(cyberhawk, decodedState.arrayOfPlayers[1]);
     });
 
     it("should allow to splice an array", () => {
@@ -391,19 +391,19 @@ describe("ArraySchema Tests", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
-        assert.equal(decodedState.arrayOfPlayers.length, 3);
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
 
         const jake = decodedState.arrayOfPlayers[0];
 
         const removedItems = state.arrayOfPlayers.splice(1);
-        assert.equal(2, removedItems.length);
+        assert.strictEqual(2, removedItems.length);
         assert.deepEqual(['Snake', 'Cyberhawk'], removedItems.map((player) => player.name));
 
         decodedState.decode(state.encode());
 
-        assert.equal(decodedState.arrayOfPlayers.length, 1);
-        assert.equal("Jake", decodedState.arrayOfPlayers[0].name);
-        assert.equal(jake, decodedState.arrayOfPlayers[0]);
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 1);
+        assert.strictEqual("Jake", decodedState.arrayOfPlayers[0].name);
+        assert.strictEqual(jake, decodedState.arrayOfPlayers[0]);
     });
 
     it("should allow to push and shift", () => {
@@ -416,7 +416,7 @@ describe("ArraySchema Tests", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
-        assert.equal(decodedState.arrayOfPlayers.length, 3);
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
 
         //
         // PUSH & SHIFT (1st time)
@@ -429,10 +429,10 @@ describe("ArraySchema Tests", () => {
         let encoded = state.encode();
         decodedState.decode(encoded);
 
-        assert.equal(decodedState.arrayOfPlayers.length, 3);
-        assert.equal(decodedState.arrayOfPlayers[0].name, "Snake Sanders");
-        assert.equal(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
-        assert.equal(decodedState.arrayOfPlayers[2].name, "Katarina Lyons");
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
+        assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Snake Sanders");
+        assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
+        assert.strictEqual(decodedState.arrayOfPlayers[2].name, "Katarina Lyons");
 
         //
         // PUSH & SHIFT (2nd time)
@@ -443,10 +443,10 @@ describe("ArraySchema Tests", () => {
         encoded = state.encode();
         decodedState.decode(encoded);
 
-        assert.equal(decodedState.arrayOfPlayers.length, 3);
-        assert.equal(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
-        assert.equal(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
-        assert.equal(decodedState.arrayOfPlayers[2].name, "Jake Badlands");
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
+        assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
+        assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
+        assert.strictEqual(decodedState.arrayOfPlayers[2].name, "Jake Badlands");
     });
 
     it("should allow to shift and push", () => {
@@ -459,7 +459,7 @@ describe("ArraySchema Tests", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
-        assert.equal(decodedState.arrayOfPlayers.length, 3);
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
 
         // first `shift`, then `push`
         state.arrayOfPlayers.shift();
@@ -469,9 +469,9 @@ describe("ArraySchema Tests", () => {
         let encoded = state.encode();
         decodedState.decode(encoded);
 
-        assert.equal(decodedState.arrayOfPlayers.length, 2);
-        assert.equal(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
-        assert.equal(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
+        assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
+        assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
     });
 
     it("should trigger onAdd / onChange / onRemove", () => {
@@ -558,7 +558,7 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers.sort((a, b) => b.y - a.y);
 
         const encoded = state.encode();
-        // assert.equal(encoded.length, 23, "should encode only index changes");
+        // assert.strictEqual(encoded.length, 23, "should encode only index changes");
         decodedState.decode(encoded);
 
         assert.deepEqual(decodedState.arrayOfPlayers.map(p => p.name), [ 'Five', 'Four', 'Three', 'Two', 'One' ]);
@@ -632,14 +632,14 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(encoded);
 
         assert.deepEqual([1, 3, 2, 5, 4], decodedState.players['one'].cards.map(c => c.number));
-        assert.equal(5, decodedState.players['one'].cards.length);
+        assert.strictEqual(5, decodedState.players['one'].cards.length);
 
         const filteredCards = state.players['one'].cards.filter((card) => card.number >= 3);
         filteredCards.sort((a, b) => b.number - a.number);
 
 
         decodedState.decode(state.applyFilters(client));
-        assert.equal(5, decodedState.players['one'].cards.length);
+        assert.strictEqual(5, decodedState.players['one'].cards.length);
         assert.deepEqual([1, 3, 2, 5, 4], decodedState.players['one'].cards.map(c => c.number));
 
         // set cards array with applied filter.
@@ -647,7 +647,7 @@ describe("ArraySchema Tests", () => {
         encoded = state.encode(undefined, undefined, true);
 
         decodedState.decode(state.applyFilters(client));
-        assert.equal(3, decodedState.players['one'].cards.length);
+        assert.strictEqual(3, decodedState.players['one'].cards.length);
         assert.deepEqual([5, 4, 3], decodedState.players['one'].cards.map(c => c.number));
     });
 
@@ -688,15 +688,15 @@ describe("ArraySchema Tests", () => {
         state.player1.items.push(new Item("Item 3", 3));
         state.player1.items.push(new Item("Item 4", 4));
         decodedState.decode(state.encodeAll());
-        assert.equal(decodedState.player1.items.length, 5);
+        assert.strictEqual(decodedState.player1.items.length, 5);
 
         // Remove one item
         const [spliced] = state.player1.items.splice(2, 1);
-        assert.equal("Item 2", spliced.name);
+        assert.strictEqual("Item 2", spliced.name);
 
         decodedState.decode(state.encode());
 
-        assert.equal(decodedState.player1.items.length, 4);
+        assert.strictEqual(decodedState.player1.items.length, 4);
 
         // Update `idx` of each item
         state.player1.items.forEach((item, idx) => item.idx = idx);
@@ -708,7 +708,7 @@ describe("ArraySchema Tests", () => {
         const resultPostEncoding = decodedState.player1.items.map(stringifyItem).join(',');
 
         // Ensure all data is perserved and `idx` is updated for each item
-        assert.equal(
+        assert.strictEqual(
             resultPostEncoding,
             resultPreEncoding,
             `There's a difference between state and decoded state on some items`
@@ -718,7 +718,7 @@ describe("ArraySchema Tests", () => {
         decodedState2.decode(state.encodeAll());
 
         const resultNewClientPostEncoding = decodedState2.player1.items.map(stringifyItem).join(',');
-        assert.equal(resultPreEncoding, resultNewClientPostEncoding);
+        assert.strictEqual(resultPreEncoding, resultNewClientPostEncoding);
     });
 
     it("updates an item after removing another", () => {
@@ -749,14 +749,14 @@ describe("ArraySchema Tests", () => {
 
         // Remove Item 2
         const [ removedItem ] = state.player.items.splice(1, 1);
-        assert.equal(removedItem.name, "Item 2");
+        assert.strictEqual(removedItem.name, "Item 2");
         decodedState.decode(state.encode());
 
         // Update `name` of remaining item
         const preEncoding = state.player.items[1].name = "Item 3 changed!";
         decodedState.decode(state.encode());
 
-        assert.equal(
+        assert.strictEqual(
             decodedState.player.items[1].name,
             preEncoding,
             `new name of Item 3 was not reflected during recent encoding/decoding.`
@@ -867,10 +867,10 @@ describe("ArraySchema Tests", () => {
 
         const resultPreDecoding = state.player.items.map(stringifyItem).join(', ')
         const resultPostDecoding = decodedState.player.items.map(stringifyItem).join(', ')
-        assert.equal(resultPreDecoding, resultPostDecoding);
+        assert.strictEqual(resultPreDecoding, resultPostDecoding);
 
-        assert.equal(decodedState.player.items.length, 1);
-        assert.equal(decodedState.player.items[0].name, `Item 3`);
+        assert.strictEqual(decodedState.player.items.length, 1);
+        assert.strictEqual(decodedState.player.items[0].name, `Item 3`);
     });
 
     it("keeps items in order after splicing multiple items in one go", () => {
@@ -897,23 +897,23 @@ describe("ArraySchema Tests", () => {
         state.player.items.push(new Item("Item 3"));
         state.player.items.push(new Item("Item 4"));
         state.player.items.push(new Item("Item 5"));
-        assert.equal(state.player.items.length, 5);
+        assert.strictEqual(state.player.items.length, 5);
         decodedState.decode(state.encodeAll());
-        assert.equal(decodedState.player.items.length, 5);
+        assert.strictEqual(decodedState.player.items.length, 5);
         // ========================================
 
         // Remove Item 1
         const [ removedItem1 ] = state.player.items.splice(0, 1);
-        assert.equal(removedItem1.name, "Item 1");
-        assert.equal(state.player.items.length, 4);
+        assert.strictEqual(removedItem1.name, "Item 1");
+        assert.strictEqual(state.player.items.length, 4);
 
         decodedState.decode(state.encode());
 
-        assert.equal(decodedState.player.items.length, 4);
+        assert.strictEqual(decodedState.player.items.length, 4);
 
         const expectedA = [2, 3, 4, 5];
         decodedState.player.items.forEach((item, index) => {
-            assert.equal(item.name, `Item ${expectedA[index]}`);
+            assert.strictEqual(item.name, `Item ${expectedA[index]}`);
         })
         // ========================================
 
@@ -921,16 +921,16 @@ describe("ArraySchema Tests", () => {
         const [ removedItem2 ] = state.player.items.splice(0, 1);
         const [ removedItem3 ] = state.player.items.splice(0, 1);
 
-        assert.equal(removedItem2.name, "Item 2");
-        assert.equal(removedItem3.name, "Item 3");
-        assert.equal(state.player.items.length, 2);
+        assert.strictEqual(removedItem2.name, "Item 2");
+        assert.strictEqual(removedItem3.name, "Item 3");
+        assert.strictEqual(state.player.items.length, 2);
 
         decodedState.decode(state.encode());
 
-        assert.equal(decodedState.player.items.length, 2);
+        assert.strictEqual(decodedState.player.items.length, 2);
         const expectedB = [4, 5];
         decodedState.player.items.forEach((item, index) => {
-            assert.equal(item.name, `Item ${expectedB[index]}`);
+            assert.strictEqual(item.name, `Item ${expectedB[index]}`);
         })
     });
 
@@ -965,10 +965,10 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encode());
 
         const decodedItem0 = decodedState.player1.items[0];
-        assert.equal(decodedState.player1.items[0].name, "Item 1");
-        assert.equal(decodedState.player1.items[1].name, "Item 2");
-        assert.equal(decodedState.player1.items[2].name, "Item 3");
-        assert.equal(decodedState.player1.items[3].name, "Item 4");
+        assert.strictEqual(decodedState.player1.items[0].name, "Item 1");
+        assert.strictEqual(decodedState.player1.items[1].name, "Item 2");
+        assert.strictEqual(decodedState.player1.items[2].name, "Item 3");
+        assert.strictEqual(decodedState.player1.items[3].name, "Item 4");
 
         const item0 = state.player1.items[0];
         state.player1.items.splice(0, 1);
@@ -977,24 +977,24 @@ describe("ArraySchema Tests", () => {
         const encoded = state.encode();
         decodedState.decode(encoded);
 
-        assert.equal(decodedState.player1.items.length, 3);
-        assert.equal(decodedState.player1.items[0].name, "Item 2");
+        assert.strictEqual(decodedState.player1.items.length, 3);
+        assert.strictEqual(decodedState.player1.items[0].name, "Item 2");
 
-        assert.equal(decodedState.player2.items.length, 1);
-        assert.equal(decodedState.player2.items[0], decodedItem0, "should hold the same Item reference.");
-        assert.equal(decodedState.player2.items[0].name, "Item 1");
+        assert.strictEqual(decodedState.player2.items.length, 1);
+        assert.strictEqual(decodedState.player2.items[0], decodedItem0, "should hold the same Item reference.");
+        assert.strictEqual(decodedState.player2.items[0].name, "Item 1");
 
         state.player2.items.push(state.player1.items.splice(1, 1)[0]);
         decodedState.decode(state.encode());
 
-        assert.equal(decodedState.player1.items.length, 2);
-        assert.equal(decodedState.player2.items.length, 2);
+        assert.strictEqual(decodedState.player1.items.length, 2);
+        assert.strictEqual(decodedState.player2.items.length, 2);
 
         state.player2.items.push(state.player1.items.splice(0, 1)[0]);
         decodedState.decode(state.encode());
 
-        assert.equal(decodedState.player1.items.length, 1);
-        assert.equal(decodedState.player2.items.length, 3);
+        assert.strictEqual(decodedState.player1.items.length, 1);
+        assert.strictEqual(decodedState.player2.items.length, 3);
 
         state.player2.items.push(state.player1.items.splice(0, 1)[0]);
         decodedState.decode(state.encode());
@@ -1002,8 +1002,8 @@ describe("ArraySchema Tests", () => {
         // console.log("FULL 1 >");
         // console.log(decodedState.player1.items.map(item => item.name));
         // console.log(decodedState.player2.items.map(item => item.name));
-        assert.equal(decodedState.player1.items.length, 0);
-        assert.equal(decodedState.player2.items.length, 4);
+        assert.strictEqual(decodedState.player1.items.length, 0);
+        assert.strictEqual(decodedState.player2.items.length, 4);
         assert.deepEqual(decodedState.player2.items.map(item => item.name), ['Item 1', 'Item 3', 'Item 2', 'Item 4']);
 
         state.player1.items.push(state.player2.items.splice(0, 1)[0]);
@@ -1019,8 +1019,8 @@ describe("ArraySchema Tests", () => {
         // console.log(decodedState.player1.items.map(item => item.name));
         // console.log(decodedState.player2.items.map(item => item.name));
         assert.deepEqual(decodedState.player1.items.map(item => item.name), ['Item 1', 'Item 3', 'Item 2', 'Item 4']);
-        assert.equal(decodedState.player1.items.length, 4);
-        assert.equal(decodedState.player2.items.length, 0);
+        assert.strictEqual(decodedState.player1.items.length, 4);
+        assert.strictEqual(decodedState.player2.items.length, 0);
 
         state.player2.items.push(state.player1.items.splice(0, 1)[0]);
         decodedState.decode(state.encode());
@@ -1034,8 +1034,8 @@ describe("ArraySchema Tests", () => {
         // console.log("FULL 3 >");
         // console.log(decodedState.player1.items.map(item => item.name));
         // console.log(decodedState.player2.items.map(item => item.name));
-        assert.equal(decodedState.player1.items.length, 0);
-        assert.equal(decodedState.player2.items.length, 4);
+        assert.strictEqual(decodedState.player1.items.length, 0);
+        assert.strictEqual(decodedState.player2.items.length, 4);
         assert.deepEqual(decodedState.player2.items.map(item => item.name), ['Item 1', 'Item 3', 'Item 2', 'Item 4']);
     });
 
@@ -1068,7 +1068,7 @@ describe("ArraySchema Tests", () => {
         const preEncoding = state.player.itemIds[1] = "Item 3 changed!";
         decodedState.decode(state.encode());
 
-        assert.equal(4, decodedState.player.itemIds.length);
+        assert.strictEqual(4, decodedState.player.itemIds.length);
 
         assert.strictEqual(
             decodedState.player.itemIds[1],
@@ -1149,9 +1149,9 @@ describe("ArraySchema Tests", () => {
         decoded2.decode(state.applyFilters(client2))
         decoded3.decode(state.applyFilters(client3))
 
-        assert.equal(1, decoded1.players.length);
-        assert.equal(1, decoded2.players.length);
-        assert.equal(1, decoded3.players.length);
+        assert.strictEqual(1, decoded1.players.length);
+        assert.strictEqual(1, decoded2.players.length);
+        assert.strictEqual(1, decoded3.players.length);
 
         state.discardAllChanges();
     });
@@ -1206,7 +1206,7 @@ describe("ArraySchema Tests", () => {
     describe("array methods", () => {
         it("#find()", () => {
             const arr = new ArraySchema<number>(1,2,3,4,5);
-            assert.equal(3, arr.find((v) => v === 3));
+            assert.strictEqual(3, arr.find((v) => v === 3));
         });
 
         it("#concat()", () => {
@@ -1217,17 +1217,17 @@ describe("ArraySchema Tests", () => {
 
         it("#join()", () => {
             const arr = new ArraySchema<number>(1, 2, 3);
-            assert.equal("1,2,3", arr.join(","));
+            assert.strictEqual("1,2,3", arr.join(","));
         });
 
         it("#indexOf()", () => {
             const arr = new ArraySchema<number>(1, 2, 3);
-            assert.equal(1, arr.indexOf(2));
+            assert.strictEqual(1, arr.indexOf(2));
         });
 
         it("#lastIndexOf()", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 1, 2, 3);
-            assert.equal(4, arr.lastIndexOf(2));
+            assert.strictEqual(4, arr.lastIndexOf(2));
         });
 
         it("#reverse()", () => {

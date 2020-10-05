@@ -67,10 +67,10 @@ describe("Polymorphism", () => {
 
         const decodedReflectedState: any = Reflection.decode(Reflection.encode(state));
         decodedReflectedState.decode(state.encodeAll());
-        assert.equal(decodedReflectedState.entityHolder.entity.x, 100);
-        assert.equal(decodedReflectedState.entityHolder.entity.y, 200);
-        assert.equal(decodedReflectedState.entityHolder.entity.name, "Jake");
-        assert.equal(decodedReflectedState.entityHolder.entity.lvl, 5);
+        assert.strictEqual(decodedReflectedState.entityHolder.entity.x, 100);
+        assert.strictEqual(decodedReflectedState.entityHolder.entity.y, 200);
+        assert.strictEqual(decodedReflectedState.entityHolder.entity.name, "Jake");
+        assert.strictEqual(decodedReflectedState.entityHolder.entity.lvl, 5);
 
         state.entityHolder.entity = null;
         decodedState.decode(state.encode());
@@ -140,7 +140,7 @@ describe("Polymorphism", () => {
         const decodedState = new GameRoomState<ConcreteConfig>();
         decodedState.decode(state.encode());
 
-        assert.equal("default", decodedState.roomConfig.default);
-        assert.equal(20, decodedState.roomConfig.specific);
+        assert.strictEqual("default", decodedState.roomConfig.default);
+        assert.strictEqual(20, decodedState.roomConfig.specific);
     });
 });

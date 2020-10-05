@@ -48,11 +48,11 @@ describe("@filter Test", () => {
         const decoded2 = new State();
         decoded2.decode(filtered2);
 
-        assert.equal("Jake", decoded1.playerOne.name);
-        assert.equal(undefined, decoded1.playerTwo.name);
+        assert.strictEqual("Jake", decoded1.playerOne.name);
+        assert.strictEqual(undefined, decoded1.playerTwo.name);
 
-        assert.equal(undefined, decoded2.playerOne.name);
-        assert.equal("Katarina", decoded2.playerTwo.name);
+        assert.strictEqual(undefined, decoded2.playerOne.name);
+        assert.strictEqual("Katarina", decoded2.playerTwo.name);
     });
 
     it("should filter direct properties on root state", () => {
@@ -83,11 +83,11 @@ describe("@filter Test", () => {
         const decoded2 = new State()
         decoded2.decode(state.applyFilters(client2));
 
-        assert.equal("hello", decoded1.str);
-        assert.equal("hello", decoded2.str);
+        assert.strictEqual("hello", decoded1.str);
+        assert.strictEqual("hello", decoded2.str);
 
-        assert.equal(undefined, decoded1.num);
-        assert.equal(1, decoded2.num);
+        assert.strictEqual(undefined, decoded1.num);
+        assert.strictEqual(1, decoded2.num);
     });
 
     it("should filter array items", () => {
@@ -123,11 +123,11 @@ describe("@filter Test", () => {
         const decoded2 = new State();
         decoded2.decode(filtered2);
 
-        assert.equal("one", decoded1.players[0].name);
-        assert.equal(1, decoded1.players.length);
+        assert.strictEqual("one", decoded1.players[0].name);
+        assert.strictEqual(1, decoded1.players.length);
 
-        assert.equal("two", decoded2.players[0].name);
-        assert.equal(1, decoded2.players.length);
+        assert.strictEqual("two", decoded2.players[0].name);
+        assert.strictEqual(1, decoded2.players.length);
     });
 
     it("should filter map items by distance", () => {
@@ -186,7 +186,7 @@ describe("@filter Test", () => {
         state.encode(undefined, undefined, true);
         decodedState.decode(state.applyFilters(client));
 
-        assert.equal(1, decodedState.entities.size);
+        assert.strictEqual(1, decodedState.entities.size);
 
         //
         // touch all entities so they're synched again.
@@ -195,7 +195,7 @@ describe("@filter Test", () => {
 
         state.encode(undefined, undefined, true);
         decodedState.decode(state.applyFilters(client));
-        assert.equal(4, decodedState.entities.size);
+        assert.strictEqual(4, decodedState.entities.size);
 
         assert.deepEqual([
             { x: 10, y: 10, radius: 1 },
@@ -500,8 +500,8 @@ describe("@filter Test", () => {
         sinon.assert.callCount(client2OnAddCard, 12);
         sinon.assert.callCount(client2OnRemoveCard, 2);
 
-        assert.equal(undefined, decodedState1.items.get('c2'));
-        assert.equal(undefined, decodedState1.items.get('c12'));
+        assert.strictEqual(undefined, decodedState1.items.get('c2'));
+        assert.strictEqual(undefined, decodedState1.items.get('c12'));
 
         assert.deepEqual({
             items: {
@@ -650,7 +650,7 @@ describe("@filter Test", () => {
         decoded2.decode(state.applyFilters(client2));
         state.discardAllChanges();
 
-        assert.equal(8, suitChanged, "should have nullified 8 cards.");
+        assert.strictEqual(8, suitChanged, "should have nullified 8 cards.");
 
         assert.deepEqual({
             players: {
@@ -815,13 +815,13 @@ describe("@filter Test", () => {
     //     state.encodeAllFiltered(client3);
     //     const decoded2 = (new StateWithFilter()).decode(state.encodeFiltered(client2));
 
-    //     assert.equal(decoded1.units.one.inventory.items, 10);
-    //     assert.equal(decoded1.units.two.inventory, undefined);
-    //     assert.equal(decoded1.filteredNumber, 10);
+    //     assert.strictEqual(decoded1.units.one.inventory.items, 10);
+    //     assert.strictEqual(decoded1.units.two.inventory, undefined);
+    //     assert.strictEqual(decoded1.filteredNumber, 10);
 
-    //     assert.equal(decoded2.units.one.inventory, undefined);
-    //     assert.equal(decoded2.units.two.inventory.items, 20);
-    //     assert.equal(decoded2.filteredNumber, undefined);
+    //     assert.strictEqual(decoded2.units.one.inventory, undefined);
+    //     assert.strictEqual(decoded2.units.two.inventory.items, 20);
+    //     assert.strictEqual(decoded2.filteredNumber, undefined);
     // });
 
     // xit("should filter map entries by distance", () => {
@@ -868,7 +868,7 @@ describe("@filter Test", () => {
 
     //     // FIRST DECODE
     //     const decoded5 = (new StateWithFilter()).decode(state.encodeFiltered(client5));
-    //     assert.equal(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{}}');
+    //     assert.strictEqual(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{}}');
 
     //     const createUnit = (key: string, x: number, y: number) => {
     //         const unit = new Unit();
@@ -885,7 +885,7 @@ describe("@filter Test", () => {
 
     //     // SECOND DECODE
     //     decoded5.decode(state.encodeFiltered(client5));
-    //     assert.equal(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{"five":{"x":50,"y":0}}}');
+    //     assert.strictEqual(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{"five":{"x":50,"y":0}}}');
 
     //     assert.deepEqual(Object.keys(decoded5.unitsWithDistanceFilter), ['five']);
 
@@ -895,14 +895,14 @@ describe("@filter Test", () => {
     //     let onAddSpy = sinon.spy(decoded5.unitsWithDistanceFilter, 'onAdd');
 
     //     decoded5.decode(state.encodeFiltered(client5));
-    //     assert.equal(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{"five":{"x":30,"y":0},"four":{"x":20,"y":0}}}');
+    //     assert.strictEqual(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{"five":{"x":30,"y":0},"four":{"x":20,"y":0}}}');
 
     //     assert.deepEqual(Object.keys(decoded5.unitsWithDistanceFilter), ['five', 'four']);
 
     //     // THIRD DECODE
     //     state.unitsWithDistanceFilter.five.x = 17;
     //     decoded5.decode(state.encodeFiltered(client5));
-    //     assert.equal(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{"five":{"x":17,"y":0},"four":{"x":20,"y":0},"two":{"x":10,"y":0},"three":{"x":15,"y":0}}}');
+    //     assert.strictEqual(JSON.stringify(decoded5), '{"units":{},"unitsWithDistanceFilter":{"five":{"x":17,"y":0},"four":{"x":20,"y":0},"two":{"x":10,"y":0},"three":{"x":15,"y":0}}}');
 
     //     assert.deepEqual(Object.keys(decoded5.unitsWithDistanceFilter), ['five', 'four', 'two', 'three']);
     //     sinon.assert.calledThrice(onAddSpy);

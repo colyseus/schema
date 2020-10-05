@@ -20,7 +20,7 @@ describe("Compatibility", () => {
     });
 
     it("should be compatible with JSON.stringify", () => {
-        assert.equal(JSON.stringify(state), JSON.stringify(targetState));
+        assert.strictEqual(JSON.stringify(state), JSON.stringify(targetState));
     });
 
     it("should be compatible with msgpack.encode", () => {

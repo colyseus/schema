@@ -15,8 +15,8 @@ describe("Schema Usage", () => {
             }
 
             let data = new DataObject();
-            assert.equal(data.stringValue, "initial value");
-            assert.equal(data.intValue, 300);
+            assert.strictEqual(data.stringValue, "initial value");
+            assert.strictEqual(data.intValue, 300);
             assert.deepEqual(DataObject._definition.schema, {
                 stringValue: 'string',
                 intValue: 'number',
@@ -30,7 +30,7 @@ describe("Schema Usage", () => {
             }
 
             let data = new Data();
-            assert.equal(data.uint8, 255);
+            assert.strictEqual(data.uint8, 255);
 
             data.uint8 = 127;
 
@@ -39,7 +39,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.uint8, 127);
+            assert.strictEqual(decoded.uint8, 127);
         });
 
         it("uint16", () => {
@@ -55,7 +55,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.uint16, 65500);
+            assert.strictEqual(decoded.uint16, 65500);
         });
 
         it("uint32", () => {
@@ -71,7 +71,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.uint32, 4294967290);
+            assert.strictEqual(decoded.uint32, 4294967290);
         });
 
         it("uint64", () => {
@@ -87,7 +87,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.uint64, Number.MAX_SAFE_INTEGER);
+            assert.strictEqual(decoded.uint64, Number.MAX_SAFE_INTEGER);
         });
 
         it("int8", () => {
@@ -103,7 +103,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.int8, -128);
+            assert.strictEqual(decoded.int8, -128);
         });
 
         it("int16", () => {
@@ -119,7 +119,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.int16, -32768);
+            assert.strictEqual(decoded.int16, -32768);
         });
 
         it("int32", () => {
@@ -135,7 +135,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.int32, -2147483648);
+            assert.strictEqual(decoded.int32, -2147483648);
         });
 
         it("int64", () => {
@@ -148,7 +148,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(data.encode());
-            assert.equal(decoded.int64, -9223372036854775808);
+            assert.strictEqual(decoded.int64, -9223372036854775808);
         });
 
         it("float32", () => {
@@ -164,7 +164,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.float32, 24.5);
+            assert.strictEqual(decoded.float32, 24.5);
         });
 
         it("float64", () => {
@@ -179,7 +179,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.float64, 24.5);
+            assert.strictEqual(decoded.float64, 24.5);
         });
 
         it("varint", () => {
@@ -203,20 +203,20 @@ describe("Schema Usage", () => {
             const encoded = data.encode();
             decoded.decode(encoded);
 
-            assert.equal(decoded.varint_minus1, -1);
-            assert.equal(decoded.varint_int8, -128);
-            assert.equal(decoded.varint_uint8, 255);
-            assert.equal(decoded.varint_int16, -32768);
-            assert.equal(decoded.varint_uint16, 65535);
-            assert.equal(decoded.varint_int32, -2147483648);
-            assert.equal(decoded.varint_uint32, 4294967295);
-            assert.equal(decoded.varint_int64, -9223372036854775808);
-            assert.equal(decoded.varint_uint64, Number.MAX_SAFE_INTEGER);
-            assert.equal(decoded.varint_float32, -3.40282347e+38);
-            assert.equal(decoded.varint_float64, 1.7976931348623157e+308);
+            assert.strictEqual(decoded.varint_minus1, -1);
+            assert.strictEqual(decoded.varint_int8, -128);
+            assert.strictEqual(decoded.varint_uint8, 255);
+            assert.strictEqual(decoded.varint_int16, -32768);
+            assert.strictEqual(decoded.varint_uint16, 65535);
+            assert.strictEqual(decoded.varint_int32, -2147483648);
+            assert.strictEqual(decoded.varint_uint32, 4294967295);
+            assert.strictEqual(decoded.varint_int64, -9223372036854775808);
+            assert.strictEqual(decoded.varint_uint64, Number.MAX_SAFE_INTEGER);
+            assert.strictEqual(decoded.varint_float32, -3.40282347e+38);
+            assert.strictEqual(decoded.varint_float64, 1.7976931348623157e+308);
 
             const badByteIndex = encoded.findIndex((byte) => byte < 0 || byte > 255);
-            assert.equal(
+            assert.strictEqual(
                 -1,
                 badByteIndex,
                 `invalid byte (${encoded[badByteIndex]}) at index ${badByteIndex}`
@@ -235,14 +235,14 @@ describe("Schema Usage", () => {
 
             let decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.bool, false);
+            assert.strictEqual(decoded.bool, false);
 
             data.bool = true;
 
             encoded = data.encode();
 
             decoded.decode(encoded);
-            assert.equal(decoded.bool, true);
+            assert.strictEqual(decoded.bool, true);
         });
 
         it("string", () => {
@@ -255,11 +255,11 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(data.encode());
-            assert.equal(decoded.str, "");
+            assert.strictEqual(decoded.str, "");
 
             data.str = "Hello world!";
             decoded.decode(data.encode());
-            assert.equal(decoded.str, "Hello world!");
+            assert.strictEqual(decoded.str, "Hello world!");
         });
 
         it("string with utf8", () => {
@@ -275,7 +275,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(encoded);
-            assert.equal(decoded.utf8, "🚀ॐ漢字♤♧♥♢®⚔");
+            assert.strictEqual(decoded.utf8, "🚀ॐ漢字♤♧♥♢®⚔");
         });
 
         it("long string", () => {
@@ -290,7 +290,7 @@ describe("Schema Usage", () => {
 
             const decoded = new Data();
             decoded.decode(data.encode());
-            assert.equal(decoded.longstring, longstring);
+            assert.strictEqual(decoded.longstring, longstring);
         });
 
     });
@@ -298,19 +298,19 @@ describe("Schema Usage", () => {
     describe("detecting changes", () => {
         it("Schema", () => {
             const state = new State();
-            assert.equal(false, state['$changes'].changed);
+            assert.strictEqual(false, state['$changes'].changed);
 
             state.fieldNumber = 10;
-            assert.equal(true, state['$changes'].changed);
+            assert.strictEqual(true, state['$changes'].changed);
 
             state.player = new Player().assign({ name: "Hello" });
-            assert.equal(true, state['$changes'].changed);
+            assert.strictEqual(true, state['$changes'].changed);
 
             state.discardAllChanges();
-            assert.equal(false, state['$changes'].changed);
+            assert.strictEqual(false, state['$changes'].changed);
 
             state.player.name = "Changed...";
-            assert.equal(true, state.player['$changes'].changed);
+            assert.strictEqual(true, state.player['$changes'].changed);
         });
 
         it("MapSchema", () => {
@@ -319,10 +319,10 @@ describe("Schema Usage", () => {
             state.mapOfPlayers['one'] = new Player().assign({ name: "One" });
 
             state.discardAllChanges();
-            assert.equal(false, state['$changes'].changed);
+            assert.strictEqual(false, state['$changes'].changed);
 
             state.mapOfPlayers['one'].name = "Changed...";
-            assert.equal(true, state.mapOfPlayers['one']['$changes'].changed);
+            assert.strictEqual(true, state.mapOfPlayers['one']['$changes'].changed);
         });
     })
 
@@ -346,9 +346,9 @@ describe("Schema Usage", () => {
 
             const decodedState = new State();
             decodedState.decode(state.encode());
-            assert.equal(state.player.name, "Cloned");
-            assert.equal(state.mapOfPlayers['one'].name, "Cloned");
-            assert.equal(state.arrayOfPlayers[0].name, "Cloned");
+            assert.strictEqual(state.player.name, "Cloned");
+            assert.strictEqual(state.mapOfPlayers['one'].name, "Cloned");
+            assert.strictEqual(state.arrayOfPlayers[0].name, "Cloned");
         });
     });
 
@@ -363,7 +363,7 @@ describe("Schema Usage", () => {
             const decodedState = new State();
             decodedState.decode(encoded);
 
-            assert.equal(decodedState.fieldString, "Hello world");
+            assert.strictEqual(decodedState.fieldString, "Hello world");
         });
 
         it("should encode/decode INT", () => {
@@ -377,31 +377,31 @@ describe("Schema Usage", () => {
 
             decodedState.decode(encoded);
 
-            assert.equal(decodedState.fieldNumber, 50);
+            assert.strictEqual(decodedState.fieldNumber, 50);
 
             state.fieldNumber = 100;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.fieldNumber, 100);
+            assert.strictEqual(decodedState.fieldNumber, 100);
 
             state.fieldNumber = 300;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.fieldNumber, 300);
+            assert.strictEqual(decodedState.fieldNumber, 300);
 
             state.fieldNumber = 500;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.fieldNumber, 500);
+            assert.strictEqual(decodedState.fieldNumber, 500);
 
             state.fieldNumber = 1000;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.fieldNumber, 1000);
+            assert.strictEqual(decodedState.fieldNumber, 1000);
 
             state.fieldNumber = 2000;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.fieldNumber, 2000);
+            assert.strictEqual(decodedState.fieldNumber, 2000);
 
             state.fieldNumber = 999999;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.fieldNumber, 999999);
+            assert.strictEqual(decodedState.fieldNumber, 999999);
         });
 
         it("should encode/decode empty Schema reference", () => {
@@ -429,8 +429,8 @@ describe("Schema Usage", () => {
 
             // assert.deepEqual(encoded, [2, 0, 164, 74, 97, 107, 101, 1, 100, 2, 204, 200, 193]);
             assert.ok(decodedState.player instanceof Player);
-            assert.equal(decodedState.player.x, 100);
-            assert.equal(decodedState.player.y, 200);
+            assert.strictEqual(decodedState.player.x, 100);
+            assert.strictEqual(decodedState.player.y, 200);
         });
 
         it("should re-use child Schema instance when decoding multiple times", () => {
@@ -443,12 +443,12 @@ describe("Schema Usage", () => {
 
             const playerReference = decodedState.player;
             assert.ok(playerReference instanceof Player);
-            assert.equal(playerReference.name, "Guest");
+            assert.strictEqual(playerReference.name, "Guest");
 
             state.player.name = "Jake";
             decodedState.decode(state.encode());
-            assert.equal(decodedState.player, playerReference);
-            assert.equal(playerReference.name, "Jake");
+            assert.strictEqual(decodedState.player, playerReference);
+            assert.strictEqual(playerReference.name, "Jake");
         });
 
         it("should encode empty array", () => {
@@ -480,8 +480,8 @@ describe("Schema Usage", () => {
             const playerTwo = decodedState.mapOfPlayers['two'];
 
             assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one", "two"]);
-            assert.equal(playerOne.name, "Jake Badlands");
-            assert.equal(playerTwo.name, "Snake Sanders");
+            assert.strictEqual(playerOne.name, "Jake Badlands");
+            assert.strictEqual(playerTwo.name, "Snake Sanders");
 
             state.mapOfPlayers['one'].name = "Tarquinn";
 
@@ -490,8 +490,8 @@ describe("Schema Usage", () => {
 
             decodedState.decode(encoded);
 
-            assert.equal(playerOne, decodedState.mapOfPlayers['one']);
-            assert.equal(decodedState.mapOfPlayers['one'].name, "Tarquinn");
+            assert.strictEqual(playerOne, decodedState.mapOfPlayers['one']);
+            assert.strictEqual(decodedState.mapOfPlayers['one'].name, "Tarquinn");
         });
 
         it("should allow adding and removing items from map", () => {
@@ -505,8 +505,8 @@ describe("Schema Usage", () => {
             decodedState.decode(state.encode());
 
             assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one", "two"]);
-            assert.equal(decodedState.mapOfPlayers['one'].name, "Jake Badlands");
-            assert.equal(decodedState.mapOfPlayers['two'].name, "Snake Sanders");
+            assert.strictEqual(decodedState.mapOfPlayers['one'].name, "Jake Badlands");
+            assert.strictEqual(decodedState.mapOfPlayers['two'].name, "Snake Sanders");
 
             delete state.mapOfPlayers['two'];
             decodedState.decode(state.encode());
@@ -537,8 +537,8 @@ describe("Schema Usage", () => {
             const encoded = state.encode();
             decodedState.decode(encoded);
 
-            assert.equal(decodedState.mapOfPlayers['one'], decodedSnake);
-            assert.equal(decodedState.mapOfPlayers['two'], decodedJake);
+            assert.strictEqual(decodedState.mapOfPlayers['one'], decodedSnake);
+            assert.strictEqual(decodedState.mapOfPlayers['two'], decodedJake);
         });
 
         it("should allow maps with numeric indexes", () => {
@@ -552,8 +552,8 @@ describe("Schema Usage", () => {
             decodedState.decode(state.encodeAll());
 
             assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ['1', '2']);
-            assert.equal(decodedState.mapOfPlayers['1'].name, "Snake Sanders");
-            assert.equal(decodedState.mapOfPlayers['2'].name, "Jake Badlands");
+            assert.strictEqual(decodedState.mapOfPlayers['1'].name, "Snake Sanders");
+            assert.strictEqual(decodedState.mapOfPlayers['2'].name, "Jake Badlands");
 
             state.mapOfPlayers['1'].name = "New name";
             decodedState.decode(state.encodeAll());
@@ -575,48 +575,48 @@ describe("Schema Usage", () => {
             // assert.deepEqual(encoded, [0, 172, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 33, 1, 50, 2, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 2, 50, 193]);
 
             // SHOULD PRESERVE VALUES AFTER SERIALIZING
-            assert.equal(state.fieldString, "Hello world!");
-            assert.equal(state.fieldNumber, 50);
+            assert.strictEqual(state.fieldString, "Hello world!");
+            assert.strictEqual(state.fieldNumber, 50);
             assert.ok(state.player instanceof Player);
-            assert.equal(state.player['$changes'].parent, state);
-            assert.equal(state.player.name, "Jake Badlands");
-            assert.equal(state.player.x, undefined);
-            assert.equal(state.player.y, 50);
+            assert.strictEqual(state.player['$changes'].parent, state);
+            assert.strictEqual(state.player.name, "Jake Badlands");
+            assert.strictEqual(state.player.x, undefined);
+            assert.strictEqual(state.player.y, 50);
 
             const decodedState = new State();
             decodedState.decode(encoded);
 
             const decodedPlayerReference = decodedState.player;
 
-            assert.equal(decodedState.fieldString, "Hello world!");
-            assert.equal(decodedState.fieldNumber, 50);
+            assert.strictEqual(decodedState.fieldString, "Hello world!");
+            assert.strictEqual(decodedState.fieldNumber, 50);
 
             assert.ok(decodedPlayerReference instanceof Player);
-            assert.equal(decodedState.player.name, "Jake Badlands");
-            assert.equal(decodedState.player.x, undefined, "unset variable should be undefined");
-            assert.equal(decodedState.player.y, 50);
+            assert.strictEqual(decodedState.player.name, "Jake Badlands");
+            assert.strictEqual(decodedState.player.x, undefined, "unset variable should be undefined");
+            assert.strictEqual(decodedState.player.y, 50);
 
             /**
              * Lets encode a single change now
              */
 
             // are Player and State unchanged?
-            assert.equal(state.player['$changes'].changed, false);
-            assert.equal(state['$changes'].changed, false);
+            assert.strictEqual(state.player['$changes'].changed, false);
+            assert.strictEqual(state['$changes'].changed, false);
 
             state.player.x = 30;
 
             // Player and State should've changes!
-            assert.equal(state.player['$changes'].changed, true);
-            // assert.equal(state['$changes'].changed, true);
+            assert.strictEqual(state.player['$changes'].changed, true);
+            // assert.strictEqual(state['$changes'].changed, true);
 
             const serializedChanges = state.encode();
 
             decodedState.decode(serializedChanges);
-            assert.equal(decodedPlayerReference, decodedState.player, "should re-use the same Player instance");
-            assert.equal(decodedState.player.name, "Jake Badlands");
-            assert.equal(decodedState.player.x, 30);
-            assert.equal(decodedState.player.y, 50);
+            assert.strictEqual(decodedPlayerReference, decodedState.player, "should re-use the same Player instance");
+            assert.strictEqual(decodedState.player.name, "Jake Badlands");
+            assert.strictEqual(decodedState.player.x, 30);
+            assert.strictEqual(decodedState.player.y, 50);
         });
 
         it("should support array of strings", () => {
@@ -740,11 +740,11 @@ describe("Schema Usage", () => {
             const decodedState = new MyState();
             decodedState.decode(state.encodeAll());
 
-            assert.equal(decodedState.myString, "hello");
+            assert.strictEqual(decodedState.myString, "hello");
 
             state.myString = undefined;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.myString, undefined);
+            assert.strictEqual(decodedState.myString, undefined);
 
             assert.throws(() => {
                 (state as any).myString = {};
@@ -774,27 +774,27 @@ describe("Schema Usage", () => {
             const decodedState = new MyState();
             decodedState.decode(state.encodeAll());
 
-            assert.equal(decodedState.myNumber, 1);
+            assert.strictEqual(decodedState.myNumber, 1);
 
             state.myNumber = null;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.myNumber, undefined);
+            assert.strictEqual(decodedState.myNumber, undefined);
 
             state.myNumber = Infinity;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.myNumber, Number.MAX_SAFE_INTEGER);
+            assert.strictEqual(decodedState.myNumber, Number.MAX_SAFE_INTEGER);
 
             state.myNumber = -Infinity;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.myNumber, -Number.MAX_SAFE_INTEGER);
+            assert.strictEqual(decodedState.myNumber, -Number.MAX_SAFE_INTEGER);
 
             state.myNumber = NaN;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.myNumber, 0);
+            assert.strictEqual(decodedState.myNumber, 0);
 
             state.uint8 = null;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.uint8, undefined);
+            assert.strictEqual(decodedState.uint8, undefined);
 
             assert.throws(() => {
                 (state as any).myNumber = {};
@@ -877,9 +877,9 @@ describe("Schema Usage", () => {
 
             const decodedState = new MyState();
             decodedState.decode(state.encodeAll());
-            assert.equal(decodedState.player.name, "Name");
-            assert.equal(decodedState.player.x, 100);
-            assert.equal(decodedState.player.y, 100);
+            assert.strictEqual(decodedState.player.name, "Name");
+            assert.strictEqual(decodedState.player.x, 100);
+            assert.strictEqual(decodedState.player.y, 100);
         });
 
         it("should transform plain array into ArraySchema", () => {
@@ -932,7 +932,7 @@ describe("Schema Usage", () => {
             let jakeX = Math.random() * 2000;
             state.mapOfPlayers['jake'].x = jakeX;
             decodedState.decode(state.encode());
-            assert.equal(decodedState.mapOfPlayers['jake'].x.toFixed(3), jakeX.toFixed(3));
+            assert.strictEqual(decodedState.mapOfPlayers['jake'].x.toFixed(3), jakeX.toFixed(3));
 
             delete state.mapOfPlayers['jake'];
         });
@@ -962,14 +962,14 @@ describe("Schema Usage", () => {
             const decodedState1 = new MyState();
             decodedState1.decode(state.encodeAll());
             assert.deepEqual(Array.from(decodedState1.players.keys()), ['one', 'two']);
-            assert.equal(decodedState1.n, 100);
+            assert.strictEqual(decodedState1.n, 100);
 
             delete state.players['two'];
 
             const decodedState2 = new MyState();
             decodedState2.decode(state.encodeAll());
             assert.deepEqual(Array.from(decodedState2.players.keys()), ['one']);
-            assert.equal(decodedState2.n, 100);
+            assert.strictEqual(decodedState2.n, 100);
         });
     });
 
@@ -988,18 +988,18 @@ describe("Schema Usage", () => {
             const decodedState = new DeepState();
             decodedState.decode(state.encodeAll());
 
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.name, "Player one");
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
+            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.name, "Player one");
+            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
+            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
+            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
 
 
             const decodedState2 = new DeepState();
             decodedState2.decode(state.encodeAll());
-            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.name, "Player one");
-            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
-            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
-            assert.equal(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
+            assert.strictEqual(decodedState2.map['one'].arrayOfChildren[0].entity.name, "Player one");
+            assert.strictEqual(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
+            assert.strictEqual(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
+            assert.strictEqual(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
         });
     });
 
@@ -1025,20 +1025,20 @@ describe("Schema Usage", () => {
             const decodedState = new State();
             decodedState.decode(state.encode());
 
-            assert.equal(false, decodedState.action.active);
+            assert.strictEqual(false, decodedState.action.active);
 
             state.action.active = true;
             decodedState.decode(state.encode());
-            assert.equal(true, decodedState.action.active);
+            assert.strictEqual(true, decodedState.action.active);
 
             state.action = new BattleAction().assign({ active: false, damage: 100 });
             decodedState.decode(state.encode());
-            assert.equal(false, decodedState.action.active);
-            assert.equal(100, (decodedState.action as BattleAction).damage);
+            assert.strictEqual(false, decodedState.action.active);
+            assert.strictEqual(100, (decodedState.action as BattleAction).damage);
 
             state.action.active = true;
             decodedState.decode(state.encode());
-            assert.equal(true, decodedState.action.active);
+            assert.strictEqual(true, decodedState.action.active);
         })
     });
 
@@ -1063,15 +1063,15 @@ describe("Schema Usage", () => {
 
             decodedState.decode(state.encode());
 
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.name, "Player one");
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
-            assert.equal(decodedState.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
+            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.name, "Player one");
+            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
+            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
+            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
 
-            assert.equal(decodedState.map['two'].arrayOfChildren[0].entity.name, "Player two");
-            assert.equal(decodedState.map['two'].arrayOfChildren[0].entity.another.position.x, 200);
-            assert.equal(decodedState.map['two'].arrayOfChildren[0].entity.another.position.y, 300);
-            assert.equal(decodedState.map['two'].arrayOfChildren[0].entity.another.position.z, 400);
+            assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.name, "Player two");
+            assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.another.position.x, 200);
+            assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.another.position.y, 300);
+            assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.another.position.z, 400);
         });
     });
 

@@ -21,7 +21,7 @@ describe("Edge cases", () => {
         decodedState.decode(state.encode());
 
         for (let i = 0; i < maxFields; i++) {
-            assert.equal("value " + i, decodedState[`field_${i}`]);
+            assert.strictEqual("value " + i, decodedState[`field_${i}`]);
         }
     });
 
@@ -55,7 +55,7 @@ describe("Edge cases", () => {
         decodedState.decode(state.encode());
 
         for (let i = 0; i < maxSchemaTypes; i++) {
-            assert.equal("value " + i, (decodedState.children[i] as any).str);
+            assert.strictEqual("value " + i, (decodedState.children[i] as any).str);
         }
     });
 
@@ -193,22 +193,22 @@ describe("Edge cases", () => {
         state.fieldString = "гхб";
         bytes = state.encode();
         decodedState.decode(bytes);
-        assert.equal("гхб", decodedState.fieldString);
+        assert.strictEqual("гхб", decodedState.fieldString);
 
         state.fieldString = "Пуредоминаце";
         bytes = state.encode();
         decodedState.decode(bytes);
-        assert.equal("Пуредоминаце", decodedState.fieldString);
+        assert.strictEqual("Пуредоминаце", decodedState.fieldString);
 
         state.fieldString = "未知の選手";
         bytes = state.encode();
         decodedState.decode(bytes);
-        assert.equal("未知の選手", decodedState.fieldString);
+        assert.strictEqual("未知の選手", decodedState.fieldString);
 
         state.fieldString = "알 수없는 플레이어";
         bytes = state.encode();
         decodedState.decode(bytes);
-        assert.equal("알 수없는 플레이어", decodedState.fieldString);
+        assert.strictEqual("알 수없는 플레이어", decodedState.fieldString);
     });
 
     it("MapSchema: index with high number of items should be preserved", () => {
@@ -240,11 +240,11 @@ describe("Edge cases", () => {
         state.mapOfPlayers[nanoid(8)] = new Player("Player " + i++, i++, i++);
         decodedState4.decode(state.encodeAll()); // new client joining
 
-        assert.equal(JSON.stringify(decodedState1), JSON.stringify(decodedState2));
-        assert.equal(JSON.stringify(decodedState2), JSON.stringify(decodedState3));
+        assert.strictEqual(JSON.stringify(decodedState1), JSON.stringify(decodedState2));
+        assert.strictEqual(JSON.stringify(decodedState2), JSON.stringify(decodedState3));
 
         decodedState3.decode(state.encode()); // patch existing client.
-        assert.equal(JSON.stringify(decodedState3), JSON.stringify(decodedState4));
+        assert.strictEqual(JSON.stringify(decodedState3), JSON.stringify(decodedState4));
     });
 
     describe("concurrency", () => {
@@ -329,11 +329,11 @@ describe("Edge cases", () => {
                         expectedOnAdd.push('item' + i);
 
                         if (i < 20 || i > 70) {
-                            assert.equal(i, decodedState.entities.get('item' + i).id);
+                            assert.strictEqual(i, decodedState.entities.get('item' + i).id);
 
                         } else if (i >= 20 && i < 70) {
                             expectedOnRemove.push('item' + i);
-                            assert.equal(false, decodedState.entities.has('item' + i));
+                            assert.strictEqual(false, decodedState.entities.has('item' + i));
                         }
                     }
 
@@ -343,7 +343,7 @@ describe("Edge cases", () => {
                     assert.deepEqual(expectedOnAdd, onAddCalledFor);
                     assert.deepEqual(expectedOnRemove, onRemovedCalledFor);
 
-                    assert.equal(60, decodedState.entities.size);
+                    assert.strictEqual(60, decodedState.entities.size);
                     done();
                 }, 10);
 

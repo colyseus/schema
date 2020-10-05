@@ -35,7 +35,7 @@ describe("Reflection", () => {
         const reflected = new Reflection();
         reflected.decode(Reflection.encode(state));
 
-        assert.equal(
+        assert.strictEqual(
             JSON.stringify(reflected),
             '{"types":[{"id":0,"fields":[{"name":"name","type":"string"},{"name":"x","type":"number"},{"name":"y","type":"number"}]},{"id":1,"fields":[{"name":"fieldString","type":"string"},{"name":"fieldNumber","type":"number"},{"name":"player","type":"ref","referencedType":0},{"name":"arrayOfPlayers","type":"array","referencedType":0},{"name":"mapOfPlayers","type":"map","referencedType":0}]}],"rootType":1}'
         );
@@ -45,9 +45,9 @@ describe("Reflection", () => {
         const state = new State();
         const stateReflected = Reflection.decode(Reflection.encode(state)) as State;
 
-        assert.equal(stateReflected.arrayOfPlayers.length, 0);
-        assert.equal(Array.from(stateReflected.mapOfPlayers.keys()).length, 0);
-        assert.equal(JSON.stringify(stateReflected.player), "{}");
+        assert.strictEqual(stateReflected.arrayOfPlayers.length, 0);
+        assert.strictEqual(Array.from(stateReflected.mapOfPlayers.keys()).length, 0);
+        assert.strictEqual(JSON.stringify(stateReflected.player), "{}");
     });
 
     it("should decode schema and be able to use it", () => {
@@ -67,25 +67,25 @@ describe("Reflection", () => {
 
         stateReflected.decode(state.encode());
 
-        assert.equal(stateReflected.fieldString, "Hello world!");
-        assert.equal(stateReflected.fieldNumber, 10);
+        assert.strictEqual(stateReflected.fieldString, "Hello world!");
+        assert.strictEqual(stateReflected.fieldNumber, 10);
 
-        assert.equal(stateReflected.player.name, "directly referenced player");
-        assert.equal(stateReflected.player.x, 1);
-        assert.equal(stateReflected.player.y, 1);
+        assert.strictEqual(stateReflected.player.name, "directly referenced player");
+        assert.strictEqual(stateReflected.player.x, 1);
+        assert.strictEqual(stateReflected.player.y, 1);
 
-        assert.equal(Array.from(stateReflected.mapOfPlayers.keys()).length, 2);
-        assert.equal(stateReflected.mapOfPlayers['one'].name, "player one");
-        assert.equal(stateReflected.mapOfPlayers['one'].x, 2);
-        assert.equal(stateReflected.mapOfPlayers['one'].y, 2);
-        assert.equal(stateReflected.mapOfPlayers['two'].name, "player two");
-        assert.equal(stateReflected.mapOfPlayers['two'].x, 3);
-        assert.equal(stateReflected.mapOfPlayers['two'].y, 3);
+        assert.strictEqual(Array.from(stateReflected.mapOfPlayers.keys()).length, 2);
+        assert.strictEqual(stateReflected.mapOfPlayers['one'].name, "player one");
+        assert.strictEqual(stateReflected.mapOfPlayers['one'].x, 2);
+        assert.strictEqual(stateReflected.mapOfPlayers['one'].y, 2);
+        assert.strictEqual(stateReflected.mapOfPlayers['two'].name, "player two");
+        assert.strictEqual(stateReflected.mapOfPlayers['two'].x, 3);
+        assert.strictEqual(stateReflected.mapOfPlayers['two'].y, 3);
 
-        assert.equal(stateReflected.arrayOfPlayers.length, 1);
-        assert.equal(stateReflected.arrayOfPlayers[0].name, "in array");
-        assert.equal(stateReflected.arrayOfPlayers[0].x, 4);
-        assert.equal(stateReflected.arrayOfPlayers[0].y, 4);
+        assert.strictEqual(stateReflected.arrayOfPlayers.length, 1);
+        assert.strictEqual(stateReflected.arrayOfPlayers[0].name, "in array");
+        assert.strictEqual(stateReflected.arrayOfPlayers[0].x, 4);
+        assert.strictEqual(stateReflected.arrayOfPlayers[0].y, 4);
     });
 
     it("should allow extending another Schema type", () => {
@@ -142,7 +142,7 @@ describe("Reflection", () => {
         state.mapOfStrings['two'] = "two";
         decodedState.decode(state.encode());
 
-        assert.equal(JSON.stringify(decodedState), '{"mapOfStrings":{"one":"one","two":"two"}}');
+        assert.strictEqual(JSON.stringify(decodedState), '{"mapOfStrings":{"one":"one","two":"two"}}');
     });
 
     it("should reflect array of primitive type", () => {
@@ -160,7 +160,7 @@ describe("Reflection", () => {
         state.arrayOfStrings.push("two");
         decodedState.decode(state.encode());
 
-        assert.equal(JSON.stringify(decodedState), '{"arrayOfStrings":["one","two"]}');
+        assert.strictEqual(JSON.stringify(decodedState), '{"arrayOfStrings":["one","two"]}');
     });
 
     it("should reflect and be able to use multiple structures of primitive tyes", () => {
@@ -195,8 +195,8 @@ describe("Reflection", () => {
         const decodedState2 = Reflection.decode(Reflection.encode(state)) as MyState;
         decodedState2.decode(state.encodeAll());
 
-        assert.equal(JSON.stringify(decodedState),  '{"currentTurn":"one","players":{"one":1},"board":[0,0,0,0,0,0,0,0,0]}');
-        assert.equal(JSON.stringify(decodedState2), '{"currentTurn":"one","players":{"one":1},"board":[0,0,0,0,0,0,0,0,0]}');
+        assert.strictEqual(JSON.stringify(decodedState),  '{"currentTurn":"one","players":{"one":1},"board":[0,0,0,0,0,0,0,0,0]}');
+        assert.strictEqual(JSON.stringify(decodedState2), '{"currentTurn":"one","players":{"one":1},"board":[0,0,0,0,0,0,0,0,0]}');
     });
 
     it("should support an inheritance with a Schema type without fields", () => {

@@ -19,7 +19,7 @@ describe("CollectionSchema Tests", () => {
         const decoded = new State();
         decoded.decode(state.encode());
 
-        assert.equal(3, decoded.strings.size);
+        assert.strictEqual(3, decoded.strings.size);
     })
 
     it("add() schema instances", () => {
@@ -38,7 +38,7 @@ describe("CollectionSchema Tests", () => {
         const decoded = new State();
         decoded.decode(state.encode());
 
-        assert.equal(1, decoded.players.size);
+        assert.strictEqual(1, decoded.players.size);
     })
 
     it("add() - should support adding multiple references", () => {
@@ -62,21 +62,21 @@ describe("CollectionSchema Tests", () => {
         const decoded = new State();
         decoded.decode(state.encode());
 
-        assert.equal(5, decoded.players.size);
-        assert.equal(decoded.players.at(0), decoded.players.at(1));
-        assert.equal(decoded.players.at(1), decoded.players.at(2));
-        assert.equal(decoded.players.at(2), decoded.players.at(3));
-        assert.equal(decoded.players.at(3), decoded.players.at(4));
-        assert.equal(undefined, decoded.players.at(5));
+        assert.strictEqual(5, decoded.players.size);
+        assert.strictEqual(decoded.players.at(0), decoded.players.at(1));
+        assert.strictEqual(decoded.players.at(1), decoded.players.at(2));
+        assert.strictEqual(decoded.players.at(2), decoded.players.at(3));
+        assert.strictEqual(decoded.players.at(3), decoded.players.at(4));
+        assert.strictEqual(undefined, decoded.players.at(5));
 
         state.players.delete(player);
         decoded.decode(state.encode());
 
-        assert.equal(4, decoded.players.size);
-        assert.equal(decoded.players.at(0), decoded.players.at(1));
-        assert.equal(decoded.players.at(1), decoded.players.at(2));
-        assert.equal(decoded.players.at(2), decoded.players.at(3));
-        assert.equal(undefined, decoded.players.at(4));
+        assert.strictEqual(4, decoded.players.size);
+        assert.strictEqual(decoded.players.at(0), decoded.players.at(1));
+        assert.strictEqual(decoded.players.at(1), decoded.players.at(2));
+        assert.strictEqual(decoded.players.at(2), decoded.players.at(3));
+        assert.strictEqual(undefined, decoded.players.at(4));
     });
 
     it("delete()", () => {
@@ -95,16 +95,16 @@ describe("CollectionSchema Tests", () => {
 
         const decoded = new State();
         decoded.decode(state.encode());
-        assert.equal(1, decoded.players.size);
+        assert.strictEqual(1, decoded.players.size);
 
         const removed = state.players.delete(player);
-        assert.equal(true, removed, "should return true if item has been removed successfully.");
-        assert.equal(false, state.players.delete(player), "should return false if item does not exist.");
-        assert.equal(false, state.players.delete({} as any), "should return false if item does not exist.");
+        assert.strictEqual(true, removed, "should return true if item has been removed successfully.");
+        assert.strictEqual(false, state.players.delete(player), "should return false if item does not exist.");
+        assert.strictEqual(false, state.players.delete({} as any), "should return false if item does not exist.");
 
         decoded.decode(state.encode());
 
-        assert.equal(0, decoded.players.size);
+        assert.strictEqual(0, decoded.players.size);
     });
 
     it("clear()", () => {
@@ -126,12 +126,12 @@ describe("CollectionSchema Tests", () => {
 
         const decoded = new State();
         decoded.decode(state.encode());
-        assert.equal(5, decoded.players.size);
+        assert.strictEqual(5, decoded.players.size);
 
         state.players.clear();
         decoded.decode(state.encode());
 
-        assert.equal(0, decoded.players.size);
+        assert.strictEqual(0, decoded.players.size);
     });
 
     it("@filter() should filter out Collection field entirely", () => {
@@ -162,8 +162,8 @@ describe("CollectionSchema Tests", () => {
         decoded2.decode(state.applyFilters(client2, true));
         state.discardAllChanges();
 
-        assert.equal(2, decoded1.players.size);
-        assert.equal(0, decoded2.players.size);
+        assert.strictEqual(2, decoded1.players.size);
+        assert.strictEqual(0, decoded2.players.size);
     });
 
     it("@filterChildren() should filter out schema instances", () => {
@@ -201,11 +201,11 @@ describe("CollectionSchema Tests", () => {
         const decoded2 = new State();
         decoded2.decode(filtered2);
 
-        assert.equal(1, decoded1.players.size);
-        assert.equal(1, decoded1.players.at(0).level);
+        assert.strictEqual(1, decoded1.players.size);
+        assert.strictEqual(1, decoded1.players.at(0).level);
 
-        assert.equal(1, decoded2.players.size);
-        assert.equal(2, decoded2.players.at(0).level);
+        assert.strictEqual(1, decoded2.players.size);
+        assert.strictEqual(2, decoded2.players.at(0).level);
     });
 
     it("@filterChildren() should filter out primitive values", () => {
@@ -247,10 +247,10 @@ describe("CollectionSchema Tests", () => {
         const decoded2 = new State();
         decoded2.decode(filtered2);
 
-        assert.equal(5, decoded1.numbers.size);
+        assert.strictEqual(5, decoded1.numbers.size);
         assert.deepEqual([0, 2, 4, 6, 8], decoded1.numbers.toArray());
 
-        assert.equal(5, decoded2.numbers.size);
+        assert.strictEqual(5, decoded2.numbers.size);
         assert.deepEqual([1, 3, 5, 7, 9], decoded2.numbers.toArray());
     });
 

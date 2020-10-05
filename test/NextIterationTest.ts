@@ -63,7 +63,7 @@ describe("Next Iteration", () => {
         const decoded = new State();
         decoded.decode(encoded);
 
-        assert.equal(JSON.stringify(decoded.players.map(p => p.x)), "[1,2,3]");
+        assert.strictEqual(JSON.stringify(decoded.players.map(p => p.x)), "[1,2,3]");
 
         state.players[0].x = 11;
 
@@ -71,7 +71,7 @@ describe("Next Iteration", () => {
 
         decoded.decode(encoded);
 
-        assert.equal(JSON.stringify(decoded.players.map(p => p.x)), "[11,2,3]");
+        assert.strictEqual(JSON.stringify(decoded.players.map(p => p.x)), "[11,2,3]");
     });
 
     it("add and modify a map item", () => {
@@ -115,12 +115,12 @@ describe("Next Iteration", () => {
         const decoded = new State();
         decoded.decode(state.encode());
 
-        assert.equal(2, decoded.map.size);
-        assert.equal(1, decoded.map.get("one"));
-        assert.equal(2, decoded.map.get("two"));
+        assert.strictEqual(2, decoded.map.size);
+        assert.strictEqual(1, decoded.map.get("one"));
+        assert.strictEqual(2, decoded.map.get("two"));
 
-        assert.equal(1, decoded.map["one"]);
-        assert.equal(2, decoded.map["two"]);
+        assert.strictEqual(1, decoded.map["one"]);
+        assert.strictEqual(2, decoded.map["two"]);
 
         delete state.map['one'];
 
@@ -128,9 +128,9 @@ describe("Next Iteration", () => {
 
         decoded.decode(encoded);
 
-        assert.equal(1, decoded.map.size);
-        assert.equal(undefined, decoded.map["one"]);
-        assert.equal(2, decoded.map["two"]);
+        assert.strictEqual(1, decoded.map.size);
+        assert.strictEqual(undefined, decoded.map["one"]);
+        assert.strictEqual(2, decoded.map["two"]);
     });
 
     describe("re-using Schema references", () => {
@@ -160,9 +160,9 @@ describe("Next Iteration", () => {
             const decoded = new State();
             decoded.decode(encoded);
 
-            assert.equal(decoded.player, decoded.players.get("one"));
-            assert.equal(decoded.player, decoded.players.get("two"));
-            assert.equal(decoded.player, decoded.players.get("three"));
+            assert.strictEqual(decoded.player, decoded.players.get("one"));
+            assert.strictEqual(decoded.player, decoded.players.get("two"));
+            assert.strictEqual(decoded.player, decoded.players.get("three"));
         });
 
         it("re-using Schema references while deleting some", () => {
@@ -191,8 +191,8 @@ describe("Next Iteration", () => {
             const decoded = new State();
             decoded.decode(encoded);
 
-            assert.equal(decoded.player, decoded.players.get("one"));
-            assert.equal(decoded.player, decoded.players.get("two"));
+            assert.strictEqual(decoded.player, decoded.players.get("one"));
+            assert.strictEqual(decoded.player, decoded.players.get("two"));
 
             state.player = undefined;
             state.players.delete('three');
@@ -209,10 +209,10 @@ describe("Next Iteration", () => {
             encoded = state.encode();
             decoded.decode(encoded);
 
-            assert.equal(decoded.players.get("one"), decoded.players.get("two"));
-            assert.equal(undefined, decoded.players.get("three"));
-            assert.equal(decoded.players.get("one").x, 11);
-            assert.equal(decoded.players.get("one").y, 22);
+            assert.strictEqual(decoded.players.get("one"), decoded.players.get("two"));
+            assert.strictEqual(undefined, decoded.players.get("three"));
+            assert.strictEqual(decoded.players.get("one").x, 11);
+            assert.strictEqual(decoded.players.get("one").y, 22);
         });
     });
 
@@ -245,16 +245,16 @@ describe("Next Iteration", () => {
         let encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
-        assert.equal(decoded1.map.size, 1);
-        assert.equal(decoded1.map.get("one"), 1);
+        assert.strictEqual(decoded1.map.size, 1);
+        assert.strictEqual(decoded1.map.get("one"), 1);
 
         decoded2.decode(encoded2);
-        assert.equal(decoded2.map.size, 1);
-        assert.equal(decoded2.map.get("two"), 2);
+        assert.strictEqual(decoded2.map.size, 1);
+        assert.strictEqual(decoded2.map.get("two"), 2);
 
         decoded3.decode(encoded3);
-        assert.equal(decoded3.map.size, 1);
-        assert.equal(decoded3.map.get("three"), 3);
+        assert.strictEqual(decoded3.map.size, 1);
+        assert.strictEqual(decoded3.map.get("three"), 3);
 
         // discard previous changes
         state.discardAllChanges();
@@ -268,14 +268,14 @@ describe("Next Iteration", () => {
         encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
-        assert.equal(decoded1.map.size, 1);
+        assert.strictEqual(decoded1.map.size, 1);
 
         decoded2.decode(encoded2);
-        assert.equal(decoded2.map.size, 1);
+        assert.strictEqual(decoded2.map.size, 1);
         assert.deepEqual(decoded2.map.get("two"), 22);
 
         decoded3.decode(encoded3);
-        assert.equal(decoded3.map.size, 1);
+        assert.strictEqual(decoded3.map.size, 1);
     });
 
     it("add and modify a filtered Schema map item", () => {
@@ -311,16 +311,16 @@ describe("Next Iteration", () => {
         let encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
-        assert.equal(decoded1.map.size, 1);
-        assert.equal(decoded1.map.get("one").x, 1);
+        assert.strictEqual(decoded1.map.size, 1);
+        assert.strictEqual(decoded1.map.get("one").x, 1);
 
         decoded2.decode(encoded2);
-        assert.equal(decoded2.map.size, 1);
-        assert.equal(decoded2.map.get("two").x, 2);
+        assert.strictEqual(decoded2.map.size, 1);
+        assert.strictEqual(decoded2.map.get("two").x, 2);
 
         decoded3.decode(encoded3);
-        assert.equal(decoded3.map.size, 1);
-        assert.equal(decoded3.map.get("three").x, 3);
+        assert.strictEqual(decoded3.map.size, 1);
+        assert.strictEqual(decoded3.map.get("three").x, 3);
 
         // discard previous changes
         state.discardAllChanges();
@@ -336,15 +336,15 @@ describe("Next Iteration", () => {
         encoded3 = state.applyFilters(client3);
 
         decoded1.decode(encoded1);
-        assert.equal(decoded1.map.size, 1);
+        assert.strictEqual(decoded1.map.size, 1);
         assert.deepEqual(decoded1.map.get("one").x, 11);
 
         decoded2.decode(encoded2);
-        assert.equal(decoded2.map.size, 1);
+        assert.strictEqual(decoded2.map.size, 1);
         assert.deepEqual(decoded2.map.get("two").x, 22);
 
         decoded3.decode(encoded3);
-        assert.equal(decoded3.map.size, 1);
+        assert.strictEqual(decoded3.map.size, 1);
         assert.deepEqual(decoded3.map.get("three").x, 33);
     });
 
@@ -487,7 +487,7 @@ describe("Next Iteration", () => {
 
         const decoded2 = new State();
         decoded2.decode(encoded2);
-        assert.equal("Hello", decoded2.str);
+        assert.strictEqual("Hello", decoded2.str);
 
         state.discardAllChanges();
 
@@ -502,10 +502,10 @@ describe("Next Iteration", () => {
 
         encoded2 = state.applyFilters(client2);
         decoded2.decode(encoded2);
-        assert.equal(1, decoded2.num);
+        assert.strictEqual(1, decoded2.num);
 
-        assert.equal(2, decoded1.player.x);
-        assert.equal(6, decoded1.player.item.damage);
+        assert.strictEqual(2, decoded1.player.x);
+        assert.strictEqual(6, decoded1.player.item.damage);
     });
 
     it("encoding / decoding deep items", () => {
@@ -539,11 +539,11 @@ describe("Next Iteration", () => {
         const decoded = new State();
         decoded.decode(patch);
 
-        assert.equal(2, decoded.players.size);
-        assert.equal(1, decoded.players.get("one").items.size);
-        assert.equal("player one item 1", decoded.players.get("one").items.get("i1").name);
-        assert.equal(1, decoded.players.get("two").items.size);
-        assert.equal("player two item 2", decoded.players.get("two").items.get("i2").name);
+        assert.strictEqual(2, decoded.players.size);
+        assert.strictEqual(1, decoded.players.get("one").items.size);
+        assert.strictEqual("player one item 1", decoded.players.get("one").items.get("i1").name);
+        assert.strictEqual(1, decoded.players.get("two").items.size);
+        assert.strictEqual("player two item 2", decoded.players.get("two").items.get("i2").name);
     });
 
     describe("multiple references to the same instance", () => {
@@ -568,7 +568,7 @@ describe("Next Iteration", () => {
 
             const decoded = new State();
             decoded.decode(state.encode());
-            assert.equal(2, decoded.players.size, "should have 2 items");
+            assert.strictEqual(2, decoded.players.size, "should have 2 items");
 
             const noChangesEncoded = state.encode();
 
@@ -576,7 +576,7 @@ describe("Next Iteration", () => {
             state.players.delete("two");
 
             decoded.decode(state.encode());
-            assert.equal(1, decoded.players.size, "should have 1 items");
+            assert.strictEqual(1, decoded.players.size, "should have 1 items");
 
             // mutate previous "two" reference.
             player2.name = "Not inside the Map anymore";
@@ -587,7 +587,7 @@ describe("Next Iteration", () => {
             state.player = player2;
             decoded.decode(state.encode());
 
-            assert.equal("Not inside the Map anymore", decoded.player.name);
+            assert.strictEqual("Not inside the Map anymore", decoded.player.name);
         });
 
         it("re-assigning schema multiple times should be allowed", () => {
@@ -657,20 +657,20 @@ describe("Next Iteration", () => {
             const decoded = new State();
             decoded.decode(state.encode());
 
-            assert.equal(1, decoded.child.players.size);
-            assert.equal(decoded.child.player, decoded.child.players.get("one"));
+            assert.strictEqual(1, decoded.child.players.size);
+            assert.strictEqual(decoded.child.player, decoded.child.players.get("one"));
 
             state.child.players.delete("one");
             state.child.player = undefined;
 
             decoded.decode(state.encode());
-            assert.equal(0, decoded.child.players.size);
-            assert.equal(undefined, decoded.child.player);
+            assert.strictEqual(0, decoded.child.players.size);
+            assert.strictEqual(undefined, decoded.child.player);
 
             player1.name = "This field should not be encoded!";
 
             const encoded = state.encode();
-            assert.equal(0, encoded.length);
+            assert.strictEqual(0, encoded.length);
         });
 
     });

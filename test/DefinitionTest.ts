@@ -46,7 +46,7 @@ describe("Definition Tests", () => {
 
             const decodedState = new MyExistingStructure();
             decodedState.decode(state.encode());
-            assert.equal((decodedState as any).name, "hello world!");
+            assert.strictEqual((decodedState as any).name, "hello world!");
         });
     });
 
@@ -90,7 +90,7 @@ describe("Definition Tests", () => {
             const fun = () => hasFilter(State);
 
             assert.doesNotThrow(fun);
-            assert.equal(false, fun());
+            assert.strictEqual(false, fun());
         });
 
         it("should be able to navigate on more complex recursive array structures", () => {
@@ -117,7 +117,7 @@ describe("Definition Tests", () => {
             const fun = () => hasFilter(State);
 
             assert.doesNotThrow(fun);
-            assert.equal(false, fun());
+            assert.strictEqual(false, fun());
         });
 
         it("should find filter on more complex recursive map structures", () => {
@@ -185,7 +185,7 @@ describe("Definition Tests", () => {
             const fun = () => hasFilter(State);
 
             assert.doesNotThrow(fun);
-            assert.equal(false, fun());
+            assert.strictEqual(false, fun());
         });
 
     });
