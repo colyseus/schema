@@ -886,11 +886,14 @@ export abstract class Schema {
     }
 
     triggerAll() {
+        // skip if haven't received any remote refs yet.
+        if (this.$changes.root.refs.size === 0) { return; }
+
         const allChanges = new Map<number, DataChange[]>();
-        Schema.prototype._triggerAllFillChanges.call(this, this, allChanges);
+        this._triggerAllFillChanges(this, allChanges);
 
         try {
-            Schema.prototype._triggerChanges.call(this, allChanges);
+            this._triggerChanges(allChanges);
 
         } catch (e) {
             Schema.onError(e);
@@ -962,25 +965,20 @@ export abstract class Schema {
 
             for (let fieldName in schema) {
                 const _field = `_${fieldName}`;
+                const value = ref[_field];
 
-                if (ref[_field] !== undefined) {
+                if (value !== undefined) {
                     changes.push({
                         op: OPERATION.ADD,
                         field: fieldName,
-                        value: ref[_field],
+                        value,
                         previousValue: undefined
                     });
 
-                    if (Schema.is(schema[fieldName])) {
-                        Schema.prototype._triggerAllFillChanges.call(this, ref[_field], allChanges);
-
-                    } else {
-                        const fieldType = Object.keys(schema[fieldName])[0];
-
-                        if (typeof(schema[fieldName][fieldType]) !== "string") {
-                            Schema.prototype._triggerAllFillChanges.call(this, ref[_field], allChanges);
-                        }
+                    if (value['$changes'] !== undefined) {
+                        this._triggerAllFillChanges(value, allChanges);
                     }
+
                 }
             }
 
@@ -994,11 +992,14 @@ export abstract class Schema {
                 changes.push({
                     op: OPERATION.ADD,
                     field: key,
+                    dynamicIndex: key,
                     value: value,
                     previousValue: undefined,
                 });
 
-                Schema.prototype._triggerAllFillChanges.call(this, value, allChanges);
+                if (value['$changes'] !== undefined) {
+                    this._triggerAllFillChanges(value, allChanges);
+                }
             }
         }
     }

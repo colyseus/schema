@@ -857,14 +857,26 @@ describe("Change API", () => {
     });
 
     describe("triggerAll", () => {
+        class State extends Schema {
+            @type({ map: Player }) mapOfPlayers: MapSchema<Player>;
+            @type({ map: "string" }) mapOfStrings: MapSchema<string>;
+        }
+
         it("should trigger onChange on Schema instance", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema<Player>();
             state.mapOfPlayers['one'] = new Player("Endel", 100, undefined);
 
+            state.mapOfStrings = new MapSchema<string>();
+            state.mapOfStrings['one'] = "One";
+            state.mapOfStrings['two'] = "Two";
+
             const decodedState = new State();
             decodedState.mapOfPlayers = new MapSchema<Player>();
             decodedState.decode(state.encode());
+
+            decodedState.mapOfStrings.onAdd = function(item, key) { }
+            const mapOfStringsOnAdd = sinon.spy(decodedState.mapOfStrings, 'onAdd');
 
             const player = decodedState.mapOfPlayers.get("one");
             player.onChange = function(changes) {
@@ -874,6 +886,9 @@ describe("Change API", () => {
             decodedState.triggerAll();
 
             sinon.assert.calledOnce(onChangeSpy);
+            sinon.assert.calledTwice(mapOfStringsOnAdd);
+            sinon.assert.calledWith(mapOfStringsOnAdd, "One", "one");
+            sinon.assert.calledWith(mapOfStringsOnAdd, "Two", "two");
         });
 
         it("should recursively trigger onAdd on collections, and onChange on its children", () => {
