@@ -1,7 +1,8 @@
-import { type, PrimitiveType, Context } from "./annotations";
+import { type, PrimitiveType, Context, DefinitionType } from "./annotations";
 import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
-import { MapSchema } from "./types/MapSchema";
+import { getType } from "./types";
+import * as decode from "./encoding/decode";
 
 const reflectionContext = new Context();
 
@@ -15,12 +16,12 @@ export class ReflectionField extends Schema {
     @type("string", reflectionContext)
     type: string;
 
-    @type("uint8", reflectionContext)
+    @type("number", reflectionContext)
     referencedType: number;
 }
 
 export class ReflectionType extends Schema {
-    @type("uint8", reflectionContext)
+    @type("number", reflectionContext)
     id: number;
 
     @type([ ReflectionField ], reflectionContext)
@@ -31,7 +32,7 @@ export class Reflection extends Schema {
     @type([ ReflectionType ], reflectionContext)
     types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
 
-    @type("uint8", reflectionContext)
+    @type("number", reflectionContext)
     rootType: number;
 
     static encode (instance: Schema) {
@@ -51,39 +52,30 @@ export class Reflection extends Schema {
                     fieldType = schema[fieldName];
 
                 } else {
-                    const isSchema = typeof (schema[fieldName]) === "function";
-                    const isArray = Array.isArray(schema[fieldName]);
-                    const isMap = !isArray && (schema[fieldName] as any).map;
-
+                    const type = schema[fieldName];
                     let childTypeSchema: typeof Schema;
-                    if (isSchema) {
+
+                    //
+                    // TODO: refactor below.
+                    //
+                    if (Schema.is(type)) {
                         fieldType = "ref";
                         childTypeSchema = schema[fieldName];
 
-                    } else if (isArray) {
-                        fieldType = "array";
+                    } else {
+                        fieldType = Object.keys(type)[0];
 
-                        if (typeof(schema[fieldName][0]) === "string") {
-                            fieldType += ":" + schema[fieldName][0]; // array:string
-
-                        } else {
-                            childTypeSchema = schema[fieldName][0];
-                        }
-
-                    } else if (isMap) {
-                        fieldType = "map";
-
-                        if (typeof(schema[fieldName].map) === "string") {
-                            fieldType += ":" + schema[fieldName].map; // array:string
+                        if (typeof(type[fieldType]) === "string") {
+                            fieldType += ":" + type[fieldType]; // array:string
 
                         } else {
-                            childTypeSchema = schema[fieldName].map;
+                            childTypeSchema = type[fieldType];
                         }
                     }
 
                     field.referencedType = (childTypeSchema)
                         ? childTypeSchema._typeid
-                        : 255;
+                        : -1;
                 }
 
                 field.type = fieldType;
@@ -97,44 +89,46 @@ export class Reflection extends Schema {
         for (let typeid in types) {
             const type = new ReflectionType();
             type.id = Number(typeid);
-            buildType(type, types[typeid]._schema);
+            buildType(type, types[typeid]._definition.schema);
         }
 
         return reflection.encodeAll();
     }
 
-    static decode (bytes: number[]): Schema {
+    static decode<T extends Schema = Schema>(bytes: number[], it?: decode.Iterator): T {
         const context = new Context();
 
         const reflection = new Reflection();
-        reflection.decode(bytes);
+        reflection.decode(bytes, it);
 
-        let schemaTypes = reflection.types.reduce((types, reflectionType) => {
-            types[reflectionType.id] = class _ extends Schema {};
+        const schemaTypes = reflection.types.reduce((types, reflectionType) => {
+            const schema: typeof Schema = class _ extends Schema {};
+            const typeid = reflectionType.id;
+            types[typeid] = schema
+            context.add(schema, typeid);
             return types;
         }, {});
 
-        reflection.types.forEach((reflectionType, i) => {
-            reflectionType.fields.forEach(field => {
-                const schemaType = schemaTypes[reflectionType.id];
+        reflection.types.forEach((reflectionType) => {
+            const schemaType = schemaTypes[reflectionType.id];
 
+            reflectionType.fields.forEach(field => {
                 if (field.referencedType !== undefined) {
+                    let fieldType = field.type;
                     let refType = schemaTypes[field.referencedType];
 
-                    // map or array of primitive type (255)
+                    // map or array of primitive type (-1)
                     if (!refType) {
-                        refType = field.type.split(":")[1];
+                        const typeInfo = field.type.split(":");
+                        fieldType = typeInfo[0];
+                        refType = typeInfo[1];
                     }
 
-                    if (field.type.indexOf("array") === 0) {
-                        type([ refType ], context)(schemaType.prototype, field.name);
-
-                    } else if (field.type.indexOf("map") === 0) {
-                        type({ map: refType }, context)(schemaType.prototype, field.name);
-
-                    } else if (field.type === "ref") {
+                    if (fieldType === "ref") {
                         type(refType, context)(schemaType.prototype, field.name);
 
+                    } else {
+                        type({ [fieldType]: refType } as DefinitionType, context)(schemaType.prototype, field.name);
                     }
 
                 } else {
@@ -150,21 +144,13 @@ export class Reflection extends Schema {
          * auto-initialize referenced types on root type
          * to allow registering listeners immediatelly on client-side
          */
-        for (let fieldName in rootType._schema) {
-            const fieldType = rootType._schema[fieldName];
+        for (let fieldName in rootType._definition.schema) {
+            const fieldType = rootType._definition.schema[fieldName];
 
             if (typeof(fieldType) !== "string") {
-                const isSchema = typeof (fieldType) === "function";
-                const isArray = Array.isArray(fieldType);
-                const isMap = !isArray && (fieldType as any).map;
-
-                rootInstance[fieldName] = (isArray)
-                    ? new ArraySchema()
-                    : (isMap)
-                        ? new MapSchema()
-                        : (isSchema)
-                            ? new (fieldType as any)()
-                            : undefined;
+                rootInstance[fieldName] = (typeof (fieldType) === "function")
+                    ? new (fieldType as any)() // is a schema reference
+                    : new (getType(Object.keys(fieldType)[0])).constructor(); // is a "collection"
             }
         }
 

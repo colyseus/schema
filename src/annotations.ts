@@ -1,5 +1,8 @@
-import { ChangeTree } from './ChangeTree';
+import { ChangeTree } from './changes/ChangeTree';
 import { Schema } from './Schema';
+import { ArraySchema, getArrayProxy } from './types/ArraySchema';
+import { MapSchema, getMapProxy } from './types/MapSchema';
+import { getType } from './types';
 
 /**
  * Data types
@@ -20,20 +23,119 @@ export type PrimitiveType =
     "float64" |
     typeof Schema;
 
-export type DefinitionType = ( PrimitiveType | PrimitiveType[] | { map: PrimitiveType });
+export type DefinitionType = PrimitiveType
+    | PrimitiveType[]
+    | { array: PrimitiveType }
+    | { map: PrimitiveType }
+    | { collection: PrimitiveType }
+    | { set: PrimitiveType };
+
 export type Definition = { [field: string]: DefinitionType };
 export type FilterCallback<
     T extends Schema = any,
     V = any,
     R extends Schema = any
-> = (this: T, client: Client, value: V, root?: R) => boolean;
+> = (
+    ((this: T, client: Client, value: V) => boolean) |
+    ((this: T, client: Client, value: V, root: R) => boolean)
+);
+
+export type FilterChildrenCallback<
+    T extends Schema = any,
+    K = any,
+    V = any,
+    R extends Schema = any
+> = (
+    ((this: T, client: Client, key: K, value: V) => boolean) |
+    ((this: T, client: Client, key: K, value: V, root: R) => boolean)
+)
+
+export class SchemaDefinition {
+    schema: Definition;
+
+    //
+    // TODO: use a "field" structure combining all these properties per-field.
+    //
+
+    indexes: { [field: string]: number } = {};
+    fieldsByIndex: { [index: number]: string } = {};
+
+    filters: { [field: string]: FilterCallback };
+    indexesWithFilters: number[];
+    childFilters: { [field: string]: FilterChildrenCallback }; // childFilters are used on Map, Array, Set items.
+
+    deprecated: { [field: string]: boolean } = {};
+    descriptors: PropertyDescriptorMap & ThisType<any> = {};
+
+    static create(parent?: SchemaDefinition) {
+        const definition = new SchemaDefinition();
+
+        // support inheritance
+        definition.schema = Object.assign({}, parent && parent.schema || {});
+        definition.indexes = Object.assign({}, parent && parent.indexes || {});
+        definition.fieldsByIndex = Object.assign({}, parent && parent.fieldsByIndex || {});
+        definition.descriptors = Object.assign({}, parent && parent.descriptors || {});
+        definition.deprecated = Object.assign({}, parent && parent.deprecated || {});
+
+        return definition;
+    }
+
+    addField(field: string, type: DefinitionType) {
+        const index = this.getNextFieldIndex();
+        this.fieldsByIndex[index] = field;
+        this.indexes[field] = index;
+        this.schema[field] = (Array.isArray(type))
+            ? { array: type[0] }
+            : type;
+    }
+
+    addFilter(field: string, cb: FilterCallback) {
+        if (!this.filters) {
+            this.filters = {};
+            this.indexesWithFilters = [];
+        }
+        this.filters[this.indexes[field]] = cb;
+        this.indexesWithFilters.push(this.indexes[field]);
+        return true;
+    }
+
+    addChildrenFilter(field: string, cb: FilterChildrenCallback) {
+        const index = this.indexes[field];
+        const type = this.schema[field];
+
+        if (getType(Object.keys(type)[0])) {
+            if (!this.childFilters) { this.childFilters = {}; }
+
+            this.childFilters[index] = cb;
+            return true;
+
+        } else {
+            console.warn(`@filterChildren: field '${field}' can't have children. Ignoring filter.`);
+        }
+    }
+
+    getChildrenFilter(field: string) {
+        return this.childFilters && this.childFilters[this.indexes[field]];
+    }
+
+    getNextFieldIndex() {
+        return Object.keys(this.schema || {}).length;
+    }
+}
+
+export function hasFilter(klass: typeof Schema) {
+    return klass._context && klass._context.useFilters;
+}
 
 // Colyseus integration
-export type Client = { sessionId: string } & any;
+export type Client = {
+    sessionId: string,
+} & any;
 
 export class Context {
     types: {[id: number]: typeof Schema} = {};
     schemas = new Map<typeof Schema, number>();
+    useFilters = false;
 
     has(schema: typeof Schema) {
         return this.schemas.has(schema);
@@ -43,10 +145,20 @@ export class Context {
         return this.types[typeid];
     }
 
-    add(schema: typeof Schema) {
-        schema._typeid = this.schemas.size;
-        this.types[schema._typeid] = schema;
-        this.schemas.set(schema, schema._typeid);
+    add(schema: typeof Schema, typeid: number = this.schemas.size) {
+        // FIXME: move this to somewhere else?
+        // support inheritance
+        schema._definition = SchemaDefinition.create(schema._definition);
+
+        schema._typeid = typeid;
+        this.types[typeid] = schema;
+        this.schemas.set(schema, typeid);
+    }
+
+    static create(context: Context = new Context) {
+        return function (definition: DefinitionType) {
+            return type(definition, context);
+        }
     }
 }
 
@@ -55,7 +167,6 @@ export const globalContext = new Context();
 /**
  * `@type()` decorator for proxies
  */
-
 export function type (type: DefinitionType, context: Context = globalContext): PropertyDecorator {
     return function (target: typeof Schema, field: string) {
         const constructor = target.constructor as typeof Schema;
@@ -66,44 +177,38 @@ export function type (type: DefinitionType, context: Context = globalContext): P
          */
         if (!context.has(constructor)) {
             context.add(constructor);
-
-            // support inheritance
-            constructor._schema = Object.assign({}, constructor._schema || {});
-            constructor._indexes = Object.assign({}, constructor._indexes || {});
-            constructor._fieldsByIndex = Object.assign({}, constructor._fieldsByIndex || {});
-            constructor._descriptors = Object.assign({}, constructor._descriptors || {});
-            constructor._deprecated = Object.assign({}, constructor._deprecated || {});
         }
 
-        const index = Object.keys(constructor._schema).length;
-        constructor._fieldsByIndex[index] = field;
-        constructor._indexes[field] = index;
-        constructor._schema[field] = type;
+        const definition = constructor._definition;
+        definition.addField(field, type);
 
         /**
          * skip if descriptor already exists for this field (`@deprecated()`)
          */
-        if (constructor._descriptors[field]) {
-            return;
-        }
+        if (definition.descriptors[field]) { return; }
 
-        /**
-         * TODO: `isSchema` / `isArray` / `isMap` is repeated on many places!
-         * need to refactor all of them.
-         */
-        const isArray = Array.isArray(type);
-        const isMap = !isArray && (type as any).map;
-        const isSchema = (typeof(constructor._schema[field]) === "function");
+        const isArray = ArraySchema.is(type);
+        const isMap = !isArray && MapSchema.is(type);
+
+        // TODO: refactor me.
+        // Allow abstract intermediary classes with no fields to be serialized
+        // (See "should support an inheritance with a Schema type without fields" test)
+        if (typeof (type) !== "string" && !Schema.is(type)) {
+            const childType = Object.values(type)[0];
+            if (typeof (childType) !== "string" && !context.has(childType)) {
+                context.add(childType);
+            }
+        }
 
         const fieldCached = `_${field}`;
 
-        constructor._descriptors[fieldCached] = {
+        definition.descriptors[fieldCached] = {
             enumerable: false,
             configurable: false,
             writable: true,
         };
 
-        constructor._descriptors[field] = {
+        definition.descriptors[field] = {
             get: function () {
                 return this[fieldCached];
             },
@@ -112,124 +217,59 @@ export function type (type: DefinitionType, context: Context = globalContext): P
                 /**
                  * Create Proxy for array or map items
                  */
-                if (isArray || isMap) {
-                    value = new Proxy(value, {
-                        get: (obj, prop) => obj[prop],
-                        set: (obj, prop, setValue) => {
-                            if (prop !== "length" && (prop as string).indexOf("$") !== 0) {
-                                // ensure new value has a parent
-                                const key = (isArray) ? Number(prop) : String(prop);
-
-                                if (!obj.$sorting) {
-                                    // track index change
-                                    const previousIndex = obj.$changes.getIndex(setValue);
-                                    if (previousIndex !== undefined) {
-                                        obj.$changes.mapIndexChange(setValue, previousIndex);
-                                    }
-                                    obj.$changes.mapIndex(setValue, key);
-                                }
-
-                                // if (isMap) {
-                                //     obj._indexes.delete(prop);
-                                // }
-
-                                if (setValue instanceof Schema) {
-                                    // new items are flagged with all changes
-                                    if (!setValue.$changes.parent) {
-                                        setValue.$changes = new ChangeTree(setValue._indexes, key, obj.$changes);
-                                        setValue.$changes.changeAll(setValue);
-                                    }
-
-                                } else {
-                                    obj[prop] = setValue;
-                                }
-
-                                // apply change on ArraySchema / MapSchema
-                                obj.$changes.change(key);
-
-                            } else if (setValue !== obj[prop]) {
-                                // console.log("SET NEW LENGTH:", setValue);
-                                // console.log("PREVIOUS LENGTH: ", obj[prop]);
-                            }
-
-                            obj[prop] = setValue;
-
-                            return true;
-                        },
-
-                        deleteProperty: (obj, prop) => {
-                            const deletedValue = obj[prop];
-
-                            if (isMap && deletedValue !== undefined) {
-                                obj.$changes.deleteIndex(deletedValue);
-                                obj.$changes.deleteIndexChange(deletedValue);
-
-                                if (deletedValue.$changes) { // deletedValue may be a primitive value
-                                    delete deletedValue.$changes.parent;
-                                }
-
-                                // obj._indexes.delete(prop);
-                            }
-
-                            delete obj[prop];
-
-                            const key = (isArray) ? Number(prop) : String(prop);
-                            obj.$changes.change(key, true);
-
-                            return true;
-                        },
-                    });
-                }
 
                 // skip if value is the same as cached.
                 if (value === this[fieldCached]) {
                     return;
                 }
 
-                this[fieldCached] = value;
-
-                if (isArray) {
-                    // directly assigning an array of items as value.
-                    this.$changes.change(field);
-                    value.$changes = new ChangeTree({}, field, this.$changes);
-
-                    for (let i = 0; i < value.length; i++) {
-                        if (value[i] instanceof Schema) {
-                            value[i].$changes = new ChangeTree(value[i]._indexes, i, value.$changes);
-                            value[i].$changes.changeAll(value[i]);
-                        }
-                        value.$changes.mapIndex(value[i], i);
-                        value.$changes.change(i);
+                if (
+                    value !== undefined &&
+                    value !== null
+                ) {
+                    // automaticallty transform Array into ArraySchema
+                    if (isArray && !(value instanceof ArraySchema)) {
+                        value = new ArraySchema(...value);
                     }
 
-                } else if (isMap) {
-                    // directly assigning a map
-                    value.$changes = new ChangeTree({}, field, this.$changes);
-                    this.$changes.change(field);
-
-                    for (let key in value) {
-                        if (value[key] instanceof Schema) {
-                            value[key].$changes = new ChangeTree(value[key]._indexes, key, value.$changes);
-                            value[key].$changes.changeAll(value[key]);
-                        }
-                        value.$changes.mapIndex(value[key], key);
-                        value.$changes.change(key);
+                    // automaticallty transform Map into MapSchema
+                    if (isMap && !(value instanceof MapSchema)) {
+                        value = new MapSchema(value);
                     }
 
-                } else if (isSchema) {
-                    // directly assigning a `Schema` object
-                    // value may be set to null
+                    // try to turn provided structure into a Proxy
+                    if (value['$proxy'] === undefined) {
+                        if (isMap) {
+                            value = getMapProxy(value);
+
+                        } else if (isArray) {
+                            value = getArrayProxy(value);
+                        }
+                    }
+
+                    // flag the change for encoding.
                     this.$changes.change(field);
 
-                    if (value) {
-                        value.$changes = new ChangeTree(value._indexes, field, this.$changes);
-                        value.$changes.changeAll(value);
+                    //
+                    // call setParent() recursively for this and its child
+                    // structures.
+                    //
+                    if (value['$changes']) {
+                        (value['$changes'] as ChangeTree).setParent(
+                            this,
+                            this.$changes.root,
+                            this._definition.indexes[field],
+                        );
                     }
 
                 } else {
-                    // directly assigning a primitive type
-                    this.$changes.change(field);
+                    //
+                    // Setting a field to `null` or `undefined` will delete it.
+                    //
+                    this.$changes.delete(field);
                 }
+
+                this[fieldCached] = value;
             },
 
             enumerable: true,
@@ -245,17 +285,24 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback<T, V, R>): PropertyDecorator {
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
+        const definition = constructor._definition;
 
-        /*
-         * static filters
-         */
-        if (!constructor._filters) {
-            constructor._filters = {};
+        if (definition.addFilter(field, cb)) {
+            constructor._context.useFilters = true;
         }
-
-        constructor._filters[field] = cb;
     }
 }
+
+export function filterChildren<T extends Schema, K, V, R extends Schema>(cb: FilterChildrenCallback<T, K, V, R>): PropertyDecorator {
+    return function (target: any, field: string) {
+        const constructor = target.constructor as typeof Schema;
+        const definition = constructor._definition;
+        if (definition.addChildrenFilter(field, cb)) {
+            constructor._context.useFilters = true;
+        }
+    }
+}
+
 
 /**
  * `@deprecated()` flag a field as deprecated.
@@ -265,10 +312,12 @@ export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback
 export function deprecated(throws: boolean = true, context: Context = globalContext): PropertyDecorator {
     return function (target: typeof Schema, field: string) {
         const constructor = target.constructor as typeof Schema;
-        constructor._deprecated[field] = true;
+        const definition = constructor._definition;
+
+        definition.deprecated[field] = true;
 
         if (throws) {
-            constructor._descriptors[field] = {
+            definition.descriptors[field] = {
                 get: function () { throw new Error(`${field} is deprecated.`); },
                 set: function (this: Schema, value: any) { /* throw new Error(`${field} is deprecated.`); */ },
                 enumerable: false,
@@ -278,7 +327,11 @@ export function deprecated(throws: boolean = true, context: Context = globalCont
     }
 }
 
-export function defineTypes(target: typeof Schema, fields: {[property: string]: DefinitionType}, context: Context = globalContext) {
+export function defineTypes(
+    target: typeof Schema,
+    fields: { [property: string]: DefinitionType },
+    context: Context = target._context || globalContext
+) {
     for (let field in fields) {
         type(fields[field], context)(target.prototype, field);
     }

@@ -1,9 +1,15 @@
 export { Schema, DataChange } from "./Schema";
+
 export { MapSchema } from "./types/MapSchema";
 export { ArraySchema } from "./types/ArraySchema";
+export { CollectionSchema } from "./types/CollectionSchema";
+export { SetSchema } from "./types/SetSchema";
 
 // Utils
 export { dumpChanges } from "./utils";
+
+// Decoder
+export { Iterator } from "./encoding/decode";
 
 // Reflection
 export {
@@ -17,7 +23,12 @@ export {
     type,
     deprecated,
     filter,
+    filterChildren,
     defineTypes,
+    hasFilter,
+
+    // Internals
+    SchemaDefinition,
 
     // Types
     Context,
@@ -26,3 +37,5 @@ export {
     DefinitionType,
     FilterCallback,
 } from "./annotations";
+
+export { OPERATION } from "./spec";

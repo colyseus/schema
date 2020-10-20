@@ -4,7 +4,7 @@
   <br>
 
   <p>
-    A binary schema-based serialization algorithm. <br>
+    A binary state serializer with delta encoding for games.<br>
     Although it was born to be used on <a href="https://github.com/colyseus/colyseus">Colyseus</a>, this library can be used as standalone.
   </p>
 
@@ -15,8 +15,6 @@
     <img src="https://img.shields.io/badge/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fendel&style=for-the-badge" alt="Patreon donate button"/>
   </a>
 </div>
-
-Decoders currently available for JavaScript, LUA, C#, C++ and Haxe.
 
 ## Defining Schema
 
@@ -166,30 +164,25 @@ const encodedStateSchema = Reflection.encode(new MyState());
 const myState = Reflection.decode(encodedStateSchema);
 ```
 
-### Planned feature: Data filters (not supported atm)
+### Data filters
 
-On the example below, we are filtering entities which are close to the player entity.
+On the example below, considering we're making a card game, we are filtering the cards to be available only for the owner of the cards, or if the card has been flagged as `"revealed"`.
 
 ```typescript
 import { Schema, type, filter } from "@colyseus/schema";
 
 export class State extends Schema {
-  @filter(function(this: State, client: any, value: Entity) {
-    const currentPlayer = this.entities[client.sessionId]
-
-    var a = value.x - currentPlayer.x;
-    var b = value.y - currentPlayer.y;
-
-    return (Math.sqrt(a * a + b * b)) <= 10;
-
+  @filterChildren(function(client: any, key: string, value: Card, root: State) {
+      return (value.ownerId === client.sessionId) || value.revealed;
   })
-  @type({ map: Entity })
-  entities = new MapSchema<Entity>();
+  @type({ map: Card })
+  cards = new MapSchema<Card>();
 }
 ```
 
 ## Limitations and best practices
 
+- Each `Schema` structure can hold up to `64` fields. If you need more fields, use nested structures.
 - `NaN` or `null` numbers are encoded as `0`
 - `null` strings are encoded as `""`
 - `Infinity` numbers are encoded as `Number.MAX_SAFE_INTEGER`
@@ -199,25 +192,6 @@ export class State extends Schema {
   - Both encoder (server) and decoder (client) must have same schema definition.
   - The order of the fields must be the same.
 - Avoid manipulating indexes of an array. This result in at least `2` extra bytes for each index change. **Example:** If you have an array of 20 items, and remove the first item (through `shift()`) this means `38` extra bytes to be serialized.
-- Avoid moving keys of maps. As of arrays, it adds `2` extra bytes per key move.
-
-## Decoding / Listening for changes
-
-> TODO: describe how changes will arrive on array and map types
-
-```typescript
-import { DataChange } from "@colyseus/schema";
-import { State } from "./YourStateDefinition";
-
-const decodedState = new State();
-decodedState.onChange = function(changes: DataChange[]) {
-  assert.equal(changes.length, 1);
-  assert.equal(changes[0].field, "fieldNumber");
-  assert.equal(changes[0].value, 50);
-  assert.equal(changes[0].previousValue, undefined);
-}
-decodedState.decode(incomingData);
-```
 
 ## Generating client-side schema files (for strictly typed languages)
 

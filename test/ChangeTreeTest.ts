@@ -1,26 +1,101 @@
 import * as assert from "assert";
 
-import { ChangeTree } from "../src/ChangeTree";
+import { ChangeTree } from "../src/changes/ChangeTree";
 import { Schema, type, MapSchema, ArraySchema } from "../src";
 
 describe("ChangeTree", () => {
+    it("instances should share parent/root references", () => {
+        class Skill extends Schema {
+            @type("number") damage: number;
+        }
 
-    it("simple relationship", () => {
-        const root = new ChangeTree();
+        class Item extends Schema {
+            @type("number") damage: number;
+            @type({ map: Skill }) skills = new Map<string, Skill>();
+        }
 
-        const child = new ChangeTree({}, "child");
-        child.parent = root;
+        class Player extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+            @type(Item) item: Item;
+        }
 
-        child.change("x");
+        class State extends Schema {
+            @type("string") str: string;
+            @type("number") num: number;
+            @type({ map: Player }) players: Map<string, Player>;
+            @type(Player) player: Player;
+        };
 
-        assert.equal(root.changed, true);
-        assert.equal(child.changed, true);
+        const state = new State();
+        const player = new Player();
+        player.item = new Item();
+        state.player = player;
 
-        assert.deepEqual(Array.from(root.changes), ['child'])
-        assert.deepEqual(Array.from(child.changes), ['x'])
+        const players = new Map<string, Player>();
+        players.set("one", new Player());
+        players.get("one").item = new Item();
+
+        state.players = players;
+
+        // Testing for "root".
+        const $root = state['$changes'].root;
+        assert.ok(player['$changes'].root === $root, "State and Player should have same 'root'.");
+        assert.ok(player.item['$changes'].root === $root, "Player and Item should have same 'root'.");
+        assert.ok(state.players.get("one")['$changes'].root === $root, "Player and Item should have same 'root'.");
+        assert.ok(state.players.get("one").item['$changes'].root === $root, "Player and Item should have same 'root'.");
+
+        // Testing for "parent".
+        assert.ok(state['$changes'].parent === undefined, "State parent should be 'undefined'");
+        assert.ok(state.player['$changes'].parent === state, "Player parent should be State");
+        assert.ok(state.player.item['$changes'].parent === player, "Item parent should be Player");
+        assert.ok(state.players.get("one")['$changes'].parent['$changes'].refId === state.players['$changes'].refId as any, "state.players['one'] parent should be state.players");
     });
 
-    it("should not identify changes on untyped properties", () => {
+    it("change", () => {
+        class State extends Schema {
+            @type("string")
+            stringValue: string;
+
+            @type("number")
+            intValue: number;
+        }
+
+        const encoded = new State();
+        encoded.stringValue = "hello world";
+        encoded.intValue = 10;
+
+        const decoded = new State();
+        decoded.decode(encoded.encode());
+
+        assert.strictEqual(decoded.stringValue, "hello world");
+        assert.strictEqual(decoded.intValue, 10);
+    });
+
+    it("remove", () => {
+        class State extends Schema {
+            @type("string")
+            stringValue: string;
+
+            @type("number")
+            intValue: number;
+        }
+
+        const encoded = new State();
+        encoded.stringValue = "hello world";
+        encoded.intValue = 10;
+
+        const decoded = new State();
+        decoded.decode(encoded.encode());
+
+        encoded.intValue = undefined;
+        decoded.decode(encoded.encode());
+
+        assert.strictEqual(decoded.stringValue, "hello world");
+        assert.strictEqual(decoded.intValue, undefined);
+    });
+
+    xit("should not identify changes on untyped properties", () => {
         class Game extends Schema {
             @type('string')
             state: string = "starting";

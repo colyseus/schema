@@ -61,6 +61,7 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
 
 ${namespace ? `package ${namespace};` : ""}
 import io.colyseus.serializer.schema.Schema;
+import io.colyseus.serializer.schema.types.*;
 
 class ${klass.name} extends ${klass.extends} {
 ${klass.properties.map(prop => generateProperty(prop)).join("\n")}

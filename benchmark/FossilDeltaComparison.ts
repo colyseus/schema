@@ -1,5 +1,5 @@
 import { Schema, type } from "../src";
-import * as nanoid from "nanoid";
+import { nanoid } from "nanoid";
 import * as msgpack from "@msgpack/msgpack";
 import * as fossildelta from "fossil-delta";
 import { MapSchema } from "../src/types/MapSchema";
@@ -54,15 +54,15 @@ console.log("(@colyseus/state) INITIAL STATE SIZE:", encoded.length);
 console.log("(msgpack) INITIAL STATE SIZE:", firstStateEncoded.length);
 console.log("");
 
-{
-  // CHANGE X/Y OF A SINGLE ENTITY
-  const x = Math.floor(Math.random() * 200);
-  const y = Math.floor(Math.random() * 200);
-  state.players[fixedUnitId].x = x
-  state.players[fixedUnitId].y = y
-  msgpackState.players[fixedUnitId].x = x
-  msgpackState.players[fixedUnitId].y = y
-}
+// {
+//   // CHANGE X/Y OF A SINGLE ENTITY
+//   const x = Math.floor(Math.random() * 200);
+//   const y = Math.floor(Math.random() * 200);
+//   state.players[fixedUnitId].x = x
+//   state.players[fixedUnitId].y = y
+//   msgpackState.players[fixedUnitId].x = x
+//   msgpackState.players[fixedUnitId].y = y
+// }
 
 // {
 //   // CHANGE X/Y OF 50 ENTITIES
@@ -79,19 +79,19 @@ console.log("");
 //   }
 // }
 
-// {
-//   // CHANGE ALL X/Y VALUES
-//   let i = 0;
-//   for (let id in msgpackState.players) {
-//     const x = Math.floor(Math.random() * 200);
-//     const y = Math.floor(Math.random() * 200);
-//     state.players[id].x = x
-//     state.players[id].y = y
-//     msgpackState.players[id].x = x
-//     msgpackState.players[id].y = y
-//     i++;
-//   }
-// }
+{
+  // CHANGE ALL X/Y VALUES
+  let i = 0;
+  for (let id in msgpackState.players) {
+    const x = Math.floor(Math.random() * 200);
+    const y = Math.floor(Math.random() * 200);
+    state.players[id].x = x
+    state.players[id].y = y
+    msgpackState.players[id].x = x
+    msgpackState.players[id].y = y
+    i++;
+  }
+}
 
 encoded = state.encode();
 decodedState.decode(encoded);

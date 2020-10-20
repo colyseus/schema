@@ -12,6 +12,7 @@ describe("backwards/forwards compatibility", () => {
     class StateV1 extends Schema {
         @type("string") str: string;
         @type({ map: PlayerV1 }) map = new MapSchema<PlayerV1>();
+        @type("string") currentTurn: string;
     }
 
     class PlayerV2 extends Schema {
@@ -23,10 +24,8 @@ describe("backwards/forwards compatibility", () => {
 
     class StateV2 extends Schema {
         @type("string") str: string;
-
-        @deprecated()
         @type({ map: PlayerV2 }) map = new MapSchema<PlayerV2>();
-
+        @deprecated() @type("string") currentTurn: string;
         @type("number") countdown: number;
     }
 
@@ -37,11 +36,11 @@ describe("backwards/forwards compatibility", () => {
 
         const decodedStateV2 = new StateV2();
         decodedStateV2.decode(state.encode());
-        assert.equal("Hello world", decodedStateV2.str);
-        // assert.equal(10, decodedStateV2.countdown);
+        assert.strictEqual("Hello world", decodedStateV2.str);
+        // assert.strictEqual(10, decodedStateV2.countdown);
 
         assert.throws(() => {
-            return decodedStateV2.map;
+            return decodedStateV2.currentTurn;
         }, "should throw an error trying to get deprecated attribute");
     });
 
@@ -50,9 +49,18 @@ describe("backwards/forwards compatibility", () => {
         state.str = "Hello world";
         state.countdown = 10;
 
+        state.map.set("p", new PlayerV2().assign({
+            x: 10,
+            y: 10,
+            name: "Forward",
+            arrayOfStrings: new ArraySchema("one"),
+        }));
+
+        const encoded = state.encode();
+
         const decodedStateV1 = new StateV1();
-        decodedStateV1.decode(state.encode());
-        assert.equal("Hello world", decodedStateV1.str);
+        decodedStateV1.decode(encoded);
+        assert.strictEqual("Hello world", decodedStateV1.str);
     });
 
     it("should allow reflection", () => {

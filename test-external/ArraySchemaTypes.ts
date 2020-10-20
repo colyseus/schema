@@ -38,7 +38,11 @@ state.arrayOfInt32.push(3520);
 state.arrayOfInt32.push(-3000);
 
 
-let bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
+const encoded = state.encode();
+let bytes = Array.from(Uint8Array.from(Buffer.from(encoded)));
+
+const decoded = new ArraySchemaTypes();
+decoded.decode(bytes);
 
 console.log("ArraySchemaTypes =>");
 console.log(`{ ${bytes.join(", ")} }`);

@@ -1,4 +1,3 @@
-import { NIL, INDEX_CHANGE } from "../spec";
 /**
  * Copyright (c) 2018 Endel Dreyer
  * Copyright (c) 2014 Ion Drive Software Ltd.
@@ -21,6 +20,8 @@ import { NIL, INDEX_CHANGE } from "../spec";
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE
  */
+
+import { SWITCH_TO_STRUCTURE } from "../spec";
 
 /**
  * msgpack implementation highly based on notepack.io
@@ -65,7 +66,10 @@ function utf8Read(bytes, offset, length) {
       }
       continue;
     }
-    throw new Error('Invalid byte ' + byte.toString(16));
+
+    console.error('Invalid byte ' + byte.toString(16));
+    // (do not throw error to avoid server/client from crashing due to hack attemps)
+    // throw new Error('Invalid byte ' + byte.toString(16));
   }
   return string;
 }
@@ -264,10 +268,11 @@ export function arrayCheck (bytes, it: Iterator) {
   // return prefix;
 }
 
-export function nilCheck(bytes, it: Iterator) {
-  return bytes[it.offset] === NIL;
-}
-
-export function indexChangeCheck(bytes, it: Iterator) {
-  return bytes[it.offset] === INDEX_CHANGE;
+export function switchStructureCheck(bytes, it: Iterator) {
+  return (
+      // previous byte should be `SWITCH_TO_STRUCTURE`
+      bytes[it.offset - 1] === SWITCH_TO_STRUCTURE &&
+      // next byte should be a number
+      (bytes[it.offset] < 0x80 || (bytes[it.offset] >= 0xca && bytes[it.offset] <= 0xd3))
+  );
 }

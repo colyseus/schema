@@ -20,7 +20,11 @@ describe("schema-codegen", () => {
     });
 
     it("should generate 3 files", async () => {
-        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "*.ts"));
+        const inputFiles = [
+            path.resolve(INPUT_DIR, "BaseSchema.ts"),
+            path.resolve(INPUT_DIR, "Inheritance.ts"),
+            path.resolve(INPUT_DIR, "Inheritance2.ts"),
+        ];
 
         generate("csharp", {
             files: inputFiles,
@@ -28,7 +32,7 @@ describe("schema-codegen", () => {
         });
 
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
-        assert.equal(3, outputFiles.length);
+        assert.strictEqual(3, outputFiles.length);
     });
 
     it("should auto-import related schema files", async () => {
@@ -40,7 +44,7 @@ describe("schema-codegen", () => {
         });
 
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
-        assert.equal(2, outputFiles.length);
+        assert.strictEqual(2, outputFiles.length);
     });
 
     it("should support using 'type' along with `defineTypes`", async () => {
@@ -52,6 +56,18 @@ describe("schema-codegen", () => {
         });
 
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
-        assert.equal(1, outputFiles.length);
+        assert.strictEqual(1, outputFiles.length);
+    });
+
+    it("should support generating abstract classes with no fields", async () => {
+        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "AbstractSchema.ts"));
+
+        generate("csharp", {
+            files: inputFiles,
+            output: OUTPUT_DIR
+        });
+
+        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        assert.strictEqual(2, outputFiles.length);
     });
 });

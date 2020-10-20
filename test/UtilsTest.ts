@@ -3,7 +3,7 @@ import * as assert from "assert";
 import { State, Player } from "./Schema";
 import { MapSchema, dumpChanges, ArraySchema } from "../src";
 
-describe("Utils", () => {
+describe("Utils Test", () => {
 
     it("dumpChanges -> map", () => {
         const state = new State();
@@ -11,7 +11,10 @@ describe("Utils", () => {
         state.mapOfPlayers['one'] = new Player("One", 1, 1);
 
         let dump: any = dumpChanges(state);
-        assert.ok(dump.mapOfPlayers.one);
+        assert.strictEqual(
+            JSON.stringify(dump),
+            '{"mapOfPlayers":{"one":{"name":"One","x":1,"y":1}}}'
+        );
 
         // discard changes
         state.encode();
@@ -19,7 +22,10 @@ describe("Utils", () => {
         delete state.mapOfPlayers['one'];
         dump = dumpChanges(state);
 
-        assert.ok(dump.mapOfPlayers.one === undefined);
+        assert.strictEqual(
+            JSON.stringify(dump),
+            '{"mapOfPlayers":{}}'
+        );
     });
 
     it("dumpChanges -> array", () => {
@@ -29,8 +35,10 @@ describe("Utils", () => {
         state.arrayOfPlayers.push(new Player("Two", 2, 2));
 
         let dump: any = dumpChanges(state);
-        assert.ok(dump.arrayOfPlayers[0]);
-        assert.ok(dump.arrayOfPlayers[1]);
+        assert.strictEqual(
+            JSON.stringify(dump),
+            '{"arrayOfPlayers":[{"name":"One","x":1,"y":1},{"name":"Two","x":2,"y":2}]}',
+        );
 
         // discard changes
         state.encode();
@@ -38,7 +46,10 @@ describe("Utils", () => {
         state.arrayOfPlayers.splice(1);
         dump = dumpChanges(state);
 
-        assert.ok(dump.arrayOfPlayers[0] === undefined);
+        assert.strictEqual(
+            JSON.stringify(dump),
+            '{"arrayOfPlayers":[{"name":"One","x":1,"y":1}]}',
+        );
     });
 
 });

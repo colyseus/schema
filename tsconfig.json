@@ -2,12 +2,14 @@
     "compilerOptions": {
         "outDir": "lib",
         "module": "commonjs",
-        "lib": ["es6"],
+        "lib": ["ES2018"],
         "target": "es5",
         "declaration": true,
         "experimentalDecorators": true,
+        "downlevelIteration": true, /*only for tests*/
         "noImplicitAny": false,
-        "sourceMap": true
+        "inlineSourceMap": true,
+        "inlineSources": true
     },
     "include": [
       "src/**/*.ts"
