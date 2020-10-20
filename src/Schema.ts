@@ -481,9 +481,10 @@ export abstract class Schema {
         bytes: number[] = [],
         useFilters: boolean = false,
     ) {
+        const rootChangeTree = this.$changes;
         const refIdsVisited = new WeakSet<ChangeTree>();
 
-        const changeTrees: ChangeTree[] = [this.$changes];
+        const changeTrees: ChangeTree[] = [rootChangeTree];
         let numChangeTrees = 1;
 
         for (let i = 0; i < numChangeTrees; i++) {
@@ -499,7 +500,7 @@ export abstract class Schema {
 
             // root `refId` is skipped.
             if (
-                changeTree.refId > 0 &&
+                changeTree !== rootChangeTree &&
                 (changeTree.changed || encodeAll)
             ) {
                 encode.uint8(bytes, SWITCH_TO_STRUCTURE);

@@ -971,7 +971,21 @@ describe("Schema Usage", () => {
             assert.deepEqual(Array.from(decodedState2.players.keys()), ['one']);
             assert.strictEqual(decodedState2.n, 100);
         });
+
+        it("should decode a child structure alone (Schema encoded messages)", () => {
+            const state = new State();
+
+            state.mapOfPlayers = new MapSchema<Player>();
+            state.mapOfPlayers['jake'] = new Player("Jake");
+            state.mapOfPlayers['katarina'] = new Player("Jake");
+            state.encode();
+
+            const decodedPlayer = new Player();
+            decodedPlayer.decode(state.mapOfPlayers.get('jake').encodeAll());
+            assert.strictEqual("Jake", decodedPlayer.name);
+        });
     });
+
 
     describe("deep structures / re-assignents", () => {
         it("should allow re-assigning child schema type", () => {
