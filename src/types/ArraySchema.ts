@@ -159,9 +159,7 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
             (value['$changes'] as ChangeTree).setParent(this, this.$changes.root, index);
         }
 
-        const operation = (this.$changes.indexes[index] !== undefined)
-            ? OPERATION.REPLACE
-            : OPERATION.ADD;
+        const operation = this.$changes.indexes[index]?.op ?? OPERATION.ADD;
 
         this.$changes.indexes[index] = index;
 

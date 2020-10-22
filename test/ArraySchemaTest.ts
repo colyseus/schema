@@ -1225,6 +1225,92 @@ describe("ArraySchema Tests", () => {
         sinon.assert.callCount(onRemove, 6);
     });
 
+    describe("mixed operations along with shuffle", () => {
+        class CardType extends Schema {
+            @type("uint16") id: number;
+            @type("string") title: string;
+          }
+
+        class Card extends Schema {
+            @type("uint16") id: number;
+            @type([CardType]) types = new ArraySchema<CardType>();
+          }
+
+        class MyState extends Schema {
+            @type([Card]) cards = new ArraySchema<Card>();
+        }
+
+        function shuffle(temp: ArraySchema): void {
+            for (let i = temp.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [temp[i], temp[j]] = [temp[j], temp[i]];
+            }
+        }
+
+        it("should PUSH + shuffle", () => {
+            const state = new MyState();
+
+            state.cards.push(new Card().assign({ id: 1, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 2, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 3, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 4, types: new ArraySchema<CardType>() }));
+
+            const decodedState = new MyState();
+            decodedState.decode(state.encode());
+
+            state.cards.push(new Card().assign({ id: 5, types: new ArraySchema<CardType>() }));
+            shuffle(state.cards);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(
+                decodedState.cards.map(c => c.id).sort(),
+                [1, 2, 3, 4, 5]
+            );
+        });
+
+        it("should POP + shuffle", () => {
+            const state = new MyState();
+
+            state.cards.push(new Card().assign({ id: 1, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 2, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 3, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 4, types: new ArraySchema<CardType>() }));
+
+            const decodedState = new MyState();
+            decodedState.decode(state.encode());
+
+            state.cards.pop();
+            shuffle(state.cards);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(
+                decodedState.cards.map(c => c.id).sort(),
+                [1, 2, 3]
+            );
+        });
+
+        it("should SPLICE + shuffle", () => {
+            const state = new MyState();
+
+            state.cards.push(new Card().assign({ id: 1, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 2, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 3, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 4, types: new ArraySchema<CardType>() }));
+
+            const decodedState = new MyState();
+            decodedState.decode(state.encode());
+
+            state.cards.splice(2, 1);
+            shuffle(state.cards);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(
+                decodedState.cards.map(c => c.id).sort(),
+                [1, 2, 4]
+            );
+        });
+    });
+
     it("#clear()", () => {
         class Point extends Schema {
             @type("number") x: number;
