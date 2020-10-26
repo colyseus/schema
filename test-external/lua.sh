@@ -7,3 +7,4 @@ npm run generate-test-6 -- --lua --output ../colyseus-defold/test/schema/MapSche
 npm run generate-test-7 -- --lua --output ../colyseus-defold/test/schema/BackwardsForwards --namespace test.schema.BackwardsForwards
 npm run generate-test-8 -- --lua --output ../colyseus-defold/test/schema/FilteredTypes --namespace test.schema.FilteredTypes
 npm run generate-test-9 -- --lua --output ../colyseus-defold/test/schema/InstanceSharingTypes --namespace test.schema.InstanceSharingTypes
+npm run generate-test-10 -- --lua --output ../colyseus-defold/test/schema/Callbacks --namespace test.schema.Callbacks
