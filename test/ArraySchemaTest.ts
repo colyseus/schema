@@ -474,55 +474,6 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
     });
 
-    xit("should trigger onAdd / onRemove properly on splice", () => {
-        class Item extends Schema {
-            @type("string") name: string = "no_name";
-        }
-
-        class State extends Schema {
-            @type([Item]) items = new ArraySchema<Item>();
-        }
-
-
-        const state: State = new State();
-
-        const itemA = new Item(); itemA.name = 'A';
-        const itemB = new Item(); itemB.name = 'B';
-        const itemC = new Item(); itemC.name = 'C';
-        const itemD = new Item(); itemD.name = 'D';
-        const itemE = new Item(); itemE.name = 'E';
-
-        state.items.push(itemA);
-        state.items.push(itemB);
-        state.items.push(itemC);
-        state.items.push(itemD);
-        state.items.push(itemE);
-
-        const decodedState = new State();
-
-        decodedState.items.onAdd = function(item, i) {
-            console.log("ON ADD", { item: item.name, i });
-        }
-
-        let removedItem: Item;
-        decodedState.items.onRemove = function(item, i) {
-            removedItem = item;
-            console.log("ON REMOVE", { item: item.name, i });
-        }
-        const onRemoveSpy = sinon.spy(decodedState.items, 'onRemove');
-
-        decodedState.decode(state.encodeAll());
-
-        // state.items.shift();
-        state.items.splice(0, 1);
-
-        decodedState.decode(state.encode());
-
-        sinon.assert.calledOnce(onRemoveSpy);
-        assert.deepEqual(["B", "C", "D", "E"], decodedState.items.map(it => it.name))
-        assert.equal("A", removedItem.name);
-    });
-
     it("should trigger onAdd / onChange / onRemove", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema<Player>();
