@@ -891,10 +891,10 @@ export abstract class Schema {
         if (this.$changes.root.refs.size === 0) { return; }
 
         const allChanges = new Map<number, DataChange[]>();
-        this._triggerAllFillChanges(this, allChanges);
+        Schema.prototype._triggerAllFillChanges.call(this, this, allChanges);
 
         try {
-            this._triggerChanges(allChanges);
+            Schema.prototype._triggerChanges.call(this, allChanges);
 
         } catch (e) {
             Schema.onError(e);
@@ -977,7 +977,7 @@ export abstract class Schema {
                     });
 
                     if (value['$changes'] !== undefined) {
-                        this._triggerAllFillChanges(value, allChanges);
+                        Schema.prototype._triggerAllFillChanges.call(this, value, allChanges);
                     }
 
                 }
@@ -999,7 +999,7 @@ export abstract class Schema {
                 });
 
                 if (value['$changes'] !== undefined) {
-                    this._triggerAllFillChanges(value, allChanges);
+                    Schema.prototype._triggerAllFillChanges.call(this, value, allChanges);
                 }
             }
         }

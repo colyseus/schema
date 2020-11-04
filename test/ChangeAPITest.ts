@@ -860,6 +860,7 @@ describe("Change API", () => {
         class State extends Schema {
             @type({ map: Player }) mapOfPlayers: MapSchema<Player>;
             @type({ map: "string" }) mapOfStrings: MapSchema<string>;
+            @type({ array: "string" }) arrayOfStrings: ArraySchema<string>;
         }
 
         it("should trigger onChange on Schema instance", () => {
@@ -937,12 +938,30 @@ describe("Change API", () => {
                     assert.strictEqual(3, changes.length);
                 }
             }
-            decodedState.triggerAll();
+            decodedState.mapOfPlayers.triggerAll();
 
             assert.strictEqual(2, onAddCalled, "onAdd should've been called twice.");
             assert.strictEqual(2, onChangeCalled, "onChange should've been called twice.");
         });
-    })
+
+        it("ArraySchema should implement .triggerAll()", () => {
+            const state = new State();
+            state.arrayOfStrings = new ArraySchema<string>();
+            state.arrayOfStrings.push("one");
+            state.arrayOfStrings.push("two");
+
+            const decodedState = new State();
+            decodedState.arrayOfStrings = new ArraySchema<string>();
+            decodedState.decode(state.encode());
+
+            let onArrayAddCalled = 0;
+
+            decodedState.arrayOfStrings.onAdd = function(str, key) { onArrayAddCalled++; }
+            decodedState.arrayOfStrings.triggerAll();
+
+            assert.strictEqual(2, onArrayAddCalled, "onAdd should've been called twice.");
+        });
+    });
 
     describe("encodeAll", () => {
         it("shouldn't trigger onRemove for previously removed items", () => {
