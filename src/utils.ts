@@ -1,6 +1,4 @@
 import { Schema } from "./";
-import { OPERATION } from "./spec";
-import { MapSchema } from "./types/MapSchema";
 import { ChangeTree } from "./changes/ChangeTree";
 
 export function dumpChanges(schema: Schema) {
@@ -13,18 +11,13 @@ export function dumpChanges(schema: Schema) {
     for (let i = 0; i < numChangeTrees; i++) {
         const changeTree = changeTrees[i];
 
-        // TODO: this method doesn't work as expected.
-
         changeTree.changes.forEach((change) => {
             const ref = changeTree.ref;
             const fieldIndex = change.index;
 
-            const field = (ref instanceof Schema)
+            const field = ((ref as Schema)['_definition'])
                 ? ref['_definition'].fieldsByIndex[fieldIndex]
-                : (ref instanceof MapSchema)
-                    ? ref['$indexes'].get(fieldIndex)
-                    : ref['$indexes'][fieldIndex]
-
+                : ref['$indexes'].get(fieldIndex);
 
             currentStructure[field] = changeTree.getValue(fieldIndex);
         });

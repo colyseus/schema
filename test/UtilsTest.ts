@@ -5,51 +5,63 @@ import { MapSchema, dumpChanges, ArraySchema } from "../src";
 
 describe("Utils Test", () => {
 
-    it("dumpChanges -> map", () => {
-        const state = new State();
-        state.mapOfPlayers = new MapSchema<Player>();
-        state.mapOfPlayers['one'] = new Player("One", 1, 1);
+    describe("dumpChanges", () => {
+        // it("Should not throw", () => {
+        //     const state = new State();
+        // });
 
-        let dump: any = dumpChanges(state);
-        assert.strictEqual(
-            JSON.stringify(dump),
-            '{"mapOfPlayers":{"one":{"name":"One","x":1,"y":1}}}'
-        );
+        it("MapSchema", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>();
 
-        // discard changes
-        state.encode();
+            assert.doesNotThrow(() => dumpChanges(state));
 
-        delete state.mapOfPlayers['one'];
-        dump = dumpChanges(state);
+            state.mapOfPlayers['one'] = new Player("One", 1, 1);
 
-        assert.strictEqual(
-            JSON.stringify(dump),
-            '{"mapOfPlayers":{}}'
-        );
-    });
+            let dump: any = dumpChanges(state);
+            assert.strictEqual(
+                JSON.stringify(dump),
+                '{"mapOfPlayers":{"one":{"name":"One","x":1,"y":1}}}'
+            );
 
-    it("dumpChanges -> array", () => {
-        const state = new State();
-        state.arrayOfPlayers = new ArraySchema<Player>();
-        state.arrayOfPlayers.push(new Player("One", 1, 1));
-        state.arrayOfPlayers.push(new Player("Two", 2, 2));
+            // discard changes
+            state.encode();
 
-        let dump: any = dumpChanges(state);
-        assert.strictEqual(
-            JSON.stringify(dump),
-            '{"arrayOfPlayers":[{"name":"One","x":1,"y":1},{"name":"Two","x":2,"y":2}]}',
-        );
+            delete state.mapOfPlayers['one'];
+            dump = dumpChanges(state);
 
-        // discard changes
-        state.encode();
+            assert.strictEqual(
+                JSON.stringify(dump),
+                '{"mapOfPlayers":{}}'
+            );
+        });
 
-        state.arrayOfPlayers.splice(1);
-        dump = dumpChanges(state);
+        it("ArraySchema", () => {
+            const state = new State();
+            state.arrayOfPlayers = new ArraySchema<Player>();
+            state.arrayOfPlayers.push(new Player("One", 1, 1));
+            state.arrayOfPlayers.push(new Player("Two", 2, 2));
 
-        assert.strictEqual(
-            JSON.stringify(dump),
-            '{"arrayOfPlayers":[{"name":"One","x":1,"y":1}]}',
-        );
+            assert.doesNotThrow(() => dumpChanges(state));
+
+            let dump: any = dumpChanges(state);
+            assert.strictEqual(
+                JSON.stringify(dump),
+                '{"arrayOfPlayers":[{"name":"One","x":1,"y":1},{"name":"Two","x":2,"y":2}]}',
+            );
+
+            // discard changes
+            state.encode();
+
+            state.arrayOfPlayers.splice(1);
+            dump = dumpChanges(state);
+
+            assert.strictEqual(
+                JSON.stringify(dump),
+                '{"arrayOfPlayers":[{"name":"One","x":1,"y":1}]}',
+            );
+        });
+
     });
 
 });
