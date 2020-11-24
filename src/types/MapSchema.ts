@@ -1,7 +1,6 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
-import { registerType } from ".";
 
 type K = string; // TODO: allow to specify K generic on MapSchema.
 
@@ -251,8 +250,3 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         Schema.prototype.triggerAll.apply(this);
     }
 }
-
-registerType("map", {
-    constructor: MapSchema,
-    getProxy: getMapProxy,
-});

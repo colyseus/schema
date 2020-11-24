@@ -1,7 +1,6 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
-import { registerType } from ".";
 
 //
 // Notes:
@@ -603,8 +602,3 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
         Schema.prototype.triggerAll.apply(this);
     }
 }
-
-registerType("array", {
-    constructor: ArraySchema,
-    getProxy: getArrayProxy,
-});

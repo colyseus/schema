@@ -1,7 +1,6 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
-import { registerType } from ".";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
@@ -187,7 +186,3 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
         Schema.prototype.triggerAll.apply(this);
     }
 }
-
-registerType("collection", {
-    constructor: CollectionSchema,
-});

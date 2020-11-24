@@ -1,9 +1,24 @@
 export { Schema, DataChange } from "./Schema";
 
-export { MapSchema } from "./types/MapSchema";
-export { ArraySchema } from "./types/ArraySchema";
-export { CollectionSchema } from "./types/CollectionSchema";
-export { SetSchema } from "./types/SetSchema";
+import { MapSchema, getMapProxy } from "./types/MapSchema"
+export { MapSchema };
+
+import { ArraySchema, getArrayProxy } from "./types/ArraySchema";
+export { ArraySchema };
+
+import { CollectionSchema } from "./types/CollectionSchema";
+export { CollectionSchema };
+
+import { SetSchema } from "./types/SetSchema";
+export { SetSchema };
+
+import { registerType } from "./types";
+export { registerType };
+
+registerType("map", { constructor: MapSchema, getProxy: getMapProxy });
+registerType("array", { constructor: ArraySchema, getProxy: getArrayProxy });
+registerType("set", { constructor: SetSchema });
+registerType("collection", { constructor: CollectionSchema, });
 
 // Utils
 export { dumpChanges } from "./utils";
