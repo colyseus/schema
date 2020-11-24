@@ -45,7 +45,7 @@ function generateClass(klass: Class, namespace: string) {
 
 using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
-${indent}public class ${klass.name} : ${klass.extends} {
+${indent}public partial class ${klass.name} : ${klass.extends} {
 ${klass.properties.map(prop => generateProperty(prop, indent)).join("\n\n")}
 ${indent}}
 ${namespace ? "}" : ""}
