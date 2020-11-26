@@ -4,8 +4,8 @@ import { Client, PrimitiveType, Context, SchemaDefinition, DefinitionType } from
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
 
-import { ArraySchema, getArrayProxy } from "./types/ArraySchema";
-import { MapSchema, getMapProxy } from "./types/MapSchema";
+import { ArraySchema } from "./types/ArraySchema";
+import { MapSchema } from "./types/MapSchema";
 import { CollectionSchema } from './types/CollectionSchema';
 import { SetSchema } from './types/SetSchema';
 
