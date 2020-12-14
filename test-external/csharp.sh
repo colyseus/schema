@@ -8,3 +8,4 @@ npm run generate-test-7 -- --csharp --output ../colyseus-unity3d/Assets/Editor/C
 npm run generate-test-8 -- --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/FilteredTypes
 npm run generate-test-9 -- --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/InstanceSharingTypes
 npm run generate-test-10 -- --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/Callbacks
+npm run generate-test-11 -- --csharp --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/MapSchemaMoveNullifyType

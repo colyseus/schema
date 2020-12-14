@@ -354,7 +354,7 @@ export abstract class Schema {
                 const refId = decode.number(bytes, it);
 
                 const valueRef: SchemaDecoderCallbacks = ($root.refs.has(refId))
-                    ? previousValue
+                    ? previousValue || $root.refs.get(refId)
                     : new typeDef.constructor();
 
                 value = valueRef.clone(true);

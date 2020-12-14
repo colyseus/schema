@@ -1135,4 +1135,71 @@ describe("Schema Usage", () => {
             assert.deepEqual(json, newState.toJSON());
         });
     });
+
+    describe("move and nullify previous", () => {
+        it("using MapSchema", () => {
+            class State extends Schema {
+                @type({ map: "number" }) previous: MapSchema<number>;
+                @type({ map: "number" }) current: MapSchema<number>;
+            }
+
+            const state = new State();
+            const decodedState = new State();
+
+            state.current = new MapSchema<number>();
+            state.current.set("0", 0);
+
+            decodedState.decode(state.encode());
+
+            state.previous = state.current;
+            state.current = null;
+
+            assert.doesNotThrow(() =>
+                decodedState.decode(state.encode()));
+        });
+
+        it("using ArraySchema", () => {
+            class State extends Schema {
+                @type(["number"]) previous: ArraySchema<number>;
+                @type(["number"]) current: ArraySchema<number>;
+            }
+
+            const state = new State();
+            const decodedState = new State();
+
+            state.current = new ArraySchema<number>();
+            state.current[0] = 0;
+
+            decodedState.decode(state.encode());
+
+            state.previous = state.current;
+            state.current = null;
+
+            assert.doesNotThrow(() =>
+                decodedState.decode(state.encode()));
+        });
+
+        it("using Schema reference", () => {
+            class Player extends Schema {
+                @type("string") str: string;
+            }
+            class State extends Schema {
+                @type(Player) previous: Player;
+                @type(Player) current: Player;
+            }
+
+            const state = new State();
+            const decodedState = new State();
+
+            state.current = new Player().assign({ str: "hey" });
+            decodedState.decode(state.encode());
+
+            state.previous = state.current;
+            state.current = null;
+
+            assert.doesNotThrow(() =>
+                decodedState.decode(state.encode()));
+        });
+    });
+
 });
