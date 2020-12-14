@@ -169,7 +169,7 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
 
         } else {
             // server-side
-            const cloned = new CollectionSchema();
+            cloned = new CollectionSchema();
             this.forEach((value) => {
                 if (value['$changes']) {
                     cloned.add(value['clone']());

@@ -1086,6 +1086,8 @@ describe("Schema Usage", () => {
             assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.another.position.x, 200);
             assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.another.position.y, 300);
             assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.another.position.z, 400);
+
+            assert.deepStrictEqual(state.toJSON(), state.clone().toJSON());
         });
     });
 

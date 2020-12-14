@@ -233,7 +233,7 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
 
         } else {
             // server-side
-            const cloned = new MapSchema();
+            cloned = new MapSchema();
             this.forEach((value, key) => {
                 if (value['$changes']) {
                     cloned.set(key, value['clone']());

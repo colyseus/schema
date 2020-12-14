@@ -181,7 +181,7 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
 
         } else {
             // server-side
-            const cloned = new SetSchema();
+            cloned = new SetSchema();
             this.forEach((value) => {
                 if (value['$changes']) {
                     cloned.add(value['clone']());
