@@ -48,7 +48,7 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
         return index;
     }
 
-    at(index: number) {
+    at(index: number): V | undefined {
         const key = Array.from(this.$items.keys())[index];
         return this.$items.get(key);
     }

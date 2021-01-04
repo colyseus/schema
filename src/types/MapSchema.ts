@@ -125,7 +125,7 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         return this;
     }
 
-    get(key: K) {
+    get(key: K): V | undefined {
         return this.$items.get(key);
     }
 
