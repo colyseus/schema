@@ -64,14 +64,14 @@ function generateProperty(prop: Property, indent: string = "") {
         if(prop.type === "ref") {
             langType = (isUpcaseFirst)
                 ? prop.childType
-                : typeMaps[prop.childType];
+                : getChildType(prop);
 
         } else {
             const containerClass = capitalize(prop.type);
 
             langType = (isUpcaseFirst)
                 ? `${containerClass}Schema<${prop.childType}>`
-                : `${containerClass}Schema<${typeMaps[prop.childType]}>`;
+                : `${containerClass}Schema<${getChildType(prop)}>`;
         }
 
         typeArgs += `, typeof(${langType})`;
@@ -83,7 +83,7 @@ function generateProperty(prop: Property, indent: string = "") {
         initializer = `new ${langType}()`;
 
     } else {
-        langType = typeMaps[prop.type];
+        langType = getType(prop);
         initializer = `default(${langType})`;
     }
 
@@ -102,8 +102,18 @@ function generateInterface(struct: Interface, namespace: string) {
 using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
 ${indent}public class ${struct.name} {
-${struct.properties.map(prop => `\t${indent}public ${typeMaps[prop.type]} ${prop.name};`).join("\n")}
+${struct.properties.map(prop => `\t${indent}public ${getType(prop)} ${prop.name};`).join("\n")}
 ${indent}}
 ${namespace ? "}" : ""}
 `;
+}
+
+function getChildType(prop: Property) {
+    return typeMaps[prop.childType];
+}
+
+function getType(prop: Property) {
+    return (prop.type === "array")
+        ? `${typeMaps[prop.childType]}[]`
+        : typeMaps[prop.type];
 }
