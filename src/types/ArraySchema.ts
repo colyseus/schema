@@ -86,7 +86,7 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
 
     protected $refId: number = 0;
 
-    [n: number]: V | undefined;
+    [n: number]: V;
 
     //
     // Decoding callbacks
