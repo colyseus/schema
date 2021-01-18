@@ -104,6 +104,7 @@ function generateProperty(prop: Property) {
         typeArgs = `"${prop.type}"`;
     }
 
+    // TS1263: "Declarations with initializers cannot also have definite assignment assertions"
     const definiteAssertion = initializer ? "" : "!";
 
     return `@type(${typeArgs}) public ${prop.name}${definiteAssertion}: ${langType}${(initializer) ? ` = ${initializer}` : ""};`
