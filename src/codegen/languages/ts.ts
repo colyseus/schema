@@ -104,7 +104,9 @@ function generateProperty(prop: Property) {
         typeArgs = `"${prop.type}"`;
     }
 
-    return `@type(${typeArgs}) public ${prop.name}!: ${langType}${(initializer) ? ` = ${initializer}` : ""};`
+    const definiteAssertion = initializer ? "" : "!";
+
+    return `@type(${typeArgs}) public ${prop.name}${definiteAssertion}: ${langType}${(initializer) ? ` = ${initializer}` : ""};`
 }
 
 
