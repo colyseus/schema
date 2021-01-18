@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Binary state serializer with delta encoding for games",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
