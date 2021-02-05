@@ -45,13 +45,13 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
 
     return `${getCommentHeader()}
 
-import { Schema, type, ArraySchema, MapSchema, DataChange } from "@colyseus/schema";
+import { Schema, type, ArraySchema, MapSchema, DataChange } from '@colyseus/schema';
 ${allRefs.
     filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
     map(ref => ref.childType).
     concat(getInheritanceTree(klass, allClasses, false).map(klass => klass.name)).
     filter(distinct).
-    map(childType => `import { ${childType} } from "./${childType}"`).
+    map(childType => `import { ${childType} } from './${childType}'`).
     join("\n")}
 
 export class ${klass.name} extends ${klass.extends} {
