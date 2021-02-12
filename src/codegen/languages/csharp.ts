@@ -114,6 +114,6 @@ function getChildType(prop: Property) {
 
 function getType(prop: Property) {
     return (prop.type === "array")
-        ? `${typeMaps[prop.childType]}[]`
+        ? `${typeMaps[prop.childType] || prop.childType}[]`
         : typeMaps[prop.type];
 }
