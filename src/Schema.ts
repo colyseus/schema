@@ -3,6 +3,7 @@ import { Client, PrimitiveType, Context, SchemaDefinition, DefinitionType } from
 
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
+import type { Iterator } from "./encoding/decode"; // dts-bundle-generator
 
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
@@ -29,7 +30,7 @@ export interface SchemaDecoderCallbacks {
     onChange?: (item: any, key: any) => void;
     clone(decoding?: boolean): SchemaDecoderCallbacks;
     clear(decoding?: boolean);
-    decode?(byte, it: decode.Iterator);
+    decode?(byte, it: Iterator);
 }
 
 class EncodeSchemaError extends Error {}
@@ -104,7 +105,7 @@ function encodePrimitiveType(
     }
 }
 
-function decodePrimitiveType (type: string, bytes: number[], it: decode.Iterator) {
+function decodePrimitiveType (type: string, bytes: number[], it: Iterator) {
     return decode[type as string](bytes, it);
 }
 
@@ -188,7 +189,7 @@ export abstract class Schema {
 
     decode(
         bytes: number[],
-        it: decode.Iterator = { offset: 0 },
+        it: Iterator = { offset: 0 },
         ref: Ref = this,
         allChanges: Map<number, DataChange[]> = new Map<number, DataChange[]>(),
     ) {
@@ -296,7 +297,7 @@ export abstract class Schema {
                 // keep skipping next bytes until reaches a known structure
                 // by local decoder.
                 //
-                const nextIterator: decode.Iterator = { offset: it.offset };
+                const nextIterator: Iterator = { offset: it.offset };
                 while (it.offset < totalBytes) {
                     if (decode.switchStructureCheck(bytes, it)) {
                         nextIterator.offset = it.offset + 1;
@@ -935,7 +936,7 @@ export abstract class Schema {
         }
     }
 
-    private getSchemaType(bytes: number[], it: decode.Iterator, defaultType: typeof Schema): typeof Schema {
+    private getSchemaType(bytes: number[], it: Iterator, defaultType: typeof Schema): typeof Schema {
         let type: typeof Schema;
 
         if (bytes[it.offset] === TYPE_ID) {

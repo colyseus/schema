@@ -1,15 +1,12 @@
 {
     "compilerOptions": {
-        "outDir": "lib",
-        "module": "commonjs",
         "lib": ["ES2018"],
-        "target": "es5",
         "declaration": true,
         "experimentalDecorators": true,
         "downlevelIteration": true, /*only for tests*/
         "noImplicitAny": false,
-        "inlineSourceMap": true,
-        "inlineSources": true
+        "inlineSources": true,
+        "sourceMap": true
     },
     "include": [
       "src/**/*.ts"

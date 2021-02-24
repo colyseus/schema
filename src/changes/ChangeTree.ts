@@ -1,6 +1,6 @@
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
-import { SchemaDefinition } from "../annotations";
+import { SchemaDefinition, FilterChildrenCallback } from "../annotations";
 
 import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";
@@ -262,7 +262,7 @@ export class ChangeTree {
         }
     }
 
-    getChildrenFilter() {
+    getChildrenFilter(): FilterChildrenCallback {
         const childFilters = (this.parent as Schema)['_definition'].childFilters;
         return childFilters && childFilters[this.parentIndex];
     }
