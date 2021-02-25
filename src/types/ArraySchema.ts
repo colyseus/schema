@@ -35,7 +35,7 @@ export function getArrayProxy(value: ArraySchema) {
                 typeof (prop) !== "symbol" &&
                 !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
             ) {
-                return obj.at(prop as number);
+                return obj.at(prop as unknown as number);
 
             } else {
                 return obj[prop];
