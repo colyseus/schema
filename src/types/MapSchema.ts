@@ -2,8 +2,6 @@ import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
 
-type K = string; // TODO: allow to specify K generic on MapSchema.
-
 export function getMapProxy(value: MapSchema) {
     value['$proxy'] = true;
 
@@ -80,10 +78,10 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
     }
 
     /** Iterator */
-    [Symbol.iterator](): IterableIterator<[K, V]> { return this.$items[Symbol.iterator](); }
+    [Symbol.iterator](): IterableIterator<[string, V]> { return this.$items[Symbol.iterator](); }
     get [Symbol.toStringTag]() { return this.$items[Symbol.toStringTag] }
 
-    set(key: K, value: V) {
+    set(key: string, value: V) {
         // get "index" for this value.
         const hasIndex = typeof(this.$changes.indexes[key]) !== "undefined";
         const index = (hasIndex)
@@ -125,11 +123,11 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         return this;
     }
 
-    get(key: K): V | undefined {
+    get(key: string): V | undefined {
         return this.$items.get(key);
     }
 
-    delete(key: K) {
+    delete(key: string) {
         //
         // TODO: add a "purge" method after .encode() runs, to cleanup removed `$indexes`
         //
@@ -167,11 +165,11 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         this.$changes.touchParents();
     }
 
-    has (key: K) {
+    has (key: string) {
         return this.$items.has(key);
     }
 
-    forEach(callbackfn: (value: V, key: K, map: Map<K, V>) => void) {
+    forEach(callbackfn: (value: V, key: string, map: Map<string, V>) => void) {
         this.$items.forEach(callbackfn);
     }
 

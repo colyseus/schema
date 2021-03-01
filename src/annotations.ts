@@ -1,5 +1,5 @@
 import { ChangeTree } from './changes/ChangeTree';
-import type { Schema } from './Schema';
+import { Schema } from './Schema';
 import { ArraySchema, getArrayProxy } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
 import { getType } from './types';
