@@ -23,8 +23,11 @@ registerType("collection", { constructor: CollectionSchema, });
 // Utils
 export { dumpChanges } from "./utils";
 
-// Decoder
+// Encoder / Decoder
 export { Iterator } from "./encoding/decode";
+import * as encode from "./encoding/encode";
+import * as decode from "./encoding/decode";
+export { encode, decode };
 
 // Reflection
 export {

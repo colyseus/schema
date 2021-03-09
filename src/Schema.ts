@@ -1,5 +1,5 @@
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { Client, PrimitiveType, Context, SchemaDefinition, DefinitionType } from "./annotations";
+import { ClientWithSessionId, PrimitiveType, Context, SchemaDefinition, DefinitionType } from "./annotations";
 
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
@@ -12,7 +12,7 @@ import { SetSchema } from './types/SetSchema';
 
 import { ChangeTree, Root, Ref, ChangeOperation } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
-import { EventEmitter } from './events/EventEmitter';
+import { EventEmitter_ } from './events/EventEmitter';
 import { ClientState } from './filters';
 import { getType } from './types';
 
@@ -132,7 +132,8 @@ export abstract class Schema {
     protected $changes: ChangeTree;
     // protected $root: ChangeSet;
 
-    protected $listeners: { [field: string]: EventEmitter<(a: any, b: any) => void> };
+    // TODO: refactor. this feature needs to be ported to other languages with potentially different API
+    protected $listeners: { [field: string]: EventEmitter_<(a: any, b: any) => void> };
 
     public onChange?(changes: DataChange[]);
     public onRemove?();
@@ -178,7 +179,7 @@ export abstract class Schema {
 
     public listen <K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
         if (!this.$listeners[attr as string]) {
-            this.$listeners[attr as string] = new EventEmitter();
+            this.$listeners[attr as string] = new EventEmitter_();
         }
         this.$listeners[attr as string].register(callback);
 
@@ -651,7 +652,7 @@ export abstract class Schema {
         return this.encode(true, [], useFilters);
     }
 
-    applyFilters(client: Client, encodeAll: boolean = false) {
+    applyFilters(client: ClientWithSessionId, encodeAll: boolean = false) {
         const root = this;
         const refIdsDissallowed = new Set<number>();
 

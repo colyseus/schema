@@ -1,16 +1,18 @@
 {
   "name": "@colyseus/schema",
-  "version": "1.0.12",
+  "version": "1.1.0-alpha.3",
   "description": "Binary state serializer with delta encoding for games",
-  "types": "lib/index.d.ts",
-  "main": "build/cjs/index.js",
-  "module": "build/esm/index.mjs",
   "bin": {
     "schema-codegen": "./bin/schema-codegen"
   },
   "scripts": {
+    "build": "tsc && rollup -c rollup.config.js",
+
+    "watch": "tsc -w",
+
     "test": "mocha --require ts-node/register test/*Test.ts test/**/*Test.ts",
     "coverage": "nyc mocha --require ts-node/register --require source-map-support/register --recursive test/**Test.ts",
+
     "generate-test-1": "bin/schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/PrimitiveTypes",
     "generate-test-2": "bin/schema-codegen test-external/ChildSchemaTypes.ts --namespace SchemaTest.ChildSchemaTypes --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/ChildSchemaTypes",
     "generate-test-3": "bin/schema-codegen test-external/ArraySchemaTypes.ts --namespace SchemaTest.ArraySchemaTypes --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/ArraySchemaTypes",
@@ -22,13 +24,25 @@
     "generate-test-9": "bin/schema-codegen test-external/InstanceSharingTypes.ts --namespace SchemaTest.InstanceSharing --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/InstanceSharingTypes",
     "generate-test-10": "bin/schema-codegen test-external/Callbacks.ts --namespace SchemaTest.Callbacks --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/Callbacks",
     "generate-test-11": "bin/schema-codegen test-external/MapSchemaMoveNullifyType.ts --namespace SchemaTest.MapSchemaMoveNullifyType --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/MapSchemaMoveNullifyType",
-    "watch": "tsc -w",
+
     "prepublishOnly": "tsc"
   },
   "files": [
+    "lib",
     "build",
     "bin"
   ],
+  "types": "lib/index.d.ts",
+  "main": "build/cjs/index.js",
+  "module": "build/esm/index.mjs",
+  "browser": "./build/umd/index.js",
+  "exports": {
+    ".": {
+      "browser": "./build/umd/index.js",
+      "import": "./build/esm/index.mjs",
+      "require": "./build/cjs/index.js"
+    }
+  },
   "repository": {
     "url": "git://github.com/colyseus/schema.git",
     "type": "git"

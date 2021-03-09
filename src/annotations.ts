@@ -36,8 +36,8 @@ export type FilterCallback<
     V = any,
     R extends Schema = any
 > = (
-    ((this: T, client: Client, value: V) => boolean) |
-    ((this: T, client: Client, value: V, root: R) => boolean)
+    ((this: T, client: ClientWithSessionId, value: V) => boolean) |
+    ((this: T, client: ClientWithSessionId, value: V, root: R) => boolean)
 );
 
 export type FilterChildrenCallback<
@@ -46,8 +46,8 @@ export type FilterChildrenCallback<
     V = any,
     R extends Schema = any
 > = (
-    ((this: T, client: Client, key: K, value: V) => boolean) |
-    ((this: T, client: Client, key: K, value: V, root: R) => boolean)
+    ((this: T, client: ClientWithSessionId, key: K, value: V) => boolean) |
+    ((this: T, client: ClientWithSessionId, key: K, value: V, root: R) => boolean)
 )
 
 export class SchemaDefinition {
@@ -128,9 +128,7 @@ export function hasFilter(klass: typeof Schema) {
 }
 
 // Colyseus integration
-export type Client = {
-    sessionId: string,
-} & any;
+export type ClientWithSessionId = { sessionId: string } & any;
 
 export class Context {
     types: {[id: number]: typeof Schema} = {};

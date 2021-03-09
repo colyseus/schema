@@ -2,12 +2,9 @@
  * Extracted from https://www.npmjs.com/package/strong-events
  */
 
-type FunctionParameters<T extends (...args: any[]) => any> =
-  T extends (...args: infer P) => any
-    ? P
-    : never;
+type ExtractFunctionParameters<T extends (...args: any[]) => any> = T extends (...args: infer P) => any ? P : never;
 
-export class EventEmitter<CallbackSignature extends (...args: any[]) => any> {
+export class EventEmitter_<CallbackSignature extends (...args: any[]) => any> {
   handlers: Array<CallbackSignature> = [];
 
   register(cb: CallbackSignature, once: boolean = false) {
@@ -15,11 +12,11 @@ export class EventEmitter<CallbackSignature extends (...args: any[]) => any> {
     return this;
   }
 
-  invoke(...args: FunctionParameters<CallbackSignature>) {
+  invoke(...args: ExtractFunctionParameters<CallbackSignature>) {
     this.handlers.forEach((handler) => handler(...args));
   }
 
-  invokeAsync(...args: FunctionParameters<CallbackSignature>) {
+  invokeAsync(...args: ExtractFunctionParameters<CallbackSignature>) {
     return Promise.all(this.handlers.map((handler) => handler(...args)));
   }
 
