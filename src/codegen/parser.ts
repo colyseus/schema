@@ -207,7 +207,11 @@ export function parseFiles(
 
         const fileNameAlternatives = [];
 
-        if (!fileName.endsWith(".ts") && !fileName.endsWith(".js")) {
+        if (
+            !fileName.endsWith(".ts") &&
+            !fileName.endsWith(".js") &&
+            !fileName.endsWith(".mjs")
+        ) {
             fileNameAlternatives.push(`${fileName}.ts`);
             fileNameAlternatives.push(`${fileName}/index.ts`);
 
