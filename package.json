@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Binary state serializer with delta encoding for games",
   "bin": {
     "schema-codegen": "./bin/schema-codegen"
@@ -25,7 +25,7 @@
     "generate-test-10": "bin/schema-codegen test-external/Callbacks.ts --namespace SchemaTest.Callbacks --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/Callbacks",
     "generate-test-11": "bin/schema-codegen test-external/MapSchemaMoveNullifyType.ts --namespace SchemaTest.MapSchemaMoveNullifyType --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/MapSchemaMoveNullifyType",
 
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "npm run build"
   },
   "files": [
     "lib",
