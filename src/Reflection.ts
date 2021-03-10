@@ -2,7 +2,7 @@ import { type, PrimitiveType, Context, DefinitionType } from "./annotations";
 import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { getType } from "./types";
-import * as decode from "./encoding/decode";
+import { Iterator } from "./encoding/decode";
 
 const reflectionContext = new Context();
 
@@ -95,7 +95,7 @@ export class Reflection extends Schema {
         return reflection.encodeAll();
     }
 
-    static decode<T extends Schema = Schema>(bytes: number[], it?: decode.Iterator): T {
+    static decode<T extends Schema = Schema>(bytes: number[], it?: Iterator): T {
         const context = new Context();
 
         const reflection = new Reflection();

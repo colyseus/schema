@@ -1,17 +1,9 @@
 {
-    "compilerOptions": {
-        "outDir": "lib",
-        "module": "commonjs",
-        "lib": ["ES2018"],
-        "target": "es5",
-        "declaration": true,
-        "experimentalDecorators": true,
-        "downlevelIteration": true, /*only for tests*/
-        "noImplicitAny": false,
-        "inlineSourceMap": true,
-        "inlineSources": true
-    },
-    "include": [
-      "src/**/*.ts"
-    ]
+  "extends": "./tsconfig/tsconfig.all.json",
+  "compilerOptions": {
+    "target": "es5",
+    "outDir": "lib",
+    "declaration": true,
+    "downlevelIteration": true, /*only for tests*/
+  }
 }

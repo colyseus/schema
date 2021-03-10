@@ -2,8 +2,6 @@ import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
 
-type K = number; // TODO: allow to specify K generic on MapSchema.
-
 export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
 
@@ -59,7 +57,7 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     delete(item: V) {
         const entries = this.$items.entries();
 
-        let index: K;
+        let index: number;
         let entry: IteratorResult<[number, V]>;
         while (entry = entries.next()) {
             if (entry.done) { break; }
@@ -121,7 +119,7 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         return has;
     }
 
-    forEach(callbackfn: (value: V, key: K, collection: SetSchema<V>) => void) {
+    forEach(callbackfn: (value: V, key: number, collection: SetSchema<V>) => void) {
         this.$items.forEach((value, key, _) => callbackfn(value, key, this));
     }
 

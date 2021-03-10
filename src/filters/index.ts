@@ -1,5 +1,5 @@
 import { ChangeTree } from "../changes/ChangeTree";
-import { Client } from "../annotations";
+import { ClientWithSessionId } from "../annotations";
 
 export class ClientState {
     refIds = new WeakSet<ChangeTree>();
@@ -13,7 +13,7 @@ export class ClientState {
         }
     }
 
-    static get(client: Client) {
+    static get(client: ClientWithSessionId) {
         if (client.$filterState === undefined) {
             client.$filterState = new ClientState();
         }

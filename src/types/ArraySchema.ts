@@ -10,8 +10,6 @@ import { SchemaDecoderCallbacks, Schema } from "../Schema";
 // - ES2019 introduces `flatMap` / `flat`, which is not currently relevant, and caused other issues.
 //
 
-type K = number; // TODO: allow to specify K generic on MapSchema.
-
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
     const B = b.toString();
@@ -100,7 +98,7 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     }
 
     constructor (...items: V[]) {
-        this.push(...items);
+        this.push.apply(this, items);
     }
 
     set length (value: number) {
