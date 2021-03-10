@@ -7,7 +7,6 @@
   },
   "scripts": {
     "build": "tsc && rollup -c rollup.config.js",
-
     "watch": "tsc -w",
 
     "test": "mocha --require ts-node/register test/*Test.ts test/**/*Test.ts",
