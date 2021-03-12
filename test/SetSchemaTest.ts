@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { Schema, type, filter, filterChildren, SetSchema } from "../src";
-import { Client } from "../src/annotations";
+import { ClientWithSessionId } from "../src/annotations";
 
 describe("SetSchema Tests", () => {
 
@@ -140,7 +140,7 @@ describe("SetSchema Tests", () => {
         }
 
         class State extends Schema {
-            @filter(function(client: Client, value, root) {
+            @filter(function(client: ClientWithSessionId, value, root) {
                 return client.sessionId === "one";
             })
             @type({ set: Player })
@@ -172,7 +172,7 @@ describe("SetSchema Tests", () => {
         }
 
         class State extends Schema {
-            @filterChildren(function (client: Client, key: number, value: Player) {
+            @filterChildren(function (client: ClientWithSessionId, key: number, value: Player) {
                 if (client.sessionId === "one") {
                     return key % 2 === 0;
                 } else {
@@ -210,7 +210,7 @@ describe("SetSchema Tests", () => {
 
     it("@filterChildren() should filter out primitive values", () => {
         class State extends Schema {
-            @filterChildren(function (client: Client, key: number, value: number) {
+            @filterChildren(function (client: ClientWithSessionId, key: number, value: number) {
                 if (client.sessionId === "one") {
                     return value % 2 === 0;
                 } else {

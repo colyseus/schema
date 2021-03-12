@@ -95,7 +95,7 @@ describe("Definition Tests", () => {
 
         it("should be able to navigate on more complex recursive array structures", () => {
             const context = new Context();
-            const type = Context.create(context);
+            const type = Context.create({ context });
 
             class ContainerA extends Schema {
                 @type("string") contAName: string;
@@ -111,7 +111,7 @@ describe("Definition Tests", () => {
                 defineTypes(cont, {
                     containersA: [ContainerA],
                     containersB: [ContainerB],
-                }, context);
+                }, { context });
             });
 
             const fun = () => hasFilter(State);

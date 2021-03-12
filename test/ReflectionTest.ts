@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { Reflection, Schema, type, MapSchema, ArraySchema, Context } from "../src";
 
-const testContext = new Context();
+const testContext = { context: new Context() };
 
 /**
  * No filters example

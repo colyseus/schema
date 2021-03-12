@@ -4,7 +4,7 @@ import { ArraySchema } from "./types/ArraySchema";
 import { getType } from "./types";
 import { Iterator } from "./encoding/decode";
 
-const reflectionContext = new Context();
+const reflectionContext = { context: new Context() };
 
 /**
  * Reflection
@@ -125,14 +125,14 @@ export class Reflection extends Schema {
                     }
 
                     if (fieldType === "ref") {
-                        type(refType, context)(schemaType.prototype, field.name);
+                        type(refType, { context })(schemaType.prototype, field.name);
 
                     } else {
-                        type({ [fieldType]: refType } as DefinitionType, context)(schemaType.prototype, field.name);
+                        type({ [fieldType]: refType } as DefinitionType, { context })(schemaType.prototype, field.name);
                     }
 
                 } else {
-                    type(field.type as PrimitiveType, context)(schemaType.prototype, field.name);
+                    type(field.type as PrimitiveType, { context })(schemaType.prototype, field.name);
                 }
             });
         })

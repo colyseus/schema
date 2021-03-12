@@ -6,28 +6,28 @@ import { Schema } from "../src/Schema";
 const context = new Context();
 
 class Entity extends Schema {
-    @type("number", context) x: number;
-    @type("number", context) y: number;
+    @type("number", { context }) x: number;
+    @type("number", { context }) y: number;
 }
 
 class Player extends Entity {
-    @type("string", context) name: string;
-    @type("number", context) lvl: number;
+    @type("string", { context }) name: string;
+    @type("number", { context }) lvl: number;
 }
 
 class Enemy extends Player {
-    @type("number", context) power: number;
+    @type("number", { context }) power: number;
 }
 
 class EntityHolder extends Schema {
-    @type(Entity, context) entity: Entity;
+    @type(Entity, { context }) entity: Entity;
 }
 
 class State extends Schema {
-    @type(Entity, context) entity: Entity;
-    @type(EntityHolder, context) entityHolder = new EntityHolder();
-    @type([ Entity ], context) arrayOfEntities = new ArraySchema<Entity>();
-    @type({ map: Entity }, context) mapOfEntities = new MapSchema<Entity>();
+    @type(Entity, { context }) entity: Entity;
+    @type(EntityHolder, { context }) entityHolder = new EntityHolder();
+    @type([Entity], { context }) arrayOfEntities = new ArraySchema<Entity>();
+    @type({ map: Entity }, { context }) mapOfEntities = new MapSchema<Entity>();
 }
 
 describe("Polymorphism", () => {

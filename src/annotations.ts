@@ -3,6 +3,7 @@ import { Schema } from './Schema';
 import { ArraySchema, getArrayProxy } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
 import { getType } from './types';
+import { Type } from 'typescript';
 
 /**
  * Data types
@@ -89,6 +90,10 @@ export class SchemaDefinition {
             : type;
     }
 
+    hasField(field: string) {
+        return this.indexes[field] !== undefined;
+    }
+
     addFilter(field: string, cb: FilterCallback) {
         if (!this.filters) {
             this.filters = {};
@@ -130,6 +135,11 @@ export function hasFilter(klass: typeof Schema) {
 // Colyseus integration
 export type ClientWithSessionId = { sessionId: string } & any;
 
+export interface TypeOptions {
+    manual?: boolean,
+    context?: Context,
+}
+
 export class Context {
     types: {[id: number]: typeof Schema} = {};
     schemas = new Map<typeof Schema, number>();
@@ -153,9 +163,13 @@ export class Context {
         this.schemas.set(schema, typeid);
     }
 
-    static create(context: Context = new Context) {
+    
+    static create(options: TypeOptions = {}) {
         return function (definition: DefinitionType) {
-            return type(definition, context);
+            if (!options.context) {
+                options.context = new Context();
+            }
+            return type(definition, options);
         }
     }
 }
@@ -165,8 +179,13 @@ export const globalContext = new Context();
 /**
  * `@type()` decorator for proxies
  */
-export function type (type: DefinitionType, context: Context = globalContext): PropertyDecorator {
+export function type (
+    type: DefinitionType,
+    options: TypeOptions = {}
+): PropertyDecorator {
     return function (target: typeof Schema, field: string) {
+        const context = options.context || globalContext;
+
         const constructor = target.constructor as typeof Schema;
         constructor._context = context;
 
@@ -198,8 +217,17 @@ export function type (type: DefinitionType, context: Context = globalContext): P
             }
         }
 
-        const fieldCached = `_${field}`;
+        if (options.manual) {
+            // do not declare getter/setter descriptor
+            definition.descriptors[field] = {
+                enumerable: true,
+                configurable: true,
+                writable: true,
+            };
+            return;
+        }
 
+        const fieldCached = `_${field}`;
         definition.descriptors[fieldCached] = {
             enumerable: false,
             configurable: false,
@@ -307,7 +335,7 @@ export function filterChildren<T extends Schema, K, V, R extends Schema>(cb: Fil
  * The previous `@type()` annotation should remain along with this one.
  */
 
-export function deprecated(throws: boolean = true, context: Context = globalContext): PropertyDecorator {
+export function deprecated(throws: boolean = true): PropertyDecorator {
     return function (target: typeof Schema, field: string) {
         const constructor = target.constructor as typeof Schema;
         const definition = constructor._definition;
@@ -328,10 +356,14 @@ export function deprecated(throws: boolean = true, context: Context = globalCont
 export function defineTypes(
     target: typeof Schema,
     fields: { [property: string]: DefinitionType },
-    context: Context = target._context || globalContext
+    options: TypeOptions = {}
 ) {
+    if (!options.context) {
+        options.context = target._context || options.context || globalContext;
+    }
+
     for (let field in fields) {
-        type(fields[field], context)(target.prototype, field);
+        type(fields[field], options)(target.prototype, field);
     }
     return target;
 }

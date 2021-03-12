@@ -177,7 +177,17 @@ export abstract class Schema {
 
     protected get _definition () { return (this.constructor as typeof Schema)._definition; }
 
-    public listen <K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
+    /**
+     * (Server-side): Flag a property to be encoded for the next patch.
+     * @param instance Schema instance
+     * @param property string representing the property name, or number representing the index of the property.
+     * @param operation OPERATION to perform (detected automatically)
+     */
+    public setDirty<K extends NonFunctionPropNames<this>>(property: K | number, operation?: OPERATION) {
+        this.$changes.change(property as any, operation);
+    }
+
+    public listen<K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
         if (!this.$listeners[attr as string]) {
             this.$listeners[attr as string] = new EventEmitter_();
         }

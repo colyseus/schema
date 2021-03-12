@@ -8,10 +8,8 @@
   "scripts": {
     "build": "tsc && rollup -c rollup.config.js",
     "watch": "tsc -w",
-
     "test": "mocha --require ts-node/register test/*Test.ts test/**/*Test.ts",
     "coverage": "nyc mocha --require ts-node/register --require source-map-support/register --recursive test/**Test.ts",
-
     "generate-test-1": "bin/schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/PrimitiveTypes",
     "generate-test-2": "bin/schema-codegen test-external/ChildSchemaTypes.ts --namespace SchemaTest.ChildSchemaTypes --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/ChildSchemaTypes",
     "generate-test-3": "bin/schema-codegen test-external/ArraySchemaTypes.ts --namespace SchemaTest.ArraySchemaTypes --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/ArraySchemaTypes",
@@ -23,7 +21,6 @@
     "generate-test-9": "bin/schema-codegen test-external/InstanceSharingTypes.ts --namespace SchemaTest.InstanceSharing --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/InstanceSharingTypes",
     "generate-test-10": "bin/schema-codegen test-external/Callbacks.ts --namespace SchemaTest.Callbacks --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/Callbacks",
     "generate-test-11": "bin/schema-codegen test-external/MapSchemaMoveNullifyType.ts --namespace SchemaTest.MapSchemaMoveNullifyType --output ../colyseus-unity3d/Assets/Editor/ColyseusTests/Schema/MapSchemaMoveNullifyType",
-
     "prepublishOnly": "npm run build"
   },
   "files": [
@@ -58,6 +55,7 @@
   "devDependencies": {
     "@msgpack/msgpack": "^1.9.1",
     "@rollup/plugin-typescript": "^8.2.0",
+    "@types/benchmark": "^2.1.0",
     "@types/glob": "^7.1.1",
     "@types/mocha": "^5.2.5",
     "@types/node": "^14.0.13",
