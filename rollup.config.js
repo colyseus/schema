@@ -6,11 +6,15 @@ export default [
     {
         preserveModules: false,
         input: ['src/index.ts'],
-        output: [
-            { dir: 'build/esm', format: 'esm', entryFileNames: '[name].mjs', sourcemap: true, },
-            { dir: 'build/cjs', format: 'cjs', entryFileNames: '[name].js', sourcemap: true,  }
-        ],
+        output: [{ dir: 'build/esm', format: 'esm', entryFileNames: '[name].mjs', sourcemap: true }],
         plugins: [typescript({ tsconfig: './tsconfig/tsconfig.esm.json' })],
+    },
+
+    {
+        preserveModules: false,
+        input: ['src/index.ts'],
+        output: [{ dir: 'build/cjs', format: 'cjs', entryFileNames: '[name].js', sourcemap: true }],
+        plugins: [typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],
     },
 
     {
