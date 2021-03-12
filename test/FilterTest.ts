@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as util from "util";
 import * as sinon from "sinon";
 import { Schema, type, filter, ArraySchema, MapSchema, Reflection, DataChange } from "../src";
-import { Client, filterChildren } from "../src/annotations";
+import { ClientWithSessionId, filterChildren } from "../src/annotations";
 import { nanoid } from "nanoid";
 import { assertExecutionTime } from "./helpers/test_helpers";
 
@@ -11,7 +11,7 @@ describe("@filter Test", () => {
 
     it("should filter property outside root", () => {
         class Player extends Schema {
-            @filter(function(this: Player, client: Client, value, root: State) {
+            @filter(function(this: Player, client: ClientWithSessionId, value, root: State) {
                 return (
                     (root.playerOne === this && client.sessionId === "one") ||
                     (root.playerTwo === this && client.sessionId === "two")
@@ -59,7 +59,7 @@ describe("@filter Test", () => {
         class State extends Schema {
             @type("string") str: string;
 
-            @filter(function(this: State, client: Client, value, root) {
+            @filter(function(this: State, client: ClientWithSessionId, value, root) {
                 return client.sessionId === "two";
             })
             @type("number") num: number;
@@ -96,7 +96,7 @@ describe("@filter Test", () => {
         }
 
         class State extends Schema {
-            @filterChildren(function(this: Player, client: Client, key, value: Player, root: State) {
+            @filterChildren(function(this: Player, client: ClientWithSessionId, key, value: Player, root: State) {
                 return (value.name === client.sessionId);
             })
             @type([Player]) players = new ArraySchema<Player>();
@@ -535,7 +535,7 @@ describe("@filter Test", () => {
     });
 
     it("DELETE a primitive value of Schema", () => {
-        const filterCard = function(this: Card, client: Client, value: any, root: State) {
+        const filterCard = function(this: Card, client: ClientWithSessionId, value: any, root: State) {
             return this.revealed || root.players.get(client.sessionId).cards.includes(this);
         }
 
@@ -680,7 +680,7 @@ describe("@filter Test", () => {
     });
 
     it("DELETE a direct Schema instance", () => {
-        const filterCard = function(this: Player, client: Client, value: Card, root: State) {
+        const filterCard = function(this: Player, client: ClientWithSessionId, value: Card, root: State) {
             const currentPlayer = root.players.get(client.sessionId);
             return (
                 value.revealed ||
