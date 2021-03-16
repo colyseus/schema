@@ -3,7 +3,6 @@ import { Schema } from './Schema';
 import { ArraySchema, getArrayProxy } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
 import { getType } from './types';
-import { Type } from 'typescript';
 
 /**
  * Data types
