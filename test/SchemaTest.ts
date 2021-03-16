@@ -293,6 +293,21 @@ describe("Schema Usage", () => {
             assert.strictEqual(decoded.longstring, longstring);
         });
 
+        it("manual change tracking", () => {
+            class MyState extends Schema {
+                @type("string", { manual: true }) currentTurn: string;
+            }
+            const state = new MyState();
+            state.currentTurn = "Hello world!";
+
+            assert.deepStrictEqual([], state.encode(), "nothing should be encoded");
+            state.setDirty("currentTurn");
+
+            const decodedState = new MyState();
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+        });
     });
 
     describe("detecting changes", () => {
