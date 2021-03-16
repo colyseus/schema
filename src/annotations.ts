@@ -177,7 +177,20 @@ export class Context {
 export const globalContext = new Context();
 
 /**
- * `@type()` decorator for proxies
+ * [See documentation](https://docs.colyseus.io/state/schema/)
+ * 
+ * Annotate a Schema property to be serializeable.
+ * \@type()'d fields are automatically flagged as "dirty" for the next patch.
+ * 
+ * @example Standard usage, with automatic change tracking.
+ * ```
+ * \@type("string") propertyName: string;
+ * ```
+ * 
+ * @example You can provide the "manual" option if you'd like to manually control your patches via .setDirty().
+ * ```
+ * \@type("string", { manual: true })
+ * ```
  */
 export function type (
     type: DefinitionType,
