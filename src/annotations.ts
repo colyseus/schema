@@ -190,6 +190,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 
             } else {
                 // trying to define same property multiple times across inheritance.
+                // https://github.com/colyseus/colyseus-unity3d/issues/131#issuecomment-814308572
                 try {
                     throw new Error(`@colyseus/schema: Failed to define '${field}' property on '${constructor.name}'.\nCheck @type() annotation`);
 
