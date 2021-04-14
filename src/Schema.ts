@@ -444,12 +444,15 @@ export abstract class Schema {
                     // ref[key] = value;
                     ref.setAt(fieldIndex, value);
 
-                } else if (
-                    ref instanceof CollectionSchema ||
-                    ref instanceof SetSchema
-                ) {
+                } else if (ref instanceof CollectionSchema) {
                     const index = ref.add(value);
                     ref['setIndex'](fieldIndex, index);
+
+                } else if (ref instanceof SetSchema) {
+                    const index = ref.add(value);
+                    if (index !== false) {
+                        ref['setIndex'](fieldIndex, index);
+                    }
                 }
             }
 
