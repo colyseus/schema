@@ -28,25 +28,24 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     }
 
     add(value: V) {
-        if (this.has(value)) {
-            return false;
-        }
+        // immediatelly return false if value already added.
+        if (this.has(value)) { return false; }
 
         // set "index" for reference.
         const index = this.$refId++;
 
-        const isRef = (value['$changes']) !== undefined;
-        if (isRef) {
+        if ((value['$changes']) !== undefined) {
             (value['$changes'] as ChangeTree).setParent(this, this.$changes.root, index);
         }
+
+        const operation = this.$changes.indexes[index]?.op ?? OPERATION.ADD;
 
         this.$changes.indexes[index] = index;
 
         this.$indexes.set(index, index);
         this.$items.set(index, value);
 
-        this.$changes.change(index);
-
+        this.$changes.change(index, operation);
         return index;
     }
 
