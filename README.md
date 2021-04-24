@@ -4,7 +4,7 @@
   <br>
 
   <p>
-    A binary state serializer with delta encoding for games.<br>
+    An incremental binary state serializer with delta encoding for games.<br>
     Although it was born to be used on <a href="https://github.com/colyseus/colyseus">Colyseus</a>, this library can be used as standalone.
   </p>
 
