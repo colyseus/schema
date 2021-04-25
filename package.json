@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "Binary state serializer with delta encoding for games",
   "bin": {
     "schema-codegen": "./bin/schema-codegen"
