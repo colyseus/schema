@@ -82,8 +82,8 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
     get [Symbol.toStringTag]() { return this.$items[Symbol.toStringTag] }
 
     set(key: string, value: V) {
-    		if (value === undefined || value === null) {
-            throw new Error('Value cant be undefined');
+        if (value === undefined || value === null) {
+            throw new Error(`MapSchema#set('${key}', ${value}): trying to set ${value} value on '${key}'.`);
         }
 
         // get "index" for this value.
