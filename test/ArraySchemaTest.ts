@@ -1262,7 +1262,7 @@ describe("ArraySchema Tests", () => {
         });
     });
 
-    it("#clear()", () => {
+    describe("#clear", () => {
         class Point extends Schema {
             @type("number") x: number;
             @type("number") y: number;
@@ -1271,23 +1271,46 @@ describe("ArraySchema Tests", () => {
             @type([Point]) points = new ArraySchema<Point>();
         }
 
-        const state = new State();
-        state.points.push(
-            new Point().assign({ x: 0, y: 0 }),
-            new Point().assign({ x: 1, y: 1 }),
-            new Point().assign({ x: 2, y: 2 }),
-        );
+        it("should have 0 entries after clear", () => {
+            const state = new State();
+            state.points.push(
+                new Point().assign({ x: 0, y: 0 }),
+                new Point().assign({ x: 1, y: 1 }),
+                new Point().assign({ x: 2, y: 2 }),
+            );
 
-        let decodedState = new State();
-        decodedState.decode(state.encodeAll());
-        assert.strictEqual(3, decodedState.points.length);
+            let decodedState = new State();
+            decodedState.decode(state.encodeAll());
+            assert.strictEqual(3, decodedState.points.length);
 
-        state.points.clear();
+            state.points.clear();
 
-        decodedState = new State();
-        decodedState.decode(state.encodeAll());
-        assert.strictEqual(0, decodedState.points.length);
-    });
+            decodedState = new State();
+            decodedState.decode(state.encodeAll());
+            assert.strictEqual(0, decodedState.points.length);
+        });
+
+        xit("should trigger onAdd callback only once after clearing and adding one item", () => {
+            const state = new State();
+            const decodedState = new State();
+
+            // state.points.push(new Point().assign({ x: 0, y: 0 }));
+            // state.points.push(new Point().assign({ x: 1, y: 1 }));
+            state.points.clear();
+            state.points.push(new Point().assign({ x: 2, y: 2 }));
+            state.points.push(new Point().assign({ x: 3, y: 3 }));
+
+            decodedState.points.onAdd = (point, key) => console.log(point.toJSON(), key);
+
+            const onAddSpy = sinon.spy(decodedState.points, 'onAdd');
+
+            decodedState.decode(state.encodeAll());
+            decodedState.decode(state.encode());
+
+            sinon.assert.callCount(onAddSpy, 1);
+        });
+    })
+
 
     describe("array methods", () => {
         it("#find()", () => {
