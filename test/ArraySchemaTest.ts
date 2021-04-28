@@ -1307,7 +1307,7 @@ describe("ArraySchema Tests", () => {
             decodedState.decode(state.encodeAll());
             decodedState.decode(state.encode());
 
-            sinon.assert.callCount(onAddSpy, 1);
+            sinon.assert.callCount(onAddSpy, 2);
         });
     })
 
