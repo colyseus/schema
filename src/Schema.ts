@@ -806,7 +806,7 @@ export abstract class Schema {
                         //
                         // use cached bytes directly if is from Schema type.
                         //
-                        filteredBytes = filteredBytes.concat(changeTree.caches[fieldIndex]);
+                        filteredBytes.push.apply(filteredBytes, changeTree.caches[fieldIndex] || [undefined]);
                         containerIndexes.add(fieldIndex);
 
                     } else {
@@ -814,7 +814,7 @@ export abstract class Schema {
                             //
                             // use cached bytes if already has the field
                             //
-                            filteredBytes = filteredBytes.concat(changeTree.caches[fieldIndex]);
+                            filteredBytes.push.apply(filteredBytes, changeTree.caches[fieldIndex] || [undefined]);
 
                         } else {
                             //
