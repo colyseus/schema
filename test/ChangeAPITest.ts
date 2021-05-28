@@ -818,16 +818,16 @@ describe("Change API", () => {
 
             const client = {};
             const decodedState = new State();
-
-            state.encodeAll();
-            decodedState.decode(state.applyFilters(client, true));
-
             decodedState.listen("timer", () => timerChanges++);
             decodedState.listen("currentRound", (currentRound) => {
                 currentRound.scores.onAdd = (value, key) => scoresAdded++;
                 currentRound.scores.onChange = (value, key) => scoresChanges++;
                 currentRound.totals.onChange = (value, key) => totalsChanges++;
-            });
+            })
+
+            state.encodeAll(true);
+            decodedState.decode(state.applyFilters(client, true));
+            state.discardAllChanges();
 
             do {
                 state.timer--;
@@ -835,9 +835,8 @@ describe("Change API", () => {
                 state.currentRound.scores[0]++;
                 state.currentRound.scores[1]++;
 
-                state.encode(undefined, undefined, true);
+                state.encode(false, undefined, true);
                 decodedState.decode(state.applyFilters(client));
-
                 state.discardAllChanges();
             } while (state.timer > 0);
 
@@ -845,14 +844,14 @@ describe("Change API", () => {
             state.currentRound.totals[0] = 100;
             state.currentRound.totals[1] = 100;
 
-            state.encode(undefined, undefined, true);
+            state.encode(false, undefined, true);
             decodedState.decode(state.applyFilters(client));
             state.discardAllChanges();
 
-            assert.strictEqual(10, timerChanges);
+            assert.strictEqual(11, timerChanges);
             assert.strictEqual(2, totalsChanges);
             assert.strictEqual(2, scoresAdded);
-            assert.strictEqual(18, scoresChanges);
+            assert.strictEqual(20, scoresChanges);
         });
     });
 
