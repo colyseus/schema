@@ -152,6 +152,7 @@ describe("ArraySchema Tests", () => {
 
             // state.arrayOfNumbers.push(5)
             state.arrayOfNumbers.unshift(0);
+            assert.strictEqual(0, state.arrayOfNumbers[0]);
 
             decodedState.decode(state.encode());
             assert.deepEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
@@ -172,6 +173,7 @@ describe("ArraySchema Tests", () => {
 
             state.arrayOfNumbers.push(4)
             state.arrayOfNumbers.unshift(0);
+            assert.strictEqual(0, state.arrayOfNumbers[0]);
 
             decodedState.decode(state.encode());
             assert.deepEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
@@ -217,6 +219,32 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
             assert.deepEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+        });
+
+        xit("push, shift, unshift", () => {
+            class State extends Schema {
+                @type(["number"]) cards = new ArraySchema<number>();
+            }
+
+            const state = new State();
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.cards.push(1);
+            state.cards.push(2);
+            state.cards.shift();
+            state.cards.unshift(3);
+
+            console.log("cards", state.cards);
+            console.log("cards.$items", state.cards['$items']);
+            console.log("cards.at(0)", state.cards.at(0));
+
+            assert.deepStrictEqual(3, state.cards.at(0));
+
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual(3, decodedState.cards[0]);
         });
     });
 
