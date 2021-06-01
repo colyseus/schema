@@ -236,15 +236,14 @@ describe("ArraySchema Tests", () => {
             state.cards.shift();
             state.cards.unshift(3);
 
-            console.log("cards", state.cards);
-            console.log("cards.$items", state.cards['$items']);
-            console.log("cards.at(0)", state.cards.at(0));
-
-            assert.deepStrictEqual(3, state.cards.at(0));
+            // console.log("cards", state.cards);
+            // console.log("cards.$items", state.cards['$items']);
+            // console.log("cards.at(0)", state.cards.at(0));
 
             decodedState.decode(state.encode());
 
             assert.deepStrictEqual(3, decodedState.cards[0]);
+            assert.deepStrictEqual(3, state.cards[0]);
         });
     });
 
