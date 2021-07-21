@@ -45,7 +45,7 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
 
     return `${getCommentHeader()}
 
-import { Schema, type, ArraySchema, MapSchema, DataChange } from '@colyseus/schema';
+import { Schema, type, ArraySchema, MapSchema, SetSchema, DataChange } from '@colyseus/schema';
 ${allRefs.
     filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
     map(ref => ref.childType).
@@ -97,6 +97,14 @@ function generateProperty(prop: Property) {
             typeArgs = (isUpcaseFirst)
                 ? `{ map: ${prop.childType} }`
                 : `{ map: "${prop.childType}" }`;
+        } else if (prop.type === "set") {
+            langType = (isUpcaseFirst)
+                ? `SetSchema<${prop.childType}>`
+                : `SetSchema<${typeMaps[prop.childType]}>`;
+            initializer = `new ${langType}()`;
+            typeArgs = (isUpcaseFirst)
+                ? `{ set: ${prop.childType} }`
+                : `{ set: "${prop.childType}" }`;
         }
 
     } else {
