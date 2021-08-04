@@ -454,12 +454,15 @@ export abstract class Schema {
                     // ref[key] = value;
                     ref.setAt(fieldIndex, value);
 
-                } else if (
-                    ref instanceof CollectionSchema ||
-                    ref instanceof SetSchema
-                ) {
+                } else if (ref instanceof CollectionSchema) {
                     const index = ref.add(value);
                     ref['setIndex'](fieldIndex, index);
+
+                } else if (ref instanceof SetSchema) {
+                    const index = ref.add(value);
+                    if (index !== false) {
+                        ref['setIndex'](fieldIndex, index);
+                    }
                 }
             }
 
@@ -813,7 +816,7 @@ export abstract class Schema {
                         //
                         // use cached bytes directly if is from Schema type.
                         //
-                        filteredBytes = filteredBytes.concat(changeTree.caches[fieldIndex]);
+                        filteredBytes.push.apply(filteredBytes, changeTree.caches[fieldIndex] ?? []);
                         containerIndexes.add(fieldIndex);
 
                     } else {
@@ -821,7 +824,7 @@ export abstract class Schema {
                             //
                             // use cached bytes if already has the field
                             //
-                            filteredBytes = filteredBytes.concat(changeTree.caches[fieldIndex]);
+                            filteredBytes.push.apply(filteredBytes, changeTree.caches[fieldIndex] ?? []);
 
                         } else {
                             //

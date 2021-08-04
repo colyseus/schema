@@ -7,7 +7,7 @@ class Ref extends Schema {
 class Container extends Schema {
     @type("number") num: number;
     @type("string") str: string;
-    @type(Ref) ref: Ref = new Ref();
+    @type(Ref) aRef: Ref = new Ref();
 
     @type([Ref]) arrayOfSchemas = new ArraySchema<Ref>();
     @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
@@ -26,7 +26,7 @@ console.log(`{ ${bytes.join(", ")} }`);
 
 state.container.num = 1;
 state.container.str = "one";
-state.container.ref.num = 1;
+state.container.aRef.num = 1;
 state.container.arrayOfSchemas.push(new Ref().assign({ num: 2 }));
 state.container.arrayOfNumbers.push(1);
 state.container.arrayOfStrings.push("one");
@@ -39,7 +39,7 @@ console.log(`{ ${bytes.join(", ")} }`);
 state.container = new Container();
 state.container.num = 2;
 state.container.str = "two";
-state.container.ref.num = 2;
+state.container.aRef.num = 2;
 state.container.arrayOfSchemas.push(new Ref().assign({ num: 4 }));
 state.container.arrayOfNumbers.push(2);
 state.container.arrayOfStrings.push("two");

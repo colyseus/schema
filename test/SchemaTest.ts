@@ -308,6 +308,18 @@ describe("Schema Usage", () => {
 
             assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
         });
+
+        it("should throw an error when defining same property name multiple times", () => {
+            class Entity extends Schema {
+                @type("string") id: string;
+            }
+
+            assert.throws(() => {
+                class Player extends Entity {
+                    @type("string") id: string;
+                }
+            });
+        });
     });
 
     describe("detecting changes", () => {

@@ -20,6 +20,7 @@ describe("SetSchema Tests", () => {
         state.strings.add("three");
 
         const decoded = new State();
+        decoded.decode(state.encodeAll());
         decoded.decode(state.encode());
 
         assert.strictEqual(3, decoded.strings.size);
@@ -39,6 +40,7 @@ describe("SetSchema Tests", () => {
         state.players.add(new Player().assign({ level: 10 }));
 
         const decoded = new State();
+        decoded.decode(state.encodeAll());
         decoded.decode(state.encode());
 
         assert.strictEqual(1, decoded.players.size);
@@ -67,6 +69,7 @@ describe("SetSchema Tests", () => {
         assert.strictEqual(2, state.players.size);
 
         const decoded = new State();
+        decoded.decode(state.encodeAll());
         decoded.decode(state.encode());
 
         assert.strictEqual(2, decoded.players.size);
@@ -76,35 +79,62 @@ describe("SetSchema Tests", () => {
         assert.strictEqual(1, state.players.size);
 
         decoded.decode(state.encode());
+
         assert.strictEqual(1, decoded.players.size);
     });
 
-    it("delete from Set", () => {
-        class Player extends Schema {
-            @type("number") level: number;
-        }
+    describe("delete from Set", () => {
+        it("deleting schema references from SetSchema", () => {
+            class Player extends Schema {
+                @type("number") level: number;
+            }
 
-        class State extends Schema {
-            @type({ set: Player })
-            players = new SetSchema<Player>();
-        }
+            class State extends Schema {
+                @type({ set: Player })
+                players = new SetSchema<Player>();
+            }
 
-        const state = new State();
-        const player = new Player().assign({ level: 10 });
-        state.players.add(player);
+            const state = new State();
+            const player = new Player().assign({ level: 10 });
+            state.players.add(player);
 
-        const decoded = new State();
-        decoded.decode(state.encode());
-        assert.strictEqual(1, decoded.players.size);
+            const player2 = new Player().assign({ level: 20 });
+            state.players.add(player2);
 
-        const removed = state.players.delete(player);
-        assert.strictEqual(0, state.players.size);
-        assert.strictEqual(true, removed, "should return true if item has been removed successfully.");
-        assert.strictEqual(false, state.players.delete(player), "should return false if item does not exist.");
-        assert.strictEqual(false, state.players.delete({} as any), "should return false if item does not exist.");
+            const decoded = new State();
+            decoded.decode(state.encodeAll());
+            decoded.decode(state.encode());
+            assert.strictEqual(2, decoded.players.size);
 
-        decoded.decode(state.encode());
-        assert.strictEqual(0, decoded.players.size);
+            const removed = state.players.delete(player);
+            assert.strictEqual(1, state.players.size);
+            assert.strictEqual(true, removed, "should return true if item has been removed successfully.");
+            assert.strictEqual(false, state.players.delete(player), "should return false if item does not exist.");
+            assert.strictEqual(false, state.players.delete({} as any), "should return false if item does not exist.");
+
+            decoded.decode(state.encode());
+            assert.strictEqual(1, decoded.players.size);
+        });
+
+        it("deleting raw strings from SetSchema", () => {
+            class State extends Schema {
+                @type({ set: "string" })
+                players = new SetSchema<string>();
+            }
+
+            const state = new State();
+            state.players.add("A");
+            state.players.add("B");
+
+            const decoded = new State();
+            decoded.decode(state.encodeAll());
+            decoded.decode(state.encode());
+            assert.strictEqual(2, decoded.players.size);
+
+            state.players.delete("A");
+            decoded.decode(state.encode());
+            assert.strictEqual(1, decoded.players.size);
+        });
     });
 
     it("clear()", () => {

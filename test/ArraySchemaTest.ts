@@ -152,6 +152,7 @@ describe("ArraySchema Tests", () => {
 
             // state.arrayOfNumbers.push(5)
             state.arrayOfNumbers.unshift(0);
+            assert.strictEqual(0, state.arrayOfNumbers[0]);
 
             decodedState.decode(state.encode());
             assert.deepEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
@@ -172,6 +173,7 @@ describe("ArraySchema Tests", () => {
 
             state.arrayOfNumbers.push(4)
             state.arrayOfNumbers.unshift(0);
+            assert.strictEqual(0, state.arrayOfNumbers[0]);
 
             decodedState.decode(state.encode());
             assert.deepEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
@@ -217,6 +219,31 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
             assert.deepEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+        });
+
+        xit("push, shift, unshift", () => {
+            class State extends Schema {
+                @type(["number"]) cards = new ArraySchema<number>();
+            }
+
+            const state = new State();
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.cards.push(1);
+            state.cards.push(2);
+            state.cards.shift();
+            state.cards.unshift(3);
+
+            // console.log("cards", state.cards);
+            // console.log("cards.$items", state.cards['$items']);
+            // console.log("cards.at(0)", state.cards.at(0));
+
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual(3, decodedState.cards[0]);
+            assert.deepStrictEqual(3, state.cards[0]);
         });
     });
 
@@ -1262,7 +1289,7 @@ describe("ArraySchema Tests", () => {
         });
     });
 
-    it("#clear()", () => {
+    describe("#clear", () => {
         class Point extends Schema {
             @type("number") x: number;
             @type("number") y: number;
@@ -1271,23 +1298,46 @@ describe("ArraySchema Tests", () => {
             @type([Point]) points = new ArraySchema<Point>();
         }
 
-        const state = new State();
-        state.points.push(
-            new Point().assign({ x: 0, y: 0 }),
-            new Point().assign({ x: 1, y: 1 }),
-            new Point().assign({ x: 2, y: 2 }),
-        );
+        it("should have 0 entries after clear", () => {
+            const state = new State();
+            state.points.push(
+                new Point().assign({ x: 0, y: 0 }),
+                new Point().assign({ x: 1, y: 1 }),
+                new Point().assign({ x: 2, y: 2 }),
+            );
 
-        let decodedState = new State();
-        decodedState.decode(state.encodeAll());
-        assert.strictEqual(3, decodedState.points.length);
+            let decodedState = new State();
+            decodedState.decode(state.encodeAll());
+            assert.strictEqual(3, decodedState.points.length);
 
-        state.points.clear();
+            state.points.clear();
 
-        decodedState = new State();
-        decodedState.decode(state.encodeAll());
-        assert.strictEqual(0, decodedState.points.length);
-    });
+            decodedState = new State();
+            decodedState.decode(state.encodeAll());
+            assert.strictEqual(0, decodedState.points.length);
+        });
+
+        xit("should trigger onAdd callback only once after clearing and adding one item", () => {
+            const state = new State();
+            const decodedState = new State();
+
+            // state.points.push(new Point().assign({ x: 0, y: 0 }));
+            // state.points.push(new Point().assign({ x: 1, y: 1 }));
+            state.points.clear();
+            state.points.push(new Point().assign({ x: 2, y: 2 }));
+            state.points.push(new Point().assign({ x: 3, y: 3 }));
+
+            decodedState.points.onAdd = (point, key) => console.log(point.toJSON(), key);
+
+            const onAddSpy = sinon.spy(decodedState.points, 'onAdd');
+
+            decodedState.decode(state.encodeAll());
+            decodedState.decode(state.encode());
+
+            sinon.assert.callCount(onAddSpy, 2);
+        });
+    })
+
 
     describe("array methods", () => {
         it("#find()", () => {

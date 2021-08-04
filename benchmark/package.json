@@ -1,0 +1,21 @@
+{
+  "name": "benchmark",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@colyseus/schema": "file:../",
+    "benchmark": "^2.1.4",
+    "notepack.io": "^2.3.0",
+    "protobufjs": "^6.10.2"
+  },
+  "devDependencies": {
+    "ts-node": "^9.1.1"
+  }
+}

@@ -2,9 +2,8 @@ import * as sinon from "sinon";
 import * as util from "util";
 import * as assert from "assert";
 
-import { type, filter, Context } from './../src/annotations';
 import { State, Player } from "./Schema";
-import { Schema, MapSchema, ArraySchema, DataChange, Reflection } from "../src";
+import { Schema, MapSchema, ArraySchema, DataChange, Reflection, type, filter, Context } from "../src";
 
 describe("Change API", () => {
 
@@ -153,6 +152,36 @@ describe("Change API", () => {
 
             assert.strictEqual(1, changeCallCount);
         })
+
+        // FIXME: dealing with schema callbacks on confusing instance replacement
+        // https://github.com/colyseus/colyseus-unity3d/issues/169
+        xit("should allow to remove onChange reference from child structure", () => {
+            class Phase extends Schema {
+                @type('int32') value: number = 1;
+            }
+
+            class GameState extends Schema {
+                @type(Phase) readonly phase: Phase = new Phase();
+            }
+
+            const state = new GameState();
+
+            let phaseOnChangeCalls = 0;
+            const decodedState = new GameState();
+            const phase = decodedState.phase;
+            phase.onChange = () => phaseOnChangeCalls++
+            decodedState.decode(state.encode());
+            decodedState.triggerAll();
+
+            state.phase.value++;
+            decodedState.decode(state.encode());
+
+            state.phase.value++;
+            phase.onChange = undefined;
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(2, phaseOnChangeCalls);
+        });
     });
 
     describe("ArraySchema", () => {
@@ -818,16 +847,16 @@ describe("Change API", () => {
 
             const client = {};
             const decodedState = new State();
-
-            state.encodeAll();
-            decodedState.decode(state.applyFilters(client, true));
-
             decodedState.listen("timer", () => timerChanges++);
             decodedState.listen("currentRound", (currentRound) => {
                 currentRound.scores.onAdd = (value, key) => scoresAdded++;
                 currentRound.scores.onChange = (value, key) => scoresChanges++;
                 currentRound.totals.onChange = (value, key) => totalsChanges++;
-            });
+            })
+
+            state.encodeAll(true);
+            decodedState.decode(state.applyFilters(client, true));
+            state.discardAllChanges();
 
             do {
                 state.timer--;
@@ -835,9 +864,8 @@ describe("Change API", () => {
                 state.currentRound.scores[0]++;
                 state.currentRound.scores[1]++;
 
-                state.encode(undefined, undefined, true);
+                state.encode(false, undefined, true);
                 decodedState.decode(state.applyFilters(client));
-
                 state.discardAllChanges();
             } while (state.timer > 0);
 
@@ -845,14 +873,14 @@ describe("Change API", () => {
             state.currentRound.totals[0] = 100;
             state.currentRound.totals[1] = 100;
 
-            state.encode(undefined, undefined, true);
+            state.encode(false, undefined, true);
             decodedState.decode(state.applyFilters(client));
             state.discardAllChanges();
 
-            assert.strictEqual(10, timerChanges);
+            assert.strictEqual(11, timerChanges);
             assert.strictEqual(2, totalsChanges);
             assert.strictEqual(2, scoresAdded);
-            assert.strictEqual(18, scoresChanges);
+            assert.strictEqual(20, scoresChanges);
         });
     });
 

@@ -94,7 +94,13 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     public onChange?: (item: V, key: number) => void;
 
     static is(type: any) {
-        return Array.isArray(type);
+        return (
+            // type format: ["string"]
+            Array.isArray(type) || 
+
+            // type format: { array: "string" }
+            (type['array'] !== undefined)
+        );
     }
 
     constructor (...items: V[]) {

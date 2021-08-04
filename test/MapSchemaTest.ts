@@ -546,4 +546,16 @@ describe("MapSchema Tests", () => {
         sinon.assert.callCount(onRemove, 3);
     });
 
+    it("should throw error trying to set null or undefined", () => {
+        const map = new MapSchema<number>();
+
+        assert.throws(() => {
+            map.set("key", undefined);
+        }, /undefined/i);
+
+        assert.throws(() => {
+            map.set("key", null);
+        }, /null/i);
+    })
+
 });

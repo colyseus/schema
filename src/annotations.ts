@@ -214,7 +214,23 @@ export function type (
         /**
          * skip if descriptor already exists for this field (`@deprecated()`)
          */
-        if (definition.descriptors[field]) { return; }
+        if (definition.descriptors[field]) {
+            if (definition.deprecated[field]) {
+                // do not create accessors for deprecated properties.
+                return;
+
+            } else {
+                // trying to define same property multiple times across inheritance.
+                // https://github.com/colyseus/colyseus-unity3d/issues/131#issuecomment-814308572
+                try {
+                    throw new Error(`@colyseus/schema: Duplicate '${field}' definition on '${constructor.name}'.\nCheck @type() annotation`);
+
+                } catch (e) {
+                    const definitionAtLine = e.stack.split("\n")[4].trim();
+                    throw new Error(`${e.message} ${definitionAtLine}`);
+                }
+            }
+        }
 
         const isArray = ArraySchema.is(type);
         const isMap = !isArray && MapSchema.is(type);
