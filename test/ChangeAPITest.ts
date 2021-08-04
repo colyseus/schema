@@ -2,9 +2,8 @@ import * as sinon from "sinon";
 import * as util from "util";
 import * as assert from "assert";
 
-import { type, filter, Context } from './../src/annotations';
 import { State, Player } from "./Schema";
-import { Schema, MapSchema, ArraySchema, DataChange, Reflection } from "../src";
+import { Schema, MapSchema, ArraySchema, DataChange, Reflection, type, filter, Context } from "../src";
 
 describe("Change API", () => {
 
@@ -153,6 +152,36 @@ describe("Change API", () => {
 
             assert.strictEqual(1, changeCallCount);
         })
+
+        // FIXME: dealing with schema callbacks on confusing instance replacement
+        // https://github.com/colyseus/colyseus-unity3d/issues/169
+        xit("should allow to remove onChange reference from child structure", () => {
+            class Phase extends Schema {
+                @type('int32') value: number = 1;
+            }
+
+            class GameState extends Schema {
+                @type(Phase) readonly phase: Phase = new Phase();
+            }
+
+            const state = new GameState();
+
+            let phaseOnChangeCalls = 0;
+            const decodedState = new GameState();
+            const phase = decodedState.phase;
+            phase.onChange = () => phaseOnChangeCalls++
+            decodedState.decode(state.encode());
+            decodedState.triggerAll();
+
+            state.phase.value++;
+            decodedState.decode(state.encode());
+
+            state.phase.value++;
+            phase.onChange = undefined;
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(2, phaseOnChangeCalls);
+        });
     });
 
     describe("ArraySchema", () => {
