@@ -10,24 +10,29 @@ import { MapSchema } from "./types/MapSchema";
 import { CollectionSchema } from './types/CollectionSchema';
 import { SetSchema } from './types/SetSchema';
 
-import { ChangeTree, Root, Ref, ChangeOperation } from "./changes/ChangeTree";
+import { ChangeTree, Ref, ChangeOperation } from "./changes/ChangeTree";
 import { NonFunctionPropNames } from './types/HelperTypes';
-import { EventEmitter_ } from './events/EventEmitter';
 import { ClientState } from './filters';
-import { getType } from './types';
+import { getType } from './types/typeRegistry';
+import { ReferenceTracker } from './changes/ReferenceTracker';
+import { addCallback, spliceOne } from './types/callbacks';
 
-export interface DataChange<T=any> {
+export interface DataChange<T=any,F=string> {
+    refId: number,
     op: OPERATION,
-    field: string;
+    field: F;
     dynamicIndex?: number | string;
     value: T;
     previousValue: T;
 }
 
-export interface SchemaDecoderCallbacks {
-    onAdd?: (item: any, key: any) => void;
-    onRemove?: (item: any, key: any) => void;
-    onChange?: (item: any, key: any) => void;
+export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
+    $callbacks: { [operation: number]: Array<(item: TValue, key: TKey) => void> };
+
+    onAdd(callback: (item: any, key: any) => void): () => void;
+    onRemove(callback: (item: any, key: any) => void): () => void;
+    onChange(callback: (item: any, key: any) => void): () => void;
+
     clone(decoding?: boolean): SchemaDecoderCallbacks;
     clear(decoding?: boolean);
     decode?(byte, it: Iterator);
@@ -130,26 +135,36 @@ export abstract class Schema {
     }
 
     protected $changes: ChangeTree;
-    // protected $root: ChangeSet;
 
     // TODO: refactor. this feature needs to be ported to other languages with potentially different API
-    protected $listeners: { [field: string]: EventEmitter_<(a: any, b: any) => void> };
+    // protected $listeners: { [field: string]: Array<(value: any, previousValue: any) => void> };
+    protected $callbacks: { [op: number]: Array<Function> };
 
-    public onChange?(changes: DataChange[]);
-    public onRemove?();
+    public onChange(callback: () => void): () => void {
+        return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.REPLACE, callback);
+    }
+    public onRemove(callback: () => void): () => void {
+        return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.DELETE, callback);
+    }
 
     // allow inherited classes to have a constructor
     constructor(...args: any[]) {
         // fix enumerability of fields for end-user
         Object.defineProperties(this, {
             $changes: {
-                value: new ChangeTree(this, undefined, new Root()),
+                value: new ChangeTree(this, undefined, new ReferenceTracker()),
                 enumerable: false,
                 writable: true
             },
 
-            $listeners: {
-                value: {},
+            // $listeners: {
+            //     value: undefined,
+            //     enumerable: false,
+            //     writable: true
+            // },
+
+            $callbacks: {
+                value: undefined,
                 enumerable: false,
                 writable: true
             },
@@ -188,49 +203,40 @@ export abstract class Schema {
     }
 
     public listen<K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
-        if (!this.$listeners[attr as string]) {
-            this.$listeners[attr as string] = new EventEmitter_();
-        }
-        this.$listeners[attr as string].register(callback);
+        if (!this.$callbacks) { this.$callbacks = {}; }
+        if (!this.$callbacks[attr as string]) { this.$callbacks[attr as string] = []; }
+
+        this.$callbacks[attr as string].push(callback);
 
         // return un-register callback.
-        return () =>
-            this.$listeners[attr as string].remove(callback);
+        return () => spliceOne(this.$callbacks[attr as string], this.$callbacks[attr as string].indexOf(callback));
     }
 
     decode(
         bytes: number[],
         it: Iterator = { offset: 0 },
         ref: Ref = this,
-        allChanges: Map<number, DataChange[]> = new Map<number, DataChange[]>(),
     ) {
+        const allChanges: DataChange[] = [];
+
         const $root = this.$changes.root;
         const totalBytes = bytes.length;
 
         let refId: number = 0;
-        let changes: DataChange[] = [];
-
         $root.refs.set(refId, this);
-        allChanges.set(refId, changes);
 
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
 
             if (byte == SWITCH_TO_STRUCTURE) {
                 refId = decode.number(bytes, it);
-
                 const nextRef = $root.refs.get(refId) as Schema;
 
                 //
                 // Trying to access a reference that haven't been decoded yet.
                 //
                 if (!nextRef) { throw new Error(`"refId" not found: ${refId}`); }
-
                 ref = nextRef;
-
-                // create empty list of changes for this refId.
-                changes = [];
-                allChanges.set(refId, changes);
 
                 continue;
             }
@@ -340,9 +346,8 @@ export abstract class Schema {
                         value.$changes.refId = refId;
 
                         if (previousValue) {
-                            value.onChange = previousValue.onChange;
-                            value.onRemove = previousValue.onRemove;
-                            value.$listeners = previousValue.$listeners;
+                            value.$callbacks = previousValue.$callbacks;
+                            // value.$listeners = previousValue.$listeners;
 
                             if (
                                 previousValue['$changes'].refId &&
@@ -374,9 +379,7 @@ export abstract class Schema {
 
                 // preserve schema callbacks
                 if (previousValue) {
-                    value.onAdd = previousValue.onAdd;
-                    value.onRemove = previousValue.onRemove;
-                    value.onChange = previousValue.onChange;
+                    value['$callbacks'] = previousValue['$callbacks'];
 
                     if (
                         previousValue['$changes'].refId &&
@@ -387,35 +390,23 @@ export abstract class Schema {
                         //
                         // Trigger onRemove if structure has been replaced.
                         //
-                        const deletes: DataChange[] = [];
                         const entries: IterableIterator<[any, any]> = previousValue.entries();
                         let iter: IteratorResult<[any, any]>;
                         while ((iter = entries.next()) && !iter.done) {
                             const [key, value] = iter.value;
-                            deletes.push({
+                            allChanges.push({
+                                refId,
                                 op: OPERATION.DELETE,
                                 field: key,
                                 value: undefined,
                                 previousValue: value,
                             });
                         }
-
-                        allChanges.set(previousValue['$changes'].refId, deletes);
                     }
                 }
 
                 $root.addRef(refId, value, (valueRef !== previousValue));
-
-                //
-                // TODO: deprecate proxies on next version.
-                // get proxy to target value.
-                //
-                if (typeDef.getProxy) {
-                    value = typeDef.getProxy(value);
-                }
             }
-
-            let hasChange = (previousValue !== value);
 
             if (
                 value !== null &&
@@ -431,15 +422,7 @@ export abstract class Schema {
 
                 if (ref instanceof Schema) {
                     ref[fieldName] = value;
-
-                    //
-                    // FIXME: use `_field` instead of `field`.
-                    //
-                    // `field` is going to use the setter of the PropertyDescriptor
-                    // and create a proxy for array/map. This is only useful for
-                    // backwards-compatibility with @colyseus/schema@0.5.x
-                    //
-                    // // ref[_field] = value;
+                    // ref[`_${fieldName}`] = value;
 
                 } else if (ref instanceof MapSchema) {
                     // const key = ref['$indexes'].get(field);
@@ -466,14 +449,9 @@ export abstract class Schema {
                 }
             }
 
-            if (
-                hasChange
-                // &&
-                // (
-                //     this.onChange || ref.$listeners[field]
-                // )
-            ) {
-                changes.push({
+            if (previousValue !== value) {
+                allChanges.push({
+                    refId,
                     op: operation,
                     field: fieldName,
                     dynamicIndex,
@@ -901,21 +879,6 @@ export abstract class Schema {
         return cloned;
     }
 
-    triggerAll() {
-        // skip if haven't received any remote refs yet.
-        if (this.$changes.root.refs.size === 0) { return; }
-
-        const allChanges = new Map<number, DataChange[]>();
-        Schema.prototype._triggerAllFillChanges.call(this, this, allChanges);
-
-        try {
-            Schema.prototype._triggerChanges.call(this, allChanges);
-
-        } catch (e) {
-            Schema.onError(e);
-        }
-    }
-
     toJSON () {
         const schema = this._definition.schema;
         const deprecated = this._definition.deprecated;
@@ -970,125 +933,95 @@ export abstract class Schema {
         return instance;
     }
 
-    private _triggerAllFillChanges(ref: Ref, allChanges: Map<number, DataChange[]>) {
-        if (allChanges.has(ref['$changes'].refId)) { return; }
+    private _triggerChanges(changes: DataChange[]) {
+        const uniqueRefIds = new Set<number>();
+        const $refs = this.$changes.root.refs;
 
-        const changes: DataChange[] = [];
-        allChanges.set(ref['$changes'].refId || 0, changes);
+        for (let i = 0; i < changes.length; i++) {
+            const change = changes[i];
+            const refId = change.refId;
+            const ref = $refs.get(refId);
+            const $callbacks: Schema['$callbacks'] | SchemaDecoderCallbacks['$callbacks'] = ref['$callbacks'];
 
-        if (ref instanceof Schema) {
-            const schema = ref._definition.schema;
+            //
+            // trigger onRemove on child structure.
+            //
+            if (
+                (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
+                change.previousValue instanceof Schema
+            ) {
+                change.previousValue['$callbacks']?.[OPERATION.DELETE]?.forEach(callback => callback());
+            }
 
-            for (let fieldName in schema) {
-                const _field = `_${fieldName}`;
-                const value = ref[_field];
+            // no callbacks defined, skip this structure!
+            if (!$callbacks) { continue; }
 
-                if (value !== undefined) {
-                    changes.push({
-                        op: OPERATION.ADD,
-                        field: fieldName,
-                        value,
-                        previousValue: undefined
+            if (ref instanceof Schema) {
+                if (!uniqueRefIds.has(refId)) {
+                    try {
+                        // trigger onChange
+                        ($callbacks as Schema['$callbacks'])?.[OPERATION.REPLACE].forEach(callback =>
+                            callback());
+
+                    } catch (e) {
+                        Schema.onError(e);
+                    }
+                }
+
+                try {
+                    $callbacks[change.field]?.forEach(callback => {
+                        callback(change.value, change.previousValue);
                     });
+                } catch (e) {
+                    Schema.onError(e);
+                }
 
-                    if (value['$changes'] !== undefined) {
-                        Schema.prototype._triggerAllFillChanges.call(this, value, allChanges);
+            } else {
+                // is a collection of items
+
+                if (change.op === OPERATION.ADD && change.previousValue === undefined) {
+                    // triger onAdd
+                    $callbacks[OPERATION.ADD]?.forEach(callback =>
+                        callback(change.value, change.dynamicIndex ?? change.field));
+
+                } else if (change.op === OPERATION.DELETE) {
+                    //
+                    // FIXME: `previousValue` should always be available.
+                    // ADD + DELETE operations are still encoding DELETE operation.
+                    //
+                    if (change.previousValue !== undefined) {
+                        // triger onRemove
+                        $callbacks[OPERATION.DELETE]?.forEach(callback =>
+                            callback(change.previousValue, change.dynamicIndex ?? change.field));
                     }
 
+                } else if (change.op === OPERATION.DELETE_AND_ADD) {
+                    // triger onRemove
+                    if (change.previousValue !== undefined) {
+                        $callbacks[OPERATION.DELETE]?.forEach(callback =>
+                            callback(change.previousValue, change.dynamicIndex ?? change.field));
+                    }
+
+                    // triger onAdd
+                    $callbacks[OPERATION.ADD]?.forEach(callback =>
+                        callback(change.value, change.dynamicIndex ?? change.field));
+
+                // } else if (
+                //     change.op === OPERATION.REPLACE ||
+                //     change.value !== change.previousValue
+                // ) {
+                //     (ref as SchemaDecoderCallbacks).onChange?.(change.value, change.dynamicIndex);
+                }
+
+                // trigger onChange
+                if (change.value !== change.previousValue) {
+                    $callbacks[OPERATION.REPLACE]?.forEach(callback =>
+                        callback(change.value, change.dynamicIndex ?? change.field));
                 }
             }
 
-        } else {
-            const entries: IterableIterator<[any, any]>  = ref.entries();
-            let iter: IteratorResult<[any, any]>;
-
-            while ((iter = entries.next()) && !iter.done) {
-                const [key, value] = iter.value;
-
-                changes.push({
-                    op: OPERATION.ADD,
-                    field: key,
-                    dynamicIndex: key,
-                    value: value,
-                    previousValue: undefined,
-                });
-
-                if (value['$changes'] !== undefined) {
-                    Schema.prototype._triggerAllFillChanges.call(this, value, allChanges);
-                }
-            }
+            uniqueRefIds.add(refId);
         }
-    }
 
-    private _triggerChanges(allChanges: Map<number, DataChange[]>) {
-        allChanges.forEach((changes, refId) => {
-            if (changes.length > 0) {
-                const ref = this.$changes.root.refs.get(refId);
-                const isSchema = ref instanceof Schema;
-
-                for (let i = 0; i < changes.length; i++) {
-                    const change = changes[i];
-                    const listener = ref['$listeners'] && ref['$listeners'][change.field];
-
-                    if (!isSchema) {
-                        if (change.op === OPERATION.ADD && change.previousValue === undefined) {
-                            (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex ?? change.field);
-
-                        } else if (change.op === OPERATION.DELETE) {
-                            //
-                            // FIXME: `previousValue` should always be avaiiable.
-                            // ADD + DELETE operations are still encoding DELETE operation.
-                            //
-                            if (change.previousValue !== undefined) {
-                                (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex ?? change.field);
-                            }
-
-                        } else if (change.op === OPERATION.DELETE_AND_ADD) {
-                            if (change.previousValue !== undefined) {
-                                (ref as SchemaDecoderCallbacks).onRemove?.(change.previousValue, change.dynamicIndex);
-                            }
-                            (ref as SchemaDecoderCallbacks).onAdd?.(change.value, change.dynamicIndex);
-
-                        } else if (
-                            change.op === OPERATION.REPLACE ||
-                            change.value !== change.previousValue
-                        ) {
-                            (ref as SchemaDecoderCallbacks).onChange?.(change.value, change.dynamicIndex);
-                        }
-                    }
-
-                    //
-                    // trigger onRemove on child structure.
-                    //
-                    if (
-                        (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
-                        change.previousValue instanceof Schema &&
-                        change.previousValue.onRemove
-                    ) {
-                        change.previousValue.onRemove();
-                    }
-
-                    if (listener) {
-                        try {
-                            listener.invoke(change.value, change.previousValue);
-                        } catch (e) {
-                            Schema.onError(e);
-                        }
-                    }
-                }
-
-                if (isSchema) {
-                    if (ref.onChange) {
-                        try {
-                            (ref as Schema).onChange(changes);
-                        } catch (e) {
-                            Schema.onError(e);
-                        }
-                    }
-                }
-
-            }
-
-        });
     }
 }

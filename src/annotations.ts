@@ -2,7 +2,7 @@ import { ChangeTree } from './changes/ChangeTree';
 import { Schema } from './Schema';
 import { ArraySchema, getArrayProxy } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
-import { getType } from './types';
+import { getType } from './types/typeRegistry';
 
 /**
  * Data types
@@ -162,7 +162,7 @@ export class Context {
         this.schemas.set(schema, typeid);
     }
 
-    
+
     static create(options: TypeOptions = {}) {
         return function (definition: DefinitionType) {
             if (!options.context) {
@@ -177,15 +177,15 @@ export const globalContext = new Context();
 
 /**
  * [See documentation](https://docs.colyseus.io/state/schema/)
- * 
+ *
  * Annotate a Schema property to be serializeable.
  * \@type()'d fields are automatically flagged as "dirty" for the next patch.
- * 
+ *
  * @example Standard usage, with automatic change tracking.
  * ```
  * \@type("string") propertyName: string;
  * ```
- * 
+ *
  * @example You can provide the "manual" option if you'd like to manually control your patches via .setDirty().
  * ```
  * \@type("string", { manual: true })

@@ -1,11 +1,11 @@
 export interface TypeDefinition {
     constructor: any,
 
-    //
-    // TODO: deprecate proxy on next version
-    // the proxy is used for compatibility with versions <1.0.0 of @colyseus/schema
-    //
-    getProxy?: any,
+    // //
+    // // TODO: deprecate proxy on next version
+    // // the proxy is used for compatibility with versions <1.0.0 of @colyseus/schema
+    // //
+    // getProxy?: any,
 }
 
 const registeredTypes: {[identifier: string] : TypeDefinition} = {};

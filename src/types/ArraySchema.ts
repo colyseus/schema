@@ -1,14 +1,7 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
-
-//
-// Notes:
-// -----
-//
-// - The tsconfig.json of @colyseus/schema uses ES2018.
-// - ES2019 introduces `flatMap` / `flat`, which is not currently relevant, and caused other issues.
-//
+import { addCallback } from "./callbacks";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
@@ -76,7 +69,7 @@ export function getArrayProxy(value: ArraySchema) {
     return value;
 }
 
-export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
+export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
 
     protected $items: Map<number, V> = new Map<number, V>();
@@ -89,14 +82,15 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     //
     // Decoding callbacks
     //
-    public onAdd?: (item: V, key: number) => void;
-    public onRemove?: (item: V, key: number) => void;
-    public onChange?: (item: V, key: number) => void;
+    public $callbacks: { [operation: number]: Array<(item: V, key: string) => void> };
+    public onAdd(callback: (item: V, key: string) => void) { return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.ADD, callback); }
+    public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.DELETE, callback); }
+    public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.REPLACE, callback); }
 
     static is(type: any) {
         return (
             // type format: ["string"]
-            Array.isArray(type) || 
+            Array.isArray(type) ||
 
             // type format: { array: "string" }
             (type['array'] !== undefined)
@@ -602,7 +596,4 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
         return cloned;
     };
 
-    triggerAll (): void {
-        Schema.prototype.triggerAll.apply(this);
-    }
 }

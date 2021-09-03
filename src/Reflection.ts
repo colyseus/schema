@@ -1,7 +1,7 @@
 import { type, PrimitiveType, Context, DefinitionType } from "./annotations";
 import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
-import { getType } from "./types";
+import { getType } from "./types/typeRegistry";
 import { Iterator } from "./encoding/decode";
 
 const reflectionContext = { context: new Context() };

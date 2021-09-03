@@ -1,9 +1,9 @@
 export { Schema, DataChange } from "./Schema";
 
-import { MapSchema, getMapProxy } from "./types/MapSchema"
+import { MapSchema } from "./types/MapSchema"
 export { MapSchema };
 
-import { ArraySchema, getArrayProxy } from "./types/ArraySchema";
+import { ArraySchema } from "./types/ArraySchema";
 export { ArraySchema };
 
 import { CollectionSchema } from "./types/CollectionSchema";
@@ -12,11 +12,11 @@ export { CollectionSchema };
 import { SetSchema } from "./types/SetSchema";
 export { SetSchema };
 
-import { registerType } from "./types";
+import { registerType } from "./types/typeRegistry";
 export { registerType };
 
-registerType("map", { constructor: MapSchema, getProxy: getMapProxy });
-registerType("array", { constructor: ArraySchema, getProxy: getArrayProxy });
+registerType("map", { constructor: MapSchema });
+registerType("array", { constructor: ArraySchema });
 registerType("set", { constructor: SetSchema });
 registerType("collection", { constructor: CollectionSchema, });
 

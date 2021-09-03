@@ -1,6 +1,7 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
+import { addCallback } from "./callbacks";
 
 export function getMapProxy(value: MapSchema) {
     value['$proxy'] = true;
@@ -56,9 +57,10 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
     //
     // Decoding callbacks
     //
-    public onAdd?: (item: V, key: string) => void;
-    public onRemove?: (item: V, key: string) => void;
-    public onChange?: (item: V, key: string) => void;
+    public $callbacks: { [operation: number]: Array<(item: V, key: string) => void> };
+    public onAdd(callback: (item: V, key: string) => void) { return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.ADD, callback); }
+    public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.DELETE, callback); }
+    public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.REPLACE, callback); }
 
     static is(type: any) {
         return type['map'] !== undefined;
@@ -248,7 +250,4 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         return cloned;
     }
 
-    triggerAll (): void {
-        Schema.prototype.triggerAll.apply(this);
-    }
 }

@@ -1,6 +1,7 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, Schema } from "../Schema";
+import { SchemaDecoderCallbacks } from "../Schema";
+import { addCallback } from "./callbacks";
 
 export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
@@ -13,9 +14,10 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     //
     // Decoding callbacks
     //
-    public onAdd?: (item: V, key: number) => void;
-    public onRemove?: (item: V, key: number) => void;
-    public onChange?: (item: V, key: number) => void;
+    public $callbacks: { [operation: number]: Array<(item: V, key: string) => void> };
+    public onAdd(callback: (item: V, key: string) => void) { return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.ADD, callback); }
+    public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.DELETE, callback); }
+    public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.REPLACE, callback); }
 
     static is(type: any) {
         return type['set'] !== undefined;
@@ -191,7 +193,4 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         return cloned;
     }
 
-    triggerAll (): void {
-        Schema.prototype.triggerAll.apply(this);
-    }
 }
