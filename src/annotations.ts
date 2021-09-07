@@ -170,7 +170,7 @@ export function type (type: DefinitionType, context: Context = globalContext): P
         if (!type) {
             throw new Error("Type not found. Ensure your `@type` annotations are correct and that you don't have any circular dependencies.");
         }
-        
+
         const constructor = target.constructor as typeof Schema;
         constructor._context = context;
 
