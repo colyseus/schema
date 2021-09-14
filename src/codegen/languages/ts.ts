@@ -38,7 +38,7 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
         let type = property.type;
 
         // keep all refs list
-        if ((type === "ref" || type === "array" || type === "map")) {
+        if ((type === "ref" || type === "array" || type === "map" || type === "set")) {
             allRefs.push(property);
         }
     });
