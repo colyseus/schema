@@ -172,8 +172,8 @@ describe("@filter Test", () => {
         const client = { sessionId: "player" };
 
         const decodedState = new State();
-        decodedState.entities.onAdd = (entity, key) => console.log("Entity added =>", key, entity.toJSON());
-        decodedState.entities.onRemove = (entity, key) => console.log("Entity removed =>", key, entity.toJSON());
+        decodedState.entities.onAdd((entity, key) => console.log("Entity added =>", key, entity.toJSON()));
+        decodedState.entities.onRemove((entity, key) => console.log("Entity removed =>", key, entity.toJSON()));
 
         let filteredFullBytes = state.applyFilters(client, true);
         decodedState.decode(filteredFullBytes);
@@ -215,8 +215,8 @@ describe("@filter Test", () => {
         const client2 = { sessionId: "player-2" };
 
         const decodedState2 = new State();
-        decodedState2.entities.onAdd = (entity, key) => console.log("Entity added =>", key, entity.toJSON());
-        decodedState2.entities.onRemove = (entity, key) => console.log("Entity removed =>", key, entity.toJSON());
+        decodedState2.entities.onAdd((entity, key) => console.log("Entity added =>", key, entity.toJSON()));
+        decodedState2.entities.onRemove((entity, key) => console.log("Entity removed =>", key, entity.toJSON()));
 
         // simulate other player joined before
         state.encode(undefined, undefined, true);
@@ -305,24 +305,27 @@ describe("@filter Test", () => {
         let fullBytes = state.encodeAll(true);
 
         const decodedState1 = new State();
-        decodedState1.cards.onAdd = (card, key) => {};
-        decodedState1.cards.onRemove = (card, key) => {
+
+        let client1OnAddCard = sinon.spy((card, key) => {});
+        let client1OnRemoveCard = sinon.spy((card, key) => {
             // console.log("decodedState1, onRemove =>", card, key);
-        };
-        let client1OnAddCard = sinon.spy(decodedState1.cards, 'onAdd');
-        let client1OnRemoveCard = sinon.spy(decodedState1.cards, 'onRemove');
+        });
+
+        decodedState1.cards.onAdd(client1OnAddCard);
+        decodedState1.cards.onRemove(client1OnRemoveCard);
 
         decodedState1.decode(state.applyFilters(client1, true));
         sinon.assert.callCount(client1OnAddCard, 10);
         sinon.assert.callCount(client1OnRemoveCard, 0);
 
         const decodedState2 = new State();
-        decodedState2.cards.onAdd = (card, key) => {};
-        decodedState2.cards.onRemove = (card, key) => {
+
+        let client2OnAddCard = sinon.spy((card, key) => {});
+        let client2OnRemoveCard = sinon.spy((card, key) => {
             // console.log("decodedState2, onRemove =>", card, key);
-        };
-        let client2OnAddCard = sinon.spy(decodedState2.cards, 'onAdd');
-        let client2OnRemoveCard = sinon.spy(decodedState2.cards, 'onRemove');
+        });
+        decodedState2.cards.onAdd(client2OnAddCard);
+        decodedState2.cards.onRemove(client2OnRemoveCard);
 
         decodedState2.decode(state.applyFilters(client2, true));
         sinon.assert.callCount(client2OnAddCard, 10);
@@ -429,15 +432,16 @@ describe("@filter Test", () => {
         state.encodeAll(true);
 
         const decodedState1 = new State();
-        decodedState1.items.onAdd = (item, key) => {};
-        decodedState1.items.onChange = (item, key) => {
-            console.log("decodedState1 -> onChange", {item, key})
-        };
-        decodedState1.items.onRemove = (item, key) => {
+
+        let client1OnAddCard = sinon.spy((item, key) => {});
+        let client1OnRemoveCard = sinon.spy((item, key) => {
             // console.log("decodedState1, onRemove =>", item, key);
-        };
-        let client1OnAddCard = sinon.spy(decodedState1.items, 'onAdd');
-        let client1OnRemoveCard = sinon.spy(decodedState1.items, 'onRemove');
+        });
+        decodedState1.items.onAdd(client1OnAddCard);
+        decodedState1.items.onChange((item, key) => {
+            console.log("decodedState1 -> onChange", {item, key})
+        });
+        decodedState1.items.onRemove(client1OnRemoveCard);
 
         decodedState1.decode(state.applyFilters(client1, true));
 
@@ -445,15 +449,17 @@ describe("@filter Test", () => {
         sinon.assert.callCount(client1OnRemoveCard, 0);
 
         const decodedState2 = new State();
-        decodedState2.items.onAdd = (item, key) => {};
-        decodedState2.items.onChange = (item, key) => {
-            console.log("decodedState2 -> onChange", {item, key})
-        };
-        decodedState2.items.onRemove = (item, key) => {
+
+        let client2OnAddCard = sinon.spy((item, key) => {});
+        let client2OnRemoveCard = sinon.spy((item, key) => {
             // console.log("decodedState2, onRemove =>", item, key);
-        };
-        let client2OnAddCard = sinon.spy(decodedState2.items, 'onAdd');
-        let client2OnRemoveCard = sinon.spy(decodedState2.items, 'onRemove');
+        });
+
+        decodedState2.items.onAdd(client2OnAddCard);
+        decodedState2.items.onRemove(client2OnRemoveCard);
+        decodedState2.items.onChange((item, key) => {
+            console.log("decodedState2 -> onChange", {item, key})
+        });
 
         decodedState2.decode(state.applyFilters(client2, true));
 

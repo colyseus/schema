@@ -82,10 +82,10 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     //
     // Decoding callbacks
     //
-    public $callbacks: { [operation: number]: Array<(item: V, key: string) => void> };
-    public onAdd(callback: (item: V, key: string) => void) { return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.ADD, callback); }
-    public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.DELETE, callback); }
-    public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.REPLACE, callback); }
+    public $callbacks: { [operation: number]: Array<(item: V, key: number) => void> };
+    public onAdd(callback: (item: V, key: number) => void) { return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.ADD, callback); }
+    public onRemove(callback: (item: V, key: number) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.DELETE, callback); }
+    public onChange(callback: (item: V, key: number) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.REPLACE, callback); }
 
     static is(type: any) {
         return (

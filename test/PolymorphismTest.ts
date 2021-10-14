@@ -105,20 +105,20 @@ describe("Polymorphism", () => {
 
     it("should encode the correct class inside a map", () => {
         const state = new State();
-        state.mapOfEntities['entity'] = createEntity();
-        state.mapOfEntities['player'] = createPlayer();
-        state.mapOfEntities['enemy'] = createEnemy();
+        state.mapOfEntities.set('entity', createEntity());
+        state.mapOfEntities.set('player', createPlayer());
+        state.mapOfEntities.set('enemy', createEnemy());
 
         const decodedState = new State();
         decodedState.decode(state.encodeAll());
-        assert.ok(decodedState.mapOfEntities['entity'] instanceof Entity);
-        assert.ok(decodedState.mapOfEntities['player'] instanceof Player);
-        assert.ok(decodedState.mapOfEntities['enemy'] instanceof Enemy);
+        assert.ok(decodedState.mapOfEntities.get('entity') instanceof Entity);
+        assert.ok(decodedState.mapOfEntities.get('player') instanceof Player);
+        assert.ok(decodedState.mapOfEntities.get('enemy') instanceof Enemy);
 
-        state.mapOfEntities['player-2'] = createPlayer();
+        state.mapOfEntities.set('player-2', createPlayer());
         decodedState.decode(state.encode());
-        assert.ok(decodedState.mapOfEntities['player-2'] instanceof Entity);
-        assert.ok(decodedState.mapOfEntities['player-2'] instanceof Player);
+        assert.ok(decodedState.mapOfEntities.get('player-2') instanceof Entity);
+        assert.ok(decodedState.mapOfEntities.get('player-2') instanceof Player);
     });
 
     it("should allow generics", () => {

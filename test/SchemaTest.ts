@@ -579,14 +579,14 @@ describe("Schema Usage", () => {
             decodedState.decode(state.encodeAll());
 
             assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ['1', '2']);
-            assert.strictEqual(decodedState.mapOfPlayers['1'].name, "Snake Sanders");
-            assert.strictEqual(decodedState.mapOfPlayers['2'].name, "Jake Badlands");
+            assert.strictEqual(decodedState.mapOfPlayers.get('1').name, "Snake Sanders");
+            assert.strictEqual(decodedState.mapOfPlayers.get('2').name, "Jake Badlands");
 
-            state.mapOfPlayers['1'].name = "New name";
+            state.mapOfPlayers.get('1').name = "New name";
             decodedState.decode(state.encodeAll());
 
-            assert.deepEqual(decodedState.mapOfPlayers['1'].name, "New name");
-            assert.deepEqual(decodedState.mapOfPlayers['2'].name, "Jake Badlands");
+            assert.deepEqual(decodedState.mapOfPlayers.get('1').name, "New name");
+            assert.deepEqual(decodedState.mapOfPlayers.get('2').name, "Jake Badlands");
         });
 
         it("should encode changed values", () => {
@@ -1091,28 +1091,28 @@ describe("Schema Usage", () => {
             const deepChild = new DeepChild();
             deepChild.entity.name = "Player one";
             deepChild.entity.another.position = new Position(100, 200, 300);
-            state.map['one'].arrayOfChildren.push(deepChild);
+            state.map.get('one').arrayOfChildren.push(deepChild);
 
             const decodedState = new DeepState();
             decodedState.decode(state.encodeAll());
 
-            state.map['two'] = state.map['one'].clone();
-            state.map['two'].arrayOfChildren[0].entity.name = "Player two";
-            state.map['two'].arrayOfChildren[0].entity.another.position.x = 200;
-            state.map['two'].arrayOfChildren[0].entity.another.position.y = 300;
-            state.map['two'].arrayOfChildren[0].entity.another.position.z = 400;
+            state.map.set('two', state.map['one'].clone());
+            state.map.get('two').arrayOfChildren[0].entity.name = "Player two";
+            state.map.get('two').arrayOfChildren[0].entity.another.position.x = 200;
+            state.map.get('two').arrayOfChildren[0].entity.another.position.y = 300;
+            state.map.get('two').arrayOfChildren[0].entity.another.position.z = 400;
 
             decodedState.decode(state.encode());
 
-            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.name, "Player one");
-            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
-            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
-            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
+            assert.strictEqual(decodedState.map.get('one').arrayOfChildren[0].entity.name, "Player one");
+            assert.strictEqual(decodedState.map.get('one').arrayOfChildren[0].entity.another.position.x, 100);
+            assert.strictEqual(decodedState.map.get('one').arrayOfChildren[0].entity.another.position.y, 200);
+            assert.strictEqual(decodedState.map.get('one').arrayOfChildren[0].entity.another.position.z, 300);
 
-            assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.name, "Player two");
-            assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.another.position.x, 200);
-            assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.another.position.y, 300);
-            assert.strictEqual(decodedState.map['two'].arrayOfChildren[0].entity.another.position.z, 400);
+            assert.strictEqual(decodedState.map.get('two').arrayOfChildren[0].entity.name, "Player two");
+            assert.strictEqual(decodedState.map.get('two').arrayOfChildren[0].entity.another.position.x, 200);
+            assert.strictEqual(decodedState.map.get('two').arrayOfChildren[0].entity.another.position.y, 300);
+            assert.strictEqual(decodedState.map.get('two').arrayOfChildren[0].entity.another.position.z, 400);
 
             assert.deepStrictEqual(state.toJSON(), state.clone().toJSON());
         });

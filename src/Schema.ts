@@ -960,7 +960,7 @@ export abstract class Schema {
                 if (!uniqueRefIds.has(refId)) {
                     try {
                         // trigger onChange
-                        ($callbacks as Schema['$callbacks'])?.[OPERATION.REPLACE].forEach(callback =>
+                        ($callbacks as Schema['$callbacks'])?.[OPERATION.REPLACE]?.forEach(callback =>
                             callback());
 
                     } catch (e) {

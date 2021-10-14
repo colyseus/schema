@@ -15,7 +15,6 @@ describe("ArraySchema Tests", () => {
             @type([Item]) items = new ArraySchema<Item>();
         }
 
-
         const state: State = new State();
         state.items.push(new Item().assign({ name: "A" }));
         state.items.push(new Item().assign({ name: "B" }));
@@ -25,14 +24,14 @@ describe("ArraySchema Tests", () => {
 
         const decodedState = new State();
 
-        decodedState.items.onAdd = function(item, i) {}
-        const onAddSpy = sinon.spy(decodedState.items, 'onAdd');
+        const onAddSpy = sinon.spy(function(item, i) {});
+        decodedState.items.onAdd(onAddSpy)
 
         let removedItem: Item;
-        decodedState.items.onRemove = function(item, i) {
+        const onRemoveSpy = sinon.spy(function(item, i) {
             removedItem = item;
-        }
-        const onRemoveSpy = sinon.spy(decodedState.items, 'onRemove');
+        });
+        decodedState.items.onRemove(onRemoveSpy);
 
         decodedState.decode(state.encodeAll());
 
@@ -511,18 +510,18 @@ describe("ArraySchema Tests", () => {
         const decodedState = new State();
         decodedState.arrayOfPlayers = new ArraySchema<Player>();
 
-        decodedState.arrayOfPlayers.onAdd = function(item, i) {};
-        const onAddSpy = sinon.spy(decodedState.arrayOfPlayers, 'onAdd');
+        const onAddSpy = sinon.spy(function(item, i) {});
+        decodedState.arrayOfPlayers.onAdd(onAddSpy);
 
-        decodedState.arrayOfPlayers.onChange = function(item, i) {};
-        const onChangeSpy = sinon.spy(decodedState.arrayOfPlayers, 'onChange');
+        const onChangeSpy = sinon.spy(function(item, i) {});
+        decodedState.arrayOfPlayers.onChange(onChangeSpy);
 
-        decodedState.arrayOfPlayers.onRemove = function(item, i) {};
-        const onRemoveSpy = sinon.spy(decodedState.arrayOfPlayers, 'onRemove');
+        const onRemoveSpy = sinon.spy(function(item, i) {});
+        decodedState.arrayOfPlayers.onRemove(onRemoveSpy);
 
         decodedState.decode(state.encode());
         sinon.assert.callCount(onAddSpy, 3);
-        sinon.assert.callCount(onChangeSpy, 0);
+        sinon.assert.callCount(onChangeSpy, 3);
         sinon.assert.callCount(onRemoveSpy, 0);
 
         state.arrayOfPlayers[0].x += 100;
@@ -666,16 +665,16 @@ describe("ArraySchema Tests", () => {
 
 
         decodedState.decode(state.applyFilters(client));
-        assert.strictEqual(5, decodedState.players['one'].cards.length);
-        assert.deepEqual([1, 3, 2, 5, 4], decodedState.players['one'].cards.map(c => c.number));
+        assert.strictEqual(5, decodedState.players.get('one').cards.length);
+        assert.deepEqual([1, 3, 2, 5, 4], decodedState.players.get('one').cards.map(c => c.number));
 
         // set cards array with applied filter.
         state.players['one'].cards = filteredCards;
         encoded = state.encode(undefined, undefined, true);
 
         decodedState.decode(state.applyFilters(client));
-        assert.strictEqual(3, decodedState.players['one'].cards.length);
-        assert.deepEqual([5, 4, 3], decodedState.players['one'].cards.map(c => c.number));
+        assert.strictEqual(3, decodedState.players.get('one').cards.length);
+        assert.deepEqual([5, 4, 3], decodedState.players.get('one').cards.map(c => c.number));
     });
 
     it("updates all items properties after removing middle item", () => {
@@ -1194,8 +1193,8 @@ describe("ArraySchema Tests", () => {
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        decodedState.numbers.onRemove = function(num, i) {}
-        const onRemove = sinon.spy(decodedState.numbers, 'onRemove');
+        const onRemove = sinon.spy(function(num, i) {});
+        decodedState.numbers.onRemove(onRemove)
 
         state.numbers = new ArraySchema(7, 8, 9);
         decodedState.decode(state.encode());
@@ -1327,7 +1326,7 @@ describe("ArraySchema Tests", () => {
             state.points.push(new Point().assign({ x: 2, y: 2 }));
             state.points.push(new Point().assign({ x: 3, y: 3 }));
 
-            decodedState.points.onAdd = (point, key) => console.log(point.toJSON(), key);
+            decodedState.points.onAdd((point, key) => console.log(point.toJSON(), key));
 
             const onAddSpy = sinon.spy(decodedState.points, 'onAdd');
 

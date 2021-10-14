@@ -303,15 +303,15 @@ describe("MapSchema Tests", () => {
         const decodedState = new State();
         decodedState.mapOfPlayers = new MapSchema<Player>();
 
-        decodedState.mapOfPlayers.onAdd = function(item, key) {};
-        decodedState.mapOfPlayers.onRemove = function(item, key) {};
-        const onRemoveSpy = sinon.spy(decodedState.mapOfPlayers, 'onRemove');
+        const onRemoveSpy = sinon.spy(function(item, key) {});
+        decodedState.mapOfPlayers.onRemove(onRemoveSpy);
+        decodedState.mapOfPlayers.onAdd((item, key) => {});
 
         decodedState.decode(state.encode());
 
-        state.mapOfPlayers['one'].x++;
-        state.mapOfPlayers['two'] = new Player("Snake", 10, 10);
-        delete state.mapOfPlayers['two'];
+        state.mapOfPlayers.get('one').x++;
+        state.mapOfPlayers.set('two', new Player("Snake", 10, 10));
+        state.mapOfPlayers.delete('two');
 
         const patchBytes = state.encode();
 
@@ -324,8 +324,8 @@ describe("MapSchema Tests", () => {
         decodedState.decode(patchBytes);
         sinon.assert.notCalled(onRemoveSpy);
 
-        state.mapOfPlayers['one'].x++;
-        delete state.mapOfPlayers['one'];
+        state.mapOfPlayers.get('one').x++;
+        state.mapOfPlayers.delete('one');
 
         decodedState.decode(state.encode());
         sinon.assert.calledOnce(onRemoveSpy);
@@ -494,15 +494,15 @@ describe("MapSchema Tests", () => {
 
         decodedState.decode(state.encode());
 
-        decodedState.entities.onAdd = function (item, key) {};
-        decodedState.entities.onChange = function (item, key) {}
-        decodedState.entities.onRemove = function (item, key) {}
-        const onEntityAddSpy = sinon.spy(decodedState.entities, 'onAdd');
+        const onEntityAddSpy = sinon.spy(function (item, key) {});
+        decodedState.entities.onAdd(onEntityAddSpy);
+        decodedState.entities.onChange(function (item, key) {})
+        decodedState.entities.onRemove(function (item, key) {})
 
-        decodedState.items.onAdd = function (item, key) {}
-        decodedState.items.onChange = function (item, key) {}
-        decodedState.items.onRemove = function (item, key) {}
-        const onItemsChangeSpy = sinon.spy(decodedState.items, 'onChange');
+        const onItemsChangeSpy = sinon.spy(function (item, key) {});
+        decodedState.items.onAdd(function (item, key) {})
+        decodedState.items.onChange(onItemsChangeSpy);
+        decodedState.items.onRemove(function (item, key) {})
 
         const item1 = state.entities.get("item1");
         const previousWeapon = state.items.get("weapon");
@@ -537,8 +537,8 @@ describe("MapSchema Tests", () => {
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        decodedState.numbers.onRemove = function(num, i) {}
-        const onRemove = sinon.spy(decodedState.numbers, 'onRemove');
+        const onRemove = sinon.spy(function(num, i) {});
+        decodedState.numbers.onRemove(onRemove);
 
         state.numbers = new MapSchema({ four: 1, five: 2, six: 3 });
         decodedState.decode(state.encode());

@@ -274,13 +274,13 @@ describe("Edge cases", () => {
             const onAddCalledFor: string[] = [];
             const onRemovedCalledFor: string[] = [];
 
-            decodedState.entities.onAdd = function(entity, key) {
+            decodedState.entities.onAdd(function(entity, key) {
                 onAddCalledFor.push(key);
-            };
+            });
 
-            decodedState.entities.onRemove = function(entity, key) {
+            decodedState.entities.onRemove(function(entity, key) {
                 onRemovedCalledFor.push(key);
-            };
+            });
 
             // insert 100 items.
             for (let i = 0; i < 100; i++) {
