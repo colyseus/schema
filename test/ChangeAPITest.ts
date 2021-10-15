@@ -355,7 +355,7 @@ describe("Change API", () => {
             let onAdd: sinon.SinonSpy;
             decodedState.player.onChange(() => {
                 onAdd = sinon.spy((item, index) => {});
-                decodedState.player.cards.onAdd(onAdd);
+                decodedState.player.cards.onAdd(onAdd, false);
             });
 
             decodedState.decode(state.encode());
@@ -500,9 +500,12 @@ describe("Change API", () => {
 
             const onAddSpy = sinon.spy(function (player: Player, key: string) {
                 if (addCallCount === 0) {
-                    assert.strictEqual("snake", key);
+                    assert.strictEqual("jake", key);
 
                 } else if (addCallCount === 1) {
+                    assert.strictEqual("snake", key);
+
+                } else if (addCallCount === 2) {
                     assert.strictEqual("katarina", key);
                 }
                 addCallCount++;
@@ -527,7 +530,7 @@ describe("Change API", () => {
             encoded = state.encode();
             decodedState.decode(encoded);
 
-            sinon.assert.calledTwice(onAddSpy);
+            sinon.assert.calledThrice(onAddSpy);
             sinon.assert.calledOnce(onRemoveSpy);
         });
 
@@ -573,7 +576,10 @@ describe("Change API", () => {
             /* CHANGESET */
             let keyAddition = 'food10';
             let keyRemoval = 'food2';
-            decodedState.mapOfPlayers.onAdd((player: Player, key: string) => { assert.strictEqual(key, keyAddition); });
+
+            decodedState.mapOfPlayers.onAdd((player: Player, key: string) => {
+                assert.strictEqual(key, keyAddition);
+            }, false);
             decodedState.mapOfPlayers.onRemove((player: Player, key: string) => { assert.strictEqual(key, keyRemoval); });
             decodedState.mapOfPlayers.onChange((player: Player, key: string) => {});
 
@@ -691,10 +697,8 @@ describe("Change API", () => {
             const decodedState = new State();
             decodedState.decode(state.encode());
 
-            const onAddSpy = sinon.spy(function (player: Player, key: string) {
-                assert.ok(key);
-            });
-            decodedState.mapOfPlayers.onAdd(onAddSpy);
+            const onAddSpy = sinon.spy(function (player: Player, key: string) { assert.ok(key); });
+            decodedState.mapOfPlayers.onAdd(onAddSpy, false);
 
             state.mapOfPlayers.delete('jake');
             for (let i = 0; i < 5; i++) {
@@ -786,7 +790,7 @@ describe("Change API", () => {
             decodedState.decode(state.encodeAll());
 
             const onBlockAddSpy = sinon.spy(function (block, key) {});
-            decodedState.players.get('one').blocks.onAdd(onBlockAddSpy);
+            decodedState.players.get('one').blocks.onAdd(onBlockAddSpy, false);
 
             const onBlockChangeSpy = sinon.spy(function (block, key) {});
             decodedState.players.get('one').blocks.onChange(onBlockChangeSpy);
@@ -800,7 +804,7 @@ describe("Change API", () => {
             assert.strictEqual(decodedState.players.get('one').blocks[1].y, 150);
 
             sinon.assert.calledOnce(onBlockAddSpy);
-            // sinon.assert.calledOnce(onBlockChangeSpy);
+            sinon.assert.calledOnce(onBlockChangeSpy);
         });
 
         it("should identify reference inside a reference", () => {
@@ -861,7 +865,7 @@ describe("Change API", () => {
             const decodedState = new State();
             decodedState.listen("timer", () => timerChanges++);
             decodedState.listen("currentRound", (currentRound) => {
-                currentRound.scores.onAdd((value, key) => scoresAdded++);
+                currentRound.scores.onAdd((value, key) => scoresAdded++, false);
                 currentRound.scores.onChange((value, key) => scoresChanges++);
                 currentRound.totals.onChange((value, key) => totalsChanges++);
             })
@@ -922,15 +926,38 @@ describe("Change API", () => {
             const player = decodedState.mapOfPlayers.get("one");
             const onChangeSpy = sinon.spy(() => {});
             player.onChange(onChangeSpy);
-            // decodedState.triggerAll();
 
-            sinon.assert.calledOnce(onChangeSpy);
+            sinon.assert.notCalled(onChangeSpy);
             sinon.assert.calledTwice(mapOfStringsOnAdd);
             sinon.assert.calledWith(mapOfStringsOnAdd, "One", "one");
             sinon.assert.calledWith(mapOfStringsOnAdd, "Two", "two");
         });
 
-        it("should recursively trigger onAdd on collections, and onChange on its children", () => {
+        it("should recursively trigger onAdd on collections", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>();
+            state.mapOfPlayers.set('one', new Player("Jake", 10, 20));
+            state.mapOfPlayers.set('two', new Player("Katarina", 30, 40));
+
+            const decodedState = new State();
+            decodedState.mapOfPlayers = new MapSchema<Player>();
+            decodedState.decode(state.encode());
+
+            let onAddCalled = 0;
+            let onChangeCalled = 0;
+
+            decodedState.mapOfPlayers.onAdd(function(player, key) {
+                onAddCalled++;
+                player.onChange(function() {
+                    onChangeCalled++;
+                });
+            });
+
+            assert.strictEqual(2, onAddCalled, "onAdd should've been called twice.");
+            assert.strictEqual(0, onChangeCalled, "onChange should've been called twice.");
+        });
+
+        it("collections should implement .triggerAll()", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema<Player>();
             state.mapOfPlayers.set('one', new Player("Jake", 10, 20));
@@ -950,36 +977,10 @@ describe("Change API", () => {
                     // assert.strictEqual(3, changes.length);
                 });
             });
-            // decodedState.triggerAll();
-
-            assert.strictEqual(2, onAddCalled, "onAdd should've been called twice.");
-            assert.strictEqual(2, onChangeCalled, "onChange should've been called twice.");
-        });
-
-        it("collections should implement .triggerAll()", () => {
-            const state = new State();
-            state.mapOfPlayers = new MapSchema<Player>();
-            state.mapOfPlayers['one'] = new Player("Jake", 10, 20);
-            state.mapOfPlayers['two'] = new Player("Katarina", 30, 40);
-
-            const decodedState = new State();
-            decodedState.mapOfPlayers = new MapSchema<Player>();
-            decodedState.decode(state.encode());
-
-            let onAddCalled = 0;
-            let onChangeCalled = 0;
-
-            decodedState.mapOfPlayers.onAdd(function(player, key) {
-                onAddCalled++;
-                player.onChange(function() {
-                    onChangeCalled++;
-                    // assert.strictEqual(3, changes.length);
-                });
-            });
             // decodedState.mapOfPlayers.triggerAll();
 
             assert.strictEqual(2, onAddCalled, "onAdd should've been called twice.");
-            assert.strictEqual(2, onChangeCalled, "onChange should've been called twice.");
+            assert.strictEqual(0, onChangeCalled, "onChange shouldn't be called.");
         });
 
         it("ArraySchema should implement .triggerAll()", () => {

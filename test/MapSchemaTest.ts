@@ -495,12 +495,12 @@ describe("MapSchema Tests", () => {
         decodedState.decode(state.encode());
 
         const onEntityAddSpy = sinon.spy(function (item, key) {});
-        decodedState.entities.onAdd(onEntityAddSpy);
+        decodedState.entities.onAdd(onEntityAddSpy, false);
         decodedState.entities.onChange(function (item, key) {})
         decodedState.entities.onRemove(function (item, key) {})
 
         const onItemsChangeSpy = sinon.spy(function (item, key) {});
-        decodedState.items.onAdd(function (item, key) {})
+        decodedState.items.onAdd(function (item, key) {}, false)
         decodedState.items.onChange(onItemsChangeSpy);
         decodedState.items.onRemove(function (item, key) {})
 

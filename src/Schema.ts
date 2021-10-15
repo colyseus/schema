@@ -29,7 +29,7 @@ export interface DataChange<T=any,F=string> {
 export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
     $callbacks: { [operation: number]: Array<(item: TValue, key: TKey) => void> };
 
-    onAdd(callback: (item: any, key: any) => void): () => void;
+    onAdd(callback: (item: any, key: any) => void, ignoreExisting?: boolean): () => void;
     onRemove(callback: (item: any, key: any) => void): () => void;
     onChange(callback: (item: any, key: any) => void): () => void;
 

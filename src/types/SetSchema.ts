@@ -16,7 +16,16 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     // Decoding callbacks
     //
     public $callbacks: { [operation: number]: Array<(item: V, key: string) => void> };
-    public onAdd(callback: (item: V, key: string) => void) { return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.ADD, callback); }
+    public onAdd(callback: (item: V, key: string) => void, triggerAll: boolean = true) {
+        return addCallback(
+            (this.$callbacks || (this.$callbacks = [])),
+            OPERATION.ADD,
+            callback,
+            (triggerAll)
+                ? this.$items
+                : undefined
+        );
+    }
     public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.DELETE, callback); }
     public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.REPLACE, callback); }
 
