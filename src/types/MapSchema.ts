@@ -1,7 +1,7 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
-import { addCallback } from "./callbacks";
+import { addCallback, removeChildRefs } from "./utils";
 import { DataChange } from "..";
 
 export function getMapProxy(value: MapSchema) {
@@ -162,21 +162,7 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         // - flag child items for garbage collection.
         //
         if (changes) {
-            const needRemoveRef = (typeof (this.$changes.getType()) !== "string");
-
-            this.$items.forEach((item: V, key: string) => {
-                changes.push({
-                    refId: this.$changes.refId,
-                    op: OPERATION.DELETE,
-                    field: key,
-                    value: undefined,
-                    previousValue: item
-                });
-
-                if (needRemoveRef) {
-                    this.$changes.root.removeRef(item['$changes'].refId);
-                }
-            });
+            removeChildRefs.call(this, changes);
         }
 
         // clear items

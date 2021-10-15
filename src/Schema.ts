@@ -15,7 +15,7 @@ import { NonFunctionPropNames } from './types/HelperTypes';
 import { ClientState } from './filters';
 import { getType } from './types/typeRegistry';
 import { ReferenceTracker } from './changes/ReferenceTracker';
-import { addCallback, spliceOne } from './types/callbacks';
+import { addCallback, spliceOne } from './types/utils';
 
 export interface DataChange<T=any,F=string> {
     refId: number,
