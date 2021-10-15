@@ -2,6 +2,7 @@ import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
 import { addCallback } from "./callbacks";
+import { DataChange } from "..";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
@@ -180,7 +181,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         return this.$items.delete(index);
     }
 
-    clear(isDecoding?: boolean) {
+    clear(changes?: DataChange[]) {
         // discard previous operations.
         this.$changes.discard(true, true);
         this.$changes.indexes = {};
@@ -188,10 +189,26 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         // clear previous indexes
         this.$indexes.clear();
 
-        // flag child items for garbage collection.
-        if (isDecoding && typeof (this.$changes.getType()) !== "string") {
-            this.$items.forEach((item: V) => {
-                this.$changes.root.removeRef(item['$changes'].refId);
+        //
+        // When decoding:
+        // - enqueue items for DELETE callback.
+        // - flag child items for garbage collection.
+        //
+        if (changes) {
+            const needRemoveRef = (typeof (this.$changes.getType()) !== "string");
+
+            this.$items.forEach((item: V, key: any) => {
+                changes.push({
+                    refId: this.$changes.refId,
+                    op: OPERATION.DELETE,
+                    field: key,
+                    value: undefined,
+                    previousValue: item
+                });
+
+                if (needRemoveRef) {
+                    this.$changes.root.removeRef(item['$changes'].refId);
+                }
             });
         }
 

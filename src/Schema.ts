@@ -34,7 +34,7 @@ export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
     onChange(callback: (item: any, key: any) => void): () => void;
 
     clone(decoding?: boolean): SchemaDecoderCallbacks;
-    clear(decoding?: boolean);
+    clear(changes?: DataChange[]);
     decode?(byte, it: Iterator);
 }
 
@@ -254,7 +254,7 @@ export abstract class Schema {
                 // The `.clear()` method is calling `$root.removeRef(refId)` for
                 // each item inside this collection
                 //
-                (ref as SchemaDecoderCallbacks).clear(true);
+                (ref as SchemaDecoderCallbacks).clear(allChanges);
                 continue;
             }
 
