@@ -44,6 +44,7 @@ function generateClass(klass: Class, namespace: string) {
     return `${getCommentHeader()}
 
 using Colyseus.Schema;
+using Action = System.Action;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
 ${indent}public partial class ${klass.name} : ${klass.extends} {
 ${klass.properties.map(prop => generateProperty(prop, indent)).join("\n\n")}
@@ -111,27 +112,26 @@ function generateAllFieldCallbacks(klass: Class, indent: string) {
     return `${klass.properties.map(prop => {
         const eventName = `_${prop.name}Change`;
         eventNames.push(eventName);
-        console.log("GET TYPE??", getType(prop), prop);
         return `\t${indent}protected event PropertyChangeHandler<${getType(prop)}> ${eventName};
 \t${indent}public Action On${capitalize(prop.name)}Change(PropertyChangeHandler<${getType(prop)}> handler) {
-\t${indent}\tif (!__callbacks) { __callbacks = new SchemaCallbacks(); }
-\t${indent}\t__callbacks.AddPropertyCallback("${prop.name}");
+\t${indent}\tif (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
+\t${indent}\t__callbacks.AddPropertyCallback(nameof(${prop.name}));
 \t${indent}\t${eventName} += handler;
 \t${indent}\treturn () => {
-\t${indent}\t\t__callbacks.RemovePropertyCallback("${prop.name}");
+\t${indent}\t\t__callbacks.RemovePropertyCallback(nameof(${prop.name}));
 \t${indent}\t\t${eventName} -= handler;
-\t${indent}\t}
+\t${indent}\t};
 \t${indent}}`;
     }).join("\n\n")}
 
-\t${indent}protected void TriggerFieldChange(DataChange change) {
+\t${indent}protected override void TriggerFieldChange(DataChange change) {
 \t${indent}\tswitch (change.Field) {
 ${klass.properties.map((prop, i) => {
-    return `\t${indent}\t\tcase "${prop.name}": ${eventNames[i]}?.Invoke((${getType(prop)}) change.Value, (${getType(prop)}) change.PreviousValue); break;`;
+    return `\t${indent}\t\tcase nameof(${prop.name}): ${eventNames[i]}?.Invoke((${getType(prop)}) change.Value, (${getType(prop)}) change.PreviousValue); break;`;
 }).join("\n")}
 \t${indent}\t\tdefault: break;
-\t${indent}
-}`;
+\t\t${indent}}
+\t${indent}}`;
 }
 
 function getChildType(prop: Property) {
