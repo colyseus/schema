@@ -47,6 +47,12 @@ using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
 ${indent}public partial class ${klass.name} : ${klass.extends} {
 ${klass.properties.map(prop => generateProperty(prop, indent)).join("\n\n")}
+
+${indent}\t/*
+${indent}\t * Support for individual property change callbacks below...
+${indent}\t */
+
+${generateAllFieldCallbacks(klass, indent)}
 ${indent}}
 ${namespace ? "}" : ""}
 `;
@@ -61,19 +67,7 @@ function generateProperty(prop: Property, indent: string = "") {
     if (prop.childType) {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
 
-        if(prop.type === "ref") {
-            langType = (isUpcaseFirst)
-                ? prop.childType
-                : getChildType(prop);
-
-        } else {
-            const containerClass = capitalize(prop.type);
-
-            langType = (isUpcaseFirst)
-                ? `${containerClass}Schema<${prop.childType}>`
-                : `${containerClass}Schema<${getChildType(prop)}>`;
-        }
-
+        langType = getType(prop);
         typeArgs += `, typeof(${langType})`;
 
         if (!isUpcaseFirst) {
@@ -108,12 +102,62 @@ ${namespace ? "}" : ""}
 `;
 }
 
+function generateAllFieldCallbacks(klass: Class, indent: string) {
+    //
+    // TODO: improve me. It would be great to generate less boilerplate in favor
+    // of a single implementation on C# Schema class itself.
+    //
+    const eventNames: string[] = [];
+    return `${klass.properties.map(prop => {
+        const eventName = `_${prop.name}Change`;
+        eventNames.push(eventName);
+        console.log("GET TYPE??", getType(prop), prop);
+        return `\t${indent}protected event PropertyChangeHandler<${getType(prop)}> ${eventName};
+\t${indent}public Action On${capitalize(prop.name)}Change(PropertyChangeHandler<${getType(prop)}> handler) {
+\t${indent}\tif (!__callbacks) { __callbacks = new SchemaCallbacks(); }
+\t${indent}\t__callbacks.AddPropertyCallback("${prop.name}");
+\t${indent}\t${eventName} += handler;
+\t${indent}\treturn () => {
+\t${indent}\t\t__callbacks.RemovePropertyCallback("${prop.name}");
+\t${indent}\t\t${eventName} -= handler;
+\t${indent}\t}
+\t${indent}}`;
+    }).join("\n\n")}
+
+\t${indent}protected void TriggerFieldChange(DataChange change) {
+\t${indent}\tswitch (change.Field) {
+${klass.properties.map((prop, i) => {
+    return `\t${indent}\t\tcase "${prop.name}": ${eventNames[i]}?.Invoke((${getType(prop)}) change.Value, (${getType(prop)}) change.PreviousValue); break;`;
+}).join("\n")}
+\t${indent}\t\tdefault: break;
+\t${indent}
+}`;
+}
+
 function getChildType(prop: Property) {
     return typeMaps[prop.childType];
 }
 
 function getType(prop: Property) {
-    return (prop.type === "array")
-        ? `${typeMaps[prop.childType] || prop.childType}[]`
-        : typeMaps[prop.type];
+    if (prop.childType) {
+        const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
+        let type: string;
+
+        if(prop.type === "ref") {
+            type = (isUpcaseFirst)
+                ? prop.childType
+                : getChildType(prop);
+        } else {
+            const containerClass = capitalize(prop.type);
+            type = (isUpcaseFirst)
+                ? `${containerClass}Schema<${prop.childType}>`
+                : `${containerClass}Schema<${getChildType(prop)}>`;
+        }
+        return type;
+
+    } else {
+        return (prop.type === "array")
+            ? `${typeMaps[prop.childType] || prop.childType}[]`
+            : typeMaps[prop.type];
+    }
 }

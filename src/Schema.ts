@@ -1005,12 +1005,6 @@ export abstract class Schema {
                     // triger onAdd
                     $callbacks[OPERATION.ADD]?.forEach(callback =>
                         callback(change.value, change.dynamicIndex ?? change.field));
-
-                // } else if (
-                //     change.op === OPERATION.REPLACE ||
-                //     change.value !== change.previousValue
-                // ) {
-                //     (ref as SchemaDecoderCallbacks).onChange?.(change.value, change.dynamicIndex);
                 }
 
                 // trigger onChange
