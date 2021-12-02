@@ -44,6 +44,7 @@ describe("schema-codegen", () => {
         });
 
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        console.log({ outputFiles });
         assert.strictEqual(2, outputFiles.length);
     });
 
