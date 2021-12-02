@@ -197,9 +197,12 @@ export function type (
 ): PropertyDecorator {
     return function (target: typeof Schema, field: string) {
         const context = options.context || globalContext;
-
         const constructor = target.constructor as typeof Schema;
         constructor._context = context;
+
+        if (!type) {
+            throw new Error(`${constructor.name}: @type() reference provided for "${field}" is undefined. Make sure you don't have any circular dependencies.`);
+        }
 
         /*
          * static schema

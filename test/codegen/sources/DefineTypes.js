@@ -1,8 +1,6 @@
 const schema = require("@colyseus/schema");
-const Schema = schema.Schema;
-const defineTypes = schema.defineTypes;
 
-class DefineTypes extends Schema {
+class DefineTypes extends schema.Schema {
     constructor () {
         super();
     }
