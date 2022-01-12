@@ -20,13 +20,6 @@ export class Context {
         return {
             classes: this.classes.filter(klass => {
                 if (this.isSchemaClass(klass)) {
-                    //
-                    // FIXME: see "this.isSchemaClass()" comments.
-                    //
-                    // When extending from `schema.Schema`, it is required to
-                    // normalize as "Schema" for code generation.
-                    //
-                    klass.extends = "Schema";
                     return true;
 
                 } else {
@@ -64,7 +57,7 @@ export class Context {
         let currentClass = klass;
         while (!isSchema && currentClass) {
             //
-            // TODO: ideally we should check for actual @colsyeus/schema module
+            // TODO: ideally we should check for actual @colyseus/schema module
             // reference rather than arbitrary strings.
             //
             isSchema = (
@@ -73,10 +66,18 @@ export class Context {
                 currentClass.extends === "Schema.Schema"
             );
 
+            //
+            // When extending from `schema.Schema`, it is required to
+            // normalize as "Schema" for code generation.
+            //
+            if (currentClass === klass && isSchema) {
+                klass.extends = "Schema";
+            }
+
             currentClass = this.getParentClass(currentClass);
         }
 
-        return isSchema
+        return isSchema;
     }
 }
 
