@@ -969,7 +969,7 @@ export abstract class Schema {
                 }
 
                 try {
-                    $callbacks[change.field]?.forEach(callback =>
+                    $callbacks[change.op]?.forEach(callback =>
                         callback(change.value, change.previousValue));
                 } catch (e) {
                     Schema.onError(e);
