@@ -1118,6 +1118,38 @@ describe("Change API", () => {
 
             assert.ok(true, "This piece of code should compile.");
         });
+
+        it("Edge case: using a .map property name", () => {
+            let listenCount: number = 0;
+            let onChangeCount: number = 0;
+
+            class MyMap extends Schema {
+                @type("string") prop1: string;
+            }
+            class MapHolder extends Schema {
+                @type(MyMap) map = new MyMap();
+            }
+            class State extends Schema {
+                @type({map: MapHolder}) users = new MapSchema<MapHolder>();
+            }
+
+            const state = new State();
+            state.users.set("one", new MapHolder());
+            state.users.get("one").map.prop1 = "Hello world";
+
+            const decodedState = new State();
+            decodedState.users.onAdd((user) => {
+                user.onChange(() => onChangeCount++);
+                user.map.listen("prop1", () => listenCount++);
+            });
+            decodedState.decode(state.encode());
+
+            state.users.get("one").map.prop1 = "Changed...";
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(2, listenCount);
+            assert.strictEqual(1, onChangeCount);
+        })
     });
 
 });

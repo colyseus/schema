@@ -969,8 +969,11 @@ export abstract class Schema {
                 }
 
                 try {
-                    $callbacks[change.op]?.forEach(callback =>
-                        callback(change.value, change.previousValue));
+                    if ($callbacks.hasOwnProperty(change.field)) {
+                        $callbacks[change.field]?.forEach((callback) =>
+                            callback(change.value, change.previousValue));
+                    }
+
                 } catch (e) {
                     Schema.onError(e);
                 }
