@@ -96,7 +96,7 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
     static is(type: any) {
         return (
             // type format: ["string"]
-            Array.isArray(type) || 
+            Array.isArray(type) ||
 
             // type format: { array: "string" }
             (type['array'] !== undefined)
@@ -404,7 +404,7 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param initialValue If initialValue is specified, it is used as the initial value to start the accumulation. The first call to the callbackfn function provides this value as an argument instead of an array value.
      */
     reduce<U=V>(callbackfn: (previousValue: U, currentValue: V, currentIndex: number, array: V[]) => U, initialValue?: U): U {
-        return Array.from(this.$items.values()).reduce(callbackfn, initialValue);
+        return Array.from(this.$items.values()).reduce.apply(this, arguments);
     }
 
     /**
@@ -413,7 +413,7 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
      * @param initialValue If initialValue is specified, it is used as the initial value to start the accumulation. The first call to the callbackfn function provides this value as an argument instead of an array value.
      */
     reduceRight<U=V>(callbackfn: (previousValue: U, currentValue: V, currentIndex: number, array: V[]) => U, initialValue?: U): U {
-        return Array.from(this.$items.values()).reduceRight(callbackfn, initialValue);
+        return Array.from(this.$items.values()).reduceRight.apply(this, arguments);
     }
 
     /**
