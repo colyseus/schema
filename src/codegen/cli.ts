@@ -1,3 +1,4 @@
+import * as glob from "glob";
 import argv from "./argv";
 import { generate } from "./api";
 
@@ -50,9 +51,9 @@ if (!args.output) {
 }
 
 try {
-    args.files = args._;
+    args.files = [].concat(...args._.map((filename) => glob.sync(filename)));
     generate(targetId, {
-        files: args._,
+        files: args.files,
         decorator: args.decorator,
         output: args.output,
         namespace: args.namespace
