@@ -7,10 +7,6 @@
     An incremental binary state serializer with delta encoding for games.<br>
     Although it was born to be used on <a href="https://github.com/colyseus/colyseus">Colyseus</a>, this library can be used as standalone.
   </p>
-
-  <a href="https://travis-ci.org/colyseus/schema">
-    <img src="https://img.shields.io/travis/colyseus/schema.svg?style=for-the-badge" alt="Build status" />
-  </a>
 </div>
 
 ## Defining Schema
