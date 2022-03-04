@@ -109,7 +109,9 @@ function generateAllFieldCallbacks(klass: Class, indent: string) {
     // of a single implementation on C# Schema class itself.
     //
     const eventNames: string[] = [];
-    return `${klass.properties.map(prop => {
+    return `${klass.properties
+        .filter(prop => !prop.deprecated) // generate only for properties that haven't been deprecated.
+        .map(prop => {
         const eventName = `_${prop.name}Change`;
         eventNames.push(eventName);
         return `\t${indent}protected event PropertyChangeHandler<${getType(prop)}> ${eventName};
@@ -126,7 +128,7 @@ function generateAllFieldCallbacks(klass: Class, indent: string) {
 
 \t${indent}protected override void TriggerFieldChange(DataChange change) {
 \t${indent}\tswitch (change.Field) {
-${klass.properties.map((prop, i) => {
+${klass.properties.filter(prop => !prop.deprecated).map((prop, i) => {
     return `\t${indent}\t\tcase nameof(${prop.name}): ${eventNames[i]}?.Invoke((${getType(prop)}) change.Value, (${getType(prop)}) change.PreviousValue); break;`;
 }).join("\n")}
 \t${indent}\t\tdefault: break;
