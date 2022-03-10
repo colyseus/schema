@@ -9,6 +9,9 @@ export { ArraySchema };
 import { CollectionSchema } from "./types/CollectionSchema";
 export { CollectionSchema };
 
+import { LifoSchema } from "./types/LifoSchema";
+export { LifoSchema };
+
 import { SetSchema } from "./types/SetSchema";
 export { SetSchema };
 
