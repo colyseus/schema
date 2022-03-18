@@ -24,7 +24,7 @@ export type PrimitiveType =
     typeof Schema;
 
 export type DefinitionType = PrimitiveType
-    | PrimitiveType[]
+    | [PrimitiveType]
     | { array: PrimitiveType }
     | { map: PrimitiveType }
     | { collection: PrimitiveType }
@@ -345,13 +345,66 @@ export function deprecated(throws: boolean = true, context: Context = globalCont
     }
 }
 
-export function defineTypes(
+type DefinitionTypeOptionsBase<T, S extends Schema, R extends Schema, P = any, K = any, V = any> = {
+    type: T extends Map<string, any> ? {
+            [prop in keyof typeof Map]: typeof Map[prop];
+        } :
+        T extends Set<any> ? {
+            [prop in keyof typeof Set]: typeof Set[prop];
+        } :
+        T;
+    of?: PrimitiveType;
+    filter?: FilterCallback<S, P, R>;
+    filterChildren?: FilterChildrenCallback<S, K, V, R>;
+}
+
+export type DefinitionTypeOptions<S extends Schema, R extends Schema, P = any, K = any, V = any> = DefinitionTypeOptionsBase<PrimitiveType, S, R, P, K, V>
+            | DefinitionTypeOptionsBase<[PrimitiveType], S, R, P, K, V>
+            | DefinitionTypeOptionsBase<typeof Map, S, R, P, K, V>
+            | DefinitionTypeOptionsBase<typeof Set, S, R, P, K, V>
+
+type PropertyDefinitionOptions<S extends Schema, R extends Schema, P = any, K = any, V = any> = {
+  type: DefinitionType;
+  filter?: FilterCallback<S, P, R>;
+  filterChildren?: FilterChildrenCallback<S, K, V, R>;
+}
+
+function isPrimitive(prop: any) {
+    return (typeof prop === "string" || Schema.isPrototypeOf(prop));
+}
+
+export function defineTypes<S extends Schema, R extends Schema>(
     target: typeof Schema,
-    fields: { [property: string]: DefinitionType },
+    fields: {
+        [property: string]: DefinitionType | DefinitionTypeOptions<S, R>
+    },
     context: Context = target._context || globalContext
 ) {
-    for (let field in fields) {
-        type(fields[field], context)(target.prototype, field);
+    for (let propertyName in fields) {
+        const propertyOptions: PropertyDefinitionOptions<S, R> = (() => {
+            const prop = fields[propertyName];
+            if (isPrimitive(prop) || Array.isArray(prop) || prop["type"] === null) return {
+              type: prop as DefinitionType
+            };
+
+            const options = prop as DefinitionTypeOptions<S, R>;
+            const result = {
+              type: undefined,
+              filter: options.filter,
+              filterChildren: options.filterChildren
+            }
+            if (isPrimitive(options["type"]) || Array.isArray(options["type"])) {
+              result.type = options["type"];
+            } else if (Map.isPrototypeOf(options["type"])) {
+              result.type = { map: options["of"] };
+            } else if (Set.isPrototypeOf(options["type"])) {
+              result.type = { set: options["of"] };
+            }
+            return result;
+        })();
+        type(propertyOptions.type, context)(target.prototype, propertyName);
+        if (propertyOptions.filter) filter(propertyOptions.filter)(target.prototype, propertyName)
+        if (propertyOptions.filterChildren) filterChildren(propertyOptions.filter)(target.prototype, propertyName)
     }
     return target;
 }
