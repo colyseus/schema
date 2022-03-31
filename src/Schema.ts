@@ -122,7 +122,7 @@ export abstract class Schema {
         console.error(e);
     }
 
-    static is(type: DefinitionType) {
+    static is(type: DefinitionType): type is typeof Schema {
         return (
             type['_definition'] &&
             type['_definition'].schema !== undefined

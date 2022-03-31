@@ -46,14 +46,16 @@ export {
     hasFilter,
 
     // Internals
-    SchemaDefinition,
+    SchemaDefinition, 
 
     // Types
     Context,
     PrimitiveType,
     Definition,
     DefinitionType,
+    DefinitionTypeOptions,
     FilterCallback,
+    FilterChildrenCallback,
 } from "./annotations";
 
 export { OPERATION } from "./spec";
