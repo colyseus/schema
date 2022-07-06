@@ -1,8 +1,19 @@
 import * as assert from "assert";
-import * as msgpack from "notepack.io";
+import { addExtension, encode } from "msgpackr";
 
-import { State, Player } from "./Schema";
-import { MapSchema, ArraySchema } from "../src";
+import { Player, State } from "./Schema";
+import { ArraySchema, MapSchema } from "../src";
+
+addExtension({
+    Class: State,
+    type: 0,
+    read(datum: any): any {
+        return datum;
+    },
+    write(instance: any): any {
+        return instance.toJSON();
+    }
+});
 
 describe("Compatibility", () => {
     const targetState = {"fieldString":"Hello world!","fieldNumber":10,"player":{"name":"Jake","x":100,"y":100},"arrayOfPlayers":[{"name":"arr1","x":1,"y":1},{"name":"arr2","x":2,"y":2}],"mapOfPlayers":{"one":{"name":"One","x":1,"y":1},"two":{"name":"Two","x":2,"y":2}}};
@@ -24,7 +35,7 @@ describe("Compatibility", () => {
     });
 
     it("should be compatible with msgpack.encode", () => {
-        assert.deepEqual(msgpack.encode(state), msgpack.encode(targetState));
+        assert.deepEqual(encode(state), encode(targetState));
     });
 
     it("should allow only one child as Schema instance", () => {
@@ -33,6 +44,6 @@ describe("Compatibility", () => {
             number: 10,
             player: state.player
         }
-        msgpack.encode([data]);
+        encode([data]);
     });
 })

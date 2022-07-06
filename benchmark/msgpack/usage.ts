@@ -1,4 +1,4 @@
-import * as msgpack from "notepack.io";
+import * as msgpack from "msgpackr";
 
 const primitive = {
     str: "Hello world!",
