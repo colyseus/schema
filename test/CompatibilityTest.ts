@@ -1,8 +1,9 @@
 import * as assert from "assert";
-import { addExtension, encode } from "msgpackr";
+import { addExtension, pack } from "msgpackr";
 
 import { Player, State } from "./Schema";
 import { ArraySchema, MapSchema } from "../src";
+import { Schema } from "../lib";
 
 addExtension({
     Class: State,
@@ -35,7 +36,7 @@ describe("Compatibility", () => {
     });
 
     it("should be compatible with msgpack.encode", () => {
-        assert.deepEqual(encode(state), encode(targetState));
+        assert.deepEqual(pack(state), pack(targetState));
     });
 
     it("should allow only one child as Schema instance", () => {
@@ -44,6 +45,6 @@ describe("Compatibility", () => {
             number: 10,
             player: state.player
         }
-        encode([data]);
+        pack([data]);
     });
 })
