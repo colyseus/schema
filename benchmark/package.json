@@ -12,10 +12,10 @@
   "dependencies": {
     "@colyseus/schema": "file:../",
     "benchmark": "^2.1.4",
-    "notepack.io": "^2.3.0",
+      "msgpackr": "^1.6.1",
     "protobufjs": "^6.10.2"
   },
   "devDependencies": {
-    "ts-node": "^9.1.1"
+    "ts-node": "^10.8.2"
   }
 }

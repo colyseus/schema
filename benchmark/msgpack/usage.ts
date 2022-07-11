@@ -1,4 +1,4 @@
-import * as msgpack from "notepack.io";
+import { pack, unpack } from "msgpackr";
 
 const primitive = {
     str: "Hello world!",
@@ -8,12 +8,12 @@ const primitive = {
     int32: 2147483647,
     uint32: 4294967295,
 };
-const primitiveEncoded = msgpack.encode(primitive);
+const primitiveEncoded = pack(primitive);
 
 export function encodePrimitiveTypes() {
-    msgpack.encode(primitive);
+    pack(primitive);
 }
 
 export function decodePrimitiveTypes() {
-    msgpack.decode(primitiveEncoded);
+    unpack(primitiveEncoded);
 }
