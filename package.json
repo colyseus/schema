@@ -27,6 +27,7 @@
     "prepublishOnly": "npm run build"
   },
   "files": [
+    "src",
     "lib",
     "build",
     "bin"
