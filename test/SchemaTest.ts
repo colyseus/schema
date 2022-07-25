@@ -948,6 +948,27 @@ describe("Schema Usage", () => {
             delete state.mapOfPlayers['jake'];
         });
 
+        it('should encode map with primitive values from decoded state', () => {
+            class TestMapSchema extends Schema {
+                @type({ map: 'number' })
+                value = new MapSchema<number>();
+            }
+            const state = new TestMapSchema();
+
+            state.value.set('k1', 1);
+            const firstEncoded = state.encodeAll();
+            
+            const decodedState1 = new TestMapSchema();
+            decodedState1.decode(firstEncoded);
+            assert.deepStrictEqual(decodedState1.toJSON(), state.toJSON(), `decodedState1.toJSON() EQ state.toJSON()`);
+            const secondEncoded = decodedState1.encodeAll();
+            assert.deepStrictEqual(secondEncoded, firstEncoded, `firstEncoded EQ secondEncoded`);
+
+            const decodedState2 = new TestMapSchema();
+            decodedState2.decode(secondEncoded);
+            assert.deepStrictEqual(decodedState2.toJSON(), state.toJSON(), `decodedState2.toJSON() EQ state.toJSON()`);
+        });
+
         it('should discard deleted map items', () => {
             class Player extends Schema {
                 @type("number")
