@@ -72,23 +72,21 @@ function generateEnum(_enum: Enum, namespace: string) {
     let enumRunningValue = 0;
     return `${getCommentHeader()}
 ${namespace ? `\nnamespace ${namespace} {` : ""}
-${indent}struct ${_enum.name} {
+${indent}public struct ${_enum.name} {
 ${_enum.properties
     .map((prop) => {
-        const type = prop.type?.replace(/'/g, '"');
-        const isNumeric = /[0-9]+/.test(type);
-        if (isNumeric || type === undefined) {
-            if (type !== undefined) {
-                enumRunningValue = Number.parseInt(type, 10);
+        const initializer = prop.type?.replace(/'/g, '"');
+        const isNumeric = /[0-9]+/.test(initializer);
+        if (isNumeric) {
+            enumRunningValue = Number.parseInt(initializer, 10);
             }
-            return `${indent}\tpublic const ${
-                prop.name
-            } = ${enumRunningValue++}`;
-        } else {
-            return `${indent}\tpublic const ${prop.name} = ${type}`;
-        }
+        const showAsInt = isNumeric || initializer === undefined;
+        const typeStr = showAsInt ? "int" : "string";
+        return `${indent}\tpublic const ${typeStr} ${prop.name} = ${
+            initializer ?? ++enumRunningValue
+        };\n`;
     })
-    .join(",\n\n")}
+    .join("")}
 ${indent}}
 ${namespace ? "}" : ""}
 `;
