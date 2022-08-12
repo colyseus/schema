@@ -61,11 +61,25 @@ describe("schema-codegen", () => {
     });
 
     it("should support generating abstract classes with no fields", async () => {
-        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "AbstractSchema.ts"));
+        const inputFiles = glob.sync(
+            path.resolve(INPUT_DIR, "AbstractSchema.ts")
+        );
 
         generate("csharp", {
             files: inputFiles,
-            output: OUTPUT_DIR
+            output: OUTPUT_DIR,
+        });
+
+        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        assert.strictEqual(2, outputFiles.length);
+    });
+
+    it("should support generating enums", async () => {
+        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Enums.ts"));
+
+        generate("csharp", {
+            files: inputFiles,
+            output: OUTPUT_DIR,
         });
 
         const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));

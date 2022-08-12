@@ -1,4 +1,11 @@
-import { Class, Property, File, getCommentHeader, Interface } from "../types";
+import {
+    Class,
+    Property,
+    File,
+    getCommentHeader,
+    Interface,
+    Enum,
+} from "../types";
 import { GenerateOptions } from "../api";
 import { Context } from "../types";
 
@@ -34,8 +41,12 @@ export function generate (context: Context, options: GenerateOptions): File[] {
         })),
         ...context.interfaces.map(structure => ({
             name: `${structure.name}.cs`,
-            content: generateInterface(structure, options.namespace)
-        }))
+            content: generateInterface(structure, options.namespace),
+        })),
+        ...context.enums.map((structure) => ({
+            name: `${structure.name}.cs`,
+            content: generateEnum(structure, options.namespace),
+        })),
     ];
 }
 
@@ -46,7 +57,23 @@ function generateClass(klass: Class, namespace: string) {
 using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
 ${indent}public partial class ${klass.name} : ${klass.extends} {
-${klass.properties.map(prop => generateProperty(prop, indent)).join("\n\n")}
+${klass.properties.map((prop) => generateProperty(prop, indent)).join("\n\n")}
+${indent}}
+${namespace ? "}" : ""}
+`;
+}
+
+function generateEnum(_enum: Enum, namespace: string) {
+    const indent = namespace ? "\t" : "";
+    return `${getCommentHeader()}
+
+${namespace ? `\nnamespace ${namespace} {` : ""}
+${indent}public enum ${_enum.name} {
+${_enum.properties
+    .map(
+        (prop) => `${indent}\t${prop.name}${prop.type ? ` = ${prop.type}` : ""}`
+    )
+    .join(",\n\n")}
 ${indent}}
 ${namespace ? "}" : ""}
 `;
