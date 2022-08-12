@@ -33,7 +33,11 @@ const capitalize = (s) => {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function generate (context: Context, options: GenerateOptions): File[] {
+export function generate(context: Context, options: GenerateOptions): File[] {
+    // enrich typeMaps with enums
+    context.enums.forEach((structure) => {
+        typeMaps[structure.name] = structure.name;
+    });
     return [
         ...context.classes.map(structure => ({
             name: `${structure.name}.cs`,
