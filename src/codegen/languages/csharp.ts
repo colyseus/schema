@@ -69,14 +69,25 @@ ${namespace ? "}" : ""}
 
 function generateEnum(_enum: Enum, namespace: string) {
     const indent = namespace ? "\t" : "";
+    let enumRunningValue = 0;
     return `${getCommentHeader()}
-
 ${namespace ? `\nnamespace ${namespace} {` : ""}
-${indent}public enum ${_enum.name} {
+${indent}struct ${_enum.name} {
 ${_enum.properties
-    .map(
-        (prop) => `${indent}\t${prop.name}${prop.type ? ` = ${prop.type}` : ""}`
-    )
+    .map((prop) => {
+        const type = prop.type?.replace(/'/g, '"');
+        const isNumeric = /[0-9]+/.test(type);
+        if (isNumeric || type === undefined) {
+            if (type !== undefined) {
+                enumRunningValue = Number.parseInt(type, 10);
+            }
+            return `${indent}\tpublic const ${
+                prop.name
+            } = ${enumRunningValue++}`;
+        } else {
+            return `${indent}\tpublic const ${prop.name} = ${type}`;
+        }
+    })
     .join(",\n\n")}
 ${indent}}
 ${namespace ? "}" : ""}
