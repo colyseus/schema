@@ -437,6 +437,7 @@ export abstract class Schema {
 
                     // ref.set(key, value);
                     ref['$items'].set(key, value);
+                    ref['$changes'].allChanges.add(fieldIndex);
 
                 } else if (ref instanceof ArraySchema) {
                     // const key = ref['$indexes'][field];
