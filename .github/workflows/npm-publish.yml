@@ -11,6 +11,10 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@master
+    - name: Set ownership (workaround for actions/runner#2033)
+      run: |
+        # this is to fix GIT not liking owner of the checkout dir
+        chown -R $(id -u):$(id -g) $PWD
     - name: Set up Node.js
       uses: actions/setup-node@master
       with:
