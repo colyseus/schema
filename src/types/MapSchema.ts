@@ -67,7 +67,10 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
 
     constructor (initialValues?: Map<K, V> | Record<K, V>) {
         if (initialValues) {
-            if (initialValues instanceof Map) {
+            if (
+                initialValues instanceof Map ||
+                initialValues instanceof MapSchema
+            ) {
                 initialValues.forEach((v, k) => this.set(k, v));
 
             } else {
