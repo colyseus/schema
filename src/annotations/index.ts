@@ -1,36 +1,11 @@
-import { ChangeTree } from './changes/ChangeTree';
-import { Schema } from './Schema';
-import { ArraySchema, getArrayProxy } from './types/ArraySchema';
-import { MapSchema, getMapProxy } from './types/MapSchema';
-import { getType } from './types';
+import { ClientWithSessionId, Context, globalContext } from './Context';
+import { Schema } from '../Schema';
+import { DefinitionType, SchemaDefinition } from './SchemaDefinition';
+import { ArraySchema, getArrayProxy } from '../types/ArraySchema';
+import { getMapProxy, MapSchema } from '../types/MapSchema';
+import { ChangeTree } from '../changes/ChangeTree';
 
-/**
- * Data types
- */
-export type PrimitiveType =
-    "string" |
-    "number" |
-    "boolean" |
-    "int8" |
-    "uint8" |
-    "int16" |
-    "uint16" |
-    "int32" |
-    "uint32" |
-    "int64" |
-    "uint64" |
-    "float32" |
-    "float64" |
-    typeof Schema;
 
-export type DefinitionType = PrimitiveType
-    | PrimitiveType[]
-    | { array: PrimitiveType }
-    | { map: PrimitiveType }
-    | { collection: PrimitiveType }
-    | { set: PrimitiveType };
-
-export type Definition = { [field: string]: DefinitionType };
 export type FilterCallback<
     T extends Schema = any,
     V = any,
@@ -48,119 +23,7 @@ export type FilterChildrenCallback<
 > = (
     ((this: T, client: ClientWithSessionId, key: K, value: V) => boolean) |
     ((this: T, client: ClientWithSessionId, key: K, value: V, root: R) => boolean)
-)
-
-export class SchemaDefinition {
-    schema: Definition;
-
-    //
-    // TODO: use a "field" structure combining all these properties per-field.
-    //
-
-    indexes: { [field: string]: number } = {};
-    fieldsByIndex: { [index: number]: string } = {};
-
-    filters: { [field: string]: FilterCallback };
-    indexesWithFilters: number[];
-    childFilters: { [field: string]: FilterChildrenCallback }; // childFilters are used on Map, Array, Set items.
-
-    deprecated: { [field: string]: boolean } = {};
-    descriptors: PropertyDescriptorMap & ThisType<any> = {};
-
-    static create(parent?: SchemaDefinition) {
-        const definition = new SchemaDefinition();
-
-        // support inheritance
-        definition.schema = Object.assign({}, parent && parent.schema || {});
-        definition.indexes = Object.assign({}, parent && parent.indexes || {});
-        definition.fieldsByIndex = Object.assign({}, parent && parent.fieldsByIndex || {});
-        definition.descriptors = Object.assign({}, parent && parent.descriptors || {});
-        definition.deprecated = Object.assign({}, parent && parent.deprecated || {});
-
-        return definition;
-    }
-
-    addField(field: string, type: DefinitionType) {
-        const index = this.getNextFieldIndex();
-        this.fieldsByIndex[index] = field;
-        this.indexes[field] = index;
-        this.schema[field] = (Array.isArray(type))
-            ? { array: type[0] }
-            : type;
-    }
-
-    addFilter(field: string, cb: FilterCallback) {
-        if (!this.filters) {
-            this.filters = {};
-            this.indexesWithFilters = [];
-        }
-        this.filters[this.indexes[field]] = cb;
-        this.indexesWithFilters.push(this.indexes[field]);
-        return true;
-    }
-
-    addChildrenFilter(field: string, cb: FilterChildrenCallback) {
-        const index = this.indexes[field];
-        const type = this.schema[field];
-
-        if (getType(Object.keys(type)[0])) {
-            if (!this.childFilters) { this.childFilters = {}; }
-
-            this.childFilters[index] = cb;
-            return true;
-
-        } else {
-            console.warn(`@filterChildren: field '${field}' can't have children. Ignoring filter.`);
-        }
-    }
-
-    getChildrenFilter(field: string) {
-        return this.childFilters && this.childFilters[this.indexes[field]];
-    }
-
-    getNextFieldIndex() {
-        return Object.keys(this.schema || {}).length;
-    }
-}
-
-export function hasFilter(klass: typeof Schema) {
-    return klass._context && klass._context.useFilters;
-}
-
-// Colyseus integration
-export type ClientWithSessionId = { sessionId: string } & any;
-
-export class Context {
-    types: {[id: number]: typeof Schema} = {};
-    schemas = new Map<typeof Schema, number>();
-    useFilters = false;
-
-    has(schema: typeof Schema) {
-        return this.schemas.has(schema);
-    }
-
-    get(typeid: number) {
-        return this.types[typeid];
-    }
-
-    add(schema: typeof Schema, typeid: number = this.schemas.size) {
-        // FIXME: move this to somewhere else?
-        // support inheritance
-        schema._definition = SchemaDefinition.create(schema._definition);
-
-        schema._typeid = typeid;
-        this.types[typeid] = schema;
-        this.schemas.set(schema, typeid);
-    }
-
-    static create(context: Context = new Context) {
-        return function (definition: DefinitionType) {
-            return type(definition, context);
-        }
-    }
-}
-
-export const globalContext = new Context();
+);
 
 /**
  * `@type()` decorator for proxies
@@ -297,32 +160,6 @@ export function type (type: DefinitionType, context: Context = globalContext): P
 }
 
 /**
- * `@filter()` decorator for defining data filters per client
- */
-
-export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback<T, V, R>): PropertyDecorator {
-    return function (target: any, field: string) {
-        const constructor = target.constructor as typeof Schema;
-        const definition = constructor._definition;
-
-        if (definition.addFilter(field, cb)) {
-            constructor._context.useFilters = true;
-        }
-    }
-}
-
-export function filterChildren<T extends Schema, K, V, R extends Schema>(cb: FilterChildrenCallback<T, K, V, R>): PropertyDecorator {
-    return function (target: any, field: string) {
-        const constructor = target.constructor as typeof Schema;
-        const definition = constructor._definition;
-        if (definition.addChildrenFilter(field, cb)) {
-            constructor._context.useFilters = true;
-        }
-    }
-}
-
-
-/**
  * `@deprecated()` flag a field as deprecated.
  * The previous `@type()` annotation should remain along with this one.
  */
@@ -345,13 +182,36 @@ export function deprecated(throws: boolean = true, context: Context = globalCont
     }
 }
 
-export function defineTypes(
-    target: typeof Schema,
-    fields: { [property: string]: DefinitionType },
-    context: Context = target._context || globalContext
-) {
-    for (let field in fields) {
-        type(fields[field], context)(target.prototype, field);
-    }
-    return target;
+export function hasFilter(klass: typeof Schema) {
+    return klass._context && klass._context.useFilters;
 }
+
+function applyFilter(addFilter:(definition: SchemaDefinition, field: string) => boolean) {
+    return function (target: typeof Schema, field: string) {
+        const constructor = target.constructor as typeof Schema;
+        const definition = constructor._definition;
+        if (addFilter(definition, field)) {
+            constructor._context.useFilters = true;
+        }
+    }
+}
+
+/**
+ * `@filter()` decorator for defining data filters per client
+ */
+
+export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback<T, V, R>): PropertyDecorator {
+    return applyFilter((definition, field) => definition.addFilter(field, cb))
+}
+
+/**
+ * `@filterChildren()` decorator for defining data filters per client
+ */
+
+export function filterChildren<T extends Schema, K, V, R extends Schema>(cb: FilterChildrenCallback<T, K, V, R>): PropertyDecorator {
+    return applyFilter((definition, field) => definition.addChildrenFilter(field, cb))
+}
+
+export { ClientWithSessionId, Context, globalContext } from "./Context";
+export { SchemaDefinition, Definition, DefinitionType, PrimitiveType } from "./SchemaDefinition";
+export { DefinitionTypeOptions, defineTypes } from "./defineTypes";
