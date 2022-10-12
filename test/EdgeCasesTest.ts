@@ -247,6 +247,63 @@ describe("Edge cases", () => {
         assert.strictEqual(JSON.stringify(decodedState3), JSON.stringify(decodedState4));
     });
 
+    it("DELETE_AND_ADD unintentionally dropping refId's", (done) => {
+        var uniqid = 0;
+        class TileStatusSchema extends Schema {
+            @type("string") state: string;
+        }
+
+        class MapTileSchema extends Schema {
+            @type("string") id: string;
+            //
+            // this null assignment used to cause a DELETE_AND_ADD operation.
+            // the refId of the TileStatusSchema used to get garbage collected due to refCount = 0.
+            //
+            @type(TileStatusSchema) status: TileStatusSchema = null;
+        }
+
+        class State extends Schema {
+            @type({ map: MapTileSchema }) tiles = new MapSchema<MapTileSchema>();
+        }
+
+        const state = new State();
+        const decodeState = new State()
+
+        function getNewTiles(num): MapTileSchema[] {
+            const tiles: MapTileSchema[] = [];
+            for (let i=0; i<num; i++) {
+                tiles.push(new MapTileSchema().assign({
+                    id: "s" + Math.random().toString().split(".")[1],
+                    status: new TileStatusSchema().assign({ state: "IDLE" })
+                }));
+            }
+            return tiles;
+        }
+
+        function mutateRandom() {
+            const keys = Array.from(state.tiles.keys());
+            const randTile = keys[Math.floor(Math.random() * keys.length)];
+            state.tiles[randTile].status.state = Math.random().toString();
+        }
+
+        function addTiles(tiles: MapTileSchema[]) {
+            tiles.forEach(tile => state.tiles.set(tile.id, tile));
+        }
+
+        addTiles(getNewTiles(30));
+        decodeState.decode(state.encodeAll());
+
+        for (let i=0;i<10; i++) {
+            addTiles(getNewTiles(2));
+            decodeState.decode(state.encode());
+
+            mutateRandom();
+            decodeState.decode(state.encode());
+        }
+
+        done();
+    });
+
     describe("concurrency", () => {
         it("MapSchema should support concurrent actions", (done) => {
             class Entity extends Schema {
