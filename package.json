@@ -37,7 +37,8 @@
     ".": {
       "browser": "./build/umd/index.js",
       "import": "./build/esm/index.mjs",
-      "require": "./build/cjs/index.js"
+      "require": "./build/cjs/index.js",
+      "types": "./lib/index.d.ts"
     }
   },
   "repository": {
