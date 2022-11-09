@@ -262,7 +262,7 @@ export function getDecorators(node: ts.Node | null | undefined,): undefined | ts
     if (node.decorators) { return node.decorators; }
 
     // TypeScript 4.8 and above
-    if (ts.canHaveDecorators(node)) {
+    if (ts.canHaveDecorators && ts.canHaveDecorators(node)) {
         const decorators = ts.getDecorators(node);
         return decorators ? Array.from(decorators) : undefined;
     }
