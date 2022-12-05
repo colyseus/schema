@@ -1,4 +1,11 @@
-import { Class, Property, File, getCommentHeader, Interface } from "../types";
+import {
+    Class,
+    Property,
+    File,
+    getCommentHeader,
+    Interface,
+    Enum,
+} from "../types";
 import { GenerateOptions } from "../api";
 import { Context } from "../types";
 
@@ -26,7 +33,11 @@ const capitalize = (s) => {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function generate (context: Context, options: GenerateOptions): File[] {
+export function generate(context: Context, options: GenerateOptions): File[] {
+    // enrich typeMaps with enums
+    context.enums.forEach((structure) => {
+        typeMaps[structure.name] = structure.name;
+    });
     return [
         ...context.classes.map(structure => ({
             name: `${structure.name}.cs`,
@@ -34,8 +45,12 @@ export function generate (context: Context, options: GenerateOptions): File[] {
         })),
         ...context.interfaces.map(structure => ({
             name: `${structure.name}.cs`,
-            content: generateInterface(structure, options.namespace)
-        }))
+            content: generateInterface(structure, options.namespace),
+        })),
+        ...context.enums.map((structure) => ({
+            name: `${structure.name}.cs`,
+            content: generateEnum(structure, options.namespace),
+        })),
     ];
 }
 
@@ -46,7 +61,35 @@ function generateClass(klass: Class, namespace: string) {
 using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
 ${indent}public partial class ${klass.name} : ${klass.extends} {
-${klass.properties.map(prop => generateProperty(prop, indent)).join("\n\n")}
+${klass.properties.map((prop) => generateProperty(prop, indent)).join("\n\n")}
+${indent}}
+${namespace ? "}" : ""}
+`;
+}
+
+function generateEnum(_enum: Enum, namespace: string) {
+    const indent = namespace ? "\t" : "";
+    let runningEnumValue = -1;
+    return `${getCommentHeader()}
+${namespace ? `\nnamespace ${namespace} {` : ""}
+${indent}public class ${_enum.name} {
+    \t${indent}private ${_enum.name}(object value) { Value = value; }
+
+    \t${indent}public object Value { get; private set; }
+
+${_enum.properties
+    .map((prop) => {
+        const initializer = prop.type?.replace(/'/g, '"');
+            if (/^[0-9]+$/.test(initializer)) {
+                runningEnumValue = parseInt(initializer);
+            }
+            return `\t${indent}public static ${_enum.name} ${
+                prop.name
+            } { get { return new ${_enum.name}(${
+                initializer ?? ++runningEnumValue
+            }); } }`;
+    })
+        .join("\n")}
 ${indent}}
 ${namespace ? "}" : ""}
 `;

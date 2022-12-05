@@ -878,7 +878,7 @@ export abstract class Schema {
         for (let field in schema) {
             if (
                 typeof (this[field]) === "object" &&
-                typeof (this[field].clone) === "function"
+                typeof (this[field]?.clone) === "function"
             ) {
                 // deep clone
                 cloned[field] = this[field].clone();
