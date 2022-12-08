@@ -558,4 +558,19 @@ describe("MapSchema Tests", () => {
         }, /null/i);
     })
 
+    it("should allow providing MapSchema as argument on constructor", () => {
+        var map: MapSchema<number>;
+
+        const previousMap = new MapSchema<number>();
+        previousMap.set('one', 1);
+        previousMap.set('two', 2);
+        previousMap.set('three', 3);
+
+        assert.doesNotThrow(() => map = new MapSchema<number>(previousMap));
+        assert.deepEqual(map.toJSON(), previousMap.toJSON());
+
+        assert.doesNotThrow(() => map = new MapSchema<number>(previousMap.toJSON()));
+        assert.deepEqual(map.toJSON(), previousMap.toJSON());
+    });
+
 });

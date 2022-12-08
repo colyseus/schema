@@ -109,13 +109,14 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
             if (node.getText() === decoratorName) {
                 const prop: any = node.parent?.parent?.parent;
-                const propDecorator = prop?.decorators;
+                const propDecorator =  getDecorators(prop);
                 const hasExpression = prop?.expression?.arguments;
+                const hasDecorator = (propDecorator?.length > 0);
 
                 /**
                  * neither a `@type()` decorator or `type()` call. skip.
                  */
-                if (!propDecorator && !hasExpression) {
+                if (!hasDecorator && !hasExpression) {
                     break;
                 }
 
@@ -274,4 +275,28 @@ export function parseFiles(
     });
 
     return context.getStructures();
+}
+
+/**
+ * TypeScript 4.8+ has introduced a change on how to access decorators.
+ * - https://github.com/microsoft/TypeScript/pull/49089
+ * - https://devblogs.microsoft.com/typescript/announcing-typescript-4-8/#decorators-are-placed-on-modifiers-on-typescripts-syntax-trees
+ */
+export function getDecorators(node: ts.Node | null | undefined,): undefined | ts.Decorator[] {
+    if (node == undefined) { return undefined; }
+
+    // TypeScript 4.7 and below
+    // @ts-ignore
+    if (node.decorators) { return node.decorators; }
+
+    // TypeScript 4.8 and above
+    // @ts-ignore
+    if (ts.canHaveDecorators && ts.canHaveDecorators(node)) {
+        // @ts-ignore
+        const decorators = ts.getDecorators(node);
+        return decorators ? Array.from(decorators) : undefined;
+    }
+
+    // @ts-ignore
+    return node.modifiers?.filter(ts.isDecorator);
 }

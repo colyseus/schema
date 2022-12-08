@@ -9,6 +9,8 @@ jobs:
     name: npm-publish
     runs-on: ubuntu-latest
     steps:
+    - name: directory ownership workaround (actions/runner#2033)
+      run: 'git config --global --add safe.directory /github/workspace'
     - name: Checkout repository
       uses: actions/checkout@master
     - name: Set up Node.js
