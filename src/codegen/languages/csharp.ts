@@ -69,30 +69,16 @@ ${namespace ? "}" : ""}
 
 function generateEnum(_enum: Enum, namespace: string) {
     const indent = namespace ? "\t" : "";
-    let runningEnumValue = -1;
     return `${getCommentHeader()}
 ${namespace ? `\nnamespace ${namespace} {` : ""}
-${indent}public class ${_enum.name} {
-    \t${indent}private ${_enum.name}(object value) { Value = value; }
-
-    \t${indent}public object Value { get; private set; }
+${indent}public struct ${_enum.name} {
 
 ${_enum.properties
     .map((prop) => {
-        const initializer = prop.type?.replace(/'/g, '"');
-            if (/^[0-9]+$/.test(initializer)) {
-                runningEnumValue = parseInt(initializer);
-            }
-            return `\t${indent}public static ${_enum.name} ${
-                prop.name
-            } { get { return new ${_enum.name}(${
-                initializer ?? ++runningEnumValue
-            }); } }`;
+        return `${indent}\tpublic const string ${prop.name} = ${prop.type};`;
     })
         .join("\n")}
-${indent}}
-${namespace ? "}" : ""}
-`;
+${indent}}`
 }
 
 function generateProperty(prop: Property, indent: string = "") {
