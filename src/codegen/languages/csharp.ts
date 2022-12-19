@@ -75,7 +75,21 @@ ${indent}public struct ${_enum.name} {
 
 ${_enum.properties
     .map((prop) => {
-        return `${indent}\tpublic const string ${prop.name} = ${prop.type};`;
+        let dataType: string = "int";
+        let value: any;
+
+        if(prop.type) {
+            if(isNaN(Number(prop.type.replace(/(^"|"$)/g, '')))) {
+                value = prop.type;
+                dataType = "string";
+            } else {
+                value = Number(prop.type.replace(/(^"|"$)/g, ''));
+                dataType = Number.isInteger(value)? 'int': 'float';
+            }
+        } else {
+            value = _enum.properties.indexOf(prop);
+        }
+        return `${indent}\tpublic const ${dataType} ${prop.name} = ${value};`;
     })
         .join("\n")}
 ${indent}}`
