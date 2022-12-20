@@ -66,9 +66,6 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             const enumName = (
                 node as ts.EnumDeclaration
             ).name.escapedText.toString();
-            if (enumName.indexOf("Type") === -1) {
-                break;
-            }
             currentStructure = new Enum();
             currentStructure.name = enumName;
             context.addStructure(currentStructure);
