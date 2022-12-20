@@ -47,7 +47,7 @@ export function generate(context: Context, options: GenerateOptions): File[] {
             name: `${structure.name}.cs`,
             content: generateInterface(structure, options.namespace),
         })),
-        ...context.enums.map((structure) => ({
+        ...context.enums.filter(structure => structure.name !== 'OPERATION').map((structure) => ({
             name: `${structure.name}.cs`,
             content: generateEnum(structure, options.namespace),
         })),
