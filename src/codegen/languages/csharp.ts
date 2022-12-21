@@ -79,11 +79,11 @@ ${_enum.properties
         let value: any;
 
         if(prop.type) {
-            if(isNaN(Number(prop.type.replace(/(^"|"$)/g, '')))) {
+            if(isNaN(Number(prop.type))) {
                 value = prop.type;
                 dataType = "string";
             } else {
-                value = Number(prop.type.replace(/(^"|"$)/g, ''));
+                value = Number(prop.type);
                 dataType = Number.isInteger(value)? 'int': 'float';
             }
         } else {
