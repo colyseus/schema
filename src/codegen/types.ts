@@ -15,6 +15,7 @@ export function getCommentHeader(singleLineComment: string = "//") {
 export class Context {
     classes: Class[] = [];
     interfaces: Interface[] = [];
+    enums: Enum[] = [];
 
     getStructures() {
         return {
@@ -33,6 +34,7 @@ export class Context {
                 return false;
             }),
             interfaces: this.interfaces,
+            enums: this.enums,
         };
     }
 
@@ -41,9 +43,10 @@ export class Context {
 
         if (structure instanceof Class) {
             this.classes.push(structure);
-
         } else if (structure instanceof Interface) {
             this.interfaces.push(structure);
+        } else if (structure instanceof Enum) {
+            this.enums.push(structure);
         }
     }
 
@@ -131,6 +134,16 @@ export class Class implements IStructure {
                 prop.index += parentKlass.properties.length;
             });
         }
+    }
+}
+
+export class Enum implements IStructure {
+    context: Context;
+    name: string;
+    properties: Property[] = [];
+
+    addProperty(property: Property) {
+        this.properties.push(property);
     }
 }
 

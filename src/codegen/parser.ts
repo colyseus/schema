@@ -1,7 +1,7 @@
 import * as ts from "typescript";
 import * as path from "path";
 import { readFileSync } from "fs";
-import { IStructure, Class, Interface, Property, Context } from "./types";
+import { IStructure, Class, Interface, Property, Context, Enum } from "./types";
 
 let currentStructure: IStructure;
 let currentProperty: Property;
@@ -60,6 +60,15 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
                 context.addStructure(currentStructure);
             }
+            break;
+
+        case ts.SyntaxKind.EnumDeclaration:
+            const enumName = (
+                node as ts.EnumDeclaration
+            ).name.escapedText.toString();
+            currentStructure = new Enum();
+            currentStructure.name = enumName;
+            context.addStructure(currentStructure);
             break;
 
         case ts.SyntaxKind.ExtendsKeyword:
@@ -181,6 +190,20 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
             currentProperty = undefined;
 
+            break;
+
+        case ts.SyntaxKind.EnumMember:
+            if (currentStructure instanceof Enum) {
+                const initializer = (node as any).initializer?.getText();
+                const name = node.getFirstToken().getText();
+                const property = currentProperty || new Property();
+                property.name = name;
+                if (initializer !== undefined) {
+                    property.type = initializer;
+                }
+                currentStructure.addProperty(property);
+                currentProperty = undefined;
+            }
             break;
     }
 

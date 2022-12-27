@@ -1,4 +1,11 @@
-import { Class, Property, File, getCommentHeader, Interface } from "../types";
+import {
+    Class,
+    Property,
+    File,
+    getCommentHeader,
+    Interface,
+    Enum,
+} from "../types";
 import { GenerateOptions } from "../api";
 import { Context } from "../types";
 
@@ -26,7 +33,11 @@ const capitalize = (s) => {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function generate (context: Context, options: GenerateOptions): File[] {
+export function generate(context: Context, options: GenerateOptions): File[] {
+    // enrich typeMaps with enums
+    context.enums.forEach((structure) => {
+        typeMaps[structure.name] = structure.name;
+    });
     return [
         ...context.classes.map(structure => ({
             name: `${structure.name}.cs`,
@@ -34,8 +45,12 @@ export function generate (context: Context, options: GenerateOptions): File[] {
         })),
         ...context.interfaces.map(structure => ({
             name: `${structure.name}.cs`,
-            content: generateInterface(structure, options.namespace)
-        }))
+            content: generateInterface(structure, options.namespace),
+        })),
+        ...context.enums.filter(structure => structure.name !== 'OPERATION').map((structure) => ({
+            name: `${structure.name}.cs`,
+            content: generateEnum(structure, options.namespace),
+        })),
     ];
 }
 
@@ -46,10 +61,38 @@ function generateClass(klass: Class, namespace: string) {
 using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
 ${indent}public partial class ${klass.name} : ${klass.extends} {
-${klass.properties.map(prop => generateProperty(prop, indent)).join("\n\n")}
+${klass.properties.map((prop) => generateProperty(prop, indent)).join("\n\n")}
 ${indent}}
 ${namespace ? "}" : ""}
 `;
+}
+
+function generateEnum(_enum: Enum, namespace: string) {
+    const indent = namespace ? "\t" : "";
+    return `${getCommentHeader()}
+${namespace ? `\nnamespace ${namespace} {` : ""}
+${indent}public struct ${_enum.name} {
+
+${_enum.properties
+    .map((prop) => {
+        let dataType: string = "int";
+        let value: any;
+
+        if(prop.type) {
+            if(isNaN(Number(prop.type))) {
+                value = prop.type;
+                dataType = "string";
+            } else {
+                value = Number(prop.type);
+                dataType = Number.isInteger(value)? 'int': 'float';
+            }
+        } else {
+            value = _enum.properties.indexOf(prop);
+        }
+        return `${indent}\tpublic const ${dataType} ${prop.name} = ${value};`;
+    })
+        .join("\n")}
+${indent}}`
 }
 
 function generateProperty(prop: Property, indent: string = "") {
