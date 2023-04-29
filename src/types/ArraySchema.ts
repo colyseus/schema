@@ -492,9 +492,10 @@ export class ArraySchema<V=any> implements Array<V>, SchemaDecoderCallbacks {
         return Array.from(this.$items.values())[Symbol.iterator]();
     }
 
-    [Symbol.unscopables]() {
-        return this.$items[Symbol.unscopables]();
-    }
+    // WORKAROUND for compatibility
+    // - TypeScript 4 defines @@unscopables as a function
+    // - TypeScript 5 defines @@unscopables as an object
+    [Symbol.unscopables]: any;
 
     /**
      * Returns an iterable of key, value pairs for every entry in the array
