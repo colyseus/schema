@@ -410,7 +410,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
      * @param initialValue If initialValue is specified, it is used as the initial value to start the accumulation. The first call to the callbackfn function provides this value as an argument instead of an array value.
      */
     reduce<U=V>(callbackfn: (previousValue: U, currentValue: V, currentIndex: number, array: V[]) => U, initialValue?: U): U {
-        return Array.from(this.$items.values()).reduce(callbackfn, initialValue);
+        return Array.prototype.reduce.apply(Array.from(this.$items.values()), arguments);
     }
 
     /**
@@ -419,7 +419,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
      * @param initialValue If initialValue is specified, it is used as the initial value to start the accumulation. The first call to the callbackfn function provides this value as an argument instead of an array value.
      */
     reduceRight<U=V>(callbackfn: (previousValue: U, currentValue: V, currentIndex: number, array: V[]) => U, initialValue?: U): U {
-        return Array.from(this.$items.values()).reduceRight(callbackfn, initialValue);
+        return Array.prototype.reduceRight.apply(Array.from(this.$items.values()), arguments);
     }
 
     /**
@@ -498,9 +498,10 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         return Array.from(this.$items.values())[Symbol.iterator]();
     }
 
-    [Symbol.unscopables]() {
-        return this.$items[Symbol.unscopables]();
-    }
+    // WORKAROUND for compatibility
+    // - TypeScript 4 defines @@unscopables as a function
+    // - TypeScript 5 defines @@unscopables as an object
+    [Symbol.unscopables]: any;
 
     /**
      * Returns an iterable of key, value pairs for every entry in the array

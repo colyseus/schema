@@ -1,8 +1,8 @@
-import { ChangeTree } from "../changes/ChangeTree";
-import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, Schema } from "../Schema";
+import { SchemaDecoderCallbacks } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { DataChange } from "..";
+import { ChangeTree } from "../changes/ChangeTree";
+import { OPERATION } from "../spec";
 
 export function getMapProxy(value: MapSchema) {
     value['$proxy'] = true;
@@ -47,11 +47,11 @@ export function getMapProxy(value: MapSchema) {
     return value;
 }
 
-export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks {
+export class MapSchema<V=any, K extends string = string> implements Map<K, V>, SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
 
-    protected $items: Map<string, V> = new Map<string, V>();
-    protected $indexes: Map<number, string> = new Map<number, string>();
+    protected $items: Map<K, V> = new Map<K, V>();
+    protected $indexes: Map<number, K> = new Map<number, K>();
 
     protected $refId: number = 0;
 
@@ -76,9 +76,12 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         return type['map'] !== undefined;
     }
 
-    constructor (initialValues?: Map<string, V> | any) {
+    constructor (initialValues?: Map<K, V> | Record<K, V>) {
         if (initialValues) {
-            if (initialValues instanceof Map) {
+            if (
+                initialValues instanceof Map ||
+                initialValues instanceof MapSchema
+            ) {
                 initialValues.forEach((v, k) => this.set(k, v));
 
             } else {
@@ -90,10 +93,10 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
     }
 
     /** Iterator */
-    [Symbol.iterator](): IterableIterator<[string, V]> { return this.$items[Symbol.iterator](); }
+    [Symbol.iterator](): IterableIterator<[K, V]> { return this.$items[Symbol.iterator](); }
     get [Symbol.toStringTag]() { return this.$items[Symbol.toStringTag] }
 
-    set(key: string, value: V) {
+    set(key: K, value: V) {
         if (value === undefined || value === null) {
             throw new Error(`MapSchema#set('${key}', ${value}): trying to set ${value} value on '${key}'.`);
         }
@@ -139,11 +142,11 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         return this;
     }
 
-    get(key: string): V | undefined {
+    get(key: K): V | undefined {
         return this.$items.get(key);
     }
 
-    delete(key: string) {
+    delete(key: K) {
         //
         // TODO: add a "purge" method after .encode() runs, to cleanup removed `$indexes`
         //
@@ -183,11 +186,11 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         this.$changes.touchParents();
     }
 
-    has (key: string) {
+    has (key: K) {
         return this.$items.has(key);
     }
 
-    forEach(callbackfn: (value: V, key: string, map: Map<string, V>) => void) {
+    forEach(callbackfn: (value: V, key: K, map: Map<K, V>) => void) {
         this.$items.forEach(callbackfn);
     }
 
@@ -207,7 +210,7 @@ export class MapSchema<V=any> implements Map<string, V>, SchemaDecoderCallbacks 
         return this.$items.size;
     }
 
-    protected setIndex(index: number, key: string) {
+    protected setIndex(index: number, key: K) {
         this.$indexes.set(index, key);
     }
 

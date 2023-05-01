@@ -430,6 +430,7 @@ export abstract class Schema {
 
                     // ref.set(key, value);
                     ref['$items'].set(key, value);
+                    ref['$changes'].allChanges.add(fieldIndex);
 
                 } else if (ref instanceof ArraySchema) {
                     // const key = ref['$indexes'][field];
@@ -866,7 +867,7 @@ export abstract class Schema {
         for (let field in schema) {
             if (
                 typeof (this[field]) === "object" &&
-                typeof (this[field].clone) === "function"
+                typeof (this[field]?.clone) === "function"
             ) {
                 // deep clone
                 cloned[field] = this[field].clone();

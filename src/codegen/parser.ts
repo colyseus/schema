@@ -1,7 +1,7 @@
 import * as ts from "typescript";
 import * as path from "path";
 import { readFileSync } from "fs";
-import { IStructure, Class, Interface, Property, Context } from "./types";
+import { IStructure, Class, Interface, Property, Context, Enum } from "./types";
 
 let currentStructure: IStructure;
 let currentProperty: Property;
@@ -62,6 +62,15 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             }
             break;
 
+        case ts.SyntaxKind.EnumDeclaration:
+            const enumName = (
+                node as ts.EnumDeclaration
+            ).name.escapedText.toString();
+            currentStructure = new Enum();
+            currentStructure.name = enumName;
+            context.addStructure(currentStructure);
+            break;
+
         case ts.SyntaxKind.ExtendsKeyword:
             // console.log(node.getText());
             break;
@@ -97,13 +106,14 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
             if (node.getText() === decoratorName) {
                 const prop: any = node.parent?.parent?.parent;
-                const propDecorator = prop?.decorators;
+                const propDecorator =  getDecorators(prop);
                 const hasExpression = prop?.expression?.arguments;
+                const hasDecorator = (propDecorator?.length > 0);
 
                 /**
                  * neither a `@type()` decorator or `type()` call. skip.
                  */
-                if (!propDecorator && !hasExpression) {
+                if (!hasDecorator && !hasExpression) {
                     break;
                 }
 
@@ -181,6 +191,20 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             currentProperty = undefined;
 
             break;
+
+        case ts.SyntaxKind.EnumMember:
+            if (currentStructure instanceof Enum) {
+                const initializer = (node as any).initializer?.getText();
+                const name = node.getFirstToken().getText();
+                const property = currentProperty || new Property();
+                property.name = name;
+                if (initializer !== undefined) {
+                    property.type = initializer;
+                }
+                currentStructure.addProperty(property);
+                currentProperty = undefined;
+            }
+            break;
     }
 
     ts.forEachChild(node, (n) => inspectNode(n, context, decoratorName));
@@ -248,4 +272,28 @@ export function parseFiles(
     });
 
     return context.getStructures();
+}
+
+/**
+ * TypeScript 4.8+ has introduced a change on how to access decorators.
+ * - https://github.com/microsoft/TypeScript/pull/49089
+ * - https://devblogs.microsoft.com/typescript/announcing-typescript-4-8/#decorators-are-placed-on-modifiers-on-typescripts-syntax-trees
+ */
+export function getDecorators(node: ts.Node | null | undefined,): undefined | ts.Decorator[] {
+    if (node == undefined) { return undefined; }
+
+    // TypeScript 4.7 and below
+    // @ts-ignore
+    if (node.decorators) { return node.decorators; }
+
+    // TypeScript 4.8 and above
+    // @ts-ignore
+    if (ts.canHaveDecorators && ts.canHaveDecorators(node)) {
+        // @ts-ignore
+        const decorators = ts.getDecorators(node);
+        return decorators ? Array.from(decorators) : undefined;
+    }
+
+    // @ts-ignore
+    return node.modifiers?.filter(ts.isDecorator);
 }
