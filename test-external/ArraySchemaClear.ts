@@ -1,0 +1,39 @@
+import { Schema, type, ArraySchema } from "../src";
+
+class ArraySchemaClear extends Schema {
+  @type(["number"]) items = new ArraySchema<number>();
+}
+
+const state = new ArraySchemaClear();
+
+// add 5 items
+state.items.push(1);
+state.items.push(2);
+state.items.push(3);
+state.items.push(4);
+state.items.push(5);
+
+const encoded = state.encode();
+let bytes = Array.from(Uint8Array.from(Buffer.from(encoded)));
+
+console.log("ArraySchemaClear =>");
+console.log(`{ ${bytes.join(", ")} }`);
+
+// clear items
+state.items.clear();
+bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
+
+console.log("ArraySchemaClear =>");
+console.log(`{ ${bytes.join(", ")} }`);
+
+// add 5 items again
+state.items.push(1);
+state.items.push(2);
+state.items.push(3);
+state.items.push(4);
+state.items.push(5);
+
+bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
+
+console.log("ArraySchemaClear =>");
+console.log(`{ ${bytes.join(", ")} }`);
