@@ -220,6 +220,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
      * Combines two or more arrays.
      * @param items Additional items to add to the end of array1.
      */
+    // @ts-ignore
     concat(...items: (V | ConcatArray<V>)[]): ArraySchema<V> {
         return new ArraySchema(...Array.from(this.$items.values()).concat(...items));
     }
@@ -235,6 +236,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     /**
      * Reverses the elements in an Array.
      */
+    // @ts-ignore
     reverse(): ArraySchema<V> {
         const indexes = Array.from(this.$items.keys());
         const reversedItems = Array.from(this.$items.values()).reverse();
@@ -267,7 +269,9 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
      * @param end The end of the specified portion of the array. This is exclusive of the element at the index 'end'.
      */
     slice(start?: number, end?: number): V[] {
-        return new ArraySchema(...Array.from(this.$items.values()).slice(start, end));
+        const sliced = new ArraySchema<V>();
+        sliced.push(...Array.from(this.$items.values()).slice(start, end));
+        return sliced as unknown as V[];
     }
 
     /**
@@ -551,8 +555,19 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
      */
     // @ts-ignore
     flat<A, D extends number = 1>(this: A, depth?: D): any {
-        // @ts-ignore
         throw new Error("ArraySchema#flat() is not supported.");
+    }
+
+    findLast() {
+        const arr = Array.from(this.$items.values());
+        // @ts-ignore
+        return arr.findLast.apply(arr, arguments);
+    }
+
+    findLastIndex(...args) {
+        const arr = Array.from(this.$items.values());
+        // @ts-ignore
+        return arr.findLastIndex.apply(arr, arguments);
     }
 
     // get size () {

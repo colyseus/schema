@@ -1395,4 +1395,21 @@ describe("ArraySchema Tests", () => {
         });
     })
 
+    describe("ArraySchema <-> Array type interchangability", () => {
+        it("should allow assigning array to an ArraySchema", () => {
+            class State extends Schema {
+                // @ts-ignore
+                @type(["number"]) numbers: number[] = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.numbers = [1, 2, 3, 4, 5];
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([1, 2, 3, 4, 5], Array.from(decodedState.numbers));
+        });
+
+    });
+
 });
