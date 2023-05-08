@@ -181,6 +181,32 @@ describe("Change API", () => {
     });
 
     describe("ArraySchema", () => {
+        it("should trigger onAdd only once for inner structures", () => {
+            class Restaurant extends Schema {
+                @type([ "number" ]) objects: ArraySchema<number> = new ArraySchema<number>();
+            }
+            class MyRoomState extends Schema {
+                @type({ map: Restaurant }) restaurants = new MapSchema<Restaurant>();
+            }
+
+            const remoteState = new MyRoomState();
+            const restaurant = new Restaurant();
+            remoteState.restaurants.set("one", restaurant);
+            restaurant.objects.push(100);
+
+            const state = new MyRoomState();
+
+            let onAddCallCount = 0;
+            state.restaurants.onAdd((restaurant, restaurantKey) => {
+                restaurant.objects.onAdd(async (gameObject, objectKey) => {
+                    onAddCallCount++;
+                })
+            });
+            state.decode(remoteState.encode());
+
+            assert.strictEqual(1, onAddCallCount);
+        });
+
         it("detecting onChange on arrays", () => {
             const state = new State();
             state.arrayOfPlayers = new ArraySchema(new Player("Jake Badlands"), new Player("Katarina Lyons"));
