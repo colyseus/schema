@@ -1,7 +1,7 @@
 import * as ts from "typescript";
 import * as path from "path";
-import { readFileSync } from "fs";
-import { IStructure, Class, Interface, Property, Context, Enum } from "./types";
+import {readFileSync, readdirSync} from "fs";
+import {IStructure, Class, Interface, Property, Context, Enum} from "./types";
 
 let currentStructure: IStructure;
 let currentProperty: Property;
@@ -30,7 +30,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
     switch (node.kind) {
         case ts.SyntaxKind.ImportClause:
             const specifier = (node.parent as any).moduleSpecifier;
-            if (specifier && (specifier.text as string).startsWith('.'))  {
+            if (specifier && (specifier.text as string).startsWith('.')) {
                 const currentDir = path.dirname(node.getSourceFile().fileName);
                 const pathToImport = path.resolve(currentDir, specifier.text);
                 parseFiles([pathToImport], decoratorName, globalContext);
@@ -106,7 +106,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
             if (node.getText() === decoratorName) {
                 const prop: any = node.parent?.parent?.parent;
-                const propDecorator =  getDecorators(prop);
+                const propDecorator = getDecorators(prop);
                 const hasExpression = prop?.expression?.arguments;
                 const hasDecorator = (propDecorator?.length > 0);
 
@@ -172,7 +172,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                 currentStructure.name = className;
 
                 const types = callExpression.arguments[1] as any;
-                for (let i=0; i<types.properties.length; i++) {
+                for (let i = 0; i < types.properties.length; i++) {
                     const prop = types.properties[i];
 
                     const property = currentProperty || new Property();
@@ -225,51 +225,57 @@ export function parseFiles(
         globalContext = context;
     }
 
-    fileNames.forEach((fileName) => {
-        let sourceFile: ts.Node;
-        let sourceFileName: string;
+    fileNames
+        .reduce((acc, cur) => (cur.endsWith("*") && acc.push(
+            ...(dir => readdirSync(dir, {withFileTypes: true})
+                .filter(file => file.isFile() && (file.name.endsWith('.ts') || file.name.endsWith('.js') || file.name.endsWith('.mjs')))
+                .map((file) => path.resolve(dir, file.name))
+            )(cur.slice(0, -1))), acc), [])
+        .forEach((fileName) => {
+            let sourceFile: ts.Node;
+            let sourceFileName: string;
 
-        const fileNameAlternatives = [];
+            const fileNameAlternatives = [];
 
-        if (
-            !fileName.endsWith(".ts") &&
-            !fileName.endsWith(".js") &&
-            !fileName.endsWith(".mjs")
-        ) {
-            fileNameAlternatives.push(`${fileName}.ts`);
-            fileNameAlternatives.push(`${fileName}/index.ts`);
+            if (
+                !fileName.endsWith(".ts") &&
+                !fileName.endsWith(".js") &&
+                !fileName.endsWith(".mjs")
+            ) {
+                fileNameAlternatives.push(`${fileName}.ts`);
+                fileNameAlternatives.push(`${fileName}/index.ts`);
 
-        } else {
-            fileNameAlternatives.push(fileName);
-        }
-
-        for (let i = 0; i < fileNameAlternatives.length; i++) {
-            try {
-                sourceFileName = path.resolve(fileNameAlternatives[i]);
-
-                if (parsedFiles[sourceFileName]) {
-                    break;
-                }
-
-                sourceFile = ts.createSourceFile(
-                    sourceFileName,
-                    readFileSync(sourceFileName).toString(),
-                    ts.ScriptTarget.Latest,
-                    true
-                );
-
-                parsedFiles[sourceFileName] = true;
-
-                break;
-            } catch (e) {
-                // console.log(`${fileNameAlternatives[i]} => ${e.message}`);
+            } else {
+                fileNameAlternatives.push(fileName);
             }
-        }
 
-        if (sourceFile) {
-            inspectNode(sourceFile, context, decoratorName);
-        }
-    });
+            for (let i = 0; i < fileNameAlternatives.length; i++) {
+                try {
+                    sourceFileName = path.resolve(fileNameAlternatives[i]);
+
+                    if (parsedFiles[sourceFileName]) {
+                        break;
+                    }
+
+                    sourceFile = ts.createSourceFile(
+                        sourceFileName,
+                        readFileSync(sourceFileName).toString(),
+                        ts.ScriptTarget.Latest,
+                        true
+                    );
+
+                    parsedFiles[sourceFileName] = true;
+
+                    break;
+                } catch (e) {
+                    // console.log(`${fileNameAlternatives[i]} => ${e.message}`);
+                }
+            }
+
+            if (sourceFile) {
+                inspectNode(sourceFile, context, decoratorName);
+            }
+        });
 
     return context.getStructures();
 }
