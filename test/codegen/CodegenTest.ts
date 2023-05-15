@@ -35,6 +35,19 @@ describe("schema-codegen", () => {
         assert.strictEqual(3, outputFiles.length);
     });
 
+    it("should generate all files from wildcard path", async () => {
+        const input = path.resolve(INPUT_DIR, 'wildcard', "*");
+
+        generate("csharp", {
+            files: [input],
+            output: OUTPUT_DIR
+        });
+
+        const inputFiles = glob.sync(input);
+        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        assert.strictEqual(outputFiles.length, inputFiles.length);
+    });
+
     it("should auto-import related schema files", async () => {
         const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Inheritance.ts"));
 
