@@ -1,6 +1,6 @@
 import * as ts from "typescript";
 import * as path from "path";
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync } from "fs";
 import { IStructure, Class, Interface, Property, Context, Enum } from "./types";
 
 let currentStructure: IStructure;
@@ -231,7 +231,12 @@ export function parseFiles(
 
         const fileNameAlternatives = [];
 
-        if (
+        if (fileName.endsWith("*")) {
+            const dir = fileName.slice(0, -1)
+            readdirSync(dir, {withFileTypes: true})
+                .filter(file => file.isFile() && file.name.endsWith('.ts'))
+                .forEach(file => fileNameAlternatives.push(dir + file.name))
+        } else if (
             !fileName.endsWith(".ts") &&
             !fileName.endsWith(".js") &&
             !fileName.endsWith(".mjs")
