@@ -3,7 +3,6 @@ import { addExtension, pack } from "msgpackr";
 
 import { Player, State } from "./Schema";
 import { ArraySchema, MapSchema } from "../src";
-import { Schema } from "../lib";
 
 addExtension({
     Class: State,
