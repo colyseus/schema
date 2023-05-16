@@ -1,31 +1,48 @@
-name: npm-publish
+name: Publish & Release
+
+permissions:
+  contents: write
+
 on:
   push:
     branches:
       - master
-      - dev
+
 jobs:
   npm-publish:
     name: npm-publish
     runs-on: ubuntu-latest
     steps:
-    - name: directory ownership workaround (actions/runner#2033)
-      run: 'git config --global --add safe.directory /github/workspace'
     - name: Checkout repository
-      uses: actions/checkout@master
+      uses: actions/checkout@v3
+
     - name: Set up Node.js
-      uses: actions/setup-node@master
+      uses: actions/setup-node@v3
       with:
-        node-version: 12.0.0
+        node-version: '18.x'
+        registry-url: 'https://registry.npmjs.org'
+
     - name: Install dependencies
-      run: npm install
-    - name: Publish if version has been updated
-      uses: endel/npm-publish-action@master
+      run: |
+        npm ci
+        npm run build
+
+    - id: check
+      uses: EndBug/version-check@v2
       with:
-        tag_name: "v%s"
-        tag_message: "v%s"
-        commit_pattern: "^bump (\\S+)"
+        file-name: package.json
+        diff-search: true
+
+    - name: Publish package on NPM 📦
+      if: steps.check.outputs.changed == 'true'
+      run: npm publish
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Release
+      if: steps.check.outputs.changed == 'true'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.check.outputs.version }}
+        prerelease: false
 
