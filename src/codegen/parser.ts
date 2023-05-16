@@ -1,6 +1,6 @@
 import * as ts from "typescript";
 import * as path from "path";
-import {readFileSync, readdirSync} from "fs";
+import {readFileSync} from "fs";
 import {IStructure, Class, Interface, Property, Context, Enum} from "./types";
 
 let currentStructure: IStructure;
@@ -225,57 +225,51 @@ export function parseFiles(
         globalContext = context;
     }
 
-    fileNames
-        .reduce((acc, cur) => (cur.endsWith("*") && acc.push(
-            ...(dir => readdirSync(dir, {withFileTypes: true})
-                .filter(file => file.isFile() && (file.name.endsWith('.ts') || file.name.endsWith('.js') || file.name.endsWith('.mjs')))
-                .map((file) => path.resolve(dir, file.name))
-            )(cur.slice(0, -1))), acc), [])
-        .forEach((fileName) => {
-            let sourceFile: ts.Node;
-            let sourceFileName: string;
+    fileNames.forEach((fileName) => {
+        let sourceFile: ts.Node;
+        let sourceFileName: string;
 
-            const fileNameAlternatives = [];
+        const fileNameAlternatives = [];
 
-            if (
-                !fileName.endsWith(".ts") &&
-                !fileName.endsWith(".js") &&
-                !fileName.endsWith(".mjs")
-            ) {
-                fileNameAlternatives.push(`${fileName}.ts`);
-                fileNameAlternatives.push(`${fileName}/index.ts`);
+        if (
+            !fileName.endsWith(".ts") &&
+            !fileName.endsWith(".js") &&
+            !fileName.endsWith(".mjs")
+        ) {
+            fileNameAlternatives.push(`${fileName}.ts`);
+            fileNameAlternatives.push(`${fileName}/index.ts`);
 
-            } else {
-                fileNameAlternatives.push(fileName);
-            }
+        } else {
+            fileNameAlternatives.push(fileName);
+        }
 
-            for (let i = 0; i < fileNameAlternatives.length; i++) {
-                try {
-                    sourceFileName = path.resolve(fileNameAlternatives[i]);
+        for (let i = 0; i < fileNameAlternatives.length; i++) {
+            try {
+                sourceFileName = path.resolve(fileNameAlternatives[i]);
 
-                    if (parsedFiles[sourceFileName]) {
-                        break;
-                    }
-
-                    sourceFile = ts.createSourceFile(
-                        sourceFileName,
-                        readFileSync(sourceFileName).toString(),
-                        ts.ScriptTarget.Latest,
-                        true
-                    );
-
-                    parsedFiles[sourceFileName] = true;
-
+                if (parsedFiles[sourceFileName]) {
                     break;
-                } catch (e) {
-                    // console.log(`${fileNameAlternatives[i]} => ${e.message}`);
                 }
-            }
 
-            if (sourceFile) {
-                inspectNode(sourceFile, context, decoratorName);
+                sourceFile = ts.createSourceFile(
+                    sourceFileName,
+                    readFileSync(sourceFileName).toString(),
+                    ts.ScriptTarget.Latest,
+                    true
+                );
+
+                parsedFiles[sourceFileName] = true;
+
+                break;
+            } catch (e) {
+                // console.log(`${fileNameAlternatives[i]} => ${e.message}`);
             }
-        });
+        }
+
+        if (sourceFile) {
+            inspectNode(sourceFile, context, decoratorName);
+        }
+    });
 
     return context.getStructures();
 }
