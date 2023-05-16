@@ -31,6 +31,16 @@ export function generate(targetId: string, options: GenerateOptions) {
      */
     if (!options.decorator) { options.decorator = "type"; }
 
+    // resolve wildcard files
+    options.files = options.files.reduce((acc, cur) => {
+        if (cur.endsWith("*")) {
+            acc.push(...recursiveFiles(cur.slice(0, -1)).filter(filename => /\.(js|ts|mjs)$/.test(filename)));
+        } else {
+            acc.push(cur)
+        }
+        return acc;
+    }, [])
+
     const structures = parseFiles(options.files, options.decorator);
 
     // Post-process classes before generating
@@ -43,4 +53,14 @@ export function generate(targetId: string, options: GenerateOptions) {
         fs.writeFileSync(outputPath, file.content);
         console.log("generated:", file.name);
     });
+}
+
+function recursiveFiles(dir: string): string[] {
+    const files = fs.readdirSync(dir, { withFileTypes: true });
+    let collect = [];
+    files.forEach(file => {
+        const filename = path.resolve(dir, file.name);
+        file.isDirectory() ? collect.push(...recursiveFiles(filename)) : collect.push(filename);
+    })
+    return collect;
 }
