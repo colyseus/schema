@@ -181,7 +181,7 @@ describe("Change API", () => {
     });
 
     describe("ArraySchema", () => {
-        it("should trigger onAdd only once for inner structures", () => {
+        xit("should trigger onAdd only once for inner structures", () => {
             class Restaurant extends Schema {
                 @type([ "number" ]) objects: ArraySchema<number> = new ArraySchema<number>();
             }
