@@ -4,8 +4,7 @@ import * as sinon from "sinon";
 import { Schema, type, filter, ArraySchema, MapSchema, Reflection, DataChange } from "../src";
 import { ClientWithSessionId, filterChildren } from "../src/annotations";
 import { nanoid } from "nanoid";
-import { assertExecutionTime } from "./helpers/test_helpers";
-
+// import { assertExecutionTime } from "./helpers/test_helpers";
 
 describe("@filter Test", () => {
 
@@ -641,13 +640,13 @@ describe("@filter Test", () => {
         let suitChanged: number = 0;
         decoded1.players.forEach(player => {
             player.cards.forEach(card => {
-                card.listen("suit", (value) => suitChanged++);
+                card.listen("suit", (value) => suitChanged++, false);
             });
         });
 
         decoded2.players.forEach(player => {
             player.cards.forEach(card => {
-                card.listen("suit", (value) => suitChanged++);
+                card.listen("suit", (value) => suitChanged++, false);
             });
         });
 

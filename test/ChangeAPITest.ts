@@ -1133,10 +1133,29 @@ describe("Change API", () => {
     });
 
     describe(".listen()", () => {
+        it("should trigger immediatelly", () => {
+            let listenCallCount = 0;
+
+            class State extends Schema {
+                @type("string") value: string;
+            }
+
+            const state = new State();
+            state.value = "Hello world!";
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            decodedState.listen("value", (value, previousValue) => {
+                listenCallCount++;
+            });
+
+            assert.strictEqual(1, listenCallCount);
+        });
+
         it("TypeScript should recognize boolean properties", () => {
             class State extends Schema {
-                @type("boolean")
-                bool: boolean;
+                @type("boolean") bool: boolean;
             }
 
             const state = new State();
@@ -1166,7 +1185,7 @@ describe("Change API", () => {
             const decodedState = new State();
             decodedState.users.onAdd((user) => {
                 user.onChange(() => onChangeCount++);
-                user.map.listen("prop1", () => listenCount++);
+                user.map.listen("prop1", () => listenCount++, false);
             });
             decodedState.decode(state.encode());
 

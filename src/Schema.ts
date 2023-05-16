@@ -202,14 +202,28 @@ export abstract class Schema {
         this.$changes.change(property as any, operation);
     }
 
-    public listen<K extends NonFunctionPropNames<this>>(attr: K, callback: (value: this[K], previousValue: this[K]) => void) {
+    /**
+     * Client-side: listen for changes on property.
+     * @param prop the property name
+     * @param callback callback to be triggered on property change
+     * @param immediate trigger immediatelly if property has been already set.
+     */
+    public listen<K extends NonFunctionPropNames<this>>(
+        prop: K,
+        callback: (value: this[K], previousValue: this[K]) => void,
+        immediate: boolean = true,
+    ) {
         if (!this.$callbacks) { this.$callbacks = {}; }
-        if (!this.$callbacks[attr as string]) { this.$callbacks[attr as string] = []; }
+        if (!this.$callbacks[prop as string]) { this.$callbacks[prop as string] = []; }
 
-        this.$callbacks[attr as string].push(callback);
+        this.$callbacks[prop as string].push(callback);
+
+        if (immediate && this[prop] !== undefined) {
+            callback(this[prop], undefined);
+        }
 
         // return un-register callback.
-        return () => spliceOne(this.$callbacks[attr as string], this.$callbacks[attr as string].indexOf(callback));
+        return () => spliceOne(this.$callbacks[prop as string], this.$callbacks[prop as string].indexOf(callback));
     }
 
     decode(
