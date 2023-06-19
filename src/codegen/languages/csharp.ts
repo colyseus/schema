@@ -155,16 +155,22 @@ function generateAllFieldCallbacks(klass: Class, indent: string) {
     return `${klass.properties
         .filter(prop => !prop.deprecated) // generate only for properties that haven't been deprecated.
         .map(prop => {
-        const eventName = `_${prop.name}Change`;
+        const eventName = `__${prop.name}Change`;
         eventNames.push(eventName);
+
+        const defaultNull = (prop.childType)
+            ? "null"
+            : `default(${getType(prop)})`;
+
         return `\t${indent}protected event PropertyChangeHandler<${getType(prop)}> ${eventName};
-\t${indent}public Action On${capitalize(prop.name)}Change(PropertyChangeHandler<${getType(prop)}> handler) {
+\t${indent}public Action On${capitalize(prop.name)}Change(PropertyChangeHandler<${getType(prop)}> __handler, bool __immediate = true) {
 \t${indent}\tif (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
-\t${indent}\t__callbacks.AddPropertyCallback(nameof(${prop.name}));
-\t${indent}\t${eventName} += handler;
+\t${indent}\t__callbacks.AddPropertyCallback(nameof(this.${prop.name}));
+\t${indent}\t${eventName} += __handler;
+\t${indent}\tif (__immediate && this.${prop.name} != ${defaultNull}) { __handler(this.${prop.name}, ${defaultNull}); }
 \t${indent}\treturn () => {
 \t${indent}\t\t__callbacks.RemovePropertyCallback(nameof(${prop.name}));
-\t${indent}\t\t${eventName} -= handler;
+\t${indent}\t\t${eventName} -= __handler;
 \t${indent}\t};
 \t${indent}}`;
     }).join("\n\n")}
