@@ -5,6 +5,23 @@ import { State, Player } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges, filterChildren } from "../src";
 
 describe("ArraySchema Tests", () => {
+    xit("should allow to setAt an undefined value", () => {
+        class Block extends Schema {
+            @type("number") num: number;
+        }
+        class State extends Schema {
+            @type([Block]) blocks = new ArraySchema<Block>();
+        }
+        const state = new State();
+        state.blocks.push(new Block().assign({ num: 1 }));
+        state.blocks.push(undefined);
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+        assert.strictEqual(decodedState.blocks.length, 2);
+        assert.ok(decodedState.blocks.at(0) instanceof Block);
+        assert.ok(decodedState.blocks.at(1) === undefined);
+    });
 
     it("should trigger onAdd / onRemove properly on splice", () => {
         class Item extends Schema {
