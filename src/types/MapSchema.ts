@@ -101,6 +101,10 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
             throw new Error(`MapSchema#set('${key}', ${value}): trying to set ${value} value on '${key}'.`);
         }
 
+        // Force "key" as string
+        // See: https://github.com/colyseus/colyseus/issues/561#issuecomment-1646733468
+        key = key.toString() as K;
+
         // get "index" for this value.
         const hasIndex = typeof(this.$changes.indexes[key]) !== "undefined";
         const index = (hasIndex)

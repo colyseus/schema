@@ -19,6 +19,19 @@ describe("MapSchema Tests", () => {
         assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ['jake', 'katarina']);
     });
 
+    it("using number as key should not throw error", async () => {
+        class Player extends Schema {
+            @type("number") pos: number = 0;
+        }
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+        }
+        const state = new State();
+        // @ts-ignore
+        state.players.set(3, new Player());
+        assert.doesNotThrow(() => state.encodeAll());
+    });
+
     it("forEach()", () => {
         const map = new MapSchema<number>();
         map.set('one', 1);

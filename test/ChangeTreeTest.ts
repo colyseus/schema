@@ -4,19 +4,6 @@ import { ChangeTree } from "../src/changes/ChangeTree";
 import { Schema, type, MapSchema, ArraySchema } from "../src";
 
 describe("ChangeTree", () => {
-    xit("should not error when updating a detached structure", async () => {
-        class Player extends Schema {
-            @type("number") pos: number = 0;
-        }
-        class State extends Schema {
-            @type({ map: Player }) players = new MapSchema<Player>();
-        }
-        const state = new State();
-        // @ts-ignore
-        state.players.set(3, new Player());
-        assert.doesNotThrow(() => state.encodeAll());
-    });
-
     it("instances should share parent/root references", () => {
         class Skill extends Schema {
             @type("number") damage: number;
