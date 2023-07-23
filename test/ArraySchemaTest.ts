@@ -5,7 +5,7 @@ import { State, Player } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges, filterChildren } from "../src";
 
 describe("ArraySchema Tests", () => {
-    xit("should allow to setAt an undefined value", () => {
+    it("should not crash when pushing an undefined value", () => {
         class Block extends Schema {
             @type("number") num: number;
         }
@@ -18,7 +18,7 @@ describe("ArraySchema Tests", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
-        assert.strictEqual(decodedState.blocks.length, 2);
+        assert.strictEqual(decodedState.blocks.length, 1);
         assert.ok(decodedState.blocks.at(0) instanceof Block);
         assert.ok(decodedState.blocks.at(1) === undefined);
     });

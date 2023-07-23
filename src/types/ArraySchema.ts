@@ -162,6 +162,11 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     }
 
     setAt(index: number, value: V) {
+        if (value === undefined || value === null) {
+            console.error("ArraySchema items cannot be null nor undefined; Use `deleteAt(index)` instead.");
+            return;
+        }
+
         if (value['$changes'] !== undefined) {
             (value['$changes'] as ChangeTree).setParent(this, this.$changes.root, index);
         }
