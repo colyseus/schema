@@ -211,4 +211,23 @@ describe("Instance sharing", () => {
             "all refCount's should have a valid number."
         );
     });
+
+    it("should allow having shared Schema class with no fields", () => {
+        class Quest extends Schema {}
+        class QuestOne extends Quest {
+            @type("string") name: string;
+        }
+
+        class State extends Schema {
+            @type({map: Quest}) quests = new MapSchema<Quest>();
+        }
+
+        const state = new State();
+        state.quests.set('one', new QuestOne().assign({ name: "one" }));
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        assert.strictEqual("one", (decodedState.quests.get('one') as QuestOne).name);
+    });
 });
