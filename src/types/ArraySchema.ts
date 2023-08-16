@@ -167,6 +167,11 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
             return;
         }
 
+        // skip if the value is the same as cached.
+        if (this.$items.get(index) === value) {
+            return;
+        }
+
         if (value['$changes'] !== undefined) {
             (value['$changes'] as ChangeTree).setParent(this, this.$changes.root, index);
         }

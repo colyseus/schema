@@ -133,6 +133,13 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
             this.$indexes.set(index, key);
 
         } else if (
+            !isRef &&
+            this.$items.get(key) === value
+        ) {
+            // if value is the same, avoid re-encoding it.
+            return;
+
+        } else if (
             isRef && // if is schema, force ADD operation if value differ from previous one.
             this.$items.get(key) !== value
         ) {

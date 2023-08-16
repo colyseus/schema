@@ -1219,6 +1219,23 @@ describe("ArraySchema Tests", () => {
         sinon.assert.callCount(onRemove, 6);
     });
 
+    it("re-assignments should be ignored", () => {
+        class State extends Schema {
+            @type(["number"]) numbers = new ArraySchema<number>();
+        }
+        const state = new State();
+        state.numbers.setAt(0, 1);
+        state.numbers.setAt(1, 2);
+        state.numbers.setAt(2, 3);
+        assert.ok(state.encode().length > 0);
+
+        // re-assignments, should not be enqueued
+        state.numbers.setAt(0, 1);
+        state.numbers.setAt(1, 2);
+        state.numbers.setAt(2, 3);
+        assert.ok(state.encode().length === 0);
+    });
+
     describe("mixed operations along with shuffle", () => {
         class CardType extends Schema {
             @type("uint16") id: number;
@@ -1353,7 +1370,6 @@ describe("ArraySchema Tests", () => {
             sinon.assert.callCount(onAddSpy, 2);
         });
     })
-
 
     describe("array methods", () => {
         it("#find()", () => {

@@ -344,6 +344,23 @@ describe("MapSchema Tests", () => {
         sinon.assert.calledOnce(onRemoveSpy);
     });
 
+    it("re-assignments should be ignored", () => {
+        class State extends Schema {
+            @type({map: "number"}) numbers = new MapSchema<number>();
+        }
+        const state = new State();
+        state.numbers.set("one", 1);
+        state.numbers.set("two", 2);
+        state.numbers.set("three", 3);
+        assert.ok(state.encode().length > 0);
+
+        // re-assignments, should not be enqueued
+        state.numbers.set("one", 1);
+        state.numbers.set("two", 2);
+        state.numbers.set("three", 3);
+        assert.ok(state.encode().length === 0);
+    });
+
     it("should consider the field of map schema value change.", (done) => {
         class Player extends Schema {
             @type("string") id:string
