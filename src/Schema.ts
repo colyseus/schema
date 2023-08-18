@@ -11,7 +11,7 @@ import { CollectionSchema } from './types/CollectionSchema';
 import { SetSchema } from './types/SetSchema';
 
 import { ChangeTree, Ref, ChangeOperation } from "./changes/ChangeTree";
-import { NonFunctionPropNames } from './types/HelperTypes';
+import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 import { ClientState } from './filters';
 import { getType } from './types/typeRegistry';
 import { ReferenceTracker } from './changes/ReferenceTracker';
@@ -184,7 +184,7 @@ export abstract class Schema {
     }
 
     public assign(
-        props: { [prop in NonFunctionPropNames<this>]?: this[prop] }
+        props: { [prop in NonFunctionPropNames<this>]?: this[prop] } | ToJSON<this>,
     ) {
         Object.assign(this, props);
         return this;
@@ -898,7 +898,7 @@ export abstract class Schema {
         const schema = this._definition.schema;
         const deprecated = this._definition.deprecated;
 
-        const obj = {}
+        const obj: ToJSON<typeof this> = {};
         for (let field in schema) {
             if (!deprecated[field] && this[field] !== null && typeof (this[field]) !== "undefined") {
                 obj[field] = (typeof (this[field]['toJSON']) === "function")

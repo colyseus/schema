@@ -973,7 +973,7 @@ describe("Schema Usage", () => {
 
             state.value.set('k1', 1);
             const firstEncoded = state.encodeAll();
-            
+
             const decodedState1 = new TestMapSchema();
             decodedState1.decode(firstEncoded);
             assert.deepStrictEqual(decodedState1.toJSON(), state.toJSON(), `decodedState1.toJSON() EQ state.toJSON()`);
