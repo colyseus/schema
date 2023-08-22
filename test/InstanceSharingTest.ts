@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type, ArraySchema, MapSchema } from "../src";
+import { Schema, type, ArraySchema, MapSchema, Reflection } from "../src";
 
 describe("Instance sharing", () => {
     class Position extends Schema {
@@ -230,4 +230,34 @@ describe("Instance sharing", () => {
 
         assert.strictEqual("one", (decodedState.quests.get('one') as QuestOne).name);
     });
+
+    xit("client-side: should trigger on all shared places", () => {
+        class Player extends Schema {
+            @type("number") hp: number;
+        }
+
+        class State extends Schema {
+            @type(Player) player1: Player;
+            @type(Player) player2: Player;
+        }
+
+        const state = new State();
+
+        const player = new Player().assign({ hp: 100 });;
+        state.player1 = player
+        state.player2 = player;
+
+        const decodedState = Reflection.decode<State>(Reflection.encode(state));
+
+        let numTriggered = 0;
+        decodedState.player1.listen('hp', () => numTriggered++);
+        decodedState.player2.listen('hp', () => numTriggered++);
+
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(decodedState.player1.hp, 100);
+        assert.strictEqual(decodedState.player2.hp, 100);
+        assert.strictEqual(2, numTriggered);
+    })
+
 });
