@@ -140,7 +140,7 @@ export abstract class Schema {
     // protected $listeners: { [field: string]: Array<(value: any, previousValue: any) => void> };
     protected $callbacks: { [op: number]: Array<Function> };
 
-    public onChange(callback: (changes: DataChange[]) => void): () => void {
+    public onChange(callback: () => void): () => void {
         return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.REPLACE, callback);
     }
     public onRemove(callback: () => void): () => void {
@@ -976,7 +976,7 @@ export abstract class Schema {
                     try {
                         // trigger onChange
                         ($callbacks as Schema['$callbacks'])?.[OPERATION.REPLACE]?.forEach(callback =>
-                            callback(changes));
+                            callback());
 
                     } catch (e) {
                         Schema.onError(e);
