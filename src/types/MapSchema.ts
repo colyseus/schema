@@ -96,6 +96,10 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
     [Symbol.iterator](): IterableIterator<[K, V]> { return this.$items[Symbol.iterator](); }
     get [Symbol.toStringTag]() { return this.$items[Symbol.toStringTag] }
 
+    static get [Symbol.species]() {
+        return MapSchema;
+    }
+
     set(key: K, value: V) {
         if (value === undefined || value === null) {
             throw new Error(`MapSchema#set('${key}', ${value}): trying to set ${value} value on '${key}'.`);

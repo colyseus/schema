@@ -5,6 +5,13 @@ import { State, Player } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges, filterChildren } from "../src";
 
 describe("ArraySchema Tests", () => {
+
+    describe("Internals", () => {
+        it("Symbol.species", () => {
+            assert.strictEqual(ArraySchema[Symbol.species], ArraySchema);
+        });
+    });
+
     it("should not crash when pushing an undefined value", () => {
         class Block extends Schema {
             @type("number") num: number;

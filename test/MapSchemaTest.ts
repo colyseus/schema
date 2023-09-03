@@ -7,6 +7,12 @@ import { MapSchema, type, Schema, filterChildren, SchemaDefinition, ArraySchema 
 
 describe("MapSchema Tests", () => {
 
+    describe("Internals", () => {
+        it("Symbol.species", () => {
+            assert.strictEqual(MapSchema[Symbol.species], MapSchema);
+        });
+    });
+
     it("should allow to pre-populate a Map", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>({
