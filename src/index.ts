@@ -1,4 +1,5 @@
-export { Schema, DataChange } from "./Schema";
+export { Schema } from "./Schema";
+export type { DataChange } from "./Schema";
 
 import { MapSchema } from "./types/MapSchema"
 export { MapSchema };
@@ -24,7 +25,7 @@ registerType("collection", { constructor: CollectionSchema, });
 export { dumpChanges } from "./utils";
 
 // Encoder / Decoder
-export { Iterator } from "./encoding/decode";
+export type { Iterator } from "./encoding/decode";
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
 export { encode, decode };
@@ -47,12 +48,14 @@ export {
 
     // Internals
     SchemaDefinition,
-
-    // Types
     Context,
+} from "./annotations";
+
+// Annotation types
+export type {
+    DefinitionType,
     PrimitiveType,
     Definition,
-    DefinitionType,
     FilterCallback,
 } from "./annotations";
 
