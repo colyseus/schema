@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc && rollup -c rollup.config.js",
     "watch": "tsc -w",
-    "test": "mocha --require ts-node/register test/*Test.ts test/**/*Test.ts",
+    "test": "mocha --require ts-node/register test/*.test.ts test/**/*.test.ts",
     "coverage": "nyc mocha --require ts-node/register --require source-map-support/register --recursive test/**Test.ts",
     "generate-test-1": "bin/schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --output ../colyseus-unity-sdk/Assets/Editor/ColyseusTests/Schema/PrimitiveTypes",
     "generate-test-2": "bin/schema-codegen test-external/ChildSchemaTypes.ts --namespace SchemaTest.ChildSchemaTypes --output ../colyseus-unity-sdk/Assets/Editor/ColyseusTests/Schema/ChildSchemaTypes",
