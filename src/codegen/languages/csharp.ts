@@ -99,7 +99,8 @@ ${_enum.properties
         return `${indent}\tpublic const ${dataType} ${prop.name} = ${value};`;
     })
         .join("\n")}
-${indent}}`
+${indent}}
+${namespace ? "}" : ""}`
 }
 
 function generateProperty(prop: Property, indent: string = "") {
