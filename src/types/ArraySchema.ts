@@ -86,7 +86,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     public $callbacks: { [operation: number]: Array<(item: V, key: number) => void> };
     public onAdd(callback: (item: V, key: number) => void, triggerAll: boolean = true) {
         return addCallback(
-            (this.$callbacks || (this.$callbacks = [])),
+            (this.$callbacks || (this.$callbacks = {})),
             OPERATION.ADD,
             callback,
             (triggerAll)
@@ -94,8 +94,8 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
                 : undefined
         );
     }
-    public onRemove(callback: (item: V, key: number) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.DELETE, callback); }
-    public onChange(callback: (item: V, key: number) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.REPLACE, callback); }
+    public onRemove(callback: (item: V, key: number) => void) { return addCallback(this.$callbacks || (this.$callbacks = {}), OPERATION.DELETE, callback); }
+    public onChange(callback: (item: V, key: number) => void) { return addCallback(this.$callbacks || (this.$callbacks = {}), OPERATION.REPLACE, callback); }
 
     static is(type: any) {
         return (

@@ -1133,6 +1133,25 @@ describe("Change API", () => {
     });
 
     describe(".listen()", () => {
+        it("should allow .onChange() + listen on same object", () => {
+            let callCount: number = 0;
+
+            class State extends Schema {
+                @type("string") map: string;
+            }
+
+            const state = new State();
+            state.map = "Hello world!";
+
+            const decodedState = new State();
+            decodedState.onChange(() => callCount++);
+            decodedState.listen("map", () => callCount++);
+
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(2, callCount);
+        });
+
         it("should trigger immediatelly", () => {
             let listenCallCount = 0;
 

@@ -141,10 +141,10 @@ export abstract class Schema {
     protected $callbacks: { [op: number]: Array<Function> };
 
     public onChange(callback: () => void): () => void {
-        return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.REPLACE, callback);
+        return addCallback((this.$callbacks || (this.$callbacks = {})), OPERATION.REPLACE, callback);
     }
     public onRemove(callback: () => void): () => void {
-        return addCallback((this.$callbacks || (this.$callbacks = [])), OPERATION.DELETE, callback);
+        return addCallback((this.$callbacks || (this.$callbacks = {})), OPERATION.DELETE, callback);
     }
 
     // allow inherited classes to have a constructor

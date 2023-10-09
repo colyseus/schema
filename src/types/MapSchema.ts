@@ -61,7 +61,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
     public $callbacks: { [operation: number]: Array<(item: V, key: string) => void> };
     public onAdd(callback: (item: V, key: string) => void, triggerAll: boolean = true) {
         return addCallback(
-            (this.$callbacks || (this.$callbacks = [])),
+            (this.$callbacks || (this.$callbacks = {})),
             OPERATION.ADD,
             callback,
             (triggerAll)
@@ -69,8 +69,8 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
                 : undefined
         );
     }
-    public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.DELETE, callback); }
-    public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.REPLACE, callback); }
+    public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = {}), OPERATION.DELETE, callback); }
+    public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = {}), OPERATION.REPLACE, callback); }
 
     static is(type: any) {
         return type['map'] !== undefined;
