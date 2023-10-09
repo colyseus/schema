@@ -898,7 +898,7 @@ export abstract class Schema {
         const schema = this._definition.schema;
         const deprecated = this._definition.deprecated;
 
-        const obj: ToJSON<typeof this> = {};
+        const obj: unknown = {};
         for (let field in schema) {
             if (!deprecated[field] && this[field] !== null && typeof (this[field]) !== "undefined") {
                 obj[field] = (typeof (this[field]['toJSON']) === "function")
@@ -906,7 +906,7 @@ export abstract class Schema {
                     : this[`_${field}`];
             }
         }
-        return obj;
+        return obj as ToJSON<typeof this>;
     }
 
     discardAllChanges() {
