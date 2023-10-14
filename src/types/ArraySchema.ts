@@ -65,6 +65,16 @@ export function getArrayProxy(value: ArraySchema) {
 
             return true;
         },
+
+        has: (obj, key) => {
+            if (
+                typeof (key) !== "symbol" &&
+                !isNaN(Number(key))
+            ) {
+                return obj['$items'].has(Number(key))
+            }
+            return Reflect.has(obj, key)
+        }
     });
 
     return value;

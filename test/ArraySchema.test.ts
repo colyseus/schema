@@ -563,6 +563,20 @@ describe("ArraySchema Tests", () => {
         sinon.assert.callCount(onRemoveSpy, 2);
     });
 
+    it("should work with in operator", () => {
+        const state = new State();
+        state.arrayOfPlayers = new ArraySchema<Player>();
+        state.arrayOfPlayers.push(new Player("One", 10, 0));
+        state.arrayOfPlayers.push(new Player("Two", 30, 0));
+        state.arrayOfPlayers.push(new Player("Three", 20, 0));
+        
+        assert.ok(0 in state.arrayOfPlayers === true);
+        assert.ok(2 in state.arrayOfPlayers === true);
+        assert.ok(3 in state.arrayOfPlayers === false);
+        assert.ok(Symbol.iterator in state.arrayOfPlayers === true);
+        assert.ok("length" in state.arrayOfPlayers === true);
+    });
+
     it("should allow sort", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema<Player>();
