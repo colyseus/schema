@@ -1036,6 +1036,18 @@ describe("Schema Usage", () => {
 
 
     describe("deep structures / re-assignents", () => {
+        it("should allow to assign complex structures on constructor", () => {
+            const arrayOfPlayers = new ArraySchema<Player>();
+            arrayOfPlayers.push(new Player("One", 1, 1));
+            arrayOfPlayers.push(new Player("Two", 2, 2));
+
+            const state = new State({ arrayOfPlayers, });
+            const decodedState = new State();
+            decodedState.decode(state.encodeAll());
+
+            assert.strictEqual(2, decodedState.arrayOfPlayers.length);
+        });
+
         it("should allow re-assigning child schema type", () => {
             const state = new DeepState();
             const deepMap = new DeepMap();
