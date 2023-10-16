@@ -333,6 +333,10 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
             this.$deleteAt(indexes[i]);
         }
 
+        for (let i = 0; i < items.length; i++) {
+            this.setAt(start + i, items[i]);
+        }
+
         return removedItems;
     }
 
