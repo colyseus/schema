@@ -27,8 +27,18 @@ export class ReferenceTracker {
     }
 
     // for decoding
-    removeRef(refId) {
-        this.refCounts[refId] = this.refCounts[refId] - 1;
+    removeRef(refId: number) {
+        const refCount = this.refCounts[refId];
+        if (refCount === undefined) {
+            console.warn(`trying to remove reference ${refId} that doesn't exist`);
+            return;
+        }
+        if (refCount === 0) {
+            console.warn(`trying to remove reference ${refId} with 0 refCount`);
+            return;
+        }
+
+        this.refCounts[refId] = refCount - 1;
         this.deletedRefs.add(refId);
     }
 
