@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "2.0.20",
+  "version": "2.0.21",
   "description": "Binary state serializer with delta encoding for games",
   "bin": {
     "schema-codegen": "./bin/schema-codegen"
@@ -79,7 +79,7 @@
     "ts-node": "^7.0.1",
     "tslib": "^2.1.0",
     "tsx": "^3.13.0",
-    "typescript": "^5.0.4"
+    "typescript": "^5.2.2"
   },
   "nyc": {
     "extension": [

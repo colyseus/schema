@@ -555,6 +555,10 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         return Array.from(this.$items.values()).includes(searchElement, fromIndex);
     }
 
+    //
+    // ES2022
+    //
+
     /**
      * Calls a defined callback function on each element of an array. Then, flattens the result into
      * a new array.
@@ -594,9 +598,28 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         return arr.findLastIndex.apply(arr, arguments);
     }
 
-    // get size () {
-    //     return this.$items.size;
-    // }
+    //
+    // ES2023
+    //
+    with(index: number, value: V): V[] {
+        const copy = Array.from(this.$items.values());
+        copy[index] = value;
+        return new ArraySchema(...copy);
+    }
+    toReversed(): V[] {
+        return Array.from(this.$items.values()).reverse();
+    }
+    toSorted(compareFn?: (a: V, b: V) => number): V[] {
+        return Array.from(this.$items.values()).sort(compareFn);
+    }
+    toSpliced(start: number, deleteCount: number, ...items: V[]): V[];
+    toSpliced(start: number, deleteCount?: number): V[];
+    // @ts-ignore
+    toSpliced(start: unknown, deleteCount?: unknown, ...items?: unknown[]): V[] {
+        const copy = Array.from(this.$items.values());
+        // @ts-ignore
+        return copy.toSpliced.apply(copy, arguments);
+    }
 
     protected setIndex(index: number, key: number) {
         this.$indexes.set(index, key);
