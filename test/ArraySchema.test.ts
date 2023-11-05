@@ -447,7 +447,7 @@ describe("ArraySchema Tests", () => {
 
         const removedItems = state.arrayOfPlayers.splice(1);
         assert.strictEqual(2, removedItems.length);
-        assert.deepEqual(['Snake', 'Cyberhawk'], removedItems.map((player) => player.name));
+        assert.deepStrictEqual(['Snake', 'Cyberhawk'], removedItems.map((player) => player.name));
 
         decodedState.decode(state.encode());
 
@@ -455,6 +455,45 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual("Jake", decodedState.arrayOfPlayers[0].name);
         assert.strictEqual(jake, decodedState.arrayOfPlayers[0]);
     });
+
+    it("should allow to insert elements with splice", () => {
+        const state = new State();
+        const p1 = new Player("Jake")
+        const p2 = new Player("Snake")
+        const p3 = new Player("Cyberhawk")
+        const p4 = new Player("Katarina Lyons")
+
+        state.arrayOfPlayers = new ArraySchema(p1, p2)
+        state.arrayOfPlayers.splice(0, 2, p3, p4)
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
+        assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
+        assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
+    })
+
+    it("should adjust the indexes of the elements after a splice", () => {
+        const state = new State();
+        const p1 = new Player("Jake")
+        const p2 = new Player("Snake")
+        const p3 = new Player("Cyberhawk")
+        const p4 = new Player("Katarina Lyons")
+
+        const newPlayer = new Player("John")
+
+        state.arrayOfPlayers = new ArraySchema(p1, p2, p3, p4)
+        state.arrayOfPlayers.splice(1, 2, newPlayer)
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
+        assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Jake");
+        assert.strictEqual(decodedState.arrayOfPlayers[1].name, "John");
+        assert.strictEqual(decodedState.arrayOfPlayers[2].name, "Katarina Lyons");
+    })
 
     it("should allow to push and shift", () => {
         const state = new State();
