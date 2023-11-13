@@ -23,19 +23,3 @@ body:
         Please provide your forked version of [this environment](https://stackblitz.com/edit/colyseus-schema-issue-report?file=index.ts) to reproduce the issue.
       placeholder: |-
         Link to your forked version of the StackBlitz project.
-
-  - type: textarea
-    id: steps-to-reproduce
-    attributes:
-      label: Steps to reproduce
-      description: >-
-        Please provide a detailed list of instructions, guiding us maintainers
-        through the required steps, helping us to recreate the problem using the
-        minimal reproduction you provided. Be as specific as possible and as
-        verbose as necessary – try not to leave anything out.
-      placeholder: |-
-        1. ...
-        2. ...
-        3. ...
-    validations:
-      required: true

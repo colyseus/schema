@@ -7,29 +7,15 @@ body:
   - type: textarea
     id: description
     attributes:
-      label: Context & Description
+      label: Description & Use case
       description: >-
-        Please provide the context for the idea you want to propose, helping us to understand what you are working on
-        and what you are trying to achieve. If the context is not relevant, you
-        can leave this field empty.
-    validations:
-      required: true
-
-  - type: textarea
-    id: usecase
-    attributes:
-      label: Use cases
-      description: >-
-        Elaborate on how the change would positively impact not only you but
-        the community and how it aligns with the goals and philosophy of the
-        project.
+        Please provide the use case and description of the feature you'd like to see implemented.
     validations:
       required: true
 
   - type: textarea
     id: api
     attributes:
-      label: Proposed API
+      label: "Optional: Proposed API"
       description: >-
-        If your request is an addition or change to the current API, please
-        provide proposed API here. (This field is optional.)
+        If your request is an addition or change to the current API, please provide proposed API here.
