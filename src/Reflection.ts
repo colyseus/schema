@@ -85,7 +85,7 @@ export class Reflection extends Schema {
             reflection.types.push(currentType);
         }
 
-        const types = rootSchemaType._context.types;
+        const types = rootSchemaType._context?.types;
         for (let typeid in types) {
             const type = new ReflectionType();
             type.id = Number(typeid);

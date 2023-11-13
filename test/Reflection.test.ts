@@ -29,6 +29,18 @@ export class State extends Schema {
 
 describe("Reflection", () => {
 
+    it("should allow to encode and decode empty structures", () => {
+        class Empty extends Schema {}
+        const state = new Empty();
+
+        assert.doesNotThrow(() => {
+            const reflected = new Reflection();
+            reflected.decode(Reflection.encode(state));
+
+            assert.strictEqual(reflected.types.length, 0);
+        });
+    });
+
     it("should encode schema definitions", () => {
         const state = new State();
 
