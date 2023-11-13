@@ -1,0 +1,41 @@
+name: Report a bug
+description: Something is not working? Report a bug
+title: "[Bug]: "
+labels: [':bug: bug', ':eyes: triage']
+body:
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug description
+      description: >-
+        Explain where Colyseus does not behave as you would expect it to. Be as
+        specific as possible. If you have found a workaround or a fix for the problem,
+        please let us maintainers (and all other users) know.
+    validations:
+      required: true
+
+  - type: textarea
+    id: minimal-reproduction
+    attributes:
+      label: Minimal reproduction
+      description: >-
+        If possible, please fork and modify this to demonstrate the issue [https://stackblitz.com/edit/colyseus-schema-issue-report?file=index.ts](https://stackblitz.com/edit/colyseus-schema-issue-report?file=index.ts)
+      placeholder: |-
+        Paste your forked version of https://stackblitz.com/edit/colyseus-schema-issue-report?file=index.ts
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        Please provide a detailed list of instructions, guiding us maintainers
+        through the required steps, helping us to recreate the problem using the
+        minimal reproduction you provided. Be as specific as possible and as
+        verbose as necessary – try not to leave anything out.
+      placeholder: |-
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
