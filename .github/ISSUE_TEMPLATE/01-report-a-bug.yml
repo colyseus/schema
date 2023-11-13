@@ -18,11 +18,11 @@ body:
   - type: textarea
     id: minimal-reproduction
     attributes:
-      label: Minimal reproduction
+      label: (optional) Minimal reproduction
       description: >-
-        (Optional) Please provide your forked version of [this environment](https://stackblitz.com/edit/colyseus-schema-issue-report?file=index.ts) to reproduce the issue. [https://stackblitz.com/edit/colyseus-schema-issue-report?file=index.ts](https://stackblitz.com/edit/colyseus-schema-issue-report?file=index.ts)
+        Please provide your forked version of [this environment](https://stackblitz.com/edit/colyseus-schema-issue-report?file=index.ts) to reproduce the issue.
       placeholder: |-
-        Paste your forked version of https://stackblitz.com/edit/colyseus-schema-issue-report?file=index.ts
+        Link to your forked version of the StackBlitz project.
 
   - type: textarea
     id: steps-to-reproduce
