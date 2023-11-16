@@ -16,6 +16,30 @@ describe("TypeScript Types", () => {
             orderPriority: null,
         }));
         state.encodeAll();
-        console.log("DONE!");
+        assert.ok(true);
     });
+
+    describe("complex declaration scenarios", () => {
+        it("implements / extends without conflicts", () => {
+            // Defines a generic schema
+            interface SchemaInterface extends Schema {
+                players: Map<string, string>;
+                items: string[];
+            }
+
+            // Implements the above interface
+            // MapSchema is compatible with Map
+            class SchemaInterfaceImpl extends Schema implements SchemaInterface {
+                players: MapSchema<string>;
+                items: ArraySchema<string>;
+            }
+
+            // Uses the schema interface
+            abstract class AbstractRoom<T extends SchemaInterface> { }
+
+            // Uses the schema implementation
+            class AbstractRoomImpl extends AbstractRoom<SchemaInterfaceImpl> { }
+        });
+
+    })
 });

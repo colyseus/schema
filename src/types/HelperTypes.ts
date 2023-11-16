@@ -12,7 +12,9 @@ export type NonFunctionPropNames<T> = {
 export type ToJSON<T> = NonFunctionProps<{
     [K in keyof T]: T[K] extends MapSchema<infer U>
         ? Record<string, U>
-        : T[K] extends ArraySchema<infer U>
-            ? U[]
-            : T[K]
+        : T[K] extends Map<string, infer U>
+            ? Record<string, U>
+            : T[K] extends ArraySchema<infer U>
+                ? U[]
+                : T[K]
 }>;
