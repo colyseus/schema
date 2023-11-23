@@ -87,7 +87,7 @@ ${_enum.properties
 
         if(prop.type) {
             if(isNaN(Number(prop.type))) {
-                value = prop.type;
+                value = `"${prop.type}"`;
                 dataType = "string";
             } else {
                 value = Number(prop.type);

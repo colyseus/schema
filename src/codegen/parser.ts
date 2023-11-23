@@ -194,7 +194,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
         case ts.SyntaxKind.EnumMember:
             if (currentStructure instanceof Enum) {
-                const initializer = (node as any).initializer?.getText();
+                const initializer = (node as any).initializer?.text;
                 const name = node.getFirstToken().getText();
                 const property = currentProperty || new Property();
                 property.name = name;
