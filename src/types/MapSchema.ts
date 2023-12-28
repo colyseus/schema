@@ -171,7 +171,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         // // const index = this.$changes.indexes[key];
         // // this.$indexes.delete(index);
 
-        this.$changes.delete(key);
+        this.$changes.delete(key.toString());
         return this.$items.delete(key);
     }
 

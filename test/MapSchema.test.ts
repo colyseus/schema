@@ -268,6 +268,24 @@ describe("MapSchema Tests", () => {
         assert.strictEqual(decodedState.mapOfPlayers['two'].name, "Katarina 2");
     });
 
+    it("removing a non-existing item should not remove anything", () => {
+        class MyRoomState extends Schema {
+            @type({ map: "number" }) duels: MapSchema<number> = new MapSchema();
+        }
+
+        const state = new MyRoomState();
+        state.duels.set("one", 1);
+        state.duels.set("two", 2);
+
+        const decodedState = new MyRoomState();
+        decodedState.decode(state.encode());
+
+        state.duels.delete(0 as any);
+        decodedState.decode(state.encode());
+
+        assert.deepStrictEqual(Array.from(decodedState.duels.keys()), ['one', 'two']);
+    });
+
     it("should allow map of primitive types", () => {
         class Player extends Schema {
             @type({ map: "number" }) mapOfNumbers = new MapSchema<number>();
