@@ -237,6 +237,8 @@ export class Encoder<T extends Schema> {
                     //
                     const definition = getType(Object.keys(type)[0]);
 
+                    console.log({ type, definition, ref });
+
                     //
                     // ensure a ArraySchema has been provided
                     //

@@ -137,7 +137,7 @@ export type ClientWithSessionId = { sessionId: string } & any;
 
 export interface TypeOptions {
     manual?: boolean,
-    stream?: boolean,
+    stream?: boolean, // TODO: not implemented
 }
 
 export class TypeContext {
@@ -199,6 +199,12 @@ export class TypeContext {
         TypeContext.inheritedTypes.get(klass)?.forEach((child) => {
             this.discoverTypes(child);
         });
+
+        // skip if no fields are defined for this class.
+        if (!klass['_definition']) {
+            klass['_definition'] = SchemaDefinition.create();
+            return;
+        }
 
         for (const field in klass['_definition'].schema) {
             const typedef = klass['_definition'].schema[field];

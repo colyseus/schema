@@ -93,7 +93,7 @@ export class Reflection extends Schema {
         return encoder.encodeAll();
     }
 
-    static decode<T extends Schema = Schema>(bytes: number[], it?: Iterator): Decoder<T> {
+    static decode<T extends Schema = Schema>(bytes: number[], it?: Iterator): T {
         const reflection = new Reflection();
 
         const reflectionDecoder = new Decoder(reflection)

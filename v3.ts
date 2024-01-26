@@ -1,5 +1,5 @@
 import * as util from "util";
-import { MapSchema, Reflection, Schema, type } from "./src";
+import { MapSchema, Reflection, Schema, TypeContext, type } from "./src";
 import { Encoder } from "./src/Encoder";
 import { Decoder } from "./src/Decoder";
 
@@ -13,9 +13,7 @@ class Vec3 extends Schema {
     @type("number") z: number;
 }
 
-class Base extends Schema {
-    @type("number") num: number = 1;
-}
+class Base extends Schema {}
 
 class Entity extends Base {
     @type(Vec3) position = new Vec3().assign({ x: 0, y: 0, z: 0 });
@@ -26,7 +24,7 @@ class Player extends Entity {
 }
 
 class State extends Schema {
-    @type({ map: Entity }) players = new MapSchema<Entity>();
+    @type({ map: Base }) players = new MapSchema<Entity>();
 }
 
 const state = new State();
@@ -34,6 +32,7 @@ state.players.set("entity", new Entity());
 state.players.set("one", new Player());
 
 const encoder = new Encoder(state);
+// encoder.change()
 
 let encoded = encoder.encodeAll();
 
@@ -43,4 +42,4 @@ log(decoder['root'].toJSON());
 
 const reflection = Reflection.encode(state);
 console.log("encoded =>", reflection);
-console.log("decoded =>", Reflection.decode(reflection));
+log(Reflection.decode(reflection))
