@@ -48,7 +48,7 @@ export {
 
     // Internals
     SchemaDefinition,
-    Context,
+    TypeContext,
 } from "./annotations";
 
 // Annotation types

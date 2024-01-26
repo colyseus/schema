@@ -128,7 +128,8 @@ export class SchemaDefinition {
 }
 
 export function hasFilter(klass: typeof Schema) {
-    return klass._context && klass._context.useFilters;
+    // return klass._context && klass._context.useFilters;
+    return false;
 }
 
 // Colyseus integration
@@ -136,13 +137,36 @@ export type ClientWithSessionId = { sessionId: string } & any;
 
 export interface TypeOptions {
     manual?: boolean,
-    context?: Context,
+    stream?: boolean,
 }
 
-export class Context {
+export class TypeContext {
     types: {[id: number]: typeof Schema} = {};
     schemas = new Map<typeof Schema, number>();
-    useFilters = false;
+
+    /**
+     * For inheritance support
+     * Keeps track of which classes extends which. (parent -> children)
+     */
+    static inheritedTypes = new Map<typeof Schema, Set<typeof Schema>>();
+
+    static register(target: typeof Schema) {
+        const parent = Object.getPrototypeOf(target);
+        if (parent !== Schema) {
+            let inherits = TypeContext.inheritedTypes.get(parent);
+            if (!inherits) {
+                inherits = new Set<typeof Schema>();
+                TypeContext.inheritedTypes.set(parent, inherits);
+            }
+            inherits.add(target);
+        }
+    }
+
+    constructor(rootClass?: typeof Schema) {
+        if (rootClass) {
+            this.discoverTypes(rootClass);
+        }
+    }
 
     has(schema: typeof Schema) {
         return this.schemas.has(schema);
@@ -153,27 +177,55 @@ export class Context {
     }
 
     add(schema: typeof Schema, typeid: number = this.schemas.size) {
-        // FIXME: move this to somewhere else?
-        // support inheritance
-        schema._definition = SchemaDefinition.create(schema._definition);
-
-        schema._typeid = typeid;
+        // skip if already registered
+        if (this.schemas.has(schema)) {
+            return false;
+        }
         this.types[typeid] = schema;
         this.schemas.set(schema, typeid);
+        return true;
     }
 
+    getTypeId(klass: typeof Schema) {
+        return this.schemas.get(klass);
+    }
 
-    static create(options: TypeOptions = {}) {
-        return function (definition: DefinitionType) {
-            if (!options.context) {
-                options.context = new Context();
+    private discoverTypes(klass: typeof Schema) {
+        if (!this.add(klass)) {
+            return;
+        }
+
+        // add classes inherited from this base class
+        TypeContext.inheritedTypes.get(klass)?.forEach((child) => {
+            this.discoverTypes(child);
+        });
+
+        for (const field in klass['_definition'].schema) {
+            const typedef = klass['_definition'].schema[field];
+            if (typeof(typedef) === "string") {
+                continue;
             }
-            return type(definition, options);
+
+            if (Array.isArray(typedef)) {
+                const type = typedef[0];
+                if (type === "string") {
+                    continue;
+                }
+                this.discoverTypes(type as typeof Schema);
+
+            } else if (typeof(typedef) === "function") {
+                this.discoverTypes(typedef);
+
+            } else {
+                const type = Object.values(typedef)[0];
+                if (type === "string") {
+                    continue;
+                }
+                this.discoverTypes(type as typeof Schema);
+            }
         }
     }
 }
-
-export const globalContext = new Context();
 
 /**
  * [See documentation](https://docs.colyseus.io/state/schema/)
@@ -193,23 +245,23 @@ export const globalContext = new Context();
  */
 export function type (
     type: DefinitionType,
-    options: TypeOptions = {}
+    options?: TypeOptions
 ): PropertyDecorator {
     return function (target: typeof Schema, field: string) {
-        const context = options.context || globalContext;
+        // const context = options.context || globalContext;
         const constructor = target.constructor as typeof Schema;
-        constructor._context = context;
+        // constructor._context = context;
 
         if (!type) {
             throw new Error(`${constructor.name}: @type() reference provided for "${field}" is undefined. Make sure you don't have any circular dependencies.`);
         }
 
-        /*
-         * static schema
-         */
-        if (!context.has(constructor)) {
-            context.add(constructor);
+        if (!constructor._definition) {
+            constructor._definition = SchemaDefinition.create();
         }
+
+        // for inheritance support
+        TypeContext.register(constructor);
 
         const definition = constructor._definition;
         definition.addField(field, type);
@@ -238,17 +290,17 @@ export function type (
         const isArray = ArraySchema.is(type);
         const isMap = !isArray && MapSchema.is(type);
 
-        // TODO: refactor me.
-        // Allow abstract intermediary classes with no fields to be serialized
-        // (See "should support an inheritance with a Schema type without fields" test)
-        if (typeof (type) !== "string" && !Schema.is(type)) {
-            const childType = Object.values(type)[0];
-            if (typeof (childType) !== "string" && !context.has(childType)) {
-                context.add(childType);
-            }
-        }
+        // // TODO: refactor me.
+        // // Allow abstract intermediary classes with no fields to be serialized
+        // // (See "should support an inheritance with a Schema type without fields" test)
+        // if (typeof (type) !== "string" && !Schema.is(type)) {
+        //     const childType = Object.values(type)[0];
+        //     if (typeof (childType) !== "string" && !context.has(childType)) {
+        //         context.add(childType);
+        //     }
+        // }
 
-        if (options.manual) {
+        if (options && options.manual) {
             // do not declare getter/setter descriptor
             definition.descriptors[field] = {
                 enumerable: true,
@@ -345,7 +397,7 @@ export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback
         const definition = constructor._definition;
 
         if (definition.addFilter(field, cb)) {
-            constructor._context.useFilters = true;
+            // constructor._context.useFilters = true;
         }
     }
 }
@@ -355,7 +407,7 @@ export function filterChildren<T extends Schema, K, V, R extends Schema>(cb: Fil
         const constructor = target.constructor as typeof Schema;
         const definition = constructor._definition;
         if (definition.addChildrenFilter(field, cb)) {
-            constructor._context.useFilters = true;
+            // constructor._context.useFilters = true;
         }
     }
 }
@@ -387,11 +439,11 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
 export function defineTypes(
     target: typeof Schema,
     fields: { [property: string]: DefinitionType },
-    options: TypeOptions = {}
+    options?: TypeOptions
 ) {
-    if (!options.context) {
-        options.context = target._context || options.context || globalContext;
-    }
+    // if (!options.context) {
+    //     options.context = target._context || options.context || globalContext;
+    // }
 
     for (let field in fields) {
         type(fields[field], options)(target.prototype, field);
