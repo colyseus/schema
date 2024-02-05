@@ -38,6 +38,7 @@ export function removeChildRefs(this: CollectionSchema, changes: DataChange[]) {
         });
 
         if (needRemoveRef) {
+            // @ts-ignore
             this.$changes.root.removeRef(item['$changes'].refId);
         }
     });

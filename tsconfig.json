@@ -1,12 +1,16 @@
 {
   "extends": "./tsconfig/tsconfig.all.json",
   "compilerOptions": {
-    "target": "esnext",
+    "module": "CommonJS", // TODO: remove me (defined on ./tsconfig dir)
+    "target": "ES2022",
     // "target": "es5",
     "outDir": "lib",
     "declaration": true,
-    "useDefineForClassFields": false,
-    "downlevelIteration": true, /*only for tests*/
-    "emitDecoratorMetadata": true
+
+    // "experimentalDecorators": true,
+    // "useDefineForClassFields": false,
+
+    // "downlevelIteration": true, /*only for tests*/
+    // "emitDecoratorMetadata": true
   }
 }

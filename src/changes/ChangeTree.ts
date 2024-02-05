@@ -6,7 +6,7 @@ import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";
 import { CollectionSchema } from "../types/CollectionSchema";
 import { SetSchema } from "../types/SetSchema";
-import { ReferenceTracker } from "./ReferenceTracker";
+// import { ReferenceTracker } from "./ReferenceTracker";
 
 export type Ref = Schema
     | ArraySchema
@@ -27,12 +27,28 @@ export interface FieldCache {
     endIndex: number;
 }
 
+export class Root {
+    protected changes = new Set<ChangeTree>();
+    protected nextUniqueId: number = 1;
+
+    getNextUniqueId() {
+        return this.nextUniqueId++;
+    }
+
+    enqueue(changeTree: ChangeTree) {
+        this.changes.add(changeTree);
+    }
+
+    clear() {
+        this.changes.clear();
+    }
+}
 
 export class ChangeTree {
     ref: Ref;
     refId: number;
 
-    root?: ReferenceTracker;
+    root?: Root;
 
     parent?: Ref;
     parentIndex?: number;
@@ -45,19 +61,38 @@ export class ChangeTree {
 
     currentCustomOperation: number = 0;
 
-    constructor(ref: Ref, parent?: Ref, root?: ReferenceTracker) {
+    constructor(ref: Ref) {
+    // constructor(ref: Ref, parent?: Ref, root?: ReferenceTracker) {
         this.ref = ref;
-        this.setParent(parent, root);
+        // this.setParent(parent, root);
+    }
+
+    get definition() {
+        return this.ref.constructor[Symbol.metadata]['def'] as SchemaDefinition;
+    }
+
+    setRoot(root: Root) {
+        console.log("SET ROOT!", this.ref);
+        this.root = root;
+
+        root.enqueue(this);
+
+        this.allChanges.forEach((index) => {
+            const childRef = (this.ref as Schema)['getByIndex'](index);
+            if (childRef && childRef['$changes']) {
+                childRef['$changes'].setRoot(root);
+            }
+        });
     }
 
     setParent(
         parent: Ref,
-        root?: ReferenceTracker,
+        root?: Root,
         parentIndex?: number,
     ) {
         if (!this.indexes) {
             this.indexes = (this.ref instanceof Schema)
-                ? this.ref['_definition'].indexes
+                ? this.definition
                 : {};
         }
 
@@ -66,13 +101,17 @@ export class ChangeTree {
 
         // avoid setting parents with empty `root`
         if (!root) { return; }
+
         this.root = root;
+        this.root['enqueue'](this);
+
+        this.ensureRefId();
 
         //
         // assign same parent on child structures
         //
         if (this.ref instanceof Schema) {
-            const definition: SchemaDefinition = this.ref['_definition'];
+            const definition: SchemaDefinition = this.definition;
 
             for (let field in definition.schema) {
                 const value = this.ref[field];
@@ -108,14 +147,24 @@ export class ChangeTree {
         this.changes.set(--this.currentCustomOperation, op);
     }
 
-    change(fieldName: string | number, operation: OPERATION = OPERATION.ADD) {
-        const index = (typeof (fieldName) === "number")
-            ? fieldName
-            : this.indexes[fieldName];
+    // change(fieldName: string | number, operation: OPERATION = OPERATION.ADD) {
+    //     const index = (typeof (fieldName) === "number")
+    //         ? fieldName
+    //         : this.indexes[fieldName];
+    //     this.assertValidIndex(index, fieldName);
 
-        this.assertValidIndex(index, fieldName);
-
+    change(index: number, operation: OPERATION = OPERATION.ADD) {
         const previousChange = this.changes.get(index);
+
+        const def = this.ref['_definition'];
+
+        console.log(
+            "ChangeTree.change =>",
+            this.ref.constructor.name,
+            index,
+            def && def.fieldsByIndex[index],
+            // this.ref[ def.fieldsByIndex[index] ],
+        );
 
         if (
             !previousChange ||
@@ -136,7 +185,9 @@ export class ChangeTree {
         this.allChanges.add(index);
 
         this.changed = true;
-        this.touchParents();
+        // this.touchParents();
+
+        this.root?.enqueue(this);
     }
 
     touch(fieldName: string | number) {
@@ -163,7 +214,7 @@ export class ChangeTree {
     }
 
     getType(index?: number) {
-        if (this.ref['_definition']) {
+        if (this.definition) {
             const definition = (this.ref as Schema)['_definition'];
             return definition.schema[ definition.fieldsByIndex[index] ];
 
@@ -262,9 +313,9 @@ export class ChangeTree {
         this.discard();
     }
 
-    clone() {
-        return new ChangeTree(this.ref, this.parent, this.root);
-    }
+    // clone() {
+    //     return new ChangeTree(this.ref, this.parent, this.root);
+    // }
 
     ensureRefId() {
         // skip if refId is already set.

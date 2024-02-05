@@ -8,7 +8,7 @@ import { ArraySchema } from "./types/ArraySchema";
 import * as encode from "./encoding/encode";
 import { getType } from './types/typeRegistry';
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { ChangeOperation, ChangeTree } from "./changes/ChangeTree";
+import { ChangeOperation, ChangeTree, Root } from "./changes/ChangeTree";
 
 class EncodeSchemaError extends Error {}
 
@@ -84,13 +84,25 @@ function encodePrimitiveType(
 
 export class Encoder<T extends Schema> {
     context: TypeContext;
-    changes = new Map<number, ChangeOperation>();
+    changes = new Set<ChangeTree>();
 
-    constructor(private root: T) {
+    root: T;
+    $root: Root;
+
+    constructor(root: T) {
+        this.setRoot(root);
+
         //
-        // TODO: cache and restore "Context" based on root schema.
+        // TODO: cache and restore "Context" based on root schema
+        // (to avoid creating a new context for each new room)
         //
         this.context = new TypeContext(root.constructor as typeof Schema);
+    }
+
+    protected setRoot(root: T) {
+        this.$root = new Root();
+        this.root = root;
+        root['$changes'].setRoot(this.$root);
     }
 
     encode(
@@ -101,8 +113,9 @@ export class Encoder<T extends Schema> {
         const rootChangeTree = this.root['$changes'];
         const refIdsVisited = new WeakSet<ChangeTree>();
 
-        const changeTrees: ChangeTree[] = [rootChangeTree];
-        let numChangeTrees = 1;
+        const changeTrees: ChangeTree[] = Array.from(this.$root['changes']);
+        const numChangeTrees = changeTrees.length;
+        // let numChangeTrees = 1;
 
         for (let i = 0; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
@@ -196,16 +209,16 @@ export class Encoder<T extends Schema> {
                 // const type = changeTree.getType(fieldIndex);
                 const value = changeTree.getValue(fieldIndex);
 
-                // Enqueue ChangeTree to be visited
-                if (
-                    value &&
-                    value['$changes'] &&
-                    !refIdsVisited.has(value['$changes'])
-                ) {
-                    changeTrees.push(value['$changes']);
-                    value['$changes'].ensureRefId();
-                    numChangeTrees++;
-                }
+                // // Enqueue ChangeTree to be visited
+                // if (
+                //     value &&
+                //     value['$changes'] &&
+                //     !refIdsVisited.has(value['$changes'])
+                // ) {
+                //     changeTrees.push(value['$changes']);
+                //     value['$changes'].ensureRefId();
+                //     numChangeTrees++;
+                // }
 
                 if (operation.op === OPERATION.TOUCH) {
                     continue;
@@ -237,12 +250,10 @@ export class Encoder<T extends Schema> {
                     //
                     const definition = getType(Object.keys(type)[0]);
 
-                    console.log({ type, definition, ref });
-
                     //
                     // ensure a ArraySchema has been provided
                     //
-                    assertInstanceType(ref[`_${field}`], definition.constructor, ref as Schema, field);
+                    assertInstanceType(ref[field], definition.constructor, ref as Schema, field);
 
                     //
                     // Encode refId for this instance.

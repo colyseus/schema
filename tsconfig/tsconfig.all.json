@@ -3,7 +3,6 @@
         "module": "commonjs",
         "moduleResolution": "node",
         "lib": ["ES2018"],
-        "experimentalDecorators": true,
         "noImplicitAny": false,
         "inlineSources": true,
         "sourceMap": true

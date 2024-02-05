@@ -1,8 +1,8 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, Schema } from "../Schema";
+import { SchemaDecoderCallbacks, Schema, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
-import { DataChange } from "..";
+import { registerType } from "./typeRegistry";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
@@ -186,14 +186,16 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
             (value['$changes'] as ChangeTree).setParent(this, this.$changes.root, index);
         }
 
-        const operation = this.$changes.indexes[index]?.op ?? OPERATION.ADD;
-
-        this.$changes.indexes[index] = index;
+        const operation = this.$changes.indexes?.[index]?.op ?? OPERATION.ADD;
 
         this.$indexes.set(index, index);
         this.$items.set(index, value);
 
-        this.$changes.change(index, operation);
+        // TODO: endel revisit here. 'indexes' might not exist
+        if (this.$changes.indexes) {
+            this.$changes.indexes[index] = index;
+            this.$changes.change(index, operation);
+        }
     }
 
     deleteAt(index: number) {
@@ -676,3 +678,5 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     };
 
 }
+
+registerType("array", { constructor: ArraySchema });

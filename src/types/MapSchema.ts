@@ -1,8 +1,8 @@
-import { SchemaDecoderCallbacks } from "../Schema";
+import { SchemaDecoderCallbacks, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
-import { DataChange } from "..";
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
+import { registerType } from "./typeRegistry";
 
 export function getMapProxy(value: MapSchema) {
     value['$proxy'] = true;
@@ -48,6 +48,7 @@ export function getMapProxy(value: MapSchema) {
 }
 
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, SchemaDecoderCallbacks {
+    // protected $changes: ChangeTree = new ChangeTree(this);
     protected $changes: ChangeTree = new ChangeTree(this);
 
     protected $items: Map<K, V> = new Map<K, V>();
@@ -152,7 +153,8 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
 
         this.$items.set(key, value);
 
-        this.$changes.change(key, operation);
+        // this.$changes.change(key, operation);
+        this.$changes.change(index, operation);
 
         return this;
     }
@@ -281,3 +283,6 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
     }
 
 }
+
+
+registerType("map", { constructor: MapSchema });

@@ -10,6 +10,7 @@ import { getType } from './types/typeRegistry';
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
 import { ChangeOperation, ChangeTree, Ref } from "./changes/ChangeTree";
 import { Iterator } from "./encoding/decode";
+import { ReferenceTracker } from "./changes/ReferenceTracker";
 
 function decodePrimitiveType (type: string, bytes: number[], it: Iterator) {
     return decode[type as string](bytes, it);
@@ -18,8 +19,17 @@ function decodePrimitiveType (type: string, bytes: number[], it: Iterator) {
 export class Decoder<T extends Schema> {
     context: TypeContext;
 
-    constructor(private root: T, context?: TypeContext) {
+    root: T;
+    refs: ReferenceTracker;
+
+    constructor(root: T, context?: TypeContext) {
         this.context = context || new TypeContext(root.constructor as typeof Schema);
+    }
+
+    protected setRoot(root: T) {
+        this.root = root;
+        this.refs = new ReferenceTracker();
+        this.refs.addRef(0, root);
     }
 
     decode(
@@ -29,11 +39,10 @@ export class Decoder<T extends Schema> {
     ) {
         const allChanges: DataChange[] = [];
 
-        const $root = this.root['$changes'].root;
+        const $root = this.refs;
         const totalBytes = bytes.length;
 
-        let refId: number = 0;
-        $root.refs.set(refId, this.root);
+        let refId: number;
 
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
@@ -282,7 +291,7 @@ export class Decoder<T extends Schema> {
 
     private _triggerChanges(changes: DataChange[]) {
         const uniqueRefIds = new Set<number>();
-        const $refs = this.root['$changes'].root.refs;
+        const $refs = this.refs.refs;
 
         for (let i = 0; i < changes.length; i++) {
             const change = changes[i];

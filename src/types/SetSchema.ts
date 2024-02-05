@@ -1,8 +1,8 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks } from "../Schema";
+import { SchemaDecoderCallbacks, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
-import { DataChange } from "..";
+import { registerType } from "./typeRegistry";
 
 export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
@@ -206,3 +206,5 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     }
 
 }
+
+registerType("set", { constructor: SetSchema });

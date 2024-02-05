@@ -1,4 +1,4 @@
-import { type, PrimitiveType, DefinitionType, TypeContext } from "./annotations";
+import { type, PrimitiveType, DefinitionType, TypeContext, SchemaDefinition } from "./annotations";
 import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { getType } from "./types/typeRegistry";
@@ -10,36 +10,27 @@ import { Decoder } from "./Decoder";
  * Reflection
  */
 export class ReflectionField extends Schema {
-    @type("string")
-    name: string;
-
-    @type("string")
-    type: string;
-
-    @type("number")
-    referencedType: number;
+    @type("string") accessor name: string;
+    @type("string") accessor type: string;
+    @type("number") accessor referencedType: number;
 }
 
 export class ReflectionType extends Schema {
-    @type("number")
-    id: number;
-
-    @type([ ReflectionField ])
-    fields: ArraySchema<ReflectionField> = new ArraySchema<ReflectionField>();
+    @type("number") accessor id: number;
+    @type([ ReflectionField ]) accessor fields: ArraySchema<ReflectionField> = new ArraySchema<ReflectionField>();
 }
 
 export class Reflection extends Schema {
-    @type([ ReflectionType ])
-    types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
-
-    @type("number")
-    rootType: number;
+    @type([ ReflectionType ]) accessor types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
+    @type("number") accessor rootType: number;
 
     static encode (instance: Schema) {
+        console.log("!!!!!!!!! Reflection.encode !!!!!!!!!");
         const reflection = new Reflection();
         const encoder = new Encoder(reflection);
 
-        const buildType = (currentType: ReflectionType, schema: any) => {
+        const buildType = (currentType: ReflectionType, definition: SchemaDefinition) => {
+            const schema = definition.schema;
             for (let fieldName in schema) {
                 const field = new ReflectionField();
                 field.name = fieldName;
@@ -47,6 +38,7 @@ export class Reflection extends Schema {
                 let fieldType: string;
 
                 if (typeof (schema[fieldName]) === "string") {
+                    // @ts-ignore
                     fieldType = schema[fieldName];
 
                 } else {
@@ -58,6 +50,7 @@ export class Reflection extends Schema {
                     //
                     if (Schema.is(type)) {
                         fieldType = "ref";
+                        // @ts-ignore
                         childTypeSchema = schema[fieldName];
 
                     } else {
@@ -87,8 +80,10 @@ export class Reflection extends Schema {
         for (let typeid in context.types) {
             const type = new ReflectionType();
             type.id = Number(typeid);
-            buildType(type, context.types[typeid]._definition.schema);
+            buildType(type, context.types[typeid][Symbol.metadata]['def']);
         }
+
+        // console.log("reflection.toJSON() =>", reflection.toJSON());
 
         return encoder.encodeAll();
     }
@@ -96,13 +91,15 @@ export class Reflection extends Schema {
     static decode<T extends Schema = Schema>(bytes: number[], it?: Iterator): T {
         const reflection = new Reflection();
 
-        const reflectionDecoder = new Decoder(reflection)
+        const reflectionDecoder = new Decoder(reflection);
         reflectionDecoder.decode(bytes, it);
 
         const context = new TypeContext();
 
         const schemaTypes = reflection.types.reduce((types, reflectionType) => {
             const schema: typeof Schema = class _ extends Schema {};
+            schema[Symbol.metadata] = { def: new SchemaDefinition() };
+
             const typeid = reflectionType.id;
             types[typeid] = schema
             context.add(schema, typeid);
@@ -111,6 +108,7 @@ export class Reflection extends Schema {
 
         reflection.types.forEach((reflectionType) => {
             const schemaType = schemaTypes[reflectionType.id];
+            const def = schemaType[Symbol.metadata]['def'] as SchemaDefinition;
 
             reflectionType.fields.forEach(field => {
                 if (field.referencedType !== undefined) {
@@ -125,14 +123,17 @@ export class Reflection extends Schema {
                     }
 
                     if (fieldType === "ref") {
-                        type(refType)(schemaType.prototype, field.name);
+                        def.addField(field.name, refType);
+                        // type(refType)(schemaType.prototype, field.name);
 
                     } else {
-                        type({ [fieldType]: refType } as DefinitionType)(schemaType.prototype, field.name);
+                        def.addField(field.name, { [fieldType]: refType } as DefinitionType);
+                        // type({ [fieldType]: refType } as DefinitionType)(schemaType.prototype, field.name);
                     }
 
                 } else {
-                    type(field.type as PrimitiveType)(schemaType.prototype, field.name);
+                    def.addField(field.name, field.type as PrimitiveType);
+                    // type(field.type as PrimitiveType)(schemaType.prototype, field.name);
                 }
             });
         });

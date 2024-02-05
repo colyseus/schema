@@ -1,20 +1,13 @@
-import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { ClientWithSessionId, PrimitiveType, TypeContext, SchemaDefinition, DefinitionType } from "./annotations";
+import { OPERATION } from './spec';
+import { SchemaDefinition, DefinitionType } from "./annotations";
 
-import * as decode from "./encoding/decode";
 import type { Iterator } from "./encoding/decode"; // dts-bundle-generator
 
-import { ArraySchema } from "./types/ArraySchema";
-import { MapSchema } from "./types/MapSchema";
-import { CollectionSchema } from './types/CollectionSchema';
-import { SetSchema } from './types/SetSchema';
-
-import { ChangeTree, Ref, ChangeOperation } from "./changes/ChangeTree";
+import { ChangeTree } from "./changes/ChangeTree";
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
-import { ClientState } from './filters';
-import { getType } from './types/typeRegistry';
 import { ReferenceTracker } from './changes/ReferenceTracker';
 import { addCallback, spliceOne } from './types/utils';
+import { ChangeSet } from './changes/ChangeSet';
 
 export interface DataChange<T=any,F=string> {
     refId: number,
@@ -49,10 +42,7 @@ export abstract class Schema {
     }
 
     static is(type: DefinitionType) {
-        return (
-            type['_definition'] &&
-            type['_definition'].schema !== undefined
-        );
+        return (type[Symbol.metadata] && type[Symbol.metadata].def);
     }
 
     protected $changes: ChangeTree;
@@ -70,38 +60,27 @@ export abstract class Schema {
 
     // allow inherited classes to have a constructor
     constructor(...args: any[]) {
-        // fix enumerability of fields for end-user
-        Object.defineProperties(this, {
-            $changes: {
-                value: new ChangeTree(this, undefined, new ReferenceTracker()),
-                enumerable: false,
-                writable: true
-            },
+        // console.log(this.constructor.name, "(schema) constructor");
 
-            // $listeners: {
-            //     value: undefined,
-            //     enumerable: false,
-            //     writable: true
-            // },
+        // Object.defineProperties(this, {
+        //     $changes: {
+        //         value: new ChangeTree(this, undefined, new ReferenceTracker()),
+        //         enumerable: false,
+        //         writable: true
+        //     },
+        // });
 
-            // $callbacks: {
-            //     value: undefined,
-            //     enumerable: false,
-            //     writable: true
-            // },
-        });
-
-        const descriptors = this._definition.descriptors;
-        if (descriptors) {
-            Object.defineProperties(this, descriptors);
-        }
+        // const descriptors = this._definition.descriptors;
+        // if (descriptors) {
+        //     Object.defineProperties(this, descriptors);
+        // }
 
         //
         // Assign initial values
         //
-        if (args[0]) {
-            this.assign(args[0]);
-        }
+        // if (args[0]) {
+        //     this.assign(args[0]);
+        // }
     }
 
     public assign(
@@ -111,7 +90,9 @@ export abstract class Schema {
         return this;
     }
 
-    protected get _definition () { return (this.constructor as typeof Schema)._definition; }
+    protected get _definition () {
+        return this.constructor[Symbol.metadata]['def'] as SchemaDefinition;
+    }
 
     /**
      * (Server-side): Flag a property to be encoded for the next patch.
@@ -394,7 +375,7 @@ export abstract class Schema {
             if (!deprecated[field] && this[field] !== null && typeof (this[field]) !== "undefined") {
                 obj[field] = (typeof (this[field]['toJSON']) === "function")
                     ? this[field]['toJSON']()
-                    : this[`_${field}`];
+                    : this[field];
             }
         }
         return obj as ToJSON<typeof this>;

@@ -1,8 +1,8 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks } from "../Schema";
+import { SchemaDecoderCallbacks, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
-import { DataChange } from "..";
+import { registerType } from "./typeRegistry";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
@@ -197,3 +197,5 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
     }
 
 }
+
+registerType("collection", { constructor: CollectionSchema, });
