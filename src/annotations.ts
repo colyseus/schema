@@ -307,7 +307,7 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                 // TODO: may need to convert ArraySchema/MapSchema here
 
                 // do not flag change if value is undefined.
-                if (value === undefined) {
+                if (value !== undefined) {
                     this['$changes'].change(fieldIndex);
                 }
 

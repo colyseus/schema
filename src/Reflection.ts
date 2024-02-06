@@ -83,8 +83,6 @@ export class Reflection extends Schema {
             buildType(type, context.types[typeid][Symbol.metadata]['def']);
         }
 
-        // console.log("reflection.toJSON() =>", reflection.toJSON());
-
         return encoder.encodeAll();
     }
 

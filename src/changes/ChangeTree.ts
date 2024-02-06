@@ -156,16 +156,6 @@ export class ChangeTree {
     change(index: number, operation: OPERATION = OPERATION.ADD) {
         const previousChange = this.changes.get(index);
 
-        const def = this.ref['_definition'];
-
-        console.log(
-            "ChangeTree.change =>",
-            this.ref.constructor.name,
-            index,
-            def && def.fieldsByIndex[index],
-            // this.ref[ def.fieldsByIndex[index] ],
-        );
-
         if (
             !previousChange ||
             previousChange.op === OPERATION.DELETE ||
