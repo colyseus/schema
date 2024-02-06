@@ -152,9 +152,6 @@ export class Encoder<T extends Schema> {
                     ? ref['_definition'].fieldsByIndex && ref['_definition'].fieldsByIndex[fieldIndex]
                     : fieldIndex;
 
-                // cache begin index if `useFilters`
-                const beginIndex = bytes.length;
-
                 // encode field index + operation
                 if (operation.op !== OPERATION.TOUCH) {
                     if (isSchema) {
@@ -249,6 +246,10 @@ export class Encoder<T extends Schema> {
                     // Custom type (MapSchema, ArraySchema, etc)
                     //
                     const definition = getType(Object.keys(type)[0]);
+
+                    console.log("REF =>", ref);
+                    // @ts-ignore
+                    console.log(ref.constructor.name, field, ref[field], ` -> ${JSON.stringify(Array.from(ref))}`);
 
                     //
                     // ensure a ArraySchema has been provided

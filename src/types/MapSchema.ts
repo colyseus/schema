@@ -48,6 +48,8 @@ export function getMapProxy(value: MapSchema) {
 }
 
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, SchemaDecoderCallbacks {
+    protected childType: new () => V;
+
     // protected $changes: ChangeTree = new ChangeTree(this);
     protected $changes: ChangeTree = new ChangeTree(this);
 
@@ -91,6 +93,11 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
                 }
             }
         }
+        Object.defineProperty(this, 'childType', {
+            value: undefined,
+            enumerable: false,
+            writable: true
+        });
     }
 
     /** Iterator */

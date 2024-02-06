@@ -2,7 +2,7 @@ import "./symbol.shim";
 import { ChangeSet } from './changes/ChangeSet';
 import { ChangeTree, Ref, Root } from './changes/ChangeTree';
 import { Schema } from './Schema';
-import { ArraySchema, getArrayProxy } from './types/ArraySchema';
+import { ArraySchema } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
 import { getType } from './types/typeRegistry';
 
@@ -309,6 +309,30 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                 // do not flag change if value is undefined.
                 if (value !== undefined) {
                     this['$changes'].change(fieldIndex);
+
+                    // automaticallty transform Array into ArraySchema
+                    if (isArray) {
+                        if (!(value instanceof ArraySchema)) {
+                            value = new ArraySchema(...value);
+                        }
+                        value['childType'] = Object.values(type)[0];
+                    }
+
+                    // automaticallty transform Map into MapSchema
+                    if (isMap) {
+                        if (!(value instanceof MapSchema)) {
+                            value = new MapSchema(value);
+                        }
+                        value['childType'] = Object.values(type)[0];
+                    }
+
+                    // try to turn provided structure into a Proxy
+                    if (value['$proxy'] === undefined) {
+                        if (isMap) {
+                            value = getMapProxy(value);
+                        }
+                    }
+
                 }
 
                 return value;
@@ -333,22 +357,25 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                     value !== null
                 ) {
                     // automaticallty transform Array into ArraySchema
-                    if (isArray && !(value instanceof ArraySchema)) {
-                        value = new ArraySchema(...value);
+                    if (isArray) {
+                        if (!(value instanceof ArraySchema)) {
+                            value = new ArraySchema(...value);
+                        }
+                        value['childType'] = Object.values(type)[0];
                     }
 
                     // automaticallty transform Map into MapSchema
-                    if (isMap && !(value instanceof MapSchema)) {
-                        value = new MapSchema(value);
+                    if (isMap) {
+                        if (!(value instanceof MapSchema)) {
+                            value = new MapSchema(value);
+                        }
+                        value['childType'] = Object.values(type)[0];
                     }
 
                     // try to turn provided structure into a Proxy
                     if (value['$proxy'] === undefined) {
                         if (isMap) {
                             value = getMapProxy(value);
-
-                        } else if (isArray) {
-                            value = getArrayProxy(value);
                         }
                     }
 

@@ -1,11 +1,12 @@
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
-import { SchemaDefinition, FilterChildrenCallback } from "../annotations";
+import { SchemaDefinition, FilterChildrenCallback, Definition, DefinitionType } from "../annotations";
 
 import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";
 import { CollectionSchema } from "../types/CollectionSchema";
 import { SetSchema } from "../types/SetSchema";
+import { getIdentifier } from "../types/typeRegistry";
 // import { ReferenceTracker } from "./ReferenceTracker";
 
 export type Ref = Schema
@@ -68,11 +69,13 @@ export class ChangeTree {
     }
 
     get definition() {
-        return this.ref.constructor[Symbol.metadata]['def'] as SchemaDefinition;
+        return (
+            this.ref.constructor[Symbol.metadata] &&
+            this.ref.constructor[Symbol.metadata]['def'] as SchemaDefinition
+        );
     }
 
     setRoot(root: Root) {
-        console.log("SET ROOT!", this.ref);
         this.root = root;
 
         root.enqueue(this);
@@ -206,19 +209,17 @@ export class ChangeTree {
     getType(index?: number) {
         if (this.definition) {
             const definition = (this.ref as Schema)['_definition'];
-            return definition.schema[ definition.fieldsByIndex[index] ];
+            return definition.schema[definition.fieldsByIndex[index]];
 
         } else {
-            const definition = (this.parent as Schema)['_definition'];
-            const parentType = definition.schema[ definition.fieldsByIndex[this.parentIndex] ];
-
             //
             // Get the child type from parent structure.
             // - ["string"] => "string"
             // - { map: "string" } => "string"
             // - { set: "string" } => "string"
             //
-            return Object.values(parentType)[0];
+            return { [getIdentifier(this.ref['constructor'])]: this.ref['childType'] } as DefinitionType;
+
         }
     }
 

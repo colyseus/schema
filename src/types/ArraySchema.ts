@@ -12,6 +12,7 @@ const DEFAULT_SORT = (a: any, b: any) => {
     else return 0
 }
 
+/*
 export function getArrayProxy(value: ArraySchema) {
     value['$proxy'] = true;
 
@@ -79,9 +80,15 @@ export function getArrayProxy(value: ArraySchema) {
 
     return value;
 }
+*/
+
+// // @ts-ignore
+// export class ArraySchema<V = any> extends Array<T> implements SchemaDecoderCallbacks {
 
 export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
-    protected $changes: ChangeTree = new ChangeTree(this);
+    protected childType: new () => V;
+
+    protected $changes: ChangeTree;
 
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
@@ -118,7 +125,75 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     }
 
     constructor (...items: V[]) {
+        // super(...items);
         this.push.apply(this, items);
+
+        Object.defineProperty(this, 'childType', {
+            value: undefined,
+            enumerable: false,
+            writable: true
+        });
+
+        const proxy = new Proxy(this, {
+            get: (obj, prop) => {
+
+                if (
+                    typeof (prop) !== "symbol" &&
+                    !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
+                ) {
+                    return obj.at(prop as unknown as number);
+
+                } else {
+                    return Reflect.get(obj, prop);
+                    // return obj[prop];
+                }
+            },
+
+            set: (obj, prop, setValue) => {
+                if (
+                    typeof (prop) !== "symbol" &&
+                    !isNaN(prop as any)
+                ) {
+                    const indexes = Array.from(obj['$items'].keys());
+                    const key = parseInt(indexes[prop] || prop);
+                    if (setValue === undefined || setValue === null) {
+                        obj.deleteAt(key);
+
+                    } else {
+                        obj.setAt(key, setValue);
+                    }
+
+                } else {
+                    return Reflect.set(obj, prop, setValue);
+                    // obj[prop] = setValue;
+                }
+            },
+
+            deleteProperty: (obj, prop) => {
+                if (typeof (prop) === "number") {
+                    obj.deleteAt(prop);
+
+                } else {
+                    delete obj[prop];
+                }
+
+                return true;
+            },
+
+            has: (obj, key) => {
+                if (
+                    typeof (key) !== "symbol" &&
+                    !isNaN(Number(key))
+                ) {
+                    return obj['$items'].has(Number(key))
+                }
+                return Reflect.has(obj, key)
+            }
+        });
+
+        this.$changes = new ChangeTree(proxy);
+
+        return proxy;
     }
 
     set length (value: number) {
@@ -191,11 +266,12 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         this.$indexes.set(index, index);
         this.$items.set(index, value);
 
+        this.$changes.change(index, operation);
+
         // TODO: endel revisit here. 'indexes' might not exist
-        if (this.$changes.indexes) {
-            this.$changes.indexes[index] = index;
-            this.$changes.change(index, operation);
-        }
+        // if (this.$changes.indexes) {
+            // this.$changes.indexes[index] = index;
+        // }
     }
 
     deleteAt(index: number) {

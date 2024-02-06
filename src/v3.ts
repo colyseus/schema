@@ -10,6 +10,26 @@ import { ArraySchema } from "./types/ArraySchema";
 import { Encoder } from "./Encoder";
 import { Decoder } from "./Decoder";
 
+class Item extends Schema {
+    @type("string") accessor name: string;
+}
+
+class RootState extends Schema {
+    @type([Item]) accessor items = new ArraySchema<Item>();
+}
+
+const s = new RootState();
+s.items.push(new Item().assign({ name: "hello" }));
+
+const encoder = new Encoder(s);
+const encoded = encoder.encode();
+console.log("Encoded:", encoded);
+
+// const decoder = new Decoder(new RootState());
+// decoder.decode(encoded);
+// console.log("decoded =>", decoder['root'].toJSON());
+
+process.exit();
 
 // function log(message: any) {
 //     console.log(util.inspect(message, false, 10, true));

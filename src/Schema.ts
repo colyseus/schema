@@ -60,27 +60,12 @@ export abstract class Schema {
 
     // allow inherited classes to have a constructor
     constructor(...args: any[]) {
-        // console.log(this.constructor.name, "(schema) constructor");
-
-        // Object.defineProperties(this, {
-        //     $changes: {
-        //         value: new ChangeTree(this, undefined, new ReferenceTracker()),
-        //         enumerable: false,
-        //         writable: true
-        //     },
-        // });
-
-        // const descriptors = this._definition.descriptors;
-        // if (descriptors) {
-        //     Object.defineProperties(this, descriptors);
-        // }
-
         //
         // Assign initial values
         //
-        // if (args[0]) {
-        //     this.assign(args[0]);
-        // }
+        if (args[0]) {
+            this.assign(args[0]);
+        }
     }
 
     public assign(

@@ -1,4 +1,4 @@
-import { TypeContext, DefinitionType, PrimitiveType } from "./annotations";
+import { TypeContext, DefinitionType, PrimitiveType, SchemaDefinition } from "./annotations";
 import { DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
@@ -23,6 +23,7 @@ export class Decoder<T extends Schema> {
     refs: ReferenceTracker;
 
     constructor(root: T, context?: TypeContext) {
+        this.setRoot(root);
         this.context = context || new TypeContext(root.constructor as typeof Schema);
     }
 
@@ -60,8 +61,7 @@ export class Decoder<T extends Schema> {
                 continue;
             }
 
-            const changeTree: ChangeTree = ref['$changes'];
-            const isSchema = (ref['_definition'] !== undefined);
+            const isSchema = (ref instanceof Schema);
 
             const operation = (isSchema)
                 ? (byte >> 6) << 6 // "compressed" index + operation
@@ -85,7 +85,10 @@ export class Decoder<T extends Schema> {
                 ? (ref['_definition'].fieldsByIndex[fieldIndex])
                 : "";
 
-            let type = changeTree.getType(fieldIndex);
+            const type = (isSchema)
+                ? ref['_definition'].schema[fieldName]
+                : ref['$changes'].getType(); // FIXME: refactor me.
+
             let value: any;
             let previousValue: any;
 
@@ -106,7 +109,7 @@ export class Decoder<T extends Schema> {
                 }
 
             } else {
-                previousValue = ref[`_${fieldName}`];
+                previousValue = ref[fieldName];
             }
 
             //
@@ -125,6 +128,8 @@ export class Decoder<T extends Schema> {
 
                 value = null;
             }
+
+            console.log("decoding (1)...", {  ref, refId, isSchema, fieldName, fieldIndex, operation,});
 
             if (fieldName === undefined) {
                 console.warn("@colyseus/schema: definition mismatch");
@@ -179,6 +184,7 @@ export class Decoder<T extends Schema> {
 
                     $root.addRef(refId, value, (value !== previousValue));
                 }
+
             } else if (typeof(type) === "string") {
                 //
                 // primitive value (number, string, boolean, etc)
@@ -227,17 +233,19 @@ export class Decoder<T extends Schema> {
                 $root.addRef(refId, value, (valueRef !== previousValue));
             }
 
+            console.log("decoding (2)...", {  value, previousValue,  });
+
             if (
                 value !== null &&
                 value !== undefined
             ) {
-                if (value['$changes']) {
-                    value['$changes'].setParent(
-                        changeTree.ref,
-                        changeTree.root,
-                        fieldIndex,
-                    );
-                }
+                // if (value['$changes']) {
+                //     value['$changes'].setParent(
+                //         changeTree.ref,
+                //         changeTree.root,
+                //         fieldIndex,
+                //     );
+                // }
 
                 if (ref instanceof Schema) {
                     ref[fieldName] = value;
@@ -281,7 +289,8 @@ export class Decoder<T extends Schema> {
             }
         }
 
-        this._triggerChanges(allChanges);
+        // FIXME: trigger callbacks
+        // this._triggerChanges(allChanges);
 
         // drop references of unused schemas
         $root.garbageCollectDeletedRefs();
