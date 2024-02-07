@@ -25,7 +25,6 @@ export class Reflection extends Schema {
     @type("number") accessor rootType: number;
 
     static encode (instance: Schema) {
-        console.log("!!!!!!!!! Reflection.encode !!!!!!!!!");
         const reflection = new Reflection();
         const encoder = new Encoder(reflection);
 
@@ -38,8 +37,7 @@ export class Reflection extends Schema {
                 let fieldType: string;
 
                 if (typeof (schema[fieldName]) === "string") {
-                    // @ts-ignore
-                    fieldType = schema[fieldName];
+                    fieldType = schema[fieldName] as string;
 
                 } else {
                     const type = schema[fieldName];
@@ -50,8 +48,7 @@ export class Reflection extends Schema {
                     //
                     if (Schema.is(type)) {
                         fieldType = "ref";
-                        // @ts-ignore
-                        childTypeSchema = schema[fieldName];
+                        childTypeSchema = schema[fieldName] as typeof Schema;
 
                     } else {
                         fieldType = Object.keys(type)[0];
@@ -67,6 +64,8 @@ export class Reflection extends Schema {
                     field.referencedType = (childTypeSchema)
                         ? encoder.context.getTypeId(childTypeSchema)
                         : -1;
+
+                    console.log("referencedType...", field.referencedType);
                 }
 
                 field.type = fieldType;
@@ -96,7 +95,7 @@ export class Reflection extends Schema {
 
         const schemaTypes = reflection.types.reduce((types, reflectionType) => {
             const schema: typeof Schema = class _ extends Schema {};
-            schema[Symbol.metadata] = { def: new SchemaDefinition() };
+            schema[Symbol.metadata] = { def: SchemaDefinition.create() };
 
             const typeid = reflectionType.id;
             types[typeid] = schema

@@ -189,6 +189,7 @@ export class Decoder<T extends Schema> {
                 //
                 // primitive value (number, string, boolean, etc)
                 //
+                console.log("primitive type =>", type);
                 value = decodePrimitiveType(type as string, bytes, it);
 
             } else {

@@ -10,25 +10,24 @@ import { ArraySchema } from "./types/ArraySchema";
 import { Encoder } from "./Encoder";
 import { Decoder } from "./Decoder";
 
-class Item extends Schema {
-    @type("string") accessor name: string;
-}
+// class Item extends Schema {
+//     @type("string") accessor name: string;
+// }
 
-class RootState extends Schema {
-    @type([Item]) accessor items = new ArraySchema<Item>();
-}
+// class RootState extends Schema {
+//     @type([Item]) accessor items = new ArraySchema<Item>();
+// }
 
-const s = new RootState();
-s.items.push(new Item().assign({ name: "hello" }));
+// const s = new RootState();
+// s.items.push(new Item().assign({ name: "hello" }));
 
-const encoder = new Encoder(s);
-const encoded = encoder.encode();
+// const encoder = new Encoder(s);
+// const encoded = encoder.encode();
 
-const decoder = new Decoder(new RootState());
-decoder.decode(encoded);
-console.log("decoded =>", decoder['root'].toJSON());
+// const decoder = new Decoder(new RootState());
+// decoder.decode(encoded);
 
-process.exit();
+// process.exit();
 
 // function log(message: any) {
 //     console.log(util.inspect(message, false, 10, true));
@@ -68,18 +67,14 @@ class State extends Schema {
 const state = new State();
 console.log("state =>", state.toJSON());
 
-// const encoder = new Encoder(state);
-// const encoded = encoder.encode();
-// console.log("encode:", encoded);
-
-// console.log("Reflection encoded: ", Reflection.encode(state));
+const encoder = new Encoder(state);
+const encoded = encoder.encode();
+console.log("encode:", encoded);
 
 const decoded = Reflection.decode(Reflection.encode(state));
+const decoder = new Decoder(decoded);
+decoder.decode(encoded);
 console.log("decoded =>", decoded.toJSON());
-
-// const decoder = new Decoder(decoded);
-// decoder.decode(encoded);
-// console.log("decoded =>", decoded.toJSON());
 
 // const time = Date.now();
 // for (let i = 0; i < 200000; i++) {
