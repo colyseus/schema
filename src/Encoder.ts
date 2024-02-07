@@ -206,16 +206,10 @@ export class Encoder<T extends Schema> {
                 // const type = changeTree.getType(fieldIndex);
                 const value = changeTree.getValue(fieldIndex);
 
-                // // Enqueue ChangeTree to be visited
-                // if (
-                //     value &&
-                //     value['$changes'] &&
-                //     !refIdsVisited.has(value['$changes'])
-                // ) {
-                //     changeTrees.push(value['$changes']);
-                //     value['$changes'].ensureRefId();
-                //     numChangeTrees++;
-                // }
+                // ensure refId for the value
+                if (value && value['$changes']) {
+                    value['$changes'].ensureRefId();
+                }
 
                 if (operation.op === OPERATION.TOUCH) {
                     continue;

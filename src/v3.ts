@@ -23,11 +23,10 @@ s.items.push(new Item().assign({ name: "hello" }));
 
 const encoder = new Encoder(s);
 const encoded = encoder.encode();
-console.log("Encoded:", encoded);
 
-// const decoder = new Decoder(new RootState());
-// decoder.decode(encoded);
-// console.log("decoded =>", decoder['root'].toJSON());
+const decoder = new Decoder(new RootState());
+decoder.decode(encoded);
+console.log("decoded =>", decoder['root'].toJSON());
 
 process.exit();
 

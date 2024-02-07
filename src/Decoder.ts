@@ -129,7 +129,7 @@ export class Decoder<T extends Schema> {
                 value = null;
             }
 
-            console.log("decoding (1)...", {  ref, refId, isSchema, fieldName, fieldIndex, operation,});
+            // console.log("decoding (1)...", {  ref, refId, isSchema, fieldName, fieldIndex, operation,});
 
             if (fieldName === undefined) {
                 console.warn("@colyseus/schema: definition mismatch");
@@ -232,8 +232,6 @@ export class Decoder<T extends Schema> {
 
                 $root.addRef(refId, value, (valueRef !== previousValue));
             }
-
-            console.log("decoding (2)...", {  value, previousValue,  });
 
             if (
                 value !== null &&
