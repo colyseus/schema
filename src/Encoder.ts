@@ -111,7 +111,7 @@ export class Encoder<T extends Schema> {
         useFilters: boolean = false,
     ) {
         const rootChangeTree = this.root['$changes'];
-        const refIdsVisited = new WeakSet<ChangeTree>();
+        // const refIdsVisited = new WeakSet<ChangeTree>();
 
         const changeTrees: ChangeTree[] = Array.from(this.$root['changes']);
         const numChangeTrees = changeTrees.length;
@@ -125,8 +125,8 @@ export class Encoder<T extends Schema> {
             // Generate unique refId for the ChangeTree.
             changeTree.ensureRefId();
 
-            // mark this ChangeTree as visited.
-            refIdsVisited.add(changeTree);
+            // // mark this ChangeTree as visited.
+            // refIdsVisited.add(changeTree);
 
             // root `refId` is skipped.
             if (
@@ -246,10 +246,6 @@ export class Encoder<T extends Schema> {
                     // Custom type (MapSchema, ArraySchema, etc)
                     //
                     const definition = getType(Object.keys(type)[0]);
-
-                    console.log("REF =>", ref);
-                    // @ts-ignore
-                    console.log(ref.constructor.name, field, ref[field], ` -> ${JSON.stringify(Array.from(ref))}`);
 
                     //
                     // ensure a ArraySchema has been provided

@@ -218,8 +218,9 @@ export class ChangeTree {
             // - { map: "string" } => "string"
             // - { set: "string" } => "string"
             //
-            return { [getIdentifier(this.ref['constructor'])]: this.ref['childType'] } as DefinitionType;
+            return this.ref['childType'];
 
+            // return { [getIdentifier(this.ref['constructor'])]: this.ref['childType'] } as DefinitionType;
         }
     }
 
