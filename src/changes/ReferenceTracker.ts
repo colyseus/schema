@@ -8,6 +8,8 @@ export class ReferenceTracker {
     // For direct access of structures during decoding time.
     //
     public refs = new Map<number, Ref>();
+    public refIds = new WeakMap<Ref, number>();
+
     public refCounts: { [refId: number]: number; } = {};
     public deletedRefs = new Set<number>();
 
@@ -20,6 +22,7 @@ export class ReferenceTracker {
     // for decoding
     addRef(refId: number, ref: Ref, incrementCount: boolean = true) {
         this.refs.set(refId, ref);
+        this.refIds.set(ref, refId);
 
         if (incrementCount) {
             this.refCounts[refId] = (this.refCounts[refId] || 0) + 1;

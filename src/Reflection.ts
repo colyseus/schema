@@ -25,6 +25,8 @@ export class Reflection extends Schema {
     @type("number") accessor rootType: number;
 
     static encode (instance: Schema) {
+        const context = new TypeContext(instance.constructor as typeof Schema);
+
         const reflection = new Reflection();
         const encoder = new Encoder(reflection);
 
@@ -62,10 +64,8 @@ export class Reflection extends Schema {
                     }
 
                     field.referencedType = (childTypeSchema)
-                        ? encoder.context.getTypeId(childTypeSchema)
+                        ? context.getTypeId(childTypeSchema)
                         : -1;
-
-                    console.log("referencedType...", field.referencedType);
                 }
 
                 field.type = fieldType;
@@ -75,7 +75,6 @@ export class Reflection extends Schema {
             reflection.types.push(currentType);
         }
 
-        const context = new TypeContext(instance.constructor as typeof Schema);
         for (let typeid in context.types) {
             const type = new ReflectionType();
             type.id = Number(typeid);

@@ -25,6 +25,11 @@ export class Decoder<T extends Schema> {
     constructor(root: T, context?: TypeContext) {
         this.setRoot(root);
         this.context = context || new TypeContext(root.constructor as typeof Schema);
+
+        console.log(">>>>>>>>>>>>>>>> Decoder types");
+        this.context.schemas.forEach((id, schema) => {
+            console.log("type:", id, schema[Symbol.metadata]['def'].schema);
+        });
     }
 
     protected setRoot(root: T) {
@@ -38,12 +43,13 @@ export class Decoder<T extends Schema> {
         it: Iterator = { offset: 0 },
         ref: Ref = this.root,
     ) {
+        console.log("------------------- DECODE -------------------");
         const allChanges: DataChange[] = [];
 
         const $root = this.refs;
         const totalBytes = bytes.length;
 
-        let refId: number;
+        let refId: number = 0;
 
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
@@ -51,6 +57,7 @@ export class Decoder<T extends Schema> {
             if (byte == SWITCH_TO_STRUCTURE) {
                 refId = decode.number(bytes, it);
                 const nextRef = $root.refs.get(refId) as Schema;
+                console.log("SWITCH_TO_STRUCTURE =>", { refId, ref: nextRef });
 
                 //
                 // Trying to access a reference that haven't been decoded yet.
@@ -62,6 +69,7 @@ export class Decoder<T extends Schema> {
             }
 
             const isSchema = (ref instanceof Schema);
+            const definition = (isSchema) ? ref['_definition'] : undefined;
 
             const operation = (isSchema)
                 ? (byte >> 6) << 6 // "compressed" index + operation
@@ -82,11 +90,11 @@ export class Decoder<T extends Schema> {
                 : decode.number(bytes, it);
 
             const fieldName = (isSchema)
-                ? (ref['_definition'].fieldsByIndex[fieldIndex])
+                ? definition.fieldsByIndex[fieldIndex]
                 : "";
 
             const type = (isSchema)
-                ? ref['_definition'].schema[fieldName]
+                ? definition.schema[fieldName]
                 : ref['$changes'].getType(); // FIXME: refactor me.
 
             let value: any;
@@ -122,14 +130,17 @@ export class Decoder<T extends Schema> {
                 }
 
                 // Flag `refId` for garbage collection.
-                if (previousValue && previousValue['$changes']) {
-                    $root.removeRef(previousValue['$changes'].refId);
+                const previousRefId = $root.refIds.get(previousValue);
+                if (previousRefId) {
+                    $root.removeRef(previousRefId);
                 }
 
                 value = null;
             }
 
             // console.log("decoding (1)...", {  ref, refId, isSchema, fieldName, fieldIndex, operation,});
+
+            console.log("decoding...", { refId, fieldName, fieldIndex });
 
             if (fieldName === undefined) {
                 console.warn("@colyseus/schema: definition mismatch");
@@ -167,21 +178,20 @@ export class Decoder<T extends Schema> {
 
                     if (!value) {
                         value = this.createTypeInstance(childType);
-                        value.$changes.refId = refId;
+
+                        console.log("childType, schema =>", value['_definition'].schema);
 
                         if (previousValue) {
-                            value.$callbacks = previousValue.$callbacks;
+                            // value.$callbacks = previousValue.$callbacks;
                             // value.$listeners = previousValue.$listeners;
-
-                            if (
-                                previousValue['$changes'].refId &&
-                                refId !== previousValue['$changes'].refId
-                            ) {
-                                $root.removeRef(previousValue['$changes'].refId);
+                            const previousRefId = $root.refIds.get(previousValue);
+                            if (previousRefId && refId !== previousRefId) {
+                                $root.removeRef(previousRefId);
                             }
                         }
                     }
 
+                    console.log("ADD REF =>", refId, value.toJSON(), "schema =>", value['_definition'].schema);
                     $root.addRef(refId, value, (value !== previousValue));
                 }
 
@@ -189,7 +199,6 @@ export class Decoder<T extends Schema> {
                 //
                 // primitive value (number, string, boolean, etc)
                 //
-                console.log("primitive type =>", type);
                 value = decodePrimitiveType(type as string, bytes, it);
 
             } else {
@@ -201,17 +210,14 @@ export class Decoder<T extends Schema> {
                     : new typeDef.constructor();
 
                 value = valueRef.clone(true);
-                value.$changes.refId = refId;
 
                 // preserve schema callbacks
                 if (previousValue) {
-                    value['$callbacks'] = previousValue['$callbacks'];
+                    // value['$callbacks'] = previousValue['$callbacks'];
+                    const previousRefId = $root.refIds.get(previousValue);
 
-                    if (
-                        previousValue['$changes'].refId &&
-                        refId !== previousValue['$changes'].refId
-                    ) {
-                        $root.removeRef(previousValue['$changes'].refId);
+                    if (previousRefId && refId !== previousRefId) {
+                        $root.removeRef(previousRefId);
 
                         //
                         // Trigger onRemove if structure has been replaced.
@@ -228,9 +234,11 @@ export class Decoder<T extends Schema> {
                                 previousValue: value,
                             });
                         }
+
                     }
                 }
 
+                console.log("ADD REF!", { refId, value });
                 $root.addRef(refId, value, (valueRef !== previousValue));
             }
 
@@ -238,17 +246,9 @@ export class Decoder<T extends Schema> {
                 value !== null &&
                 value !== undefined
             ) {
-                // if (value['$changes']) {
-                //     value['$changes'].setParent(
-                //         changeTree.ref,
-                //         changeTree.root,
-                //         fieldIndex,
-                //     );
-                // }
 
                 if (ref instanceof Schema) {
                     ref[fieldName] = value;
-                    // ref[`_${fieldName}`] = value;
 
                 } else if (ref instanceof MapSchema) {
                     // const key = ref['$indexes'].get(field);
@@ -256,7 +256,6 @@ export class Decoder<T extends Schema> {
 
                     // ref.set(key, value);
                     ref['$items'].set(key, value);
-                    ref['$changes'].allChanges.add(fieldIndex);
 
                 } else if (ref instanceof ArraySchema) {
                     // const key = ref['$indexes'][field];
@@ -398,12 +397,14 @@ export class Decoder<T extends Schema> {
     }
 
     private createTypeInstance (type: typeof Schema): Schema {
-        let instance: Schema = new (type as any)();
+        // let instance: Schema = new (type as any)();
 
-        // assign root on $changes
-        instance['$changes'].root = this.root['$changes'].root;
+        // // assign root on $changes
+        // instance['$changes'].root = this.root['$changes'].root;
 
-        return instance;
+        // return instance;
+        return new (type as any)();
     }
 
 }
+

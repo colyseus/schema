@@ -48,7 +48,9 @@ class Entity extends Schema {
     @type(Vec3) accessor position = new Vec3().assign({ x: 0, y: 0, z: 0 });
 }
 
-// @entity
+// TODO: @entity shouldn't be required here.
+// (TypeContext.register() is required for inheritance support)
+@entity
 class Player extends Entity {
     @type(Vec3) accessor rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
 }

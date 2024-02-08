@@ -189,13 +189,10 @@ export class TypeContext {
     }
 
     getTypeId(klass: typeof Schema) {
-        console.log(`getTypeId (${klass.name})`, this.schemas.get(klass));
         return this.schemas.get(klass);
     }
 
     private discoverTypes(klass: typeof Schema) {
-        console.log("discover types...", klass.name);
-
         if (!this.add(klass)) {
             return;
         }

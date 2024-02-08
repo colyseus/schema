@@ -97,6 +97,11 @@ export class Encoder<T extends Schema> {
         // (to avoid creating a new context for each new room)
         //
         this.context = new TypeContext(root.constructor as typeof Schema);
+
+        console.log(">>>>>>>>>>>>>>>> Encoder types");
+        this.context.schemas.forEach((id, schema) => {
+            console.log("type:", id, schema[Symbol.metadata]['def'].schema);
+        });
     }
 
     protected setRoot(root: T) {
@@ -110,12 +115,15 @@ export class Encoder<T extends Schema> {
         bytes: number[] = [],
         useFilters: boolean = false,
     ) {
+        console.log("--------------------- ENCODE ----------------");
         const rootChangeTree = this.root['$changes'];
         // const refIdsVisited = new WeakSet<ChangeTree>();
 
         const changeTrees: ChangeTree[] = Array.from(this.$root['changes']);
         const numChangeTrees = changeTrees.length;
         // let numChangeTrees = 1;
+
+        console.log("Encode order:", changeTrees.map((c) => c.ref['constructor'].name));
 
         for (let i = 0; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
@@ -135,6 +143,7 @@ export class Encoder<T extends Schema> {
             ) {
                 encode.uint8(bytes, SWITCH_TO_STRUCTURE);
                 encode.number(bytes, changeTree.refId);
+                console.log("changeTree.refId", changeTree.refId, `(${changeTree.ref['constructor'].name})`);
             }
 
             const changes: ChangeOperation[] | number[] = (encodeAll)
@@ -271,10 +280,18 @@ export class Encoder<T extends Schema> {
         return this.encode(true, [], useFilters);
     }
 
-    private tryEncodeTypeId (bytes: number[], type: typeof Schema, targetType: typeof Schema) {
+    private tryEncodeTypeId (bytes: number[], baseType: typeof Schema, targetType: typeof Schema) {
+        const baseTypeId = this.context.getTypeId(baseType);
         const targetTypeId = this.context.getTypeId(targetType);
 
-        if (this.context.getTypeId(type) !== targetTypeId) {
+        // console.log({
+        //     baseType: baseType.name,
+        //     baseTypeId,
+        //     targetType: targetType.name,
+        //     targetTypeId,
+        // });
+
+        if (baseTypeId !== targetTypeId) {
             encode.uint8(bytes, TYPE_ID);
             encode.number(bytes, targetTypeId);
         }
