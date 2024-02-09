@@ -15,7 +15,7 @@ export function dumpChanges(schema: Schema) {
             const ref = changeTree.ref;
             const fieldIndex = change.index;
 
-            const field = ((ref as Schema)['_definition'])
+            const field = ((ref as Schema)['metadata'])
                 ? ref['_definition'].fieldsByIndex[fieldIndex]
                 : ref['$indexes'].get(fieldIndex);
 

@@ -1,6 +1,6 @@
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
-import { SchemaDefinition, FilterChildrenCallback, Definition, DefinitionType } from "../annotations";
+import { Metadata, FilterChildrenCallback, Definition, DefinitionType } from "../annotations";
 
 import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";
@@ -68,11 +68,8 @@ export class ChangeTree {
         // this.setParent(parent, root);
     }
 
-    get definition() {
-        return (
-            this.ref.constructor[Symbol.metadata] &&
-            this.ref.constructor[Symbol.metadata]['def'] as SchemaDefinition
-        );
+    get metadata() {
+        return this.ref.constructor[Symbol.metadata];
     }
 
     setRoot(root: Root) {
@@ -95,7 +92,7 @@ export class ChangeTree {
     ) {
         if (!this.indexes) {
             this.indexes = (this.ref instanceof Schema)
-                ? this.definition
+                ? this.metadata
                 : {};
         }
 
@@ -114,13 +111,14 @@ export class ChangeTree {
         // assign same parent on child structures
         //
         if (this.ref instanceof Schema) {
-            const definition: SchemaDefinition = this.definition;
+            const metadata = this.metadata;
 
-            for (let field in definition.schema) {
+            // FIXME: need to iterate over parent metadata instead.
+            for (let field in metadata) {
                 const value = this.ref[field];
 
                 if (value && value['$changes']) {
-                    const parentIndex = definition.indexes[field];
+                    const parentIndex = Metadata.getIndex(metadata, field);
 
                     (value['$changes'] as ChangeTree).setParent(
                         this.ref,
@@ -207,9 +205,9 @@ export class ChangeTree {
     }
 
     getType(index?: number) {
-        if (this.definition) {
-            const definition = (this.ref as Schema)['_definition'];
-            return definition.schema[definition.fieldsByIndex[index]];
+        if (this.metadata) {
+            const metadata = (this.ref as Schema).metadata;
+            return metadata[metadata.fieldsByIndex[index]].type;
 
         } else {
             //
@@ -225,7 +223,7 @@ export class ChangeTree {
     }
 
     getChildrenFilter(): FilterChildrenCallback {
-        const childFilters = (this.parent as Schema)['_definition'].childFilters;
+        const childFilters = (this.parent as Schema)['metadata'].childFilters;
         return childFilters && childFilters[this.parentIndex];
     }
 

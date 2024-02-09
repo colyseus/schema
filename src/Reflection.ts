@@ -1,4 +1,4 @@
-import { type, PrimitiveType, DefinitionType, TypeContext, SchemaDefinition } from "./annotations";
+import { type, PrimitiveType, DefinitionType, TypeContext, Metadata } from "./annotations";
 import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { getType } from "./types/typeRegistry";
@@ -30,27 +30,27 @@ export class Reflection extends Schema {
         const reflection = new Reflection();
         const encoder = new Encoder(reflection);
 
-        const buildType = (currentType: ReflectionType, definition: SchemaDefinition) => {
-            const schema = definition.schema;
-            for (let fieldName in schema) {
+        const buildType = (currentType: ReflectionType, metadata: any) => {
+            for (let fieldName in metadata) {
                 const field = new ReflectionField();
                 field.name = fieldName;
 
                 let fieldType: string;
 
-                if (typeof (schema[fieldName]) === "string") {
-                    fieldType = schema[fieldName] as string;
+                const _type = Metadata.getType(metadata, fieldName);
+
+                if (typeof (_type) === "string") {
+                    fieldType = _type;
 
                 } else {
-                    const type = schema[fieldName];
                     let childTypeSchema: typeof Schema;
 
                     //
                     // TODO: refactor below.
                     //
-                    if (Schema.is(type)) {
+                    if (Schema.is(_type)) {
                         fieldType = "ref";
-                        childTypeSchema = schema[fieldName] as typeof Schema;
+                        childTypeSchema = _type as typeof Schema;
 
                     } else {
                         fieldType = Object.keys(type)[0];
@@ -78,7 +78,7 @@ export class Reflection extends Schema {
         for (let typeid in context.types) {
             const type = new ReflectionType();
             type.id = Number(typeid);
-            buildType(type, context.types[typeid][Symbol.metadata]['def']);
+            buildType(type, context.types[typeid][Symbol.metadata]);
         }
 
         return encoder.encodeAll();
@@ -94,7 +94,9 @@ export class Reflection extends Schema {
 
         const schemaTypes = reflection.types.reduce((types, reflectionType) => {
             const schema: typeof Schema = class _ extends Schema {};
-            schema[Symbol.metadata] = { def: SchemaDefinition.create() };
+
+            // TODO: extend from parent schema when using inheritance
+            schema[Symbol.metadata] = {};
 
             const typeid = reflectionType.id;
             types[typeid] = schema
@@ -104,7 +106,7 @@ export class Reflection extends Schema {
 
         reflection.types.forEach((reflectionType) => {
             const schemaType = schemaTypes[reflectionType.id];
-            const def = schemaType[Symbol.metadata]['def'] as SchemaDefinition;
+            const metadata = schemaType[Symbol.metadata];
 
             reflectionType.fields.forEach(field => {
                 if (field.referencedType !== undefined) {
@@ -119,16 +121,16 @@ export class Reflection extends Schema {
                     }
 
                     if (fieldType === "ref") {
-                        def.addField(field.name, refType);
+                        Metadata.addField(metadata, field.name, refType);
                         // type(refType)(schemaType.prototype, field.name);
 
                     } else {
-                        def.addField(field.name, { [fieldType]: refType } as DefinitionType);
+                        Metadata.addField(metadata, field.name, { [fieldType]: refType } as DefinitionType);
                         // type({ [fieldType]: refType } as DefinitionType)(schemaType.prototype, field.name);
                     }
 
                 } else {
-                    def.addField(field.name, field.type as PrimitiveType);
+                    Metadata.addField(Metadata, field.name, field.type as PrimitiveType);
                     // type(field.type as PrimitiveType)(schemaType.prototype, field.name);
                 }
             });

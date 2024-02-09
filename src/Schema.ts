@@ -1,5 +1,5 @@
 import { OPERATION } from './spec';
-import { SchemaDefinition, DefinitionType } from "./annotations";
+import { DefinitionType, Metadata } from "./annotations";
 
 import type { Iterator } from "./encoding/decode"; // dts-bundle-generator
 
@@ -34,15 +34,14 @@ export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
  * Schema encoder / decoder
  */
 export abstract class Schema {
-    // static _definition: SchemaDefinition = SchemaDefinition.create();
-    static _definition: SchemaDefinition;
 
     static onError(e) {
         console.error(e);
     }
 
     static is(type: DefinitionType) {
-        return (type[Symbol.metadata] && type[Symbol.metadata].def);
+        const metadata = type[Symbol.metadata];
+        return metadata && Metadata.hasFields(metadata);
     }
 
     protected $changes: ChangeTree;
@@ -75,8 +74,8 @@ export abstract class Schema {
         return this;
     }
 
-    protected get _definition () {
-        return this.constructor[Symbol.metadata]['def'] as SchemaDefinition;
+    get metadata () {
+        return this.constructor[Symbol.metadata] as Metadata;
     }
 
     /**
@@ -334,7 +333,7 @@ export abstract class Schema {
 
     clone (): this {
         const cloned = new ((this as any).constructor);
-        const schema = this._definition.schema;
+        const schema = this.metadata.schema;
         for (let field in schema) {
             if (
                 typeof (this[field]) === "object" &&
@@ -352,15 +351,15 @@ export abstract class Schema {
     }
 
     toJSON () {
-        const schema = this._definition.schema;
-        const deprecated = this._definition.deprecated;
+        const metadata = this.metadata;
 
         const obj: unknown = {};
-        for (let field in schema) {
-            if (!deprecated[field] && this[field] !== null && typeof (this[field]) !== "undefined") {
-                obj[field] = (typeof (this[field]['toJSON']) === "function")
-                    ? this[field]['toJSON']()
-                    : this[field];
+        for (const fieldName in metadata) {
+            const field = metadata[fieldName];
+            if (!field.deprecated && this[fieldName] !== null && typeof (this[fieldName]) !== "undefined") {
+                obj[fieldName] = (typeof (this[fieldName]['toJSON']) === "function")
+                    ? this[fieldName]['toJSON']()
+                    : this[fieldName];
             }
         }
         return obj as ToJSON<typeof this>;
@@ -371,11 +370,11 @@ export abstract class Schema {
     }
 
     protected getByIndex(index: number) {
-        return this[this._definition.fieldsByIndex[index]];
+        return this[this.metadata.fieldsByIndex[index]];
     }
 
     protected deleteByIndex(index: number) {
-        this[this._definition.fieldsByIndex[index]] = undefined;
+        this[this.metadata.fieldsByIndex[index]] = undefined;
     }
 
 }

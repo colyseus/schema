@@ -43,7 +43,6 @@ class Vec3 extends Schema {
 // @entity
 class Base extends Schema {}
 
-// @entity
 class Entity extends Schema {
     @type(Vec3) accessor position = new Vec3().assign({ x: 0, y: 0, z: 0 });
 }
@@ -66,12 +65,17 @@ class State extends Schema {
     });
 }
 
+console.log("Entity =>", Object.keys(Entity[Symbol.metadata]), Object.keys(Object.getPrototypeOf(Entity[Symbol.metadata]) || {}));
+console.log("Player =>", Object.keys(Player[Symbol.metadata]), Object.keys(Object.getPrototypeOf(Player[Symbol.metadata]) || {}));
+
 const state = new State();
 console.log("state =>", state.toJSON());
 
 const encoder = new Encoder(state);
 const encoded = encoder.encode();
-console.log("encode:", encoded);
+console.log(`encode: (${encoded.length})`, encoded);
+
+process.exit();
 
 const decoded = Reflection.decode(Reflection.encode(state));
 const decoder = new Decoder(decoded);

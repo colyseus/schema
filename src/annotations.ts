@@ -52,80 +52,58 @@ export type FilterChildrenCallback<
     ((this: T, client: ClientWithSessionId, key: K, value: V, root: R) => boolean)
 )
 
-export class SchemaDefinition {
-    schema: Definition;
+export type MetadataField = {
+    type: DefinitionType,
+    index: number,
+    deprecated: boolean,
+};
 
-    //
-    // TODO: use a "field" structure combining all these properties per-field.
-    //
+export type Metadata =
+    { [field: string]: MetadataField; } &
+    { fieldsByIndex: string[]; }
 
-    indexes: { [field: string]: number } = {};
-    fieldsByIndex: { [index: number]: string } = {};
-
-    filters: { [field: string]: FilterCallback };
-    indexesWithFilters: number[];
-    childFilters: { [field: string]: FilterChildrenCallback }; // childFilters are used on Map, Array, Set items.
-
-    deprecated: { [field: string]: boolean } = {};
-    descriptors: PropertyDescriptorMap & ThisType<any> = {};
-
-    static create(parent?: SchemaDefinition) {
-        const definition = new SchemaDefinition();
-
-        // support inheritance
-        definition.schema = Object.assign({}, parent && parent.schema || {});
-        definition.indexes = Object.assign({}, parent && parent.indexes || {});
-        definition.fieldsByIndex = Object.assign({}, parent && parent.fieldsByIndex || {});
-        definition.descriptors = Object.assign({}, parent && parent.descriptors || {});
-        definition.deprecated = Object.assign({}, parent && parent.deprecated || {});
-
-        return definition;
-    }
-
-    addField(field: string, type: DefinitionType) {
-        const index = this.getNextFieldIndex();
-        this.fieldsByIndex[index] = field;
-        this.indexes[field] = index;
-        this.schema[field] = (Array.isArray(type))
-            ? { array: type[0] }
-            : type;
-    }
-
-    hasField(field: string) {
-        return this.indexes[field] !== undefined;
-    }
-
-    addFilter(field: string, cb: FilterCallback) {
-        if (!this.filters) {
-            this.filters = {};
-            this.indexesWithFilters = [];
+export const Metadata = {
+    addField(metadata: any, field: string, type: DefinitionType) {
+        if (!this.hasFields(metadata)) {
+            Object.defineProperty(metadata, 'fieldsByIndex', {
+                value: [],
+                enumerable: false,
+                configurable: false,
+            });
         }
-        this.filters[this.indexes[field]] = cb;
-        this.indexesWithFilters.push(this.indexes[field]);
-        return true;
-    }
 
-    addChildrenFilter(field: string, cb: FilterChildrenCallback) {
-        const index = this.indexes[field];
-        const type = this.schema[field];
+        const index = metadata.fieldsByIndex.length;
 
-        if (getType(Object.keys(type)[0])) {
-            if (!this.childFilters) { this.childFilters = {}; }
+        metadata[field] = {
+            type: (Array.isArray(type))
+                ? { array: type[0] }
+                : type,
+            index
+        };
 
-            this.childFilters[index] = cb;
-            return true;
+        metadata.fieldsByIndex.push(field);
 
-        } else {
-            console.warn(`@filterChildren: field '${field}' can't have children. Ignoring filter.`);
-        }
-    }
+        return index;
+    },
 
-    getChildrenFilter(field: string) {
-        return this.childFilters && this.childFilters[this.indexes[field]];
-    }
+    getType(metadata: any, field: string) {
+        return metadata[field].type as DefinitionType;
+    },
 
-    getNextFieldIndex() {
-        return Object.keys(this.schema || {}).length;
+    getIndex(metadata: any, field: string) {
+        return metadata[field].index as number;
+    },
+
+    getFieldByIndex(metadata: any, index: number) {
+        return metadata['fieldsByIndex'][index];
+    },
+
+    isDeprecated(metadata: any, field: string) {
+        return metadata[field].deprecated === true;
+    },
+
+    hasFields(metadata: any) {
+        return Object.prototype.hasOwnProperty.call(metadata, 'fieldsByIndex') as boolean;
     }
 }
 
@@ -183,6 +161,7 @@ export class TypeContext {
         if (this.schemas.has(schema)) {
             return false;
         }
+
         this.types[typeid] = schema;
         this.schemas.set(schema, typeid);
         return true;
@@ -206,30 +185,28 @@ export class TypeContext {
         if (klass[Symbol.metadata] === undefined) {
             klass[Symbol.metadata] = {};
         }
-        if (klass[Symbol.metadata]['def'] === undefined) {
-            klass[Symbol.metadata]['def'] = SchemaDefinition.create();
-        }
 
-        const definition = klass[Symbol.metadata]['def'];
+        const metadata = klass[Symbol.metadata];
 
-        for (const field in definition.schema) {
-            const typedef = definition.schema[field];
-            if (typeof(typedef) === "string") {
+        for (const field in metadata) {
+            const fieldType = Metadata.getType(metadata, field);
+
+            if (typeof(fieldType) === "string") {
                 continue;
             }
 
-            if (Array.isArray(typedef)) {
-                const type = typedef[0];
+            if (Array.isArray(fieldType)) {
+                const type = fieldType[0];
                 if (type === "string") {
                     continue;
                 }
                 this.discoverTypes(type as typeof Schema);
 
-            } else if (typeof(typedef) === "function") {
-                this.discoverTypes(typedef);
+            } else if (typeof(fieldType) === "function") {
+                this.discoverTypes(fieldType);
 
             } else {
-                const type = Object.values(typedef)[0];
+                const type = Object.values(fieldType)[0];
                 if (type === "string") {
                     continue;
                 }
@@ -243,7 +220,7 @@ export function entity(constructor, context: ClassDecoratorContext) {
     if (!constructor._definition) {
         // for inheritance support
         TypeContext.register(constructor);
-        constructor[Symbol.metadata] = SchemaDefinition.create();
+        // constructor[Symbol.metadata] = {'def': SchemaDefinition.create()};
     }
 
     return constructor;
@@ -273,8 +250,7 @@ export function type(type: DefinitionType, options?: TypeOptions) {
 
         const field = context.name.toString();
 
-        if (!context.metadata['def']) {
-            context.metadata['def'] = SchemaDefinition.create();
+        if (!Metadata.hasFields(context.metadata)) {
             context.addInitializer(function (this: Ref) {
                 Object.defineProperty(this, '$changes', {
                     value: new ChangeTree(this),
@@ -284,10 +260,8 @@ export function type(type: DefinitionType, options?: TypeOptions) {
             });
         }
 
-        const definition = (context.metadata['def'] as SchemaDefinition);
-        definition.addField(field, type);
-
-        const fieldIndex = definition.indexes[field];
+        const fieldIndex = Metadata.addField(context.metadata, field, type);
+        console.log("ADD FIELD", { fieldIndex, field, type })
 
         const isArray = ArraySchema.is(type);
         const isMap = !isArray && MapSchema.is(type);
@@ -390,7 +364,7 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                         (value['$changes'] as ChangeTree).setParent(
                             this,
                             this['$changes'].root,
-                            this['_definition'].indexes[field],
+                            Metadata.getIndex(this.metadata, field),
                         );
                     }
 
@@ -548,21 +522,21 @@ export function type(type: DefinitionType, options?: TypeOptions) {
 export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback<T, V, R>): PropertyDecorator {
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
-        const definition = constructor._definition;
+        // const definition = constructor._definition;
 
-        if (definition.addFilter(field, cb)) {
-            // constructor._context.useFilters = true;
-        }
+        // if (definition.addFilter(field, cb)) {
+        //     constructor._context.useFilters = true;
+        // }
     }
 }
 
 export function filterChildren<T extends Schema, K, V, R extends Schema>(cb: FilterChildrenCallback<T, K, V, R>): PropertyDecorator {
     return function (target: any, field: string) {
         const constructor = target.constructor as typeof Schema;
-        const definition = constructor._definition;
-        if (definition.addChildrenFilter(field, cb)) {
-            // constructor._context.useFilters = true;
-        }
+        // const definition = constructor._definition;
+        // if (definition.addChildrenFilter(field, cb)) {
+        //     constructor._context.useFilters = true;
+        // }
     }
 }
 
@@ -575,18 +549,18 @@ export function filterChildren<T extends Schema, K, V, R extends Schema>(cb: Fil
 export function deprecated(throws: boolean = true): PropertyDecorator {
     return function (target: typeof Schema, field: string) {
         const constructor = target.constructor as typeof Schema;
-        const definition = constructor._definition;
+        // const definition = constructor._definition;
 
-        definition.deprecated[field] = true;
+        // definition.deprecated[field] = true;
 
-        if (throws) {
-            definition.descriptors[field] = {
-                get: function () { throw new Error(`${field} is deprecated.`); },
-                set: function (this: Schema, value: any) { /* throw new Error(`${field} is deprecated.`); */ },
-                enumerable: false,
-                configurable: true
-            };
-        }
+        // if (throws) {
+        //     definition.descriptors[field] = {
+        //         get: function () { throw new Error(`${field} is deprecated.`); },
+        //         set: function (this: Schema, value: any) { /* throw new Error(`${field} is deprecated.`); */ },
+        //         enumerable: false,
+        //         configurable: true
+        //     };
+        // }
     }
 }
 

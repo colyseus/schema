@@ -1,4 +1,4 @@
-import { TypeContext, DefinitionType, PrimitiveType, SchemaDefinition } from "./annotations";
+import { TypeContext, DefinitionType, PrimitiveType } from "./annotations";
 import { DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
@@ -28,7 +28,7 @@ export class Decoder<T extends Schema> {
 
         console.log(">>>>>>>>>>>>>>>> Decoder types");
         this.context.schemas.forEach((id, schema) => {
-            console.log("type:", id, schema[Symbol.metadata]['def'].schema);
+            console.log("type:", id, schema.name, Object.keys(schema[Symbol.metadata]));
         });
     }
 

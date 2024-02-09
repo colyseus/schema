@@ -1,6 +1,6 @@
 import { Schema } from "../Schema";
 import { Ref } from "./ChangeTree";
-import type { SchemaDefinition } from "../annotations";
+import { Metadata } from "../annotations";
 
 export class ReferenceTracker {
     //
@@ -65,17 +65,18 @@ export class ReferenceTracker {
             // Ensure child schema instances have their references removed as well.
             //
             if (ref instanceof Schema) {
-                for (const fieldName in ref['_definition'].schema) {
-                    if (typeof (ref['_definition'].schema[fieldName]) !== "string" &&
-                        ref[fieldName] &&
-                        ref[fieldName]['$changes']) {
-                        this.removeRef(ref[fieldName]['$changes'].refId);
+                const metadata = ref.metadata;
+                for (const field in metadata) {
+                    if (typeof (Metadata.getType(metadata, field)) !== "string" &&
+                        ref[field] &&
+                        ref[field]['$changes']) { // FIXME: this will not work anymore.
+                        this.removeRef(ref[field]['$changes'].refId);
                     }
                 }
 
             } else {
-                const definition: SchemaDefinition = ref['$changes'].parent._definition;
-                const type = definition.schema[definition.fieldsByIndex[ref['$changes'].parentIndex]];
+                const metadata = ref['$changes'].parent.metadata;
+                const type =  metadata.schema[metadata.fieldsByIndex[ref['$changes'].parentIndex]];
 
                 if (typeof (Object.values(type)[0]) === "function") {
                     Array.from(ref.values())

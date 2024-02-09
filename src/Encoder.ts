@@ -1,4 +1,4 @@
-import { TypeContext, DefinitionType, PrimitiveType } from "./annotations";
+import { TypeContext, DefinitionType, PrimitiveType, Metadata } from "./annotations";
 import { Schema } from "./Schema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
@@ -98,9 +98,8 @@ export class Encoder<T extends Schema> {
         //
         this.context = new TypeContext(root.constructor as typeof Schema);
 
-        console.log(">>>>>>>>>>>>>>>> Encoder types");
         this.context.schemas.forEach((id, schema) => {
-            console.log("type:", id, schema[Symbol.metadata]['def'].schema);
+            console.log("type:", id, schema.name, Object.keys(schema[Symbol.metadata]));
         });
     }
 
@@ -158,7 +157,7 @@ export class Encoder<T extends Schema> {
                 const fieldIndex = operation.index;
 
                 const field = (isSchema)
-                    ? ref['_definition'].fieldsByIndex && ref['_definition'].fieldsByIndex[fieldIndex]
+                    ? Metadata.getFieldByIndex(ref.metadata, fieldIndex)
                     : fieldIndex;
 
                 // encode field index + operation
