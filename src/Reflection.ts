@@ -95,8 +95,10 @@ export class Reflection extends Schema {
         const schemaTypes = reflection.types.reduce((types, reflectionType) => {
             const schema: typeof Schema = class _ extends Schema {};
 
-            // TODO: extend from parent schema when using inheritance
-            schema[Symbol.metadata] = {};
+            // const _metadata = Object.create(_classSuper[Symbol.metadata] ?? null);
+            // TODO: support inheritance
+            const _metadata = Object.create(null);
+            Object.defineProperty(schema, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata })
 
             const typeid = reflectionType.id;
             types[typeid] = schema
@@ -108,7 +110,7 @@ export class Reflection extends Schema {
             const schemaType = schemaTypes[reflectionType.id];
             const metadata = schemaType[Symbol.metadata];
 
-            reflectionType.fields.forEach(field => {
+            reflectionType.fields.forEach((field) => {
                 if (field.referencedType !== undefined) {
                     let fieldType = field.type;
                     let refType = schemaTypes[field.referencedType];
@@ -130,7 +132,8 @@ export class Reflection extends Schema {
                     }
 
                 } else {
-                    Metadata.addField(Metadata, field.name, field.type as PrimitiveType);
+                    console.log("Metadata.addField =>", field.name, field.type)
+                    Metadata.addField(metadata, field.name, field.type as PrimitiveType);
                     // type(field.type as PrimitiveType)(schemaType.prototype, field.name);
                 }
             });

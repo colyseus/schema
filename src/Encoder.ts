@@ -97,10 +97,6 @@ export class Encoder<T extends Schema> {
         // (to avoid creating a new context for each new room)
         //
         this.context = new TypeContext(root.constructor as typeof Schema);
-
-        this.context.schemas.forEach((id, schema) => {
-            console.log("type:", id, schema.name, Object.keys(schema[Symbol.metadata]));
-        });
     }
 
     protected setRoot(root: T) {

@@ -1,4 +1,4 @@
-import { TypeContext, DefinitionType, PrimitiveType } from "./annotations";
+import { TypeContext, DefinitionType, PrimitiveType, Metadata } from "./annotations";
 import { DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
@@ -69,7 +69,7 @@ export class Decoder<T extends Schema> {
             }
 
             const isSchema = (ref instanceof Schema);
-            const definition = (isSchema) ? ref['_definition'] : undefined;
+            const metadata = (isSchema) ? Metadata.getFor(ref['constructor']) : undefined;
 
             const operation = (isSchema)
                 ? (byte >> 6) << 6 // "compressed" index + operation
@@ -90,11 +90,11 @@ export class Decoder<T extends Schema> {
                 : decode.number(bytes, it);
 
             const fieldName = (isSchema)
-                ? definition.fieldsByIndex[fieldIndex]
+                ? metadata.fieldsByIndex[fieldIndex]
                 : "";
 
             const type = (isSchema)
-                ? definition.schema[fieldName]
+                ? Metadata.getType(metadata, fieldName)
                 : ref['$changes'].getType(); // FIXME: refactor me.
 
             let value: any;
@@ -179,8 +179,6 @@ export class Decoder<T extends Schema> {
                     if (!value) {
                         value = this.createTypeInstance(childType);
 
-                        console.log("childType, schema =>", value['_definition'].schema);
-
                         if (previousValue) {
                             // value.$callbacks = previousValue.$callbacks;
                             // value.$listeners = previousValue.$listeners;
@@ -191,7 +189,6 @@ export class Decoder<T extends Schema> {
                         }
                     }
 
-                    console.log("ADD REF =>", refId, value.toJSON(), "schema =>", value['_definition'].schema);
                     $root.addRef(refId, value, (value !== previousValue));
                 }
 

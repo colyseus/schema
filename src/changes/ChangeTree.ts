@@ -69,7 +69,7 @@ export class ChangeTree {
     }
 
     get metadata() {
-        return this.ref.constructor[Symbol.metadata];
+        return Metadata.getFor(this.ref.constructor);
     }
 
     setRoot(root: Root) {
@@ -245,7 +245,6 @@ export class ChangeTree {
         }
 
         const previousValue = this.getValue(index);
-        // console.log("$changes.delete =>", { fieldName, index, previousValue });
 
         this.changes.set(index, { op: OPERATION.DELETE, index });
 

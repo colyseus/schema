@@ -63,6 +63,36 @@ export type Metadata =
     { fieldsByIndex: string[]; }
 
 export const Metadata = {
+    getFor(klass: any) {
+        //
+        // TODO: cache values per class, avoid re-building "combined" object every time.
+        //
+        const metadata = klass[Symbol.metadata];
+        if (!metadata) { return undefined; }
+
+        console.log("klass:", klass);
+
+        const parents: any[] = [metadata];
+        const fieldsByIndex: string[] = [...metadata.fieldsByIndex];
+
+        let parent: any = metadata;
+        while (parent = Object.getPrototypeOf(parent)) {
+            parents.unshift(parent);
+            console.log("parent:", parent);
+            fieldsByIndex.unshift(...parent.fieldsByIndex);
+        }
+
+        const all = Object.assign({}, ...parents) as Metadata;
+
+        Object.defineProperty(all, 'fieldsByIndex', {
+            value: fieldsByIndex,
+            enumerable: false,
+            configurable: false,
+        });
+
+        return all;
+    },
+
     addField(metadata: any, field: string, type: DefinitionType) {
         if (!this.hasFields(metadata)) {
             Object.defineProperty(metadata, 'fieldsByIndex', {
@@ -72,7 +102,12 @@ export const Metadata = {
             });
         }
 
-        const index = metadata.fieldsByIndex.length;
+        // TODO: this doesn't support 3-level inheritance
+        const parentMetadata = Object.getPrototypeOf(metadata);
+        // FIXME: reflection may not be working properly here
+        const parentClassLastFieldIndex = parentMetadata && parentMetadata.fieldsByIndex && parentMetadata.fieldsByIndex.length || 0;
+
+        const index = metadata.fieldsByIndex.length + parentClassLastFieldIndex;
 
         metadata[field] = {
             type: (Array.isArray(type))
@@ -186,7 +221,7 @@ export class TypeContext {
             klass[Symbol.metadata] = {};
         }
 
-        const metadata = klass[Symbol.metadata];
+        const metadata = Metadata.getFor(klass);
 
         for (const field in metadata) {
             const fieldType = Metadata.getType(metadata, field);
@@ -220,7 +255,6 @@ export function entity(constructor, context: ClassDecoratorContext) {
     if (!constructor._definition) {
         // for inheritance support
         TypeContext.register(constructor);
-        // constructor[Symbol.metadata] = {'def': SchemaDefinition.create()};
     }
 
     return constructor;
