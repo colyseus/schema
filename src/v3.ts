@@ -72,7 +72,8 @@ const encoder = new Encoder(state);
 const encoded = encoder.encode();
 console.log(`encode: (${encoded.length})`, encoded);
 
-const decoded = Reflection.decode(Reflection.encode(state));
+const encodedReflection = Reflection.encode(state);
+const decoded = Reflection.decode(encodedReflection);
 const decoder = new Decoder(decoded);
 decoder.decode(encoded);
 console.log("decoded =>", decoded.toJSON());

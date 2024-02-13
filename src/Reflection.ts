@@ -17,6 +17,7 @@ export class ReflectionField extends Schema {
 
 export class ReflectionType extends Schema {
     @type("number") accessor id: number;
+    @type("number") accessor extendsId: number;
     @type([ ReflectionField ]) accessor fields: ArraySchema<ReflectionField> = new ArraySchema<ReflectionField>();
 }
 
@@ -31,7 +32,7 @@ export class Reflection extends Schema {
         const encoder = new Encoder(reflection);
 
         const buildType = (currentType: ReflectionType, metadata: any) => {
-            for (let fieldName in metadata) {
+            for (const fieldName in metadata) {
                 const field = new ReflectionField();
                 field.name = fieldName;
 
@@ -76,9 +77,17 @@ export class Reflection extends Schema {
         }
 
         for (let typeid in context.types) {
+            const klass = context.types[typeid];
             const type = new ReflectionType();
             type.id = Number(typeid);
-            buildType(type, context.types[typeid][Symbol.metadata]);
+
+            // support inheritance
+            const inheritFrom = Object.getPrototypeOf(klass);
+            if (inheritFrom !== Schema) {
+                type.extendsId = context.schemas.get(inheritFrom);
+            }
+
+            buildType(type, Metadata.getFor(klass));
         }
 
         return encoder.encodeAll();
@@ -93,11 +102,12 @@ export class Reflection extends Schema {
         const context = new TypeContext();
 
         const schemaTypes = reflection.types.reduce((types, reflectionType) => {
-            const schema: typeof Schema = class _ extends Schema {};
+            const parentKlass: typeof Schema = types[reflectionType.extendsId] || Schema;
+            const schema: typeof Schema = class _ extends parentKlass {};
 
             // const _metadata = Object.create(_classSuper[Symbol.metadata] ?? null);
             // TODO: support inheritance
-            const _metadata = Object.create(null);
+            const _metadata = parentKlass && parentKlass[Symbol.metadata] || Object.create(null);
             Object.defineProperty(schema, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata })
 
             const typeid = reflectionType.id;

@@ -139,8 +139,7 @@ export class Decoder<T extends Schema> {
             }
 
             // console.log("decoding (1)...", {  ref, refId, isSchema, fieldName, fieldIndex, operation,});
-
-            console.log("decoding...", { refId, fieldName, fieldIndex });
+            // console.log("decoding...", { refId, fieldName, fieldIndex });
 
             if (fieldName === undefined) {
                 console.warn("@colyseus/schema: definition mismatch");

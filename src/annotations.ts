@@ -68,17 +68,15 @@ export const Metadata = {
         // TODO: cache values per class, avoid re-building "combined" object every time.
         //
         const metadata = klass[Symbol.metadata];
-        if (!metadata) { return undefined; }
-
-        console.log("klass:", klass);
+        if (!metadata || !metadata.fieldsByIndex) { return undefined; }
 
         const parents: any[] = [metadata];
         const fieldsByIndex: string[] = [...metadata.fieldsByIndex];
 
         let parent: any = metadata;
         while (parent = Object.getPrototypeOf(parent)) {
+            console.log("PARENT:", parent, "== null?", parent ==null)
             parents.unshift(parent);
-            console.log("parent:", parent);
             fieldsByIndex.unshift(...parent.fieldsByIndex);
         }
 
