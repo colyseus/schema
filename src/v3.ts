@@ -61,12 +61,11 @@ class State extends Schema {
     @type("string") accessor str = "Hello world!";
     @type(Entity) accessor entity = new Player().assign({
         position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-        rotation: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
     });
 }
 
 const state = new State();
-console.log("state =>", state.toJSON());
 
 const encoder = new Encoder(state);
 const encoded = encoder.encode();

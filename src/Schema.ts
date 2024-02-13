@@ -76,6 +76,7 @@ export abstract class Schema {
 
     get metadata () {
         return Metadata.getFor(this.constructor);
+        // return this.constructor[Symbol.metadata];
     }
 
     /**

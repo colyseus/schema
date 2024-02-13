@@ -75,7 +75,6 @@ export const Metadata = {
 
         let parent: any = metadata;
         while (parent = Object.getPrototypeOf(parent)) {
-            console.log("PARENT:", parent, "== null?", parent ==null)
             parents.unshift(parent);
             fieldsByIndex.unshift(...parent.fieldsByIndex);
         }
@@ -176,6 +175,8 @@ export class TypeContext {
     }
 
     constructor(rootClass?: typeof Schema) {
+        // console.log("new TypeContext.........");
+
         if (rootClass) {
             this.discoverTypes(rootClass);
         }
@@ -194,6 +195,8 @@ export class TypeContext {
         if (this.schemas.has(schema)) {
             return false;
         }
+
+        // console.log("TypeContext, add =>", Object.keys(schema[Symbol.metadata]));
 
         this.types[typeid] = schema;
         this.schemas.set(schema, typeid);
@@ -219,7 +222,8 @@ export class TypeContext {
             klass[Symbol.metadata] = {};
         }
 
-        const metadata = Metadata.getFor(klass);
+        // const metadata = Metadata.getFor(klass);
+        const metadata = klass[Symbol.metadata];
 
         for (const field in metadata) {
             const fieldType = Metadata.getType(metadata, field);
@@ -293,7 +297,6 @@ export function type(type: DefinitionType, options?: TypeOptions) {
         }
 
         const fieldIndex = Metadata.addField(context.metadata, field, type);
-        console.log("ADD FIELD", { fieldIndex, field, type })
 
         const isArray = ArraySchema.is(type);
         const isMap = !isArray && MapSchema.is(type);

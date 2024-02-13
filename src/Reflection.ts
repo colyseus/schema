@@ -32,16 +32,16 @@ export class Reflection extends Schema {
         const encoder = new Encoder(reflection);
 
         const buildType = (currentType: ReflectionType, metadata: any) => {
-            for (const fieldName in metadata) {
+            for (const fieldName of Object.keys(metadata)) {
                 const field = new ReflectionField();
                 field.name = fieldName;
 
                 let fieldType: string;
 
-                const _type = Metadata.getType(metadata, fieldName);
+                const type = Metadata.getType(metadata, fieldName);
 
-                if (typeof (_type) === "string") {
-                    fieldType = _type;
+                if (typeof (type) === "string") {
+                    fieldType = type;
 
                 } else {
                     let childTypeSchema: typeof Schema;
@@ -49,9 +49,9 @@ export class Reflection extends Schema {
                     //
                     // TODO: refactor below.
                     //
-                    if (Schema.is(_type)) {
+                    if (Schema.is(type)) {
                         fieldType = "ref";
-                        childTypeSchema = _type as typeof Schema;
+                        childTypeSchema = type as typeof Schema;
 
                     } else {
                         fieldType = Object.keys(type)[0];
@@ -76,10 +76,14 @@ export class Reflection extends Schema {
             reflection.types.push(currentType);
         }
 
+        // console.log("------------ (encode) REFLECTION ------------");
+
         for (let typeid in context.types) {
             const klass = context.types[typeid];
             const type = new ReflectionType();
             type.id = Number(typeid);
+
+            // console.log(type.id, klass.name, Object.keys(klass[Symbol.metadata]));
 
             // support inheritance
             const inheritFrom = Object.getPrototypeOf(klass);
@@ -87,7 +91,7 @@ export class Reflection extends Schema {
                 type.extendsId = context.schemas.get(inheritFrom);
             }
 
-            buildType(type, Metadata.getFor(klass));
+            buildType(type, klass[Symbol.metadata]);
         }
 
         return encoder.encodeAll();
@@ -106,9 +110,11 @@ export class Reflection extends Schema {
             const schema: typeof Schema = class _ extends parentKlass {};
 
             // const _metadata = Object.create(_classSuper[Symbol.metadata] ?? null);
-            // TODO: support inheritance
             const _metadata = parentKlass && parentKlass[Symbol.metadata] || Object.create(null);
             Object.defineProperty(schema, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata })
+
+            // register for inheritance support
+            TypeContext.register(schema);
 
             const typeid = reflectionType.id;
             types[typeid] = schema
@@ -142,7 +148,6 @@ export class Reflection extends Schema {
                     }
 
                 } else {
-                    console.log("Metadata.addField =>", field.name, field.type)
                     Metadata.addField(metadata, field.name, field.type as PrimitiveType);
                     // type(field.type as PrimitiveType)(schemaType.prototype, field.name);
                 }
@@ -150,19 +155,5 @@ export class Reflection extends Schema {
         });
 
         return new (schemaTypes[0])();
-
-        // /**
-        //  * auto-initialize referenced types on root type
-        //  * to allow registering listeners immediatelly on client-side
-        //  */
-        // for (let fieldName in rootType._definition.schema) {
-        //     const fieldType = rootType._definition.schema[fieldName];
-
-        //     if (typeof(fieldType) !== "string") {
-        //         rootInstance[fieldName] = (typeof (fieldType) === "function")
-        //             ? new (fieldType as any)() // is a schema reference
-        //             : new (getType(Object.keys(fieldType)[0])).constructor(); // is a "collection"
-        //     }
-        // }
     }
 }

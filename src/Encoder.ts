@@ -97,6 +97,11 @@ export class Encoder<T extends Schema> {
         // (to avoid creating a new context for each new room)
         //
         this.context = new TypeContext(root.constructor as typeof Schema);
+
+        // console.log(">>>>>>>>>>>>>>>> Encoder types");
+        // this.context.schemas.forEach((id, schema) => {
+        //     console.log("type:", id, schema.name, Object.keys(schema[Symbol.metadata]));
+        // });
     }
 
     protected setRoot(root: T) {
@@ -110,7 +115,7 @@ export class Encoder<T extends Schema> {
         bytes: number[] = [],
         useFilters: boolean = false,
     ) {
-        console.log("--------------------- ENCODE ----------------");
+
         const rootChangeTree = this.root['$changes'];
         // const refIdsVisited = new WeakSet<ChangeTree>();
 
@@ -118,7 +123,8 @@ export class Encoder<T extends Schema> {
         const numChangeTrees = changeTrees.length;
         // let numChangeTrees = 1;
 
-        console.log("Encode order:", changeTrees.map((c) => c.ref['constructor'].name));
+        // console.log("--------------------- ENCODE ----------------");
+        // console.log("Encode order:", changeTrees.map((c) => c.ref['constructor'].name));
 
         for (let i = 0; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
@@ -138,7 +144,6 @@ export class Encoder<T extends Schema> {
             ) {
                 encode.uint8(bytes, SWITCH_TO_STRUCTURE);
                 encode.number(bytes, changeTree.refId);
-                console.log("changeTree.refId", changeTree.refId, `(${changeTree.ref['constructor'].name})`);
             }
 
             const changes: ChangeOperation[] | number[] = (encodeAll)
@@ -278,13 +283,6 @@ export class Encoder<T extends Schema> {
     private tryEncodeTypeId (bytes: number[], baseType: typeof Schema, targetType: typeof Schema) {
         const baseTypeId = this.context.getTypeId(baseType);
         const targetTypeId = this.context.getTypeId(targetType);
-
-        // console.log({
-        //     baseType: baseType.name,
-        //     baseTypeId,
-        //     targetType: targetType.name,
-        //     targetTypeId,
-        // });
 
         if (baseTypeId !== targetTypeId) {
             encode.uint8(bytes, TYPE_ID);

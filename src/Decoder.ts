@@ -26,10 +26,10 @@ export class Decoder<T extends Schema> {
         this.setRoot(root);
         this.context = context || new TypeContext(root.constructor as typeof Schema);
 
-        console.log(">>>>>>>>>>>>>>>> Decoder types");
-        this.context.schemas.forEach((id, schema) => {
-            console.log("type:", id, schema.name, Object.keys(schema[Symbol.metadata]));
-        });
+        // console.log(">>>>>>>>>>>>>>>> Decoder types");
+        // this.context.schemas.forEach((id, schema) => {
+        //     console.log("type:", id, schema.name, Object.keys(schema[Symbol.metadata]));
+        // });
     }
 
     protected setRoot(root: T) {
@@ -43,7 +43,7 @@ export class Decoder<T extends Schema> {
         it: Iterator = { offset: 0 },
         ref: Ref = this.root,
     ) {
-        console.log("------------------- DECODE -------------------");
+        // console.log("------------------- DECODE -------------------");
         const allChanges: DataChange[] = [];
 
         const $root = this.refs;
@@ -57,7 +57,6 @@ export class Decoder<T extends Schema> {
             if (byte == SWITCH_TO_STRUCTURE) {
                 refId = decode.number(bytes, it);
                 const nextRef = $root.refs.get(refId) as Schema;
-                console.log("SWITCH_TO_STRUCTURE =>", { refId, ref: nextRef });
 
                 //
                 // Trying to access a reference that haven't been decoded yet.
@@ -101,6 +100,8 @@ export class Decoder<T extends Schema> {
             let previousValue: any;
 
             let dynamicIndex: number | string;
+
+            // console.log({ isSchema, fieldIndex, fieldName, type });
 
             if (!isSchema) {
                 previousValue = ref['getByIndex'](fieldIndex);
@@ -172,6 +173,12 @@ export class Decoder<T extends Schema> {
                 const refId = decode.number(bytes, it);
                 value = $root.refs.get(refId);
 
+                // console.log({
+                //     refId,
+                //     value,
+                //     operation: OPERATION[operation],
+                // });
+
                 if (operation !== OPERATION.REPLACE) {
                     const childType = this.getSchemaType(bytes, it, type);
 
@@ -188,6 +195,7 @@ export class Decoder<T extends Schema> {
                         }
                     }
 
+                    // console.log("ADD REF!", refId, value, ", TYPE =>", Metadata.getFor(childType));
                     $root.addRef(refId, value, (value !== previousValue));
                 }
 
@@ -234,7 +242,7 @@ export class Decoder<T extends Schema> {
                     }
                 }
 
-                console.log("ADD REF!", { refId, value });
+                // console.log("ADD REF!", { refId, value });
                 $root.addRef(refId, value, (valueRef !== previousValue));
             }
 
