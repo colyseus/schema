@@ -30,32 +30,24 @@ export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
     decode?(byte, it: Iterator);
 }
 
+export const $changes = Symbol('$changes');
+
 /**
  * Schema encoder / decoder
  */
 export abstract class Schema {
-
-    static onError(e) {
-        console.error(e);
-    }
 
     static is(type: DefinitionType) {
         const metadata = type[Symbol.metadata];
         return metadata && Metadata.hasFields(metadata);
     }
 
-    protected $changes: ChangeTree;
-
-    // TODO: refactor. this feature needs to be ported to other languages with potentially different API
-    // protected $listeners: { [field: string]: Array<(value: any, previousValue: any) => void> };
-    protected $callbacks: { [op: number]: Array<Function> };
-
-    public onChange(callback: () => void): () => void {
-        return addCallback((this.$callbacks || (this.$callbacks = {})), OPERATION.REPLACE, callback);
-    }
-    public onRemove(callback: () => void): () => void {
-        return addCallback((this.$callbacks || (this.$callbacks = {})), OPERATION.DELETE, callback);
-    }
+    // public onChange(callback: () => void): () => void {
+    //     return addCallback((this.$callbacks || (this.$callbacks = {})), OPERATION.REPLACE, callback);
+    // }
+    // public onRemove(callback: () => void): () => void {
+    //     return addCallback((this.$callbacks || (this.$callbacks = {})), OPERATION.DELETE, callback);
+    // }
 
     // allow inherited classes to have a constructor
     constructor(...args: any[]) {
@@ -86,7 +78,7 @@ export abstract class Schema {
      * @param operation OPERATION to perform (detected automatically)
      */
     public setDirty<K extends NonFunctionPropNames<this>>(property: K | number, operation?: OPERATION) {
-        this.$changes.change(property as any, operation);
+        this[$changes].change(property as any, operation);
     }
 
     /**
@@ -94,7 +86,6 @@ export abstract class Schema {
      * @param prop the property name
      * @param callback callback to be triggered on property change
      * @param immediate trigger immediatelly if property has been already set.
-     */
     public listen<K extends NonFunctionPropNames<this>>(
         prop: K,
         callback: (value: this[K], previousValue: this[K]) => void,
@@ -112,6 +103,7 @@ export abstract class Schema {
         // return un-register callback.
         return () => spliceOne(this.$callbacks[prop as string], this.$callbacks[prop as string].indexOf(callback));
     }
+     */
 
     /*
     applyFilters(client: ClientWithSessionId, encodeAll: boolean = false) {
@@ -334,8 +326,8 @@ export abstract class Schema {
 
     clone (): this {
         const cloned = new ((this as any).constructor);
-        const schema = this.metadata.schema;
-        for (let field in schema) {
+        const metadata = this.metadata;
+        for (const field in metadata) {
             if (
                 typeof (this[field]) === "object" &&
                 typeof (this[field]?.clone) === "function"
@@ -367,7 +359,7 @@ export abstract class Schema {
     }
 
     discardAllChanges() {
-        this.$changes.discardAll();
+        this[$changes].discardAll();
     }
 
     protected getByIndex(index: number) {

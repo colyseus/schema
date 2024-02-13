@@ -1,4 +1,4 @@
-import { Schema } from "../Schema";
+import { $changes, Schema } from "../Schema";
 import { Ref } from "./ChangeTree";
 import { Metadata } from "../annotations";
 
@@ -69,18 +69,18 @@ export class ReferenceTracker {
                 for (const field in metadata) {
                     if (typeof (Metadata.getType(metadata, field)) !== "string" &&
                         ref[field] &&
-                        ref[field]['$changes']) { // FIXME: this will not work anymore.
-                        this.removeRef(ref[field]['$changes'].refId);
+                        ref[field][$changes]) { // FIXME: this will not work anymore.
+                        this.removeRef(ref[field][$changes].refId);
                     }
                 }
 
             } else {
-                const metadata = ref['$changes'].parent.metadata;
-                const type =  metadata.schema[metadata.fieldsByIndex[ref['$changes'].parentIndex]];
+                const metadata = ref[$changes].parent.metadata;
+                const type =  metadata.schema[metadata.fieldsByIndex[ref[$changes].parentIndex]];
 
                 if (typeof (Object.values(type)[0]) === "function") {
                     Array.from(ref.values())
-                        .forEach((child) => this.removeRef(child['$changes'].refId));
+                        .forEach((child) => this.removeRef(child[$changes].refId));
                 }
             }
 

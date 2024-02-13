@@ -1,8 +1,9 @@
 import { Schema } from "./";
+import { $changes } from "./Schema";
 import { ChangeTree } from "./changes/ChangeTree";
 
 export function dumpChanges(schema: Schema) {
-    const changeTrees: ChangeTree[] = [schema['$changes']];
+    const changeTrees: ChangeTree[] = [schema[$changes]];
     let numChangeTrees = 1;
 
     const dump = {};

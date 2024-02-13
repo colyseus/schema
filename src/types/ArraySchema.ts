@@ -1,6 +1,6 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, Schema, DataChange } from "../Schema";
+import { SchemaDecoderCallbacks, Schema, DataChange, $changes } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
 
@@ -87,8 +87,6 @@ export function getArrayProxy(value: ArraySchema) {
 
 export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     protected childType: new () => V;
-
-    protected $changes: ChangeTree;
 
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
@@ -191,7 +189,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
             }
         });
 
-        this.$changes = new ChangeTree(proxy);
+        this[$changes] = new ChangeTree(proxy);
 
         return proxy;
     }
@@ -229,7 +227,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         const key = Array.from(this.$indexes.values()).pop();
         if (key === undefined) { return undefined; }
 
-        this.$changes.delete(key);
+        this[$changes].delete(key);
         this.$indexes.delete(key);
 
         const value = this.$items.get(key);
@@ -257,20 +255,20 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
             return;
         }
 
-        if (value['$changes'] !== undefined) {
-            (value['$changes'] as ChangeTree).setParent(this, this.$changes.root, index);
+        if (value[$changes] !== undefined) {
+            (value[$changes] as ChangeTree).setParent(this, this[$changes].root, index);
         }
 
-        const operation = this.$changes.indexes?.[index]?.op ?? OPERATION.ADD;
+        const operation = this[$changes].indexes?.[index]?.op ?? OPERATION.ADD;
 
         this.$indexes.set(index, index);
         this.$items.set(index, value);
 
-        this.$changes.change(index, operation);
+        this[$changes].change(index, operation);
 
         // TODO: endel revisit here. 'indexes' might not exist
-        // if (this.$changes.indexes) {
-            // this.$changes.indexes[index] = index;
+        // if (this[$changes].indexes) {
+            // this[$changes].indexes[index] = index;
         // }
     }
 
@@ -282,7 +280,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
 
     protected $deleteAt(index) {
         // delete at internal index
-        this.$changes.delete(index);
+        this[$changes].delete(index);
         this.$indexes.delete(index);
 
         return this.$items.delete(index);
@@ -290,8 +288,8 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
 
     clear(changes?: DataChange[]) {
         // discard previous operations.
-        this.$changes.discard(true, true);
-        this.$changes.indexes = {};
+        this[$changes].discard(true, true);
+        this[$changes].indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
@@ -308,10 +306,10 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         // clear items
         this.$items.clear();
 
-        this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
+        this[$changes].operation({ index: 0, op: OPERATION.CLEAR });
 
         // touch all structures until reach root
-        this.$changes.touchParents();
+        this[$changes].touchParents();
     }
 
     /**
@@ -744,7 +742,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
 
         } else {
             cloned = new ArraySchema(...this.map(item => (
-                (item['$changes'])
+                (item[$changes])
                     ? (item as any as Schema).clone()
                     : item
             )));

@@ -33,14 +33,12 @@ import { Decoder } from "./Decoder";
 //     console.log(util.inspect(message, false, 10, true));
 // }
 
-// @entity
 class Vec3 extends Schema {
     @type("number") accessor x: number;
     @type("number") accessor y: number;
     @type("number") accessor z: number;
 }
 
-// @entity
 class Base extends Schema {}
 
 class Entity extends Schema {
@@ -74,8 +72,9 @@ console.log(`encode: (${encoded.length})`, encoded);
 const encodedReflection = Reflection.encode(state);
 const decoded = Reflection.decode(encodedReflection);
 const decoder = new Decoder(decoded);
-decoder.decode(encoded);
+const changes = decoder.decode(encoded);
 console.log("decoded =>", decoded.toJSON());
+console.log("changes =>", changes);
 
 // const time = Date.now();
 // for (let i = 0; i < 200000; i++) {

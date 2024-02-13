@@ -1,5 +1,5 @@
 import { TypeContext, DefinitionType, PrimitiveType, Metadata } from "./annotations";
-import { Schema } from "./Schema";
+import { $changes, Schema } from "./Schema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
 import { SetSchema } from "./types/SetSchema";
@@ -107,7 +107,7 @@ export class Encoder<T extends Schema> {
     protected setRoot(root: T) {
         this.$root = new Root();
         this.root = root;
-        root['$changes'].setRoot(this.$root);
+        root[$changes].setRoot(this.$root);
     }
 
     encode(
@@ -116,7 +116,7 @@ export class Encoder<T extends Schema> {
         useFilters: boolean = false,
     ) {
 
-        const rootChangeTree = this.root['$changes'];
+        const rootChangeTree = this.root[$changes];
         // const refIdsVisited = new WeakSet<ChangeTree>();
 
         const changeTrees: ChangeTree[] = Array.from(this.$root['changes']);
@@ -216,8 +216,8 @@ export class Encoder<T extends Schema> {
                 const value = changeTree.getValue(fieldIndex);
 
                 // ensure refId for the value
-                if (value && value['$changes']) {
-                    value['$changes'].ensureRefId();
+                if (value && value[$changes]) {
+                    value[$changes].ensureRefId();
                 }
 
                 if (operation.op === OPERATION.TOUCH) {
@@ -231,7 +231,7 @@ export class Encoder<T extends Schema> {
                     // Encode refId for this instance.
                     // The actual instance is going to be encoded on next `changeTree` iteration.
                     //
-                    encode.number(bytes, value.$changes.refId);
+                    encode.number(bytes, value[$changes].refId);
 
                     // Try to encode inherited TYPE_ID if it's an ADD operation.
                     if ((operation.op & OPERATION.ADD) === OPERATION.ADD) {
@@ -259,7 +259,7 @@ export class Encoder<T extends Schema> {
                     // Encode refId for this instance.
                     // The actual instance is going to be encoded on next `changeTree` iteration.
                     //
-                    encode.number(bytes, value.$changes.refId);
+                    encode.number(bytes, value[$changes].refId);
                 }
 
                 // if (useFilters) {

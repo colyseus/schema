@@ -1,5 +1,5 @@
 import { TypeContext, DefinitionType, PrimitiveType, Metadata } from "./annotations";
-import { DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
+import { $changes, DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
 import { SetSchema } from "./types/SetSchema";
@@ -94,7 +94,7 @@ export class Decoder<T extends Schema> {
 
             const type = (isSchema)
                 ? Metadata.getType(metadata, fieldName)
-                : ref['$changes'].getType(); // FIXME: refactor me.
+                : ref[$changes].getType(); // FIXME: refactor me.
 
             let value: any;
             let previousValue: any;
@@ -300,6 +300,7 @@ export class Decoder<T extends Schema> {
         return allChanges;
     }
 
+    /*
     private _triggerChanges(changes: DataChange[]) {
         const uniqueRefIds = new Set<number>();
         const $refs = this.refs.refs;
@@ -387,6 +388,7 @@ export class Decoder<T extends Schema> {
         }
 
     }
+    */
 
     private getSchemaType(bytes: number[], it: Iterator, defaultType: typeof Schema): typeof Schema {
         let type: typeof Schema;
@@ -404,7 +406,7 @@ export class Decoder<T extends Schema> {
         // let instance: Schema = new (type as any)();
 
         // // assign root on $changes
-        // instance['$changes'].root = this.root['$changes'].root;
+        // instance[$changes].root = this.root[$changes].root;
 
         // return instance;
         return new (type as any)();

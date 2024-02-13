@@ -1,7 +1,7 @@
 import "./symbol.shim";
 import { ChangeSet } from './changes/ChangeSet';
 import { ChangeTree, Ref, Root } from './changes/ChangeTree';
-import { Schema } from './Schema';
+import { $changes, Schema } from './Schema';
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
 import { getType } from './types/typeRegistry';
@@ -288,7 +288,7 @@ export function type(type: DefinitionType, options?: TypeOptions) {
 
         if (!Metadata.hasFields(context.metadata)) {
             context.addInitializer(function (this: Ref) {
-                Object.defineProperty(this, '$changes', {
+                Object.defineProperty(this, $changes, {
                     value: new ChangeTree(this),
                     enumerable: false,
                     writable: true
@@ -317,7 +317,7 @@ export function type(type: DefinitionType, options?: TypeOptions) {
 
                 // do not flag change if value is undefined.
                 if (value !== undefined) {
-                    this['$changes'].change(fieldIndex);
+                    this[$changes].change(fieldIndex);
 
                     // automaticallty transform Array into ArraySchema
                     if (isArray) {
@@ -389,16 +389,16 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                     }
 
                     // flag the change for encoding.
-                    this['$changes'].change(fieldIndex);
+                    this[$changes].change(fieldIndex);
 
                     //
                     // call setParent() recursively for this and its child
                     // structures.
                     //
-                    if (value['$changes']) {
-                        (value['$changes'] as ChangeTree).setParent(
+                    if (value[$changes]) {
+                        (value[$changes] as ChangeTree).setParent(
                             this,
-                            this['$changes'].root,
+                            this[$changes].root,
                             Metadata.getIndex(this.metadata, field),
                         );
                     }
@@ -407,7 +407,7 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                     //
                     // Setting a field to `null` or `undefined` will delete it.
                     //
-                    this['$changes'].delete(field);
+                    this[$changes].delete(field);
                 }
 
                 set.call(this, value);

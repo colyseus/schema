@@ -1,5 +1,5 @@
 import { OPERATION } from "../spec";
-import { Schema } from "../Schema";
+import { $changes, Schema } from "../Schema";
 import { Metadata, FilterChildrenCallback, Definition, DefinitionType } from "../annotations";
 
 import { MapSchema } from "../types/MapSchema";
@@ -79,8 +79,8 @@ export class ChangeTree {
 
         this.allChanges.forEach((index) => {
             const childRef = (this.ref as Schema)['getByIndex'](index);
-            if (childRef && childRef['$changes']) {
-                childRef['$changes'].setRoot(root);
+            if (childRef && childRef[$changes]) {
+                childRef[$changes].setRoot(root);
             }
         });
     }
@@ -117,10 +117,10 @@ export class ChangeTree {
             for (let field in metadata) {
                 const value = this.ref[field];
 
-                if (value && value['$changes']) {
+                if (value && value[$changes]) {
                     const parentIndex = Metadata.getIndex(metadata, field);
 
-                    (value['$changes'] as ChangeTree).setParent(
+                    (value[$changes] as ChangeTree).setParent(
                         this.ref,
                         root,
                         parentIndex,
@@ -131,8 +131,8 @@ export class ChangeTree {
         } else if (typeof (this.ref) === "object") {
             this.ref.forEach((value, key) => {
                 if (value instanceof Schema) {
-                    const changeTreee = value['$changes'];
-                    const parentIndex = this.ref['$changes'].indexes[key];
+                    const changeTreee = value[$changes];
+                    const parentIndex = this.ref[$changes].indexes[key];
 
                     changeTreee.setParent(
                         this.ref,
@@ -200,7 +200,7 @@ export class ChangeTree {
 
     touchParents() {
         if (this.parent) {
-            (this.parent['$changes'] as ChangeTree).touch(this.parentIndex);
+            (this.parent[$changes] as ChangeTree).touch(this.parentIndex);
         }
     }
 
@@ -251,8 +251,8 @@ export class ChangeTree {
         this.allChanges.delete(index);
 
         // remove `root` reference
-        if (previousValue && previousValue['$changes']) {
-            previousValue['$changes'].parent = undefined;
+        if (previousValue && previousValue[$changes]) {
+            previousValue[$changes].parent = undefined;
         }
 
         this.changed = true;
@@ -294,8 +294,8 @@ export class ChangeTree {
         this.changes.forEach((change) => {
             const value = this.getValue(change.index);
 
-            if (value && value['$changes']) {
-                value['$changes'].discardAll();
+            if (value && value[$changes]) {
+                value[$changes].discardAll();
             }
         });
 
