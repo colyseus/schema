@@ -1,13 +1,10 @@
 import { OPERATION } from './spec';
 import { DefinitionType, Metadata } from "./annotations";
 
-import type { Iterator } from "./encoding/decode"; // dts-bundle-generator
+import type { Iterator } from "./decoding/decode"; // dts-bundle-generator
 
-import { ChangeTree } from "./changes/ChangeTree";
+import { FieldChangeTracker } from "./changes/ChangeTree";
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
-import { ReferenceTracker } from './changes/ReferenceTracker';
-import { addCallback, spliceOne } from './types/utils';
-import { ChangeSet } from './changes/ChangeSet';
 
 export interface DataChange<T=any,F=string> {
     refId: number,
@@ -21,9 +18,9 @@ export interface DataChange<T=any,F=string> {
 export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
     $callbacks: { [operation: number]: Array<(item: TValue, key: TKey) => void> };
 
-    onAdd(callback: (item: any, key: any) => void, ignoreExisting?: boolean): () => void;
-    onRemove(callback: (item: any, key: any) => void): () => void;
-    onChange(callback: (item: any, key: any) => void): () => void;
+    // onAdd(callback: (item: any, key: any) => void, ignoreExisting?: boolean): () => void;
+    // onRemove(callback: (item: any, key: any) => void): () => void;
+    // onChange(callback: (item: any, key: any) => void): () => void;
 
     clone(decoding?: boolean): SchemaDecoderCallbacks;
     clear(changes?: DataChange[]);
@@ -31,6 +28,7 @@ export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
 }
 
 export const $changes = Symbol('$changes');
+export const $refId = Symbol('$refId');
 
 /**
  * Schema encoder / decoder
@@ -41,13 +39,6 @@ export abstract class Schema {
         const metadata = type[Symbol.metadata];
         return metadata && Metadata.hasFields(metadata);
     }
-
-    // public onChange(callback: () => void): () => void {
-    //     return addCallback((this.$callbacks || (this.$callbacks = {})), OPERATION.REPLACE, callback);
-    // }
-    // public onRemove(callback: () => void): () => void {
-    //     return addCallback((this.$callbacks || (this.$callbacks = {})), OPERATION.DELETE, callback);
-    // }
 
     // allow inherited classes to have a constructor
     constructor(...args: any[]) {
@@ -64,11 +55,6 @@ export abstract class Schema {
     ) {
         Object.assign(this, props);
         return this;
-    }
-
-    get metadata () {
-        return Metadata.getFor(this.constructor);
-        // return this.constructor[Symbol.metadata];
     }
 
     /**
@@ -326,7 +312,7 @@ export abstract class Schema {
 
     clone (): this {
         const cloned = new ((this as any).constructor);
-        const metadata = this.metadata;
+        const metadata = this.constructor[Symbol.metadata];
         for (const field in metadata) {
             if (
                 typeof (this[field]) === "object" &&
@@ -344,7 +330,7 @@ export abstract class Schema {
     }
 
     toJSON () {
-        const metadata = this.metadata;
+        const metadata = this.constructor[Symbol.metadata];
 
         const obj: unknown = {};
         for (const fieldName in metadata) {
@@ -363,11 +349,11 @@ export abstract class Schema {
     }
 
     protected getByIndex(index: number) {
-        return this[this.metadata.fieldsByIndex[index]];
+        return this[this.constructor[Symbol.metadata][index]];
     }
 
     protected deleteByIndex(index: number) {
-        this[this.metadata.fieldsByIndex[index]] = undefined;
+        this[this.constructor[Symbol.metadata][index]] = undefined;
     }
 
 }

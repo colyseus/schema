@@ -1,10 +1,11 @@
 import { type, PrimitiveType, DefinitionType, TypeContext, Metadata } from "./annotations";
 import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
-import { getType } from "./types/typeRegistry";
-import { Iterator } from "./encoding/decode";
+import { Iterator } from "./decoding/decode";
 import { Encoder } from "./Encoder";
 import { Decoder } from "./Decoder";
+
+import * as util from "util";
 
 /**
  * Reflection
@@ -25,14 +26,21 @@ export class Reflection extends Schema {
     @type([ ReflectionType ]) accessor types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
     @type("number") accessor rootType: number;
 
-    static encode (instance: Schema) {
-        const context = new TypeContext(instance.constructor as typeof Schema);
+    static encode (instance: Schema, context?: TypeContext) {
+        if (!context) {
+            context = new TypeContext(instance.constructor as typeof Schema);
+        }
 
         const reflection = new Reflection();
-        const encoder = new Encoder(reflection);
+        const encoder =  new Encoder(reflection);
 
         const buildType = (currentType: ReflectionType, metadata: any) => {
-            for (const fieldName of Object.keys(metadata)) {
+            for (const fieldName in metadata) {
+                // skip fields from parent classes
+                if (!Object.prototype.hasOwnProperty.call(metadata, fieldName)) {
+                    continue;
+                }
+
                 const field = new ReflectionField();
                 field.name = fieldName;
 
@@ -76,14 +84,10 @@ export class Reflection extends Schema {
             reflection.types.push(currentType);
         }
 
-        // console.log("------------ (encode) REFLECTION ------------");
-
         for (let typeid in context.types) {
             const klass = context.types[typeid];
             const type = new ReflectionType();
             type.id = Number(typeid);
-
-            // console.log(type.id, klass.name, Object.keys(klass[Symbol.metadata]));
 
             // support inheritance
             const inheritFrom = Object.getPrototypeOf(klass);
@@ -126,7 +130,12 @@ export class Reflection extends Schema {
             const schemaType = schemaTypes[reflectionType.id];
             const metadata = schemaType[Symbol.metadata];
 
-            reflectionType.fields.forEach((field) => {
+            const parentKlass = reflection.types[reflectionType.extendsId];
+            const parentFieldIndex = parentKlass && parentKlass.fields.length || 0;
+
+            reflectionType.fields.forEach((field, i) => {
+                const fieldIndex = parentFieldIndex + i;
+
                 if (field.referencedType !== undefined) {
                     let fieldType = field.type;
                     let refType = schemaTypes[field.referencedType];
@@ -139,17 +148,14 @@ export class Reflection extends Schema {
                     }
 
                     if (fieldType === "ref") {
-                        Metadata.addField(metadata, field.name, refType);
-                        // type(refType)(schemaType.prototype, field.name);
+                        Metadata.addField(metadata, fieldIndex, field.name, refType);
 
                     } else {
-                        Metadata.addField(metadata, field.name, { [fieldType]: refType } as DefinitionType);
-                        // type({ [fieldType]: refType } as DefinitionType)(schemaType.prototype, field.name);
+                        Metadata.addField(metadata, fieldIndex, field.name, { [fieldType]: refType } as DefinitionType);
                     }
 
                 } else {
-                    Metadata.addField(metadata, field.name, field.type as PrimitiveType);
-                    // type(field.type as PrimitiveType)(schemaType.prototype, field.name);
+                    Metadata.addField(metadata, fieldIndex, field.name, field.type as PrimitiveType);
                 }
             });
         });

@@ -25,9 +25,9 @@ registerType("collection", { constructor: CollectionSchema, });
 export { dumpChanges } from "./utils";
 
 // Encoder / Decoder
-export type { Iterator } from "./encoding/decode";
+export type { Iterator } from "./decoding/decode";
 import * as encode from "./encoding/encode";
-import * as decode from "./encoding/decode";
+import * as decode from "./decoding/decode";
 export { encode, decode };
 
 // Reflection
@@ -43,11 +43,11 @@ export {
     deprecated,
     filter,
     filterChildren,
-    defineTypes,
+    // defineTypes,
     hasFilter,
 
     // Internals
-    SchemaDefinition,
+    Metadata,
     TypeContext,
 } from "./annotations";
 

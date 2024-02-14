@@ -1,12 +1,12 @@
-import { ChangeTree } from "../changes/ChangeTree";
+import { FieldChangeTracker } from "../changes/ChangeTree";
 import { ClientWithSessionId } from "../annotations";
 
 export class ClientState {
-    refIds = new WeakSet<ChangeTree>();
-    containerIndexes = new WeakMap<ChangeTree, Set<number>>();
+    refIds = new WeakSet<FieldChangeTracker>();
+    containerIndexes = new WeakMap<FieldChangeTracker, Set<number>>();
     // containerIndexes = new Map<ChangeTree, Set<number>>();
 
-    addRefId(changeTree: ChangeTree) {
+    addRefId(changeTree: FieldChangeTracker) {
         if (!this.refIds.has(changeTree)) {
             this.refIds.add(changeTree);
             this.containerIndexes.set(changeTree, new Set());

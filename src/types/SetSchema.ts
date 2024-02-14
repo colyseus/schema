@@ -1,11 +1,11 @@
-import { ChangeTree } from "../changes/ChangeTree";
+import { KeyValueChangeTracker } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, DataChange } from "../Schema";
+import { SchemaDecoderCallbacks, DataChange, $changes } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
 
 export class SetSchema<V=any> implements SchemaDecoderCallbacks {
-    protected $changes: ChangeTree = new ChangeTree(this);
+    protected $changes: KeyValueChangeTracker = new KeyValueChangeTracker(this);
 
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
@@ -46,8 +46,8 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         // set "index" for reference.
         const index = this.$refId++;
 
-        if ((value['$changes']) !== undefined) {
-            (value['$changes'] as ChangeTree).setParent(this, this.$changes.root, index);
+        if ((value[$changes]) !== undefined) {
+            value[$changes].setParent(this, this.$changes.root, index);
         }
 
         const operation = this.$changes.indexes[index]?.op ?? OPERATION.ADD;

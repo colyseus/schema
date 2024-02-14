@@ -5,16 +5,12 @@ import { MapSchema } from "./types/MapSchema";
 import { SetSchema } from "./types/SetSchema";
 import { ArraySchema } from "./types/ArraySchema";
 
-import * as decode from "./encoding/decode";
+import * as decode from "./decoding/decode";
 import { getType } from './types/typeRegistry';
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { ChangeOperation, ChangeTree, Ref } from "./changes/ChangeTree";
-import { Iterator } from "./encoding/decode";
+import { Ref } from "./changes/ChangeTree";
+import { Iterator } from "./decoding/decode";
 import { ReferenceTracker } from "./changes/ReferenceTracker";
-
-function decodePrimitiveType (type: string, bytes: number[], it: Iterator) {
-    return decode[type as string](bytes, it);
-}
 
 export class Decoder<T extends Schema> {
     context: TypeContext;
@@ -68,7 +64,7 @@ export class Decoder<T extends Schema> {
             }
 
             const isSchema = (ref instanceof Schema);
-            const metadata = (isSchema) ? Metadata.getFor(ref['constructor']) : undefined;
+            const metadata = (isSchema) ? ref['constructor'][Symbol.metadata] : undefined;
 
             const operation = (isSchema)
                 ? (byte >> 6) << 6 // "compressed" index + operation
@@ -89,7 +85,7 @@ export class Decoder<T extends Schema> {
                 : decode.number(bytes, it);
 
             const fieldName = (isSchema)
-                ? metadata.fieldsByIndex[fieldIndex]
+                ? metadata[fieldIndex]
                 : "";
 
             const type = (isSchema)
@@ -101,7 +97,7 @@ export class Decoder<T extends Schema> {
 
             let dynamicIndex: number | string;
 
-            // console.log({ isSchema, fieldIndex, fieldName, type });
+            console.log({ isSchema, fieldIndex, fieldName, type });
 
             if (!isSchema) {
                 previousValue = ref['getByIndex'](fieldIndex);
@@ -203,7 +199,7 @@ export class Decoder<T extends Schema> {
                 //
                 // primitive value (number, string, boolean, etc)
                 //
-                value = decodePrimitiveType(type as string, bytes, it);
+                value = decode[type as string](bytes, it);
 
             } else {
                 const typeDef = getType(Object.keys(type)[0]);

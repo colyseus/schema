@@ -1,5 +1,7 @@
 // import * as util from "node:util";
 
+import "./symbol.shim";
+
 import { entity, type, TypeContext } from "./annotations";
 import { Reflection, ReflectionField, ReflectionType } from "./Reflection";
 
@@ -9,6 +11,79 @@ import { ArraySchema } from "./types/ArraySchema";
 
 import { Encoder } from "./Encoder";
 import { Decoder } from "./Decoder";
+
+// function decorate({ get, set }, context: ClassAccessorDecoratorContext): ClassAccessorDecoratorResult<any, any> {
+//     const field = context.name.toString();
+//     // const fieldIndex = Metadata.addField(context.metadata, field, type);
+
+//     const parent = Object.getPrototypeOf(context.metadata);
+
+//     let lastIndex = (parent && parent[-1] as number) ?? -1;
+//     lastIndex++;
+
+//     context.metadata[field] = { type: "number" };
+
+//     Object.defineProperty(context.metadata, lastIndex, {
+//         value: field,
+//         enumerable: false,
+//         configurable: true,
+//     });
+
+//     Object.defineProperty(context.metadata, -1, {
+//         value: lastIndex,
+//         enumerable: false,
+//         configurable: true
+//     });
+
+//     return {
+//         init(value) { return value; },
+//         get() { return get.call(this); },
+//         set(value: any) { set.call(this, value); },
+//     };
+// }
+
+// class Fruit {
+//     @decorate accessor frutose: number = 1;
+// }
+
+// class Banana extends Fruit {
+//     @decorate accessor potassium: number = 10;
+// }
+
+// class Berry extends Fruit {
+//     @decorate accessor antioxidants: number = 10;
+// }
+
+// class Strawberry extends Berry {
+//     @decorate accessor fiber: number = 10;
+// }
+
+// class Grape extends Berry {
+//     @decorate accessor vitaminc: number = 5;
+// }
+
+// console.log("fruit:", Fruit[Symbol.metadata], Object.keys(Fruit[Symbol.metadata]));
+// console.log("banana:", Banana[Symbol.metadata], Object.keys(Banana[Symbol.metadata]));
+// console.log("strawberry:", Strawberry[Symbol.metadata], Object.keys(Strawberry[Symbol.metadata]));
+// console.log("grape:", Grape[Symbol.metadata], Object.keys(Grape[Symbol.metadata]));
+
+// console.log("GRAPE =>");
+
+// function printFields(metadata) {
+//     let i = 0;
+//     const len = metadata[-1]
+//     console.log({ len });
+//     for (let i = 0; i <= len; i++) {
+//         console.log("over len...", i, metadata[i])
+//     }
+// }
+
+// console.log("Grape...");
+// printFields(Grape[Symbol.metadata]);
+
+// console.log("Banana...");
+// printFields(Banana[Symbol.metadata]);
+
 
 // class Item extends Schema {
 //     @type("string") accessor name: string;
@@ -57,32 +132,56 @@ class State extends Schema {
     // @type({ map: Base }) players = new MapSchema<Entity>();
     @type("number") accessor num: number = 0;
     @type("string") accessor str = "Hello world!";
-    @type(Entity) accessor entity = new Player().assign({
-        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-    });
+    // @type(Entity) accessor entity = new Player().assign({
+    //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+    //     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    // });
+    @type({ map: Entity }) accessor entities = new MapSchema<Entity>();
 }
 
 const state = new State();
+
+state.entities.set("one", new Player().assign({
+    position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+    rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+}));
+
+state.entities.set("two", new Player().assign({
+    position: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    rotation: new Vec3().assign({ x: 7, y: 8, z: 9 }),
+}));
 
 const encoder = new Encoder(state);
 const encoded = encoder.encode();
 console.log(`encode: (${encoded.length})`, encoded);
 
-const encodedReflection = Reflection.encode(state);
+const encodedReflection = Reflection.encode(state, encoder.context);
 const decoded = Reflection.decode(encodedReflection);
 const decoder = new Decoder(decoded);
 const changes = decoder.decode(encoded);
 console.log("decoded =>", decoded.toJSON());
-console.log("changes =>", changes);
+// console.log("changes =>", changes);
 
+// const rotation = state.entity.rotation;
+// rotation.x = 100;
+
+// state.entity.rotation = undefined;
+
+// const encoded2 = encoder.encode();
+// console.log({ encoded2 });
+
+// decoder.decode(encoded2);
+// console.log("decoded =>", decoded.toJSON());
+
+// console.profile();
 // const time = Date.now();
-// for (let i = 0; i < 200000; i++) {
+// for (let i = 0; i < 300000; i++) {
 //     const state = new State();
 //     encoder['setRoot'](state);
 //     encoder.encode();
 // }
 // console.log("encode time:", Date.now() - time);
+// console.profileEnd();
 
 // state.players.set("entity", new Entity());
 // state.players.set("one", new Player());

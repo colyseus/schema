@@ -1,9 +1,9 @@
 import { Schema } from "./";
 import { $changes } from "./Schema";
-import { ChangeTree } from "./changes/ChangeTree";
+import { FieldChangeTracker } from "./changes/ChangeTree";
 
 export function dumpChanges(schema: Schema) {
-    const changeTrees: ChangeTree[] = [schema[$changes]];
+    const changeTrees: FieldChangeTracker[] = [schema[$changes]];
     let numChangeTrees = 1;
 
     const dump = {};
@@ -17,7 +17,7 @@ export function dumpChanges(schema: Schema) {
             const fieldIndex = change.index;
 
             const field = ((ref as Schema)['metadata'])
-                ? ref['_definition'].fieldsByIndex[fieldIndex]
+                ? ref['metadata'][fieldIndex]
                 : ref['$indexes'].get(fieldIndex);
 
             currentStructure[field] = changeTree.getValue(fieldIndex);

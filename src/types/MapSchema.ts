@@ -1,6 +1,6 @@
-import { SchemaDecoderCallbacks, DataChange } from "../Schema";
+import { SchemaDecoderCallbacks, DataChange, $changes } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
-import { ChangeTree } from "../changes/ChangeTree";
+import { KeyValueChangeTracker } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { registerType } from "./typeRegistry";
 
@@ -50,14 +50,12 @@ export function getMapProxy(value: MapSchema) {
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, SchemaDecoderCallbacks {
     protected childType: new () => V;
 
-    // protected $changes: ChangeTree = new ChangeTree(this);
-    protected $changes: ChangeTree = new ChangeTree(this);
+    protected [$changes] = new KeyValueChangeTracker(this);
 
     protected $items: Map<K, V> = new Map<K, V>();
     protected $indexes: Map<number, K> = new Map<number, K>();
 
-    protected $refId: number = 0;
-
+    /*
     //
     // Decoding callbacks
     //
@@ -74,6 +72,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
     }
     public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = {}), OPERATION.DELETE, callback); }
     public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = {}), OPERATION.REPLACE, callback); }
+    */
 
     static is(type: any) {
         return type['map'] !== undefined;
@@ -104,9 +103,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
     [Symbol.iterator](): IterableIterator<[K, V]> { return this.$items[Symbol.iterator](); }
     get [Symbol.toStringTag]() { return this.$items[Symbol.toStringTag] }
 
-    static get [Symbol.species]() {
-        return MapSchema;
-    }
+    static get [Symbol.species]() { return MapSchema; }
 
     set(key: K, value: V) {
         if (value === undefined || value === null) {
@@ -117,21 +114,24 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         // See: https://github.com/colyseus/colyseus/issues/561#issuecomment-1646733468
         key = key.toString() as K;
 
-        // get "index" for this value.
-        const hasIndex = typeof(this.$changes.indexes[key]) !== "undefined";
-        const index = (hasIndex)
-            ? this.$changes.indexes[key]
-            : this.$refId++;
+        // console.log("MapSchema#set", key, value, value[$changes]);
 
-        let operation: OPERATION = (hasIndex)
+        // get "index" for this value.
+        const isReplace = typeof(this[$changes].indexes[key]) !== "undefined";
+
+        const index = (isReplace)
+            ? this[$changes].indexes[key]
+            : this[$changes].indexes[-1] ?? 0;
+
+        let operation: OPERATION = (isReplace)
             ? OPERATION.REPLACE
             : OPERATION.ADD;
 
-        const isRef = (value['$changes']) !== undefined;
+        const isRef = (value[$changes]) !== undefined;
         if (isRef) {
-            (value['$changes'] as ChangeTree).setParent(
+            value[$changes].setParent(
                 this,
-                this.$changes.root,
+                this[$changes].root,
                 index
             );
         }
@@ -140,8 +140,8 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         // (encoding)
         // set a unique id to relate directly with this key/value.
         //
-        if (!hasIndex) {
-            this.$changes.indexes[key] = index;
+        if (!isReplace) {
+            this[$changes].indexes[key] = index;
             this.$indexes.set(index, key);
 
         } else if (
@@ -161,7 +161,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         this.$items.set(key, value);
 
         // this.$changes.change(key, operation);
-        this.$changes.change(index, operation);
+        this[$changes].change(index, operation);
 
         return this;
     }
@@ -180,14 +180,14 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         // // const index = this.$changes.indexes[key];
         // // this.$indexes.delete(index);
 
-        this.$changes.delete(key.toString());
+        this[$changes].delete(key.toString());
         return this.$items.delete(key);
     }
 
     clear(changes?: DataChange[]) {
         // discard previous operations.
-        this.$changes.discard(true, true);
-        this.$changes.indexes = {};
+        this[$changes].discard(true, true);
+        this[$changes].indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
@@ -204,10 +204,10 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         // clear items
         this.$items.clear();
 
-        this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
+        this[$changes].operation({ index: 0, op: OPERATION.CLEAR });
 
         // touch all structures until reach root
-        this.$changes.touchParents();
+        this[$changes].touchParents();
     }
 
     has (key: K) {
@@ -267,8 +267,9 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
     //
     // Decoding utilities
     //
+    // @ts-ignore
     clone(isDecoding?: boolean): MapSchema<V> {
-        let cloned: MapSchema;
+        let cloned: MapSchema<V>;
 
         if (isDecoding) {
             // client-side
@@ -277,13 +278,15 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         } else {
             // server-side
             cloned = new MapSchema();
+
             this.forEach((value, key) => {
-                if (value['$changes']) {
+                if (value[$changes]) {
                     cloned.set(key, value['clone']());
                 } else {
                     cloned.set(key, value);
                 }
             })
+
         }
 
         return cloned;

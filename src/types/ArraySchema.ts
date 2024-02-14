@@ -1,4 +1,4 @@
-import { ChangeTree } from "../changes/ChangeTree";
+import { KeyValueChangeTracker } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema, DataChange, $changes } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
@@ -134,7 +134,6 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
 
         const proxy = new Proxy(this, {
             get: (obj, prop) => {
-
                 if (
                     typeof (prop) !== "symbol" &&
                     !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
@@ -189,7 +188,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
             }
         });
 
-        this[$changes] = new ChangeTree(proxy);
+        this[$changes] = new KeyValueChangeTracker(proxy);
 
         return proxy;
     }
@@ -256,7 +255,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         }
 
         if (value[$changes] !== undefined) {
-            (value[$changes] as ChangeTree).setParent(this, this[$changes].root, index);
+            value[$changes].setParent(this, this[$changes].root, index);
         }
 
         const operation = this[$changes].indexes?.[index]?.op ?? OPERATION.ADD;

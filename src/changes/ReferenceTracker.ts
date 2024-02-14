@@ -2,6 +2,10 @@ import { $changes, Schema } from "../Schema";
 import { Ref } from "./ChangeTree";
 import { Metadata } from "../annotations";
 
+/**
+ * Used for decoding only.
+ */
+
 export class ReferenceTracker {
     //
     // Relation of refId => Schema structure
@@ -65,7 +69,7 @@ export class ReferenceTracker {
             // Ensure child schema instances have their references removed as well.
             //
             if (ref instanceof Schema) {
-                const metadata = ref.metadata;
+                const metadata = ref['constructor'][Symbol.metadata];
                 for (const field in metadata) {
                     if (typeof (Metadata.getType(metadata, field)) !== "string" &&
                         ref[field] &&

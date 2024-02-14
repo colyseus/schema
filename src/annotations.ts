@@ -1,10 +1,8 @@
 import "./symbol.shim";
-import { ChangeSet } from './changes/ChangeSet';
-import { ChangeTree, Ref, Root } from './changes/ChangeTree';
+import { FieldChangeTracker, Ref, Root } from './changes/ChangeTree';
 import { $changes, Schema } from './Schema';
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
-import { getType } from './types/typeRegistry';
 
 /**
  * Data types
@@ -59,53 +57,11 @@ export type MetadataField = {
 };
 
 export type Metadata =
-    { [field: string]: MetadataField; } &
-    { fieldsByIndex: string[]; }
+    { [field: number]: string; } & // index => field name
+    { [field: string]: MetadataField; } // field name => field metadata
 
 export const Metadata = {
-    getFor(klass: any) {
-        //
-        // TODO: cache values per class, avoid re-building "combined" object every time.
-        //
-        const metadata = klass[Symbol.metadata];
-        if (!metadata || !metadata.fieldsByIndex) { return undefined; }
-
-        const parents: any[] = [metadata];
-        const fieldsByIndex: string[] = [...metadata.fieldsByIndex];
-
-        let parent: any = metadata;
-        while (parent = Object.getPrototypeOf(parent)) {
-            parents.unshift(parent);
-            fieldsByIndex.unshift(...parent.fieldsByIndex);
-        }
-
-        const all = Object.assign({}, ...parents) as Metadata;
-
-        Object.defineProperty(all, 'fieldsByIndex', {
-            value: fieldsByIndex,
-            enumerable: false,
-            configurable: false,
-        });
-
-        return all;
-    },
-
-    addField(metadata: any, field: string, type: DefinitionType) {
-        if (!this.hasFields(metadata)) {
-            Object.defineProperty(metadata, 'fieldsByIndex', {
-                value: [],
-                enumerable: false,
-                configurable: false,
-            });
-        }
-
-        // TODO: this doesn't support 3-level inheritance
-        const parentMetadata = Object.getPrototypeOf(metadata);
-        // FIXME: reflection may not be working properly here
-        const parentClassLastFieldIndex = parentMetadata && parentMetadata.fieldsByIndex && parentMetadata.fieldsByIndex.length || 0;
-
-        const index = metadata.fieldsByIndex.length + parentClassLastFieldIndex;
-
+    addField(metadata: any, index: number, field: string, type: DefinitionType) {
         metadata[field] = {
             type: (Array.isArray(type))
                 ? { array: type[0] }
@@ -113,7 +69,20 @@ export const Metadata = {
             index
         };
 
-        metadata.fieldsByIndex.push(field);
+        // map -1 as last field index
+        Object.defineProperty(metadata, -1, {
+            value: index,
+            enumerable: false,
+            configurable: true
+        });
+
+        // map index => field name (non enumerable)
+        Object.defineProperty(metadata, index, {
+            value: field,
+            enumerable: false,
+            configurable: true,
+        });
+
 
         return index;
     },
@@ -135,7 +104,15 @@ export const Metadata = {
     },
 
     hasFields(metadata: any) {
-        return Object.prototype.hasOwnProperty.call(metadata, 'fieldsByIndex') as boolean;
+        return Object.prototype.hasOwnProperty.call(metadata, -1) as boolean;
+    },
+
+    getFields(metadata: any) {
+        const fields = {};
+        for (let i = 0; i < metadata[-1]; i++) {
+            fields[metadata[i]] = metadata[metadata[i]];
+        }
+        return fields;
     }
 }
 
@@ -226,7 +203,7 @@ export class TypeContext {
         const metadata = klass[Symbol.metadata];
 
         for (const field in metadata) {
-            const fieldType = Metadata.getType(metadata, field);
+            const fieldType = metadata[field].type;
 
             if (typeof(fieldType) === "string") {
                 continue;
@@ -286,17 +263,29 @@ export function type(type: DefinitionType, options?: TypeOptions) {
 
         const field = context.name.toString();
 
-        if (!Metadata.hasFields(context.metadata)) {
+        //
+        // detect index for this field, considering inheritance
+        //
+        const parent = Object.getPrototypeOf(context.metadata);
+        let fieldIndex: number = context.metadata[-1] // current structure already has fields defined
+            ?? (parent && parent[-1]) // parent structure has fields defined
+            ?? -1; // no fields defined
+        fieldIndex++;
+
+        if (
+            !parent && // the parent already initializes the `$changes` property
+            !Metadata.hasFields(context.metadata)
+        ) {
             context.addInitializer(function (this: Ref) {
                 Object.defineProperty(this, $changes, {
-                    value: new ChangeTree(this),
+                    value: new FieldChangeTracker(this),
                     enumerable: false,
                     writable: true
                 });
             });
         }
 
-        const fieldIndex = Metadata.addField(context.metadata, field, type);
+        Metadata.addField(context.metadata, fieldIndex, field, type);
 
         const isArray = ArraySchema.is(type);
         const isMap = !isArray && MapSchema.is(type);
@@ -396,10 +385,10 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                     // structures.
                     //
                     if (value[$changes]) {
-                        (value[$changes] as ChangeTree).setParent(
+                        value[$changes].setParent(
                             this,
                             this[$changes].root,
-                            Metadata.getIndex(this.metadata, field),
+                            Metadata.getIndex(context.metadata, field),
                         );
                     }
 

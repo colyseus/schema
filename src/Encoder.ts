@@ -8,7 +8,7 @@ import { ArraySchema } from "./types/ArraySchema";
 import * as encode from "./encoding/encode";
 import { getType } from './types/typeRegistry';
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { ChangeOperation, ChangeTree, Root } from "./changes/ChangeTree";
+import { ChangeOperation, ChangeTracker, FieldChangeTracker, Root } from "./changes/ChangeTree";
 
 class EncodeSchemaError extends Error {}
 
@@ -84,7 +84,7 @@ function encodePrimitiveType(
 
 export class Encoder<T extends Schema> {
     context: TypeContext;
-    changes = new Set<ChangeTree>();
+    changes = new Set<FieldChangeTracker>();
 
     root: T;
     $root: Root;
@@ -115,11 +115,10 @@ export class Encoder<T extends Schema> {
         bytes: number[] = [],
         useFilters: boolean = false,
     ) {
-
         const rootChangeTree = this.root[$changes];
         // const refIdsVisited = new WeakSet<ChangeTree>();
 
-        const changeTrees: ChangeTree[] = Array.from(this.$root['changes']);
+        const changeTrees: ChangeTracker[] = Array.from(this.$root['changes']);
         const numChangeTrees = changeTrees.length;
         // let numChangeTrees = 1;
 
@@ -158,7 +157,7 @@ export class Encoder<T extends Schema> {
                 const fieldIndex = operation.index;
 
                 const field = (isSchema)
-                    ? Metadata.getFieldByIndex(ref.metadata, fieldIndex)
+                    ? ref['constructor'][Symbol.metadata][fieldIndex]
                     : fieldIndex;
 
                 // encode field index + operation
