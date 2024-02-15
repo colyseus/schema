@@ -1,6 +1,6 @@
 import { KeyValueChangeTracker } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, DataChange, $changes } from "../Schema";
+import { SchemaDecoderCallbacks, DataChange, $changes, $childType } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
 
@@ -39,6 +39,13 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
         if (initialValues) {
             initialValues.forEach((v) => this.add(v));
         }
+
+        Object.defineProperty(this, $childType, {
+            value: undefined,
+            enumerable: false,
+            writable: true,
+            configurable: true,
+        });
     }
 
     add(value: V) {

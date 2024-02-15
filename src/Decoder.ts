@@ -1,15 +1,15 @@
 import { TypeContext, DefinitionType, PrimitiveType, Metadata } from "./annotations";
-import { $changes, DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
+import { $changes, $childType, DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
 import { SetSchema } from "./types/SetSchema";
 import { ArraySchema } from "./types/ArraySchema";
 
-import * as decode from "./decoding/decode";
+import * as decode from "./encoding/decode";
 import { getType } from './types/typeRegistry';
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
 import { Ref } from "./changes/ChangeTree";
-import { Iterator } from "./decoding/decode";
+import { Iterator } from "./encoding/decode";
 import { ReferenceTracker } from "./changes/ReferenceTracker";
 
 export class Decoder<T extends Schema> {
@@ -90,14 +90,12 @@ export class Decoder<T extends Schema> {
 
             const type = (isSchema)
                 ? Metadata.getType(metadata, fieldName)
-                : ref[$changes].getType(); // FIXME: refactor me.
+                : ref[$childType];
 
             let value: any;
             let previousValue: any;
 
             let dynamicIndex: number | string;
-
-            console.log({ isSchema, fieldIndex, fieldName, type });
 
             if (!isSchema) {
                 previousValue = ref['getByIndex'](fieldIndex);
@@ -210,6 +208,8 @@ export class Decoder<T extends Schema> {
                     : new typeDef.constructor();
 
                 value = valueRef.clone(true);
+                value[$childType] = Object.values(type)[0]; // cache childType for ArraySchema and MapSchema
+
 
                 // preserve schema callbacks
                 if (previousValue) {

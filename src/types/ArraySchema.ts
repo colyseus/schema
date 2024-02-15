@@ -1,6 +1,6 @@
 import { KeyValueChangeTracker } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, Schema, DataChange, $changes } from "../Schema";
+import { SchemaDecoderCallbacks, Schema, DataChange, $changes, $childType } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
 
@@ -126,10 +126,11 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         // super(...items);
         this.push.apply(this, items);
 
-        Object.defineProperty(this, 'childType', {
+        Object.defineProperty(this, $childType, {
             value: undefined,
             enumerable: false,
-            writable: true
+            writable: true,
+            configurable: true,
         });
 
         const proxy = new Proxy(this, {

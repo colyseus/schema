@@ -132,34 +132,41 @@ class State extends Schema {
     // @type({ map: Base }) players = new MapSchema<Entity>();
     @type("number") accessor num: number = 0;
     @type("string") accessor str = "Hello world!";
-    // @type(Entity) accessor entity = new Player().assign({
-    //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-    //     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-    // });
-    @type({ map: Entity }) accessor entities = new MapSchema<Entity>();
+    @type(Entity) accessor entity = new Player().assign({
+        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    });
+    // @type({ map: Entity }) accessor entities = new MapSchema<Entity>();
 }
 
 const state = new State();
+// state.entities.set("one", new Player().assign({
+//     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+//     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+// }));
 
-state.entities.set("one", new Player().assign({
-    position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-    rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-}));
-
-state.entities.set("two", new Player().assign({
-    position: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-    rotation: new Vec3().assign({ x: 7, y: 8, z: 9 }),
-}));
+// state.entities.set("two", new Player().assign({
+//     position: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+//     rotation: new Vec3().assign({ x: 7, y: 8, z: 9 }),
+// }));
 
 const encoder = new Encoder(state);
 const encoded = encoder.encode();
-console.log(`encode: (${encoded.length})`, encoded);
+
+const time = Date.now();
+for (let i = 0; i < 300000; i++) {
+    encoder.encodeAll();
+}
+console.log("encode time:", Date.now() - time);
+
+// console.log(`encode: (${encoded.length})`, encoded);
 
 const encodedReflection = Reflection.encode(state, encoder.context);
 const decoded = Reflection.decode(encodedReflection);
 const decoder = new Decoder(decoded);
 const changes = decoder.decode(encoded);
 console.log("decoded =>", decoded.toJSON());
+
 // console.log("changes =>", changes);
 
 // const rotation = state.entity.rotation;

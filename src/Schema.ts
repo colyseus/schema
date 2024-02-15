@@ -1,7 +1,7 @@
 import { OPERATION } from './spec';
 import { DefinitionType, Metadata } from "./annotations";
 
-import type { Iterator } from "./decoding/decode"; // dts-bundle-generator
+import type { Iterator } from "./encoding/decode"; // dts-bundle-generator
 
 import { FieldChangeTracker } from "./changes/ChangeTree";
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
@@ -28,7 +28,12 @@ export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
 }
 
 export const $changes = Symbol('$changes');
-export const $refId = Symbol('$refId');
+
+/**
+ * Used to keep track of the type of the child elements of a collection
+ * (MapSchema, ArraySchema, etc.)
+ */
+export const $childType = Symbol('$childType');
 
 /**
  * Schema encoder / decoder

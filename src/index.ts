@@ -25,9 +25,9 @@ registerType("collection", { constructor: CollectionSchema, });
 export { dumpChanges } from "./utils";
 
 // Encoder / Decoder
-export type { Iterator } from "./decoding/decode";
+export type { Iterator } from "./encoding/decode";
 import * as encode from "./encoding/encode";
-import * as decode from "./decoding/decode";
+import * as decode from "./encoding/decode";
 export { encode, decode };
 
 // Reflection

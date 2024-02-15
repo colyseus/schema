@@ -1,11 +1,16 @@
 import { OPERATION } from "../spec";
-import { $changes, Schema } from "../Schema";
-import { Metadata, FilterChildrenCallback, DefinitionType } from "../annotations";
+import { $changes, $childType, Schema } from "../Schema";
+import { Metadata, FilterChildrenCallback, DefinitionType, PrimitiveType } from "../annotations";
 
 import { MapSchema } from "../types/MapSchema";
 import { ArraySchema } from "../types/ArraySchema";
 import { CollectionSchema } from "../types/CollectionSchema";
 import { SetSchema } from "../types/SetSchema";
+
+import { Encoder, encodePrimitiveType } from "../Encoder";
+import * as encode from "../encoding/encode";
+import { assertInstanceType } from "../encoding/assert";
+import { getType } from "../types/typeRegistry";
 
 export type Ref = Schema
     | ArraySchema
@@ -65,6 +70,8 @@ export interface ChangeTracker {
     // ensureRefId(): void;
 }
 
+export const $encodeOperation = Symbol("$encodeOperation");
+
 export class FieldChangeTracker implements ChangeTracker {
     ref: Ref;
     refId: number;
@@ -86,8 +93,6 @@ export class FieldChangeTracker implements ChangeTracker {
         this.root = root;
 
         root.enqueue(this);
-
-        console.log("SET ROOT!");
 
         this.allChanges.forEach((index) => {
             const childRef = (this.ref as Schema)['getByIndex'](index);
@@ -253,6 +258,89 @@ export class FieldChangeTracker implements ChangeTracker {
     }
 }
 
+FieldChangeTracker[$encodeOperation] = function (
+    encoder: Encoder,
+    bytes: number[],
+    operation: ChangeOperation,
+    changeTree: FieldChangeTracker,
+) {
+    const ref = changeTree.ref;
+    const field = ref['constructor'][Symbol.metadata][operation.index]
+
+    // encode field index + operation
+    if (operation.op !== OPERATION.TOUCH) {
+        //
+        // Compress `fieldIndex` + `operation` into a single byte.
+        // This adds a limitaion of 64 fields per Schema structure
+        //
+        encode.uint8(bytes, (operation.index | operation.op));
+    }
+
+    if (operation.op === OPERATION.DELETE) {
+        //
+        // TODO: delete from filter cache data.
+        //
+        // if (useFilters) {
+        //     delete changeTree.caches[fieldIndex];
+        // }
+        return;
+    }
+
+    // const type = changeTree.childType || ref._schema[field];
+    const type = changeTree.getType(operation.index);
+
+    // const type = changeTree.getType(fieldIndex);
+    const value = changeTree.getValue(operation.index);
+
+    // ensure refId for the value
+    if (value && value[$changes]) {
+        value[$changes].ensureRefId();
+    }
+
+    if (operation.op === OPERATION.TOUCH) {
+        return;
+    }
+
+    if (Schema.is(type)) {
+        assertInstanceType(value, type as typeof Schema, ref as Schema, field);
+
+        //
+        // Encode refId for this instance.
+        // The actual instance is going to be encoded on next `changeTree` iteration.
+        //
+        encode.number(bytes, value[$changes].refId);
+
+        // Try to encode inherited TYPE_ID if it's an ADD operation.
+        if ((operation.op & OPERATION.ADD) === OPERATION.ADD) {
+            encoder.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
+        }
+
+    } else if (typeof(type) === "string") {
+        //
+        // Primitive values
+        //
+        encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field);
+
+    } else {
+        //
+        // Custom type (MapSchema, ArraySchema, etc)
+        //
+        const definition = getType(Object.keys(type)[0]);
+
+        //
+        // ensure a ArraySchema has been provided
+        //
+        assertInstanceType(ref[field], definition.constructor, ref as Schema, field);
+
+        //
+        // Encode refId for this instance.
+        // The actual instance is going to be encoded on next `changeTree` iteration.
+        //
+        encode.number(bytes, value[$changes].refId);
+    }
+}
+
+
 export class KeyValueChangeTracker implements ChangeTracker {
     ref: Ref;
     refId: number;
@@ -383,7 +471,7 @@ export class KeyValueChangeTracker implements ChangeTracker {
         // - { map: "string" } => "string"
         // - { set: "string" } => "string"
         //
-        return this.ref['childType'];
+        return this.ref[$childType];
     }
 
     getChildrenFilter(): FilterChildrenCallback {
@@ -483,6 +571,107 @@ export class KeyValueChangeTracker implements ChangeTracker {
         if (index === undefined) {
             throw new Error(`ChangeTree: missing index for field "${fieldName}"`);
         }
+    }
+
+}
+
+KeyValueChangeTracker[$encodeOperation] = function (
+    encoder: Encoder,
+    bytes: number[],
+    operation: ChangeOperation,
+    changeTree: FieldChangeTracker,
+) {
+    const ref = changeTree.ref;
+    const fieldIndex = operation.index;
+
+    // encode field index + operation
+    if (operation.op !== OPERATION.TOUCH) {
+        encode.uint8(bytes, operation.op);
+
+        // custom operations
+        if (operation.op === OPERATION.CLEAR) {
+            return;
+        }
+
+        // indexed operations
+        encode.number(bytes, fieldIndex);
+    }
+
+    //
+    // encode "alias" for dynamic fields (maps)
+    // ADD or DELETE_AND_ADD
+    //
+    if ((operation.op & OPERATION.ADD) == OPERATION.ADD) {
+        if (ref instanceof MapSchema) {
+            //
+            // MapSchema dynamic key
+            //
+            const dynamicIndex = changeTree.ref['$indexes'].get(fieldIndex);
+            encode.string(bytes, dynamicIndex);
+        }
+    }
+
+    if (operation.op === OPERATION.DELETE) {
+        //
+        // TODO: delete from filter cache data.
+        //
+        // if (useFilters) {
+        //     delete changeTree.caches[fieldIndex];
+        // }
+        return;
+    }
+
+    // const type = changeTree.childType || ref._schema[field];
+    const type = changeTree.getType(fieldIndex);
+
+    // const type = changeTree.getType(fieldIndex);
+    const value = changeTree.getValue(fieldIndex);
+
+    // ensure refId for the value
+    if (value && value[$changes]) {
+        value[$changes].ensureRefId();
+    }
+
+    if (operation.op === OPERATION.TOUCH) {
+        return;
+    }
+
+    if (Schema.is(type)) {
+        assertInstanceType(value, type as typeof Schema, ref as Schema, operation.index);
+
+        //
+        // Encode refId for this instance.
+        // The actual instance is going to be encoded on next `changeTree` iteration.
+        //
+        encode.number(bytes, value[$changes].refId);
+
+        // Try to encode inherited TYPE_ID if it's an ADD operation.
+        if ((operation.op & OPERATION.ADD) === OPERATION.ADD) {
+            encoder.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
+        }
+
+    } else if (typeof(type) === "string") {
+        //
+        // Primitive values
+        //
+        encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, operation.index);
+
+    } else {
+        //
+        // Custom type (MapSchema, ArraySchema, etc)
+        //
+        const definition = getType(Object.keys(type)[0]);
+
+        //
+        // ensure a ArraySchema has been provided
+        //
+        assertInstanceType(ref[operation.index], definition.constructor, ref as Schema, operation.index);
+
+        //
+        // Encode refId for this instance.
+        // The actual instance is going to be encoded on next `changeTree` iteration.
+        //
+        encode.number(bytes, value[$changes].refId);
     }
 
 }

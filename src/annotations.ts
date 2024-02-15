@@ -1,6 +1,6 @@
 import "./symbol.shim";
 import { FieldChangeTracker, Ref, Root } from './changes/ChangeTree';
-import { $changes, Schema } from './Schema';
+import { $changes, $childType, Schema } from './Schema';
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
 
@@ -313,7 +313,7 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                         if (!(value instanceof ArraySchema)) {
                             value = new ArraySchema(...value);
                         }
-                        value['childType'] = Object.values(type)[0];
+                        value[$childType] = Object.values(type)[0];
                     }
 
                     // automaticallty transform Map into MapSchema
@@ -321,7 +321,7 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                         if (!(value instanceof MapSchema)) {
                             value = new MapSchema(value);
                         }
-                        value['childType'] = Object.values(type)[0];
+                        value[$childType] = Object.values(type)[0];
                     }
 
                     // try to turn provided structure into a Proxy
@@ -359,7 +359,7 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                         if (!(value instanceof ArraySchema)) {
                             value = new ArraySchema(...value);
                         }
-                        value['childType'] = Object.values(type)[0];
+                        value[$childType] = Object.values(type)[0];
                     }
 
                     // automaticallty transform Map into MapSchema
@@ -367,7 +367,7 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                         if (!(value instanceof MapSchema)) {
                             value = new MapSchema(value);
                         }
-                        value['childType'] = Object.values(type)[0];
+                        value[$childType] = Object.values(type)[0];
                     }
 
                     // try to turn provided structure into a Proxy

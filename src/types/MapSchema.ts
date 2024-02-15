@@ -1,4 +1,4 @@
-import { SchemaDecoderCallbacks, DataChange, $changes } from "../Schema";
+import { SchemaDecoderCallbacks, DataChange, $changes, $childType } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { KeyValueChangeTracker } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
@@ -92,10 +92,12 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
                 }
             }
         }
-        Object.defineProperty(this, 'childType', {
+
+        Object.defineProperty(this, $childType, {
             value: undefined,
             enumerable: false,
-            writable: true
+            writable: true,
+            configurable: true,
         });
     }
 
@@ -129,20 +131,19 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
 
         const isRef = (value[$changes]) !== undefined;
         if (isRef) {
-            value[$changes].setParent(
-                this,
-                this[$changes].root,
-                index
-            );
+            value[$changes].setParent(this, this[$changes].root, index);
         }
+
+        console.log(`MapSchema#set(${key}, ${value})`, OPERATION[operation], index);
 
         //
         // (encoding)
         // set a unique id to relate directly with this key/value.
         //
         if (!isReplace) {
-            this[$changes].indexes[key] = index;
             this.$indexes.set(index, key);
+            this[$changes].indexes[key] = index;
+            this[$changes].indexes[-1] = index + 1;
 
         } else if (
             !isRef &&

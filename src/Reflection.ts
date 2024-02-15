@@ -1,7 +1,7 @@
 import { type, PrimitiveType, DefinitionType, TypeContext, Metadata } from "./annotations";
 import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
-import { Iterator } from "./decoding/decode";
+import { Iterator } from "./encoding/decode";
 import { Encoder } from "./Encoder";
 import { Decoder } from "./Decoder";
 

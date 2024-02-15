@@ -6,64 +6,12 @@ import { SetSchema } from "./types/SetSchema";
 import { ArraySchema } from "./types/ArraySchema";
 
 import * as encode from "./encoding/encode";
+import { EncodeSchemaError, assertType } from "./encoding/assert";
 import { getType } from './types/typeRegistry';
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { ChangeOperation, ChangeTracker, FieldChangeTracker, Root } from "./changes/ChangeTree";
+import { $encodeOperation, ChangeOperation, ChangeTracker, FieldChangeTracker, Root } from "./changes/ChangeTree";
 
-class EncodeSchemaError extends Error {}
-
-function assertType(value: any, type: string, klass: Schema, field: string | number) {
-    let typeofTarget: string;
-    let allowNull: boolean = false;
-
-    switch (type) {
-        case "number":
-        case "int8":
-        case "uint8":
-        case "int16":
-        case "uint16":
-        case "int32":
-        case "uint32":
-        case "int64":
-        case "uint64":
-        case "float32":
-        case "float64":
-            typeofTarget = "number";
-            if (isNaN(value)) {
-                console.log(`trying to encode "NaN" in ${klass.constructor.name}#${field}`);
-            }
-            break;
-        case "string":
-            typeofTarget = "string";
-            allowNull = true;
-            break;
-        case "boolean":
-            // boolean is always encoded as true/false based on truthiness
-            return;
-    }
-
-    if (typeof (value) !== typeofTarget && (!allowNull || (allowNull && value !== null))) {
-        let foundValue = `'${JSON.stringify(value)}'${(value && value.constructor && ` (${value.constructor.name})`) || ''}`;
-        throw new EncodeSchemaError(`a '${typeofTarget}' was expected, but ${foundValue} was provided in ${klass.constructor.name}#${field}`);
-    }
-}
-
-function assertInstanceType(
-    value: Schema,
-    type: typeof Schema
-        | typeof ArraySchema
-        | typeof MapSchema
-        | typeof CollectionSchema
-        | typeof SetSchema,
-    klass: Schema,
-    field: string | number,
-) {
-    if (!(value instanceof type)) {
-        throw new EncodeSchemaError(`a '${type.name}' was expected, but '${(value as any).constructor.name}' was provided in ${klass.constructor.name}#${field}`);
-    }
-}
-
-function encodePrimitiveType(
+export function encodePrimitiveType(
     type: PrimitiveType,
     bytes: number[],
     value: any,
@@ -82,7 +30,7 @@ function encodePrimitiveType(
     }
 }
 
-export class Encoder<T extends Schema> {
+export class Encoder<T extends Schema = any> {
     context: TypeContext;
     changes = new Set<FieldChangeTracker>();
 
@@ -127,8 +75,7 @@ export class Encoder<T extends Schema> {
 
         for (let i = 0; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
-            const ref = changeTree.ref;
-            const isSchema = (ref instanceof Schema);
+            const encodeOperation = changeTree['constructor'][$encodeOperation];
 
             // Generate unique refId for the ChangeTree.
             changeTree.ensureRefId();
@@ -153,6 +100,10 @@ export class Encoder<T extends Schema> {
                 const operation: ChangeOperation = (encodeAll)
                     ? { op: OPERATION.ADD, index: changes[j] as number }
                     : changes[j] as ChangeOperation;
+
+                encodeOperation(this, bytes, operation, changeTree);
+
+                /*
 
                 const fieldIndex = operation.index;
 
@@ -265,6 +216,8 @@ export class Encoder<T extends Schema> {
                 //     // cache begin / end index
                 //     changeTree.cache(fieldIndex as number, bytes.slice(beginIndex));
                 // }
+
+                */
             }
 
             if (!encodeAll && !useFilters) {
@@ -279,7 +232,7 @@ export class Encoder<T extends Schema> {
         return this.encode(true, [], useFilters);
     }
 
-    private tryEncodeTypeId (bytes: number[], baseType: typeof Schema, targetType: typeof Schema) {
+    tryEncodeTypeId (bytes: number[], baseType: typeof Schema, targetType: typeof Schema) {
         const baseTypeId = this.context.getTypeId(baseType);
         const targetTypeId = this.context.getTypeId(targetType);
 
