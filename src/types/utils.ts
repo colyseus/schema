@@ -26,6 +26,7 @@ export function addCallback(
 
 
 export function removeChildRefs(this: CollectionSchema, changes: DataChange[]) {
+    // @ts-ignore
     const needRemoveRef = (typeof (this.$changes.getType()) !== "string");
 
     this.$items.forEach((item: any, key: any) => {

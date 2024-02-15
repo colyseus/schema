@@ -1,11 +1,11 @@
-import { KeyValueChangeTracker } from "../changes/ChangeTree";
+import { ChangeTracker, ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, DataChange, $changes, $childType } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
 
 export class SetSchema<V=any> implements SchemaDecoderCallbacks {
-    protected $changes: KeyValueChangeTracker = new KeyValueChangeTracker(this);
+    protected $changes: ChangeTracker = new ChangeTree(this);
 
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
@@ -116,10 +116,11 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         // clear items
         this.$items.clear();
 
+        // @ts-ignore
         this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
 
-        // touch all structures until reach root
-        this.$changes.touchParents();
+        // // touch all structures until reach root
+        // this.$changes.touchParents();
     }
 
     has (value: V): boolean {

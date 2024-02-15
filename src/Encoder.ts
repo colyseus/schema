@@ -1,12 +1,9 @@
-import { TypeContext, DefinitionType, PrimitiveType, Metadata } from "./annotations";
+import { TypeContext, DefinitionType, PrimitiveType } from "./annotations";
 import { $changes, Schema } from "./Schema";
-import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
-import { SetSchema } from "./types/SetSchema";
-import { ArraySchema } from "./types/ArraySchema";
 
 import * as encode from "./encoding/encode";
-import { EncodeSchemaError, assertType } from "./encoding/assert";
+import { EncodeSchemaError, assertInstanceType, assertType } from "./encoding/assert";
 import { getType } from './types/typeRegistry';
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
 import { $encodeOperation, ChangeOperation, ChangeTracker, FieldChangeTracker, Root } from "./changes/ChangeTree";
@@ -66,16 +63,20 @@ export class Encoder<T extends Schema = any> {
         const rootChangeTree = this.root[$changes];
         // const refIdsVisited = new WeakSet<ChangeTree>();
 
-        const changeTrees: ChangeTracker[] = Array.from(this.$root['changes']);
+        const changeTrees: ChangeTracker[] = Array.from(this.$root.changes);
         const numChangeTrees = changeTrees.length;
         // let numChangeTrees = 1;
 
         // console.log("--------------------- ENCODE ----------------");
         // console.log("Encode order:", changeTrees.map((c) => c.ref['constructor'].name));
-
         for (let i = 0; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
-            const encodeOperation = changeTree['constructor'][$encodeOperation];
+            const ref = changeTree.ref;
+
+            const isSchema = (ref instanceof Schema);
+            const metadata = ref['constructor'][Symbol.metadata];
+
+            // const encodeOperation = changeTree['constructor'][$encodeOperation];
 
             // Generate unique refId for the ChangeTree.
             changeTree.ensureRefId();
@@ -101,14 +102,12 @@ export class Encoder<T extends Schema = any> {
                     ? { op: OPERATION.ADD, index: changes[j] as number }
                     : changes[j] as ChangeOperation;
 
-                encodeOperation(this, bytes, operation, changeTree);
-
-                /*
+                // encodeOperation(this, bytes, operation, changeTree);
 
                 const fieldIndex = operation.index;
 
                 const field = (isSchema)
-                    ? ref['constructor'][Symbol.metadata][fieldIndex]
+                    ? metadata[fieldIndex]
                     : fieldIndex;
 
                 // encode field index + operation
@@ -160,10 +159,14 @@ export class Encoder<T extends Schema = any> {
                 }
 
                 // const type = changeTree.childType || ref._schema[field];
-                const type = changeTree.getType(fieldIndex);
+                const type = (isSchema)
+                    ? metadata[metadata[fieldIndex]].type
+                    : changeTree.getType(fieldIndex);
 
                 // const type = changeTree.getType(fieldIndex);
-                const value = changeTree.getValue(fieldIndex);
+                const value = (isSchema)
+                    ? ref[metadata[fieldIndex]]
+                    : changeTree.getValue(fieldIndex);
 
                 // ensure refId for the value
                 if (value && value[$changes]) {
@@ -216,8 +219,6 @@ export class Encoder<T extends Schema = any> {
                 //     // cache begin / end index
                 //     changeTree.cache(fieldIndex as number, bytes.slice(beginIndex));
                 // }
-
-                */
             }
 
             if (!encodeAll && !useFilters) {

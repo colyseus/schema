@@ -1,8 +1,9 @@
 import "./symbol.shim";
-import { FieldChangeTracker, Ref, Root } from './changes/ChangeTree';
+import { ChangeTree, Ref, Root } from './changes/ChangeTree';
 import { $changes, $childType, Schema } from './Schema';
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
+import { Metadata } from "./Metadata";
 
 /**
  * Data types
@@ -49,72 +50,6 @@ export type FilterChildrenCallback<
     ((this: T, client: ClientWithSessionId, key: K, value: V) => boolean) |
     ((this: T, client: ClientWithSessionId, key: K, value: V, root: R) => boolean)
 )
-
-export type MetadataField = {
-    type: DefinitionType,
-    index: number,
-    deprecated: boolean,
-};
-
-export type Metadata =
-    { [field: number]: string; } & // index => field name
-    { [field: string]: MetadataField; } // field name => field metadata
-
-export const Metadata = {
-    addField(metadata: any, index: number, field: string, type: DefinitionType) {
-        metadata[field] = {
-            type: (Array.isArray(type))
-                ? { array: type[0] }
-                : type,
-            index
-        };
-
-        // map -1 as last field index
-        Object.defineProperty(metadata, -1, {
-            value: index,
-            enumerable: false,
-            configurable: true
-        });
-
-        // map index => field name (non enumerable)
-        Object.defineProperty(metadata, index, {
-            value: field,
-            enumerable: false,
-            configurable: true,
-        });
-
-
-        return index;
-    },
-
-    getType(metadata: any, field: string) {
-        return metadata[field].type as DefinitionType;
-    },
-
-    getIndex(metadata: any, field: string) {
-        return metadata[field].index as number;
-    },
-
-    getFieldByIndex(metadata: any, index: number) {
-        return metadata['fieldsByIndex'][index];
-    },
-
-    isDeprecated(metadata: any, field: string) {
-        return metadata[field].deprecated === true;
-    },
-
-    hasFields(metadata: any) {
-        return Object.prototype.hasOwnProperty.call(metadata, -1) as boolean;
-    },
-
-    getFields(metadata: any) {
-        const fields = {};
-        for (let i = 0; i < metadata[-1]; i++) {
-            fields[metadata[i]] = metadata[metadata[i]];
-        }
-        return fields;
-    }
-}
 
 export function hasFilter(klass: typeof Schema) {
     // return klass._context && klass._context.useFilters;
@@ -255,98 +190,237 @@ export function entity(constructor, context: ClassDecoratorContext) {
  * \@type("string", { manual: true })
  * ```
  */
-export function type(type: DefinitionType, options?: TypeOptions) {
-    return function ({ get, set }, context: ClassAccessorDecoratorContext): ClassAccessorDecoratorResult<Schema, any> {
-        if (context.kind !== "accessor") {
-            throw new Error("@type() is only supported for class accessor properties");
+// export function type(type: DefinitionType, options?: TypeOptions) {
+//     return function ({ get, set }, context: ClassAccessorDecoratorContext): ClassAccessorDecoratorResult<Schema, any> {
+//         if (context.kind !== "accessor") {
+//             throw new Error("@type() is only supported for class accessor properties");
+//         }
+
+//         const field = context.name.toString();
+
+//         //
+//         // detect index for this field, considering inheritance
+//         //
+//         const parent = Object.getPrototypeOf(context.metadata);
+//         let fieldIndex: number = context.metadata[-1] // current structure already has fields defined
+//             ?? (parent && parent[-1]) // parent structure has fields defined
+//             ?? -1; // no fields defined
+//         fieldIndex++;
+
+//         if (
+//             !parent && // the parent already initializes the `$changes` property
+//             !Metadata.hasFields(context.metadata)
+//         ) {
+//             context.addInitializer(function (this: Ref) {
+//                 Object.defineProperty(this, $changes, {
+//                     value: new ChangeTree(this),
+//                     enumerable: false,
+//                     writable: true
+//                 });
+//             });
+//         }
+
+//         Metadata.addField(context.metadata, fieldIndex, field, type);
+
+//         const isArray = ArraySchema.is(type);
+//         const isMap = !isArray && MapSchema.is(type);
+
+//         // if (options && options.manual) {
+//         //     // do not declare getter/setter descriptor
+//         //     definition.descriptors[field] = {
+//         //         enumerable: true,
+//         //         configurable: true,
+//         //         writable: true,
+//         //     };
+//         //     return;
+//         // }
+
+//         return {
+//             init(value) {
+//                 // TODO: may need to convert ArraySchema/MapSchema here
+
+//                 // do not flag change if value is undefined.
+//                 if (value !== undefined) {
+//                     this[$changes].change(fieldIndex);
+
+//                     // automaticallty transform Array into ArraySchema
+//                     if (isArray) {
+//                         if (!(value instanceof ArraySchema)) {
+//                             value = new ArraySchema(...value);
+//                         }
+//                         value[$childType] = Object.values(type)[0];
+//                     }
+
+//                     // automaticallty transform Map into MapSchema
+//                     if (isMap) {
+//                         if (!(value instanceof MapSchema)) {
+//                             value = new MapSchema(value);
+//                         }
+//                         value[$childType] = Object.values(type)[0];
+//                     }
+
+//                     // try to turn provided structure into a Proxy
+//                     if (value['$proxy'] === undefined) {
+//                         if (isMap) {
+//                             value = getMapProxy(value);
+//                         }
+//                     }
+
+//                 }
+
+//                 return value;
+//             },
+
+//             get() {
+//                 return get.call(this);
+//             },
+
+//             set(value: any) {
+//                 /**
+//                  * Create Proxy for array or map items
+//                  */
+
+//                 // skip if value is the same as cached.
+//                 if (value === get.call(this)) {
+//                     return;
+//                 }
+
+//                 if (
+//                     value !== undefined &&
+//                     value !== null
+//                 ) {
+//                     // automaticallty transform Array into ArraySchema
+//                     if (isArray) {
+//                         if (!(value instanceof ArraySchema)) {
+//                             value = new ArraySchema(...value);
+//                         }
+//                         value[$childType] = Object.values(type)[0];
+//                     }
+
+//                     // automaticallty transform Map into MapSchema
+//                     if (isMap) {
+//                         if (!(value instanceof MapSchema)) {
+//                             value = new MapSchema(value);
+//                         }
+//                         value[$childType] = Object.values(type)[0];
+//                     }
+
+//                     // try to turn provided structure into a Proxy
+//                     if (value['$proxy'] === undefined) {
+//                         if (isMap) {
+//                             value = getMapProxy(value);
+//                         }
+//                     }
+
+//                     // flag the change for encoding.
+//                     this[$changes].change(fieldIndex);
+
+//                     //
+//                     // call setParent() recursively for this and its child
+//                     // structures.
+//                     //
+//                     if (value[$changes]) {
+//                         value[$changes].setParent(
+//                             this,
+//                             this[$changes].root,
+//                             Metadata.getIndex(context.metadata, field),
+//                         );
+//                     }
+
+//                 } else if (get.call(this)) {
+//                     //
+//                     // Setting a field to `null` or `undefined` will delete it.
+//                     //
+//                     this[$changes].delete(field);
+//                 }
+
+//                 set.call(this, value);
+//             },
+//         };
+//     }
+// }
+
+export function type (
+    type: DefinitionType,
+    options?: TypeOptions
+): PropertyDecorator {
+    return function (target: typeof Schema, field: string) {
+        const constructor = target.constructor as typeof Schema;
+
+        if (!type) {
+            throw new Error(`${constructor.name}: @type() reference provided for "${field}" is undefined. Make sure you don't have any circular dependencies.`);
         }
 
-        const field = context.name.toString();
+        // for inheritance support
+        TypeContext.register(constructor);
+
+        const parentClass = Object.getPrototypeOf(constructor);
+        const parentMetadata = parentClass[Symbol.metadata];
+        const metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
+
+        /**
+         * skip if descriptor already exists for this field (`@deprecated()`)
+         */
+        if (metadata[field]) {
+            if (metadata[field].deprecated) {
+                // do not create accessors for deprecated properties.
+                return;
+
+            } else {
+                // trying to define same property multiple times across inheritance.
+                // https://github.com/colyseus/colyseus-unity3d/issues/131#issuecomment-814308572
+                try {
+                    throw new Error(`@colyseus/schema: Duplicate '${field}' definition on '${constructor.name}'.\nCheck @type() annotation`);
+
+                } catch (e) {
+                    const definitionAtLine = e.stack.split("\n")[4].trim();
+                    throw new Error(`${e.message} ${definitionAtLine}`);
+                }
+            }
+        }
 
         //
         // detect index for this field, considering inheritance
         //
-        const parent = Object.getPrototypeOf(context.metadata);
-        let fieldIndex: number = context.metadata[-1] // current structure already has fields defined
-            ?? (parent && parent[-1]) // parent structure has fields defined
+        let fieldIndex: number = metadata[-1] // current structure already has fields defined
+            ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
             ?? -1; // no fields defined
         fieldIndex++;
 
-        if (
-            !parent && // the parent already initializes the `$changes` property
-            !Metadata.hasFields(context.metadata)
-        ) {
-            context.addInitializer(function (this: Ref) {
-                Object.defineProperty(this, $changes, {
-                    value: new FieldChangeTracker(this),
-                    enumerable: false,
-                    writable: true
-                });
-            });
-        }
-
-        Metadata.addField(context.metadata, fieldIndex, field, type);
+        Metadata.addField(metadata, fieldIndex, field, type);
 
         const isArray = ArraySchema.is(type);
         const isMap = !isArray && MapSchema.is(type);
 
-        // if (options && options.manual) {
-        //     // do not declare getter/setter descriptor
-        //     definition.descriptors[field] = {
-        //         enumerable: true,
-        //         configurable: true,
-        //         writable: true,
-        //     };
-        //     return;
-        // }
+        if (options && options.manual) {
+            // do not declare getter/setter descriptor
+            metadata[field].descriptor = {
+                enumerable: true,
+                configurable: true,
+                writable: true,
+            };
+            return;
+        }
 
-        return {
-            init(value) {
-                // TODO: may need to convert ArraySchema/MapSchema here
+        const fieldCached = `_${field}`;
+        // definition.descriptors[fieldCached] = {
+        //     enumerable: false,
+        //     writable: true,
+        //     configurable: false,
+        // };
 
-                // do not flag change if value is undefined.
-                if (value !== undefined) {
-                    this[$changes].change(fieldIndex);
-
-                    // automaticallty transform Array into ArraySchema
-                    if (isArray) {
-                        if (!(value instanceof ArraySchema)) {
-                            value = new ArraySchema(...value);
-                        }
-                        value[$childType] = Object.values(type)[0];
-                    }
-
-                    // automaticallty transform Map into MapSchema
-                    if (isMap) {
-                        if (!(value instanceof MapSchema)) {
-                            value = new MapSchema(value);
-                        }
-                        value[$childType] = Object.values(type)[0];
-                    }
-
-                    // try to turn provided structure into a Proxy
-                    if (value['$proxy'] === undefined) {
-                        if (isMap) {
-                            value = getMapProxy(value);
-                        }
-                    }
-
-                }
-
-                return value;
+        metadata[field].descriptor = {
+            get: function () {
+                return this[fieldCached];
             },
 
-            get() {
-                return get.call(this);
-            },
-
-            set(value: any) {
+            set: function (this: Schema, value: any) {
                 /**
                  * Create Proxy for array or map items
                  */
 
                 // skip if value is the same as cached.
-                if (value === get.call(this)) {
+                if (value === this[fieldCached]) {
                     return;
                 }
 
@@ -355,19 +429,13 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                     value !== null
                 ) {
                     // automaticallty transform Array into ArraySchema
-                    if (isArray) {
-                        if (!(value instanceof ArraySchema)) {
-                            value = new ArraySchema(...value);
-                        }
-                        value[$childType] = Object.values(type)[0];
+                    if (isArray && !(value instanceof ArraySchema)) {
+                        value = new ArraySchema(...value);
                     }
 
                     // automaticallty transform Map into MapSchema
-                    if (isMap) {
-                        if (!(value instanceof MapSchema)) {
-                            value = new MapSchema(value);
-                        }
-                        value[$childType] = Object.values(type)[0];
+                    if (isMap && !(value instanceof MapSchema)) {
+                        value = new MapSchema(value);
                     }
 
                     // try to turn provided structure into a Proxy
@@ -384,160 +452,29 @@ export function type(type: DefinitionType, options?: TypeOptions) {
                     // call setParent() recursively for this and its child
                     // structures.
                     //
-                    if (value[$changes]) {
-                        value[$changes].setParent(
+                    if (value['$changes']) {
+                        (value['$changes'] as ChangeTree).setParent(
                             this,
                             this[$changes].root,
-                            Metadata.getIndex(context.metadata, field),
+                            metadata[field].index,
                         );
                     }
 
-                } else if (get.call(this)) {
+                } else if (this[fieldCached]) {
                     //
                     // Setting a field to `null` or `undefined` will delete it.
                     //
                     this[$changes].delete(field);
                 }
 
-                set.call(this, value);
+                this[fieldCached] = value;
             },
+
+            enumerable: true,
+            configurable: true
         };
     }
 }
-
-// export function type (
-//     type: DefinitionType,
-//     options?: TypeOptions
-// ): PropertyDecorator {
-//     return function (target: typeof Schema, field: string) {
-//         // const context = options.context || globalContext;
-//         const constructor = target.constructor as typeof Schema;
-//         // constructor._context = context;
-
-//         if (!type) {
-//             throw new Error(`${constructor.name}: @type() reference provided for "${field}" is undefined. Make sure you don't have any circular dependencies.`);
-//         }
-
-//         if (!constructor._definition) {
-//             constructor._definition = SchemaDefinition.create();
-//         }
-
-//         // for inheritance support
-//         TypeContext.register(constructor);
-
-//         const definition = constructor._definition;
-//         definition.addField(field, type);
-
-//         /**
-//          * skip if descriptor already exists for this field (`@deprecated()`)
-//          */
-//         if (definition.descriptors[field]) {
-//             if (definition.deprecated[field]) {
-//                 // do not create accessors for deprecated properties.
-//                 return;
-
-//             } else {
-//                 // trying to define same property multiple times across inheritance.
-//                 // https://github.com/colyseus/colyseus-unity3d/issues/131#issuecomment-814308572
-//                 try {
-//                     throw new Error(`@colyseus/schema: Duplicate '${field}' definition on '${constructor.name}'.\nCheck @type() annotation`);
-
-//                 } catch (e) {
-//                     const definitionAtLine = e.stack.split("\n")[4].trim();
-//                     throw new Error(`${e.message} ${definitionAtLine}`);
-//                 }
-//             }
-//         }
-
-//         const isArray = ArraySchema.is(type);
-//         const isMap = !isArray && MapSchema.is(type);
-
-//         if (options && options.manual) {
-//             // do not declare getter/setter descriptor
-//             definition.descriptors[field] = {
-//                 enumerable: true,
-//                 configurable: true,
-//                 writable: true,
-//             };
-//             return;
-//         }
-
-//         const fieldCached = `_${field}`;
-//         definition.descriptors[fieldCached] = {
-//             enumerable: false,
-//             configurable: false,
-//             writable: true,
-//         };
-
-//         definition.descriptors[field] = {
-//             get: function () {
-//                 return this[fieldCached];
-//             },
-
-//             set: function (this: Schema, value: any) {
-//                 /**
-//                  * Create Proxy for array or map items
-//                  */
-
-//                 // skip if value is the same as cached.
-//                 if (value === this[fieldCached]) {
-//                     return;
-//                 }
-
-//                 if (
-//                     value !== undefined &&
-//                     value !== null
-//                 ) {
-//                     // automaticallty transform Array into ArraySchema
-//                     if (isArray && !(value instanceof ArraySchema)) {
-//                         value = new ArraySchema(...value);
-//                     }
-
-//                     // automaticallty transform Map into MapSchema
-//                     if (isMap && !(value instanceof MapSchema)) {
-//                         value = new MapSchema(value);
-//                     }
-
-//                     // try to turn provided structure into a Proxy
-//                     if (value['$proxy'] === undefined) {
-//                         if (isMap) {
-//                             value = getMapProxy(value);
-
-//                         } else if (isArray) {
-//                             value = getArrayProxy(value);
-//                         }
-//                     }
-
-//                     // flag the change for encoding.
-//                     this.$changes.change(field);
-
-//                     //
-//                     // call setParent() recursively for this and its child
-//                     // structures.
-//                     //
-//                     if (value['$changes']) {
-//                         (value['$changes'] as ChangeTree).setParent(
-//                             this,
-//                             this.$changes.root,
-//                             this._definition.indexes[field],
-//                         );
-//                     }
-
-//                 } else if (this[fieldCached]) {
-//                     //
-//                     // Setting a field to `null` or `undefined` will delete it.
-//                     //
-//                     this.$changes.delete(field);
-//                 }
-
-//                 this[fieldCached] = value;
-//             },
-
-//             enumerable: true,
-//             configurable: true
-//         };
-//     }
-// }
 
 /**
  * `@filter()` decorator for defining data filters per client

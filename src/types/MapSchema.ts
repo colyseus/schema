@@ -1,6 +1,6 @@
 import { SchemaDecoderCallbacks, DataChange, $changes, $childType } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
-import { KeyValueChangeTracker } from "../changes/ChangeTree";
+import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { registerType } from "./typeRegistry";
 
@@ -50,7 +50,7 @@ export function getMapProxy(value: MapSchema) {
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, SchemaDecoderCallbacks {
     protected childType: new () => V;
 
-    protected [$changes] = new KeyValueChangeTracker(this);
+    protected [$changes] = new ChangeTree(this);
 
     protected $items: Map<K, V> = new Map<K, V>();
     protected $indexes: Map<number, K> = new Map<number, K>();

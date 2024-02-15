@@ -37,6 +37,8 @@ export {
     ReflectionField,
 } from "./Reflection";
 
+export { Metadata } from "./Metadata";
+
 export {
     // Annotations
     type,
@@ -47,7 +49,6 @@ export {
     hasFilter,
 
     // Internals
-    Metadata,
     TypeContext,
 } from "./annotations";
 

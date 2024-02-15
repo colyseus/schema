@@ -1,9 +1,9 @@
 import { Schema } from "./";
 import { $changes } from "./Schema";
-import { FieldChangeTracker } from "./changes/ChangeTree";
+import { ChangeTree } from "./changes/ChangeTree";
 
 export function dumpChanges(schema: Schema) {
-    const changeTrees: FieldChangeTracker[] = [schema[$changes]];
+    const changeTrees: ChangeTree[] = [schema[$changes]];
     let numChangeTrees = 1;
 
     const dump = {};

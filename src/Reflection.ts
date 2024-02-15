@@ -1,4 +1,5 @@
-import { type, PrimitiveType, DefinitionType, TypeContext, Metadata } from "./annotations";
+import { type, PrimitiveType, DefinitionType, TypeContext } from "./annotations";
+import { Metadata } from "./Metadata";
 import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { Iterator } from "./encoding/decode";
@@ -11,20 +12,20 @@ import * as util from "util";
  * Reflection
  */
 export class ReflectionField extends Schema {
-    @type("string") accessor name: string;
-    @type("string") accessor type: string;
-    @type("number") accessor referencedType: number;
+    @type("string") name: string;
+    @type("string") type: string;
+    @type("number") referencedType: number;
 }
 
 export class ReflectionType extends Schema {
-    @type("number") accessor id: number;
-    @type("number") accessor extendsId: number;
-    @type([ ReflectionField ]) accessor fields: ArraySchema<ReflectionField> = new ArraySchema<ReflectionField>();
+    @type("number") id: number;
+    @type("number") extendsId: number;
+    @type([ ReflectionField ]) fields: ArraySchema<ReflectionField> = new ArraySchema<ReflectionField>();
 }
 
 export class Reflection extends Schema {
-    @type([ ReflectionType ]) accessor types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
-    @type("number") accessor rootType: number;
+    @type([ ReflectionType ]) types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
+    @type("number") rootType: number;
 
     static encode (instance: Schema, context?: TypeContext) {
         if (!context) {

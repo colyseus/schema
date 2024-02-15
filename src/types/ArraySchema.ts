@@ -1,4 +1,4 @@
-import { KeyValueChangeTracker } from "../changes/ChangeTree";
+import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema, DataChange, $changes, $childType } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
@@ -189,7 +189,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
             }
         });
 
-        this[$changes] = new KeyValueChangeTracker(proxy);
+        this[$changes] = new ChangeTree(proxy);
 
         return proxy;
     }

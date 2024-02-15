@@ -1,10 +1,10 @@
 import { OPERATION } from './spec';
-import { DefinitionType, Metadata } from "./annotations";
+import { DefinitionType } from "./annotations";
 
 import type { Iterator } from "./encoding/decode"; // dts-bundle-generator
 
-import { FieldChangeTracker } from "./changes/ChangeTree";
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
+import { ChangeTree } from './changes/ChangeTree';
 
 export interface DataChange<T=any,F=string> {
     refId: number,
@@ -42,11 +42,29 @@ export abstract class Schema {
 
     static is(type: DefinitionType) {
         const metadata = type[Symbol.metadata];
-        return metadata && Metadata.hasFields(metadata);
+        return metadata && Object.prototype.hasOwnProperty.call(metadata, -1);
     }
 
     // allow inherited classes to have a constructor
     constructor(...args: any[]) {
+        Object.defineProperty(this, $changes, {
+            value: new ChangeTree(this),
+            enumerable: false,
+            writable: true
+        });
+
+        // Define property descriptors
+        for (const field in this.constructor[Symbol.metadata]) {
+            Object.defineProperty(this, field, this.constructor[Symbol.metadata][field].descriptor);
+
+            // Object.defineProperty(this, field, {
+            //     ...this.constructor[Symbol.metadata][field].descriptor
+            // });
+            // if (args[0]?.hasOwnProperty(field)) {
+            //     this[field] = args[0][field];
+            // }
+        }
+
         //
         // Assign initial values
         //

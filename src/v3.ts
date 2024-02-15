@@ -1,5 +1,4 @@
 // import * as util from "node:util";
-
 import "./symbol.shim";
 
 import { entity, type, TypeContext } from "./annotations";
@@ -109,34 +108,34 @@ import { Decoder } from "./Decoder";
 // }
 
 class Vec3 extends Schema {
-    @type("number") accessor x: number;
-    @type("number") accessor y: number;
-    @type("number") accessor z: number;
+    @type("number") x: number;
+    @type("number") y: number;
+    @type("number") z: number;
 }
 
 class Base extends Schema {}
 
 class Entity extends Schema {
-    @type(Vec3) accessor position = new Vec3().assign({ x: 0, y: 0, z: 0 });
+    @type(Vec3) position = new Vec3().assign({ x: 0, y: 0, z: 0 });
 }
 
 // TODO: @entity shouldn't be required here.
 // (TypeContext.register() is required for inheritance support)
-@entity
+// @entity
 class Player extends Entity {
-    @type(Vec3) accessor rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
+    @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
 }
 
 // @entity
 class State extends Schema {
     // @type({ map: Base }) players = new MapSchema<Entity>();
-    @type("number") accessor num: number = 0;
-    @type("string") accessor str = "Hello world!";
-    @type(Entity) accessor entity = new Player().assign({
-        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-    });
-    // @type({ map: Entity }) accessor entities = new MapSchema<Entity>();
+    @type("number") num: number = 0;
+    @type("string") str = "Hello world!";
+    // @type(Entity) entity = new Player().assign({
+    //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+    //     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    // });
+    // @type({ map: Entity }) entities = new MapSchema<Entity>();
 }
 
 const state = new State();
@@ -151,21 +150,24 @@ const state = new State();
 // }));
 
 const encoder = new Encoder(state);
-const encoded = encoder.encode();
+const encoded = encoder.encodeAll();
+console.log(`(${encoded.length})`, encoded);
 
+console.profile();
 const time = Date.now();
 for (let i = 0; i < 300000; i++) {
     encoder.encodeAll();
 }
 console.log("encode time:", Date.now() - time);
+console.profileEnd();
 
 // console.log(`encode: (${encoded.length})`, encoded);
 
-const encodedReflection = Reflection.encode(state, encoder.context);
-const decoded = Reflection.decode(encodedReflection);
-const decoder = new Decoder(decoded);
+// const encodedReflection = Reflection.encode(state, encoder.context);
+// const decoded = Reflection.decode(encodedReflection);
+const decoder = new Decoder(new State());
 const changes = decoder.decode(encoded);
-console.log("decoded =>", decoded.toJSON());
+console.log("decoded =>", decoder.root.toJSON());
 
 // console.log("changes =>", changes);
 

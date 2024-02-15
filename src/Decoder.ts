@@ -1,4 +1,4 @@
-import { TypeContext, DefinitionType, PrimitiveType, Metadata } from "./annotations";
+import { TypeContext, DefinitionType, PrimitiveType } from "./annotations";
 import { $changes, $childType, DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
@@ -11,6 +11,7 @@ import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
 import { Ref } from "./changes/ChangeTree";
 import { Iterator } from "./encoding/decode";
 import { ReferenceTracker } from "./changes/ReferenceTracker";
+import { Metadata } from "./Metadata";
 
 export class Decoder<T extends Schema> {
     context: TypeContext;

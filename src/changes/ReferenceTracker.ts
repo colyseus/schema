@@ -1,6 +1,6 @@
+import { Metadata } from "../Metadata";
 import { $changes, Schema } from "../Schema";
 import { Ref } from "./ChangeTree";
-import { Metadata } from "../annotations";
 
 /**
  * Used for decoding only.
