@@ -6,7 +6,7 @@ import * as encode from "./encoding/encode";
 import { EncodeSchemaError, assertInstanceType, assertType } from "./encoding/assert";
 import { getType } from './types/typeRegistry';
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { $encodeOperation, ChangeOperation, ChangeTracker, FieldChangeTracker, Root } from "./changes/ChangeTree";
+import { $encodeOperation, ChangeOperation, ChangeTracker, Root } from "./changes/ChangeTree";
 
 export function encodePrimitiveType(
     type: PrimitiveType,
@@ -29,7 +29,6 @@ export function encodePrimitiveType(
 
 export class Encoder<T extends Schema = any> {
     context: TypeContext;
-    changes = new Set<FieldChangeTracker>();
 
     root: T;
     $root: Root;
@@ -63,7 +62,8 @@ export class Encoder<T extends Schema = any> {
         const rootChangeTree = this.root[$changes];
         // const refIdsVisited = new WeakSet<ChangeTree>();
 
-        const changeTrees: ChangeTracker[] = Array.from(this.$root.changes);
+        // const changeTrees: ChangeTracker[] = Array.from(this.$root['currentQueue']);
+        const changeTrees: ChangeTracker[] = this.$root.changes;
         const numChangeTrees = changeTrees.length;
         // let numChangeTrees = 1;
 
@@ -93,37 +93,39 @@ export class Encoder<T extends Schema = any> {
                 encode.number(bytes, changeTree.refId);
             }
 
-            const changes: ChangeOperation[] | number[] = (encodeAll)
-                ? Array.from(changeTree.allChanges)
-                : Array.from(changeTree.changes.values());
+            const changes: IterableIterator<ChangeOperation | number> = (encodeAll)
+                ? changeTree.allChanges.values()
+                : changeTree.changes.values();
 
-            for (let j = 0, cl = changes.length; j < cl; j++) {
-                const operation: ChangeOperation = (encodeAll)
-                    ? { op: OPERATION.ADD, index: changes[j] as number }
-                    : changes[j] as ChangeOperation;
+            let change: IteratorResult<ChangeOperation | number>;
+            while (!(change = changes.next()).done) {
 
-                // encodeOperation(this, bytes, operation, changeTree);
+                const operation = (encodeAll)
+                    ? OPERATION.ADD
+                    : change.value.op;
 
-                const fieldIndex = operation.index;
+                const fieldIndex = (encodeAll)
+                    ? change.value
+                    : change.value.index;
 
                 const field = (isSchema)
                     ? metadata[fieldIndex]
                     : fieldIndex;
 
                 // encode field index + operation
-                if (operation.op !== OPERATION.TOUCH) {
+                if (operation !== OPERATION.TOUCH) {
                     if (isSchema) {
                         //
                         // Compress `fieldIndex` + `operation` into a single byte.
                         // This adds a limitaion of 64 fields per Schema structure
                         //
-                        encode.uint8(bytes, (fieldIndex | operation.op));
+                        encode.uint8(bytes, (fieldIndex | operation));
 
                     } else {
-                        encode.uint8(bytes, operation.op);
+                        encode.uint8(bytes, operation);
 
                         // custom operations
-                        if (operation.op === OPERATION.CLEAR) {
+                        if (operation === OPERATION.CLEAR) {
                             continue;
                         }
 
@@ -137,7 +139,7 @@ export class Encoder<T extends Schema = any> {
                 //
                 if (
                     !isSchema &&
-                    (operation.op & OPERATION.ADD) == OPERATION.ADD // ADD or DELETE_AND_ADD
+                    (operation & OPERATION.ADD) == OPERATION.ADD // ADD or DELETE_AND_ADD
                 ) {
                     if (ref instanceof MapSchema) {
                         //
@@ -148,7 +150,7 @@ export class Encoder<T extends Schema = any> {
                     }
                 }
 
-                if (operation.op === OPERATION.DELETE) {
+                if (operation === OPERATION.DELETE) {
                     //
                     // TODO: delete from filter cache data.
                     //
@@ -160,12 +162,12 @@ export class Encoder<T extends Schema = any> {
 
                 // const type = changeTree.childType || ref._schema[field];
                 const type = (isSchema)
-                    ? metadata[metadata[fieldIndex]].type
+                    ? metadata[field].type
                     : changeTree.getType(fieldIndex);
 
                 // const type = changeTree.getType(fieldIndex);
                 const value = (isSchema)
-                    ? ref[metadata[fieldIndex]]
+                    ? ref[field]
                     : changeTree.getValue(fieldIndex);
 
                 // ensure refId for the value
@@ -173,11 +175,11 @@ export class Encoder<T extends Schema = any> {
                     value[$changes].ensureRefId();
                 }
 
-                if (operation.op === OPERATION.TOUCH) {
+                if (operation === OPERATION.TOUCH) {
                     continue;
                 }
 
-                if (Schema.is(type)) {
+                if (type[Symbol.metadata] !== undefined) {
                     assertInstanceType(value, type as typeof Schema, ref as Schema, field);
 
                     //
@@ -187,8 +189,8 @@ export class Encoder<T extends Schema = any> {
                     encode.number(bytes, value[$changes].refId);
 
                     // Try to encode inherited TYPE_ID if it's an ADD operation.
-                    if ((operation.op & OPERATION.ADD) === OPERATION.ADD) {
-                        this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
+                    if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+                        // this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
                     }
 
                 } else if (typeof(type) === "string") {

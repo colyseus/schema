@@ -1,15 +1,17 @@
 // import * as util from "node:util";
 import "./symbol.shim";
 
-import { entity, type, TypeContext } from "./annotations";
-import { Reflection, ReflectionField, ReflectionType } from "./Reflection";
+import { type } from "./annotations";
+// import { Reflection, ReflectionField, ReflectionType } from "./Reflection";
 
 import { Schema } from "./Schema";
-import { MapSchema } from "./types/MapSchema";
-import { ArraySchema } from "./types/ArraySchema";
+// import { MapSchema } from "./types/MapSchema";
+// import { ArraySchema } from "./types/ArraySchema";
 
 import { Encoder } from "./Encoder";
 import { Decoder } from "./Decoder";
+
+// const timeout = setInterval(() => {}, 1000);
 
 // function decorate({ get, set }, context: ClassAccessorDecoratorContext): ClassAccessorDecoratorResult<any, any> {
 //     const field = context.name.toString();
@@ -131,14 +133,17 @@ class State extends Schema {
     // @type({ map: Base }) players = new MapSchema<Entity>();
     @type("number") num: number = 0;
     @type("string") str = "Hello world!";
-    // @type(Entity) entity = new Player().assign({
-    //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-    //     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-    // });
+    @type(Entity) entity = new Player().assign({
+        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    });
     // @type({ map: Entity }) entities = new MapSchema<Entity>();
 }
 
 const state = new State();
+
+console.log(state);
+
 // state.entities.set("one", new Player().assign({
 //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
 //     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
@@ -150,24 +155,40 @@ const state = new State();
 // }));
 
 const encoder = new Encoder(state);
-const encoded = encoder.encodeAll();
-console.log(`(${encoded.length})`, encoded);
+// const encoded = encoder.encodeAll();
+// console.log(`(${encoded.length})`, encoded);
 
-console.profile();
-const time = Date.now();
-for (let i = 0; i < 300000; i++) {
-    encoder.encodeAll();
+
+// setTimeout(() => {
+//     for (let i = 0; i < 500000; i++) {
+//         encoder.encodeAll();
+//     }
+// }, 1000)
+
+// @ts-ignore
+globalThis.perform = function perform() {
+    for (let i = 0; i < 500000; i++) {
+        encoder.encodeAll();
+    }
 }
-console.log("encode time:", Date.now() - time);
-console.profileEnd();
+
+
+function logTime() {
+    const time = Date.now();
+    for (let i = 0; i < 500000; i++) {
+        encoder.encodeAll();
+    }
+    console.log("encode time:", Date.now() - time);
+}
+logTime();
 
 // console.log(`encode: (${encoded.length})`, encoded);
 
 // const encodedReflection = Reflection.encode(state, encoder.context);
 // const decoded = Reflection.decode(encodedReflection);
-const decoder = new Decoder(new State());
-const changes = decoder.decode(encoded);
-console.log("decoded =>", decoder.root.toJSON());
+// const decoder = new Decoder(new State());
+// const changes = decoder.decode(encoded);
+// console.log("decoded =>", decoder.root.toJSON());
 
 // console.log("changes =>", changes);
 

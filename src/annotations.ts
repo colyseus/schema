@@ -403,16 +403,9 @@ export function type (
         }
 
         const fieldCached = `_${field}`;
-        // definition.descriptors[fieldCached] = {
-        //     enumerable: false,
-        //     writable: true,
-        //     configurable: false,
-        // };
 
         metadata[field].descriptor = {
-            get: function () {
-                return this[fieldCached];
-            },
+            get: function () { return this[fieldCached]; },
 
             set: function (this: Schema, value: any) {
                 /**
@@ -429,13 +422,19 @@ export function type (
                     value !== null
                 ) {
                     // automaticallty transform Array into ArraySchema
-                    if (isArray && !(value instanceof ArraySchema)) {
-                        value = new ArraySchema(...value);
+                    if (isArray) {
+                        if (!(value instanceof ArraySchema)) {
+                            value = new ArraySchema(...value);
+                        }
+                        value[$childType] = Object.values(type)[0];
                     }
 
                     // automaticallty transform Map into MapSchema
-                    if (isMap && !(value instanceof MapSchema)) {
-                        value = new MapSchema(value);
+                    if (isMap) {
+                        if (!(value instanceof MapSchema)) {
+                            value = new MapSchema(value);
+                        }
+                        value[$childType] = Object.values(type)[0];
                     }
 
                     // try to turn provided structure into a Proxy
@@ -452,11 +451,11 @@ export function type (
                     // call setParent() recursively for this and its child
                     // structures.
                     //
-                    if (value['$changes']) {
-                        (value['$changes'] as ChangeTree).setParent(
+                    if (value[$changes]) {
+                        value[$changes].setParent(
                             this,
                             this[$changes].root,
-                            metadata[field].index,
+                            Metadata.getIndex(metadata, field),
                         );
                     }
 
