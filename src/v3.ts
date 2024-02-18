@@ -1,4 +1,4 @@
-// import * as util from "node:util";
+import * as util from "node:util";
 import "./symbol.shim";
 
 import { type } from "./annotations";
@@ -10,6 +10,8 @@ import { Schema } from "./Schema";
 
 import { Encoder } from "./Encoder";
 import { Decoder } from "./Decoder";
+import { MapSchema } from "./types/MapSchema";
+import { Reflection } from "./Reflection";
 
 // const timeout = setInterval(() => {}, 1000);
 
@@ -133,30 +135,28 @@ class State extends Schema {
     // @type({ map: Base }) players = new MapSchema<Entity>();
     @type("number") num: number = 0;
     @type("string") str = "Hello world!";
-    @type(Entity) entity = new Player().assign({
-        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-    });
-    // @type({ map: Entity }) entities = new MapSchema<Entity>();
+    // @type(Entity) entity = new Player().assign({
+    //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+    //     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    // });
+    @type({ map: Entity }) entities = new MapSchema<Entity>();
 }
 
 const state = new State();
 
-console.log(state);
+state.entities.set("one", new Player().assign({
+    position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+    rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+}));
 
-// state.entities.set("one", new Player().assign({
-//     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-//     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-// }));
-
-// state.entities.set("two", new Player().assign({
-//     position: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-//     rotation: new Vec3().assign({ x: 7, y: 8, z: 9 }),
-// }));
+state.entities.set("two", new Player().assign({
+    position: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    rotation: new Vec3().assign({ x: 7, y: 8, z: 9 }),
+}));
 
 const encoder = new Encoder(state);
-// const encoded = encoder.encodeAll();
-// console.log(`(${encoded.length})`, encoded);
+const encoded = encoder.encodeAll();
+console.log(`(${encoded.length})`, encoded);
 
 
 // setTimeout(() => {
@@ -184,11 +184,12 @@ logTime();
 
 // console.log(`encode: (${encoded.length})`, encoded);
 
-// const encodedReflection = Reflection.encode(state, encoder.context);
-// const decoded = Reflection.decode(encodedReflection);
-// const decoder = new Decoder(new State());
-// const changes = decoder.decode(encoded);
-// console.log("decoded =>", decoder.root.toJSON());
+const encodedReflection = Reflection.encode(state, encoder.context);
+const decoded = Reflection.decode(encodedReflection);
+const decoder = new Decoder(new State());
+const changes = decoder.decode(encoded);
+
+console.log("decoded =>", util.inspect(decoder.root.toJSON(), false, 10, true));
 
 // console.log("changes =>", changes);
 

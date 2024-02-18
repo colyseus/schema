@@ -190,7 +190,7 @@ export class Encoder<T extends Schema = any> {
 
                     // Try to encode inherited TYPE_ID if it's an ADD operation.
                     if ((operation & OPERATION.ADD) === OPERATION.ADD) {
-                        // this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
+                        this.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
                     }
 
                 } else if (typeof(type) === "string") {

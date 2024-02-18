@@ -149,13 +149,16 @@ export class Reflection extends Schema {
                     }
 
                     if (fieldType === "ref") {
+                        // type(refType)(schemaType.prototype, field.name);
                         Metadata.addField(metadata, fieldIndex, field.name, refType);
 
                     } else {
+                        // type({ [fieldType]: refType } as DefinitionType)(schemaType.prototype, field.name);
                         Metadata.addField(metadata, fieldIndex, field.name, { [fieldType]: refType } as DefinitionType);
                     }
 
                 } else {
+                    // type(field.type as PrimitiveType)(schemaType.prototype, field.name);
                     Metadata.addField(metadata, fieldIndex, field.name, field.type as PrimitiveType);
                 }
             });

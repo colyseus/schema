@@ -134,8 +134,6 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
             value[$changes].setParent(this, this[$changes].root, index);
         }
 
-        console.log(`MapSchema#set(${key}, ${value})`, OPERATION[operation], index);
-
         //
         // (encoding)
         // set a unique id to relate directly with this key/value.

@@ -55,14 +55,26 @@ export abstract class Schema {
 
         // Define property descriptors
         for (const field in this.constructor[Symbol.metadata]) {
-            Object.defineProperty(this, `_${field}`, {
-                value: undefined,
-                writable: true,
-                enumerable: false,
-                configurable: true,
-            });
 
-            Object.defineProperty(this, field, this.constructor[Symbol.metadata][field].descriptor);
+            if (this.constructor[Symbol.metadata][field].descriptor) {
+                // for encoder
+                Object.defineProperty(this, `_${field}`, {
+                    value: undefined,
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                });
+                Object.defineProperty(this, field, this.constructor[Symbol.metadata][field].descriptor);
+
+            } else {
+                // for decoder
+                Object.defineProperty(this, field,  {
+                    value: undefined,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                });
+            }
 
             // Object.defineProperty(this, field, {
             //     ...this.constructor[Symbol.metadata][field].descriptor

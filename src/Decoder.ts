@@ -211,7 +211,6 @@ export class Decoder<T extends Schema> {
                 value = valueRef.clone(true);
                 value[$childType] = Object.values(type)[0]; // cache childType for ArraySchema and MapSchema
 
-
                 // preserve schema callbacks
                 if (previousValue) {
                     // value['$callbacks'] = previousValue['$callbacks'];

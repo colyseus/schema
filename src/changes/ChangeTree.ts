@@ -93,7 +93,7 @@ export class ChangeTree implements ChangeTracker {
     parent?: Ref;
     parentIndex?: number;
 
-    indexes: {[index: string]: any};
+    indexes: {[index: string]: any} = {};
 
     changed: boolean = false;
     changes = new Map<number, ChangeOperation>();
