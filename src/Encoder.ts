@@ -52,11 +52,6 @@ export class Encoder<T extends Schema = any> {
             const changeTree = changeTrees[i];
             const ref = changeTree.ref;
 
-            const isSchema = ref['constructor'][Symbol.metadata] !== undefined;
-            // const metadata = ref['constructor'][Symbol.metadata];
-
-            // const encodeOperation = changeTree['constructor'][$encodeOperation];
-
             // Generate unique refId for the ChangeTree.
             changeTree.ensureRefId();
 
