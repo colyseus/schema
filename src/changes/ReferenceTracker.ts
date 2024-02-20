@@ -1,6 +1,7 @@
-import { Metadata } from "../Metadata";
-import { $changes, Schema } from "../Schema";
+import type { Metadata } from "../Metadata";
+import { Schema } from "../Schema";
 import { Ref } from "./ChangeTree";
+import { $changes } from "./consts";
 
 /**
  * Used for decoding only.
@@ -69,9 +70,9 @@ export class ReferenceTracker {
             // Ensure child schema instances have their references removed as well.
             //
             if (ref instanceof Schema) {
-                const metadata = ref['constructor'][Symbol.metadata];
+                const metadata: Metadata = ref['constructor'][Symbol.metadata];
                 for (const field in metadata) {
-                    if (typeof (Metadata.getType(metadata, field)) !== "string" &&
+                    if (typeof (metadata[field].type) !== "string" &&
                         ref[field] &&
                         ref[field][$changes]) { // FIXME: this will not work anymore.
                         this.removeRef(ref[field][$changes].refId);

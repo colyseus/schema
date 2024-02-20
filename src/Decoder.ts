@@ -1,5 +1,7 @@
-import { TypeContext, DefinitionType, PrimitiveType } from "./annotations";
-import { $changes, $childType, DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
+import { Metadata } from "./Metadata";
+import { TypeContext } from "./annotations";
+import { $childType } from "./changes/consts";
+import { DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
 import { SetSchema } from "./types/SetSchema";
@@ -11,7 +13,6 @@ import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
 import { Ref } from "./changes/ChangeTree";
 import { Iterator } from "./encoding/decode";
 import { ReferenceTracker } from "./changes/ReferenceTracker";
-import { Metadata } from "./Metadata";
 
 export class Decoder<T extends Schema> {
     context: TypeContext;
@@ -65,7 +66,7 @@ export class Decoder<T extends Schema> {
             }
 
             const isSchema = (ref instanceof Schema);
-            const metadata = (isSchema) ? ref['constructor'][Symbol.metadata] : undefined;
+            const metadata: Metadata = (isSchema) ? ref['constructor'][Symbol.metadata] : undefined;
 
             const operation = (isSchema)
                 ? (byte >> 6) << 6 // "compressed" index + operation
@@ -90,7 +91,7 @@ export class Decoder<T extends Schema> {
                 : "";
 
             const type = (isSchema)
-                ? Metadata.getType(metadata, fieldName)
+                ? metadata[fieldName].type
                 : ref[$childType];
 
             let value: any;

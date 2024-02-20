@@ -4,7 +4,10 @@ import { DefinitionType } from "./annotations";
 import type { Iterator } from "./encoding/decode"; // dts-bundle-generator
 
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
+import { encodeSchemaOperation } from './changes/EncodeOperation';
+
 import { ChangeTree } from './changes/ChangeTree';
+import { $changes, $track } from './changes/consts';
 
 export interface DataChange<T=any,F=string> {
     refId: number,
@@ -27,48 +30,34 @@ export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
     decode?(byte, it: Iterator);
 }
 
-export const $changes = Symbol('$changes');
-
-/**
- * Used to keep track of the type of the child elements of a collection
- * (MapSchema, ArraySchema, etc.)
- */
-export const $childType = Symbol('$childType');
-
 /**
  * Schema encoder / decoder
  */
 export abstract class Schema {
 
-    static is(type: DefinitionType) {
-        const metadata = type[Symbol.metadata];
-        return metadata && Object.prototype.hasOwnProperty.call(metadata, -1);
-    }
-
-    // allow inherited classes to have a constructor
-    constructor(...args: any[]) {
-        Object.defineProperty(this, $changes, {
-            value: new ChangeTree(this),
+    static initialize(instance: any) {
+        Object.defineProperty(instance, $changes, {
+            value: new ChangeTree(instance),
             enumerable: false,
             writable: true
         });
 
         // Define property descriptors
-        for (const field in this.constructor[Symbol.metadata]) {
+        for (const field in instance.constructor[Symbol.metadata]) {
 
-            if (this.constructor[Symbol.metadata][field].descriptor) {
+            if (instance.constructor[Symbol.metadata][field].descriptor) {
                 // for encoder
-                Object.defineProperty(this, `_${field}`, {
+                Object.defineProperty(instance, `_${field}`, {
                     value: undefined,
                     writable: true,
                     enumerable: false,
                     configurable: true,
                 });
-                Object.defineProperty(this, field, this.constructor[Symbol.metadata][field].descriptor);
+                Object.defineProperty(instance, field, instance.constructor[Symbol.metadata][field].descriptor);
 
             } else {
                 // for decoder
-                Object.defineProperty(this, field,  {
+                Object.defineProperty(instance, field,  {
                     value: undefined,
                     writable: true,
                     enumerable: true,
@@ -76,13 +65,30 @@ export abstract class Schema {
                 });
             }
 
-            // Object.defineProperty(this, field, {
-            //     ...this.constructor[Symbol.metadata][field].descriptor
+            // Object.defineProperty(instance, field, {
+            //     ...instance.constructor[Symbol.metadata][field].descriptor
             // });
             // if (args[0]?.hasOwnProperty(field)) {
-            //     this[field] = args[0][field];
+            //     instance[field] = args[0][field];
             // }
         }
+    }
+
+    static is(type: DefinitionType) {
+        const metadata = type[Symbol.metadata];
+        return metadata && Object.prototype.hasOwnProperty.call(metadata, -1);
+    }
+
+    /**
+     * Track property changes
+     */
+    static [$track] (changeTree: ChangeTree, index: number, operation: OPERATION = OPERATION.ADD) {
+        changeTree.change(index, operation, encodeSchemaOperation);
+    }
+
+    // allow inherited classes to have a constructor
+    constructor(...args: any[]) {
+        Schema.initialize(this);
 
         //
         // Assign initial values
@@ -397,5 +403,6 @@ export abstract class Schema {
     protected deleteByIndex(index: number) {
         this[this.constructor[Symbol.metadata][index]] = undefined;
     }
+
 
 }

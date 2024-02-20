@@ -1,8 +1,9 @@
 import { ChangeTracker, ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, DataChange, $changes, $childType } from "../Schema";
+import { SchemaDecoderCallbacks, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
+import { $changes, $childType } from "../changes/consts";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
@@ -52,7 +53,7 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
         // set "index" for reference.
         const index = this.$refId++;
 
-        const isRef = (value['$changes']) !== undefined;
+        const isRef = (value[$changes]) !== undefined;
         if (isRef) {
             value[$changes].setParent(this, this.$changes.root, index);
         }

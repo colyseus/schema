@@ -1,8 +1,9 @@
 import { ChangeTracker, ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, DataChange, $changes, $childType } from "../Schema";
+import { SchemaDecoderCallbacks, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
+import { $changes, $childType } from "../changes/consts";
 
 export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     protected $changes: ChangeTracker = new ChangeTree(this);

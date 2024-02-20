@@ -1,8 +1,9 @@
-import { SchemaDecoderCallbacks, DataChange, $changes, $childType } from "../Schema";
+import { SchemaDecoderCallbacks, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { registerType } from "./typeRegistry";
+import { $changes, $childType } from "../changes/consts";
 
 export function getMapProxy(value: MapSchema) {
     value['$proxy'] = true;
@@ -50,8 +51,6 @@ export function getMapProxy(value: MapSchema) {
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, SchemaDecoderCallbacks {
     protected childType: new () => V;
 
-    protected [$changes] = new ChangeTree(this);
-
     protected $items: Map<K, V> = new Map<K, V>();
     protected $indexes: Map<number, K> = new Map<number, K>();
 
@@ -79,6 +78,8 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
     }
 
     constructor (initialValues?: Map<K, V> | Record<K, V>) {
+        this[$changes] = new ChangeTree(this);
+
         if (initialValues) {
             if (
                 initialValues instanceof Map ||
@@ -116,14 +117,14 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         // See: https://github.com/colyseus/colyseus/issues/561#issuecomment-1646733468
         key = key.toString() as K;
 
-        // console.log("MapSchema#set", key, value, value[$changes]);
+        const changeTree = this[$changes];
 
         // get "index" for this value.
-        const isReplace = typeof(this[$changes].indexes[key]) !== "undefined";
+        const isReplace = typeof(changeTree.indexes[key]) !== "undefined";
 
         const index = (isReplace)
-            ? this[$changes].indexes[key]
-            : this[$changes].indexes[-1] ?? 0;
+            ? changeTree.indexes[key]
+            : changeTree.indexes[-1] ?? 0;
 
         let operation: OPERATION = (isReplace)
             ? OPERATION.REPLACE
@@ -131,7 +132,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
 
         const isRef = (value[$changes]) !== undefined;
         if (isRef) {
-            value[$changes].setParent(this, this[$changes].root, index);
+            value[$changes].setParent(this, changeTree.root, index);
         }
 
         //
@@ -140,8 +141,8 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         //
         if (!isReplace) {
             this.$indexes.set(index, key);
-            this[$changes].indexes[key] = index;
-            this[$changes].indexes[-1] = index + 1;
+            changeTree.indexes[key] = index;
+            changeTree.indexes[-1] = index + 1;
 
         } else if (
             !isRef &&

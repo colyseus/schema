@@ -1,8 +1,9 @@
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks, Schema, DataChange, $changes, $childType } from "../Schema";
+import { SchemaDecoderCallbacks, Schema, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
+import { $changes, $childType } from "../changes/consts";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
@@ -123,7 +124,6 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     }
 
     constructor (...items: V[]) {
-        // super(...items);
         this.push.apply(this, items);
 
         Object.defineProperty(this, $childType, {
@@ -255,21 +255,21 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
             return;
         }
 
+        const changeTree = this[$changes];
+
         if (value[$changes] !== undefined) {
-            value[$changes].setParent(this, this[$changes].root, index);
+            value[$changes].setParent(this, changeTree.root, index);
         }
 
-        const operation = this[$changes].indexes?.[index]?.op ?? OPERATION.ADD;
+        const operation = changeTree.indexes?.[index]?.op ?? OPERATION.ADD;
 
         this.$indexes.set(index, index);
         this.$items.set(index, value);
 
-        this[$changes].change(index, operation);
+        changeTree.change(index, operation);
+        // this.change(changeTree, index, operation)
 
-        // TODO: endel revisit here. 'indexes' might not exist
-        // if (this[$changes].indexes) {
-            // this[$changes].indexes[index] = index;
-        // }
+        changeTree.indexes[index] = index;
     }
 
     deleteAt(index: number) {

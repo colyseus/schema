@@ -1,12 +1,10 @@
 import { type, PrimitiveType, DefinitionType, TypeContext } from "./annotations";
 import { Metadata } from "./Metadata";
-import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { Iterator } from "./encoding/decode";
 import { Encoder } from "./Encoder";
 import { Decoder } from "./Decoder";
-
-import * as util from "util";
+import { Schema } from "./Schema";
 
 /**
  * Reflection
@@ -35,7 +33,7 @@ export class Reflection extends Schema {
         const reflection = new Reflection();
         const encoder =  new Encoder(reflection);
 
-        const buildType = (currentType: ReflectionType, metadata: any) => {
+        const buildType = (currentType: ReflectionType, metadata: Metadata) => {
             for (const fieldName in metadata) {
                 // skip fields from parent classes
                 if (!Object.prototype.hasOwnProperty.call(metadata, fieldName)) {
@@ -47,7 +45,7 @@ export class Reflection extends Schema {
 
                 let fieldType: string;
 
-                const type = Metadata.getType(metadata, fieldName);
+                const type = metadata[fieldName].type;
 
                 if (typeof (type) === "string") {
                     fieldType = type;

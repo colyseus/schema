@@ -5,13 +5,17 @@ import { type } from "./annotations";
 // import { Reflection, ReflectionField, ReflectionType } from "./Reflection";
 
 import { Schema } from "./Schema";
-// import { MapSchema } from "./types/MapSchema";
-// import { ArraySchema } from "./types/ArraySchema";
+import { ArraySchema } from "./types/ArraySchema";
+import { MapSchema } from "./types/MapSchema";
 
 import { Encoder } from "./Encoder";
 import { Decoder } from "./Decoder";
-import { MapSchema } from "./types/MapSchema";
-import { Reflection } from "./Reflection";
+import { OPERATION } from "./spec";
+import { encodeKeyValueOperation, encodeSchemaOperation } from "./changes/EncodeOperation";
+
+import * as encode from "./encoding/encode";
+import * as decode from "./encoding/decode";
+import { $decoder, $encoder, $track } from "./changes/consts";
 
 // const timeout = setInterval(() => {}, 1000);
 
@@ -111,11 +115,31 @@ import { Reflection } from "./Reflection";
 //     console.log(util.inspect(message, false, 10, true));
 // }
 
+Schema[$encoder] = encodeSchemaOperation;
+MapSchema[$encoder] = encodeKeyValueOperation;
+ArraySchema[$encoder] = encodeKeyValueOperation;
+
 class Vec3 extends Schema {
     @type("number") x: number;
     @type("number") y: number;
     @type("number") z: number;
 }
+
+// Vec3[$track] = function (changeTree, index) {
+//     changeTree.change(0, OPERATION.ADD);
+// };
+
+// Vec3[$encoder] = function (encoder, bytes, changeTree, index, operation) {
+//     encode.number(bytes, changeTree.ref.x);
+//     encode.number(bytes, changeTree.ref.y);
+//     encode.number(bytes, changeTree.ref.z);
+// };
+
+// Vec3[$decoder] = function (decoder, bytes, it: decode.Iterator, instance: Vec3) {
+//     instance.x = decode.number(bytes, it);
+//     instance.y = decode.number(bytes, it);
+//     instance.z = decode.number(bytes, it);
+// };
 
 class Base extends Schema {}
 
@@ -158,7 +182,6 @@ const encoder = new Encoder(state);
 const encoded = encoder.encodeAll();
 console.log(`(${encoded.length})`, encoded);
 
-
 // setTimeout(() => {
 //     for (let i = 0; i < 500000; i++) {
 //         encoder.encodeAll();
@@ -184,8 +207,9 @@ logTime();
 
 // console.log(`encode: (${encoded.length})`, encoded);
 
-const encodedReflection = Reflection.encode(state, encoder.context);
-const decoded = Reflection.decode(encodedReflection);
+// const encodedReflection = Reflection.encode(state, encoder.context);
+// const decoded = Reflection.decode(encodedReflection);
+
 const decoder = new Decoder(new State());
 const changes = decoder.decode(encoded);
 

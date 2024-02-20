@@ -1,9 +1,9 @@
 import "./symbol.shim";
-import { ChangeTree, Ref, Root } from './changes/ChangeTree';
-import { $changes, $childType, Schema } from './Schema';
+import { Schema } from './Schema';
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
 import { Metadata } from "./Metadata";
+import { $changes, $childType, $track } from "./changes/consts";
 
 /**
  * Data types
@@ -356,7 +356,7 @@ export function type (
 
         const parentClass = Object.getPrototypeOf(constructor);
         const parentMetadata = parentClass[Symbol.metadata];
-        const metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
+        const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
 
         /**
          * skip if descriptor already exists for this field (`@deprecated()`)
@@ -445,7 +445,8 @@ export function type (
                     }
 
                     // flag the change for encoding.
-                    this[$changes].change(fieldIndex);
+                    // this[$changes].change(fieldIndex);
+                    this.constructor[$track](this[$changes], fieldIndex);
 
                     //
                     // call setParent() recursively for this and its child
@@ -455,7 +456,7 @@ export function type (
                         value[$changes].setParent(
                             this,
                             this[$changes].root,
-                            Metadata.getIndex(metadata, field),
+                            metadata[field].index,
                         );
                     }
 
