@@ -4,7 +4,7 @@ import "./symbol.shim";
 import { type } from "./annotations";
 // import { Reflection, ReflectionField, ReflectionType } from "./Reflection";
 
-import { Schema } from "./Schema";
+import { DataChange, Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
@@ -16,6 +16,8 @@ import { encodeKeyValueOperation, encodeSchemaOperation } from "./changes/Encode
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
 import { $decoder, $encoder, $track } from "./changes/consts";
+import { decodeKeyValueOperation, decodeSchemaOperation } from "./changes/DecodeOperation";
+import { Ref } from "./changes/ChangeTree";
 
 // const timeout = setInterval(() => {}, 1000);
 
@@ -116,8 +118,13 @@ import { $decoder, $encoder, $track } from "./changes/consts";
 // }
 
 Schema[$encoder] = encodeSchemaOperation;
+Schema[$decoder] = decodeSchemaOperation;
+
 MapSchema[$encoder] = encodeKeyValueOperation;
+MapSchema[$decoder] = decodeKeyValueOperation;
+
 ArraySchema[$encoder] = encodeKeyValueOperation;
+ArraySchema[$encoder] = decodeKeyValueOperation;
 
 class Vec3 extends Schema {
     @type("number") x: number;
@@ -125,21 +132,29 @@ class Vec3 extends Schema {
     @type("number") z: number;
 }
 
-// Vec3[$track] = function (changeTree, index) {
-//     changeTree.change(0, OPERATION.ADD);
-// };
+Vec3[$track] = function (changeTree, index) {
+    changeTree.change(0, OPERATION.ADD);
+};
 
-// Vec3[$encoder] = function (encoder, bytes, changeTree, index, operation) {
-//     encode.number(bytes, changeTree.ref.x);
-//     encode.number(bytes, changeTree.ref.y);
-//     encode.number(bytes, changeTree.ref.z);
-// };
+Vec3[$encoder] = function (encoder, bytes, changeTree, index, operation) {
+    encode.uint8(bytes, 0); // field as first byte
+    encode.number(bytes, changeTree.ref.x);
+    encode.number(bytes, changeTree.ref.y);
+    encode.number(bytes, changeTree.ref.z);
+};
 
-// Vec3[$decoder] = function (decoder, bytes, it: decode.Iterator, instance: Vec3) {
-//     instance.x = decode.number(bytes, it);
-//     instance.y = decode.number(bytes, it);
-//     instance.z = decode.number(bytes, it);
-// };
+Vec3[$decoder] = function (
+    decoder: Decoder<any>,
+    byte: number,
+    bytes: number[],
+    it: decode.Iterator,
+    ref: Vec3,
+    allChanges: DataChange[]
+) {
+    ref.x = decode.number(bytes, it);
+    ref.y = decode.number(bytes, it);
+    ref.z = decode.number(bytes, it);
+};
 
 class Base extends Schema {}
 
@@ -174,8 +189,8 @@ state.entities.set("one", new Player().assign({
 }));
 
 state.entities.set("two", new Player().assign({
-    position: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-    rotation: new Vec3().assign({ x: 7, y: 8, z: 9 }),
+    position: new Vec3().assign({ x: 7, y: 8, z: 9 }),
+    rotation: new Vec3().assign({ x: 2, y: 3, z: 4 }),
 }));
 
 const encoder = new Encoder(state);

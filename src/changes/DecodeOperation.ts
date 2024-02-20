@@ -1,68 +1,46 @@
-import { Metadata } from "..";
-import type { Decoder } from "../Decoder";
 import { OPERATION } from "../spec";
+import { Metadata } from "../Metadata";
+import { DataChange, Schema, SchemaDecoderCallbacks } from "../Schema";
 import type { Ref } from "./ChangeTree";
+import type { Decoder } from "../Decoder";
 import * as decode from "../encoding/decode";
+import { getType } from "../types/typeRegistry";
+import { $childType } from "./consts";
+import { ArraySchema, CollectionSchema, MapSchema, SetSchema } from "..";
+
+export enum DecodeState {
+    DEFINITION_MISMATCH = 0,
+}
 
 export type DecodeOperation<T extends Ref = any> = (
     decoder: Decoder<any>,
+    byte: number,
     bytes: number[],
     it: decode.Iterator,
     ref: Ref,
-    index: number,
+    allChanges: DataChange[],
 ) => void;
 
-export const decodeSchemaOperation: DecodeOperation = function () {
-    const metadata: Metadata = (isSchema) ? ref['constructor'][Symbol.metadata] : undefined;
+export const decodeSchemaOperation: DecodeOperation = function (
+    decoder: Decoder<any>,
+    byte: number,
+    bytes: number[],
+    it: decode.Iterator,
+    ref: Ref,
+    allChanges: DataChange[]
+) {
+    const $root = decoder.refs;
+    const metadata: Metadata = ref['constructor'][Symbol.metadata];
 
-    const operation = (isSchema)
-        ? (byte >> 6) << 6 // "compressed" index + operation
-        : byte; // "uncompressed" index + operation (array/map items)
+    // "compressed" index + operation
+    const operation = (byte >> 6) << 6
 
-    if (operation === OPERATION.CLEAR) {
-        //
-        // TODO: refactor me!
-        // The `.clear()` method is calling `$root.removeRef(refId)` for
-        // each item inside this collection
-        //
-        (ref as SchemaDecoderCallbacks).clear(allChanges);
-        continue;
-    }
-
-    const fieldIndex = (isSchema)
-        ? byte % (operation || 255) // if "REPLACE" operation (0), use 255
-        : decode.number(bytes, it);
-
-    const fieldName = (isSchema)
-        ? metadata[fieldIndex]
-        : "";
-
-    const type = (isSchema)
-        ? metadata[fieldName].type
-        : ref[$childType];
+    const index = byte % (operation || 255);
+    const field = metadata[index];
+    const type = metadata[field].type;
 
     let value: any;
-    let previousValue: any;
-
-    let dynamicIndex: number | string;
-
-    if (!isSchema) {
-        previousValue = ref['getByIndex'](fieldIndex);
-
-        if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
-            dynamicIndex = (ref instanceof MapSchema)
-                ? decode.string(bytes, it)
-                : fieldIndex;
-            ref['setIndex'](fieldIndex, dynamicIndex);
-
-        } else {
-            // here
-            dynamicIndex = ref['getIndex'](fieldIndex);
-        }
-
-    } else {
-        previousValue = ref[fieldName];
-    }
+    let previousValue: any = ref[field];
 
     //
     // Delete operations
@@ -70,7 +48,7 @@ export const decodeSchemaOperation: DecodeOperation = function () {
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
         if (operation !== OPERATION.DELETE_AND_ADD) {
-            ref['deleteByIndex'](fieldIndex);
+            ref['deleteByIndex'](index);
         }
 
         // Flag `refId` for garbage collection.
@@ -82,29 +60,8 @@ export const decodeSchemaOperation: DecodeOperation = function () {
         value = null;
     }
 
-    // console.log("decoding (1)...", {  ref, refId, isSchema, fieldName, fieldIndex, operation,});
-    // console.log("decoding...", { refId, fieldName, fieldIndex });
-
-    if (fieldName === undefined) {
-        console.warn("@colyseus/schema: definition mismatch");
-
-        //
-        // keep skipping next bytes until reaches a known structure
-        // by local decoder.
-        //
-        const nextIterator: Iterator = { offset: it.offset };
-        while (it.offset < totalBytes) {
-            if (decode.switchStructureCheck(bytes, it)) {
-                nextIterator.offset = it.offset + 1;
-                if ($root.refs.has(decode.number(bytes, nextIterator))) {
-                    break;
-                }
-            }
-
-            it.offset++;
-        }
-
-        continue;
+    if (field === undefined) {
+        return DecodeState.DEFINITION_MISMATCH;
 
     } else if (operation === OPERATION.DELETE) {
         //
@@ -116,17 +73,11 @@ export const decodeSchemaOperation: DecodeOperation = function () {
         const refId = decode.number(bytes, it);
         value = $root.refs.get(refId);
 
-        // console.log({
-        //     refId,
-        //     value,
-        //     operation: OPERATION[operation],
-        // });
-
         if (operation !== OPERATION.REPLACE) {
-            const childType = this.getSchemaType(bytes, it, type);
+            const childType = decoder.getInstanceType(bytes, it, type as typeof Schema);
 
             if (!value) {
-                value = this.createTypeInstance(childType);
+                value = decoder.createInstanceOfType(childType);
 
                 if (previousValue) {
                     // value.$callbacks = previousValue.$callbacks;
@@ -190,47 +141,34 @@ export const decodeSchemaOperation: DecodeOperation = function () {
         $root.addRef(refId, value, (valueRef !== previousValue));
     }
 
-    if (
-        value !== null &&
-        value !== undefined
-    ) {
-
-        if (ref instanceof Schema) {
-            ref[fieldName] = value;
-
-        } else if (ref instanceof MapSchema) {
-            // const key = ref['$indexes'].get(field);
-            const key = dynamicIndex as string;
-
-            // ref.set(key, value);
-            ref['$items'].set(key, value);
-
-        } else if (ref instanceof ArraySchema) {
-            // const key = ref['$indexes'][field];
-            // console.log("SETTING FOR ArraySchema =>", { field, key, value });
-            // ref[key] = value;
-            ref.setAt(fieldIndex, value);
-
-        } else if (ref instanceof CollectionSchema) {
-            const index = ref.add(value);
-            ref['setIndex'](fieldIndex, index);
-
-        } else if (ref instanceof SetSchema) {
-            const index = ref.add(value);
-            if (index !== false) {
-                ref['setIndex'](fieldIndex, index);
-            }
-        }
+    if (value !== null && value !== undefined) {
+        ref[field] = value;
     }
 
+    // add change
+    if (previousValue !== value) {
+        allChanges.push({
+            refId: decoder.currentRefId,
+            op: operation,
+            field: field,
+            value,
+            previousValue,
+        });
+    }
 }
 
-export const decodeKeyValueOperation: DecodeOperation = function () {
-    const metadata: Metadata = (isSchema) ? ref['constructor'][Symbol.metadata] : undefined;
+export const decodeKeyValueOperation: DecodeOperation = function (
+    decoder: Decoder<any>,
+    byte: number,
+    bytes: number[],
+    it: decode.Iterator,
+    ref: Ref,
+    allChanges: DataChange[]
+) {
+    const $root = decoder.refs;
 
-    const operation = (isSchema)
-        ? (byte >> 6) << 6 // "compressed" index + operation
-        : byte; // "uncompressed" index + operation (array/map items)
+    // "uncompressed" index + operation (array/map items)
+    const operation = byte;
 
     if (operation === OPERATION.CLEAR) {
         //
@@ -239,42 +177,26 @@ export const decodeKeyValueOperation: DecodeOperation = function () {
         // each item inside this collection
         //
         (ref as SchemaDecoderCallbacks).clear(allChanges);
-        continue;
+        return;
     }
 
-    const fieldIndex = (isSchema)
-        ? byte % (operation || 255) // if "REPLACE" operation (0), use 255
-        : decode.number(bytes, it);
-
-    const fieldName = (isSchema)
-        ? metadata[fieldIndex]
-        : "";
-
-    const type = (isSchema)
-        ? metadata[fieldName].type
-        : ref[$childType];
+    const index = decode.number(bytes, it);
+    const type = ref[$childType];
 
     let value: any;
-    let previousValue: any;
+    let previousValue: any = ref['getByIndex'](index);
 
     let dynamicIndex: number | string;
 
-    if (!isSchema) {
-        previousValue = ref['getByIndex'](fieldIndex);
-
-        if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
-            dynamicIndex = (ref instanceof MapSchema)
-                ? decode.string(bytes, it)
-                : fieldIndex;
-            ref['setIndex'](fieldIndex, dynamicIndex);
-
-        } else {
-            // here
-            dynamicIndex = ref['getIndex'](fieldIndex);
-        }
+    if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
+        dynamicIndex = (ref instanceof MapSchema)
+            ? decode.string(bytes, it)
+            : index;
+        ref['setIndex'](index, dynamicIndex);
 
     } else {
-        previousValue = ref[fieldName];
+        // here
+        dynamicIndex = ref['getIndex'](index);
     }
 
     //
@@ -283,7 +205,7 @@ export const decodeKeyValueOperation: DecodeOperation = function () {
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
         if (operation !== OPERATION.DELETE_AND_ADD) {
-            ref['deleteByIndex'](fieldIndex);
+            ref['deleteByIndex'](index);
         }
 
         // Flag `refId` for garbage collection.
@@ -298,28 +220,7 @@ export const decodeKeyValueOperation: DecodeOperation = function () {
     // console.log("decoding (1)...", {  ref, refId, isSchema, fieldName, fieldIndex, operation,});
     // console.log("decoding...", { refId, fieldName, fieldIndex });
 
-    if (fieldName === undefined) {
-        console.warn("@colyseus/schema: definition mismatch");
-
-        //
-        // keep skipping next bytes until reaches a known structure
-        // by local decoder.
-        //
-        const nextIterator: Iterator = { offset: it.offset };
-        while (it.offset < totalBytes) {
-            if (decode.switchStructureCheck(bytes, it)) {
-                nextIterator.offset = it.offset + 1;
-                if ($root.refs.has(decode.number(bytes, nextIterator))) {
-                    break;
-                }
-            }
-
-            it.offset++;
-        }
-
-        continue;
-
-    } else if (operation === OPERATION.DELETE) {
+    if (operation === OPERATION.DELETE) {
         //
         // FIXME: refactor me.
         // Don't do anything.
@@ -336,10 +237,10 @@ export const decodeKeyValueOperation: DecodeOperation = function () {
         // });
 
         if (operation !== OPERATION.REPLACE) {
-            const childType = this.getSchemaType(bytes, it, type);
+            const childType = decoder.getInstanceType(bytes, it, type);
 
             if (!value) {
-                value = this.createTypeInstance(childType);
+                value = decoder.createInstanceOfType(childType);
 
                 if (previousValue) {
                     // value.$callbacks = previousValue.$callbacks;
@@ -403,15 +304,8 @@ export const decodeKeyValueOperation: DecodeOperation = function () {
         $root.addRef(refId, value, (valueRef !== previousValue));
     }
 
-    if (
-        value !== null &&
-        value !== undefined
-    ) {
-
-        if (ref instanceof Schema) {
-            ref[fieldName] = value;
-
-        } else if (ref instanceof MapSchema) {
+    if (value !== null && value !== undefined) {
+        if (ref instanceof MapSchema) {
             // const key = ref['$indexes'].get(field);
             const key = dynamicIndex as string;
 
@@ -422,18 +316,28 @@ export const decodeKeyValueOperation: DecodeOperation = function () {
             // const key = ref['$indexes'][field];
             // console.log("SETTING FOR ArraySchema =>", { field, key, value });
             // ref[key] = value;
-            ref.setAt(fieldIndex, value);
+            ref.setAt(index, value);
 
         } else if (ref instanceof CollectionSchema) {
             const index = ref.add(value);
-            ref['setIndex'](fieldIndex, index);
+            ref['setIndex'](index, index);
 
         } else if (ref instanceof SetSchema) {
             const index = ref.add(value);
             if (index !== false) {
-                ref['setIndex'](fieldIndex, index);
+                ref['setIndex'](index, index);
             }
         }
     }
 
+    // add change
+    if (previousValue !== value) {
+        allChanges.push({
+            refId: decoder.currentRefId,
+            op: operation,
+            field: "", // FIXME: remove this
+            value,
+            previousValue,
+        });
+    }
 }

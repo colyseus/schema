@@ -1,6 +1,6 @@
 import { Metadata } from "./Metadata";
 import { TypeContext } from "./annotations";
-import { $childType } from "./changes/consts";
+import { $childType, $decoder } from "./changes/consts";
 import { DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
 import { CollectionSchema } from "./types/CollectionSchema";
 import { MapSchema } from "./types/MapSchema";
@@ -13,12 +13,15 @@ import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
 import { Ref } from "./changes/ChangeTree";
 import { Iterator } from "./encoding/decode";
 import { ReferenceTracker } from "./changes/ReferenceTracker";
+import { DecodeState } from "./changes/DecodeOperation";
 
 export class Decoder<T extends Schema> {
     context: TypeContext;
 
     root: T;
     refs: ReferenceTracker;
+
+    currentRefId: number = 0;
 
     constructor(root: T, context?: TypeContext) {
         this.setRoot(root);
@@ -47,105 +50,34 @@ export class Decoder<T extends Schema> {
         const $root = this.refs;
         const totalBytes = bytes.length;
 
-        let refId: number = 0;
+        this.currentRefId = 0;
 
         while (it.offset < totalBytes) {
             let byte = bytes[it.offset++];
 
             if (byte == SWITCH_TO_STRUCTURE) {
-                refId = decode.number(bytes, it);
-                const nextRef = $root.refs.get(refId) as Schema;
+                this.currentRefId = decode.number(bytes, it);
+                const nextRef = $root.refs.get(this.currentRefId) as Schema;
 
                 //
                 // Trying to access a reference that haven't been decoded yet.
                 //
-                if (!nextRef) { throw new Error(`"refId" not found: ${refId}`); }
+                if (!nextRef) { throw new Error(`"refId" not found: ${this.currentRefId}`); }
                 ref = nextRef;
 
                 continue;
             }
 
-            const isSchema = (ref instanceof Schema);
-            const metadata: Metadata = (isSchema) ? ref['constructor'][Symbol.metadata] : undefined;
+            const result = ref['constructor'][$decoder](this, byte, bytes, it, ref, allChanges);
 
-            const operation = (isSchema)
-                ? (byte >> 6) << 6 // "compressed" index + operation
-                : byte; // "uncompressed" index + operation (array/map items)
-
-            if (operation === OPERATION.CLEAR) {
-                //
-                // TODO: refactor me!
-                // The `.clear()` method is calling `$root.removeRef(refId)` for
-                // each item inside this collection
-                //
-                (ref as SchemaDecoderCallbacks).clear(allChanges);
-                continue;
-            }
-
-            const fieldIndex = (isSchema)
-                ? byte % (operation || 255) // if "REPLACE" operation (0), use 255
-                : decode.number(bytes, it);
-
-            const fieldName = (isSchema)
-                ? metadata[fieldIndex]
-                : "";
-
-            const type = (isSchema)
-                ? metadata[fieldName].type
-                : ref[$childType];
-
-            let value: any;
-            let previousValue: any;
-
-            let dynamicIndex: number | string;
-
-            if (!isSchema) {
-                previousValue = ref['getByIndex'](fieldIndex);
-
-                if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
-                    dynamicIndex = (ref instanceof MapSchema)
-                        ? decode.string(bytes, it)
-                        : fieldIndex;
-                    ref['setIndex'](fieldIndex, dynamicIndex);
-
-                } else {
-                    // here
-                    dynamicIndex = ref['getIndex'](fieldIndex);
-                }
-
-            } else {
-                previousValue = ref[fieldName];
-            }
-
-            //
-            // Delete operations
-            //
-            if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
-            {
-                if (operation !== OPERATION.DELETE_AND_ADD) {
-                    ref['deleteByIndex'](fieldIndex);
-                }
-
-                // Flag `refId` for garbage collection.
-                const previousRefId = $root.refIds.get(previousValue);
-                if (previousRefId) {
-                    $root.removeRef(previousRefId);
-                }
-
-                value = null;
-            }
-
-            // console.log("decoding (1)...", {  ref, refId, isSchema, fieldName, fieldIndex, operation,});
-            // console.log("decoding...", { refId, fieldName, fieldIndex });
-
-            if (fieldName === undefined) {
+            if (result === DecodeState.DEFINITION_MISMATCH) {
                 console.warn("@colyseus/schema: definition mismatch");
 
                 //
                 // keep skipping next bytes until reaches a known structure
                 // by local decoder.
                 //
-                const nextIterator: Iterator = { offset: it.offset };
+                const nextIterator: decode.Iterator = { offset: it.offset };
                 while (it.offset < totalBytes) {
                     if (decode.switchStructureCheck(bytes, it)) {
                         nextIterator.offset = it.offset + 1;
@@ -156,135 +88,7 @@ export class Decoder<T extends Schema> {
 
                     it.offset++;
                 }
-
                 continue;
-
-            } else if (operation === OPERATION.DELETE) {
-                //
-                // FIXME: refactor me.
-                // Don't do anything.
-                //
-
-            } else if (Schema.is(type)) {
-                const refId = decode.number(bytes, it);
-                value = $root.refs.get(refId);
-
-                // console.log({
-                //     refId,
-                //     value,
-                //     operation: OPERATION[operation],
-                // });
-
-                if (operation !== OPERATION.REPLACE) {
-                    const childType = this.getSchemaType(bytes, it, type);
-
-                    if (!value) {
-                        value = this.createTypeInstance(childType);
-
-                        if (previousValue) {
-                            // value.$callbacks = previousValue.$callbacks;
-                            // value.$listeners = previousValue.$listeners;
-                            const previousRefId = $root.refIds.get(previousValue);
-                            if (previousRefId && refId !== previousRefId) {
-                                $root.removeRef(previousRefId);
-                            }
-                        }
-                    }
-
-                    // console.log("ADD REF!", refId, value, ", TYPE =>", Metadata.getFor(childType));
-                    $root.addRef(refId, value, (value !== previousValue));
-                }
-
-            } else if (typeof(type) === "string") {
-                //
-                // primitive value (number, string, boolean, etc)
-                //
-                value = decode[type as string](bytes, it);
-
-            } else {
-                const typeDef = getType(Object.keys(type)[0]);
-                const refId = decode.number(bytes, it);
-
-                const valueRef: SchemaDecoderCallbacks = ($root.refs.has(refId))
-                    ? previousValue || $root.refs.get(refId)
-                    : new typeDef.constructor();
-
-                value = valueRef.clone(true);
-                value[$childType] = Object.values(type)[0]; // cache childType for ArraySchema and MapSchema
-
-                // preserve schema callbacks
-                if (previousValue) {
-                    // value['$callbacks'] = previousValue['$callbacks'];
-                    const previousRefId = $root.refIds.get(previousValue);
-
-                    if (previousRefId && refId !== previousRefId) {
-                        $root.removeRef(previousRefId);
-
-                        //
-                        // Trigger onRemove if structure has been replaced.
-                        //
-                        const entries: IterableIterator<[any, any]> = previousValue.entries();
-                        let iter: IteratorResult<[any, any]>;
-                        while ((iter = entries.next()) && !iter.done) {
-                            const [key, value] = iter.value;
-                            allChanges.push({
-                                refId,
-                                op: OPERATION.DELETE,
-                                field: key,
-                                value: undefined,
-                                previousValue: value,
-                            });
-                        }
-
-                    }
-                }
-
-                // console.log("ADD REF!", { refId, value });
-                $root.addRef(refId, value, (valueRef !== previousValue));
-            }
-
-            if (
-                value !== null &&
-                value !== undefined
-            ) {
-
-                if (ref instanceof Schema) {
-                    ref[fieldName] = value;
-
-                } else if (ref instanceof MapSchema) {
-                    // const key = ref['$indexes'].get(field);
-                    const key = dynamicIndex as string;
-
-                    // ref.set(key, value);
-                    ref['$items'].set(key, value);
-
-                } else if (ref instanceof ArraySchema) {
-                    // const key = ref['$indexes'][field];
-                    // console.log("SETTING FOR ArraySchema =>", { field, key, value });
-                    // ref[key] = value;
-                    ref.setAt(fieldIndex, value);
-
-                } else if (ref instanceof CollectionSchema) {
-                    const index = ref.add(value);
-                    ref['setIndex'](fieldIndex, index);
-
-                } else if (ref instanceof SetSchema) {
-                    const index = ref.add(value);
-                    if (index !== false) {
-                        ref['setIndex'](fieldIndex, index);
-                    }
-                }
-            }
-
-            if (previousValue !== value) {
-                allChanges.push({
-                    refId,
-                    op: operation,
-                    field: fieldName,
-                    dynamicIndex,
-                    value,
-                    previousValue,
-                });
             }
         }
 
@@ -293,6 +97,8 @@ export class Decoder<T extends Schema> {
 
         // drop references of unused schemas
         $root.garbageCollectDeletedRefs();
+
+        console.log("allChanges", allChanges);
 
         return allChanges;
     }
@@ -387,7 +193,7 @@ export class Decoder<T extends Schema> {
     }
     */
 
-    private getSchemaType(bytes: number[], it: Iterator, defaultType: typeof Schema): typeof Schema {
+    getInstanceType(bytes: number[], it: Iterator, defaultType: typeof Schema): typeof Schema {
         let type: typeof Schema;
 
         if (bytes[it.offset] === TYPE_ID) {
@@ -399,7 +205,7 @@ export class Decoder<T extends Schema> {
         return type || defaultType;
     }
 
-    private createTypeInstance (type: typeof Schema): Schema {
+    createInstanceOfType (type: typeof Schema): Schema {
         // let instance: Schema = new (type as any)();
 
         // // assign root on $changes
