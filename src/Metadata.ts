@@ -55,6 +55,8 @@ export const Metadata = {
         // target[$encoder] = encodeSchemaOperation;
         // target[$decoder] = decodeSchemaOperation;
 
+        // if (!target.prototype.toJSON) { target.prototype.toJSON = Schema.prototype.toJSON; }
+
         let index = 0;
         for (const field in fields) {
             const type = fields[field];
@@ -79,7 +81,10 @@ export const Metadata = {
     },
 
     isValidInstance(klass: any) {
-        return Object.prototype.hasOwnProperty.call(klass[Symbol.metadata], -1) as boolean;
+        return (
+            klass[Symbol.metadata] &&
+            Object.prototype.hasOwnProperty.call(klass[Symbol.metadata], -1) as boolean
+        );
     },
 
     getFields(metadata: any) {

@@ -3,7 +3,7 @@ import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
-import { $changes, $childType } from "../changes/consts";
+import { $changes, $childType, $deleteByIndex, $getByIndex } from "../changes/consts";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
@@ -709,11 +709,11 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         return this.$indexes.get(index);
     }
 
-    protected getByIndex(index: number) {
+    protected [$getByIndex](index: number) {
         return this.$items.get(this.$indexes.get(index));
     }
 
-    protected deleteByIndex(index: number) {
+    protected [$deleteByIndex](index: number) {
         const key = this.$indexes.get(index);
         this.$items.delete(key);
         this.$indexes.delete(index);

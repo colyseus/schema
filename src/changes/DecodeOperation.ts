@@ -216,9 +216,6 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         value = null;
     }
 
-    // console.log("decoding (1)...", {  ref, refId, isSchema, fieldName, fieldIndex, operation,});
-    // console.log("decoding...", { refId, fieldName, fieldIndex });
-
     if (operation === OPERATION.DELETE) {
         //
         // FIXME: refactor me.

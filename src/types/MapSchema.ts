@@ -3,7 +3,7 @@ import { addCallback, removeChildRefs } from "./utils";
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { registerType } from "./typeRegistry";
-import { $changes, $childType } from "../changes/consts";
+import { $changes, $childType, $deleteByIndex, $getByIndex } from "../changes/consts";
 
 export function getMapProxy(value: MapSchema) {
     value['$proxy'] = true;
@@ -242,11 +242,11 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         return this.$indexes.get(index);
     }
 
-    protected getByIndex(index: number) {
+    protected [$getByIndex](index: number) {
         return this.$items.get(this.$indexes.get(index));
     }
 
-    protected deleteByIndex(index: number) {
+    protected [$deleteByIndex](index: number) {
         const key = this.$indexes.get(index);
         this.$items.delete(key);
         this.$indexes.delete(index);

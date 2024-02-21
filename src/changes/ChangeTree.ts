@@ -235,6 +235,7 @@ export class ChangeTree<T extends Ref=any> implements ChangeTracker {
         if (Metadata.isValidInstance(this.ref)) {
             const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
             return metadata[metadata[index]].type;
+
         } else {
             //
             // Get the child type from parent structure.

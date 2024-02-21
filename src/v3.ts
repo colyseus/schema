@@ -127,57 +127,55 @@ MapSchema[$decoder] = decodeKeyValueOperation;
 ArraySchema[$encoder] = encodeKeyValueOperation;
 ArraySchema[$encoder] = decodeKeyValueOperation;
 
-// class Vec3 extends Schema {
-//     @type("number") x: number;
-//     @type("number") y: number;
-//     @type("number") z: number;
-// }
-
-class Vec3 {
-    x: number;
-    y: number;
-    z: number;
-    constructor() {
-        Schema.initialize(this);
-    }
-    assign(data: { x: number, y: number, z: number }) {
-        this.x = data.x;
-        this.y = data.y;
-        this.z = data.z;
-        return this;
-    }
+class Vec3 extends Schema {
+    @type("number") x: number;
+    @type("number") y: number;
+    @type("number") z: number;
 }
-Metadata.setFields(Vec3, {
-    x: "number",
-    y: "number",
-    z: "number",
-});
-Vec3.prototype[$getByIndex] = function (index: number) {
-    return this[this.constructor[Symbol.metadata][index]];
-};
-Vec3.prototype[$deleteByIndex] = function (index: number) {
-    this[this.constructor[Symbol.metadata][index]] = undefined;
-};
-Vec3[$track] = function (changeTree, index: number, operation: OPERATION = OPERATION.ADD) {
-    changeTree.change(index, operation, encodeSchemaOperation);
-};
-Vec3[$encoder] = encodeSchemaOperation;
-Vec3[$decoder] = decodeSchemaOperation;
-// @ts-ignore
-if (!Vec3.prototype.toJSON) { Vec3.prototype.toJSON = Schema.prototype.toJSON; }
+
+// class Vec3 {
+//     x: number;
+//     y: number;
+//     z: number;
+//     constructor() {
+//         Schema.initialize(this);
+//     }
+//     assign(data: { x: number, y: number, z: number }) {
+//         this.x = data.x;
+//         this.y = data.y;
+//         this.z = data.z;
+//         return this;
+//     }
+// }
+// Metadata.setFields(Vec3, {
+//     x: "number",
+//     y: "number",
+//     z: "number",
+// });
+// Vec3.prototype[$getByIndex] = function (index: number) {
+//     return this[this.constructor[Symbol.metadata][index]];
+// };
+// Vec3.prototype[$deleteByIndex] = function (index: number) {
+//     this[this.constructor[Symbol.metadata][index]] = undefined;
+// };
+// Vec3[$track] = function (changeTree, index: number, operation: OPERATION = OPERATION.ADD) {
+//     changeTree.change(index, operation, encodeSchemaOperation);
+// };
+// Vec3[$encoder] = encodeSchemaOperation;
+// Vec3[$decoder] = decodeSchemaOperation;
+// // @ts-ignore
+// if (!Vec3.prototype.toJSON) { Vec3.prototype.toJSON = Schema.prototype.toJSON; }
 
 // -------------------------------------------------------------------------------
 
 // Vec3[$track] = function (changeTree, index) {
 //     changeTree.change(0, OPERATION.ADD);
 // };
-
 // Vec3[$encoder] = function (encoder, bytes, changeTree, index, operation) {
 //     encode.number(bytes, changeTree.ref.x);
 //     encode.number(bytes, changeTree.ref.y);
 //     encode.number(bytes, changeTree.ref.z);
 // };
-
 // Vec3[$decoder] = function (
 //     decoder: Decoder<any>,
 //     bytes: number[],
@@ -193,41 +191,37 @@ if (!Vec3.prototype.toJSON) { Vec3.prototype.toJSON = Schema.prototype.toJSON; }
 class Base extends Schema {}
 
 class Entity extends Schema {
-    // @ts-ignore
     @type(Vec3) position = new Vec3().assign({ x: 0, y: 0, z: 0 });
 }
 
 // TODO: @entity shouldn't be required here.
 // (TypeContext.register() is required for inheritance support)
-// @entity
 class Player extends Entity {
-    // @ts-ignore
     @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
 }
 
-// @entity
 class State extends Schema {
     // @type({ map: Base }) players = new MapSchema<Entity>();
     @type("number") num: number = 0;
     @type("string") str = "Hello world!";
-    @type(Entity) entity = new Player().assign({
-        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-    });
-    // @type({ map: Entity }) entities = new MapSchema<Entity>();
+    // @type(Entity) entity = new Player().assign({
+    //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+    //     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    // });
+    @type({ map: Entity }) entities = new MapSchema<Entity>();
 }
 
 const state = new State();
 
-// state.entities.set("one", new Player().assign({
-//     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-//     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-// }));
+state.entities.set("one", new Player().assign({
+    position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+    rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+}));
 
-// state.entities.set("two", new Player().assign({
-//     position: new Vec3().assign({ x: 7, y: 8, z: 9 }),
-//     rotation: new Vec3().assign({ x: 2, y: 3, z: 4 }),
-// }));
+state.entities.set("two", new Player().assign({
+    position: new Vec3().assign({ x: 7, y: 8, z: 9 }),
+    rotation: new Vec3().assign({ x: 2, y: 3, z: 4 }),
+}));
 
 const encoder = new Encoder(state);
 const encoded = encoder.encodeAll();
@@ -246,14 +240,14 @@ globalThis.perform = function perform() {
     }
 }
 
-// function logTime(label: string, callback: Function) {
-//     const time = Date.now();
-//     for (let i = 0; i < 500000; i++) {
-//         callback();
-//     }
-//     console.log(`${label}:`, Date.now() - time);
-// }
-// logTime("encode time", () => encoder.encodeAll());
+function logTime(label: string, callback: Function) {
+    const time = Date.now();
+    for (let i = 0; i < 500000; i++) {
+        callback();
+    }
+    console.log(`${label}:`, Date.now() - time);
+}
+logTime("encode time", () => encoder.encodeAll());
 
 // console.log(`encode: (${encoded.length})`, encoded);
 

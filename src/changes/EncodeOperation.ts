@@ -39,6 +39,54 @@ export function encodePrimitiveType(
     }
 }
 
+export function encodeValue(
+    encoder: Encoder,
+    bytes: number[],
+    ref: Schema,
+    type: any,
+    value: any,
+    field: string | number,
+    operation: OPERATION
+) {
+    if (type[Symbol.metadata] !== undefined) {
+        assertInstanceType(value, type as typeof Schema, ref as Schema, field);
+
+        //
+        // Encode refId for this instance.
+        // The actual instance is going to be encoded on next `changeTree` iteration.
+        //
+        encode.number(bytes, value[$changes].refId);
+
+        // Try to encode inherited TYPE_ID if it's an ADD operation.
+        if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+            encoder.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
+        }
+
+    } else if (typeof (type) === "string") {
+        //
+        // Primitive values
+        //
+        encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field);
+
+    } else {
+        //
+        // Custom type (MapSchema, ArraySchema, etc)
+        //
+        const definition = getType(Object.keys(type)[0]);
+
+        //
+        // ensure a ArraySchema has been provided
+        //
+        assertInstanceType(ref[field], definition.constructor, ref as Schema, field);
+
+        //
+        // Encode refId for this instance.
+        // The actual instance is going to be encoded on next `changeTree` iteration.
+        //
+        encode.number(bytes, value[$changes].refId);
+    }
+}
+
 /**
  * Used for Schema instances.
  * @private
@@ -69,43 +117,8 @@ export const encodeSchemaOperation: EncodeOperation = function (
         return;
     }
 
-    if (type[Symbol.metadata] !== undefined) {
-        assertInstanceType(value, type as typeof Schema, ref as Schema, field);
-
-        //
-        // Encode refId for this instance.
-        // The actual instance is going to be encoded on next `changeTree` iteration.
-        //
-        encode.number(bytes, value[$changes].refId);
-
-        // Try to encode inherited TYPE_ID if it's an ADD operation.
-        if ((operation & OPERATION.ADD) === OPERATION.ADD) {
-            encoder.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
-        }
-
-    } else if (typeof(type) === "string") {
-        //
-        // Primitive values
-        //
-        encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field);
-
-    } else {
-        //
-        // Custom type (MapSchema, ArraySchema, etc)
-        //
-        const definition = getType(Object.keys(type)[0]);
-
-        //
-        // ensure a ArraySchema has been provided
-        //
-        assertInstanceType(ref[field], definition.constructor, ref as Schema, field);
-
-        //
-        // Encode refId for this instance.
-        // The actual instance is going to be encoded on next `changeTree` iteration.
-        //
-        encode.number(bytes, value[$changes].refId);
-    }
+    // TODO: inline this function call small performance gain
+    encodeValue(encoder, bytes, ref, type, value, field, operation);
 }
 
 /**
@@ -169,41 +182,6 @@ export const encodeKeyValueOperation: EncodeOperation = function (
         return;
     }
 
-    if (type[Symbol.metadata] !== undefined) {
-        assertInstanceType(value, type as typeof Schema, ref as Schema, field);
-
-        //
-        // Encode refId for this instance.
-        // The actual instance is going to be encoded on next `changeTree` iteration.
-        //
-        encode.number(bytes, value[$changes].refId);
-
-        // Try to encode inherited TYPE_ID if it's an ADD operation.
-        if ((operation & OPERATION.ADD) === OPERATION.ADD) {
-            encoder.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema);
-        }
-
-    } else if (typeof (type) === "string") {
-        //
-        // Primitive values
-        //
-        encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field);
-
-    } else {
-        //
-        // Custom type (MapSchema, ArraySchema, etc)
-        //
-        const definition = getType(Object.keys(type)[0]);
-
-        //
-        // ensure a ArraySchema has been provided
-        //
-        assertInstanceType(ref[field], definition.constructor, ref as Schema, field);
-
-        //
-        // Encode refId for this instance.
-        // The actual instance is going to be encoded on next `changeTree` iteration.
-        //
-        encode.number(bytes, value[$changes].refId);
-    }
+    // TODO: inline this function call small performance gain
+    encodeValue(encoder, bytes, ref, type, value, field, operation);
 }
