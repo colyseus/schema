@@ -605,7 +605,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     //
     // ES2023
     //
-    with(index: number, value: V): V[] {
+    with(index: number, value: V): ArraySchema<V> {
         const copy = Array.from(this.$items.values());
         copy[index] = value;
         return new ArraySchema(...copy);
