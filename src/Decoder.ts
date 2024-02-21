@@ -53,9 +53,12 @@ export class Decoder<T extends Schema> {
         this.currentRefId = 0;
 
         while (it.offset < totalBytes) {
-            let byte = bytes[it.offset++];
+            //
+            // Peek ahead, check if it's a switch to a different structure
+            //
+            if (bytes[it.offset] == SWITCH_TO_STRUCTURE) {
+                it.offset++;
 
-            if (byte == SWITCH_TO_STRUCTURE) {
                 this.currentRefId = decode.number(bytes, it);
                 const nextRef = $root.refs.get(this.currentRefId) as Schema;
 
@@ -68,7 +71,7 @@ export class Decoder<T extends Schema> {
                 continue;
             }
 
-            const result = ref['constructor'][$decoder](this, byte, bytes, it, ref, allChanges);
+            const result = ref['constructor'][$decoder](this, bytes, it, ref, allChanges);
 
             if (result === DecodeState.DEFINITION_MISMATCH) {
                 console.warn("@colyseus/schema: definition mismatch");

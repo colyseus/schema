@@ -14,7 +14,6 @@ export enum DecodeState {
 
 export type DecodeOperation<T extends Ref = any> = (
     decoder: Decoder<any>,
-    byte: number,
     bytes: number[],
     it: decode.Iterator,
     ref: Ref,
@@ -23,19 +22,19 @@ export type DecodeOperation<T extends Ref = any> = (
 
 export const decodeSchemaOperation: DecodeOperation = function (
     decoder: Decoder<any>,
-    byte: number,
     bytes: number[],
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[]
 ) {
+    const first_byte = bytes[it.offset++];
     const $root = decoder.refs;
     const metadata: Metadata = ref['constructor'][Symbol.metadata];
 
     // "compressed" index + operation
-    const operation = (byte >> 6) << 6
+    const operation = (first_byte >> 6) << 6
 
-    const index = byte % (operation || 255);
+    const index = first_byte % (operation || 255);
     const field = metadata[index];
     const type = metadata[field].type;
 
@@ -159,16 +158,16 @@ export const decodeSchemaOperation: DecodeOperation = function (
 
 export const decodeKeyValueOperation: DecodeOperation = function (
     decoder: Decoder<any>,
-    byte: number,
     bytes: number[],
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[]
 ) {
+    const first_byte = bytes[it.offset++];
     const $root = decoder.refs;
 
     // "uncompressed" index + operation (array/map items)
-    const operation = byte;
+    const operation = first_byte;
 
     if (operation === OPERATION.CLEAR) {
         //

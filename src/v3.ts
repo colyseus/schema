@@ -137,7 +137,6 @@ Vec3[$track] = function (changeTree, index) {
 };
 
 Vec3[$encoder] = function (encoder, bytes, changeTree, index, operation) {
-    encode.uint8(bytes, 0); // field as first byte
     encode.number(bytes, changeTree.ref.x);
     encode.number(bytes, changeTree.ref.y);
     encode.number(bytes, changeTree.ref.z);
@@ -145,7 +144,6 @@ Vec3[$encoder] = function (encoder, bytes, changeTree, index, operation) {
 
 Vec3[$decoder] = function (
     decoder: Decoder<any>,
-    byte: number,
     bytes: number[],
     it: decode.Iterator,
     ref: Vec3,
