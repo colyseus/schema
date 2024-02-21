@@ -5,7 +5,7 @@ import type { Ref } from "./ChangeTree";
 import type { Decoder } from "../Decoder";
 import * as decode from "../encoding/decode";
 import { getType } from "../types/typeRegistry";
-import { $childType } from "./consts";
+import { $childType, $deleteByIndex, $getByIndex } from "./consts";
 import { ArraySchema, CollectionSchema, MapSchema, SetSchema } from "..";
 
 export enum DecodeState {
@@ -47,7 +47,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
         if (operation !== OPERATION.DELETE_AND_ADD) {
-            ref['deleteByIndex'](index);
+            ref[$deleteByIndex](index);
         }
 
         // Flag `refId` for garbage collection.
@@ -183,7 +183,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     const type = ref[$childType];
 
     let value: any;
-    let previousValue: any = ref['getByIndex'](index);
+    let previousValue: any = ref[$getByIndex](index);
 
     let dynamicIndex: number | string;
 
@@ -204,7 +204,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
         if (operation !== OPERATION.DELETE_AND_ADD) {
-            ref['deleteByIndex'](index);
+            ref[$deleteByIndex](index);
         }
 
         // Flag `refId` for garbage collection.
@@ -335,6 +335,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
             refId: decoder.currentRefId,
             op: operation,
             field: "", // FIXME: remove this
+            dynamicIndex,
             value,
             previousValue,
         });

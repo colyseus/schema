@@ -1,7 +1,7 @@
-import type { Metadata } from "../Metadata";
-import { Schema } from "../Schema";
-import { Ref } from "./ChangeTree";
+import { Metadata } from "../Metadata";
 import { $changes } from "./consts";
+import { Ref } from "./ChangeTree";
+import type { MapSchema } from "../types/MapSchema";
 
 /**
  * Used for decoding only.
@@ -69,7 +69,7 @@ export class ReferenceTracker {
             //
             // Ensure child schema instances have their references removed as well.
             //
-            if (ref instanceof Schema) {
+            if (Metadata.isValidInstance(ref)) {
                 const metadata: Metadata = ref['constructor'][Symbol.metadata];
                 for (const field in metadata) {
                     if (typeof (metadata[field].type) !== "string" &&
@@ -84,7 +84,7 @@ export class ReferenceTracker {
                 const type =  metadata.schema[metadata.fieldsByIndex[ref[$changes].parentIndex]];
 
                 if (typeof (Object.values(type)[0]) === "function") {
-                    Array.from(ref.values())
+                    Array.from((ref as MapSchema).values())
                         .forEach((child) => this.removeRef(child[$changes].refId));
                 }
             }

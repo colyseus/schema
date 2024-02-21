@@ -7,7 +7,7 @@ import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 import { encodeSchemaOperation } from './changes/EncodeOperation';
 
 import { ChangeTree } from './changes/ChangeTree';
-import { $changes, $track } from './changes/consts';
+import { $changes, $deleteByIndex, $getByIndex, $track } from './changes/consts';
 
 export interface DataChange<T=any,F=string> {
     refId: number,
@@ -42,10 +42,11 @@ export abstract class Schema {
             writable: true
         });
 
-        // Define property descriptors
-        for (const field in instance.constructor[Symbol.metadata]) {
+        const metadata = instance.constructor[Symbol.metadata];
 
-            if (instance.constructor[Symbol.metadata][field].descriptor) {
+        // Define property descriptors
+        for (const field in metadata) {
+            if (metadata[field].descriptor) {
                 // for encoder
                 Object.defineProperty(instance, `_${field}`, {
                     value: undefined,
@@ -53,7 +54,7 @@ export abstract class Schema {
                     enumerable: false,
                     configurable: true,
                 });
-                Object.defineProperty(instance, field, instance.constructor[Symbol.metadata][field].descriptor);
+                Object.defineProperty(instance, field, metadata[field].descriptor);
 
             } else {
                 // for decoder
@@ -396,11 +397,11 @@ export abstract class Schema {
         this[$changes].discardAll();
     }
 
-    protected getByIndex(index: number) {
+    protected [$getByIndex](index: number) {
         return this[this.constructor[Symbol.metadata][index]];
     }
 
-    protected deleteByIndex(index: number) {
+    protected [$deleteByIndex](index: number) {
         this[this.constructor[Symbol.metadata][index]] = undefined;
     }
 

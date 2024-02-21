@@ -78,7 +78,8 @@ export class Encoder<T extends Schema = any> {
                     ? change.value
                     : change.value.index;
 
-                ref['constructor'][$encoder](this, bytes, changeTree, fieldIndex, operation);
+                const encoder = ref['constructor'][$encoder];
+                encoder(this, bytes, changeTree, fieldIndex, operation);
             }
 
             if (!encodeAll && !useFilters) {

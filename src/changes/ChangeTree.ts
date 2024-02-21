@@ -1,6 +1,6 @@
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
-import { $changes, $childType } from "./consts";
+import { $changes, $childType, $getByIndex } from "./consts";
 import type { FilterChildrenCallback, DefinitionType } from "../annotations";
 
 import type { MapSchema } from "../types/MapSchema";
@@ -8,7 +8,7 @@ import type { ArraySchema } from "../types/ArraySchema";
 import type { CollectionSchema } from "../types/CollectionSchema";
 import type { SetSchema } from "../types/SetSchema";
 
-import type { Metadata } from "../Metadata";
+import { Metadata } from "../Metadata";
 import type { EncodeOperation } from "./EncodeOperation";
 
 export type Ref = Schema
@@ -111,7 +111,7 @@ export class ChangeTree<T extends Ref=any> implements ChangeTracker {
         root.enqueue(this);
 
         this.allChanges.forEach((index) => {
-            const childRef = (this.ref as Schema)['getByIndex'](index);
+            const childRef = this.ref[$getByIndex](index);
             if (childRef && childRef[$changes]) {
                 childRef[$changes].setRoot(root);
             }
@@ -137,7 +137,7 @@ export class ChangeTree<T extends Ref=any> implements ChangeTracker {
         //
         // assign same parent on child structures
         //
-        if (this.ref instanceof Schema) {
+        if (Metadata.isValidInstance(this.ref)) {
             const metadata: Metadata = this.ref['constructor'][Symbol.metadata];
 
             // FIXME: need to iterate over parent metadata instead.
@@ -156,8 +156,9 @@ export class ChangeTree<T extends Ref=any> implements ChangeTracker {
             }
 
         } else if (typeof (this.ref) === "object") {
-            this.ref.forEach((value, key) => {
-                if (value instanceof Schema) {
+            // MapSchema / ArraySchema, etc.
+            (this.ref as MapSchema).forEach((value, key) => {
+                if (Metadata.isValidInstance(value)) {
                     const changeTreee = value[$changes];
                     const parentIndex = this.ref[$changes].indexes[key];
 
@@ -231,7 +232,7 @@ export class ChangeTree<T extends Ref=any> implements ChangeTracker {
     }
 
     getType(index?: number) {
-        if (this.ref instanceof Schema) {
+        if (Metadata.isValidInstance(this.ref)) {
             const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
             return metadata[metadata[index]].type;
         } else {
@@ -254,13 +255,7 @@ export class ChangeTree<T extends Ref=any> implements ChangeTracker {
     // used during `.encode()`
     //
     getValue(index: number) {
-        return this.ref['getByIndex'](index);
-        // if (this.ref instanceof Schema) {
-        //     return this.ref[this.ref.constructor[Symbol.metadata][index]];
-
-        // } else {
-        //     return this.ref['getByIndex'](index);
-        // }
+        return this.ref[$getByIndex](index);
     }
 
     delete(fieldName: string | number) {
@@ -295,7 +290,7 @@ export class ChangeTree<T extends Ref=any> implements ChangeTracker {
         //
         // TODO: refactor this. this is not relevant for Collection and Set.
         //
-        if (!(this.ref instanceof Schema)) {
+        if (!(Metadata.isValidInstance(this.ref))) {
             this.changes.forEach((change) => {
                 if (change.op === OPERATION.DELETE) {
                     const index = this.ref['getIndex'](change.index)

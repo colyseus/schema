@@ -387,93 +387,92 @@ export function type (
             ?? -1; // no fields defined
         fieldIndex++;
 
-        Metadata.addField(metadata, fieldIndex, field, type);
-
-        const isArray = ArraySchema.is(type);
-        const isMap = !isArray && MapSchema.is(type);
-
         if (options && options.manual) {
-            // do not declare getter/setter descriptor
-            metadata[field].descriptor = {
+            Metadata.addField(metadata, fieldIndex, field, type, {
+                // do not declare getter/setter descriptor
                 enumerable: true,
                 configurable: true,
                 writable: true,
-            };
-            return;
+            });
+
+        } else {
+            const isArray = ArraySchema.is(type);
+            const isMap = !isArray && MapSchema.is(type);
+            Metadata.addField(metadata, fieldIndex, field, type, getPropertyDescriptor(`_${field}`, fieldIndex, type, isArray, isMap, metadata, field));
         }
-
-        const fieldCached = `_${field}`;
-
-        metadata[field].descriptor = {
-            get: function () { return this[fieldCached]; },
-
-            set: function (this: Schema, value: any) {
-                /**
-                 * Create Proxy for array or map items
-                 */
-
-                // skip if value is the same as cached.
-                if (value === this[fieldCached]) {
-                    return;
-                }
-
-                if (
-                    value !== undefined &&
-                    value !== null
-                ) {
-                    // automaticallty transform Array into ArraySchema
-                    if (isArray) {
-                        if (!(value instanceof ArraySchema)) {
-                            value = new ArraySchema(...value);
-                        }
-                        value[$childType] = Object.values(type)[0];
-                    }
-
-                    // automaticallty transform Map into MapSchema
-                    if (isMap) {
-                        if (!(value instanceof MapSchema)) {
-                            value = new MapSchema(value);
-                        }
-                        value[$childType] = Object.values(type)[0];
-                    }
-
-                    // try to turn provided structure into a Proxy
-                    if (value['$proxy'] === undefined) {
-                        if (isMap) {
-                            value = getMapProxy(value);
-                        }
-                    }
-
-                    // flag the change for encoding.
-                    // this[$changes].change(fieldIndex);
-                    this.constructor[$track](this[$changes], fieldIndex);
-
-                    //
-                    // call setParent() recursively for this and its child
-                    // structures.
-                    //
-                    if (value[$changes]) {
-                        value[$changes].setParent(
-                            this,
-                            this[$changes].root,
-                            metadata[field].index,
-                        );
-                    }
-
-                } else if (this[fieldCached]) {
-                    //
-                    // Setting a field to `null` or `undefined` will delete it.
-                    //
-                    this[$changes].delete(field);
-                }
-
-                this[fieldCached] = value;
-            },
-
-            enumerable: true,
-            configurable: true
-        };
     }
+}
+
+export function getPropertyDescriptor(fieldCached: string, fieldIndex: number, type: DefinitionType, isArray: boolean, isMap: boolean, metadata: Metadata, field: string) {
+    return {
+        get: function () { return this[fieldCached]; },
+
+        set: function (this: Schema, value: any) {
+            /**
+             * Create Proxy for array or map items
+             */
+
+            // skip if value is the same as cached.
+            if (value === this[fieldCached]) {
+                return;
+            }
+
+            if (
+                value !== undefined &&
+                value !== null
+            ) {
+                // automaticallty transform Array into ArraySchema
+                if (isArray) {
+                    if (!(value instanceof ArraySchema)) {
+                        value = new ArraySchema(...value);
+                    }
+                    value[$childType] = Object.values(type)[0];
+                }
+
+                // automaticallty transform Map into MapSchema
+                if (isMap) {
+                    if (!(value instanceof MapSchema)) {
+                        value = new MapSchema(value);
+                    }
+                    value[$childType] = Object.values(type)[0];
+                }
+
+                // try to turn provided structure into a Proxy
+                if (value['$proxy'] === undefined) {
+                    if (isMap) {
+                        value = getMapProxy(value);
+                    }
+                }
+
+                // flag the change for encoding.
+                // this[$changes].change(fieldIndex);
+                this.constructor[$track](this[$changes], fieldIndex);
+
+                //
+                // call setParent() recursively for this and its child
+                // structures.
+                //
+                if (value[$changes]) {
+                    value[$changes].setParent(
+                        this,
+                        this[$changes].root,
+                        metadata[field].index,
+                    );
+                }
+
+            } else if (this[fieldCached]) {
+                //
+                // Setting a field to `null` or `undefined` will delete it.
+                //
+                this[$changes].delete(field);
+            }
+
+            this[fieldCached] = value;
+        },
+
+        enumerable: true,
+        configurable: true
+    };
 }
 
 /**

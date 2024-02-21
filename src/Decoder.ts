@@ -71,7 +71,8 @@ export class Decoder<T extends Schema> {
                 continue;
             }
 
-            const result = ref['constructor'][$decoder](this, bytes, it, ref, allChanges);
+            const decoder = ref['constructor'][$decoder];
+            const result = decoder(this, bytes, it, ref, allChanges);
 
             if (result === DecodeState.DEFINITION_MISMATCH) {
                 console.warn("@colyseus/schema: definition mismatch");
@@ -100,8 +101,6 @@ export class Decoder<T extends Schema> {
 
         // drop references of unused schemas
         $root.garbageCollectDeletedRefs();
-
-        console.log("allChanges", allChanges);
 
         return allChanges;
     }
