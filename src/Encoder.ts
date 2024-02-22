@@ -3,10 +3,10 @@ import { TypeContext } from "./annotations";
 import { $changes, $encoder } from "./changes/consts";
 
 import * as encode from "./encoding/encode";
-import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { ChangeOperation, ChangeTracker, Root } from "./changes/ChangeTree";
-import { encodeKeyValueOperation, encodeSchemaOperation } from "./changes/EncodeOperation";
 import type { Iterator } from "./encoding/decode";
+
+import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
+import { ChangeOperation, ChangeTree, Root } from "./changes/ChangeTree";
 import { getNextPowerOf2 } from "./utils";
 
 export class Encoder<T extends Schema = any> {
@@ -49,7 +49,7 @@ export class Encoder<T extends Schema = any> {
         const bytes = this.sharedBuffer;
         const rootChangeTree = this.root[$changes];
 
-        const changeTrees: ChangeTracker[] = this.$root.changes;
+        const changeTrees: ChangeTree[] = this.$root.changes;
         const numChangeTrees = changeTrees.length;
 
         for (let i = 0; i < numChangeTrees; i++) {

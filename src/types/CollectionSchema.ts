@@ -1,4 +1,4 @@
-import { ChangeTracker, ChangeTree } from "../changes/ChangeTree";
+import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
@@ -8,7 +8,7 @@ import { $changes, $childType, $deleteByIndex, $getByIndex } from "../changes/co
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
 export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
-    protected $changes: ChangeTracker = new ChangeTree(this);
+    protected $changes: ChangeTree = new ChangeTree(this);
 
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();

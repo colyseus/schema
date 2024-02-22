@@ -33,23 +33,23 @@ export interface ChangeOperation {
 }
 
 export class Root {
-    // changes = new Set<ChangeTracker>();
-    changes: ChangeTracker[] = [];
-    currentQueue = new Set<ChangeTracker>();
+    // changes = new Set<ChangeTree>();
+    changes: ChangeTree[] = [];
+    currentQueue = new Set<ChangeTree>();
     protected nextUniqueId: number = 1;
 
     getNextUniqueId() {
         return this.nextUniqueId++;
     }
 
-    enqueue(changeTree: ChangeTracker) {
+    enqueue(changeTree: ChangeTree) {
         if (!this.currentQueue.has(changeTree)) {
             this.changes.push(changeTree);
             this.currentQueue.add(changeTree);
         }
     }
 
-    dequeue(changeTree: ChangeTracker) {
+    dequeue(changeTree: ChangeTree) {
         const indexOf = this.changes.indexOf(changeTree);
         if (indexOf !== -1) {
             this.changes.splice(indexOf, 1);
@@ -63,36 +63,7 @@ export class Root {
     }
 }
 
-export interface ChangeTracker<T = any> {
-    root?: Root;
-
-    ref: T;
-    refId: number;
-
-    changed: boolean;
-    changes: Map<number, ChangeOperation>;
-    allChanges: Set<number>;
-    indexes: {[index: string]: any};
-
-    ensureRefId(): void;
-
-    setRoot(root: Root): void;
-    setParent(parent: Ref, root?: Root, parentIndex?: number): void;
-
-    change(index: number, operation?: OPERATION, encoder?: EncodeOperation): void;
-    touch(fieldName: string | number): void;
-    delete(fieldName: string | number): void;
-    discard(changed?: boolean, discardAll?: boolean): void;
-    discardAll(): void;
-
-    getType(index: number): DefinitionType;
-    getValue(index: number): any;
-
-    // getChildrenFilter(): FilterChildrenCallback;
-    // ensureRefId(): void;
-}
-
-export class ChangeTree<T extends Ref=any> implements ChangeTracker {
+export class ChangeTree<T extends Ref=any> {
     ref: T;
     refId: number;
 

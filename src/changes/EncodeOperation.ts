@@ -5,7 +5,7 @@ import { getType } from "../types/typeRegistry";
 import * as encode from "../encoding/encode";
 import { EncodeSchemaError, assertInstanceType, assertType } from "../encoding/assert";
 
-import type { ChangeTracker, Ref } from "./ChangeTree";
+import type { ChangeTree, Ref } from "./ChangeTree";
 import type { Encoder } from "../Encoder";
 import type { Schema } from "../Schema";
 import type { PrimitiveType } from "../annotations";
@@ -17,7 +17,7 @@ export type EncodeOperation<T extends Ref = any> = (
     encoder: Encoder,
     bytes: Buffer,
     // bytes: number[],
-    changeTree: ChangeTracker<T>,
+    changeTree: ChangeTree<T>,
     index: number,
     operation: OPERATION,
     it: Iterator
@@ -103,7 +103,7 @@ export const encodeSchemaOperation: EncodeOperation = function (
     encoder: Encoder,
     bytes: Buffer,
     // bytes: number[],
-    changeTree: ChangeTracker,
+    changeTree: ChangeTree,
     index: number,
     operation: OPERATION,
     it: Iterator,
@@ -141,7 +141,7 @@ export const encodeSchemaOperation: EncodeOperation = function (
 export const encodeKeyValueOperation: EncodeOperation = function (
     encoder: Encoder,
     bytes: Buffer,
-    changeTree: ChangeTracker,
+    changeTree: ChangeTree,
     field: number,
     operation: OPERATION,
     it: Iterator,
