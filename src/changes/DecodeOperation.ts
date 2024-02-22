@@ -12,8 +12,8 @@ export enum DecodeState {
     DEFINITION_MISMATCH = 0,
 }
 
-export type DecodeOperation<T extends Ref = any> = (
-    decoder: Decoder<any>,
+export type DecodeOperation<T extends Schema = any> = (
+    decoder: Decoder<T>,
     bytes: number[],
     it: decode.Iterator,
     ref: Ref,
