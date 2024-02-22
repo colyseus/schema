@@ -15,7 +15,7 @@ import { Iterator } from "./encoding/decode";
 import { ReferenceTracker } from "./changes/ReferenceTracker";
 import { DecodeState } from "./changes/DecodeOperation";
 
-export class Decoder<T extends Schema> {
+export class Decoder<T extends Schema = any> {
     context: TypeContext;
 
     root: T;
