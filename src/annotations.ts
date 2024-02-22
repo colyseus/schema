@@ -22,6 +22,7 @@ export type PrimitiveType =
     "uint64" |
     "float32" |
     "float64" |
+    typeof Schema |
     object;
 
 export type DefinitionType = PrimitiveType

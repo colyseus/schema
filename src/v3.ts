@@ -19,6 +19,7 @@ import { $changes, $decoder, $deleteByIndex, $encoder, $getByIndex, $track } fro
 import { decodeKeyValueOperation, decodeSchemaOperation } from "./changes/DecodeOperation";
 import { Ref } from "./changes/ChangeTree";
 import { Metadata } from "./Metadata";
+import { Reflection } from "./Reflection";
 
 // const timeout = setInterval(() => {}, 1000);
 
@@ -125,7 +126,7 @@ MapSchema[$encoder] = encodeKeyValueOperation;
 MapSchema[$decoder] = decodeKeyValueOperation;
 
 ArraySchema[$encoder] = encodeKeyValueOperation;
-ArraySchema[$encoder] = decodeKeyValueOperation;
+ArraySchema[$decoder] = decodeKeyValueOperation;
 
 class Vec3 extends Schema {
     @type("number") x: number;
@@ -233,28 +234,29 @@ console.log(`(${encoded.length})`, encoded);
 //     }
 // }, 1000)
 
-// @ts-ignore
-globalThis.perform = function perform() {
-    for (let i = 0; i < 500000; i++) {
-        encoder.encodeAll();
-    }
-}
+// // @ts-ignore
+// globalThis.perform = function perform() {
+//     for (let i = 0; i < 500000; i++) {
+//         encoder.encodeAll();
+//     }
+// }
 
-function logTime(label: string, callback: Function) {
-    const time = Date.now();
-    for (let i = 0; i < 500000; i++) {
-        callback();
-    }
-    console.log(`${label}:`, Date.now() - time);
-}
-logTime("encode time", () => encoder.encodeAll());
+// function logTime(label: string, callback: Function) {
+//     const time = Date.now();
+//     for (let i = 0; i < 500000; i++) {
+//         callback();
+//     }
+//     console.log(`${label}:`, Date.now() - time);
+// }
+// logTime("encode time", () => encoder.encodeAll());
 
 // console.log(`encode: (${encoded.length})`, encoded);
 
-// const encodedReflection = Reflection.encode(state, encoder.context);
-// const decoded = Reflection.decode(encodedReflection);
+const encodedReflection = Reflection.encode(state, encoder.context);
+const decodedState = Reflection.decode(encodedReflection);
+// const decodedState = new State();
 
-const decoder = new Decoder(new State());
+const decoder = new Decoder(decodedState);
 decoder.decode(encoded);
 
 log(decoder.root.toJSON());

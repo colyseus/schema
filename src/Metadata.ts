@@ -82,8 +82,8 @@ export const Metadata = {
 
     isValidInstance(klass: any) {
         return (
-            klass[Symbol.metadata] &&
-            Object.prototype.hasOwnProperty.call(klass[Symbol.metadata], -1) as boolean
+            klass.constructor[Symbol.metadata] &&
+            Object.prototype.hasOwnProperty.call(klass.constructor[Symbol.metadata], -1) as boolean
         );
     },
 

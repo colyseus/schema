@@ -113,7 +113,10 @@ export abstract class Schema {
      * @param operation OPERATION to perform (detected automatically)
      */
     public setDirty<K extends NonFunctionPropNames<this>>(property: K | number, operation?: OPERATION) {
-        this[$changes].change(property as any, operation);
+        this[$changes].change(
+            this.constructor[Symbol.metadata][property as string].index,
+            operation
+        );
     }
 
     /**

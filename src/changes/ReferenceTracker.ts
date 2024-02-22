@@ -80,7 +80,7 @@ export class ReferenceTracker {
                 }
 
             } else {
-                const metadata = ref[$changes].parent.metadata;
+                const metadata: Metadata = ref[$changes].parent['constructor'][Symbol.metadata];
                 const type =  metadata.schema[metadata.fieldsByIndex[ref[$changes].parentIndex]];
 
                 if (typeof (Object.values(type)[0]) === "function") {

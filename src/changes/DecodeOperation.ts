@@ -192,6 +192,8 @@ export const decodeKeyValueOperation: DecodeOperation = function (
 
     let dynamicIndex: number | string;
 
+    console.log({ index, type, operation, ref })
+
     if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
         dynamicIndex = (ref instanceof MapSchema)
             ? decode.string(bytes, it)
@@ -199,7 +201,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         ref['setIndex'](index, dynamicIndex);
 
     } else {
-        // here
+        console.log("GETTING INDEX FOR =>", { ref, index })
         dynamicIndex = ref['getIndex'](index);
     }
 

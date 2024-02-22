@@ -11,6 +11,13 @@ import type { SetSchema } from "../types/SetSchema";
 import { Metadata } from "../Metadata";
 import type { EncodeOperation } from "./EncodeOperation";
 
+declare global {
+    interface Object {
+        // this is likely not a good idea
+        [$changes]?: ChangeTree;
+    }
+}
+
 export type Ref = Schema
     | ArraySchema
     | MapSchema

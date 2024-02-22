@@ -18,12 +18,12 @@ export class ReflectionField extends Schema {
 export class ReflectionType extends Schema {
     @type("number") id: number;
     @type("number") extendsId: number;
-    @type([ ReflectionField ]) fields: ArraySchema<ReflectionField> = new ArraySchema<ReflectionField>();
+    @type([ ReflectionField ]) fields = new ArraySchema<ReflectionField>();
 }
 
 export class Reflection extends Schema {
     @type([ ReflectionType ]) types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
-    @type("number") rootType: number;
+    // @type("number") rootType: number;
 
     static encode (instance: Schema, context?: TypeContext) {
         if (!context) {
