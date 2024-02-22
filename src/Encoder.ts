@@ -6,12 +6,17 @@ import * as encode from "./encoding/encode";
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
 import { ChangeOperation, ChangeTracker, Root } from "./changes/ChangeTree";
 import { encodeKeyValueOperation, encodeSchemaOperation } from "./changes/EncodeOperation";
+import type { Iterator } from "./encoding/decode";
+import { getNextPowerOf2 } from "./utils";
 
 export class Encoder<T extends Schema = any> {
     context: TypeContext;
 
     root: T;
     $root: Root;
+
+    // sharedBuffer = Buffer.allocUnsafeSlow(8 * 1024); // 8KB
+    sharedBuffer = Buffer.allocUnsafeSlow(32); // 8KB
 
     constructor(root: T) {
         this.setRoot(root);
@@ -36,18 +41,17 @@ export class Encoder<T extends Schema = any> {
 
     encode(
         encodeAll = false,
-        bytes: number[] = [],
-        useFilters: boolean = false,
+        // bytes: number[] = [],
+        // useFilters: boolean = false,
     ) {
+        const it: Iterator = { offset: 0 };
+
+        const bytes = this.sharedBuffer;
         const rootChangeTree = this.root[$changes];
 
-        // const changeTrees: ChangeTracker[] = Array.from(this.$root['currentQueue']);
         const changeTrees: ChangeTracker[] = this.$root.changes;
         const numChangeTrees = changeTrees.length;
-        // let numChangeTrees = 1;
 
-        // console.log("--------------------- ENCODE ----------------");
-        // console.log("Encode order:", changeTrees.map((c) => c.ref['constructor'].name));
         for (let i = 0; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
             const ref = changeTree.ref;
@@ -60,8 +64,8 @@ export class Encoder<T extends Schema = any> {
                 changeTree !== rootChangeTree &&
                 (changeTree.changed || encodeAll)
             ) {
-                encode.uint8(bytes, SWITCH_TO_STRUCTURE);
-                encode.number(bytes, changeTree.refId);
+                encode.uint8(bytes, SWITCH_TO_STRUCTURE, it);
+                encode.uint8(bytes, changeTree.refId, it);
             }
 
             const changes: IterableIterator<ChangeOperation | number> = (encodeAll)
@@ -79,29 +83,52 @@ export class Encoder<T extends Schema = any> {
                     : change.value.index;
 
                 const encoder = ref['constructor'][$encoder];
-                encoder(this, bytes, changeTree, fieldIndex, operation);
+                encoder(this, bytes, changeTree, fieldIndex, operation, it);
             }
 
-            if (!encodeAll && !useFilters) {
-                changeTree.discard();
-            }
+            // //
+            // // skip encoding if buffer overflow is detected.
+            // // the buffer will be resized and re-encoded.
+            // //
+            // if (it.offset > bytes.byteLength) {
+            //     break;
+            // }
         }
 
-        return bytes;
+        if (it.offset > bytes.byteLength) {
+            const newSize = getNextPowerOf2(it.offset);
+            console.debug("@colyseus/schema encode buffer overflow. Current buffer size: " + bytes.byteLength + ", encoding offset: " + it.offset + ", new size: " + newSize);
+
+            // resize buffer
+            this.sharedBuffer = Buffer.allocUnsafeSlow(newSize);
+            return this.encode(encodeAll);
+
+        } else {
+            //
+            // only clear changes after making sure buffer resize is not required.
+            //
+            if (!encodeAll) {
+                for (let i = 0; i < numChangeTrees; i++) {
+                    changeTrees[i].discard();
+                }
+            }
+
+            // return bytes;
+            return new DataView(bytes.buffer, 0, it.offset);
+        }
     }
 
     encodeAll (useFilters?: boolean) {
-        return this.encode(true, [], useFilters);
+        return this.encode(true);
     }
 
-    tryEncodeTypeId (bytes: number[], baseType: typeof Schema, targetType: typeof Schema) {
+    tryEncodeTypeId (bytes: Buffer, baseType: typeof Schema, targetType: typeof Schema, it: Iterator) {
         const baseTypeId = this.context.getTypeId(baseType);
         const targetTypeId = this.context.getTypeId(targetType);
 
         if (baseTypeId !== targetTypeId) {
-            encode.uint8(bytes, TYPE_ID);
-            encode.number(bytes, targetTypeId);
+            encode.uint8(bytes, TYPE_ID, it);
+            encode.number(bytes, targetTypeId, it);
         }
     }
-
 }

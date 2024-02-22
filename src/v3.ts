@@ -17,7 +17,7 @@ import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
 import { $changes, $decoder, $deleteByIndex, $encoder, $getByIndex, $track } from "./changes/consts";
 import { decodeKeyValueOperation, decodeSchemaOperation } from "./changes/DecodeOperation";
-import { Ref } from "./changes/ChangeTree";
+import { ChangeTree, Ref } from "./changes/ChangeTree";
 import { Metadata } from "./Metadata";
 import { Reflection } from "./Reflection";
 
@@ -134,33 +134,29 @@ class Vec3 extends Schema {
     @type("number") z: number;
 }
 
+// // No need to extend Schema!
 // class Vec3 {
 //     x: number;
 //     y: number;
 //     z: number;
 //     constructor() {
+//         // Need to initialize property descriptors
 //         Schema.initialize(this);
 //     }
-//     assign(data: { x: number, y: number, z: number }) {
-//         this.x = data.x;
-//         this.y = data.y;
-//         this.z = data.z;
-//         return this;
-//     }
 // }
+// // Define fields to encode/decode
 // Metadata.setFields(Vec3, {
 //     x: "number",
 //     y: "number",
 //     z: "number",
 // });
-// Vec3.prototype[$getByIndex] = function (index: number) {
-//     return this[this.constructor[Symbol.metadata][index]];
-// };
-// Vec3.prototype[$deleteByIndex] = function (index: number) {
-//     this[this.constructor[Symbol.metadata][index]] = undefined;
-// };
-// Vec3[$track] = function (changeTree, index: number, operation: OPERATION = OPERATION.ADD) {
-//     changeTree.change(index, operation, encodeSchemaOperation);
+// //
+// Vec3[$track] = function (
+//     changeTree: ChangeTree,
+//     index: number,
+//     operation: OPERATION = OPERATION.ADD
+// ) {
+//     changeTree.change(index, operation);
 // };
 // Vec3[$encoder] = encodeSchemaOperation;
 // Vec3[$decoder] = decodeSchemaOperation;
@@ -226,7 +222,7 @@ state.entities.set("two", new Player().assign({
 
 const encoder = new Encoder(state);
 const encoded = encoder.encodeAll();
-console.log(`(${encoded.length})`, encoded);
+console.log(`(length: ${encoded.byteLength})`, encoded);
 
 // setTimeout(() => {
 //     for (let i = 0; i < 500000; i++) {
@@ -241,25 +237,27 @@ console.log(`(${encoded.length})`, encoded);
 //     }
 // }
 
-// function logTime(label: string, callback: Function) {
-//     const time = Date.now();
-//     for (let i = 0; i < 500000; i++) {
-//         callback();
-//     }
-//     console.log(`${label}:`, Date.now() - time);
-// }
-// logTime("encode time", () => encoder.encodeAll());
+function logTime(label: string, callback: Function) {
+    const time = Date.now();
+    for (let i = 0; i < 500000; i++) {
+        callback();
+    }
+    console.log(`${label}:`, Date.now() - time);
+}
+logTime("encode time", () => encoder.encodeAll());
+
+process.exit();
 
 // console.log(`encode: (${encoded.length})`, encoded);
 
-const encodedReflection = Reflection.encode(state, encoder.context);
-const decodedState = Reflection.decode(encodedReflection);
+// const encodedReflection = Reflection.encode(state, encoder.context);
+// const decodedState = Reflection.decode(encodedReflection);
 // const decodedState = new State();
 
-const decoder = new Decoder(decodedState);
-decoder.decode(encoded);
+// const decoder = new Decoder(decodedState);
+// decoder.decode(encoded);
 
-log(decoder.root.toJSON());
+// log(decoder.root.toJSON());
 // logTime("decode time", () => decoder.decode(encoded));
 
 // console.log("changes =>", changes);

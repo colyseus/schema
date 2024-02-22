@@ -84,7 +84,7 @@ export abstract class Schema {
      * Track property changes
      */
     static [$track] (changeTree: ChangeTree, index: number, operation: OPERATION = OPERATION.ADD) {
-        changeTree.change(index, operation, encodeSchemaOperation);
+        changeTree.change(index, operation);
     }
 
     // allow inherited classes to have a constructor

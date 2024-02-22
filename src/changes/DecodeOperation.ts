@@ -18,7 +18,7 @@ export type DecodeOperation<T extends Schema = any> = (
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[],
-) => void;
+) => DecodeState | void;
 
 export function decodeValue(decoder: Decoder, operation: OPERATION, ref: Ref, index: number, type: any, bytes: number[], it: decode.Iterator, allChanges: DataChange[]) {
     const $root = decoder.refs;
@@ -191,8 +191,6 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     const type = ref[$childType];
 
     let dynamicIndex: number | string;
-
-    console.log({ index, type, operation, ref })
 
     if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
         dynamicIndex = (ref instanceof MapSchema)

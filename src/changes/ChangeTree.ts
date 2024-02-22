@@ -1,6 +1,6 @@
 import { OPERATION } from "../spec";
 import { Schema } from "../Schema";
-import { $changes, $childType, $getByIndex } from "./consts";
+import { $changes, $childType, $decoder, $encoder, $getByIndex } from "./consts";
 import type { FilterChildrenCallback, DefinitionType } from "../annotations";
 
 import type { MapSchema } from "../types/MapSchema";
@@ -10,11 +10,14 @@ import type { SetSchema } from "../types/SetSchema";
 
 import { Metadata } from "../Metadata";
 import type { EncodeOperation } from "./EncodeOperation";
+import type { DecodeOperation } from "./DecodeOperation";
 
 declare global {
     interface Object {
-        // this is likely not a good idea
+        // FIXME: not a good practice to extend globals here
         [$changes]?: ChangeTree;
+        [$encoder]?: EncodeOperation,
+        [$decoder]?: DecodeOperation,
     }
 }
 
@@ -27,7 +30,6 @@ export type Ref = Schema
 export interface ChangeOperation {
     op: OPERATION,
     index: number,
-    encoder?: EncodeOperation,
 }
 
 export class Root {
@@ -183,11 +185,7 @@ export class ChangeTree<T extends Ref=any> implements ChangeTracker {
         this.changes.set(--this.currentCustomOperation, op);
     }
 
-    change(
-        index: number,
-        operation: OPERATION = OPERATION.ADD,
-        encoder?: EncodeOperation,
-    ) {
+    change(index: number, operation: OPERATION = OPERATION.ADD) {
         const previousChange = this.changes.get(index);
 
         if (
@@ -203,7 +201,6 @@ export class ChangeTree<T extends Ref=any> implements ChangeTracker {
                         : operation,
                         // : OPERATION.REPLACE,
                 index,
-                encoder
             });
         }
 
