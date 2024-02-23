@@ -199,7 +199,6 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         ref['setIndex'](index, dynamicIndex);
 
     } else {
-        console.log("GETTING INDEX FOR =>", { ref, index })
         dynamicIndex = ref['getIndex'](index);
     }
 

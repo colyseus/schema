@@ -15,8 +15,8 @@ export class Encoder<T extends Schema = any> {
     root: T;
     $root: Root;
 
-    // sharedBuffer = Buffer.allocUnsafeSlow(8 * 1024); // 8KB
-    sharedBuffer = Buffer.allocUnsafeSlow(32); // 8KB
+    sharedBuffer = Buffer.allocUnsafeSlow(8 * 1024); // 8KB
+    // sharedBuffer = Buffer.allocUnsafeSlow(32); // 8KB
 
     constructor(root: T) {
         this.setRoot(root);
@@ -93,6 +93,7 @@ export class Encoder<T extends Schema = any> {
             // if (it.offset > bytes.byteLength) {
             //     break;
             // }
+
         }
 
         if (it.offset > bytes.byteLength) {

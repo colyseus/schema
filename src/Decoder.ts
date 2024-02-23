@@ -44,6 +44,12 @@ export class Decoder<T extends Schema = any> {
         it: Iterator = { offset: 0 },
         ref: Ref = this.root,
     ) {
+
+        // TODO: remove this
+        if (bytes instanceof DataView) {
+            bytes = Array.from(new Uint8Array(bytes.buffer.slice(0, bytes.byteLength)));
+        }
+
         // console.log("------------------- DECODE -------------------");
         const allChanges: DataChange[] = [];
 
