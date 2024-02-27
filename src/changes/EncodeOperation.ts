@@ -16,7 +16,6 @@ import type { Iterator } from "../encoding/decode";
 export type EncodeOperation<T extends Ref = any> = (
     encoder: Encoder,
     bytes: Buffer,
-    // bytes: number[],
     changeTree: ChangeTree<T>,
     index: number,
     operation: OPERATION,
@@ -26,7 +25,6 @@ export type EncodeOperation<T extends Ref = any> = (
 export function encodePrimitiveType(
     type: PrimitiveType,
     bytes: Buffer,
-    // bytes: number[],
     value: any,
     klass: Schema,
     field: string | number,
@@ -48,7 +46,6 @@ export function encodePrimitiveType(
 export function encodeValue(
     encoder: Encoder,
     bytes: Buffer,
-    // bytes: number[],
     ref: Schema,
     type: any,
     value: any,
@@ -102,7 +99,6 @@ export function encodeValue(
 export const encodeSchemaOperation: EncodeOperation = function (
     encoder: Encoder,
     bytes: Buffer,
-    // bytes: number[],
     changeTree: ChangeTree,
     index: number,
     operation: OPERATION,
@@ -117,9 +113,6 @@ export const encodeSchemaOperation: EncodeOperation = function (
 
     // "compress" field index + operation
     encode.uint8(bytes, (index | operation), it);
-
-    // // "compress" field index + operation
-    // encode.uint8(bytes, (index | operation));
 
     // ensure refId for the value
     if (value && value[$changes]) {

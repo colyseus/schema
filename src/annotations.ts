@@ -63,11 +63,14 @@ export type ClientWithSessionId = { sessionId: string } & any;
 export interface TypeOptions {
     manual?: boolean,
     stream?: boolean, // TODO: not implemented
+    owned?: boolean, // TODO: not implemented
 }
 
 export class TypeContext {
     types: {[id: number]: typeof Schema} = {};
     schemas = new Map<typeof Schema, number>();
+
+    hasFilters: boolean = false;
 
     /**
      * For inheritance support
@@ -109,8 +112,6 @@ export class TypeContext {
             return false;
         }
 
-        // console.log("TypeContext, add =>", Object.keys(schema[Symbol.metadata]));
-
         this.types[typeid] = schema;
         this.schemas.set(schema, typeid);
         return true;
@@ -137,6 +138,11 @@ export class TypeContext {
 
         // const metadata = Metadata.getFor(klass);
         const metadata = klass[Symbol.metadata];
+
+        // if any schema/field has filters, mark "context" as having filters.
+        if (metadata[-2]) {
+            this.hasFilters = true;
+        }
 
         for (const field in metadata) {
             const fieldType = metadata[field].type;
@@ -341,6 +347,24 @@ export function entity(constructor, context: ClassDecoratorContext) {
 //     }
 // }
 
+export function owned<T> (target: T, field: string) {
+    const constructor = target.constructor as typeof Schema;
+
+    const parentClass = Object.getPrototypeOf(constructor);
+    const parentMetadata = parentClass[Symbol.metadata];
+    const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
+
+    // add owned flag to the field
+    metadata[field].owned = true;
+
+    // map "-2" index as "has filters"
+    Object.defineProperty(metadata, -2, {
+        value: true,
+        enumerable: false,
+        configurable: true
+    });
+}
+
 export function type (
     type: DefinitionType,
     options?: TypeOptions
@@ -359,6 +383,8 @@ export function type (
         const parentMetadata = parentClass[Symbol.metadata];
         const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
 
+        let fieldIndex: number;
+
         /**
          * skip if descriptor already exists for this field (`@deprecated()`)
          */
@@ -367,7 +393,7 @@ export function type (
                 // do not create accessors for deprecated properties.
                 return;
 
-            } else {
+            } else if (metadata[field].descriptor !== undefined) {
                 // trying to define same property multiple times across inheritance.
                 // https://github.com/colyseus/colyseus-unity3d/issues/131#issuecomment-814308572
                 try {
@@ -377,16 +403,20 @@ export function type (
                     const definitionAtLine = e.stack.split("\n")[4].trim();
                     throw new Error(`${e.message} ${definitionAtLine}`);
                 }
-            }
-        }
 
-        //
-        // detect index for this field, considering inheritance
-        //
-        let fieldIndex: number = metadata[-1] // current structure already has fields defined
-            ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
-            ?? -1; // no fields defined
-        fieldIndex++;
+            } else {
+                fieldIndex = metadata[field].index;
+            }
+
+        } else {
+            //
+            // detect index for this field, considering inheritance
+            //
+            fieldIndex = metadata[-1] // current structure already has fields defined
+                ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
+                ?? -1; // no fields defined
+            fieldIndex++;
+        }
 
         if (options && options.manual) {
             Metadata.addField(metadata, fieldIndex, field, type, {

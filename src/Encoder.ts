@@ -1,6 +1,6 @@
 import type { Schema } from "./Schema";
 import { TypeContext } from "./annotations";
-import { $changes, $encoder } from "./changes/consts";
+import { $changes, $encoder, $filter } from "./changes/consts";
 
 import * as encode from "./encoding/encode";
 import type { Iterator } from "./encoding/decode";
@@ -8,6 +8,9 @@ import type { Iterator } from "./encoding/decode";
 import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
 import { ChangeOperation, ChangeTree, Root } from "./changes/ChangeTree";
 import { getNextPowerOf2 } from "./utils";
+import { StateView } from "./filters/StateView";
+
+type FilteredOperation = ChangeOperation & { changeTree: ChangeTree };
 
 export class Encoder<T extends Schema = any> {
     context: TypeContext;
@@ -18,6 +21,8 @@ export class Encoder<T extends Schema = any> {
     sharedBuffer = Buffer.allocUnsafeSlow(8 * 1024); // 8KB
     // sharedBuffer = Buffer.allocUnsafeSlow(32); // 8KB
 
+    filteredOperations: FilteredOperation[];
+
     constructor(root: T) {
         this.setRoot(root);
 
@@ -26,6 +31,8 @@ export class Encoder<T extends Schema = any> {
         // (to avoid creating a new context for each new room)
         //
         this.context = new TypeContext(root.constructor as typeof Schema);
+
+        console.log("has filters?", this.context.hasFilters);
 
         // console.log(">>>>>>>>>>>>>>>> Encoder types");
         // this.context.schemas.forEach((id, schema) => {
@@ -40,13 +47,11 @@ export class Encoder<T extends Schema = any> {
     }
 
     encode(
-        encodeAll = false,
-        // bytes: number[] = [],
-        // useFilters: boolean = false,
+        view?: StateView<T>,
+        it: Iterator = { offset: 0 },
+        bytes = this.sharedBuffer,
     ) {
-        const it: Iterator = { offset: 0 };
-
-        const bytes = this.sharedBuffer;
+        const encodeAll = (view === undefined);
         const rootChangeTree = this.root[$changes];
 
         const changeTrees: ChangeTree[] = this.$root.changes;
@@ -68,6 +73,10 @@ export class Encoder<T extends Schema = any> {
                 encode.uint8(bytes, changeTree.refId, it);
             }
 
+            const ctor = ref['constructor'];
+            const encoder = ctor[$encoder];
+            const filter = ctor[$filter];
+
             const changes: IterableIterator<ChangeOperation | number> = (encodeAll)
                 ? changeTree.allChanges.values()
                 : changeTree.changes.values();
@@ -82,7 +91,14 @@ export class Encoder<T extends Schema = any> {
                     ? change.value
                     : change.value.index;
 
-                const encoder = ref['constructor'][$encoder];
+                if (filter !== undefined && filter(ref, fieldIndex, view)) {
+                    const metadata = ctor[Symbol.metadata];
+                    const fieldName = metadata[fieldIndex];
+                    const field = metadata[fieldName];
+                    console.log("skip...", fieldName, field);
+                    continue;
+                }
+
                 encoder(this, bytes, changeTree, fieldIndex, operation, it);
             }
 
@@ -100,9 +116,11 @@ export class Encoder<T extends Schema = any> {
             const newSize = getNextPowerOf2(it.offset);
             console.debug("@colyseus/schema encode buffer overflow. Current buffer size: " + bytes.byteLength + ", encoding offset: " + it.offset + ", new size: " + newSize);
 
-            // resize buffer
+            //
+            // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
+            //
             this.sharedBuffer = Buffer.allocUnsafeSlow(newSize);
-            return this.encode(encodeAll);
+            return this.encode(view, it, bytes);
 
         } else {
             //
@@ -115,12 +133,12 @@ export class Encoder<T extends Schema = any> {
             }
 
             // return bytes;
-            return new DataView(bytes.buffer, 0, it.offset);
+            return bytes;
         }
     }
 
-    encodeAll (useFilters?: boolean) {
-        return this.encode(true);
+    encodeAll(it: Iterator = { offset: 0 }) {
+        return this.encode(undefined, it);
     }
 
     tryEncodeTypeId (bytes: Buffer, baseType: typeof Schema, targetType: typeof Schema, it: Iterator) {

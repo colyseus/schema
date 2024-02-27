@@ -7,7 +7,8 @@ import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 import { encodeSchemaOperation } from './changes/EncodeOperation';
 
 import { ChangeTree } from './changes/ChangeTree';
-import { $changes, $deleteByIndex, $getByIndex, $track } from './changes/consts';
+import { $changes, $deleteByIndex, $filter, $getByIndex, $track } from './changes/consts';
+import { StateView } from './filters/StateView';
 
 export interface DataChange<T=any,F=string> {
     refId: number,
@@ -85,6 +86,27 @@ export abstract class Schema {
      */
     static [$track] (changeTree: ChangeTree, index: number, operation: OPERATION = OPERATION.ADD) {
         changeTree.change(index, operation);
+    }
+
+    /**
+     * Determine if a property must be filtered.
+     * - If returns true, the property is NOT going to be encoded.
+     * - If returns false, the property is going to be encoded.
+     *
+     * Encoding with "filters" happens in two steps:
+     * - First, the encoder iterates over all "not owned" properties and encodes them.
+     * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
+     */
+    static [$filter] (ref: Schema, index: number, view: StateView) {
+        const metadata = ref.constructor[Symbol.metadata];
+        const field  = metadata[metadata[index]];
+
+        if (view === undefined) {
+            return field.owned !== undefined;
+
+        } else {
+            return field.owned && !view['owned'].has(ref[$changes]);
+        }
     }
 
     // allow inherited classes to have a constructor

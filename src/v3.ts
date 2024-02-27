@@ -1,7 +1,7 @@
 import * as util from "node:util";
 import "./symbol.shim";
 
-import { type } from "./annotations";
+import { owned, type } from "./annotations";
 // import { Reflection, ReflectionField, ReflectionType } from "./Reflection";
 
 import { DataChange, Schema } from "./Schema";
@@ -20,6 +20,7 @@ import { decodeKeyValueOperation, decodeSchemaOperation } from "./changes/Decode
 import { ChangeTree, Ref } from "./changes/ChangeTree";
 import { Metadata } from "./Metadata";
 import { Reflection } from "./Reflection";
+import { StateView } from "./filters/StateView";
 
 // const timeout = setInterval(() => {}, 1000);
 
@@ -128,12 +129,6 @@ MapSchema[$decoder] = decodeKeyValueOperation;
 ArraySchema[$encoder] = encodeKeyValueOperation;
 ArraySchema[$decoder] = decodeKeyValueOperation;
 
-class Vec3 extends Schema {
-    @type("number") x: number;
-    @type("number") y: number;
-    @type("number") z: number;
-}
-
 // // No need to extend Schema!
 // class Vec3 {
 //     x: number;
@@ -165,13 +160,18 @@ class Vec3 extends Schema {
 
 // -------------------------------------------------------------------------------
 
+class Vec3 extends Schema {
+    @type("number") x: number;
+    @type("number") y: number;
+    @type("number") z: number;
+}
 // Vec3[$track] = function (changeTree, index) {
 //     changeTree.change(0, OPERATION.ADD);
 // };
-// Vec3[$encoder] = function (encoder, bytes, changeTree, index, operation) {
-//     encode.number(bytes, changeTree.ref.x);
-//     encode.number(bytes, changeTree.ref.y);
-//     encode.number(bytes, changeTree.ref.z);
+// Vec3[$encoder] = function (encoder, bytes, changeTree, index, operation, it) {
+//     encode.number(bytes, changeTree.ref.x, it);
+//     encode.number(bytes, changeTree.ref.y, it);
+//     encode.number(bytes, changeTree.ref.z, it);
 // };
 // Vec3[$decoder] = function (
 //     decoder: Decoder<any>,
@@ -191,38 +191,63 @@ class Entity extends Schema {
     @type(Vec3) position = new Vec3().assign({ x: 0, y: 0, z: 0 });
 }
 
-// TODO: @entity shouldn't be required here.
-// (TypeContext.register() is required for inheritance support)
+class Card extends Schema {
+    @type("string") suit: string;
+    @type("number") num: number;
+}
+
 class Player extends Entity {
     @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
+
+    @owned @type("string")
+    secret: string = "private info only for this player";
+
+    /* @owned */ @type([Card])
+    cards = new ArraySchema<Card>();
+}
+
+class Team extends Schema {
+    @type({ map: Entity }) entities = new MapSchema<Entity>();
 }
 
 class State extends Schema {
-    // @type({ map: Base }) players = new MapSchema<Entity>();
     @type("number") num: number = 0;
-    @type("string") str = "Hello world!";
+    @type("string") str = "Hello world!"
+    @type([Team]) teams = new ArraySchema<Team>();
     // @type(Entity) entity = new Player().assign({
     //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
     //     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
     // });
-    @type({ map: Entity }) entities = new MapSchema<Entity>();
 }
 
 const state = new State();
 
-state.entities.set("one", new Player().assign({
-    position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-    rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-}));
+function addTeam() {
+    const team = new Team();
+    team.entities.set("one", new Player().assign({
+        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    }));
+    team.entities.set("two", new Player().assign({
+        position: new Vec3().assign({ x: 7, y: 8, z: 9 }),
+        rotation: new Vec3().assign({ x: 2, y: 3, z: 4 }),
+    }));
+    state.teams.push(team);
+}
 
-state.entities.set("two", new Player().assign({
-    position: new Vec3().assign({ x: 7, y: 8, z: 9 }),
-    rotation: new Vec3().assign({ x: 2, y: 3, z: 4 }),
-}));
+addTeam();
+addTeam();
+
+const it = { offset: 0 };
 
 const encoder = new Encoder(state);
-const encoded = encoder.encodeAll();
+const encoded = encoder.encodeAll(it);
 console.log(`(length: ${encoded.byteLength})`, encoded);
+
+const view1 = new StateView<State>();
+view1.owns(state.teams[0].entities.get("one"));
+
+const encoded2 = encoder.encode(view1, it, encoded);
 
 // setTimeout(() => {
 //     for (let i = 0; i < 500000; i++) {
@@ -244,18 +269,18 @@ function logTime(label: string, callback: Function) {
     }
     console.log(`${label}:`, Date.now() - time);
 }
-logTime("encode time", () => encoder.encodeAll());
-
-process.exit();
+// logTime("encode time", () => encoder.encodeAll());
 
 // console.log(`encode: (${encoded.length})`, encoded);
 
 // const encodedReflection = Reflection.encode(state, encoder.context);
 // const decodedState = Reflection.decode(encodedReflection);
-// const decodedState = new State();
+const decodedState = new State();
 
-// const decoder = new Decoder(decodedState);
-// decoder.decode(encoded);
+const decoder = new Decoder(decodedState);
+decoder.decode(encoded2);
+
+log(decodedState.toJSON());
 
 // log(decoder.root.toJSON());
 // logTime("decode time", () => decoder.decode(encoded));

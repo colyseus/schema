@@ -11,6 +11,7 @@ import { MapSchema } from "./types/MapSchema";
 export type MetadataField = {
     type: DefinitionType,
     index: number,
+    owned?: boolean,
     deprecated: boolean,
     descriptor: PropertyDescriptor,
 };
@@ -22,13 +23,16 @@ export type Metadata =
 export const Metadata = {
 
     addField(metadata: any, index: number, field: string, type: DefinitionType, descriptor?: PropertyDescriptor) {
-        metadata[field] = {
-            type: (Array.isArray(type))
-                ? { array: type[0] }
-                : type,
-            index,
-            descriptor,
-        };
+        metadata[field] = Object.assign(
+            metadata[field] || {}, // avoid overwriting previous field metadata (@owned / @deprecated)
+            {
+                type: (Array.isArray(type))
+                    ? { array: type[0] }
+                    : type,
+                index,
+                descriptor,
+            }
+        );
 
         // map -1 as last field index
         Object.defineProperty(metadata, -1, {
