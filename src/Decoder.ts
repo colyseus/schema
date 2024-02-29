@@ -40,13 +40,13 @@ export class Decoder<T extends Schema = any> {
     }
 
     decode(
-        bytes: number[],
+        bytes: number[] | DataView,
         it: Iterator = { offset: 0 },
         ref: Ref = this.root,
     ) {
 
         // TODO: remove this
-        if (bytes instanceof DataView) {
+        if (bytes instanceof DataView || bytes instanceof Buffer) {
             bytes = Array.from(new Uint8Array(bytes.buffer.slice(0, bytes.byteLength)));
         }
 

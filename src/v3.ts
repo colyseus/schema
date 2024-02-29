@@ -11,7 +11,7 @@ import { MapSchema } from "./types/MapSchema";
 import { Encoder } from "./Encoder";
 import { Decoder } from "./Decoder";
 import { OPERATION } from "./spec";
-import { encodeKeyValueOperation, encodeSchemaOperation } from "./changes/EncodeOperation";
+import { encodeKeyValueOperation, encodeSchemaOperation, encodeValue } from "./changes/EncodeOperation";
 
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
@@ -199,11 +199,11 @@ class Card extends Schema {
 class Player extends Entity {
     @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
 
-    @owned @type("string")
+    @type("string") @owned
     secret: string = "private info only for this player";
 
-    /* @owned */ @type([Card])
-    cards = new ArraySchema<Card>();
+    // /* @owned */ @type([Card])
+    // cards = new ArraySchema<Card>();
 }
 
 class Team extends Schema {
@@ -213,41 +213,48 @@ class Team extends Schema {
 class State extends Schema {
     @type("number") num: number = 0;
     @type("string") str = "Hello world!"
-    @type([Team]) teams = new ArraySchema<Team>();
-    // @type(Entity) entity = new Player().assign({
-    //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-    //     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-    // });
+    // @type([Team]) teams = new ArraySchema<Team>();
+    @type(Entity) entity1 = new Player().assign({
+        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    });
+    @type(Entity) entity2 = new Player().assign({
+        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    });
 }
 
 const state = new State();
 
-function addTeam() {
-    const team = new Team();
-    team.entities.set("one", new Player().assign({
-        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-    }));
-    team.entities.set("two", new Player().assign({
-        position: new Vec3().assign({ x: 7, y: 8, z: 9 }),
-        rotation: new Vec3().assign({ x: 2, y: 3, z: 4 }),
-    }));
-    state.teams.push(team);
-}
+// function addTeam() {
+//     const team = new Team();
+//     team.entities.set("one", new Player().assign({
+//         position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+//         rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+//     }));
+//     team.entities.set("two", new Player().assign({
+//         position: new Vec3().assign({ x: 7, y: 8, z: 9 }),
+//         rotation: new Vec3().assign({ x: 2, y: 3, z: 4 }),
+//     }));
+//     state.teams.push(team);
+// }
 
-addTeam();
-addTeam();
+// addTeam();
+// addTeam();
 
 const it = { offset: 0 };
 
 const encoder = new Encoder(state);
+// const encoded = encoder.encode(it);
 const encoded = encoder.encodeAll(it);
-console.log(`(length: ${encoded.byteLength})`, encoded);
+console.log(`(length: ${it.offset})`, encoded);
 
 const view1 = new StateView<State>();
-view1.owns(state.teams[0].entities.get("one"));
+// view1.owns(state.teams[0].entities.get("one"));
+view1.owns(state.entity1);
+// view1.owns(state.entity2);
 
-const encoded2 = encoder.encode(view1, it, encoded);
+const encodedView = encoder.encodeView(view1, it, encoded);
 
 // setTimeout(() => {
 //     for (let i = 0; i < 500000; i++) {
@@ -273,12 +280,15 @@ function logTime(label: string, callback: Function) {
 
 // console.log(`encode: (${encoded.length})`, encoded);
 
-// const encodedReflection = Reflection.encode(state, encoder.context);
-// const decodedState = Reflection.decode(encodedReflection);
-const decodedState = new State();
+const encodedReflection = Reflection.encode(state, encoder.context);
+const decodedState = Reflection.decode(encodedReflection);
 
+// const decodedState = new State();
 const decoder = new Decoder(decodedState);
-decoder.decode(encoded2);
+
+// @ts-ignore
+// decoder.decode(encodedView);
+decoder.decode(new DataView(encoded.buffer, 0, it.offset));
 
 log(decodedState.toJSON());
 

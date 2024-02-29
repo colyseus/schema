@@ -7,7 +7,7 @@ import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 import { encodeSchemaOperation } from './changes/EncodeOperation';
 
 import { ChangeTree } from './changes/ChangeTree';
-import { $changes, $deleteByIndex, $filter, $getByIndex, $track } from './changes/consts';
+import { $changes, $deleteByIndex, $filter, $getByIndex, $isOwned, $track } from './changes/consts';
 import { StateView } from './filters/StateView';
 
 export interface DataChange<T=any,F=string> {
@@ -107,6 +107,12 @@ export abstract class Schema {
         } else {
             return field.owned && !view['owned'].has(ref[$changes]);
         }
+    }
+
+    static [$isOwned] (ref: Schema, index: number) {
+        const metadata = ref.constructor[Symbol.metadata];
+        const field  = metadata[metadata[index]];
+        return field.owned !== undefined;
     }
 
     // allow inherited classes to have a constructor

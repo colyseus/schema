@@ -12,8 +12,8 @@ export type MetadataField = {
     type: DefinitionType,
     index: number,
     owned?: boolean,
-    deprecated: boolean,
-    descriptor: PropertyDescriptor,
+    deprecated?: boolean,
+    descriptor?: PropertyDescriptor,
 };
 
 export type Metadata =

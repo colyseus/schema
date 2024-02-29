@@ -97,10 +97,12 @@ export class Reflection extends Schema {
             buildType(type, klass[Symbol.metadata]);
         }
 
-        return encoder.encodeAll();
+        const it = { offset: 0 };
+        const buf = encoder.encodeAll(it);
+        return new DataView(buf.buffer, 0, it.offset);
     }
 
-    static decode<T extends Schema = Schema>(bytes: number[], it?: Iterator): T {
+    static decode<T extends Schema = Schema>(bytes: DataView, it?: Iterator): T {
         const reflection = new Reflection();
 
         const reflectionDecoder = new Decoder(reflection);

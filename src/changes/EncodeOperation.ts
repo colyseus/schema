@@ -189,6 +189,8 @@ export const encodeKeyValueOperation: EncodeOperation = function (
         return;
     }
 
+    // console.log("ENCODE VALUE! field =>", ref.refId, "value =>", value);
+
     // TODO: inline this function call small performance gain
     encodeValue(encoder, bytes, ref, type, value, field, operation, it);
 }
