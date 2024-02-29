@@ -14,13 +14,22 @@ export enum DecodeState {
 
 export type DecodeOperation<T extends Schema = any> = (
     decoder: Decoder<T>,
-    bytes: number[],
+    bytes: Buffer,
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[],
 ) => DecodeState | void;
 
-export function decodeValue(decoder: Decoder, operation: OPERATION, ref: Ref, index: number, type: any, bytes: number[], it: decode.Iterator, allChanges: DataChange[]) {
+export function decodeValue(
+    decoder: Decoder,
+    operation: OPERATION,
+    ref: Ref,
+    index: number,
+    type: any,
+    bytes: Buffer,
+    it: decode.Iterator,
+    allChanges: DataChange[]
+) {
     const $root = decoder.refs;
     const previousValue = ref[$getByIndex](index);
 
@@ -120,7 +129,7 @@ export function decodeValue(decoder: Decoder, operation: OPERATION, ref: Ref, in
 
 export const decodeSchemaOperation: DecodeOperation = function (
     decoder: Decoder<any>,
-    bytes: number[],
+    bytes: Buffer,
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[]
@@ -167,7 +176,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
 
 export const decodeKeyValueOperation: DecodeOperation = function (
     decoder: Decoder<any>,
-    bytes: number[],
+    bytes: Buffer,
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[]

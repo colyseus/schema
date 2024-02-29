@@ -23,7 +23,6 @@ export class ReflectionType extends Schema {
 
 export class Reflection extends Schema {
     @type([ ReflectionType ]) types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
-    // @type("number") rootType: number;
 
     static encode (instance: Schema, context?: TypeContext) {
         if (!context) {
@@ -99,10 +98,10 @@ export class Reflection extends Schema {
 
         const it = { offset: 0 };
         const buf = encoder.encodeAll(it);
-        return new DataView(buf.buffer, 0, it.offset);
+        return Buffer.from(buf, 0, it.offset);
     }
 
-    static decode<T extends Schema = Schema>(bytes: DataView, it?: Iterator): T {
+    static decode<T extends Schema = Schema>(bytes: Buffer, it?: Iterator): T {
         const reflection = new Reflection();
 
         const reflectionDecoder = new Decoder(reflection);

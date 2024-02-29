@@ -40,21 +40,16 @@ export class Decoder<T extends Schema = any> {
     }
 
     decode(
-        bytes: number[] | DataView,
+        bytes: Buffer,
         it: Iterator = { offset: 0 },
         ref: Ref = this.root,
     ) {
-
-        // TODO: remove this
-        if (bytes instanceof DataView || bytes instanceof Buffer) {
-            bytes = Array.from(new Uint8Array(bytes.buffer.slice(0, bytes.byteLength)));
-        }
 
         // console.log("------------------- DECODE -------------------");
         const allChanges: DataChange[] = [];
 
         const $root = this.refs;
-        const totalBytes = bytes.length;
+        const totalBytes = bytes.byteLength;
 
         this.currentRefId = 0;
 
@@ -201,7 +196,7 @@ export class Decoder<T extends Schema = any> {
     }
     */
 
-    getInstanceType(bytes: number[], it: Iterator, defaultType: typeof Schema): typeof Schema {
+    getInstanceType(bytes: Buffer, it: Iterator, defaultType: typeof Schema): typeof Schema {
         let type: typeof Schema;
 
         if (bytes[it.offset] === TYPE_ID) {

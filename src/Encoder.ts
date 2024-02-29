@@ -134,7 +134,7 @@ export class Encoder<T extends Schema = any> {
             }
 
             // return bytes;
-            return bytes;
+            return bytes.slice(0, it.offset);
         }
     }
 
@@ -142,7 +142,7 @@ export class Encoder<T extends Schema = any> {
         return this.encode(it);
     }
 
-    encodeView(view: StateView<T>, it: Iterator, bytes = this.sharedBuffer) {
+    encodeView(view: StateView<T>, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
         const numOperations = this.filteredOperations.length;
 
@@ -173,10 +173,9 @@ export class Encoder<T extends Schema = any> {
         }
 
         return Buffer.concat([
-            bytes.slice(0, viewOffset),
+            bytes.slice(0, sharedOffset),
             bytes.slice(viewOffset, it.offset)
         ]);
-
     }
 
     tryEncodeTypeId (bytes: Buffer, baseType: typeof Schema, targetType: typeof Schema, it: Iterator) {

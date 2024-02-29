@@ -22,6 +22,22 @@ import { Metadata } from "./Metadata";
 import { Reflection } from "./Reflection";
 import { StateView } from "./filters/StateView";
 
+function logTime(label: string, callback: Function) {
+    const time = Date.now();
+    for (let i = 0; i < 500000; i++) {
+        callback();
+    }
+    console.log(`${label}:`, Date.now() - time);
+}
+
+
+// // @ts-ignore
+// globalThis.perform = function perform() {
+//     for (let i = 0; i < 500000; i++) {
+//         encoder.encodeAll();
+//     }
+// }
+
 // const timeout = setInterval(() => {}, 1000);
 
 // function decorate({ get, set }, context: ClassAccessorDecoratorContext): ClassAccessorDecoratorResult<any, any> {
@@ -199,7 +215,7 @@ class Card extends Schema {
 class Player extends Entity {
     @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
 
-    @type("string") @owned
+    @owned @type("string")
     secret: string = "private info only for this player";
 
     // /* @owned */ @type([Card])
@@ -247,14 +263,22 @@ const it = { offset: 0 };
 const encoder = new Encoder(state);
 // const encoded = encoder.encode(it);
 const encoded = encoder.encodeAll(it);
-console.log(`(length: ${it.offset})`, encoded);
+console.log("encoded.buffer =>", `(${it.offset})`, [...encoded.slice(0, it.offset)]);
+
+const sharedOffset = it.offset;
 
 const view1 = new StateView<State>();
-// view1.owns(state.teams[0].entities.get("one"));
 view1.owns(state.entity1);
-// view1.owns(state.entity2);
 
-const encodedView = encoder.encodeView(view1, it, encoded);
+const view2 = new StateView<State>();
+view2.owns(state.entity2);
+
+const viewEncoded1 = encoder.encodeView(view1, sharedOffset, it, encoder.sharedBuffer);
+
+console.log("final =>", `(${it.offset})`, [...encoded.slice(0, it.offset)]);
+console.log("view =>", `(${it.offset})`, [...viewEncoded1]);
+
+const viewEncoded2 = encoder.encodeView(view2, sharedOffset, it, encoded);
 
 // setTimeout(() => {
 //     for (let i = 0; i < 500000; i++) {
@@ -262,20 +286,6 @@ const encodedView = encoder.encodeView(view1, it, encoded);
 //     }
 // }, 1000)
 
-// // @ts-ignore
-// globalThis.perform = function perform() {
-//     for (let i = 0; i < 500000; i++) {
-//         encoder.encodeAll();
-//     }
-// }
-
-function logTime(label: string, callback: Function) {
-    const time = Date.now();
-    for (let i = 0; i < 500000; i++) {
-        callback();
-    }
-    console.log(`${label}:`, Date.now() - time);
-}
 // logTime("encode time", () => encoder.encodeAll());
 
 // console.log(`encode: (${encoded.length})`, encoded);
@@ -285,10 +295,12 @@ const decodedState = Reflection.decode(encodedReflection);
 
 // const decodedState = new State();
 const decoder = new Decoder(decodedState);
+// decoder.decode(encoded);
+decoder.decode(viewEncoded1);
+// decoder.decode(viewEncoded2);
 
-// @ts-ignore
-// decoder.decode(encodedView);
-decoder.decode(new DataView(encoded.buffer, 0, it.offset));
+// log(new DataView(encoded.buffer, 0, it.offset));
+// log(new DataView(viewEncoded1.buffer, 0, it.offset));
 
 log(decodedState.toJSON());
 
