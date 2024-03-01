@@ -35,6 +35,8 @@ export interface ChangeOperation {
 export class Root {
     // changes = new Set<ChangeTree>();
     changes: ChangeTree[] = [];
+    filteredChanges: ChangeTree[] = [];
+
     currentQueue = new Set<ChangeTree>();
     protected nextUniqueId: number = 1;
 
@@ -42,17 +44,29 @@ export class Root {
         return this.nextUniqueId++;
     }
 
-    enqueue(changeTree: ChangeTree) {
+    enqueue(changeTree: ChangeTree, isFiltered: boolean = false) {
         if (!this.currentQueue.has(changeTree)) {
-            this.changes.push(changeTree);
             this.currentQueue.add(changeTree);
+
+            if (isFiltered) {
+                this.filteredChanges.push(changeTree);
+            } else {
+                this.changes.push(changeTree);
+            }
+
         }
     }
 
     dequeue(changeTree: ChangeTree) {
         const indexOf = this.changes.indexOf(changeTree);
         if (indexOf !== -1) {
-            this.changes.splice(indexOf, 1);
+            if (changeTree.isFiltered) {
+                this.filteredChanges.splice(indexOf, 1);
+
+            } else {
+                this.changes.splice(indexOf, 1);
+
+            }
         }
         this.currentQueue.delete(changeTree);
     }
@@ -69,6 +83,7 @@ export class ChangeTree<T extends Ref=any> {
 
     root?: Root;
 
+    isFiltered?: boolean;
     parent?: Ref;
     parentIndex?: number;
 
@@ -88,7 +103,17 @@ export class ChangeTree<T extends Ref=any> {
     setRoot(root: Root) {
         this.root = root;
 
-        root.enqueue(this);
+        //
+        // At Schema initialization, the "root" structure might not be available
+        // yet, as it only does once the "Encoder" has been set up.
+        //
+        // So the "parent" may be already set without a "root".
+        //
+        if (this.parent) {
+            this.checkIsFiltered(this.parent, this.parentIndex);
+        }
+
+        root.enqueue(this, this.isFiltered);
 
         this.allChanges.forEach((index) => {
             const childRef = this.ref[$getByIndex](index);
@@ -110,8 +135,9 @@ export class ChangeTree<T extends Ref=any> {
         if (!root) { return; }
 
         this.root = root;
-        this.root['enqueue'](this);
+        this.checkIsFiltered(parent, parentIndex);
 
+        this.root.enqueue(this, this.isFiltered);
         this.ensureRefId();
 
         //
@@ -180,7 +206,7 @@ export class ChangeTree<T extends Ref=any> {
         this.changed = true;
         // this.touchParents();
 
-        this.root?.enqueue(this);
+        this.root?.enqueue(this, this.isFiltered);
     }
 
     touch(fieldName: string | number) {
@@ -314,6 +340,29 @@ export class ChangeTree<T extends Ref=any> {
         if (index === undefined) {
             throw new Error(`ChangeTree: missing index for field "${fieldName}"`);
         }
+    }
+
+    protected checkIsFiltered(parent: Ref, parentIndex: number) {
+        // detect if parent has "filters" declared
+        let metadata: Metadata;
+        let nextParent: Ref;
+
+        do {
+            metadata = parent['constructor'][Symbol.metadata];
+            nextParent = parent[$changes].parent;
+            this.isFiltered = nextParent?.[$changes].isFiltered || metadata?.[-2];
+
+
+            // const fieldName = metadata[parentIndex];
+            // const field = metadata[fieldName];
+
+            // if (field.owned || ) {
+            //     this.isFiltered = true;
+            //     return;
+            // }
+        } while (!this.isFiltered && (parent = nextParent));
+
+
     }
 
 }

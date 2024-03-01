@@ -17,6 +17,8 @@ export type MetadataField = {
 };
 
 export type Metadata =
+    { [-1]: number; } & // number of fields
+    { [-2]: boolean; } & // has filters
     { [field: number]: string; } & // index => field name
     { [field: string]: MetadataField; } // field name => field metadata
 

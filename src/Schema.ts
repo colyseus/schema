@@ -36,6 +36,10 @@ export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
  */
 export abstract class Schema {
 
+    /**
+     * Assign the property descriptors required to track changes on this instance.
+     * @param instance
+     */
     static initialize(instance: any) {
         Object.defineProperty(instance, $changes, {
             value: new ChangeTree(instance),

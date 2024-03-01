@@ -52,12 +52,12 @@ export class Encoder<T extends Schema = any> {
         it: Iterator = { offset: 0 },
         view?: StateView<T>,
         bytes = this.sharedBuffer,
+        changeTrees = this.$root.changes
     ): Buffer {
+        const numChangeTrees = changeTrees.length;
+
         const encodeAll = (view === undefined);
         const rootChangeTree = this.root[$changes];
-
-        const changeTrees: ChangeTree[] = this.$root.changes;
-        const numChangeTrees = changeTrees.length;
 
         for (let i = 0; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
@@ -66,8 +66,6 @@ export class Encoder<T extends Schema = any> {
             // Generate unique refId for the ChangeTree.
             changeTree.ensureRefId();
 
-            // TODO: avoid encoding if instance is a child of a filtered operation.
-
             if (
                 changeTree !== rootChangeTree && // root `refId` is skipped.
                 (changeTree.changed || encodeAll)
@@ -75,6 +73,8 @@ export class Encoder<T extends Schema = any> {
                 encode.uint8(bytes, SWITCH_TO_STRUCTURE, it);
                 encode.uint8(bytes, changeTree.refId, it);
             }
+
+            console.log("Encode refId: ", changeTree.refId, `(${ref.constructor.name})`);
 
             const ctor = ref['constructor'];
             const encoder = ctor[$encoder];
@@ -147,6 +147,11 @@ export class Encoder<T extends Schema = any> {
         const numOperations = this.filteredOperations.length;
 
         let lastRefId: number;
+
+        console.log("Will encode the filtered changes!");
+
+        // try to encode "filtered" changes
+        this.encode(it, view, bytes, this.$root.filteredChanges);
 
         for (let i = 0; i < numOperations; i++) {
             const change = this.filteredOperations[i];

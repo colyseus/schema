@@ -44,8 +44,6 @@ export class Decoder<T extends Schema = any> {
         it: Iterator = { offset: 0 },
         ref: Ref = this.root,
     ) {
-
-        // console.log("------------------- DECODE -------------------");
         const allChanges: DataChange[] = [];
 
         const $root = this.refs;

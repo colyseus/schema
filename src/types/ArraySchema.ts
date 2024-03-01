@@ -124,7 +124,6 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     }
 
     constructor (...items: V[]) {
-        this.push.apply(this, items);
 
         Object.defineProperty(this, $childType, {
             value: undefined,
@@ -190,6 +189,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         });
 
         this[$changes] = new ChangeTree(proxy);
+        this.push.apply(this, items);
 
         return proxy;
     }

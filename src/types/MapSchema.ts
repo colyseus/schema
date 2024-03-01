@@ -160,7 +160,6 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
 
         this.$items.set(key, value);
 
-        // this.$changes.change(key, operation);
         this[$changes].change(index, operation);
 
         return this;
