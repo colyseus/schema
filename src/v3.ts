@@ -215,7 +215,7 @@ class Card extends Schema {
 class Player extends Entity {
     @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
 
-    @type("string") secret: string = "private info only for this player";
+    @owned @type("string") secret: string = "private info only for this player";
 
     // @type([Card])
     // cards = new ArraySchema<Card>(
@@ -234,7 +234,7 @@ class State extends Schema {
     @type("string") str = "Hello world!"
     // @type([Team]) teams = new ArraySchema<Team>();
 
-    @owned @type({ map: Entity }) entities = new MapSchema<Entity>();
+    @type({ map: Entity }) entities = new MapSchema<Entity>();
 
     // @type(Entity) entity1 = new Player().assign({
     //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
@@ -296,7 +296,7 @@ console.log("encoded.buffer =>", `(${it.offset})`, [...encoded.slice(0, it.offse
 const sharedOffset = it.offset;
 
 const view1 = new StateView<State>();
-view1.owns(state.entities);
+view1.owns(state.entities.get("one"));
 // view1.owns(state.entities.get("one"));
 
 const view2 = new StateView<State>();
@@ -328,8 +328,8 @@ const decoder = new Decoder(decodedState);
 
 console.log("> will decode...");
 // decoder.decode(encoded);
-// decoder.decode(viewEncoded1);
-decoder.decode(viewEncoded2);
+decoder.decode(viewEncoded1);
+// decoder.decode(viewEncoded2);
 
 // log(new DataView(encoded.buffer, 0, it.offset));
 // log(new DataView(viewEncoded1.buffer, 0, it.offset));

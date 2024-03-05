@@ -70,6 +70,7 @@ export class Encoder<T extends Schema = any> {
             const isOwned = ctor[$isOwned];
 
             if (hasView && !view['owned'].has(changeTree)) {
+                console.log("NOT OWNED structure, skip", ref.constructor.name, `(refId: ${changeTree.refId})`)
                 continue;
             }
 
@@ -159,6 +160,8 @@ export class Encoder<T extends Schema = any> {
             const ref = changeTree.ref;
             const ctor = ref['constructor'];
 
+            // FIXME: this is not working as expected
+            // if (changeTree.isFiltered && !view['owned'].has(changeTree)) {
             if (changeTree.isFiltered && !view['owned'].has(changeTree)) {
                 console.log("encodeView, skip refId =>", changeTree.refId, `(${ref.constructor['name']})`);
                 continue;

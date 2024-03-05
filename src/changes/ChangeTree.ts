@@ -322,11 +322,19 @@ export class ChangeTree<T extends Ref=any> {
         let metadata: Metadata;
         let nextParent: Ref;
 
+        //
+        // TODO: refactor this function, it's a bit too complex.
+        //
+
         do {
             metadata = parent['constructor'][Symbol.metadata];
             nextParent = parent[$changes].parent;
-            this.isFiltered = nextParent?.[$changes].isFiltered || metadata?.[-2];
 
+            const fieldName = metadata?.[parentIndex];
+            const isParentOwned = metadata?.[fieldName]?.owned;
+
+            // metadata?.[-2]
+            this.isFiltered = isParentOwned || nextParent?.[$changes].isFiltered;
 
             // const fieldName = metadata[parentIndex];
             // const field = metadata[fieldName];
