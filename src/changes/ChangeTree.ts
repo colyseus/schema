@@ -11,6 +11,7 @@ import type { SetSchema } from "../types/SetSchema";
 import { Metadata } from "../Metadata";
 import type { EncodeOperation } from "./EncodeOperation";
 import type { DecodeOperation } from "./DecodeOperation";
+import type { StateView } from "../filters/StateView";
 
 declare global {
     interface Object {
@@ -33,12 +34,15 @@ export interface ChangeOperation {
 }
 
 export class Root {
+
     // changes = new Set<ChangeTree>();
     changes: ChangeTree[] = [];
     filteredChanges: ChangeTree[] = [];
 
     currentQueue = new Set<ChangeTree>();
-    protected nextUniqueId: number = 1;
+    protected nextUniqueId: number = 0;
+
+    views: StateView[] = [];
 
     getNextUniqueId() {
         return this.nextUniqueId++;
@@ -115,6 +119,9 @@ export class ChangeTree<T extends Ref=any> {
 
         root.enqueue(this, this.isFiltered);
 
+        // unique refId for the ChangeTree.
+        this.ensureRefId();
+
         this.allChanges.forEach((index) => {
             const childRef = this.ref[$getByIndex](index);
             if (childRef && childRef[$changes]) {
@@ -140,6 +147,12 @@ export class ChangeTree<T extends Ref=any> {
         this.root.enqueue(this, this.isFiltered);
         this.ensureRefId();
 
+        this.forEachChild((changeTree, atIndex) => {
+            changeTree.setParent(this.ref, root, atIndex);
+        });
+    }
+
+    forEachChild(callback: (change: ChangeTree, atIndex: number) => void) {
         //
         // assign same parent on child structures
         //
@@ -151,13 +164,8 @@ export class ChangeTree<T extends Ref=any> {
                 const value = this.ref[field];
 
                 if (value && value[$changes]) {
-                    const parentIndex = metadata[field].index;
+                    callback(value[$changes], metadata[field].index);
 
-                    value[$changes].setParent(
-                        this.ref,
-                        root,
-                        parentIndex,
-                    );
                 }
             }
 
@@ -165,14 +173,7 @@ export class ChangeTree<T extends Ref=any> {
             // MapSchema / ArraySchema, etc.
             (this.ref as MapSchema).forEach((value, key) => {
                 if (Metadata.isValidInstance(value)) {
-                    const changeTreee = value[$changes];
-                    const parentIndex = this.ref[$changes].indexes[key];
-
-                    changeTreee.setParent(
-                        this.ref,
-                        this.root,
-                        parentIndex,
-                    );
+                    callback(value[$changes], this.ref[$changes].indexes[key]);
                 }
             });
         }
@@ -187,8 +188,7 @@ export class ChangeTree<T extends Ref=any> {
 
         if (
             !previousChange ||
-            previousChange.op === OPERATION.DELETE ||
-            previousChange.op === OPERATION.TOUCH // (mazmorra.io's BattleAction issue)
+            previousChange.op === OPERATION.DELETE
         ) {
             this.changes.set(index, {
                 op: (!previousChange)
@@ -204,32 +204,8 @@ export class ChangeTree<T extends Ref=any> {
         this.allChanges.add(index);
 
         this.changed = true;
-        // this.touchParents();
 
         this.root?.enqueue(this, this.isFiltered);
-    }
-
-    touch(fieldName: string | number) {
-        const index = (typeof (fieldName) === "number")
-            ? fieldName
-            : this.indexes[fieldName];
-
-        this.assertValidIndex(index, fieldName);
-
-        if (!this.changes.has(index)) {
-            this.changes.set(index, { op: OPERATION.TOUCH, index });
-        }
-
-        this.allChanges.add(index);
-
-        // ensure touch is placed until the $root is found.
-        this.touchParents();
-    }
-
-    touchParents() {
-        if (this.parent) {
-            this.parent[$changes].touch(this.parentIndex);
-        }
     }
 
     getType(index?: number) {
@@ -281,7 +257,6 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         this.changed = true;
-        this.touchParents();
     }
 
     discard(changed: boolean = false, discardAll: boolean = false) {

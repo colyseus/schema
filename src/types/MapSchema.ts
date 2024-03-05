@@ -204,9 +204,6 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         this.$items.clear();
 
         this[$changes].operation({ index: 0, op: OPERATION.CLEAR });
-
-        // touch all structures until reach root
-        this[$changes].touchParents();
     }
 
     has (key: K) {

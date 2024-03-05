@@ -307,9 +307,6 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         this.$items.clear();
 
         this[$changes].operation({ index: 0, op: OPERATION.CLEAR });
-
-        // touch all structures until reach root
-        this[$changes].touchParents();
     }
 
     /**

@@ -114,14 +114,10 @@ export const encodeSchemaOperation: EncodeOperation = function (
     // "compress" field index + operation
     encode.uint8(bytes, (index | operation), it);
 
-    // ensure refId for the value
-    if (value && value[$changes]) {
-        value[$changes].ensureRefId();
-    }
-
-    if (operation === OPERATION.TOUCH) {
-        return;
-    }
+    // // ensure refId for the value
+    // if (value && value[$changes]) {
+    //     value[$changes].ensureRefId();
+    // }
 
     // TODO: inline this function call small performance gain
     encodeValue(encoder, bytes, ref, type, value, field, operation, it);
@@ -142,17 +138,15 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     const ref = changeTree.ref;
 
     // encode field index + operation
-    if (operation !== OPERATION.TOUCH) {
-        encode.uint8(bytes, operation, it);
+    encode.uint8(bytes, operation, it);
 
-        // custom operations
-        if (operation === OPERATION.CLEAR) {
-            return;
-        }
-
-        // indexed operations
-        encode.number(bytes, field, it);
+    // custom operations
+    if (operation === OPERATION.CLEAR) {
+        return;
     }
+
+    // indexed operations
+    encode.number(bytes, field, it);
 
     //
     // encode "alias" for dynamic fields (maps)
@@ -180,14 +174,10 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     const type = changeTree.getType(field);
     const value = changeTree.getValue(field);
 
-    // ensure refId for the value
-    if (value && value[$changes]) {
-        value[$changes].ensureRefId();
-    }
-
-    if (operation === OPERATION.TOUCH) {
-        return;
-    }
+    // // ensure refId for the value
+    // if (value && value[$changes]) {
+    //     value[$changes].ensureRefId();
+    // }
 
     // console.log("ENCODE VALUE! field =>", ref.refId, "value =>", value);
 

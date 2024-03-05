@@ -289,19 +289,22 @@ const it = { offset: 0 };
 const encoder = new Encoder(state);
 
 // const encoded = encoder.encode(it);
-console.log("WILL ENCODE =>", state.toJSON());
+console.log("> will encode all...", state.toJSON());
 const encoded = encoder.encodeAll(it);
 console.log("encoded.buffer =>", `(${it.offset})`, [...encoded.slice(0, it.offset)]);
 
 const sharedOffset = it.offset;
 
 const view1 = new StateView<State>();
-view1.owns(state.entities.get("one"));
+view1.owns(state.entities);
+// view1.owns(state.entities.get("one"));
 
 const view2 = new StateView<State>();
-view2.owns(state.entities.get("two"));
+// view2.owns(state.entities.get("two"));
 
+console.log("> will encode view...");
 const viewEncoded1 = encoder.encodeView(view1, sharedOffset, it, encoder.sharedBuffer);
+const viewEncoded2 = encoder.encodeView(view2, sharedOffset, it, encoder.sharedBuffer);
 
 console.log("view =>", `(${it.offset})`, [...viewEncoded1]);
 
@@ -322,9 +325,11 @@ const decodedState = Reflection.decode(encodedReflection);
 
 // const decodedState = new State();
 const decoder = new Decoder(decodedState);
+
+console.log("> will decode...");
 // decoder.decode(encoded);
-decoder.decode(viewEncoded1);
-// decoder.decode(viewEncoded2);
+// decoder.decode(viewEncoded1);
+decoder.decode(viewEncoded2);
 
 // log(new DataView(encoded.buffer, 0, it.offset));
 // log(new DataView(viewEncoded1.buffer, 0, it.offset));

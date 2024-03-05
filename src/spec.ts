@@ -18,9 +18,9 @@ export enum OPERATION {
     // DELETE field, followed by an ADD
     DELETE_AND_ADD = 192, // 11100000
 
-    // TOUCH is used to determine hierarchy of nested Schema structures during serialization.
-    // touches are NOT encoded.
-    TOUCH = 1, // 00000000
+    // // TOUCH is used to determine hierarchy of nested Schema structures during serialization.
+    // // touches are NOT encoded.
+    // TOUCH = 1, // 00000000
 
     // MapSchema Operations
     CLEAR = 10,

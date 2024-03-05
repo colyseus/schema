@@ -7,7 +7,12 @@ export class StateView<T extends Ref = any> {
 
     owns(obj: any) {
         if (obj && obj[$changes]) {
-            this.owned.add(obj[$changes]);
+            const changes: ChangeTree = obj[$changes];
+            this.owned.add(changes);
+
+            changes.forEachChild((change, atIndex) => {
+                this.owns(change.ref)
+            });
         }
 
         return obj;
