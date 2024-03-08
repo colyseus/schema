@@ -48,16 +48,17 @@ export class Root {
         return this.nextUniqueId++;
     }
 
-    enqueue(changeTree: ChangeTree, isFiltered: boolean = false) {
+    enqueue(changeTree: ChangeTree) {
         if (!this.currentQueue.has(changeTree)) {
             this.currentQueue.add(changeTree);
 
-            if (isFiltered) {
+            if (changeTree.isPartiallyFiltered || changeTree.isFiltered) {
                 this.filteredChanges.push(changeTree);
-            } else {
-                this.changes.push(changeTree);
             }
 
+            if (!changeTree.isFiltered) {
+                this.changes.push(changeTree);
+            }
         }
     }
 
@@ -88,6 +89,8 @@ export class ChangeTree<T extends Ref=any> {
     root?: Root;
 
     isFiltered?: boolean;
+    isPartiallyFiltered?: boolean;
+
     parent?: Ref;
     parentIndex?: number;
 
@@ -117,10 +120,10 @@ export class ChangeTree<T extends Ref=any> {
             this.checkIsFiltered(this.parent, this.parentIndex);
         }
 
-        root.enqueue(this, this.isFiltered);
-
         // unique refId for the ChangeTree.
         this.ensureRefId();
+
+        root.enqueue(this, this.isFiltered);
 
         this.allChanges.forEach((index) => {
             const childRef = this.ref[$getByIndex](index);
@@ -318,33 +321,24 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     protected checkIsFiltered(parent: Ref, parentIndex: number) {
+        // detect if current structure has "filters" declared
+        this.isPartiallyFiltered = this.ref['constructor']?.[Symbol.metadata]?.[-2];
+
+        // TODO: support "partially filtered", where the instance is visible, but only a field is not.
+
         // detect if parent has "filters" declared
-        let metadata: Metadata;
-        let nextParent: Ref;
-
-        //
-        // TODO: refactor this function, it's a bit too complex.
-        //
-
-        do {
-            metadata = parent['constructor'][Symbol.metadata];
-            nextParent = parent[$changes].parent;
+        while (!this.isFiltered && parent) {
+            const metadata = parent['constructor'][Symbol.metadata];
 
             const fieldName = metadata?.[parentIndex];
             const isParentOwned = metadata?.[fieldName]?.owned;
 
-            // metadata?.[-2]
-            this.isFiltered = isParentOwned || nextParent?.[$changes].isFiltered;
+            this.isFiltered = isParentOwned || parent[$changes].isFiltered; // metadata?.[-2]
 
-            // const fieldName = metadata[parentIndex];
-            // const field = metadata[fieldName];
+            parent = parent[$changes].parent;
+        };
 
-            // if (field.owned || ) {
-            //     this.isFiltered = true;
-            //     return;
-            // }
-        } while (!this.isFiltered && (parent = nextParent));
-
+        // console.log("< ", this.ref.constructor.name, "isFiltered??", this.isFiltered, "\n");
 
     }
 

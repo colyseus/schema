@@ -57,7 +57,7 @@ export class Encoder<T extends Schema = any> {
     ): Buffer {
         const numChangeTrees = changeTrees.length;
 
-        const hasView = view !== undefined;
+        const hasView = (view !== undefined);
         const encodeAll = !hasView;
         const rootChangeTree = this.root[$changes];
 
@@ -68,6 +68,10 @@ export class Encoder<T extends Schema = any> {
             const ctor = ref['constructor'];
             const encoder = ctor[$encoder];
             const isOwned = ctor[$isOwned];
+
+            // if (changeTrees === this.$root.filteredChanges) {
+            //     console.log("encode filteredChanges =>", ref.constructor.name, `(refId: ${changeTree.refId})`);
+            // }
 
             if (hasView && !view['owned'].has(changeTree)) {
                 console.log("NOT OWNED structure, skip", ref.constructor.name, `(refId: ${changeTree.refId})`)
@@ -100,7 +104,9 @@ export class Encoder<T extends Schema = any> {
                 // first pass, identify "filtered" operations without encoding them
                 // they will be encoded per client, based on their view.
                 //
+                console.log(ref.constructor.name, fieldIndex, { isOwned: isOwned && isOwned(ref, fieldIndex) });
                 if (isOwned && isOwned(ref, fieldIndex)) {
+                    console.log("NEED TO ENQUEUE 'filteredOperation'", view === undefined);
                     if (view === undefined) {
                         console.log("OWNED structure, skip operation on", ref.constructor.name, `(refId: ${changeTree.refId})`, OPERATION[operation], fieldIndex);
                         this.filteredOperations.push({
@@ -151,6 +157,8 @@ export class Encoder<T extends Schema = any> {
 
         let lastRefId: number;
 
+        console.log("> encodeView, filteredOperations =>", this.filteredOperations.length);
+
         for (let i = 0, l = this.filteredOperations.length; i < l; i++) {
             const change = this.filteredOperations[i];
             const operation = change.op;
@@ -160,9 +168,8 @@ export class Encoder<T extends Schema = any> {
             const ref = changeTree.ref;
             const ctor = ref['constructor'];
 
-            // FIXME: this is not working as expected
-            // if (changeTree.isFiltered && !view['owned'].has(changeTree)) {
-            if (changeTree.isFiltered && !view['owned'].has(changeTree)) {
+            if ((changeTree.isFiltered || changeTree.isPartiallyFiltered) && !view['owned'].has(changeTree)) {
+            // if (!view['owned'].has(changeTree)) {
                 console.log("encodeView, skip refId =>", changeTree.refId, `(${ref.constructor['name']})`);
                 continue;
             }
@@ -171,6 +178,7 @@ export class Encoder<T extends Schema = any> {
                 encode.uint8(bytes, SWITCH_TO_STRUCTURE, it);
                 encode.uint8(bytes, changeTree.refId, it);
                 lastRefId = changeTree.refId;
+                console.log("encodeView, refId =>", lastRefId)
             }
 
             const encoder = ctor[$encoder];

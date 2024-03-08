@@ -296,8 +296,8 @@ console.log("encoded.buffer =>", `(${it.offset})`, [...encoded.slice(0, it.offse
 const sharedOffset = it.offset;
 
 const view1 = new StateView<State>();
+// view1.owns(state.entities);
 view1.owns(state.entities.get("one"));
-// view1.owns(state.entities.get("one"));
 
 const view2 = new StateView<State>();
 // view2.owns(state.entities.get("two"));
@@ -307,8 +307,6 @@ const viewEncoded1 = encoder.encodeView(view1, sharedOffset, it, encoder.sharedB
 const viewEncoded2 = encoder.encodeView(view2, sharedOffset, it, encoder.sharedBuffer);
 
 console.log("view =>", `(${it.offset})`, [...viewEncoded1]);
-
-// const viewEncoded2 = encoder.encodeView(view2, sharedOffset, it, encoder.sharedBuffer);
 
 // setTimeout(() => {
 //     for (let i = 0; i < 500000; i++) {
