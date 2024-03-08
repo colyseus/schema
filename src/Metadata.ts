@@ -12,6 +12,7 @@ export type MetadataField = {
     type: DefinitionType,
     index: number,
     owned?: boolean,
+    unreliable?: boolean,
     deprecated?: boolean,
     descriptor?: PropertyDescriptor,
 };

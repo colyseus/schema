@@ -378,6 +378,30 @@ export function owned<T> (target: T, field: string) {
     });
 }
 
+export function unreliable<T> (target: T, field: string) {
+    const constructor = target.constructor as typeof Schema;
+
+    const parentClass = Object.getPrototypeOf(constructor);
+    const parentMetadata = parentClass[Symbol.metadata];
+    const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
+
+    if (!metadata[field]) {
+        //
+        // detect index for this field, considering inheritance
+        //
+        metadata[field] = {
+            type: undefined,
+            index: (metadata[-1] // current structure already has fields defined
+                ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
+                ?? -1) + 1 // no fields defined
+
+        }
+    }
+
+    // add owned flag to the field
+    metadata[field].unreliable = true;
+}
+
 export function type (
     type: DefinitionType,
     options?: TypeOptions
