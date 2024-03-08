@@ -69,10 +69,6 @@ export class Encoder<T extends Schema = any> {
             const encoder = ctor[$encoder];
             const isOwned = ctor[$isOwned];
 
-            // if (changeTrees === this.$root.filteredChanges) {
-            //     console.log("encode filteredChanges =>", ref.constructor.name, `(refId: ${changeTree.refId})`);
-            // }
-
             if (hasView && !view['owned'].has(changeTree)) {
                 // console.log("NOT OWNED structure, skip", ref.constructor.name, `(refId: ${changeTree.refId})`)
                 continue;
@@ -82,8 +78,9 @@ export class Encoder<T extends Schema = any> {
                 (changeTree !== rootChangeTree) && // root `refId` is skipped.
                 (changeTree.changed || encodeAll)
             ) {
-                encode.uint8(bytes, SWITCH_TO_STRUCTURE, it);
-                encode.uint8(bytes, changeTree.refId, it);
+                bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
+                // encode.uint8(bytes, SWITCH_TO_STRUCTURE, it);
+                encode.number(bytes, changeTree.refId, it);
             }
 
             const changes: IterableIterator<ChangeOperation | number> = (encodeAll)
@@ -174,7 +171,7 @@ export class Encoder<T extends Schema = any> {
 
             if (lastRefId !== changeTree.refId) {
                 encode.uint8(bytes, SWITCH_TO_STRUCTURE, it);
-                encode.uint8(bytes, changeTree.refId, it);
+                encode.number(bytes, changeTree.refId, it);
                 lastRefId = changeTree.refId;
                 // console.log("encodeView, refId =>", lastRefId)
             }

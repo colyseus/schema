@@ -112,7 +112,8 @@ export const encodeSchemaOperation: EncodeOperation = function (
     const value = ref[field];
 
     // "compress" field index + operation
-    encode.uint8(bytes, (index | operation), it);
+    bytes[it.offset++] = (index | operation) & 255;
+    // encode.uint8(bytes, (index | operation), it);
 
     // // ensure refId for the value
     // if (value && value[$changes]) {

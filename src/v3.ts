@@ -215,7 +215,8 @@ class Card extends Schema {
 class Player extends Entity {
     @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
 
-    @owned @type("string") secret: string = "private info only for this player";
+    // @owned
+    @type("string") secret: string = "private info only for this player";
 
     // @type([Card])
     // cards = new ArraySchema<Card>(
@@ -286,11 +287,17 @@ state.entities.set("two", new Player().assign({
 
 const it = { offset: 0 };
 
+
 const encoder = new Encoder(state);
+
+logTime("encode time", () => encoder.encodeAll());
+
+/*----------------------------------------------------------------
 
 // const encoded = encoder.encode(it);
 console.log("> will encode all...", state.toJSON());
 const encoded = encoder.encodeAll(it);
+
 console.log("encoded.buffer =>", `(${it.offset})`, [...encoded.slice(0, it.offset)]);
 
 const sharedOffset = it.offset;
@@ -333,6 +340,8 @@ decoder.decode(viewEncoded1);
 // log(new DataView(viewEncoded1.buffer, 0, it.offset));
 
 log(decodedState.toJSON());
+
+----------------------------------------------------------*/
 
 // log(decoder.root.toJSON());
 // logTime("decode time", () => decoder.decode(encoded));
