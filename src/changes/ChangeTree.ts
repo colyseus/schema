@@ -341,8 +341,18 @@ export class ChangeTree<T extends Ref=any> {
             parent = parent[$changes].parent;
         };
 
-        // console.log("< ", this.ref.constructor.name, "isFiltered??", this.isFiltered, "\n");
-
+        //
+        // TODO: refactor this!
+        //
+        //      swapping `changes` and `filteredChanges` is required here
+        //      because "isFiltered" may not be imedialely available on `change()`
+        //
+        if (this.isFiltered && this.changes.size > 0) {
+            // swap changes reference
+            const changes = this.changes;
+            this.changes = this.filteredChanges;
+            this.filteredChanges = changes;
+        }
     }
 
 }
