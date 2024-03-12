@@ -34,13 +34,12 @@ export interface ChangeOperation {
 }
 
 export class Root {
-
-    // changes = new Set<ChangeTree>();
-    changes: ChangeTree[] = [];
-    filteredChanges: ChangeTree[] = [];
-
     currentQueue = new Set<ChangeTree>();
     protected nextUniqueId: number = 0;
+
+    allChanges = new Map<ChangeTree, Map<number, OPERATION>>();
+    changes = new Map<ChangeTree, Map<number, OPERATION>>();
+    filteredChanges = new Map<ChangeTree, Map<number, OPERATION>>();
 
     views: StateView[] = [];
 
@@ -48,37 +47,15 @@ export class Root {
         return this.nextUniqueId++;
     }
 
-    enqueue(changeTree: ChangeTree) {
-        if (!this.currentQueue.has(changeTree)) {
-            this.currentQueue.add(changeTree);
-
-            if (changeTree.isPartiallyFiltered || changeTree.isFiltered) {
-                this.filteredChanges.push(changeTree);
-            }
-
-            if (!changeTree.isFiltered) {
-                this.changes.push(changeTree);
-            }
-        }
-    }
-
-    dequeue(changeTree: ChangeTree) {
-        const indexOf = this.changes.indexOf(changeTree);
-        if (indexOf !== -1) {
-            if (changeTree.isFiltered) {
-                this.filteredChanges.splice(indexOf, 1);
-
-            } else {
-                this.changes.splice(indexOf, 1);
-
-            }
-        }
-        this.currentQueue.delete(changeTree);
+    remove(changeTree: ChangeTree) {
+        this.allChanges.delete(changeTree);
+        this.changes.delete(changeTree);
+        this.filteredChanges.delete(changeTree);
     }
 
     clear() {
         this.currentQueue.clear();
-        this.changes.length = 0;
+        this.changes.clear();
     }
 }
 
@@ -96,9 +73,9 @@ export class ChangeTree<T extends Ref=any> {
 
     indexes: {[index: string]: any} = {};
 
-    changed: boolean = false;
-    changes = new Map<number, ChangeOperation>();
-    allChanges = new Set<number>();
+    allChanges = new Map<number, OPERATION>();
+    changes = new Map<number, OPERATION>();
+    filteredChanges = new Map<number, OPERATION>();
 
     operations: ChangeOperation[] = [];
     currentCustomOperation: number = 0;
@@ -123,9 +100,12 @@ export class ChangeTree<T extends Ref=any> {
         // unique refId for the ChangeTree.
         this.ensureRefId();
 
-        root.enqueue(this, this.isFiltered);
+        root.changes.set(this, this.changes);
+        root.allChanges.set(this, this.allChanges);
 
-        this.allChanges.forEach((index) => {
+        // root.enqueue(this);
+
+        this.allChanges.forEach((_, index) => {
             const childRef = this.ref[$getByIndex](index);
             if (childRef && childRef[$changes]) {
                 childRef[$changes].setRoot(root);
@@ -147,7 +127,10 @@ export class ChangeTree<T extends Ref=any> {
         this.root = root;
         this.checkIsFiltered(parent, parentIndex);
 
-        this.root.enqueue(this, this.isFiltered);
+        // this.root.enqueue(this);
+        this.root.changes.set(this, this.changes);
+        this.root.allChanges.set(this, this.allChanges);
+
         this.ensureRefId();
 
         this.forEachChild((changeTree, atIndex) => {
@@ -183,7 +166,7 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     operation(op: ChangeOperation) {
-        this.changes.set(--this.currentCustomOperation, op);
+        this.changes.set(--this.currentCustomOperation, op.op);
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
@@ -191,24 +174,20 @@ export class ChangeTree<T extends Ref=any> {
 
         if (
             !previousChange ||
-            previousChange.op === OPERATION.DELETE
+            previousChange === OPERATION.DELETE
         ) {
-            this.changes.set(index, {
-                op: (!previousChange)
-                    ? operation
-                    : (previousChange.op === OPERATION.DELETE)
-                        ? OPERATION.DELETE_AND_ADD
-                        : operation,
-                        // : OPERATION.REPLACE,
-                index,
-            });
+            this.changes.set(index, (!previousChange)
+                ? operation
+                : (previousChange === OPERATION.DELETE)
+                    ? OPERATION.DELETE_AND_ADD
+                    : operation);
         }
 
-        this.allChanges.add(index);
+        this.allChanges.set(index, OPERATION.ADD);
+        // this.allChanges.add(index);
 
-        this.changed = true;
-
-        this.root?.enqueue(this, this.isFiltered);
+        // this.root?.changes.set(this, this.changes);
+        // this.root?.enqueue(this);
     }
 
     getType(index?: number) {
@@ -249,17 +228,15 @@ export class ChangeTree<T extends Ref=any> {
 
         const previousValue = this.getValue(index);
 
-        this.changes.set(index, { op: OPERATION.DELETE, index });
+        this.changes.set(index, OPERATION.DELETE);
 
         this.allChanges.delete(index);
 
         // remove `root` reference
         if (previousValue && previousValue[$changes]) {
             previousValue[$changes].parent = undefined;
-            this.root.dequeue(previousValue[$changes]);
+            this.root.remove(previousValue[$changes]);
         }
-
-        this.changed = true;
     }
 
     discard(changed: boolean = false, discardAll: boolean = false) {
@@ -271,16 +248,15 @@ export class ChangeTree<T extends Ref=any> {
         // TODO: refactor this. this is not relevant for Collection and Set.
         //
         if (!(Metadata.isValidInstance(this.ref))) {
-            this.changes.forEach((change) => {
-                if (change.op === OPERATION.DELETE) {
-                    const index = this.ref['getIndex'](change.index)
+            this.changes.forEach((op, fieldIndex) => {
+                if (op === OPERATION.DELETE) {
+                    const index = this.ref['getIndex'](fieldIndex)
                     delete this.indexes[index];
                 }
             });
         }
 
         this.changes.clear();
-        this.changed = changed;
 
         if (discardAll) {
             this.allChanges.clear();
@@ -294,8 +270,8 @@ export class ChangeTree<T extends Ref=any> {
      * Recursively discard all changes from this, and child structures.
      */
     discardAll() {
-        this.changes.forEach((change) => {
-            const value = this.getValue(change.index);
+        this.changes.forEach((_, fieldIndex) => {
+            const value = this.getValue(fieldIndex);
 
             if (value && value[$changes]) {
                 value[$changes].discardAll();

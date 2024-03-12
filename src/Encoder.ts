@@ -13,15 +13,17 @@ import { StateView } from "./filters/StateView";
 type FilteredOperation = ChangeOperation & { changeTree: ChangeTree };
 
 export class Encoder<T extends Schema = any> {
+    static BUFFER_SIZE = 8 * 1024;// 8KB
+
     context: TypeContext;
 
     root: T;
     $root: Root;
 
-    sharedBuffer = Buffer.allocUnsafeSlow(8 * 1024); // 8KB
+    sharedBuffer = Buffer.allocUnsafeSlow(Encoder.BUFFER_SIZE);
+    // sharedBuffer = Buffer.allocUnsafeSlow(4 * 1024 * 1024); // 8KB
     // sharedBuffer = Buffer.allocUnsafeSlow(32); // 8KB
 
-    filteredChangeTrees: ChangeTree[] = [];
     filteredOperations: FilteredOperation[] = [];
 
     constructor(root: T) {
@@ -55,14 +57,14 @@ export class Encoder<T extends Schema = any> {
         bytes = this.sharedBuffer,
         changeTrees = this.$root.changes
     ): Buffer {
-        const numChangeTrees = changeTrees.length;
+        const offset = it.offset; // cache current offset in case we need to resize the buffer
 
         const hasView = (view !== undefined);
-        const encodeAll = !hasView;
         const rootChangeTree = this.root[$changes];
 
-        for (let i = 0; i < numChangeTrees; i++) {
-            const changeTree = changeTrees[i];
+        const changeTreesIterator = changeTrees.entries();
+
+        for (const [changeTree, changes] of changeTreesIterator) {
             const ref = changeTree.ref;
 
             const ctor = ref['constructor'];
@@ -74,28 +76,14 @@ export class Encoder<T extends Schema = any> {
                 continue;
             }
 
-            if (
-                (changeTree !== rootChangeTree) && // root `refId` is skipped.
-                (changeTree.changed || encodeAll)
-            ) {
+            if (changeTree !== rootChangeTree) { // root `refId` is skipped.
                 bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-                // encode.uint8(bytes, SWITCH_TO_STRUCTURE, it);
                 encode.number(bytes, changeTree.refId, it);
             }
 
-            const changes: IterableIterator<ChangeOperation | number> = (encodeAll)
-                ? changeTree.allChanges.values()
-                : changeTree.changes.values();
+            const changesIterator = changes.entries();
 
-            let change: IteratorResult<ChangeOperation | number>;
-            while (!(change = changes.next()).done) {
-                const operation = (encodeAll)
-                    ? OPERATION.ADD
-                    : change.value.op;
-
-                const fieldIndex = (encodeAll)
-                    ? change.value
-                    : change.value.index;
+            for (const [fieldIndex, operation] of changesIterator) {
 
                 //
                 // first pass, identify "filtered" operations without encoding them
@@ -120,24 +108,19 @@ export class Encoder<T extends Schema = any> {
         }
 
         if (it.offset > bytes.byteLength) {
-            const newSize = getNextPowerOf2(it.offset);
-            console.debug("@colyseus/schema encode buffer overflow. Current buffer size: " + bytes.byteLength + ", encoding offset: " + it.offset + ", new size: " + newSize);
+            const newSize = getNextPowerOf2(this.sharedBuffer.byteLength * 2);
+            console.warn("@colyseus/schema encode buffer overflow. Current buffer size: " + bytes.byteLength + ", encoding offset: " + it.offset + ", new size: " + newSize);
 
             //
             // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
             //
             this.sharedBuffer = Buffer.allocUnsafeSlow(newSize);
-            return this.encode(it, view, bytes);
+            return this.encode({ offset }, view);
 
         } else {
             //
             // only clear changes after making sure buffer resize is not required.
             //
-            // if (!encodeAll) {
-            //     for (let i = 0; i < numChangeTrees; i++) {
-            //         changeTrees[i].discard();
-            //     }
-            // }
 
             // return bytes;
             return bytes.slice(0, it.offset);
@@ -145,7 +128,7 @@ export class Encoder<T extends Schema = any> {
     }
 
     encodeAll(it: Iterator = { offset: 0 }) {
-        return this.encode(it);
+        return this.encode(it, undefined, this.sharedBuffer, this.$root.allChanges);
     }
 
     encodeView(view: StateView<T>, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
@@ -187,6 +170,11 @@ export class Encoder<T extends Schema = any> {
             bytes.slice(0, sharedOffset),
             bytes.slice(viewOffset, it.offset)
         ]);
+    }
+
+    discardChanges() {
+        this.$root.changes.clear();
+        this.$root.filteredChanges.clear();
     }
 
     tryEncodeTypeId (bytes: Buffer, baseType: typeof Schema, targetType: typeof Schema, it: Iterator) {

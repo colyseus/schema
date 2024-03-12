@@ -394,7 +394,6 @@ export function unreliable<T> (target: T, field: string) {
             index: (metadata[-1] // current structure already has fields defined
                 ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
                 ?? -1) + 1 // no fields defined
-
         }
     }
 

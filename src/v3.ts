@@ -22,6 +22,13 @@ import { Metadata } from "./Metadata";
 import { Reflection } from "./Reflection";
 import { StateView } from "./filters/StateView";
 
+function logSingleCall(label: string, callback: Function) {
+    const time = Date.now();
+    const res = callback();
+    console.log(`${label}:`, Date.now() - time);
+    return res;
+}
+
 function logTime(label: string, callback: Function) {
     const time = Date.now();
     for (let i = 0; i < 500000; i++) {
@@ -130,8 +137,6 @@ function logTime(label: string, callback: Function) {
 // const decoder = new Decoder(new RootState());
 // decoder.decode(encoded);
 
-// process.exit();
-
 function log(message: any) {
     console.log(util.inspect(message, false, 10, true));
 }
@@ -215,8 +220,7 @@ class Card extends Schema {
 class Player extends Entity {
     @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
 
-    // @owned
-    @type("string") secret: string = "private info only for this player";
+    @owned @type("string") secret: string = "private info only for this player";
 
     // @type([Card])
     // cards = new ArraySchema<Card>(
@@ -233,6 +237,7 @@ class Team extends Schema {
 class State extends Schema {
     @type("number") num: number = 0;
     @type("string") str = "Hello world!"
+
     // @type([Team]) teams = new ArraySchema<Team>();
 
     @type({ map: Entity }) entities = new MapSchema<Entity>();
@@ -249,6 +254,13 @@ class State extends Schema {
 
 const state = new State();
 
+// for (let i=0;i<1000;i++) {
+//     state.entities.set("one" + i, new Player().assign({
+//         position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+//         rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+//     }));
+// }
+
 state.entities.set("one", new Player().assign({
     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
@@ -258,16 +270,6 @@ state.entities.set("two", new Player().assign({
     position: new Vec3().assign({ x: 10, y: 10, z: 3 }),
     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
 }));
-
-// state.entities.set("three", new Player().assign({
-//     position: new Vec3().assign({ x: 10, y: 20, z: 3 }),
-//     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-// }));
-
-// state.entities.set("four", new Player().assign({
-//     position: new Vec3().assign({ x: 30, y: 40, z: 3 }),
-//     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-// }));
 
 // function addTeam() {
 //     const team = new Team();
@@ -290,21 +292,28 @@ const it = { offset: 0 };
 
 const encoder = new Encoder(state);
 
-logTime("encode time", () => encoder.encodeAll());
-
-/*----------------------------------------------------------------
+encoder.encodeAll();
+// logTime("encode time", () => encoder.encodeAll());
 
 // const encoded = encoder.encode(it);
 console.log("> will encode all...", state.toJSON());
-const encoded = encoder.encodeAll(it);
 
-console.log("encoded.buffer =>", `(${it.offset})`, [...encoded.slice(0, it.offset)]);
+const encoded = encoder.encode(it);
+
+console.log("HEAP TOTAL:", process.memoryUsage().heapTotal / 1024 / 1024, "MB");
+console.log("HEAP USED:", process.memoryUsage().heapUsed / 1024 / 1024, "MB");
+
+// console.log("encoded.buffer =>", `(${encoded.byteLength} bytes)`);
 
 const sharedOffset = it.offset;
 
+// const team1View = new StateView<State>();
+// team1View.owns(state.teams[0]);
+
 const view1 = new StateView<State>();
-// view1.owns(state.entities);
-view1.owns(state.entities.get("one"));
+// view1.owns(state.teams[0]);
+view1.owns(state.entities);
+// view1.owns(state.entities.get("one"));
 
 const view2 = new StateView<State>();
 // view2.owns(state.entities.get("two"));
@@ -313,7 +322,7 @@ console.log("> will encode view...");
 const viewEncoded1 = encoder.encodeView(view1, sharedOffset, it, encoder.sharedBuffer);
 const viewEncoded2 = encoder.encodeView(view2, sharedOffset, it, encoder.sharedBuffer);
 
-console.log("view =>", `(${it.offset})`, [...viewEncoded1]);
+console.log("view =>", `(${viewEncoded1.byteLength} bytes)`);
 
 // setTimeout(() => {
 //     for (let i = 0; i < 500000; i++) {
@@ -325,7 +334,9 @@ console.log("view =>", `(${it.offset})`, [...viewEncoded1]);
 
 // console.log(`encode: (${encoded.length})`, encoded);
 
+console.log("encode reflection...")
 const encodedReflection = Reflection.encode(state, encoder.context);
+console.log("decode reflection...")
 const decodedState = Reflection.decode(encodedReflection);
 
 // const decodedState = new State();
@@ -338,10 +349,23 @@ decoder.decode(viewEncoded1);
 
 // log(new DataView(encoded.buffer, 0, it.offset));
 // log(new DataView(viewEncoded1.buffer, 0, it.offset));
-
 log(decodedState.toJSON());
 
-----------------------------------------------------------*/
+// console.log("encoder.$root.changes =>", encoder.$root.changes.length);
+// console.log("encoder.$root.filteredChanges =>", encoder.$root.filteredChanges.length);
+
+// state.teams[0].entities.get("one").position.x = 100;
+
+// // encoder.
+
+// const it2 = { offset: 0 };
+// // const encoded = encoder.encode(it);
+// const encoded2 = encoder.encode(it2);
+// console.log(`> shared encode... (${encoded2.byteLength} bytes)`);
+
+// const viewEncoded3 = encoder.encodeView(view1, sharedOffset, it, encoder.sharedBuffer);
+// console.log(`> view1... (${viewEncoded3.byteLength} bytes)`);
+
 
 // log(decoder.root.toJSON());
 // logTime("decode time", () => decoder.decode(encoded));

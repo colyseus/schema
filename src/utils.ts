@@ -12,9 +12,8 @@ export function dumpChanges(schema: Schema) {
     for (let i = 0; i < numChangeTrees; i++) {
         const changeTree = changeTrees[i];
 
-        changeTree.changes.forEach((change) => {
+        changeTree.changes.forEach((_, fieldIndex) => {
             const ref = changeTree.ref;
-            const fieldIndex = change.index;
 
             const field = ((ref as Schema)['metadata'])
                 ? ref['metadata'][fieldIndex]
