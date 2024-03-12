@@ -100,8 +100,13 @@ export class ChangeTree<T extends Ref=any> {
         // unique refId for the ChangeTree.
         this.ensureRefId();
 
-        root.changes.set(this, this.changes);
-        root.allChanges.set(this, this.allChanges);
+        if (!this.isFiltered) {
+            this.root.changes.set(this, this.changes);
+        }
+        if (this.isFiltered || this.isPartiallyFiltered) {
+            this.root.filteredChanges.set(this, this.filteredChanges);
+        }
+        this.root.allChanges.set(this, this.allChanges);
 
         // root.enqueue(this);
 
@@ -128,7 +133,12 @@ export class ChangeTree<T extends Ref=any> {
         this.checkIsFiltered(parent, parentIndex);
 
         // this.root.enqueue(this);
-        this.root.changes.set(this, this.changes);
+        if (!this.isFiltered) {
+            this.root.changes.set(this, this.changes);
+        }
+        if (this.isFiltered || this.isPartiallyFiltered) {
+            this.root.filteredChanges.set(this, this.filteredChanges);
+        }
         this.root.allChanges.set(this, this.allChanges);
 
         this.ensureRefId();
@@ -170,21 +180,37 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
-        const previousChange = this.changes.get(index);
+        const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
 
-        if (
-            !previousChange ||
-            previousChange === OPERATION.DELETE
-        ) {
-            this.changes.set(index, (!previousChange)
+        const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].owned);
+        const changeSet = (isFiltered)
+            ? this.filteredChanges
+            : this.changes;
+
+        const previousChange = changeSet.get(index);
+
+        if (!previousChange || previousChange === OPERATION.DELETE) {
+            const op = (!previousChange)
                 ? operation
                 : (previousChange === OPERATION.DELETE)
                     ? OPERATION.DELETE_AND_ADD
-                    : operation);
+                    : operation
+            changeSet.set(index, op);
         }
 
+        //
+        // TODO: are DELETE operations being encoded as ADD here ??
+        //
         this.allChanges.set(index, OPERATION.ADD);
+
         // this.allChanges.add(index);
+
+        if (isFiltered) {
+            this.root?.filteredChanges.set(this, this.filteredChanges);
+
+        } else {
+            this.root?.changes.set(this, this.changes);
+        }
 
         // this.root?.changes.set(this, this.changes);
         // this.root?.enqueue(this);
@@ -257,6 +283,7 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         this.changes.clear();
+        this.filteredChanges.clear();
 
         if (discardAll) {
             this.allChanges.clear();
@@ -297,12 +324,12 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     protected checkIsFiltered(parent: Ref, parentIndex: number) {
-        // detect if current structure has "filters" declared
+        // Detect if current structure has "filters" declared
         this.isPartiallyFiltered = this.ref['constructor']?.[Symbol.metadata]?.[-2];
 
         // TODO: support "partially filtered", where the instance is visible, but only a field is not.
 
-        // detect if parent has "filters" declared
+        // Detect if parent has "filters" declared
         while (!this.isFiltered && parent) {
             const metadata = parent['constructor'][Symbol.metadata];
 

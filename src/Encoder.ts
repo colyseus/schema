@@ -10,8 +10,6 @@ import { ChangeOperation, ChangeTree, Root } from "./changes/ChangeTree";
 import { getNextPowerOf2 } from "./utils";
 import { StateView } from "./filters/StateView";
 
-type FilteredOperation = ChangeOperation & { changeTree: ChangeTree };
-
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = 8 * 1024;// 8KB
 
@@ -21,10 +19,6 @@ export class Encoder<T extends Schema = any> {
     $root: Root;
 
     sharedBuffer = Buffer.allocUnsafeSlow(Encoder.BUFFER_SIZE);
-    // sharedBuffer = Buffer.allocUnsafeSlow(4 * 1024 * 1024); // 8KB
-    // sharedBuffer = Buffer.allocUnsafeSlow(32); // 8KB
-
-    filteredOperations: FilteredOperation[] = [];
 
     constructor(root: T) {
         this.setRoot(root);
@@ -34,10 +28,6 @@ export class Encoder<T extends Schema = any> {
         // (to avoid creating a new context for each new room)
         //
         this.context = new TypeContext(root.constructor as typeof Schema);
-
-        if (this.context.hasFilters) {
-            this.filteredOperations = [];
-        }
 
         // console.log(">>>>>>>>>>>>>>>> Encoder types");
         // this.context.schemas.forEach((id, schema) => {
@@ -86,21 +76,16 @@ export class Encoder<T extends Schema = any> {
             for (const [fieldIndex, operation] of changesIterator) {
 
                 //
-                // first pass, identify "filtered" operations without encoding them
+                // first pass (encodeAll), identify "filtered" operations without encoding them
                 // they will be encoded per client, based on their view.
                 //
-                if (isOwned && isOwned(ref, fieldIndex)) {
-                    // console.log("NEED TO ENQUEUE 'filteredOperation'", view === undefined);
-                    if (view === undefined) {
-                        // console.log("OWNED structure, skip operation on", ref.constructor.name, `(refId: ${changeTree.refId})`, OPERATION[operation], fieldIndex);
-                        this.filteredOperations.push({
-                            op: operation,
-                            index: fieldIndex,
-                            changeTree,
-                        });
-                    }
+                // TODO: how can we optimize filtering out "encode all" operations?
+                //
+                if (!hasView && isOwned && isOwned(ref, fieldIndex)) {
                     continue;
                 }
+
+                // console.log("ENCODE", ref.constructor.name, `(refId: ${changeTree.refId})`, "fieldIndex =>", fieldIndex, "operation =>", operation);
 
                 encoder(this, bytes, changeTree, fieldIndex, operation, it);
             }
@@ -133,35 +118,6 @@ export class Encoder<T extends Schema = any> {
 
     encodeView(view: StateView<T>, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
-
-        let lastRefId: number;
-
-        console.log("> encodeView, filteredOperations =>", this.filteredOperations.length);
-
-        for (let i = 0, l = this.filteredOperations.length; i < l; i++) {
-            const change = this.filteredOperations[i];
-            const operation = change.op;
-            const fieldIndex = change.index;
-
-            const changeTree = change.changeTree;
-            const ref = changeTree.ref;
-            const ctor = ref['constructor'];
-
-            if ((changeTree.isFiltered || changeTree.isPartiallyFiltered) && !view['owned'].has(changeTree)) {
-                // console.log("encodeView, skip refId =>", changeTree.refId, `(${ref.constructor['name']})`);
-                continue;
-            }
-
-            if (lastRefId !== changeTree.refId) {
-                encode.uint8(bytes, SWITCH_TO_STRUCTURE, it);
-                encode.number(bytes, changeTree.refId, it);
-                lastRefId = changeTree.refId;
-                // console.log("encodeView, refId =>", lastRefId)
-            }
-
-            const encoder = ctor[$encoder];
-            encoder(this, bytes, changeTree, fieldIndex, operation, it);
-        }
 
         // try to encode "filtered" changes
         this.encode(it, view, bytes, this.$root.filteredChanges);

@@ -209,7 +209,7 @@ class Vec3 extends Schema {
 class Base extends Schema {}
 
 class Entity extends Schema {
-    @type(Vec3) position = new Vec3().assign({ x: 0, y: 0, z: 0 });
+    @owned @type(Vec3) position = new Vec3().assign({ x: 0, y: 0, z: 0 });
 }
 
 class Card extends Schema {
@@ -312,11 +312,11 @@ const sharedOffset = it.offset;
 
 const view1 = new StateView<State>();
 // view1.owns(state.teams[0]);
-view1.owns(state.entities);
-// view1.owns(state.entities.get("one"));
+// view1.owns(state.entities);
+view1.owns(state.entities.get("one"));
 
 const view2 = new StateView<State>();
-// view2.owns(state.entities.get("two"));
+view2.owns(state.entities.get("two"));
 
 console.log("> will encode view...");
 const viewEncoded1 = encoder.encodeView(view1, sharedOffset, it, encoder.sharedBuffer);
@@ -334,9 +334,9 @@ console.log("view =>", `(${viewEncoded1.byteLength} bytes)`);
 
 // console.log(`encode: (${encoded.length})`, encoded);
 
-console.log("encode reflection...")
+console.log("----------------------------------- ENCODE reflection...");
 const encodedReflection = Reflection.encode(state, encoder.context);
-console.log("decode reflection...")
+console.log("----------------------------------- DECODE reflection...");
 const decodedState = Reflection.decode(encodedReflection);
 
 // const decodedState = new State();
