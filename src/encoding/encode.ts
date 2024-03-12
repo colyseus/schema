@@ -156,7 +156,7 @@ export function writeFloat64(bytes, value, it) {
 };
 
 export function boolean(bytes, value, it) {
-  return uint8(bytes, value ? 1 : 0, it);
+  bytes[it.offset++] = value ? 1 : 0; // uint8
 };
 
 export function string(bytes: Buffer, value, it) {
@@ -222,14 +222,14 @@ export function number(bytes, value, it) {
   if (value >= 0) {
     // positive fixnum
     if (value < 0x80) {
-      uint8(bytes, value, it);
+      bytes[it.offset++] = value & 255; // uint8
       return 1;
     }
 
     // uint 8
     if (value < 0x100) {
       bytes[it.offset++] = 0xcc;
-      uint8(bytes, value, it);
+      bytes[it.offset++] = value & 255; // uint8
       return 2;
     }
 
