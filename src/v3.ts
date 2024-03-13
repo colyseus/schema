@@ -209,7 +209,7 @@ class Vec3 extends Schema {
 class Base extends Schema {}
 
 class Entity extends Schema {
-    @owned @type(Vec3) position = new Vec3().assign({ x: 0, y: 0, z: 0 });
+    @type(Vec3) position = new Vec3().assign({ x: 0, y: 0, z: 0 });
 }
 
 class Card extends Schema {
@@ -219,8 +219,7 @@ class Card extends Schema {
 
 class Player extends Entity {
     @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
-
-    @owned @type("string") secret: string = "private info only for this player";
+    @type("string") secret: string = "private info only for this player";
 
     // @type([Card])
     // cards = new ArraySchema<Card>(
@@ -238,9 +237,9 @@ class State extends Schema {
     @type("number") num: number = 0;
     @type("string") str = "Hello world!"
 
-    // @type([Team]) teams = new ArraySchema<Team>();
+    @owned @type([Team]) teams = new ArraySchema<Team>();
 
-    @type({ map: Entity }) entities = new MapSchema<Entity>();
+    // @type({ map: Entity }) entities = new MapSchema<Entity>();
 
     // @type(Entity) entity1 = new Player().assign({
     //     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
@@ -261,43 +260,41 @@ const state = new State();
 //     }));
 // }
 
-state.entities.set("one", new Player().assign({
-    position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-    rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-}));
+// state.entities.set("one", new Player().assign({
+//     position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+//     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+// }));
 
-state.entities.set("two", new Player().assign({
-    position: new Vec3().assign({ x: 10, y: 10, z: 3 }),
-    rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-}));
+// state.entities.set("two", new Player().assign({
+//     position: new Vec3().assign({ x: 10, y: 10, z: 3 }),
+//     rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+// }));
 
-// function addTeam() {
-//     const team = new Team();
-//     team.entities.set("one", new Player().assign({
-//         position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
-//         rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
-//     }));
-//     team.entities.set("two", new Player().assign({
-//         position: new Vec3().assign({ x: 7, y: 8, z: 9 }),
-//         rotation: new Vec3().assign({ x: 2, y: 3, z: 4 }),
-//     }));
-//     state.teams.push(team);
-// }
+function addTeam() {
+    const team = new Team();
+    team.entities.set("one", new Player().assign({
+        position: new Vec3().assign({ x: 1, y: 2, z: 3 }),
+        rotation: new Vec3().assign({ x: 4, y: 5, z: 6 }),
+    }));
+    team.entities.set("two", new Player().assign({
+        position: new Vec3().assign({ x: 7, y: 8, z: 9 }),
+        rotation: new Vec3().assign({ x: 2, y: 3, z: 4 }),
+    }));
+    state.teams.push(team);
+}
 
-// addTeam();
-// addTeam();
+addTeam();
+addTeam();
 
 const it = { offset: 0 };
 
 
 const encoder = new Encoder(state);
-
-encoder.encodeAll();
 // logTime("encode time", () => encoder.encodeAll());
 
 // const encoded = encoder.encode(it);
-console.log("> will encode all...", state.toJSON());
 
+console.log("> will encode all...", state.toJSON());
 const encoded = encoder.encode(it);
 
 console.log("HEAP TOTAL:", process.memoryUsage().heapTotal / 1024 / 1024, "MB");
@@ -311,18 +308,25 @@ const sharedOffset = it.offset;
 // team1View.owns(state.teams[0]);
 
 const view1 = new StateView<State>();
+// view1['owned'].add(state[$changes]);
+// view1['owned'].add(state.teams[$changes]);
+view1.owns(state.teams[0]);
 // view1.owns(state.teams[0]);
 // view1.owns(state.entities);
-view1.owns(state.entities.get("one"));
+// view1.owns(state.entities.get("one"));
 
 const view2 = new StateView<State>();
-view2.owns(state.entities.get("two"));
+console.log(">>> VIEW 2");
+view2.owns(state.teams[1]);
+// view2.owns(state.entities.get("two"));
 
-console.log("> will encode view...");
+console.log("> will encode view 1...");
 const viewEncoded1 = encoder.encodeView(view1, sharedOffset, it, encoder.sharedBuffer);
-const viewEncoded2 = encoder.encodeView(view2, sharedOffset, it, encoder.sharedBuffer);
+console.log("done. view1 encoded =>", `(${viewEncoded1.byteLength} bytes)`);
 
-console.log("view =>", `(${viewEncoded1.byteLength} bytes)`);
+console.log("> will encode view 2...");
+const viewEncoded2 = encoder.encodeView(view2, sharedOffset, it, encoder.sharedBuffer);
+console.log("done. view2 encoded =>", `(${viewEncoded2.byteLength} bytes)`);
 
 // setTimeout(() => {
 //     for (let i = 0; i < 500000; i++) {
@@ -342,10 +346,13 @@ const decodedState = Reflection.decode(encodedReflection);
 // const decodedState = new State();
 const decoder = new Decoder(decodedState);
 
+console.log(Array.from(encoder.$root.changes.keys()).map((key) => `${key.ref.constructor.name} (refId: ${key.refId})`));
+console.log(Array.from(encoder.$root.filteredChanges.keys()).map((key) => `${key.ref.constructor.name} (refId: ${key.refId})`));
+
 console.log("> will decode...");
 // decoder.decode(encoded);
-decoder.decode(viewEncoded1);
-// decoder.decode(viewEncoded2);
+// decoder.decode(viewEncoded1);
+decoder.decode(viewEncoded2);
 
 // log(new DataView(encoded.buffer, 0, it.offset));
 // log(new DataView(viewEncoded1.buffer, 0, it.offset));

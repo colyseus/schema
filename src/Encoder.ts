@@ -62,7 +62,6 @@ export class Encoder<T extends Schema = any> {
             const isOwned = ctor[$isOwned];
 
             if (hasView && !view['owned'].has(changeTree)) {
-                // console.log("NOT OWNED structure, skip", ref.constructor.name, `(refId: ${changeTree.refId})`)
                 continue;
             }
 

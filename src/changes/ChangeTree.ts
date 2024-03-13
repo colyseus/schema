@@ -93,9 +93,7 @@ export class ChangeTree<T extends Ref=any> {
         //
         // So the "parent" may be already set without a "root".
         //
-        if (this.parent) {
-            this.checkIsFiltered(this.parent, this.parentIndex);
-        }
+        this.checkIsFiltered(this.parent, this.parentIndex);
 
         // unique refId for the ChangeTree.
         this.ensureRefId();
@@ -107,8 +105,6 @@ export class ChangeTree<T extends Ref=any> {
             this.root.filteredChanges.set(this, this.filteredChanges);
         }
         this.root.allChanges.set(this, this.allChanges);
-
-        // root.enqueue(this);
 
         this.allChanges.forEach((_, index) => {
             const childRef = this.ref[$getByIndex](index);
@@ -132,7 +128,6 @@ export class ChangeTree<T extends Ref=any> {
         this.root = root;
         this.checkIsFiltered(parent, parentIndex);
 
-        // this.root.enqueue(this);
         if (!this.isFiltered) {
             this.root.changes.set(this, this.changes);
         }
@@ -203,17 +198,12 @@ export class ChangeTree<T extends Ref=any> {
         //
         this.allChanges.set(index, OPERATION.ADD);
 
-        // this.allChanges.add(index);
-
         if (isFiltered) {
             this.root?.filteredChanges.set(this, this.filteredChanges);
 
         } else {
             this.root?.changes.set(this, this.changes);
         }
-
-        // this.root?.changes.set(this, this.changes);
-        // this.root?.enqueue(this);
     }
 
     getType(index?: number) {
@@ -230,11 +220,6 @@ export class ChangeTree<T extends Ref=any> {
             //
             return this.ref[$childType];
         }
-    }
-
-    getChildrenFilter(): FilterChildrenCallback {
-        const childFilters = (this.parent as Schema)['metadata'].childFilters;
-        return childFilters && childFilters[this.parentIndex];
     }
 
     //
@@ -317,12 +302,6 @@ export class ChangeTree<T extends Ref=any> {
         this.refId = this.root.getNextUniqueId();
     }
 
-    protected assertValidIndex(index: number, fieldName: string | number) {
-        if (index === undefined) {
-            throw new Error(`ChangeTree: missing index for field "${fieldName}"`);
-        }
-    }
-
     protected checkIsFiltered(parent: Ref, parentIndex: number) {
         // Detect if current structure has "filters" declared
         this.isPartiallyFiltered = this.ref['constructor']?.[Symbol.metadata]?.[-2];
@@ -330,7 +309,7 @@ export class ChangeTree<T extends Ref=any> {
         // TODO: support "partially filtered", where the instance is visible, but only a field is not.
 
         // Detect if parent has "filters" declared
-        while (!this.isFiltered && parent) {
+        while (parent && !this.isFiltered) {
             const metadata = parent['constructor'][Symbol.metadata];
 
             const fieldName = metadata?.[parentIndex];
