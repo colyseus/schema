@@ -1,16 +1,16 @@
-import { OPERATION } from './spec';
+import { OPERATION } from './encoding/spec';
 import { DefinitionType } from "./annotations";
 
 import type { Iterator } from "./encoding/decode"; // dts-bundle-generator
 
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
-import { encodeSchemaOperation } from './changes/EncodeOperation';
 
-import { ChangeTree } from './changes/ChangeTree';
-import { $changes, $deleteByIndex, $filter, $getByIndex, $isOwned, $track } from './changes/consts';
-import { StateView } from './filters/StateView';
+import { ChangeTree, Ref } from './encoder/ChangeTree';
+import { $changes, $deleteByIndex, $filter, $getByIndex, $isOwned, $track } from './types/symbols';
+import { StateView } from './encoder/StateView';
 
 export interface DataChange<T=any,F=string> {
+    ref: Ref,
     refId: number,
     op: OPERATION,
     field: F;
@@ -397,6 +397,11 @@ export abstract class Schema {
     clone (): this {
         const cloned = new ((this as any).constructor);
         const metadata = this.constructor[Symbol.metadata];
+
+        //
+        // TODO: clone all properties, not only annotated ones
+        //
+        // for (const field in this) {
         for (const field in metadata) {
             if (
                 typeof (this[field]) === "object" &&

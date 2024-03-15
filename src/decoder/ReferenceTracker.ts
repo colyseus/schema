@@ -1,6 +1,6 @@
 import { Metadata } from "../Metadata";
-import { $changes } from "./consts";
-import { Ref } from "./ChangeTree";
+import { $changes } from "../types/symbols";
+import { Ref } from "../encoder/ChangeTree";
 import type { MapSchema } from "../types/MapSchema";
 
 /**

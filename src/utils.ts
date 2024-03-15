@@ -1,6 +1,6 @@
 import { Schema } from "./";
-import { ChangeTree } from "./changes/ChangeTree";
-import { $changes } from "./changes/consts";
+import { ChangeTree } from "./encoder/ChangeTree";
+import { $changes } from "./types/symbols";
 
 export function dumpChanges(schema: Schema) {
     const changeTrees: ChangeTree[] = [schema[$changes]];

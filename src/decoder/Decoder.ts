@@ -1,24 +1,24 @@
-import { Metadata } from "./Metadata";
-import { TypeContext } from "./annotations";
-import { $childType, $decoder } from "./changes/consts";
-import { DataChange, Schema, SchemaDecoderCallbacks } from "./Schema";
-import { CollectionSchema } from "./types/CollectionSchema";
-import { MapSchema } from "./types/MapSchema";
-import { SetSchema } from "./types/SetSchema";
-import { ArraySchema } from "./types/ArraySchema";
+import { Metadata } from "../Metadata";
+import { TypeContext } from "../annotations";
+import { $childType, $decoder } from "../types/symbols";
+import { DataChange, Schema, SchemaDecoderCallbacks } from "../Schema";
+import { CollectionSchema } from "../types/CollectionSchema";
+import { MapSchema } from "../types/MapSchema";
+import { SetSchema } from "../types/SetSchema";
+import { ArraySchema } from "../types/ArraySchema";
 
-import * as decode from "./encoding/decode";
-import { getType } from './types/typeRegistry';
-import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { Ref } from "./changes/ChangeTree";
-import { Iterator } from "./encoding/decode";
-import { ReferenceTracker } from "./changes/ReferenceTracker";
-import { DecodeState } from "./changes/DecodeOperation";
+import * as decode from "../encoding/decode";
+import { getType } from '../types/typeRegistry';
+import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from '../encoding/spec';
+import { Ref } from "../encoder/ChangeTree";
+import { Iterator } from "../encoding/decode";
+import { ReferenceTracker } from "./ReferenceTracker";
+import { DecodeState } from "./DecodeOperation";
 
 export class Decoder<T extends Schema = any> {
     context: TypeContext;
 
-    root: T;
+    state: T;
     refs: ReferenceTracker;
 
     currentRefId: number = 0;
@@ -34,7 +34,7 @@ export class Decoder<T extends Schema = any> {
     }
 
     protected setRoot(root: T) {
-        this.root = root;
+        this.state = root;
         this.refs = new ReferenceTracker();
         this.refs.addRef(0, root);
     }
@@ -42,7 +42,7 @@ export class Decoder<T extends Schema = any> {
     decode(
         bytes: Buffer,
         it: Iterator = { offset: 0 },
-        ref: Ref = this.root,
+        ref: Ref = this.state,
     ) {
         const allChanges: DataChange[] = [];
 

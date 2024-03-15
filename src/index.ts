@@ -60,4 +60,4 @@ export type {
     FilterCallback,
 } from "./annotations";
 
-export { OPERATION } from "./spec";
+export { OPERATION } from "./encoding/spec";

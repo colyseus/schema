@@ -2,10 +2,10 @@ import { type, PrimitiveType, DefinitionType, TypeContext } from "./annotations"
 import { Metadata } from "./Metadata";
 import { ArraySchema } from "./types/ArraySchema";
 import { Iterator } from "./encoding/decode";
-import { Encoder } from "./Encoder";
-import { Decoder } from "./Decoder";
+import { Encoder } from "./encoder/Encoder";
+import { Decoder } from "./decoder/Decoder";
 import { Schema } from "./Schema";
-import { $changes } from "./changes/consts";
+import { $changes } from "./types/symbols";
 
 /**
  * Reflection

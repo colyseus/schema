@@ -3,7 +3,7 @@ import { Schema } from './Schema';
 import { ArraySchema } from './types/ArraySchema';
 import { MapSchema, getMapProxy } from './types/MapSchema';
 import { Metadata } from "./Metadata";
-import { $changes, $childType, $track } from "./changes/consts";
+import { $changes, $childType, $track } from "./types/symbols";
 
 /**
  * Data types
@@ -33,37 +33,10 @@ export type DefinitionType = PrimitiveType
     | { set: PrimitiveType };
 
 export type Definition = { [field: string]: DefinitionType };
-export type FilterCallback<
-    T extends Schema = any,
-    V = any,
-    R extends Schema = any
-> = (
-    ((this: T, client: ClientWithSessionId, value: V) => boolean) |
-    ((this: T, client: ClientWithSessionId, value: V, root: R) => boolean)
-);
-
-export type FilterChildrenCallback<
-    T extends Schema = any,
-    K = any,
-    V = any,
-    R extends Schema = any
-> = (
-    ((this: T, client: ClientWithSessionId, key: K, value: V) => boolean) |
-    ((this: T, client: ClientWithSessionId, key: K, value: V, root: R) => boolean)
-)
-
-export function hasFilter(klass: typeof Schema) {
-    // return klass._context && klass._context.useFilters;
-    return false;
-}
-
-// Colyseus integration
-export type ClientWithSessionId = { sessionId: string } & any;
 
 export interface TypeOptions {
     manual?: boolean,
     stream?: boolean, // TODO: not implemented
-    owned?: boolean, // TODO: not implemented
 }
 
 export class TypeContext {
@@ -541,32 +514,6 @@ export function getPropertyDescriptor(fieldCached: string, fieldIndex: number, t
         configurable: true
     };
 }
-
-/**
- * `@filter()` decorator for defining data filters per client
- */
-
-export function filter<T extends Schema, V, R extends Schema>(cb: FilterCallback<T, V, R>): PropertyDecorator {
-    return function (target: any, field: string) {
-        const constructor = target.constructor as typeof Schema;
-        // const definition = constructor._definition;
-
-        // if (definition.addFilter(field, cb)) {
-        //     constructor._context.useFilters = true;
-        // }
-    }
-}
-
-export function filterChildren<T extends Schema, K, V, R extends Schema>(cb: FilterChildrenCallback<T, K, V, R>): PropertyDecorator {
-    return function (target: any, field: string) {
-        const constructor = target.constructor as typeof Schema;
-        // const definition = constructor._definition;
-        // if (definition.addChildrenFilter(field, cb)) {
-        //     constructor._context.useFilters = true;
-        // }
-    }
-}
-
 
 /**
  * `@deprecated()` flag a field as deprecated.

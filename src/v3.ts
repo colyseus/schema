@@ -8,19 +8,19 @@ import { DataChange, Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
-import { Encoder } from "./Encoder";
-import { Decoder } from "./Decoder";
-import { OPERATION } from "./spec";
-import { encodeKeyValueOperation, encodeSchemaOperation, encodeValue } from "./changes/EncodeOperation";
+import { Encoder } from "./encoder/Encoder";
+import { Decoder } from "./decoder/Decoder";
+import { OPERATION } from "./encoding/spec";
+import { encodeKeyValueOperation, encodeSchemaOperation, encodeValue } from "./encoder/EncodeOperation";
 
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";
-import { $changes, $decoder, $deleteByIndex, $encoder, $getByIndex, $track } from "./changes/consts";
-import { decodeKeyValueOperation, decodeSchemaOperation } from "./changes/DecodeOperation";
-import { ChangeTree, Ref } from "./changes/ChangeTree";
+import { $changes, $decoder, $deleteByIndex, $encoder, $getByIndex, $track } from "./types/symbols";
+import { decodeKeyValueOperation, decodeSchemaOperation } from "./decoder/DecodeOperation";
+import { ChangeTree, Ref } from "./encoder/ChangeTree";
 import { Metadata } from "./Metadata";
 import { Reflection } from "./Reflection";
-import { StateView } from "./filters/StateView";
+import { StateView } from "./encoder/StateView";
 
 function logSingleCall(label: string, callback: Function) {
     const time = Date.now();
@@ -307,10 +307,11 @@ const sharedOffset = it.offset;
 // const team1View = new StateView<State>();
 // team1View.owns(state.teams[0]);
 
-const view1 = new StateView<State>();
+const view = new StateView();
+view.owns(state.teams[0]);
+
 // view1['owned'].add(state[$changes]);
 // view1['owned'].add(state.teams[$changes]);
-view1.owns(state.teams[0]);
 // view1.owns(state.teams[0]);
 // view1.owns(state.entities);
 // view1.owns(state.entities.get("one"));
@@ -321,7 +322,7 @@ view2.owns(state.teams[1]);
 // view2.owns(state.entities.get("two"));
 
 console.log("> will encode view 1...");
-const viewEncoded1 = encoder.encodeView(view1, sharedOffset, it, encoder.sharedBuffer);
+const viewEncoded1 = encoder.encodeView(view, sharedOffset, it, encoder.sharedBuffer);
 console.log("done. view1 encoded =>", `(${viewEncoded1.byteLength} bytes)`);
 
 console.log("> will encode view 2...");
@@ -341,18 +342,18 @@ console.log("done. view2 encoded =>", `(${viewEncoded2.byteLength} bytes)`);
 console.log("----------------------------------- ENCODE reflection...");
 const encodedReflection = Reflection.encode(state, encoder.context);
 console.log("----------------------------------- DECODE reflection...");
-const decodedState = Reflection.decode(encodedReflection);
+const decodedState = Reflection.decode<State>(encodedReflection);
 
 // const decodedState = new State();
 const decoder = new Decoder(decodedState);
 
-console.log(Array.from(encoder.$root.changes.keys()).map((key) => `${key.ref.constructor.name} (refId: ${key.refId})`));
-console.log(Array.from(encoder.$root.filteredChanges.keys()).map((key) => `${key.ref.constructor.name} (refId: ${key.refId})`));
-
 console.log("> will decode...");
+
 // decoder.decode(encoded);
-// decoder.decode(viewEncoded1);
-decoder.decode(viewEncoded2);
+const changes = decoder.decode(viewEncoded1);
+
+// decoder.decode(viewEncoded2);
+console.log("CHANGES =>", changes)
 
 // log(new DataView(encoded.buffer, 0, it.offset));
 // log(new DataView(viewEncoded1.buffer, 0, it.offset));

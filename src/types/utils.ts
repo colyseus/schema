@@ -1,5 +1,5 @@
 import { CollectionSchema, DataChange } from "..";
-import { OPERATION } from "../spec";
+import { OPERATION } from "../encoding/spec";
 
 export function addCallback(
     $callbacks: { [op: number]: Function[] },

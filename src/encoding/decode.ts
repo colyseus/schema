@@ -21,7 +21,7 @@
  * SOFTWARE
  */
 
-import { SWITCH_TO_STRUCTURE } from "../spec";
+import { SWITCH_TO_STRUCTURE } from "./spec";
 
 /**
  * msgpack implementation highly based on notepack.io

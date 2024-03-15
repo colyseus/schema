@@ -1,7 +1,6 @@
-import { OPERATION } from "../spec";
+import { OPERATION } from "../encoding/spec";
 import { Schema } from "../Schema";
-import { $changes, $childType, $decoder, $encoder, $getByIndex } from "./consts";
-import type { FilterChildrenCallback, DefinitionType } from "../annotations";
+import { $changes, $childType, $decoder, $encoder, $getByIndex } from "../types/symbols";
 
 import type { MapSchema } from "../types/MapSchema";
 import type { ArraySchema } from "../types/ArraySchema";
@@ -10,8 +9,8 @@ import type { SetSchema } from "../types/SetSchema";
 
 import { Metadata } from "../Metadata";
 import type { EncodeOperation } from "./EncodeOperation";
-import type { DecodeOperation } from "./DecodeOperation";
-import type { StateView } from "../filters/StateView";
+import type { DecodeOperation } from "../decoder/DecodeOperation";
+import type { StateView } from "./StateView";
 
 declare global {
     interface Object {

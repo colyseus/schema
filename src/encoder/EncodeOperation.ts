@@ -1,12 +1,12 @@
-import { OPERATION } from "../spec";
-import { $changes } from "./consts";
+import { OPERATION } from "../encoding/spec";
+import { $changes } from "../types/symbols";
 import { getType } from "../types/typeRegistry";
 
 import * as encode from "../encoding/encode";
 import { EncodeSchemaError, assertInstanceType, assertType } from "../encoding/assert";
 
 import type { ChangeTree, Ref } from "./ChangeTree";
-import type { Encoder } from "../Encoder";
+import type { Encoder } from "./Encoder";
 import type { Schema } from "../Schema";
 import type { PrimitiveType } from "../annotations";
 

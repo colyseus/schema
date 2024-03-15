@@ -1,24 +1,23 @@
-import type { Schema } from "./Schema";
-import { TypeContext } from "./annotations";
-import { $changes, $encoder, $filter, $isOwned } from "./changes/consts";
+import type { Schema } from "../Schema";
+import { TypeContext } from "../annotations";
+import { $changes, $encoder, $filter, $isOwned } from "../types/symbols";
 
-import * as encode from "./encoding/encode";
-import type { Iterator } from "./encoding/decode";
+import * as encode from "../encoding/encode";
+import type { Iterator } from "../encoding/decode";
 
-import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from './spec';
-import { ChangeOperation, ChangeTree, Root } from "./changes/ChangeTree";
-import { getNextPowerOf2 } from "./utils";
-import { StateView } from "./filters/StateView";
+import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from '../encoding/spec';
+import { ChangeOperation, ChangeTree, Root } from "./ChangeTree";
+import { getNextPowerOf2 } from "../utils";
+import { StateView } from "./StateView";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = 8 * 1024;// 8KB
+    sharedBuffer = Buffer.allocUnsafeSlow(Encoder.BUFFER_SIZE);
 
     context: TypeContext;
+    state: T;
 
-    root: T;
     $root: Root;
-
-    sharedBuffer = Buffer.allocUnsafeSlow(Encoder.BUFFER_SIZE);
 
     constructor(root: T) {
         this.setRoot(root);
@@ -35,10 +34,10 @@ export class Encoder<T extends Schema = any> {
         // });
     }
 
-    protected setRoot(root: T) {
+    protected setRoot(state: T) {
         this.$root = new Root();
-        this.root = root;
-        root[$changes].setRoot(this.$root);
+        this.state = state;
+        state[$changes].setRoot(this.$root);
     }
 
     encode(
@@ -50,7 +49,7 @@ export class Encoder<T extends Schema = any> {
         const offset = it.offset; // cache current offset in case we need to resize the buffer
 
         const hasView = (view !== undefined);
-        const rootChangeTree = this.root[$changes];
+        const rootChangeTree = this.state[$changes];
 
         const changeTreesIterator = changeTrees.entries();
 

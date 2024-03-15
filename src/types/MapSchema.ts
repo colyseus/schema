@@ -1,9 +1,9 @@
 import { SchemaDecoderCallbacks, DataChange } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
-import { ChangeTree } from "../changes/ChangeTree";
-import { OPERATION } from "../spec";
+import { ChangeTree } from "../encoder/ChangeTree";
+import { OPERATION } from "../encoding/spec";
 import { registerType } from "./typeRegistry";
-import { $changes, $childType, $deleteByIndex, $getByIndex } from "../changes/consts";
+import { $changes, $childType, $deleteByIndex, $getByIndex } from "./symbols";
 
 export function getMapProxy(value: MapSchema) {
     value['$proxy'] = true;

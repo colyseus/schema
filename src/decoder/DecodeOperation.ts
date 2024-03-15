@@ -1,11 +1,11 @@
-import { OPERATION } from "../spec";
+import { OPERATION } from "../encoding/spec";
 import { Metadata } from "../Metadata";
 import { DataChange, Schema, SchemaDecoderCallbacks } from "../Schema";
-import type { Ref } from "./ChangeTree";
-import type { Decoder } from "../Decoder";
+import type { Ref } from "../encoder/ChangeTree";
+import type { Decoder } from "./Decoder";
 import * as decode from "../encoding/decode";
 import { getType } from "../types/typeRegistry";
-import { $childType, $deleteByIndex, $getByIndex } from "./consts";
+import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
 import { ArraySchema, CollectionSchema, MapSchema, SetSchema } from "..";
 
 export enum DecodeState {
@@ -109,6 +109,7 @@ export function decodeValue(
                 while ((iter = entries.next()) && !iter.done) {
                     const [key, value] = iter.value;
                     allChanges.push({
+                        ref,
                         refId,
                         op: OPERATION.DELETE,
                         field: key,
@@ -143,9 +144,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
 
     // skip early if field is not defined
     const field = metadata[index];
-    if (field === undefined) {
-        return DecodeState.DEFINITION_MISMATCH;
-    }
+    if (field === undefined) { return DecodeState.DEFINITION_MISMATCH; }
 
     const { value, previousValue } = decodeValue(
         decoder,
@@ -165,6 +164,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
     // add change
     if (previousValue !== value) {
         allChanges.push({
+            ref,
             refId: decoder.currentRefId,
             op: operation,
             field: field,
@@ -251,6 +251,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     // add change
     if (previousValue !== value) {
         allChanges.push({
+            ref,
             refId: decoder.currentRefId,
             op: operation,
             field: "", // FIXME: remove this
