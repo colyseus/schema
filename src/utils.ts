@@ -1,4 +1,5 @@
-import { Schema } from "./";
+import { Schema } from "./Schema";
+import { ReflectionField } from "./Reflection";
 import { ChangeTree } from "./changes/ChangeTree";
 
 export function dumpChanges(schema: Schema) {
@@ -25,4 +26,28 @@ export function dumpChanges(schema: Schema) {
     }
 
     return dump;
+}
+
+export function checkTypeScriptConfig() {
+    const r = new ReflectionField();
+    const descriptor = Object.getOwnPropertyDescriptor(r, "name");
+    if (descriptor.get === undefined || descriptor.set === undefined) {
+        console.error(`
+‼️  Please check your tsconfig.json ‼️
+
+@colyseus/schema requires the following settings:
+-------------------------------------------------
+
+  "compilerOptions": {
+    // ...
+    "useDefineForClassFields": false,
+    "experimentalDecorators": true,
+    // ...
+  }
+
+-------------------------------------------------
+More info → https://github.com/colyseus/colyseus/issues/510#issuecomment-1507828422
+`);
+        process.exit(1);
+    }
 }
