@@ -21,9 +21,6 @@ registerType("array", { constructor: ArraySchema });
 registerType("set", { constructor: SetSchema });
 registerType("collection", { constructor: CollectionSchema, });
 
-import { checkTypeScriptConfig } from "./utils";
-checkTypeScriptConfig();
-
 // Utils
 export { dumpChanges } from "./utils";
 
