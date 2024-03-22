@@ -1,25 +1,19 @@
-import { Metadata } from "../Metadata";
 import { TypeContext } from "../annotations";
-import { $childType, $decoder } from "../types/symbols";
-import { DataChange, Schema, SchemaDecoderCallbacks } from "../Schema";
-import { CollectionSchema } from "../types/CollectionSchema";
-import { MapSchema } from "../types/MapSchema";
-import { SetSchema } from "../types/SetSchema";
-import { ArraySchema } from "../types/ArraySchema";
+import { $decoder } from "../types/symbols";
+import { Schema } from "../Schema";
 
 import * as decode from "../encoding/decode";
-import { getType } from '../types/typeRegistry';
-import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from '../encoding/spec';
+import { SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Ref } from "../encoder/ChangeTree";
 import { Iterator } from "../encoding/decode";
 import { ReferenceTracker } from "./ReferenceTracker";
-import { DecodeState } from "./DecodeOperation";
+import { DataChange, DecodeState } from "./DecodeOperation";
 
 export class Decoder<T extends Schema = any> {
     context: TypeContext;
 
     state: T;
-    refs: ReferenceTracker;
+    $root: ReferenceTracker;
 
     currentRefId: number = 0;
 
@@ -35,8 +29,8 @@ export class Decoder<T extends Schema = any> {
 
     protected setRoot(root: T) {
         this.state = root;
-        this.refs = new ReferenceTracker();
-        this.refs.addRef(0, root);
+        this.$root = new ReferenceTracker();
+        this.$root.addRef(0, root);
     }
 
     decode(
@@ -46,7 +40,7 @@ export class Decoder<T extends Schema = any> {
     ) {
         const allChanges: DataChange[] = [];
 
-        const $root = this.refs;
+        const $root = this.$root;
         const totalBytes = bytes.byteLength;
 
         this.currentRefId = 0;
@@ -102,6 +96,10 @@ export class Decoder<T extends Schema = any> {
         $root.garbageCollectDeletedRefs();
 
         return allChanges;
+    }
+
+    handleChanges() {
+
     }
 
     /*

@@ -1,9 +1,4 @@
 import { getPropertyDescriptor, type DefinitionType } from "./annotations";
-import { $deleteByIndex, $getByIndex } from "./types/symbols";
-// import { OPERATION } from "./spec";
-// import { $decoder, $encoder, $track } from "./changes/consts";
-// import { decodeSchemaOperation } from "./changes/DecodeOperation";
-// import { encodeSchemaOperation } from "./changes/EncodeOperation";
 
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";

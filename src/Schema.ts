@@ -1,35 +1,11 @@
 import { OPERATION } from './encoding/spec';
 import { DefinitionType } from "./annotations";
 
-import type { Iterator } from "./encoding/decode"; // dts-bundle-generator
-
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
 import { ChangeTree, Ref } from './encoder/ChangeTree';
 import { $changes, $deleteByIndex, $filter, $getByIndex, $isOwned, $track } from './types/symbols';
 import { StateView } from './encoder/StateView';
-
-export interface DataChange<T=any,F=string> {
-    ref: Ref,
-    refId: number,
-    op: OPERATION,
-    field: F;
-    dynamicIndex?: number | string;
-    value: T;
-    previousValue: T;
-}
-
-export interface SchemaDecoderCallbacks<TValue=any, TKey=any> {
-    $callbacks: { [operation: number]: Array<(item: TValue, key: TKey) => void> };
-
-    // onAdd(callback: (item: any, key: any) => void, ignoreExisting?: boolean): () => void;
-    // onRemove(callback: (item: any, key: any) => void): () => void;
-    // onChange(callback: (item: any, key: any) => void): () => void;
-
-    clone(decoding?: boolean): SchemaDecoderCallbacks;
-    clear(changes?: DataChange[]);
-    decode?(byte, it: Iterator);
-}
 
 /**
  * Schema encoder / decoder

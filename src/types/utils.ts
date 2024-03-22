@@ -1,30 +1,6 @@
 import { CollectionSchema, DataChange } from "..";
 import { OPERATION } from "../encoding/spec";
 
-export function addCallback(
-    $callbacks: { [op: number]: Function[] },
-    op: OPERATION,
-    callback: (item: any, key: any) => void,
-    existing?: { forEach(callback: (item: any, key: any) => void): void; }
-) {
-    // initialize list of callbacks
-    if (!$callbacks[op]) {
-        $callbacks[op] = [];
-    }
-
-    $callbacks[op].push(callback);
-
-    //
-    // Trigger callback for existing elements
-    // - OPERATION.ADD
-    // - OPERATION.REPLACE
-    //
-    existing?.forEach((item, key) => callback(item, key));
-
-    return () => spliceOne($callbacks[op], $callbacks[op].indexOf(callback));
-}
-
-
 export function removeChildRefs(this: CollectionSchema, changes: DataChange[]) {
     // @ts-ignore
     const needRemoveRef = (typeof (this.$changes.getType()) !== "string");

@@ -1,12 +1,22 @@
 import { OPERATION } from "../encoding/spec";
 import { Metadata } from "../Metadata";
-import { DataChange, Schema, SchemaDecoderCallbacks } from "../Schema";
+import { Schema } from "../Schema";
 import type { Ref } from "../encoder/ChangeTree";
 import type { Decoder } from "./Decoder";
 import * as decode from "../encoding/decode";
 import { getType } from "../types/typeRegistry";
 import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
 import { ArraySchema, CollectionSchema, MapSchema, SetSchema } from "..";
+
+export interface DataChange<T = any, F = string> {
+    ref: Ref,
+    refId: number,
+    op: OPERATION,
+    field: F;
+    dynamicIndex?: number | string;
+    value: T;
+    previousValue: T;
+}
 
 export enum DecodeState {
     DEFINITION_MISMATCH = 0,
@@ -30,7 +40,7 @@ export function decodeValue(
     it: decode.Iterator,
     allChanges: DataChange[]
 ) {
-    const $root = decoder.refs;
+    const $root = decoder.$root;
     const previousValue = ref[$getByIndex](index);
 
     let value: any;
@@ -46,9 +56,7 @@ export function decodeValue(
 
         // Flag `refId` for garbage collection.
         const previousRefId = $root.refIds.get(previousValue);
-        if (previousRefId) {
-            $root.removeRef(previousRefId);
-        }
+        if (previousRefId) { $root.removeRef(previousRefId); }
 
         value = null;
 
@@ -63,8 +71,6 @@ export function decodeValue(
                 value = decoder.createInstanceOfType(childType);
 
                 if (previousValue) {
-                    // value.$callbacks = previousValue.$callbacks;
-                    // value.$listeners = previousValue.$listeners;
                     const previousRefId = $root.refIds.get(previousValue);
                     if (previousRefId && refId !== previousRefId) {
                         $root.removeRef(previousRefId);
@@ -72,7 +78,6 @@ export function decodeValue(
                 }
             }
 
-            // console.log("ADD REF!", refId, value, ", TYPE =>", Metadata.getFor(childType));
             $root.addRef(refId, value, (value !== previousValue));
         }
 
@@ -86,23 +91,21 @@ export function decodeValue(
         const typeDef = getType(Object.keys(type)[0]);
         const refId = decode.number(bytes, it);
 
-        const valueRef: SchemaDecoderCallbacks = ($root.refs.has(refId))
+        const valueRef: Ref = ($root.refs.has(refId))
             ? previousValue || $root.refs.get(refId)
             : new typeDef.constructor();
 
         value = valueRef.clone(true);
         value[$childType] = Object.values(type)[0]; // cache childType for ArraySchema and MapSchema
 
-        // preserve schema callbacks
         if (previousValue) {
-            // value['$callbacks'] = previousValue['$callbacks'];
             const previousRefId = $root.refIds.get(previousValue);
 
             if (previousRefId && refId !== previousRefId) {
                 $root.removeRef(previousRefId);
 
                 //
-                // Trigger onRemove if structure has been replaced.
+                // enqueue onRemove if structure has been replaced.
                 //
                 const entries: IterableIterator<[any, any]> = previousValue.entries();
                 let iter: IteratorResult<[any, any]>;
@@ -121,7 +124,6 @@ export function decodeValue(
             }
         }
 
-        // console.log("ADD REF!", { refId, value });
         $root.addRef(refId, value, (valueRef !== previousValue));
     }
 
@@ -192,7 +194,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         // The `.clear()` method is calling `$root.removeRef(refId)` for
         // each item inside this collection
         //
-        (ref as SchemaDecoderCallbacks).clear(allChanges);
+        (ref as any).clear(allChanges);
         return;
     }
 

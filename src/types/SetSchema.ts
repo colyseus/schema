@@ -1,34 +1,18 @@
 import { ChangeTree } from "../encoder/ChangeTree";
 import { OPERATION } from "../encoding/spec";
-import { SchemaDecoderCallbacks, DataChange } from "../Schema";
-import { addCallback, removeChildRefs } from "./utils";
+import { removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
 import { $changes, $childType, $deleteByIndex, $getByIndex } from "./symbols";
+import { DataChange } from "../decoder/DecodeOperation";
+import { Collection } from "./HelperTypes";
 
-export class SetSchema<V=any> implements SchemaDecoderCallbacks {
+export class SetSchema<V=any> implements Collection<number, V> {
     protected $changes = new ChangeTree(this);
 
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
 
     protected $refId: number = 0;
-
-    //
-    // Decoding callbacks
-    //
-    public $callbacks: { [operation: number]: Array<(item: V, key: string) => void> };
-    public onAdd(callback: (item: V, key: string) => void, triggerAll: boolean = true) {
-        return addCallback(
-            (this.$callbacks || (this.$callbacks = [])),
-            OPERATION.ADD,
-            callback,
-            (triggerAll)
-                ? this.$items
-                : undefined
-        );
-    }
-    public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.DELETE, callback); }
-    public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.REPLACE, callback); }
 
     static is(type: any) {
         return type['set'] !== undefined;
@@ -151,6 +135,11 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
 
     get size () {
         return this.$items.size;
+    }
+
+    /** Iterator */
+    [Symbol.iterator](): IterableIterator<V> {
+        return this.$items.values();
     }
 
     protected setIndex(index: number, key: number) {

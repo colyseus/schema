@@ -1,9 +1,10 @@
-import { SchemaDecoderCallbacks, DataChange } from "../Schema";
-import { addCallback, removeChildRefs } from "./utils";
+import { removeChildRefs } from "./utils";
 import { ChangeTree } from "../encoder/ChangeTree";
 import { OPERATION } from "../encoding/spec";
 import { registerType } from "./typeRegistry";
 import { $changes, $childType, $deleteByIndex, $getByIndex } from "./symbols";
+import { DataChange } from "../decoder/DecodeOperation";
+import { Collection } from "./HelperTypes";
 
 export function getMapProxy(value: MapSchema) {
     value['$proxy'] = true;
@@ -24,12 +25,7 @@ export function getMapProxy(value: MapSchema) {
         set: (obj, prop, setValue) => {
             if (
                 typeof (prop) !== "symbol" &&
-                (
-                    (prop as string).indexOf("$") === -1 &&
-                    prop !== "onAdd" &&
-                    prop !== "onRemove" &&
-                    prop !== "onChange"
-                )
+                (prop as string).indexOf("$") === -1
             ) {
                 obj.set(prop as string, setValue);
 
@@ -48,30 +44,11 @@ export function getMapProxy(value: MapSchema) {
     return value;
 }
 
-export class MapSchema<V=any, K extends string = string> implements Map<K, V>, SchemaDecoderCallbacks {
+export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]> {
     protected childType: new () => V;
 
     protected $items: Map<K, V> = new Map<K, V>();
     protected $indexes: Map<number, K> = new Map<number, K>();
-
-    /*
-    //
-    // Decoding callbacks
-    //
-    public $callbacks: { [operation: number]: Array<(item: V, key: string) => void> };
-    public onAdd(callback: (item: V, key: string) => void, triggerAll: boolean = true) {
-        return addCallback(
-            (this.$callbacks || (this.$callbacks = {})),
-            OPERATION.ADD,
-            callback,
-            (triggerAll)
-                ? this.$items
-                : undefined
-        );
-    }
-    public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = {}), OPERATION.DELETE, callback); }
-    public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = {}), OPERATION.REPLACE, callback); }
-    */
 
     static is(type: any) {
         return type['map'] !== undefined;
@@ -289,6 +266,5 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
     }
 
 }
-
 
 registerType("map", { constructor: MapSchema });

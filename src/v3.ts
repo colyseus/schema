@@ -4,7 +4,7 @@ import "./symbol.shim";
 import { owned, type } from "./annotations";
 // import { Reflection, ReflectionField, ReflectionType } from "./Reflection";
 
-import { DataChange, Schema } from "./Schema";
+import { Schema } from "./Schema";
 import { ArraySchema } from "./types/ArraySchema";
 import { MapSchema } from "./types/MapSchema";
 
@@ -21,6 +21,13 @@ import { ChangeTree, Ref } from "./encoder/ChangeTree";
 import { Metadata } from "./Metadata";
 import { Reflection } from "./Reflection";
 import { StateView } from "./encoder/StateView";
+import { getStateCallbacks } from "./decoder/strategy/StateCallbacks";
+
+const $callback = {
+    $onCreate: Symbol('$onCreate'),
+    $onDelete: Symbol('$onDelete'),
+    $onUpdate: Symbol('$onUpdate'),
+}
 
 function logSingleCall(label: string, callback: Function) {
     const time = Date.now();
@@ -227,6 +234,10 @@ class Player extends Entity {
     //     new Card().assign({ suit: "Spaces", num: 2 }),
     //     new Card().assign({ suit: "Diamonds", num: 3 }),
     // );
+
+    [$callback.$onCreate]() {
+    }
+
 }
 
 class Team extends Schema {
@@ -238,6 +249,8 @@ class State extends Schema {
     @type("string") str = "Hello world!"
 
     @owned @type([Team]) teams = new ArraySchema<Team>();
+
+
 
     // @type({ map: Entity }) entities = new MapSchema<Entity>();
 
@@ -287,7 +300,6 @@ addTeam();
 addTeam();
 
 const it = { offset: 0 };
-
 
 const encoder = new Encoder(state);
 // logTime("encode time", () => encoder.encodeAll());
@@ -355,9 +367,62 @@ const changes = decoder.decode(viewEncoded1);
 // decoder.decode(viewEncoded2);
 console.log("CHANGES =>", changes)
 
-// log(new DataView(encoded.buffer, 0, it.offset));
-// log(new DataView(viewEncoded1.buffer, 0, it.offset));
-log(decodedState.toJSON());
+// room.$.teams.onAdd((team, index) => {
+//     team.$.entities.onAdd((entity, entityId) => {
+//         entity.$.position.onChange(() => {
+//         });
+//     });
+// });
+
+const { $ } = getStateCallbacks(decoder); // room
+
+
+// $state.onChange(() => {});
+
+// $state.teams.onRemove(($team, index) => {
+// });
+
+// $state.teams.onAdd(($team, index) => {
+//     $team.data
+//     $team.entities.onAdd(($entity, entityId) => {
+//         $entity.secret.listen((value, previousValue) => {
+//         });
+//         $entity.position.bindTo(/* frontend item */);
+//         $entity.position.onChange(() => {
+//         });
+//     });
+// });
+
+// alt 1.
+const s: any = {};
+
+$(decoder.state).listen("str", (value, previousValue) => {
+
+});
+
+$(decoder.state).teams.onAdd((team, index) => {
+    // $(team).entities.onAdd((entity, entityId) => {
+    //     $(entity).position.bindTo(1, ["x", "y", "z"]);
+    // });
+});
+
+// $(decoder.state).teams.onAdd((team, index) => {
+//     // room.$state.bind(team, frontendTeam);
+//     $(team).entities.onAdd((entity, entityId) => {
+//         $(entity as Player).listen("secret", (value, previousValue) => {
+//         });
+
+//         $(entity).position.onChange(() => {
+//         });
+//     });
+// });
+
+
+// $.listen("")
+
+console.log($);
+
+// log(decodedState.toJSON());
 
 // console.log("encoder.$root.changes =>", encoder.$root.changes.length);
 // console.log("encoder.$root.filteredChanges =>", encoder.$root.filteredChanges.length);

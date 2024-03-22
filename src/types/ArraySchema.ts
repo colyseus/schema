@@ -1,9 +1,11 @@
+import type { Schema } from "../Schema";
 import { ChangeTree } from "../encoder/ChangeTree";
 import { OPERATION } from "../encoding/spec";
-import { SchemaDecoderCallbacks, Schema, DataChange } from "../Schema";
-import { addCallback, removeChildRefs } from "./utils";
+import { removeChildRefs } from "./utils";
 import { registerType } from "./typeRegistry";
 import { $changes, $childType, $deleteByIndex, $getByIndex } from "./symbols";
+import { DataChange } from "../decoder/DecodeOperation";
+import { Collection } from "./HelperTypes";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
@@ -13,80 +15,7 @@ const DEFAULT_SORT = (a: any, b: any) => {
     else return 0
 }
 
-/*
-export function getArrayProxy(value: ArraySchema) {
-    value['$proxy'] = true;
-
-    //
-    // compatibility with @colyseus/schema 0.5.x
-    // - allow `map["key"]`
-    // - allow `map["key"] = "xxx"`
-    // - allow `delete map["key"]`
-    //
-    value = new Proxy(value, {
-        get: (obj, prop) => {
-            if (
-                typeof (prop) !== "symbol" &&
-                !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
-            ) {
-                return obj.at(prop as unknown as number);
-
-            } else {
-                return obj[prop];
-            }
-        },
-
-        set: (obj, prop, setValue) => {
-            if (
-                typeof (prop) !== "symbol" &&
-                !isNaN(prop as any)
-            ) {
-                const indexes = Array.from(obj['$items'].keys());
-                const key = parseInt(indexes[prop] || prop);
-                if (setValue === undefined || setValue === null) {
-                    obj.deleteAt(key);
-
-                } else {
-                    obj.setAt(key, setValue);
-                }
-
-            } else {
-                obj[prop] = setValue;
-            }
-
-            return true;
-        },
-
-        deleteProperty: (obj, prop) => {
-            if (typeof (prop) === "number") {
-                obj.deleteAt(prop);
-
-            } else {
-                delete obj[prop];
-            }
-
-            return true;
-        },
-
-        has: (obj, key) => {
-            if (
-                typeof (key) !== "symbol" &&
-                !isNaN(Number(key))
-            ) {
-                return obj['$items'].has(Number(key))
-            }
-            return Reflect.has(obj, key)
-        }
-    });
-
-    return value;
-}
-*/
-
-// // @ts-ignore
-// export class ArraySchema<V = any> extends Array<T> implements SchemaDecoderCallbacks {
-
-export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
+export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     protected childType: new () => V;
 
     protected $items: Map<number, V> = new Map<number, V>();
@@ -95,23 +24,6 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
     protected $refId: number = 0;
 
     [n: number]: V;
-
-    //
-    // Decoding callbacks
-    //
-    public $callbacks: { [operation: number]: Array<(item: V, key: number) => void> };
-    public onAdd(callback: (item: V, key: number) => void, triggerAll: boolean = true) {
-        return addCallback(
-            (this.$callbacks || (this.$callbacks = {})),
-            OPERATION.ADD,
-            callback,
-            (triggerAll)
-                ? this.$items
-                : undefined
-        );
-    }
-    public onRemove(callback: (item: V, key: number) => void) { return addCallback(this.$callbacks || (this.$callbacks = {}), OPERATION.DELETE, callback); }
-    public onChange(callback: (item: V, key: number) => void) { return addCallback(this.$callbacks || (this.$callbacks = {}), OPERATION.REPLACE, callback); }
 
     static is(type: any) {
         return (
