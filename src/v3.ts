@@ -373,21 +373,15 @@ console.log("> register callbacks...");
 
 const s: any = {};
 
-
-console.log("> will decode...");
-
-// decoder.decode(encoded);
-const changes = decoder.decode(viewEncoded1);
-
 $(decoder.state).listen("str", (value, previousValue) => {
     console.log("'str' changed:", { value, previousValue });
 });
 
 $(decoder.state).teams.onAdd((team, index) => {
-    console.log("Teams.onAdd =>", { team, index });
+    console.log("Teams.onAdd =>", { index });
 
     $(team).entities.onAdd((entity, entityId) => {
-        console.log(`Entities.onAdd =>`, { teamIndex: index, entity, entityId });
+        console.log(`Entities.onAdd =>`, { teamIndex: index, entityId });
 
         // $(entity as Player).cards.onAdd((card, cardIndex) => {
         //     console.log(entityId, "card added =>", { card, cardIndex });
@@ -414,7 +408,11 @@ $(decoder.state).teams.onAdd((team, index) => {
 // });
 
 
-// $.listen("")
+console.log("> will decode...");
+
+// decoder.decode(encoded);
+const changes = decoder.decode(viewEncoded1);
+
 console.log("Decoded =>", decoder.state.toJSON());
 
 // decoder.decode(viewEncoded2);

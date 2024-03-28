@@ -56,6 +56,7 @@ type OnInstanceAvailableCallback = (callback: (ref: Ref) => void) => void;
 
 type CallContext = {
     instance?: Ref,
+    nestedOnAdd?: boolean,
     onParentInstanceAvailable?: OnInstanceAvailableCallback,
 }
 
@@ -169,7 +170,6 @@ export function getStateCallbacks(decoder: Decoder) {
                     if (immediate && context.instance[prop] !== undefined) {
                         callback(context.instance[prop], undefined);
                     }
-
                     return $root.addCallback(
                         $root.refIds.get(context.instance),
                         prop,
@@ -186,15 +186,17 @@ export function getStateCallbacks(decoder: Decoder) {
             }, {
                 get(target, prop: string) {
                     if (metadata[prop]) {
-
                         const instance = context.instance?.[prop];
-                        const onParentInstanceAvailable: OnInstanceAvailableCallback = !instance && ((callback: (ref: Ref) => void) => {
-                            // @ts-ignore
-                            const dettach = $(context.instance).listen(prop, (value, previousValue) => {
-                                dettach();
-                                callback(value);
-                            });
-                        }) || undefined;
+                        const onParentInstanceAvailable: OnInstanceAvailableCallback = (
+                            !instance &&
+                            ((callback: (ref: Ref) => void) => {
+                                // @ts-ignore
+                                const dettach = $(context.instance).listen(prop, (value, previousValue) => {
+                                    dettach();
+                                    callback(value);
+                                });
+                            }) || undefined
+                        );
 
                         return getProxy(metadata[prop].type, { instance, onParentInstanceAvailable });
 
@@ -203,39 +205,47 @@ export function getStateCallbacks(decoder: Decoder) {
                         return target[prop];
                     }
                 },
-                has(target, prop) { return metadata[prop] !== undefined; },
+                has(target, prop: string) { return metadata[prop] !== undefined; },
                 set(target, prop, value) { throw new Error("not allowed"); },
                 deleteProperty(target, p) { throw new Error("not allowed"); },
             });
 
         } else {
-            const onAdd = function (ref: Ref, callback: (value, key) => void, immediate: boolean = true) {
-                // collection instance is set
-                $root.addCallback(
+            const onAdd = function (
+                ref: Ref,
+                callback: (value: any, key: any) => void,
+                immediate: boolean
+            ) {
+                if (immediate) {
+                    console.log("IMMEDIATE!");
+                    // trigger for existing items
+                    (ref as ArraySchema).forEach((v, k) => callback(v, k));
+                }
+                context.nestedOnAdd = true;
+                return $root.addCallback(
                     $root.refIds.get(ref),
                     OPERATION.ADD,
                     callback
                 );
-
-                if (immediate) {
-                    (ref as ArraySchema).forEach((v, k) => callback(v, k));
-                }
             }
 
             /**
              * Collection instances
              */
             return new Proxy({
-                onAdd: function(callback: (value, key) => void, immediate: boolean = true) {
+                onAdd: function(callback: (value, key) => void, immediate: boolean = true, isNested: boolean = false) {
+                    console.log(">> onAdd", { immediate, hasInstance: context.instance !== undefined });
+
                     if (context.instance) {
-                        onAdd(context.instance, callback, immediate);
+                        console.log("is nested??", isNested)
+                        onAdd(context.instance, callback, immediate && !isNested);
 
                     } else if (context.onParentInstanceAvailable) {
-                        console.log("onAdd, instance not available yet...");
-
                         // collection instance not received yet
-                        context.onParentInstanceAvailable((ref: Ref) =>
-                            onAdd(ref, callback, false));
+                        context.onParentInstanceAvailable((ref: Ref) => {
+                            console.log("PARENT INSTANCE AVAILABLE")
+                            onAdd(ref, callback, false);
+                        });
                     }
                 },
                 onRemove: function onRemove(callback) {
@@ -243,9 +253,7 @@ export function getStateCallbacks(decoder: Decoder) {
                 },
             }, {
                 get(target, prop: string) {
-                    if (!target[prop]) {
-                        throw new Error(`Can't access '${prop}' through callback proxy. access the instance directly.`);
-                    }
+                    if (!target[prop]) { throw new Error(`Can't access '${prop}' through callback proxy. access the instance directly.`); }
                     return target[prop];
                 },
                 has(target, prop) { return target[prop] !== undefined; },
