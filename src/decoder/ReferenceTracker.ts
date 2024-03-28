@@ -1,12 +1,14 @@
 import { Metadata } from "../Metadata";
 import { $changes } from "../types/symbols";
 import { Ref } from "../encoder/ChangeTree";
+import { spliceOne } from "../types/utils";
 import type { MapSchema } from "../types/MapSchema";
-import { DataChange } from "./DecodeOperation";
 
 /**
  * Used for decoding only.
  */
+
+export type SchemaCallbacks = { [field: string | number]: Function[] };
 
 export class ReferenceTracker {
     //
@@ -19,7 +21,7 @@ export class ReferenceTracker {
     public refCounts: { [refId: number]: number; } = {};
     public deletedRefs = new Set<number>();
 
-    public callbacks: {[refId: number]: {[field: string | number]: Function[]}} = {};
+    public callbacks: { [refId: number]: SchemaCallbacks } = {};
     protected nextUniqueId: number = 0;
 
     getNextUniqueId() {
@@ -108,6 +110,14 @@ export class ReferenceTracker {
             this.callbacks[refId][field] = [];
         }
         this.callbacks[refId][field].push(callback);
+        return () => this.removeCallback(refId, field, callback);
+    }
+
+    removeCallback(refId: number, field: string | number, callback: Function) {
+        const index = this.callbacks?.[refId]?.[field]?.indexOf(callback);
+        if (index !== -1) {
+            spliceOne(this.callbacks[refId][field], index);
+        }
     }
 
 }

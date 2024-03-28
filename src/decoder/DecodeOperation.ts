@@ -169,28 +169,14 @@ export const decodeSchemaOperation: DecodeOperation = function (
 
     // add change
     if (previousValue !== value) {
-
-        // const callbacks = decoder.$root.callbacks.get(ref);
-        // if (callbacks) {
-        //     callbacks.changes.push({
-        //         ref,
-        //         refId: decoder.currentRefId,
-        //         op: operation,
-        //         field: field,
-        //         value,
-        //         previousValue,
-        //     });
-        // }
-
-        // allChanges.push({
-        //     ref,
-        //     refId: decoder.currentRefId,
-        //     op: operation,
-        //     field: field,
-        //     value,
-        //     previousValue,
-        // });
-
+        allChanges.push({
+            ref,
+            refId: decoder.currentRefId,
+            op: operation,
+            field: field,
+            value,
+            previousValue,
+        });
     }
 }
 

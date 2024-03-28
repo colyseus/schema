@@ -229,12 +229,12 @@ class Player extends Entity {
     @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
     @type("string") secret: string = "private info only for this player";
 
-    // @type([Card])
-    // cards = new ArraySchema<Card>(
-    //     new Card().assign({ suit: "Hearts", num: 1 }),
-    //     new Card().assign({ suit: "Spaces", num: 2 }),
-    //     new Card().assign({ suit: "Diamonds", num: 3 }),
-    // );
+    @type([Card])
+    cards = new ArraySchema<Card>(
+        new Card().assign({ suit: "Hearts", num: 1 }),
+        new Card().assign({ suit: "Spaces", num: 2 }),
+        new Card().assign({ suit: "Diamonds", num: 3 }),
+    );
 
     [$callback.$onCreate]() {
     }
@@ -373,31 +373,34 @@ console.log("> register callbacks...");
 
 const s: any = {};
 
-// $(decoder.state).listen("teams", (teams) => {
-//     $(teams).onAdd((team, _) => {
-//         $(team).entities.onAdd((entity, entityId) => {
-//             $(entity).position.bindTo(1, ["x", "y", "z"]);
-//         });
-//     });
-// });
+
+console.log("> will decode...");
+
+// decoder.decode(encoded);
+const changes = decoder.decode(viewEncoded1);
 
 $(decoder.state).listen("str", (value, previousValue) => {
     console.log("'str' changed:", { value, previousValue });
 });
 
-// $(decoder.state).teams.onAdd((team, index) => {
-//     console.log("Teams.onAdd =>", { team, index });
-//     $(team).entities.onAdd((entity, entityId) => {
-//         console.log(`Teams.${index}.onAdd =>`, { entity, entityId });
+$(decoder.state).teams.onAdd((team, index) => {
+    console.log("Teams.onAdd =>", { team, index });
 
-//         const frontendObj: any = {};
-//         $(entity).position.bindTo(frontendObj, ["x", "y", "z"]);
-//     });
+    $(team).entities.onAdd((entity, entityId) => {
+        console.log(`Entities.onAdd =>`, { teamIndex: index, entity, entityId });
 
-//     // $(team).entities.get("one").position.listen("x", (value, previousValue) => {
-//     // });
+        // $(entity as Player).cards.onAdd((card, cardIndex) => {
+        //     console.log(entityId, "card added =>", { card, cardIndex });
+        // });
 
-// });
+        // const frontendObj: any = {};
+        // $(entity).position.bindTo(frontendObj, ["x", "y", "z"]);
+    });
+
+    // $(team).entities.get("one").position.listen("x", (value, previousValue) => {
+    // });
+
+});
 
 // $(decoder.state).teams.onAdd((team, index) => {
 //     // room.$state.bind(team, frontendTeam);
@@ -412,13 +415,7 @@ $(decoder.state).listen("str", (value, previousValue) => {
 
 
 // $.listen("")
-
-console.log($);
-
-console.log("> will decode...");
-
-// decoder.decode(encoded);
-const changes = decoder.decode(viewEncoded1);
+console.log("Decoded =>", decoder.state.toJSON());
 
 // decoder.decode(viewEncoded2);
 

@@ -6,6 +6,7 @@ import { DataChange } from "../DecodeOperation";
 import { OPERATION } from "../../encoding/spec";
 import { DefinitionType } from "../../annotations";
 import { Schema } from "../../Schema";
+import type { ArraySchema } from "../../types/ArraySchema";
 
 //
 // Discussion: https://github.com/colyseus/schema/issues/155
@@ -51,26 +52,29 @@ type CollectionCallback<K, V> = {
     onRemove(callback: (item: V, index: K) => void): void;
 };
 
+type OnInstanceAvailableCallback = (callback: (ref: Ref) => void) => void;
+
+type CallContext = {
+    instance?: Ref,
+    onParentInstanceAvailable?: OnInstanceAvailableCallback,
+}
+
 export function getStateCallbacks(decoder: Decoder) {
     const $root = decoder.$root;
     const callbacks = $root.callbacks;
 
     decoder.triggerChanges = function (allChanges: DataChange[]) {
-        console.log("Trigger changes!");
         const uniqueRefIds = new Set<number>();
 
         for (let i = 0, l = allChanges.length; i < l; i++) {
             const change = allChanges[i];
             const refId = change.refId;
             const ref = change.ref;
-            const $callbacks = callbacks[refId]
+            const $callbacks = callbacks[refId];
 
-            if (!$callbacks) {
-                console.log("no callbacks for", refId,  ref.constructor[Symbol.metadata], ", skip...");
-                continue;
-            }
+            // console.log("change =>", { refId, field: change.field });
 
-            console.log("HAS CALLBACKS!", $callbacks);
+            if (!$callbacks) { continue; }
 
             //
             // trigger onRemove on child structure.
@@ -86,7 +90,7 @@ export function getStateCallbacks(decoder: Decoder) {
                 if (!uniqueRefIds.has(refId)) {
                     try {
                         // trigger onChange
-                        ($callbacks as Schema['$callbacks'])?.[OPERATION.REPLACE]?.forEach(callback =>
+                        $callbacks?.[OPERATION.REPLACE]?.forEach(callback =>
                             callback());
 
                     } catch (e) {
@@ -148,13 +152,12 @@ export function getStateCallbacks(decoder: Decoder) {
 
     };
 
-    function getProxy(metadataOrType: Metadata | DefinitionType, instance?: Ref, onParentInstanceAvailable?: (ref: Ref) => void) {
-        console.log({ metadataOrType });
-
+    function getProxy(metadataOrType: Metadata | DefinitionType, context: CallContext) {
         let metadata: Metadata;
         let isCollection = false;
 
-        if (onParentInstanceAvailable !== undefined) {
+        // not root...
+        if (context.onParentInstanceAvailable !== undefined) {
             if (typeof (metadataOrType) === "object") {
                 isCollection = (Object.keys(metadataOrType)[0] !== "ref");
 
@@ -166,19 +169,25 @@ export function getStateCallbacks(decoder: Decoder) {
             metadata = metadataOrType as Metadata;
         }
 
-        console.log(`->`, { metadata, isCollection });
-
-        if (metadataOrType && !isCollection) {
+        if (metadata && !isCollection) {
+            /**
+             * Schema instances
+             */
             return new Proxy({
-                listen: function listen(prop: string, callback: (value: any, previousValue: any) => void, immediate?: boolean) {
-                    console.log("LISTEN on refId:", $root.refIds.get(instance));
-                    $root.addCallback(
-                        $root.refIds.get(instance),
+                listen: function listen(prop: string, callback: (value: any, previousValue: any) => void, immediate: boolean = true) {
+                    // immediate trigger
+                    if (immediate && context.instance[prop] !== undefined) {
+                        callback(context.instance[prop], undefined);
+                    }
+
+                    return $root.addCallback(
+                        $root.refIds.get(context.instance),
                         prop,
                         callback
                     );
                 },
                 onChange: function onChange(callback: () => void) {
+                    // TODO:
                     // $root.addCallback(tree, OPERATION.REPLACE, callback);
                 },
                 bindTo: function bindTo(targetObject: any, properties?: Array<NonFunctionPropNames<T>>) {
@@ -188,16 +197,16 @@ export function getStateCallbacks(decoder: Decoder) {
                 get(target, prop: string) {
                     if (metadataOrType[prop]) {
 
-                        // TODO: instance might not be available yet, due to pending decoding for actual reference (+refId)
-                        // .listen("prop", () => {/* attaching more... */});
+                        const instance = context.instance?.[prop];
+                        const onParentInstanceAvailable: OnInstanceAvailableCallback = !instance && ((callback: (ref: Ref) => void) => {
+                            // @ts-ignore
+                            const dettach = $(context.instance).listen(prop, (value, previousValue) => {
+                                dettach();
+                                callback(value);
+                            });
+                        }) || undefined;
 
-                        // if (instance) {
-                        //     callbacks.set(instance, )
-                        // }
-
-                        return getProxy(metadataOrType[prop].type, instance?.[prop], (ref) => {
-
-                        });
+                        return getProxy(metadataOrType[prop].type, { instance, onParentInstanceAvailable });
 
                     } else {
                         // accessing the function
@@ -208,14 +217,36 @@ export function getStateCallbacks(decoder: Decoder) {
                 set(target, prop, value) { throw new Error("not allowed"); },
                 deleteProperty(target, p) { throw new Error("not allowed"); },
             });
-        } else {
-            // collection instance
-            return new Proxy({
-                onAdd: function onAdd(callback, immediate) {
-                    if (onParentInstanceAvailable) {
-                    }
 
-                    // $root.addCallback([...tree], OPERATION.ADD, callback);
+        } else {
+            const onAdd = function (ref: Ref, callback: (value, key) => void, immediate: boolean = true) {
+                // collection instance is set
+                $root.addCallback(
+                    $root.refIds.get(ref),
+                    OPERATION.ADD,
+                    callback
+                );
+
+                if (immediate) {
+                    (ref as ArraySchema).forEach((v, k) => callback(v, k));
+                }
+            }
+
+            /**
+             * Collection instances
+             */
+            return new Proxy({
+                onAdd: function(callback: (value, key) => void, immediate: boolean = true) {
+                    if (context.instance) {
+                        onAdd(context.instance, callback, immediate);
+
+                    } else if (context.onParentInstanceAvailable) {
+                        console.log("onAdd, instance not available yet...");
+
+                        // collection instance not received yet
+                        context.onParentInstanceAvailable((ref: Ref) =>
+                            onAdd(ref, callback, false));
+                    }
                 },
                 onRemove: function onRemove(callback) {
                     // $root.addCallback([...tree], OPERATION.DELETE, callback);
@@ -235,7 +266,7 @@ export function getStateCallbacks(decoder: Decoder) {
     }
 
     function $<T extends Ref>(instance: T): GetProxyType<T> {
-        return getProxy(instance.constructor[Symbol.metadata], instance) as GetProxyType<T>;
+        return getProxy(instance.constructor[Symbol.metadata], { instance }) as GetProxyType<T>;
     }
 
     return {
