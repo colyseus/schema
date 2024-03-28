@@ -7,6 +7,7 @@ import * as decode from "../encoding/decode";
 import { getType } from "../types/typeRegistry";
 import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
 import { ArraySchema, CollectionSchema, MapSchema, SetSchema } from "..";
+import { Callback } from "./ReferenceTracker";
 
 export interface DataChange<T = any, F = string> {
     ref: Ref,
@@ -28,6 +29,7 @@ export type DecodeOperation<T extends Schema = any> = (
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[],
+    // callback: Callback,
 ) => DecodeState | void;
 
 export function decodeValue(
@@ -38,7 +40,8 @@ export function decodeValue(
     type: any,
     bytes: Buffer,
     it: decode.Iterator,
-    allChanges: DataChange[]
+    allChanges: DataChange[],
+    // callback: Callback
 ) {
     const $root = decoder.$root;
     const previousValue = ref[$getByIndex](index);
@@ -135,7 +138,8 @@ export const decodeSchemaOperation: DecodeOperation = function (
     bytes: Buffer,
     it: decode.Iterator,
     ref: Ref,
-    allChanges: DataChange[]
+    allChanges: DataChange[],
+    // callback: Callback
 ) {
     const first_byte = bytes[it.offset++];
     const metadata: Metadata = ref['constructor'][Symbol.metadata];
@@ -156,7 +160,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
         metadata[field].type,
         bytes,
         it,
-        allChanges
+        allChanges,
     );
 
     if (value !== null && value !== undefined) {
@@ -165,14 +169,28 @@ export const decodeSchemaOperation: DecodeOperation = function (
 
     // add change
     if (previousValue !== value) {
-        allChanges.push({
-            ref,
-            refId: decoder.currentRefId,
-            op: operation,
-            field: field,
-            value,
-            previousValue,
-        });
+
+        // const callbacks = decoder.$root.callbacks.get(ref);
+        // if (callbacks) {
+        //     callbacks.changes.push({
+        //         ref,
+        //         refId: decoder.currentRefId,
+        //         op: operation,
+        //         field: field,
+        //         value,
+        //         previousValue,
+        //     });
+        // }
+
+        // allChanges.push({
+        //     ref,
+        //     refId: decoder.currentRefId,
+        //     op: operation,
+        //     field: field,
+        //     value,
+        //     previousValue,
+        // });
+
     }
 }
 
@@ -182,6 +200,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[]
+    // callback: Callback
 ) {
     const first_byte = bytes[it.offset++];
 
@@ -221,7 +240,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         type,
         bytes,
         it,
-        allChanges
+        allChanges,
     );
 
     if (value !== null && value !== undefined) {

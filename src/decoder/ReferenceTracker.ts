@@ -2,6 +2,7 @@ import { Metadata } from "../Metadata";
 import { $changes } from "../types/symbols";
 import { Ref } from "../encoder/ChangeTree";
 import type { MapSchema } from "../types/MapSchema";
+import { DataChange } from "./DecodeOperation";
 
 /**
  * Used for decoding only.
@@ -18,6 +19,7 @@ export class ReferenceTracker {
     public refCounts: { [refId: number]: number; } = {};
     public deletedRefs = new Set<number>();
 
+    public callbacks: {[refId: number]: {[field: string | number]: Function[]}} = {};
     protected nextUniqueId: number = 0;
 
     getNextUniqueId() {
@@ -89,12 +91,23 @@ export class ReferenceTracker {
                 }
             }
 
-            this.refs.delete(refId);
-            delete this.refCounts[refId];
+            this.refs.delete(refId); // remove ref
+            delete this.refCounts[refId]; // remove ref count
+            delete this.callbacks[refId]; // remove callbacks
         });
 
         // clear deleted refs.
         this.deletedRefs.clear();
+    }
+
+    addCallback(refId: number, field: string | number, callback: Function) {
+        if (!this.callbacks[refId]) {
+            this.callbacks[refId] = {};
+        }
+        if (!this.callbacks[refId][field]) {
+            this.callbacks[refId][field] = [];
+        }
+        this.callbacks[refId][field].push(callback);
     }
 
 }

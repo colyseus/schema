@@ -17,6 +17,8 @@ export class Decoder<T extends Schema = any> {
 
     currentRefId: number = 0;
 
+    triggerChanges?: (allChanges: DataChange[]) => void;
+
     constructor(root: T, context?: TypeContext) {
         this.setRoot(root);
         this.context = context || new TypeContext(root.constructor as typeof Schema);
@@ -65,7 +67,13 @@ export class Decoder<T extends Schema = any> {
             }
 
             const decoder = ref['constructor'][$decoder];
+
+            // const callback = $root.callbacks.get(ref);
             const result = decoder(this, bytes, it, ref, allChanges);
+
+            // if (callback && this.triggerChanges ) {
+            //     $root.callbackInstances.push(ref);
+            // }
 
             if (result === DecodeState.DEFINITION_MISMATCH) {
                 console.warn("@colyseus/schema: definition mismatch");
@@ -89,17 +97,13 @@ export class Decoder<T extends Schema = any> {
             }
         }
 
-        // FIXME: trigger callbacks
-        // this._triggerChanges(allChanges);
+        // trigger changes
+        this.triggerChanges?.(allChanges);
 
         // drop references of unused schemas
         $root.garbageCollectDeletedRefs();
 
         return allChanges;
-    }
-
-    handleChanges() {
-
     }
 
     /*

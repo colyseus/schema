@@ -22,6 +22,7 @@ import { Metadata } from "./Metadata";
 import { Reflection } from "./Reflection";
 import { StateView } from "./encoder/StateView";
 import { getStateCallbacks } from "./decoder/strategy/StateCallbacks";
+import { getRawChangesCallback } from "./decoder/strategy/RawChanges";
 
 const $callback = {
     $onCreate: Symbol('$onCreate'),
@@ -359,14 +360,6 @@ const decodedState = Reflection.decode<State>(encodedReflection);
 // const decodedState = new State();
 const decoder = new Decoder(decodedState);
 
-console.log("> will decode...");
-
-// decoder.decode(encoded);
-const changes = decoder.decode(viewEncoded1);
-
-// decoder.decode(viewEncoded2);
-console.log("CHANGES =>", changes)
-
 // room.$.teams.onAdd((team, index) => {
 //     team.$.entities.onAdd((entity, entityId) => {
 //         entity.$.position.onChange(() => {
@@ -376,35 +369,35 @@ console.log("CHANGES =>", changes)
 
 const { $ } = getStateCallbacks(decoder); // room
 
+console.log("> register callbacks...");
 
-// $state.onChange(() => {});
+const s: any = {};
 
-// $state.teams.onRemove(($team, index) => {
-// });
-
-// $state.teams.onAdd(($team, index) => {
-//     $team.data
-//     $team.entities.onAdd(($entity, entityId) => {
-//         $entity.secret.listen((value, previousValue) => {
-//         });
-//         $entity.position.bindTo(/* frontend item */);
-//         $entity.position.onChange(() => {
+// $(decoder.state).listen("teams", (teams) => {
+//     $(teams).onAdd((team, _) => {
+//         $(team).entities.onAdd((entity, entityId) => {
+//             $(entity).position.bindTo(1, ["x", "y", "z"]);
 //         });
 //     });
 // });
 
-// alt 1.
-const s: any = {};
-
 $(decoder.state).listen("str", (value, previousValue) => {
-
+    console.log("'str' changed:", { value, previousValue });
 });
 
-$(decoder.state).teams.onAdd((team, index) => {
-    // $(team).entities.onAdd((entity, entityId) => {
-    //     $(entity).position.bindTo(1, ["x", "y", "z"]);
-    // });
-});
+// $(decoder.state).teams.onAdd((team, index) => {
+//     console.log("Teams.onAdd =>", { team, index });
+//     $(team).entities.onAdd((entity, entityId) => {
+//         console.log(`Teams.${index}.onAdd =>`, { entity, entityId });
+
+//         const frontendObj: any = {};
+//         $(entity).position.bindTo(frontendObj, ["x", "y", "z"]);
+//     });
+
+//     // $(team).entities.get("one").position.listen("x", (value, previousValue) => {
+//     // });
+
+// });
 
 // $(decoder.state).teams.onAdd((team, index) => {
 //     // room.$state.bind(team, frontendTeam);
@@ -421,6 +414,13 @@ $(decoder.state).teams.onAdd((team, index) => {
 // $.listen("")
 
 console.log($);
+
+console.log("> will decode...");
+
+// decoder.decode(encoded);
+const changes = decoder.decode(viewEncoded1);
+
+// decoder.decode(viewEncoded2);
 
 // log(decodedState.toJSON());
 
