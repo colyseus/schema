@@ -153,21 +153,11 @@ export function getStateCallbacks(decoder: Decoder) {
     };
 
     function getProxy(metadataOrType: Metadata | DefinitionType, context: CallContext) {
-        let metadata: Metadata;
-        let isCollection = false;
-
-        // not root...
-        if (context.onParentInstanceAvailable !== undefined) {
-            if (typeof (metadataOrType) === "object") {
-                isCollection = (Object.keys(metadataOrType)[0] !== "ref");
-
-            } else {
-                throw new Error("invalid path.");
-            }
-
-        } else {
-            metadata = metadataOrType as Metadata;
-        }
+        let metadata: Metadata = context.instance?.constructor[Symbol.metadata];
+        let isCollection = (
+            (context.instance && typeof (context.instance['forEach']) === "function") ||
+            (metadataOrType && Object.keys(metadataOrType)[0] !== "ref")
+        );
 
         if (metadata && !isCollection) {
             /**
@@ -195,7 +185,7 @@ export function getStateCallbacks(decoder: Decoder) {
                 }
             }, {
                 get(target, prop: string) {
-                    if (metadataOrType[prop]) {
+                    if (metadata[prop]) {
 
                         const instance = context.instance?.[prop];
                         const onParentInstanceAvailable: OnInstanceAvailableCallback = !instance && ((callback: (ref: Ref) => void) => {
@@ -206,14 +196,14 @@ export function getStateCallbacks(decoder: Decoder) {
                             });
                         }) || undefined;
 
-                        return getProxy(metadataOrType[prop].type, { instance, onParentInstanceAvailable });
+                        return getProxy(metadata[prop].type, { instance, onParentInstanceAvailable });
 
                     } else {
                         // accessing the function
                         return target[prop];
                     }
                 },
-                has(target, prop) { return metadataOrType[prop] !== undefined; },
+                has(target, prop) { return metadata[prop] !== undefined; },
                 set(target, prop, value) { throw new Error("not allowed"); },
                 deleteProperty(target, p) { throw new Error("not allowed"); },
             });
@@ -266,7 +256,7 @@ export function getStateCallbacks(decoder: Decoder) {
     }
 
     function $<T extends Ref>(instance: T): GetProxyType<T> {
-        return getProxy(instance.constructor[Symbol.metadata], { instance }) as GetProxyType<T>;
+        return getProxy(undefined, { instance }) as GetProxyType<T>;
     }
 
     return {
