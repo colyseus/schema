@@ -383,13 +383,21 @@ $(decoder.state).teams.onAdd((team, index) => { // delayed
     $(team).entities.onAdd((entity, entityId) => {
         console.log(`Entities.onAdd =>`, { teamIndex: index, entityId, refId: decoder.$root.refIds.get(entity) });
 
-        // $(entity as Player).cards.onAdd((card, cardIndex) => {
-        //     console.log(entityId, "card added =>", { card, cardIndex });
-        // });
+        $(entity).onChange(() => {
+            console.log("Entity changed!");
+        });
+
+        $(entity).listen("position", (value, previousValue) => {
+            console.log("entity position ->", value.toJSON());
+        });
+
+        $(entity as Player).cards.onAdd((card, cardIndex) => {
+            console.log(entityId, "card added =>", { card, cardIndex });
+        });
 
         // const frontendObj: any = {};
         // $(entity).position.bindTo(frontendObj, ["x", "y", "z"]);
-    }, false);
+    });
 
     // $(team).entities.get("one").position.listen("x", (value, previousValue) => {
     // });
@@ -407,11 +415,9 @@ $(decoder.state).teams.onAdd((team, index) => { // delayed
 //     });
 // });
 
-
 console.log("> will decode...");
-
 // decoder.decode(encoded);
-const changes = decoder.decode(viewEncoded1);
+decoder.decode(viewEncoded1);
 
 console.log("Decoded =>", decoder.state.toJSON());
 

@@ -82,15 +82,15 @@ export function getStateCallbacks(decoder: Decoder) {
                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
                 change.previousValue instanceof Schema
             ) {
-                change.previousValue['$callbacks']?.[OPERATION.DELETE]?.forEach(callback => callback());
+                callbacks[$root.refIds.get(change.previousValue)]?.[OPERATION.DELETE]?.forEach(callback =>
+                    callback());
             }
 
             if (ref instanceof Schema) {
                 if (!uniqueRefIds.has(refId)) {
                     try {
                         // trigger onChange
-                        $callbacks?.[OPERATION.REPLACE]?.forEach(callback =>
-                            callback());
+                        $callbacks?.[OPERATION.REPLACE]?.forEach(callback => callback());
 
                     } catch (e) {
                         console.error(e);
@@ -174,8 +174,12 @@ export function getStateCallbacks(decoder: Decoder) {
                     );
                 },
                 onChange: function onChange(callback: () => void) {
-                    // TODO:
-                    // $root.addCallback(tree, OPERATION.REPLACE, callback);
+                    return $root.addCallback(
+                        $root.refIds.get(context.instance),
+                        OPERATION.REPLACE,
+                        callback
+                    );
+
                 },
                 bindTo: function bindTo(targetObject: any, properties?: Array<NonFunctionPropNames<T>>) {
                     console.log("bindTo", targetObject, properties);
@@ -241,9 +245,8 @@ export function getStateCallbacks(decoder: Decoder) {
 
                     } else if (context.onInstanceAvailable) {
                         // collection instance not received yet
-                        context.onInstanceAvailable((ref: Ref) => {
-                            onAdd(ref, callback, false);
-                        });
+                        context.onInstanceAvailable((ref: Ref) =>
+                            onAdd(ref, callback, false));
                     }
                 },
                 onRemove: function onRemove(callback) {
@@ -251,7 +254,9 @@ export function getStateCallbacks(decoder: Decoder) {
                 },
             }, {
                 get(target, prop: string) {
-                    if (!target[prop]) { throw new Error(`Can't access '${prop}' through callback proxy. access the instance directly.`); }
+                    if (!target[prop]) {
+                        throw new Error(`Can't access '${prop}' through callback proxy. access the instance directly.`);
+                    }
                     return target[prop];
                 },
                 has(target, prop) { return target[prop] !== undefined; },
