@@ -377,11 +377,11 @@ $(decoder.state).listen("str", (value, previousValue) => {
     console.log("'str' changed:", { value, previousValue });
 });
 
-$(decoder.state).teams.onAdd((team, index) => {
-    console.log("Teams.onAdd =>", { index });
+$(decoder.state).teams.onAdd((team, index) => { // delayed
+    console.log("Teams.onAdd =>", { index, refId: decoder.$root.refIds.get(team) });
 
     $(team).entities.onAdd((entity, entityId) => {
-        console.log(`Entities.onAdd =>`, { teamIndex: index, entityId });
+        console.log(`Entities.onAdd =>`, { teamIndex: index, entityId, refId: decoder.$root.refIds.get(entity) });
 
         // $(entity as Player).cards.onAdd((card, cardIndex) => {
         //     console.log(entityId, "card added =>", { card, cardIndex });
@@ -389,7 +389,7 @@ $(decoder.state).teams.onAdd((team, index) => {
 
         // const frontendObj: any = {};
         // $(entity).position.bindTo(frontendObj, ["x", "y", "z"]);
-    });
+    }, false);
 
     // $(team).entities.get("one").position.listen("x", (value, previousValue) => {
     // });

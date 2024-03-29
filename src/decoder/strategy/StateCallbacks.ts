@@ -56,8 +56,8 @@ type OnInstanceAvailableCallback = (callback: (ref: Ref) => void) => void;
 
 type CallContext = {
     instance?: Ref,
-    nestedOnAdd?: boolean,
-    onParentInstanceAvailable?: OnInstanceAvailableCallback,
+    parentInstance?: Ref,
+    onInstanceAvailable?: OnInstanceAvailableCallback,
 }
 
 export function getStateCallbacks(decoder: Decoder) {
@@ -72,8 +72,6 @@ export function getStateCallbacks(decoder: Decoder) {
             const refId = change.refId;
             const ref = change.ref;
             const $callbacks = callbacks[refId];
-
-            // console.log("change =>", { refId, field: change.field });
 
             if (!$callbacks) { continue; }
 
@@ -150,7 +148,6 @@ export function getStateCallbacks(decoder: Decoder) {
 
             uniqueRefIds.add(refId);
         }
-
     };
 
     function getProxy(metadataOrType: Metadata | DefinitionType, context: CallContext) {
@@ -187,7 +184,7 @@ export function getStateCallbacks(decoder: Decoder) {
                 get(target, prop: string) {
                     if (metadata[prop]) {
                         const instance = context.instance?.[prop];
-                        const onParentInstanceAvailable: OnInstanceAvailableCallback = (
+                        const onInstanceAvailable: OnInstanceAvailableCallback = (
                             !instance &&
                             ((callback: (ref: Ref) => void) => {
                                 // @ts-ignore
@@ -197,8 +194,11 @@ export function getStateCallbacks(decoder: Decoder) {
                                 });
                             }) || undefined
                         );
-
-                        return getProxy(metadata[prop].type, { instance, onParentInstanceAvailable });
+                        return getProxy(metadata[prop].type, {
+                            instance,
+                            parentInstance: context.instance,
+                            onInstanceAvailable,
+                        });
 
                     } else {
                         // accessing the function
@@ -216,12 +216,10 @@ export function getStateCallbacks(decoder: Decoder) {
                 callback: (value: any, key: any) => void,
                 immediate: boolean
             ) {
+                // Trigger callback on existing items
                 if (immediate) {
-                    console.log("IMMEDIATE!");
-                    // trigger for existing items
                     (ref as ArraySchema).forEach((v, k) => callback(v, k));
                 }
-                context.nestedOnAdd = true;
                 return $root.addCallback(
                     $root.refIds.get(ref),
                     OPERATION.ADD,
@@ -233,17 +231,17 @@ export function getStateCallbacks(decoder: Decoder) {
              * Collection instances
              */
             return new Proxy({
-                onAdd: function(callback: (value, key) => void, immediate: boolean = true, isNested: boolean = false) {
-                    console.log(">> onAdd", { immediate, hasInstance: context.instance !== undefined });
-
+                onAdd: function(callback: (value, key) => void, immediate: boolean = true) {
                     if (context.instance) {
-                        console.log("is nested??", isNested)
-                        onAdd(context.instance, callback, immediate && !isNested);
+                        //
+                        // TODO: https://github.com/colyseus/schema/issues/147
+                        // If parent instance has "onAdd" registered, avoid triggering immediate callback.
+                        //
+                        onAdd(context.instance, callback, immediate);
 
-                    } else if (context.onParentInstanceAvailable) {
+                    } else if (context.onInstanceAvailable) {
                         // collection instance not received yet
-                        context.onParentInstanceAvailable((ref: Ref) => {
-                            console.log("PARENT INSTANCE AVAILABLE")
+                        context.onInstanceAvailable((ref: Ref) => {
                             onAdd(ref, callback, false);
                         });
                     }
