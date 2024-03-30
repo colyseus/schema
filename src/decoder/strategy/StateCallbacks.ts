@@ -169,7 +169,12 @@ export function getStateCallbacks(decoder: Decoder) {
             return new Proxy({
                 listen: function listen(prop: string, callback: (value: any, previousValue: any) => void, immediate: boolean = true) {
                     // immediate trigger
-                    if (immediate && context.instance[prop] !== undefined) {
+                    if (
+                        immediate &&
+                        context.instance[prop] !== undefined &&
+                        !isTriggeringOnAdd // FIXME: This is a workaround
+                                           // (https://github.com/colyseus/schema/issues/147)
+                    ) {
                         callback(context.instance[prop], undefined);
                     }
                     return $root.addCallback(
