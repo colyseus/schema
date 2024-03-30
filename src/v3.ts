@@ -383,9 +383,9 @@ $(decoder.state).teams.onAdd((team, index) => { // delayed
     $(team).entities.onAdd((entity, entityId) => {
         console.log(`Entities.onAdd =>`, { teamIndex: index, entityId, refId: decoder.$root.refIds.get(entity) });
 
-        $(entity).onChange(() => {
-            console.log("Entity changed!");
-        });
+        // $(entity).onChange(() => {
+        //     console.log("Entity changed!");
+        // });
 
         $(entity).listen("position", (value, previousValue) => {
             console.log("entity position ->", value.toJSON());
@@ -397,6 +397,7 @@ $(decoder.state).teams.onAdd((team, index) => { // delayed
 
         // const frontendObj: any = {};
         // $(entity).position.bindTo(frontendObj, ["x", "y", "z"]);
+
     });
 
     // $(team).entities.get("one").position.listen("x", (value, previousValue) => {

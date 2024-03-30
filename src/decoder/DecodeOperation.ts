@@ -7,7 +7,7 @@ import * as decode from "../encoding/decode";
 import { getType } from "../types/typeRegistry";
 import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
 import { ArraySchema, CollectionSchema, MapSchema, SetSchema } from "..";
-import { Callback } from "./ReferenceTracker";
+// import { Callback } from "./ReferenceTracker";
 
 export interface DataChange<T = any, F = string> {
     ref: Ref,

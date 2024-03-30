@@ -64,6 +64,8 @@ export function getStateCallbacks(decoder: Decoder) {
     const $root = decoder.$root;
     const callbacks = $root.callbacks;
 
+    let isTriggeringOnAdd = false;
+
     decoder.triggerChanges = function (allChanges: DataChange[]) {
         const uniqueRefIds = new Set<number>();
 
@@ -113,8 +115,11 @@ export function getStateCallbacks(decoder: Decoder) {
 
                 if (change.op === OPERATION.ADD && change.previousValue === undefined) {
                     // triger onAdd
+
+                    isTriggeringOnAdd = true;
                     $callbacks[OPERATION.ADD]?.forEach(callback =>
                         callback(change.value, change.dynamicIndex ?? change.field));
+                    isTriggeringOnAdd = false;
 
                 } else if (change.op === OPERATION.DELETE) {
                     //
@@ -241,7 +246,7 @@ export function getStateCallbacks(decoder: Decoder) {
                         // TODO: https://github.com/colyseus/schema/issues/147
                         // If parent instance has "onAdd" registered, avoid triggering immediate callback.
                         //
-                        onAdd(context.instance, callback, immediate);
+                        onAdd(context.instance, callback, immediate && !isTriggeringOnAdd);
 
                     } else if (context.onInstanceAvailable) {
                         // collection instance not received yet
