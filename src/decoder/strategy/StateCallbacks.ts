@@ -215,26 +215,22 @@ export function getStateCallbacks(decoder: Decoder) {
                     }
                 },
                 has(target, prop: string) { return metadata[prop] !== undefined; },
-                set(target, prop, value) { throw new Error("not allowed"); },
-                deleteProperty(target, p) { throw new Error("not allowed"); },
+                set(_, _1, _2) { throw new Error("not allowed"); },
+                deleteProperty(_, _1) { throw new Error("not allowed"); },
             });
 
         } else {
-            const onAdd = function (
-                ref: Ref,
-                callback: (value: any, key: any) => void,
-                immediate: boolean
-            ) {
+            const onAdd = function (ref: Ref, callback: (value: any, key: any) => void, immediate: boolean) {
                 // Trigger callback on existing items
                 if (immediate) {
                     (ref as ArraySchema).forEach((v, k) => callback(v, k));
                 }
-                return $root.addCallback(
-                    $root.refIds.get(ref),
-                    OPERATION.ADD,
-                    callback
-                );
-            }
+                return $root.addCallback($root.refIds.get(ref), OPERATION.ADD, callback);
+            };
+
+            const onRemove = function (ref: Ref, callback: (value: any, key: any) => void) {
+                return $root.addCallback($root.refIds.get(ref), OPERATION.DELETE, callback);
+            };
 
             /**
              * Collection instances
@@ -243,8 +239,10 @@ export function getStateCallbacks(decoder: Decoder) {
                 onAdd: function(callback: (value, key) => void, immediate: boolean = true) {
                     if (context.instance) {
                         //
-                        // TODO: https://github.com/colyseus/schema/issues/147
+                        // https://github.com/colyseus/schema/issues/147
                         // If parent instance has "onAdd" registered, avoid triggering immediate callback.
+                        //
+                        // FIXME: This is a workaround. We should find a better way to handle this.
                         //
                         onAdd(context.instance, callback, immediate && !isTriggeringOnAdd);
 
@@ -254,8 +252,15 @@ export function getStateCallbacks(decoder: Decoder) {
                             onAdd(ref, callback, false));
                     }
                 },
-                onRemove: function onRemove(callback) {
-                    // $root.addCallback([...tree], OPERATION.DELETE, callback);
+                onRemove: function(callback: (value, key) => void) {
+                    if (context.instance) {
+                        onRemove(context.instance, callback);
+
+                    } else if (context.onInstanceAvailable) {
+                        // collection instance not received yet
+                        context.onInstanceAvailable((ref: Ref) =>
+                            onRemove(ref, callback));
+                    }
                 },
             }, {
                 get(target, prop: string) {
@@ -265,8 +270,8 @@ export function getStateCallbacks(decoder: Decoder) {
                     return target[prop];
                 },
                 has(target, prop) { return target[prop] !== undefined; },
-                set(target, prop, value) { throw new Error("not allowed"); },
-                deleteProperty(target, prop) { throw new Error("not allowed"); },
+                set(_, _1, _2) { throw new Error("not allowed"); },
+                deleteProperty(_, _1) { throw new Error("not allowed"); },
             });
         }
     }
