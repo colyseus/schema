@@ -18,7 +18,7 @@ import type { ArraySchema } from "../../types/ArraySchema";
 //
 
 type GetProxyType<T> = unknown extends T // is "any"?
-    ? InstanceCallback<T> & CollectionCallback<unknown, unknown>
+    ? InstanceCallback<T> & CollectionCallback<any, any>
     : T extends Collection<infer K, infer V, infer _>
         ? CollectionCallback<K, V>
         : InstanceCallback<T>
