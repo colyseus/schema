@@ -17,23 +17,11 @@ import type { ArraySchema } from "../../types/ArraySchema";
 // - Avoid closures by allowing to pass a context. (https://github.com/colyseus/schema/issues/155#issuecomment-1804694081)
 //
 
-type AnyProxyType = CollectionCallback<unknown, unknown> & InstanceCallback<any>
-
-// type GetProxyType<T> = T extends Collection<infer K, infer V, infer _>
-//     ? CollectionCallback<K, V>
-//     : InstanceCallback<T>;
-
-type GetProxyType<T> = T extends Collection<infer K, infer V, infer _>
-    ? (
-        K extends unknown // T is "any"
-            ? CollectionCallback<K, V> & InstanceCallback<unknown>
-            : CollectionCallback<K, V>
-    )
-    : InstanceCallback<T>;
-
-// type PrimitiveCallback<T> = {
-//     listen(callback: (value: T, previousValue: T) => void, immediate?: boolean): void;
-// };
+type GetProxyType<T> = unknown extends T // is "any"?
+    ? InstanceCallback<T> & CollectionCallback<unknown, unknown>
+    : T extends Collection<infer K, infer V, infer _>
+        ? CollectionCallback<K, V>
+        : InstanceCallback<T>
 
 type InstanceCallback<T> = {
     listen<K extends NonFunctionPropNames<T>>(
@@ -55,8 +43,8 @@ type CollectionCallback<K, V> = {
 type OnInstanceAvailableCallback = (callback: (ref: Ref) => void) => void;
 
 type CallContext = {
-    instance?: Ref,
-    parentInstance?: Ref,
+    instance?: any,
+    parentInstance?: any,
     onInstanceAvailable?: OnInstanceAvailableCallback,
 }
 
@@ -191,7 +179,7 @@ export function getStateCallbacks(decoder: Decoder) {
                     );
 
                 },
-                bindTo: function bindTo(targetObject: any, properties?: Array<NonFunctionPropNames<T>>) {
+                bindTo: function bindTo(targetObject: any, properties?: string[]) {
                     console.log("bindTo", targetObject, properties);
                 }
             }, {
@@ -281,7 +269,7 @@ export function getStateCallbacks(decoder: Decoder) {
         }
     }
 
-    function $<T extends Ref>(instance: T): GetProxyType<T> {
+    function $<T>(instance: T): GetProxyType<T> {
         return getProxy(undefined, { instance }) as GetProxyType<T>;
     }
 

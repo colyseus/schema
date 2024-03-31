@@ -3,6 +3,7 @@ import { MapSchema } from "./MapSchema";
 
 export interface Collection<K, V, IT=V> {
     [Symbol.iterator](): IterableIterator<IT>;
+    forEach(callback: Function);
     entries(): IterableIterator<[K, V]>;
 }
 

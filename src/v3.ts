@@ -360,24 +360,20 @@ const decodedState = Reflection.decode<State>(encodedReflection);
 // const decodedState = new State();
 const decoder = new Decoder(decodedState);
 
-// room.$.teams.onAdd((team, index) => {
-//     team.$.entities.onAdd((entity, entityId) => {
-//         entity.$.position.onChange(() => {
-//         });
-//     });
-// });
-
 const { $ } = getStateCallbacks(decoder); // room
 
 console.log("> register callbacks...");
 
 const s: any = {};
 
+// $(s).entities.onAdd((entity, entityId) => {
+// });
+
 $(decoder.state).listen("str", (value, previousValue) => {
     console.log("'str' changed:", { value, previousValue });
 });
 
-$(decoder.state).teams.onAdd((team, index) => { // delayed
+$(decoder.state).teams.onAdd((team, index) => {
     console.log("Teams.onAdd =>", { index, refId: decoder.$root.refIds.get(team) });
 
     $(team).entities.onAdd((entity, entityId) => {
