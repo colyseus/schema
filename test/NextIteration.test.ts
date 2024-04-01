@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { Schema, type, MapSchema, ArraySchema, filter, filterChildren } from "../src";
+import { Schema, type, MapSchema, ArraySchema } from "../src";
 
 describe("Next Iteration", () => {
 
@@ -216,6 +216,7 @@ describe("Next Iteration", () => {
         });
     });
 
+    /*
     it("add and modify a filtered primitive map item", () => {
         class State extends Schema {
             @filterChildren(function(client, key, value, root) {
@@ -277,7 +278,9 @@ describe("Next Iteration", () => {
         decoded3.decode(encoded3);
         assert.strictEqual(decoded3.map.size, 1);
     });
+    */
 
+    /*
     it("add and modify a filtered Schema map item", () => {
         class Player extends Schema {
             @type("number") x: number;
@@ -347,6 +350,7 @@ describe("Next Iteration", () => {
         assert.strictEqual(decoded3.map.size, 1);
         assert.deepEqual(decoded3.map.get("three").x, 33);
     });
+    */
 
     it("should encode string", () => {
         class Item extends Schema {
@@ -439,6 +443,7 @@ describe("Next Iteration", () => {
         assert.ok(state.players.get("one")['$changes'].parent['$changes'].refId === state.players['$changes'].refId as any, "state.players['one'] parent should be state.players");
     });
 
+    /*
     it("should encode filtered", () => {
         class Item extends Schema {
             @type("number") damage: number;
@@ -507,6 +512,7 @@ describe("Next Iteration", () => {
         assert.strictEqual(2, decoded1.player.x);
         assert.strictEqual(6, decoded1.player.item.damage);
     });
+    */
 
     it("encoding / decoding deep items", () => {
         class Item extends Schema {

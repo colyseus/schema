@@ -1,9 +1,8 @@
-import * as util from "util";
 import * as assert from "assert";
 import { nanoid } from "nanoid";
-import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Context } from "../src";
+import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection } from "../src";
 
-import { State, Player } from "./Schema";
+import { State, Player, getCallbacks } from "./Schema";
 
 describe("Edge cases", () => {
     it("Schema should support up to 64 fields", () => {
@@ -27,7 +26,6 @@ describe("Edge cases", () => {
 
     it("should support more than 255 schema types", () => {
         const maxSchemaTypes = 500;
-        const type = Context.create();
 
         // @type("number") i: number;
         class Base extends Schema { }
@@ -185,7 +183,7 @@ describe("Edge cases", () => {
     });
 
     it("string: containing specific UTF-8 characters", () => {
-        let bytes: number[];
+        let bytes: Buffer;
 
         const state = new State();
         const decodedState = new State();
@@ -326,16 +324,18 @@ describe("Edge cases", () => {
             const state = new State();
             const decodedState = new State();
 
+            const $ = getCallbacks(decodedState).$;
+
             decodedState.decode(state.encode());
 
             const onAddCalledFor: string[] = [];
             const onRemovedCalledFor: string[] = [];
 
-            decodedState.entities.onAdd(function(entity, key) {
+            $(decodedState).entities.onAdd(function(entity, key) {
                 onAddCalledFor.push(key);
             });
 
-            decodedState.entities.onRemove(function(entity, key) {
+            $(decodedState).entities.onRemove(function(entity, key) {
                 onRemovedCalledFor.push(key);
             });
 

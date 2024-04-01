@@ -1,15 +1,13 @@
 import * as assert from "assert";
-import { Reflection, Schema, type, MapSchema, ArraySchema, Context } from "../src";
-
-const testContext = { context: new Context() };
+import { Reflection, Schema, type, MapSchema, ArraySchema } from "../src";
 
 /**
  * No filters example
  */
 class Player extends Schema {
-  @type("string", testContext) name: string;
-  @type("number", testContext) x: number;
-  @type("number", testContext) y: number;
+  @type("string") name: string;
+  @type("number") x: number;
+  @type("number") y: number;
 
   constructor (name?: string, x?: number, y?: number) {
     super();
@@ -20,11 +18,11 @@ class Player extends Schema {
 }
 
 export class State extends Schema {
-  @type('string', testContext) fieldString: string;
-  @type('number', testContext) fieldNumber: number;
-  @type(Player, testContext) player: Player;
-  @type([ Player ], testContext) arrayOfPlayers: ArraySchema<Player>;
-  @type({ map: Player }, testContext) mapOfPlayers: MapSchema<Player>;
+  @type('string') fieldString: string;
+  @type('number') fieldNumber: number;
+  @type(Player) player: Player;
+  @type([ Player ]) arrayOfPlayers: ArraySchema<Player>;
+  @type({ map: Player }) mapOfPlayers: MapSchema<Player>;
 }
 
 describe("Reflection", () => {
@@ -101,8 +99,6 @@ describe("Reflection", () => {
     });
 
     it("should allow extending another Schema type", () => {
-        const type = Context.create();
-
         class Point extends Schema {
             @type("number") x: number;
             @type("number") y: number;
@@ -140,8 +136,6 @@ describe("Reflection", () => {
     });
 
     it("should reflect map of primitive type", () => {
-        const type = Context.create();
-
         class MyState extends Schema {
             @type({map: "string"})
             mapOfStrings: MapSchema<string> = new MapSchema();
@@ -158,8 +152,6 @@ describe("Reflection", () => {
     });
 
     it("should reflect array of primitive type", () => {
-        const type = Context.create();
-
         class MyState extends Schema {
             @type([ "string" ])
             arrayOfStrings: ArraySchema<string> = new ArraySchema();
@@ -176,8 +168,6 @@ describe("Reflection", () => {
     });
 
     it("should reflect and be able to use multiple structures of primitive tyes", () => {
-        const type = Context.create();
-
         class MyState extends Schema {
             @type("string")
             currentTurn: string;

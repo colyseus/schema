@@ -1,33 +1,31 @@
 import * as assert from "assert";
-import { type, Context } from "../src/annotations";
+import { type } from "../src/annotations";
 import { ArraySchema, MapSchema, Reflection } from "../src";
 import { Schema } from "../src/Schema";
 
-const context = new Context();
-
 class Entity extends Schema {
-    @type("number", { context }) x: number;
-    @type("number", { context }) y: number;
+    @type("number") x: number;
+    @type("number") y: number;
 }
 
 class Player extends Entity {
-    @type("string", { context }) name: string;
-    @type("number", { context }) lvl: number;
+    @type("string") name: string;
+    @type("number") lvl: number;
 }
 
 class Enemy extends Player {
-    @type("number", { context }) power: number;
+    @type("number") power: number;
 }
 
 class EntityHolder extends Schema {
-    @type(Entity, { context }) entity: Entity;
+    @type(Entity) entity: Entity;
 }
 
 class State extends Schema {
-    @type(Entity, { context }) entity: Entity;
-    @type(EntityHolder, { context }) entityHolder = new EntityHolder();
-    @type([Entity], { context }) arrayOfEntities = new ArraySchema<Entity>();
-    @type({ map: Entity }, { context }) mapOfEntities = new MapSchema<Entity>();
+    @type(Entity) entity: Entity;
+    @type(EntityHolder) entityHolder = new EntityHolder();
+    @type([Entity]) arrayOfEntities = new ArraySchema<Entity>();
+    @type({ map: Entity }) mapOfEntities = new MapSchema<Entity>();
 }
 
 describe("Polymorphism", () => {

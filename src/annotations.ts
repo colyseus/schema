@@ -36,7 +36,6 @@ export type Definition = { [field: string]: DefinitionType };
 
 export interface TypeOptions {
     manual?: boolean,
-    stream?: boolean, // TODO: not implemented
 }
 
 export class TypeContext {
@@ -538,17 +537,13 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
     }
 }
 
-// export function defineTypes(
-//     target: typeof Schema,
-//     fields: { [property: string]: DefinitionType },
-//     options?: TypeOptions
-// ) {
-//     // if (!options.context) {
-//     //     options.context = target._context || options.context || globalContext;
-//     // }
-
-//     for (let field in fields) {
-//         type(fields[field], options)(target.prototype, field);
-//     }
-//     return target;
-// }
+export function defineTypes(
+    target: typeof Schema,
+    fields: { [property: string]: DefinitionType },
+    options?: TypeOptions
+) {
+    for (let field in fields) {
+        type(fields[field], options)(target.prototype, field);
+    }
+    return target;
+}

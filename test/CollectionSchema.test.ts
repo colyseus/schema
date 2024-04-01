@@ -1,7 +1,6 @@
 import * as assert from "assert";
 
-import { Schema, type, filter, filterChildren, CollectionSchema } from "../src";
-import { ClientWithSessionId } from "../src/annotations";
+import { Schema, type, CollectionSchema } from "../src";
 
 describe("CollectionSchema Tests", () => {
 
@@ -134,6 +133,7 @@ describe("CollectionSchema Tests", () => {
         assert.strictEqual(0, decoded.players.size);
     });
 
+    /*
     it("@filter() should filter out Collection field entirely", () => {
         class Player extends Schema {
             @type("number") level: number;
@@ -253,6 +253,7 @@ describe("CollectionSchema Tests", () => {
         assert.strictEqual(5, decoded2.numbers.size);
         assert.deepEqual([1, 3, 5, 7, 9], decoded2.numbers.toArray());
     });
+    */
 
     it("CollectionSchema.toJSON", () => {
         const collection = new CollectionSchema<number>();

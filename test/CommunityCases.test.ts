@@ -1,7 +1,5 @@
-import * as util from "util";
 import * as assert from "assert";
-import { nanoid } from "nanoid";
-import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Context } from "../src";
+import { Schema, type, Reflection } from "../src";
 
 describe("Community cases", () => {
 
@@ -18,7 +16,7 @@ describe("Community cases", () => {
         }
 
         const testobj = new Test();
-        const encoded = testobj.encodeAll(false);
+        const encoded = testobj.encodeAll();
         const handshake = Reflection.encode(testobj);
 
         const clientobj = Reflection.decode<Test>(handshake);

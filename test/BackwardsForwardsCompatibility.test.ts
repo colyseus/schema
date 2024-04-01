@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import { Reflection, type, Schema, MapSchema, ArraySchema } from "../src";
 import { deprecated } from "../src/annotations";
+import "./Schema";
 
 describe("backwards/forwards compatibility", () => {
 

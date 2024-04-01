@@ -1,4 +1,45 @@
-import { Schema, type, ArraySchema, MapSchema, filter } from "../src";
+import { Schema, type, ArraySchema, MapSchema } from "../src";
+import { Decoder } from "../src/decoder/Decoder";
+import { Encoder } from "../src/encoder/Encoder";
+import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
+
+// augment Schema to add encode/decode methods
+// (workaround to keep tests working while we don't migrate the tests to the new API)
+declare module "../src/Schema" {
+  interface Schema {
+    encode(): Buffer;
+    encodeAll(): Buffer;
+    decode(bytes: Buffer): void;
+  }
+}
+
+export function getCallbacks(state: Schema) {
+    return getStateCallbacks(getDecoder(state));
+}
+
+export function getDecoder(state: Schema) {
+    state['_decoder'] ??= new Decoder(state);
+    return state['_decoder'] as Decoder;
+}
+
+export function getEncoder(state: Schema) {
+    state['_encoder'] ??= new Encoder(state);
+    return state['_encoder'] as Encoder;
+}
+
+Schema.prototype.encode = function() {
+    return (getEncoder(this)).encode();
+}
+
+Schema.prototype.decode = function(bytes: Buffer) {
+    return getDecoder(this).decode(bytes);
+}
+
+Schema.prototype.encodeAll = function() {
+    this['_encoder'] ??= new Encoder(this);
+    const encoder: Encoder = this['_encoder'];
+    return encoder.encodeAll();
+}
 
 // interface IUser {
 //     name: string;

@@ -1,5 +1,5 @@
 export { Schema } from "./Schema";
-export type { DataChange } from "./Schema";
+export type { DataChange } from "./decoder/DecodeOperation";
 
 import { MapSchema } from "./types/MapSchema"
 export { MapSchema };
@@ -43,10 +43,7 @@ export {
     // Annotations
     type,
     deprecated,
-    filter,
-    filterChildren,
-    // defineTypes,
-    hasFilter,
+    defineTypes,
 
     // Internals
     TypeContext,
@@ -57,7 +54,6 @@ export type {
     DefinitionType,
     PrimitiveType,
     Definition,
-    FilterCallback,
 } from "./annotations";
 
 export { OPERATION } from "./encoding/spec";

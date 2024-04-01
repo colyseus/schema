@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity } from "./Schema";
-import { Schema, ArraySchema, MapSchema, type } from "../src";
+import { Schema, ArraySchema, MapSchema, type, Metadata } from "../src";
 
 describe("Schema Usage", () => {
 
@@ -14,10 +14,12 @@ describe("Schema Usage", () => {
                 intValue = 300;
             }
 
+
+
             let data = new DataObject();
             assert.strictEqual(data.stringValue, "initial value");
             assert.strictEqual(data.intValue, 300);
-            assert.deepEqual(DataObject._definition.schema, {
+            assert.deepEqual(Metadata.getFields(DataObject), {
                 stringValue: 'string',
                 intValue: 'number',
             });

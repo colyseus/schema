@@ -1,5 +1,7 @@
 import * as assert from "assert";
 import { Schema, type, ArraySchema, MapSchema, Reflection } from "../src";
+import { $changes } from "../src/types/symbols";
+import { getCallbacks, getDecoder } from "./Schema";
 
 describe("Instance sharing", () => {
     class Position extends Schema {
@@ -207,7 +209,7 @@ describe("Instance sharing", () => {
         assert.strictEqual(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
         assert.strictEqual(
             true,
-            Object.values(decodedState['$changes'].root.refCounts).every(refCount => refCount > 0),
+            Object.values(getDecoder(decodedState).$root.refCounts).every(refCount => refCount > 0),
             "all refCount's should have a valid number."
         );
     });
@@ -249,9 +251,11 @@ describe("Instance sharing", () => {
 
         const decodedState = Reflection.decode<State>(Reflection.encode(state));
 
+        const $ = getCallbacks(decodedState).$;
+
         let numTriggered = 0;
-        decodedState.player1.listen('hp', () => numTriggered++);
-        decodedState.player2.listen('hp', () => numTriggered++);
+        $(decodedState).player1.listen('hp', () => numTriggered++);
+        $(decodedState).player2.listen('hp', () => numTriggered++);
 
         decodedState.decode(state.encode());
 

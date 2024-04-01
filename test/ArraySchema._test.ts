@@ -1,7 +1,7 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
 
-import { State, Player } from "./Schema";
+import { State, Player, getCallbacks } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges, filterChildren } from "../src";
 
 describe("ArraySchema Tests", () => {
@@ -48,14 +48,16 @@ describe("ArraySchema Tests", () => {
 
         const decodedState = new State();
 
+        const $ = getCallbacks(state).$;
+
         const onAddSpy = sinon.spy(function(item, i) {});
-        decodedState.items.onAdd(onAddSpy)
+        $(decodedState.items).onAdd(onAddSpy);
 
         let removedItem: Item;
         const onRemoveSpy = sinon.spy(function(item, i) {
             removedItem = item;
         });
-        decodedState.items.onRemove(onRemoveSpy);
+        $(decodedState.items).onRemove(onRemoveSpy);
 
         decodedState.decode(state.encodeAll());
 

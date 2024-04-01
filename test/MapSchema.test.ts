@@ -2,8 +2,8 @@ import * as sinon from "sinon";
 import * as assert from "assert";
 import * as util from "util";
 
-import { State, Player } from "./Schema";
-import { MapSchema, type, Schema, filterChildren, SchemaDefinition, ArraySchema } from "../src";
+import { State, Player, getCallbacks } from "./Schema";
+import { MapSchema, type, Schema, ArraySchema } from "../src";
 
 describe("MapSchema Tests", () => {
 
@@ -112,6 +112,7 @@ describe("MapSchema Tests", () => {
         }, state.toJSON());
     });
 
+    /*
     it("should allow to clear a Map while using filters", () => {
         class Player extends Schema {
             @type("number") x: number;
@@ -176,6 +177,7 @@ describe("MapSchema Tests", () => {
         decoded3.decode(encoded3);
         assert.strictEqual(decoded3.map.size, 0);
     });
+    */
 
     it("should not consider changes after removing from the change tree", () => {
         class Item extends Schema {
@@ -338,11 +340,12 @@ describe("MapSchema Tests", () => {
         state.mapOfPlayers['one'] = new Player("Jake", 10, 10);
 
         const decodedState = new State();
+        const $ = getCallbacks(decodedState).$;
         decodedState.mapOfPlayers = new MapSchema<Player>();
 
         const onRemoveSpy = sinon.spy(function(item, key) {});
-        decodedState.mapOfPlayers.onRemove(onRemoveSpy);
-        decodedState.mapOfPlayers.onAdd((item, key) => {});
+        $(decodedState).mapOfPlayers.onRemove(onRemoveSpy);
+        $(decodedState).mapOfPlayers.onAdd((item, key) => {});
 
         decodedState.decode(state.encode());
 
@@ -539,6 +542,7 @@ describe("MapSchema Tests", () => {
         const state = new State();
 
         const decodedState = new State();
+        const $ = getCallbacks(decodedState).$;
         decodedState.decode(state.encodeAll());
 
         state.entities.set("item1", new Item().assign({ id: 1, damage: 10 }));
@@ -549,14 +553,14 @@ describe("MapSchema Tests", () => {
         decodedState.decode(state.encode());
 
         const onEntityAddSpy = sinon.spy(function (item, key) {});
-        decodedState.entities.onAdd(onEntityAddSpy, false);
-        decodedState.entities.onChange(function (item, key) {})
-        decodedState.entities.onRemove(function (item, key) {})
+        $(decodedState).entities.onAdd(onEntityAddSpy, false);
+        // $(decodedState).entities.onChange(function (item, key) {})
+        $(decodedState).entities.onRemove(function (item, key) {})
 
         const onItemsChangeSpy = sinon.spy(function (item, key) {});
-        decodedState.items.onAdd(function (item, key) {}, false)
-        decodedState.items.onChange(onItemsChangeSpy);
-        decodedState.items.onRemove(function (item, key) {})
+        $(decodedState).items.onAdd(function (item, key) {}, false)
+        // $(decodedState).items.onChange(onItemsChangeSpy);
+        $(decodedState).items.onRemove(function (item, key) {})
 
         const item1 = state.entities.get("item1");
         const previousWeapon = state.items.get("weapon");
@@ -589,10 +593,11 @@ describe("MapSchema Tests", () => {
         state.numbers = new MapSchema({ one: 1, two: 2, three: 3 });
 
         const decodedState = new State();
+        const $ = getCallbacks(decodedState).$;0
         decodedState.decode(state.encode());
 
         const onRemove = sinon.spy(function(num, i) {});
-        decodedState.numbers.onRemove(onRemove);
+        $(decodedState).numbers.onRemove(onRemove);
 
         state.numbers = new MapSchema({ four: 1, five: 2, six: 3 });
         decodedState.decode(state.encode());
