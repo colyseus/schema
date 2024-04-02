@@ -1,5 +1,5 @@
-import { ArraySchema } from "./ArraySchema";
-import { MapSchema } from "./MapSchema";
+import { ArraySchema } from "./custom/ArraySchema";
+import { MapSchema } from "./custom/MapSchema";
 
 export interface Collection<K, V, IT=V> {
     [Symbol.iterator](): IterableIterator<IT>;

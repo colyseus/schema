@@ -1,13 +1,15 @@
-import { ChangeTree } from "../encoder/ChangeTree";
-import { OPERATION } from "../encoding/spec";
-import { removeChildRefs } from "./utils";
-import { registerType } from "./typeRegistry";
-import { $changes, $childType, $deleteByIndex, $getByIndex } from "./symbols";
-import { DataChange } from "../decoder/DecodeOperation";
-import { Collection } from "./HelperTypes";
+import { ChangeTree } from "../../encoder/ChangeTree";
+import { OPERATION } from "../../encoding/spec";
+import { removeChildRefs } from "../utils";
+import { registerType } from "../registry";
+import { $changes, $childType, $deleteByIndex, $getByIndex } from "../symbols";
+import { DataChange } from "../../decoder/DecodeOperation";
+import { Collection } from "../HelperTypes";
 
-export class SetSchema<V=any> implements Collection<number, V> {
-    protected $changes = new ChangeTree(this);
+type K = number; // TODO: allow to specify K generic on MapSchema.
+
+export class CollectionSchema<V=any> implements Collection<K, V>{
+    protected $changes: ChangeTree = new ChangeTree(this);
 
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
@@ -15,7 +17,7 @@ export class SetSchema<V=any> implements Collection<number, V> {
     protected $refId: number = 0;
 
     static is(type: any) {
-        return type['set'] !== undefined;
+        return type['collection'] !== undefined;
     }
 
     constructor (initialValues?: Array<V>) {
@@ -32,35 +34,37 @@ export class SetSchema<V=any> implements Collection<number, V> {
     }
 
     add(value: V) {
-        // immediatelly return false if value already added.
-        if (this.has(value)) { return false; }
-
         // set "index" for reference.
         const index = this.$refId++;
 
-        if ((value[$changes]) !== undefined) {
+        const isRef = (value[$changes]) !== undefined;
+        if (isRef) {
             value[$changes].setParent(this, this.$changes.root, index);
         }
-
-        const operation = this.$changes.indexes[index]?.op ?? OPERATION.ADD;
 
         this.$changes.indexes[index] = index;
 
         this.$indexes.set(index, index);
         this.$items.set(index, value);
 
-        this.$changes.change(index, operation);
+        this.$changes.change(index);
+
         return index;
     }
 
-    entries () {
+    at(index: number): V | undefined {
+        const key = Array.from(this.$items.keys())[index];
+        return this.$items.get(key);
+    }
+
+    entries() {
         return this.$items.entries();
     }
 
     delete(item: V) {
         const entries = this.$items.entries();
 
-        let index: number;
+        let index: K;
         let entry: IteratorResult<[number, V]>;
         while (entry = entries.next()) {
             if (entry.done) { break; }
@@ -109,23 +113,10 @@ export class SetSchema<V=any> implements Collection<number, V> {
     }
 
     has (value: V): boolean {
-        const values = this.$items.values();
-
-        let has = false;
-        let entry: IteratorResult<V>;
-
-        while (entry = values.next()) {
-            if (entry.done) { break; }
-            if (value === entry.value) {
-                has = true;
-                break;
-            }
-        }
-
-        return has;
+        return Array.from(this.$items.values()).some((v) => v === value);
     }
 
-    forEach(callbackfn: (value: V, key: number, collection: SetSchema<V>) => void) {
+    forEach(callbackfn: (value: V, key: K, collection: CollectionSchema<V>) => void) {
         this.$items.forEach((value, key, _) => callbackfn(value, key, this));
     }
 
@@ -181,16 +172,16 @@ export class SetSchema<V=any> implements Collection<number, V> {
     //
     // Decoding utilities
     //
-    clone(isDecoding?: boolean): SetSchema<V> {
-        let cloned: SetSchema;
+    clone(isDecoding?: boolean): CollectionSchema<V> {
+        let cloned: CollectionSchema;
 
         if (isDecoding) {
             // client-side
-            cloned = Object.assign(new SetSchema(), this);
+            cloned = Object.assign(new CollectionSchema(), this);
 
         } else {
             // server-side
-            cloned = new SetSchema();
+            cloned = new CollectionSchema();
             this.forEach((value) => {
                 if (value['$changes']) {
                     cloned.add(value['clone']());
@@ -205,4 +196,4 @@ export class SetSchema<V=any> implements Collection<number, V> {
 
 }
 
-registerType("set", { constructor: SetSchema });
+registerType("collection", { constructor: CollectionSchema, });

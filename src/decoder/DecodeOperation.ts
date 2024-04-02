@@ -4,9 +4,13 @@ import { Schema } from "../Schema";
 import type { Ref } from "../encoder/ChangeTree";
 import type { Decoder } from "./Decoder";
 import * as decode from "../encoding/decode";
-import { getType } from "../types/typeRegistry";
 import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
-import { ArraySchema, CollectionSchema, MapSchema, SetSchema } from "..";
+
+import { ArraySchema } from "../types/custom/ArraySchema";
+import { CollectionSchema } from "../types/custom/CollectionSchema";
+import { SetSchema } from "../types/custom/SetSchema";
+
+import { getType } from "../types/registry";
 // import { Callback } from "./ReferenceTracker";
 
 export interface DataChange<T = any, F = string> {
@@ -209,8 +213,8 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     let dynamicIndex: number | string;
 
     if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
-        dynamicIndex = (ref instanceof MapSchema)
-            ? decode.string(bytes, it)
+        dynamicIndex = (typeof(ref['set']) === "function")
+            ? decode.string(bytes, it) // MapSchema
             : index;
         ref['setIndex'](index, dynamicIndex);
 
@@ -230,7 +234,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     );
 
     if (value !== null && value !== undefined) {
-        if (ref instanceof MapSchema) {
+        if (typeof(ref['set']) === "function") {
             // const key = ref['$indexes'].get(field);
             const key = dynamicIndex as string;
 

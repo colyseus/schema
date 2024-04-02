@@ -1,11 +1,13 @@
-import type { Schema } from "../Schema";
-import { ChangeTree } from "../encoder/ChangeTree";
-import { OPERATION } from "../encoding/spec";
-import { removeChildRefs } from "./utils";
-import { registerType } from "./typeRegistry";
-import { $changes, $childType, $deleteByIndex, $getByIndex } from "./symbols";
-import { DataChange } from "../decoder/DecodeOperation";
-import { Collection } from "./HelperTypes";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $getByIndex } from "../symbols";
+import type { Schema } from "../../Schema";
+import { ChangeTree } from "../../encoder/ChangeTree";
+import { OPERATION } from "../../encoding/spec";
+import { removeChildRefs } from "../utils";
+import { registerType } from "../registry";
+import { Collection } from "../HelperTypes";
+
+import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
+import { decodeKeyValueOperation, DataChange } from "../../decoder/DecodeOperation";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
@@ -24,6 +26,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     protected $refId: number = 0;
 
     [n: number]: V;
+
+    static [$encoder] = encodeKeyValueOperation;
+    static [$decoder] = decodeKeyValueOperation;
 
     static is(type: any) {
         return (

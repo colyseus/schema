@@ -3,14 +3,20 @@ import { DefinitionType } from "./annotations";
 
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
-import { ChangeTree, Ref } from './encoder/ChangeTree';
-import { $changes, $deleteByIndex, $filter, $getByIndex, $isOwned, $track } from './types/symbols';
+import { ChangeTree} from './encoder/ChangeTree';
+import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $isOwned, $track } from './types/symbols';
 import { StateView } from './encoder/StateView';
+
+import { encodeSchemaOperation } from './encoder/EncodeOperation';
+import { decodeSchemaOperation } from './decoder/DecodeOperation';
 
 /**
  * Schema encoder / decoder
  */
 export abstract class Schema {
+
+    static [$encoder] = encodeSchemaOperation;
+    static [$decoder] = decodeSchemaOperation;
 
     /**
      * Assign the property descriptors required to track changes on this instance.
@@ -180,3 +186,4 @@ export abstract class Schema {
 
 
 }
+

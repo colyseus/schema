@@ -1,12 +1,12 @@
 import type { Schema } from "../Schema";
 import { TypeContext } from "../annotations";
-import { $changes, $encoder, $filter, $isOwned } from "../types/symbols";
+import { $changes, $encoder, $isOwned } from "../types/symbols";
 
 import * as encode from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
 
-import { SWITCH_TO_STRUCTURE, TYPE_ID, OPERATION } from '../encoding/spec';
-import { ChangeOperation, ChangeTree, Root } from "./ChangeTree";
+import { SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
+import { Root } from "./ChangeTree";
 import { getNextPowerOf2 } from "../utils";
 import { StateView } from "./StateView";
 

@@ -2,7 +2,7 @@ import { Metadata } from "../Metadata";
 import { $changes } from "../types/symbols";
 import { Ref } from "../encoder/ChangeTree";
 import { spliceOne } from "../types/utils";
-import type { MapSchema } from "../types/MapSchema";
+import type { MapSchema } from "../types/custom/MapSchema";
 
 /**
  * Used for decoding only.

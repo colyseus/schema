@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec";
 import { $changes } from "../types/symbols";
-import { getType } from "../types/typeRegistry";
+import { getType } from "../types/registry";
 
 import * as encode from "../encoding/encode";
 import { EncodeSchemaError, assertInstanceType, assertType } from "../encoding/assert";
@@ -10,7 +10,6 @@ import type { Encoder } from "./Encoder";
 import type { Schema } from "../Schema";
 import type { PrimitiveType } from "../annotations";
 
-import { MapSchema } from "../types/MapSchema";
 import type { Iterator } from "../encoding/decode";
 
 export type EncodeOperation<T extends Ref = any> = (
@@ -153,7 +152,7 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     // encode "alias" for dynamic fields (maps)
     //
     if ((operation & OPERATION.ADD) == OPERATION.ADD) { // ADD or DELETE_AND_ADD
-        if (ref instanceof MapSchema) {
+        if (typeof(ref['set']) === "function") {
             //
             // MapSchema dynamic key
             //

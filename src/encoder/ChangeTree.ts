@@ -2,10 +2,10 @@ import { OPERATION } from "../encoding/spec";
 import { Schema } from "../Schema";
 import { $changes, $childType, $decoder, $encoder, $getByIndex } from "../types/symbols";
 
-import type { MapSchema } from "../types/MapSchema";
-import type { ArraySchema } from "../types/ArraySchema";
-import type { CollectionSchema } from "../types/CollectionSchema";
-import type { SetSchema } from "../types/SetSchema";
+import type { MapSchema } from "../types/custom/MapSchema";
+import type { ArraySchema } from "../types/custom/ArraySchema";
+import type { CollectionSchema } from "../types/custom/CollectionSchema";
+import type { SetSchema } from "../types/custom/SetSchema";
 
 import { Metadata } from "../Metadata";
 import type { EncodeOperation } from "./EncodeOperation";

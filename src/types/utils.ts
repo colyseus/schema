@@ -2,6 +2,9 @@ import { CollectionSchema, DataChange } from "..";
 import { OPERATION } from "../encoding/spec";
 import { $changes } from "./symbols";
 
+//
+// TODO: move this to "Decoder"
+//
 export function removeChildRefs(this: CollectionSchema, changes: DataChange[]) {
     const changeTree = this[$changes];
 

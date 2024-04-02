@@ -1,10 +1,12 @@
-import { removeChildRefs } from "./utils";
-import { ChangeTree } from "../encoder/ChangeTree";
-import { OPERATION } from "../encoding/spec";
-import { registerType } from "./typeRegistry";
-import { $changes, $childType, $deleteByIndex, $getByIndex } from "./symbols";
-import { DataChange } from "../decoder/DecodeOperation";
-import { Collection } from "./HelperTypes";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $getByIndex } from "../symbols";
+import { removeChildRefs } from "../utils";
+import { ChangeTree } from "../../encoder/ChangeTree";
+import { OPERATION } from "../../encoding/spec";
+import { registerType } from "../registry";
+import { Collection } from "../HelperTypes";
+
+import { decodeKeyValueOperation, DataChange } from "../../decoder/DecodeOperation";
+import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
 
 export function getMapProxy(value: MapSchema) {
     value['$proxy'] = true;
@@ -49,6 +51,9 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     protected $items: Map<K, V> = new Map<K, V>();
     protected $indexes: Map<number, K> = new Map<number, K>();
+
+    static [$encoder] = encodeKeyValueOperation;
+    static [$decoder] = decodeKeyValueOperation;
 
     static is(type: any) {
         return type['map'] !== undefined;

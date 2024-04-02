@@ -1,7 +1,7 @@
 import { getPropertyDescriptor, type DefinitionType } from "./annotations";
 
-import { ArraySchema } from "./types/ArraySchema";
-import { MapSchema } from "./types/MapSchema";
+import { ArraySchema } from "./types/custom/ArraySchema";
+import { MapSchema } from "./types/custom/MapSchema";
 
 export type MetadataField = {
     type: DefinitionType,
@@ -21,6 +21,10 @@ export type Metadata =
 export const Metadata = {
 
     addField(metadata: any, index: number, field: string, type: DefinitionType, descriptor?: PropertyDescriptor) {
+        if (index > 64) {
+            throw new Error(`Can't define field '${field}'.\nSchema instances may only have up to 64 fields.`);
+        }
+
         metadata[field] = Object.assign(
             metadata[field] || {}, // avoid overwriting previous field metadata (@owned / @deprecated)
             {

@@ -6,7 +6,7 @@ import { DataChange } from "../DecodeOperation";
 import { OPERATION } from "../../encoding/spec";
 import { DefinitionType } from "../../annotations";
 import { Schema } from "../../Schema";
-import type { ArraySchema } from "../../types/ArraySchema";
+import type { ArraySchema } from "../../types/custom/ArraySchema";
 
 //
 // Discussion: https://github.com/colyseus/schema/issues/155

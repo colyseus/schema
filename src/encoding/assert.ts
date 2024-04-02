@@ -1,8 +1,8 @@
 import { Schema } from "../Schema";
-import { CollectionSchema } from "../types/CollectionSchema";
-import { MapSchema } from "../types/MapSchema";
-import { SetSchema } from "../types/SetSchema";
-import { ArraySchema } from "../types/ArraySchema";
+import { CollectionSchema } from "../types/custom/CollectionSchema";
+import { MapSchema } from "../types/custom/MapSchema";
+import { SetSchema } from "../types/custom/SetSchema";
+import { ArraySchema } from "../types/custom/ArraySchema";
 
 export class EncodeSchemaError extends Error {}
 

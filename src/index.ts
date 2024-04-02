@@ -1,19 +1,22 @@
 export { Schema } from "./Schema";
 export type { DataChange } from "./decoder/DecodeOperation";
 
-import { MapSchema } from "./types/MapSchema"
+import { $track, $encoder, $decoder, $filter, $isOwned, $getByIndex, $deleteByIndex, $changes, $childType } from "./types/symbols";
+export { $track, $encoder, $decoder, $filter, $isOwned, $getByIndex, $deleteByIndex, $changes, $childType };
+
+import { MapSchema } from "./types/custom/MapSchema"
 export { MapSchema };
 
-import { ArraySchema } from "./types/ArraySchema";
+import { ArraySchema } from "./types/custom/ArraySchema";
 export { ArraySchema };
 
-import { CollectionSchema } from "./types/CollectionSchema";
+import { CollectionSchema } from "./types/custom/CollectionSchema";
 export { CollectionSchema };
 
-import { SetSchema } from "./types/SetSchema";
+import { SetSchema } from "./types/custom/SetSchema";
 export { SetSchema };
 
-import { registerType } from "./types/typeRegistry";
+import { registerType } from "./types/registry";
 export { registerType };
 
 registerType("map", { constructor: MapSchema });

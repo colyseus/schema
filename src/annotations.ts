@@ -1,7 +1,7 @@
 import "./symbol.shim";
 import { Schema } from './Schema';
-import { ArraySchema } from './types/ArraySchema';
-import { MapSchema, getMapProxy } from './types/MapSchema';
+import { ArraySchema } from './types/custom/ArraySchema';
+import { MapSchema, getMapProxy } from './types/custom/MapSchema';
 import { Metadata } from "./Metadata";
 import { $changes, $childType, $track } from "./types/symbols";
 
@@ -351,6 +351,9 @@ export function owned<T> (target: T, field: string) {
 }
 
 export function unreliable<T> (target: T, field: string) {
+    //
+    // FIXME: the following block of code is repeated across `@type()`, `@deprecated()` and `@unreliable()` decorators.
+    //
     const constructor = target.constructor as typeof Schema;
 
     const parentClass = Object.getPrototypeOf(constructor);
@@ -520,20 +523,38 @@ export function getPropertyDescriptor(fieldCached: string, fieldIndex: number, t
  */
 
 export function deprecated(throws: boolean = true): PropertyDecorator {
-    return function (target: typeof Schema, field: string) {
-        const constructor = target.constructor as typeof Schema;
-        // const definition = constructor._definition;
+    return function (klass: typeof Schema, field: string) {
+        //
+        // FIXME: the following block of code is repeated across `@type()`, `@deprecated()` and `@unreliable()` decorators.
+        //
+        const constructor = klass.constructor as typeof Schema;
 
-        // definition.deprecated[field] = true;
+        const parentClass = Object.getPrototypeOf(constructor);
+        const parentMetadata = parentClass[Symbol.metadata];
+        const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
 
-        // if (throws) {
-        //     definition.descriptors[field] = {
-        //         get: function () { throw new Error(`${field} is deprecated.`); },
-        //         set: function (this: Schema, value: any) { /* throw new Error(`${field} is deprecated.`); */ },
-        //         enumerable: false,
-        //         configurable: true
-        //     };
-        // }
+        if (!metadata[field]) {
+            //
+            // detect index for this field, considering inheritance
+            //
+            metadata[field] = {
+                type: undefined,
+                index: (metadata[-1] // current structure already has fields defined
+                    ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
+                    ?? -1) + 1 // no fields defined
+            }
+        }
+
+        metadata[field].deprecated = true;
+
+        if (throws) {
+            metadata[field].descriptor = {
+                get: function () { throw new Error(`${field} is deprecated.`); },
+                set: function (this: Schema, value: any) { /* throw new Error(`${field} is deprecated.`); */ },
+                enumerable: false,
+                configurable: true
+            }
+        }
     }
 }
 

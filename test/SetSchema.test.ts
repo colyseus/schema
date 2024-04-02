@@ -1,6 +1,7 @@
 import * as assert from "assert";
 
 import { Schema, type, SetSchema } from "../src";
+import "./Schema";
 
 describe("SetSchema Tests", () => {
 

@@ -5,8 +5,8 @@ import { owned, type } from "./annotations";
 // import { Reflection, ReflectionField, ReflectionType } from "./Reflection";
 
 import { Schema } from "./Schema";
-import { ArraySchema } from "./types/ArraySchema";
-import { MapSchema } from "./types/MapSchema";
+import { ArraySchema } from "./types/custom/ArraySchema";
+import { MapSchema } from "./types/custom/MapSchema";
 
 import { Encoder } from "./encoder/Encoder";
 import { Decoder } from "./decoder/Decoder";
