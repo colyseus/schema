@@ -86,6 +86,8 @@ export class Encoder<T extends Schema = any> {
                 encoder(this, bytes, changeTree, fieldIndex, operation, it);
             }
 
+            // clear changes after encoding
+            changeTree.changes.clear();
         }
 
         if (it.offset > bytes.byteLength) {

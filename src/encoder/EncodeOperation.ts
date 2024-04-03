@@ -166,13 +166,8 @@ export const encodeKeyValueOperation: EncodeOperation = function (
         }
     }
 
+    // Do not encode value for DELETE operations
     if (operation === OPERATION.DELETE) {
-        //
-        // TODO: delete from filter cache data.
-        //
-        // if (useFilters) {
-        //     delete changeTree.caches[fieldIndex];
-        // }
         return;
     }
 

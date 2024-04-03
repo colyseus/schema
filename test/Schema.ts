@@ -1,4 +1,4 @@
-import { Schema, type, ArraySchema, MapSchema } from "../src";
+import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator } from "../src";
 import { Decoder } from "../src/decoder/Decoder";
 import { Encoder } from "../src/encoder/Encoder";
 import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
@@ -7,7 +7,7 @@ import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 // (workaround to keep tests working while we don't migrate the tests to the new API)
 declare module "../src/Schema" {
   interface Schema {
-    encode(): Buffer;
+    encode(it?: Iterator): Buffer;
     encodeAll(): Buffer;
     decode(bytes: Buffer): void;
   }
@@ -27,8 +27,15 @@ export function getEncoder(state: Schema) {
     return state['_encoder'] as Encoder;
 }
 
-Schema.prototype.encode = function() {
-    return (getEncoder(this)).encode();
+export function createInstanceFromReflection<T extends Schema>(state: T) {
+    return Reflection.decode<T>(Reflection.encode(state, getEncoder(state).context))
+}
+
+Schema.prototype.encode = function(it: Iterator) {
+    const encoder = getEncoder(this);
+    const bytes = encoder.encode(it);
+    encoder.discardChanges();
+    return bytes;
 }
 
 Schema.prototype.decode = function(bytes: Buffer) {

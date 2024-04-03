@@ -1,11 +1,10 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
-import * as util from "util";
 
-import { State, Player, getCallbacks } from "./Schema";
-import { MapSchema, type, Schema, ArraySchema } from "../src";
+import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
+import { MapSchema, type, Schema, ArraySchema, Reflection } from "../src";
 
-describe("MapSchema Tests", () => {
+describe("Type: MapSchema", () => {
 
     describe("Internals", () => {
         it("Symbol.species", () => {
@@ -236,38 +235,38 @@ describe("MapSchema Tests", () => {
     it("should allow to remove and set an item in the same place", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>();
-        state.mapOfPlayers['one'] = new Player("Jake");
-        state.mapOfPlayers['two'] = new Player("Katarina");
+        state.mapOfPlayers.set('one', new Player("Jake"));
+        state.mapOfPlayers.set('two', new Player("Katarina"));
 
         const decodedState = new State();
 
         let encoded = state.encode();
         decodedState.decode(encoded);
 
-        assert.strictEqual(decodedState.mapOfPlayers['one'].name, "Jake");
-        assert.strictEqual(decodedState.mapOfPlayers['two'].name, "Katarina");
+        assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake");
+        assert.strictEqual(decodedState.mapOfPlayers.get('two').name, "Katarina");
 
         state.discardAllChanges();
 
         delete state.mapOfPlayers['one'];
-        state.mapOfPlayers['one'] = new Player("Jake 2");
+        state.mapOfPlayers.set('one', new Player("Jake 2"));
 
         encoded = state.encode();
         decodedState.decode(encoded);
 
         state.discardAllChanges();
 
-        assert.strictEqual(decodedState.mapOfPlayers['one'].name, "Jake 2");
-        assert.strictEqual(decodedState.mapOfPlayers['two'].name, "Katarina");
+        assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake 2");
+        assert.strictEqual(decodedState.mapOfPlayers.get('two').name, "Katarina");
 
         delete state.mapOfPlayers['two'];
-        state.mapOfPlayers['two'] = new Player("Katarina 2");
+        state.mapOfPlayers.set('two', new Player("Katarina 2"));
 
         encoded = state.encode();
         decodedState.decode(encoded);
 
-        assert.strictEqual(decodedState.mapOfPlayers['one'].name, "Jake 2");
-        assert.strictEqual(decodedState.mapOfPlayers['two'].name, "Katarina 2");
+        assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake 2");
+        assert.strictEqual(decodedState.mapOfPlayers.get('two').name, "Katarina 2");
     });
 
     it("removing a non-existing item should not remove anything", () => {
@@ -297,14 +296,14 @@ describe("MapSchema Tests", () => {
         }
 
         const state = new State();
-        state.mapOfPlayers['one'] = new Player();
-        state.mapOfPlayers['one'].mapOfNumbers['2'] = 2;
-        state.mapOfPlayers['one'].mapOfNumbers['3'] = 3;
+        state.mapOfPlayers.set('one', new Player());
+        state.mapOfPlayers.get('one').mapOfNumbers.set('2', 2);
+        state.mapOfPlayers.get('one').mapOfNumbers.set('3', 3);
 
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        assert.deepEqual(decodedState.toJSON(), {
+        assert.deepStrictEqual(decodedState.toJSON(), {
             mapOfPlayers: {
                 one: {
                     mapOfNumbers: { 2: 2, 3: 3 }
@@ -316,17 +315,17 @@ describe("MapSchema Tests", () => {
     it("removing items should have as very few bytes", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>();
-        state.mapOfPlayers['one'] = new Player("Jake");
-        state.mapOfPlayers['two'] = new Player("Katarina");
-        state.mapOfPlayers['three'] = new Player("Tarquinn");
-        state.mapOfPlayers['four'] = new Player("Snake");
+        state.mapOfPlayers.set('one', new Player("Jake"));
+        state.mapOfPlayers.set('two', new Player("Katarina"));
+        state.mapOfPlayers.set('three', new Player("Tarquinn"));
+        state.mapOfPlayers.set('four', new Player("Snake"));
 
         state.encode();
 
-        delete state.mapOfPlayers['one'];
-        delete state.mapOfPlayers['two'];
-        delete state.mapOfPlayers['three'];
-        delete state.mapOfPlayers['four'];
+        state.mapOfPlayers.delete('one');
+        state.mapOfPlayers.delete('two');
+        state.mapOfPlayers.delete('three');
+        state.mapOfPlayers.delete('four');
 
         const encoded = state.encode();
 
@@ -337,15 +336,17 @@ describe("MapSchema Tests", () => {
     it("should not encode item if added and removed at the same patch", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>();
-        state.mapOfPlayers['one'] = new Player("Jake", 10, 10);
+        state.mapOfPlayers.set('one', new Player("Jake", 10, 10));
 
+        // const decodedState = createInstanceFromReflection(state);
         const decodedState = new State();
         const $ = getCallbacks(decodedState).$;
-        decodedState.mapOfPlayers = new MapSchema<Player>();
 
-        const onRemoveSpy = sinon.spy(function(item, key) {});
-        $(decodedState).mapOfPlayers.onRemove(onRemoveSpy);
-        $(decodedState).mapOfPlayers.onAdd((item, key) => {});
+        let onRemoveCalls = 0;
+        let onAddCalls = 0;
+
+        $(decodedState).mapOfPlayers.onRemove(() => onRemoveCalls++);
+        $(decodedState).mapOfPlayers.onAdd(() => onAddCalls++);
 
         decodedState.decode(state.encode());
 
@@ -353,7 +354,11 @@ describe("MapSchema Tests", () => {
         state.mapOfPlayers.set('two', new Player("Snake", 10, 10));
         state.mapOfPlayers.delete('two');
 
+        console.log("pending changes:", getEncoder(state).$root.changes);
+
         const patchBytes = state.encode();
+
+        console.log({ patchBytes: [...patchBytes] });
 
         //
         // TODO: improve me! `DELETE` operation should not be encoded here.
@@ -362,13 +367,16 @@ describe("MapSchema Tests", () => {
         //
 
         decodedState.decode(patchBytes);
-        sinon.assert.notCalled(onRemoveSpy);
+        assert.strictEqual(0, onRemoveCalls);
 
         state.mapOfPlayers.get('one').x++;
         state.mapOfPlayers.delete('one');
 
         decodedState.decode(state.encode());
-        sinon.assert.calledOnce(onRemoveSpy);
+
+        console.log({ onRemoveCalls, onAddCalls })
+
+        assert.strictEqual(1, onRemoveCalls);
     });
 
     it("re-assignments should be ignored", () => {
@@ -394,10 +402,6 @@ describe("MapSchema Tests", () => {
             @type("string") name: string;
             @type('uint16') age:number;
             @type("string") next: string;
-            constructor(id:string){
-                super()
-                this.id = id;
-            }
         }
 
         class State extends Schema {
@@ -407,15 +411,15 @@ describe("MapSchema Tests", () => {
         const state = new State();
         const decodeState = new State()
 
-        const playerOne = new Player("76355");
-        state.players[playerOne.id] = playerOne;
+        const playerOne = new Player().assign({id: "76355"});
+        state.players.set(playerOne.id, playerOne);
         playerOne.name = "Player One!";
         playerOne.age = 100;
         playerOne.next = playerOne.id;//1->1;
         decodeState.decode(state.encode());
 
         const playerTwo = new Player("8848");
-        state.players[playerTwo.id] = playerTwo
+        state.players.set(playerTwo.id, playerTwo);
         playerTwo.name = "Player Two!";
         playerTwo.age = 200;
         playerOne.next = playerTwo.id;//1->2;
@@ -431,9 +435,9 @@ describe("MapSchema Tests", () => {
         playerThree.next = playerOne.id;//3->1
         decodeState.decode(state.encode());
 
-        assert.strictEqual(decodeState.players['76355'].next,'8848');//1->2
-        assert.strictEqual(decodeState.players['8848'].next,'8658');//2->3
-        assert.strictEqual(decodeState.players['8658'].next,'76355')//3->1
+        assert.strictEqual(decodeState.players.get('76355').next,'8848');//1->2
+        assert.strictEqual(decodeState.players.get('8848').next,'8658');//2->3
+        assert.strictEqual(decodeState.players.get('8658').next,'76355')//3->1
         done();
     });
 
@@ -455,8 +459,8 @@ describe("MapSchema Tests", () => {
             values.push(num);
         }
 
-        assert.deepEqual(['one', 'two', 'three', 'four', 'five'], keys);
-        assert.deepEqual([1, 2, 3, 4, 5], values);
+        assert.deepStrictEqual(['one', 'two', 'three', 'four', 'five'], keys);
+        assert.deepStrictEqual([1, 2, 3, 4, 5], values);
     });
 
     it("should allow adding and removing same key multiple times", () => {
@@ -570,7 +574,7 @@ describe("MapSchema Tests", () => {
 
         decodedState.decode(state.encode());
 
-        assert.deepEqual({
+        assert.deepStrictEqual({
             entities: {
                 item1: { id: 1, damage: 10 },
                 item2: { id: 2, damage: 20 },
