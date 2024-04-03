@@ -6,9 +6,9 @@ import type { Decoder } from "./Decoder";
 import * as decode from "../encoding/decode";
 import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
 
-import { ArraySchema } from "../types/custom/ArraySchema";
-import { CollectionSchema } from "../types/custom/CollectionSchema";
-import { SetSchema } from "../types/custom/SetSchema";
+import type { ArraySchema } from "../types/custom/ArraySchema";
+import type { CollectionSchema } from "../types/custom/CollectionSchema";
+import type { SetSchema } from "../types/custom/SetSchema";
 
 import { getType } from "../types/registry";
 // import { Callback } from "./ReferenceTracker";
@@ -235,25 +235,16 @@ export const decodeKeyValueOperation: DecodeOperation = function (
 
     if (value !== null && value !== undefined) {
         if (typeof(ref['set']) === "function") {
-            // const key = ref['$indexes'].get(field);
-            const key = dynamicIndex as string;
+            ref['$items'].set(dynamicIndex as string, value);
 
-            // ref.set(key, value);
-            ref['$items'].set(key, value);
+        } else if (typeof(ref['setAt']) === "function") {
+            (ref as ArraySchema).setAt(index, value);
 
-        } else if (ref instanceof ArraySchema) {
-            // const key = ref['$indexes'][field];
-            // console.log("SETTING FOR ArraySchema =>", { field, key, value });
-            // ref[key] = value;
-            ref.setAt(index, value);
+        } else if (typeof(ref['add']) === "function") {
+            const index = (ref as CollectionSchema).add(value);
 
-        } else if (ref instanceof CollectionSchema) {
-            const index = ref.add(value);
-            ref['setIndex'](index, index);
-
-        } else if (ref instanceof SetSchema) {
-            const index = ref.add(value);
-            if (index !== false) {
+            // if (index !== false) { // (SetSchema)
+            if (typeof(index) === "number") {
                 ref['setIndex'](index, index);
             }
         }

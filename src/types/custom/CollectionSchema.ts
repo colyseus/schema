@@ -1,26 +1,30 @@
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $getByIndex } from "../symbols";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { removeChildRefs } from "../utils";
 import { registerType } from "../registry";
-import { $changes, $childType, $deleteByIndex, $getByIndex } from "../symbols";
-import { DataChange } from "../../decoder/DecodeOperation";
 import { Collection } from "../HelperTypes";
+import { decodeKeyValueOperation, DataChange,  } from "../../decoder/DecodeOperation";
+import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
 export class CollectionSchema<V=any> implements Collection<K, V>{
-    protected $changes: ChangeTree = new ChangeTree(this);
-
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
 
     protected $refId: number = 0;
+
+    static [$encoder] = encodeKeyValueOperation;
+    static [$decoder] = decodeKeyValueOperation;
 
     static is(type: any) {
         return type['collection'] !== undefined;
     }
 
     constructor (initialValues?: Array<V>) {
+        this[$changes] = new ChangeTree(this);
+
         if (initialValues) {
             initialValues.forEach((v) => this.add(v));
         }
@@ -39,15 +43,15 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
 
         const isRef = (value[$changes]) !== undefined;
         if (isRef) {
-            value[$changes].setParent(this, this.$changes.root, index);
+            value[$changes].setParent(this, this[$changes].root, index);
         }
 
-        this.$changes.indexes[index] = index;
+        this[$changes].indexes[index] = index;
 
         this.$indexes.set(index, index);
         this.$items.set(index, value);
 
-        this.$changes.change(index);
+        this[$changes].change(index);
 
         return index;
     }
@@ -79,7 +83,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
             return false;
         }
 
-        this.$changes.delete(index);
+        this[$changes].delete(index);
         this.$indexes.delete(index);
 
         return this.$items.delete(index);
@@ -87,8 +91,8 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
 
     clear(changes?: DataChange[]) {
         // discard previous operations.
-        this.$changes.discard(true, true);
-        this.$changes.indexes = {};
+        this[$changes].discard(true, true);
+        this[$changes].indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
@@ -106,10 +110,10 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
         this.$items.clear();
 
         // @ts-ignore
-        this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
+        this[$changes].operation({ index: 0, op: OPERATION.CLEAR });
 
         // // touch all structures until reach root
-        // this.$changes.touchParents();
+        // this[$changes].touchParents();
     }
 
     has (value: V): boolean {
@@ -183,7 +187,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
             // server-side
             cloned = new CollectionSchema();
             this.forEach((value) => {
-                if (value['$changes']) {
+                if (value[$changes]) {
                     cloned.add(value['clone']());
                 } else {
                     cloned.add(value);

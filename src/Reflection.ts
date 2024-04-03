@@ -5,7 +5,6 @@ import { Iterator } from "./encoding/decode";
 import { Encoder } from "./encoder/Encoder";
 import { Decoder } from "./decoder/Decoder";
 import { Schema } from "./Schema";
-import { $changes } from "./types/symbols";
 
 /**
  * Reflection
@@ -31,9 +30,7 @@ export class Reflection extends Schema {
         }
 
         const reflection = new Reflection();
-        const encoder =  new Encoder(reflection);
-
-        // reflection[$changes].ensureRefId();
+        const encoder = new Encoder(reflection);
 
         const buildType = (currentType: ReflectionType, metadata: Metadata) => {
             for (const fieldName in metadata) {

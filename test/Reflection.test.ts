@@ -28,15 +28,12 @@ export class State extends Schema {
 describe("Reflection", () => {
 
     it("should allow to encode and decode empty structures", () => {
-        class Empty extends Schema {}
-        const state = new Empty();
+        class EmptyState extends Schema {}
+        const state = new EmptyState();
 
-        assert.doesNotThrow(() => {
-            const reflected = new Reflection();
-            reflected.decode(Reflection.encode(state));
-
-            assert.strictEqual(reflected.types.length, 0);
-        });
+        const reflected = new Reflection();
+        reflected.decode(Reflection.encode(state));
+        assert.strictEqual(reflected.types.length, 1);
     });
 
     it("should encode schema definitions", () => {
@@ -137,15 +134,15 @@ describe("Reflection", () => {
 
     it("should reflect map of primitive type", () => {
         class MyState extends Schema {
-            @type({map: "string"})
+            @type({ map: "string" })
             mapOfStrings: MapSchema<string> = new MapSchema();
         }
 
         const state = new MyState();
         const decodedState = Reflection.decode<MyState>(Reflection.encode(state));
 
-        state.mapOfStrings['one'] = "one";
-        state.mapOfStrings['two'] = "two";
+        state.mapOfStrings.set('one', "one");
+        state.mapOfStrings.set('two', "two");
         decodedState.decode(state.encode());
 
         assert.strictEqual(JSON.stringify(decodedState), '{"mapOfStrings":{"one":"one","two":"two"}}');

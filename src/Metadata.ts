@@ -1,7 +1,5 @@
 import { getPropertyDescriptor, type DefinitionType } from "./annotations";
-
-import { ArraySchema } from "./types/custom/ArraySchema";
-import { MapSchema } from "./types/custom/MapSchema";
+import { getType } from "./types/registry";
 
 export type MetadataField = {
     type: DefinitionType,
@@ -67,15 +65,17 @@ export const Metadata = {
         for (const field in fields) {
             const type = fields[field];
 
-            const isArray = ArraySchema.is(type);
-            const isMap = !isArray && MapSchema.is(type);
+            // FIXME: this code is duplicated from @type() annotation
+            const complexTypeKlass = (Array.isArray(type))
+                ? getType("array")
+                : (typeof(Object.keys(type)[0]) === "string") && getType(Object.keys(type)[0]);
 
             Metadata.addField(
                 metadata,
                 index,
                 field,
                 type,
-                getPropertyDescriptor(`_${field}`, index, type, isArray, isMap, metadata, field)
+                getPropertyDescriptor(`_${field}`, index, type, complexTypeKlass, metadata, field)
             );
 
             index++;

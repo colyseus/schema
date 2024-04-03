@@ -1,9 +1,10 @@
 import "./symbol.shim";
 import { Schema } from './Schema';
 import { ArraySchema } from './types/custom/ArraySchema';
-import { MapSchema, getMapProxy } from './types/custom/MapSchema';
+import { MapSchema } from './types/custom/MapSchema';
 import { Metadata } from "./Metadata";
 import { $changes, $childType, $track } from "./types/symbols";
+import { TypeDefinition, getType } from "./types/registry";
 
 /**
  * Data types
@@ -63,8 +64,6 @@ export class TypeContext {
     }
 
     constructor(rootClass?: typeof Schema) {
-        // console.log("new TypeContext.........");
-
         if (rootClass) {
             this.discoverTypes(rootClass);
         }
@@ -438,22 +437,32 @@ export function type (
             });
 
         } else {
-            const isArray = ArraySchema.is(type);
-            const isMap = !isArray && MapSchema.is(type);
-            Metadata.addField(metadata, fieldIndex, field, type, getPropertyDescriptor(`_${field}`, fieldIndex, type, isArray, isMap, metadata, field));
+            const complexTypeKlass = (Array.isArray(type))
+                ? getType("array")
+                : (typeof(Object.keys(type)[0]) === "string") && getType(Object.keys(type)[0]);
+
+            Metadata.addField(
+                metadata,
+                fieldIndex,
+                field,
+                type,
+                getPropertyDescriptor(`_${field}`, fieldIndex, type, complexTypeKlass, metadata, field)
+            );
         }
     }
 }
 
-export function getPropertyDescriptor(fieldCached: string, fieldIndex: number, type: DefinitionType, isArray: boolean, isMap: boolean, metadata: Metadata, field: string) {
+export function getPropertyDescriptor(
+    fieldCached: string,
+    fieldIndex: number,
+    type: DefinitionType,
+    complexTypeKlass: TypeDefinition,
+    metadata: Metadata,
+    field: string,
+) {
     return {
         get: function () { return this[fieldCached]; },
-
         set: function (this: Schema, value: any) {
-            /**
-             * Create Proxy for array or map items
-             */
-
             // skip if value is the same as cached.
             if (value === this[fieldCached]) {
                 return;
@@ -463,27 +472,18 @@ export function getPropertyDescriptor(fieldCached: string, fieldIndex: number, t
                 value !== undefined &&
                 value !== null
             ) {
-                // automaticallty transform Array into ArraySchema
-                if (isArray) {
-                    if (!(value instanceof ArraySchema)) {
+                if (complexTypeKlass) {
+                    // automaticallty transform Array into ArraySchema
+                    if (complexTypeKlass.constructor === ArraySchema && !(value instanceof ArraySchema)) {
                         value = new ArraySchema(...value);
                     }
-                    value[$childType] = Object.values(type)[0];
-                }
 
-                // automaticallty transform Map into MapSchema
-                if (isMap) {
-                    if (!(value instanceof MapSchema)) {
+                    // automaticallty transform Map into MapSchema
+                    if (complexTypeKlass.constructor === MapSchema && !(value instanceof MapSchema)) {
                         value = new MapSchema(value);
                     }
-                    value[$childType] = Object.values(type)[0];
-                }
 
-                // try to turn provided structure into a Proxy
-                if (value['$proxy'] === undefined) {
-                    if (isMap) {
-                        value = getMapProxy(value);
-                    }
+                    value[$childType] = Object.values(type)[0];
                 }
 
                 // flag the change for encoding.

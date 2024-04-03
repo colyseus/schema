@@ -8,44 +8,6 @@ import { Collection } from "../HelperTypes";
 import { decodeKeyValueOperation, DataChange } from "../../decoder/DecodeOperation";
 import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
 
-export function getMapProxy(value: MapSchema) {
-    value['$proxy'] = true;
-
-    value = new Proxy(value, {
-        get: (obj, prop) => {
-            if (
-                typeof (prop) !== "symbol" && // accessing properties
-                typeof (obj[prop]) === "undefined"
-            ) {
-                return obj.get(prop as string);
-
-            } else {
-                return obj[prop];
-            }
-        },
-
-        set: (obj, prop, setValue) => {
-            if (
-                typeof (prop) !== "symbol" &&
-                (prop as string).indexOf("$") === -1
-            ) {
-                obj.set(prop as string, setValue);
-
-            } else {
-                obj[prop] = setValue;
-            }
-            return true;
-        },
-
-        deleteProperty: (obj, prop) => {
-            obj.delete(prop as string);
-            return true;
-        },
-    });
-
-    return value;
-}
-
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]> {
     protected childType: new () => V;
 
