@@ -77,9 +77,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                         obj.setAt(key, setValue);
                     }
 
+                    return true;
                 } else {
                     return Reflect.set(obj, prop, setValue);
-                    // obj[prop] = setValue;
                 }
             },
 

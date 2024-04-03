@@ -119,6 +119,11 @@ export const encodeSchemaOperation: EncodeOperation = function (
     //     value[$changes].ensureRefId();
     // }
 
+    // Do not encode value for DELETE operations
+    if (operation === OPERATION.DELETE) {
+        return;
+    }
+
     // TODO: inline this function call small performance gain
     encodeValue(encoder, bytes, ref, type, value, field, operation, it);
 }

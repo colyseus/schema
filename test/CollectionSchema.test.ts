@@ -2,7 +2,7 @@ import * as assert from "assert";
 
 import { Schema, type, CollectionSchema } from "../src";
 
-describe("CollectionSchema Tests", () => {
+describe("CollectionSchema", () => {
 
     it("add() primitive values", () => {
         class State extends Schema {
@@ -132,128 +132,6 @@ describe("CollectionSchema Tests", () => {
 
         assert.strictEqual(0, decoded.players.size);
     });
-
-    /*
-    it("@filter() should filter out Collection field entirely", () => {
-        class Player extends Schema {
-            @type("number") level: number;
-        }
-
-        class State extends Schema {
-            @filter(function(client: ClientWithSessionId, value, root) {
-                return client.sessionId === "one";
-            })
-            @type({ collection: Player })
-            players = new CollectionSchema<Player>();
-        }
-
-        const state = new State();
-        state.players.add(new Player().assign({ level: 1 }));
-        state.players.add(new Player().assign({ level: 2 }));
-
-        const client1 = { sessionId: "one" };
-        const decoded1 = new State();
-
-        const client2 = { sessionId: "two" };
-        const decoded2 = new State();
-
-        state.encodeAll(true);
-        decoded1.decode(state.applyFilters(client1, true));
-        decoded2.decode(state.applyFilters(client2, true));
-        state.discardAllChanges();
-
-        assert.strictEqual(2, decoded1.players.size);
-        assert.strictEqual(0, decoded2.players.size);
-    });
-
-    it("@filterChildren() should filter out schema instances", () => {
-        class Player extends Schema {
-            @type("number") level: number;
-        }
-
-        class State extends Schema {
-            @filterChildren(function (client: ClientWithSessionId, key: number, value: Player) {
-                if (client.sessionId === "one") {
-                    return key % 2 === 0;
-                } else {
-                    return key % 2 === 1;
-                }
-            })
-            @type({ collection: Player })
-            players = new CollectionSchema<Player>();
-        }
-
-        const state = new State();
-        state.players.add(new Player().assign({ level: 1 }));
-        state.players.add(new Player().assign({ level: 2 }));
-
-        const client1 = { sessionId: "one" };
-        const client2 = { sessionId: "two" };
-
-        let encoded = state.encode(undefined, undefined, true);
-
-        const filtered1 = state.applyFilters(client1);
-        const filtered2 = state.applyFilters(client2);
-
-        const decoded1 = new State();
-        decoded1.decode(filtered1)
-
-        const decoded2 = new State();
-        decoded2.decode(filtered2);
-
-        assert.strictEqual(1, decoded1.players.size);
-        assert.strictEqual(1, decoded1.players.at(0).level);
-
-        assert.strictEqual(1, decoded2.players.size);
-        assert.strictEqual(2, decoded2.players.at(0).level);
-    });
-
-    it("@filterChildren() should filter out primitive values", () => {
-        class State extends Schema {
-            @filterChildren(function (client: ClientWithSessionId, key: number, value: number) {
-                if (client.sessionId === "one") {
-                    return value % 2 === 0;
-                } else {
-                    return value % 2 === 1;
-                }
-            })
-            @type({ collection: "number" })
-            numbers = new CollectionSchema<number>();
-        }
-
-        const state = new State();
-        state.numbers.add(0);
-        state.numbers.add(1);
-        state.numbers.add(2);
-        state.numbers.add(3);
-        state.numbers.add(4);
-        state.numbers.add(5);
-        state.numbers.add(6);
-        state.numbers.add(7);
-        state.numbers.add(8);
-        state.numbers.add(9);
-
-        const client1 = { sessionId: "one" };
-        const client2 = { sessionId: "two" };
-
-        let encoded = state.encode(undefined, undefined, true);
-
-        const filtered1 = state.applyFilters(client1);
-        const filtered2 = state.applyFilters(client2);
-
-        const decoded1 = new State();
-        decoded1.decode(filtered1)
-
-        const decoded2 = new State();
-        decoded2.decode(filtered2);
-
-        assert.strictEqual(5, decoded1.numbers.size);
-        assert.deepEqual([0, 2, 4, 6, 8], decoded1.numbers.toArray());
-
-        assert.strictEqual(5, decoded2.numbers.size);
-        assert.deepEqual([1, 3, 5, 7, 9], decoded2.numbers.toArray());
-    });
-    */
 
     it("CollectionSchema.toJSON", () => {
         const collection = new CollectionSchema<number>();

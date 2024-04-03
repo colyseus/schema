@@ -42,11 +42,11 @@ export class ReferenceTracker {
     removeRef(refId: number) {
         const refCount = this.refCounts[refId];
         if (refCount === undefined) {
-            console.warn(`trying to remove reference ${refId} that doesn't exist`);
+            console.warn(`trying to remove refId '${refId}' that doesn't exist`);
             return;
         }
         if (refCount === 0) {
-            console.warn(`trying to remove reference ${refId} with 0 refCount`);
+            console.warn(`trying to remove refId '${refId}' with 0 refCount`);
             return;
         }
 

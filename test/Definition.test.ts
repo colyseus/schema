@@ -22,11 +22,11 @@ describe("Definition Tests", () => {
         }
 
         const obj = new MySchema();
-        obj.players['one'] = new Player();
+        obj.players.set('one', new Player());
 
-        assert.deepEqual(Object.keys(obj), ['str', 'players', 'notSynched']);
-        assert.deepEqual(Array.from(obj.players.keys()), ['one']);
-        assert.deepEqual(Object.keys(obj.players['one']), ['x', 'y', 'somethingPrivate']);
+        assert.deepStrictEqual(Object.keys(obj), ['str', 'players', 'notSynched']);
+        assert.deepStrictEqual(Array.from(obj.players.keys()), ['one']);
+        assert.deepStrictEqual(Object.keys(obj.players.get('one')), ['x', 'y', 'somethingPrivate']);
     });
 
     it("should allow a Schema instance with no fields", () => {

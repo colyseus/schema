@@ -134,9 +134,12 @@ export class TypeContext {
 
             } else {
                 const type = Object.values(fieldType)[0];
-                if (type === "string") {
+
+                // skip primitive types
+                if (typeof(type) === "string") {
                     continue;
                 }
+
                 this.discoverTypes(type as typeof Schema);
             }
         }
@@ -463,6 +466,7 @@ export function getPropertyDescriptor(
     return {
         get: function () { return this[fieldCached]; },
         set: function (this: Schema, value: any) {
+
             // skip if value is the same as cached.
             if (value === this[fieldCached]) {
                 return;
@@ -502,11 +506,11 @@ export function getPropertyDescriptor(
                     );
                 }
 
-            } else if (this[fieldCached]) {
+            } else if (this[fieldCached] !== undefined) {
                 //
                 // Setting a field to `null` or `undefined` will delete it.
                 //
-                this[$changes].delete(field);
+                this[$changes].delete(fieldIndex);
             }
 
             this[fieldCached] = value;

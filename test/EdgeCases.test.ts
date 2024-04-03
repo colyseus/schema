@@ -159,7 +159,8 @@ describe("Edge cases", () => {
             state.mapOfNum.set(i.toString(), i * 100);
         }
 
-        assert.doesNotThrow(() => decodedState.decode(state.encode()));
+        // Should not throw
+        decodedState.decode(state.encode());
 
         //
         // FIXME: this should not throw an error.
@@ -281,7 +282,7 @@ describe("Edge cases", () => {
         function mutateRandom() {
             const keys = Array.from(state.tiles.keys());
             const randTile = keys[Math.floor(Math.random() * keys.length)];
-            state.tiles[randTile].status.state = Math.random().toString();
+            state.tiles.get(randTile).status.state = Math.random().toString();
         }
 
         function addTiles(tiles: MapTileSchema[]) {
@@ -323,6 +324,7 @@ describe("Edge cases", () => {
 
             const state = new State();
             const decodedState = new State();
+            // const decodedState = Reflection.decode<State>(Reflection.encode(state))
 
             const $ = getCallbacks(decodedState).$;
 
@@ -394,11 +396,11 @@ describe("Edge cases", () => {
                         }
                     }
 
-                    onAddCalledFor.sort((a,b) => parseInt(a.substr(4)) - parseInt(b.substr(4)));
-                    onRemovedCalledFor.sort((a,b) => parseInt(a.substr(4)) - parseInt(b.substr(4)));
+                    onAddCalledFor.sort((a,b) => parseInt(a.substring(4)) - parseInt(b.substring(4)));
+                    onRemovedCalledFor.sort((a,b) => parseInt(a.substring(4)) - parseInt(b.substring(4)));
 
-                    assert.deepEqual(expectedOnAdd, onAddCalledFor);
-                    assert.deepEqual(expectedOnRemove, onRemovedCalledFor);
+                    assert.deepStrictEqual(expectedOnAdd, onAddCalledFor);
+                    assert.deepStrictEqual(expectedOnRemove, onRemovedCalledFor);
 
                     assert.strictEqual(60, decodedState.entities.size);
                     done();

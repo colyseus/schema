@@ -228,11 +228,9 @@ export class ChangeTree<T extends Ref=any> {
         return this.ref[$getByIndex](index);
     }
 
-    delete(fieldName: string | number) {
-        const index = this.indexes[fieldName];
-
+    delete(index: number) {
         if (index === undefined) {
-            console.warn(`@colyseus/schema ${this.ref.constructor.name}: trying to delete non-existing index: ${fieldName} (${index})`);
+            console.warn(`@colyseus/schema ${this.ref.constructor.name}: trying to delete non-existing index '${index}'`);
             return;
         }
 
@@ -245,7 +243,18 @@ export class ChangeTree<T extends Ref=any> {
         // remove `root` reference
         if (previousValue && previousValue[$changes]) {
             previousValue[$changes].parent = undefined;
-            this.root.remove(previousValue[$changes]);
+
+            //
+            // FIXME: this.root is "undefined"
+            //
+            // This method is being called at decoding time when a DELETE operation is found.
+            //
+            // - This is due to using the concrete Schema class at decoding time.
+            // - "Reflected" structures do not have this problem.
+            //
+            // (the property descriptors should NOT be used at decoding time. only at encoding time.)
+            //
+            this.root?.remove(previousValue[$changes]);
         }
     }
 

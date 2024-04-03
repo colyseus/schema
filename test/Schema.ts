@@ -18,16 +18,12 @@ export function getCallbacks(state: Schema) {
 }
 
 export function getDecoder(state: Schema) {
-    if (!state['_decoder']) {
-        state['_decoder'] = new Decoder(state);
-    }
+    if (!state['_decoder']) { state['_decoder'] = new Decoder(state); }
     return state['_decoder'] as Decoder;
 }
 
 export function getEncoder(state: Schema) {
-    if (!state['_encoder']) {
-        state['_encoder'] = new Encoder(state);
-    }
+    if (!state['_encoder']) { state['_encoder'] = new Encoder(state); }
     return state['_encoder'] as Encoder;
 }
 
@@ -40,9 +36,7 @@ Schema.prototype.decode = function(bytes: Buffer) {
 }
 
 Schema.prototype.encodeAll = function() {
-    this['_encoder'] ??= new Encoder(this);
-    const encoder: Encoder = this['_encoder'];
-    return encoder.encodeAll();
+    return getEncoder(this).encodeAll();
 }
 
 // interface IUser {

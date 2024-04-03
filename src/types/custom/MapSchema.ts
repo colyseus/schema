@@ -123,7 +123,9 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         // // const index = this.$changes.indexes[key];
         // // this.$indexes.delete(index);
 
-        this[$changes].delete(key.toString());
+        const index = this[$changes].indexes[key];
+        this[$changes].delete(index);
+
         return this.$items.delete(key);
     }
 
