@@ -68,12 +68,7 @@ export class Decoder<T extends Schema = any> {
 
             const decoder = ref['constructor'][$decoder];
 
-            // const callback = $root.callbacks.get(ref);
             const result = decoder(this, bytes, it, ref, allChanges);
-
-            // if (callback && this.triggerChanges ) {
-            //     $root.callbackInstances.push(ref);
-            // }
 
             if (result === DecodeState.DEFINITION_MISMATCH) {
                 console.warn("@colyseus/schema: definition mismatch");

@@ -112,12 +112,6 @@ export const encodeSchemaOperation: EncodeOperation = function (
 
     // "compress" field index + operation
     bytes[it.offset++] = (index | operation) & 255;
-    // encode.uint8(bytes, (index | operation), it);
-
-    // // ensure refId for the value
-    // if (value && value[$changes]) {
-    //     value[$changes].ensureRefId();
-    // }
 
     // Do not encode value for DELETE operations
     if (operation === OPERATION.DELETE) {
@@ -142,7 +136,7 @@ export const encodeKeyValueOperation: EncodeOperation = function (
 ) {
     const ref = changeTree.ref;
 
-    // encode field index + operation
+    // encode operation
     encode.uint8(bytes, operation, it);
 
     // custom operations
@@ -150,7 +144,7 @@ export const encodeKeyValueOperation: EncodeOperation = function (
         return;
     }
 
-    // indexed operations
+    // encode index
     encode.number(bytes, field, it);
 
     //

@@ -1,3 +1,4 @@
+import * as util from "util";
 import * as assert from "assert";
 import { nanoid } from "nanoid";
 import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection } from "../src";
@@ -49,7 +50,7 @@ describe("Edge cases", () => {
             state.children.push(child);
         }
 
-        const decodedState: State = Reflection.decode(Reflection.encode(state));
+        const decodedState = Reflection.decode<State>(Reflection.encode(state));
         decodedState.decode(state.encode());
 
         for (let i = 0; i < maxSchemaTypes; i++) {

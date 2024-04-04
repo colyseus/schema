@@ -52,6 +52,8 @@ export function decodeValue(
 
     let value: any;
 
+    // console.log("DECODE VALUE:", { ref: ref.constructor.name, operation: OPERATION[operation], type, it })
+
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
         //

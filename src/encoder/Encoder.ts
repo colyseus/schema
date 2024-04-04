@@ -48,6 +48,7 @@ export class Encoder<T extends Schema = any> {
     ): Buffer {
         const offset = it.offset; // cache current offset in case we need to resize the buffer
 
+        const isEncodeAll = this.$root.allChanges === changeTrees;
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
@@ -85,9 +86,6 @@ export class Encoder<T extends Schema = any> {
 
                 encoder(this, bytes, changeTree, fieldIndex, operation, it);
             }
-
-            // clear changes after encoding
-            changeTree.changes.clear();
         }
 
         if (it.offset > bytes.byteLength) {
@@ -104,6 +102,17 @@ export class Encoder<T extends Schema = any> {
             //
             // only clear changes after making sure buffer resize is not required.
             //
+            if (!isEncodeAll) {
+                //
+                // FIXME: avoid iterating over change trees twice.
+                //
+                const changeTreesIterator = changeTrees.entries();
+                for (const [changeTree, changes] of changeTreesIterator) {
+                    changeTree.changes.clear();
+                }
+
+                this.$root.clear();
+            }
 
             // return bytes;
             return bytes.slice(0, it.offset);

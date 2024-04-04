@@ -33,7 +33,6 @@ export interface ChangeOperation {
 }
 
 export class Root {
-    currentQueue = new Set<ChangeTree>();
     protected nextUniqueId: number = 0;
 
     allChanges = new Map<ChangeTree, Map<number, OPERATION>>();
@@ -53,7 +52,6 @@ export class Root {
     }
 
     clear() {
-        this.currentQueue.clear();
         this.changes.clear();
     }
 }

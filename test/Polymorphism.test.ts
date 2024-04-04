@@ -2,6 +2,7 @@ import * as assert from "assert";
 import { type } from "../src/annotations";
 import { ArraySchema, MapSchema, Reflection } from "../src";
 import { Schema } from "../src/Schema";
+import { getEncoder } from "./Schema";
 
 class Entity extends Schema {
     @type("number") x: number;
@@ -63,12 +64,12 @@ describe("Polymorphism", () => {
         assert.ok(decodedState.entityHolder.entity instanceof Player);
         assert.ok(decodedState.entityHolder.entity instanceof Entity);
 
-        const decodedReflectedState: any = Reflection.decode(Reflection.encode(state));
+        const decodedReflectedState = Reflection.decode<State>(Reflection.encode(state));
         decodedReflectedState.decode(state.encodeAll());
         assert.strictEqual(decodedReflectedState.entityHolder.entity.x, 100);
         assert.strictEqual(decodedReflectedState.entityHolder.entity.y, 200);
-        assert.strictEqual(decodedReflectedState.entityHolder.entity.name, "Jake");
-        assert.strictEqual(decodedReflectedState.entityHolder.entity.lvl, 5);
+        assert.strictEqual((decodedReflectedState.entityHolder.entity as Player).name, "Jake");
+        assert.strictEqual((decodedReflectedState.entityHolder.entity as Player).lvl, 5);
 
         state.entityHolder.entity = null;
         decodedState.decode(state.encode());
