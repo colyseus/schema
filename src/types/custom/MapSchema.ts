@@ -75,9 +75,6 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
             : OPERATION.ADD;
 
         const isRef = (value[$changes]) !== undefined;
-        if (isRef) {
-            value[$changes].setParent(this, changeTree.root, index);
-        }
 
         //
         // (encoding)
@@ -106,6 +103,14 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         changeTree.change(index, operation);
 
+        //
+        // set value's parent after the value is set
+        // (to avoid encoding "refId" operations before parent's "ADD" operation)
+        //
+        if (isRef) {
+            value[$changes].setParent(this, changeTree.root, index);
+        }
+
         return this;
     }
 
@@ -124,6 +129,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         // // this.$indexes.delete(index);
 
         const index = this[$changes].indexes[key];
+
         this[$changes].delete(index);
 
         return this.$items.delete(key);

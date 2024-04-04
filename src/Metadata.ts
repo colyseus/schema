@@ -93,10 +93,11 @@ export const Metadata = {
         );
     },
 
-    getFields(metadata: any) {
+    getFields(klass: any) {
+        const metadata = klass[Symbol.metadata];
         const fields = {};
-        for (let i = 0; i < metadata[-1]; i++) {
-            fields[metadata[i]] = metadata[metadata[i]];
+        for (let i = 0; i <= metadata[-1]; i++) {
+            fields[metadata[i]] = metadata[metadata[i]].type;
         }
         return fields;
     }

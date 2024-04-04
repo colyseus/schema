@@ -41,6 +41,7 @@ export function decodeValue(
     operation: OPERATION,
     ref: Ref,
     index: number,
+    dynamicIndex: any,
     type: any,
     bytes: Buffer,
     it: decode.Iterator,
@@ -51,8 +52,6 @@ export function decodeValue(
     const previousValue = ref[$getByIndex](index);
 
     let value: any;
-
-    // console.log("DECODE VALUE:", { ref: ref.constructor.name, operation: OPERATION[operation], type, it })
 
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
@@ -163,6 +162,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
         operation,
         ref,
         index,
+        undefined, // no "dynamic index"
         metadata[field].type,
         bytes,
         it,
@@ -228,7 +228,8 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         decoder,
         operation,
         ref,
-        dynamicIndex as number,
+        index,
+        dynamicIndex as string,
         type,
         bytes,
         it,

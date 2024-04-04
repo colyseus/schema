@@ -232,9 +232,15 @@ export class ChangeTree<T extends Ref=any> {
             return;
         }
 
+        const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
+        const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].owned);
+        const changeSet = (isFiltered)
+            ? this.filteredChanges
+            : this.changes;
+
         const previousValue = this.getValue(index);
 
-        this.changes.set(index, OPERATION.DELETE);
+        changeSet.set(index, OPERATION.DELETE);
 
         this.allChanges.delete(index);
 
@@ -253,6 +259,16 @@ export class ChangeTree<T extends Ref=any> {
             // (the property descriptors should NOT be used at decoding time. only at encoding time.)
             //
             this.root?.remove(previousValue[$changes]);
+        }
+
+        //
+        // FIXME: this is looking a bit ugly (and repeated from `.change()`)
+        //
+        if (isFiltered) {
+            this.root?.filteredChanges.set(this, this.filteredChanges);
+
+        } else {
+            this.root?.changes.set(this, this.changes);
         }
     }
 
@@ -306,6 +322,10 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         this.refId = this.root.getNextUniqueId();
+    }
+
+    get changed() {
+        return this.changes.size > 0;
     }
 
     protected checkIsFiltered(parent: Ref, parentIndex: number) {
