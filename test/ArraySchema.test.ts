@@ -1495,6 +1495,16 @@ describe("ArraySchema Tests", () => {
 
             assert.deepEqual([1,2,3], arr.toJSON());
         });
+
+        it("#at()", () => {
+            const arr = new ArraySchema<number>(1,2,3,4,5);
+            assert.strictEqual(1, arr.at(0));
+            assert.strictEqual(3, arr.at(2));
+            assert.strictEqual(5, arr.at(-1));
+            assert.strictEqual(1, arr.at(-5));
+            assert.strictEqual(undefined, arr.at(5));
+            assert.strictEqual(undefined, arr.at(-6));
+        });
     })
 
     describe("ArraySchema <-> Array type interchangability", () => {

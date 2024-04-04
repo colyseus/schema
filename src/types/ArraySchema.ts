@@ -167,6 +167,13 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         //
         // FIXME: this should be O(1)
         //
+        
+	    index = Math.trunc(index) || 0;
+	    // Allow negative indexing from the end
+	    if (index < 0) index += this.length;
+	    // OOB access is guaranteed to return undefined
+	    if (index < 0 || index >= this.length) return undefined;
+        
         const key = Array.from(this.$items.keys())[index];
         return this.$items.get(key);
     }
