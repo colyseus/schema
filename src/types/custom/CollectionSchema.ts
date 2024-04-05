@@ -1,10 +1,9 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $getByIndex } from "../symbols";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
-import { removeChildRefs } from "../utils";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
-import { decodeKeyValueOperation, DataChange,  } from "../../decoder/DecodeOperation";
+import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
 import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
@@ -89,22 +88,13 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
         return this.$items.delete(index);
     }
 
-    clear(changes?: DataChange[]) {
+    clear() {
         // discard previous operations.
         this[$changes].discard(true, true);
         this[$changes].indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
-
-        //
-        // When decoding:
-        // - enqueue items for DELETE callback.
-        // - flag child items for garbage collection.
-        //
-        if (changes) {
-            removeChildRefs.call(this, changes);
-        }
 
         // clear items
         this.$items.clear();

@@ -3,7 +3,7 @@ import * as assert from "assert";
 import { Schema, type, SetSchema } from "../src";
 import "./Schema";
 
-describe("SetSchema Tests", () => {
+describe("Type: SetSchema", () => {
 
     it("add() primitive values", () => {
         class State extends Schema {

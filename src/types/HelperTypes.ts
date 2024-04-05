@@ -1,7 +1,7 @@
 import { ArraySchema } from "./custom/ArraySchema";
 import { MapSchema } from "./custom/MapSchema";
 
-export interface Collection<K, V, IT=V> {
+export interface Collection<K = any, V = any, IT = V> {
     [Symbol.iterator](): IterableIterator<IT>;
     forEach(callback: Function);
     entries(): IterableIterator<[K, V]>;

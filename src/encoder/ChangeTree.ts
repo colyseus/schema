@@ -119,8 +119,13 @@ export class ChangeTree<T extends Ref=any> {
         this.parent = parent;
         this.parentIndex = parentIndex;
 
-        // avoid setting parents with empty `root`
-        if (!root) { return; }
+        if (
+            !root || // avoid setting parents with empty `root`
+            root === this.root // skip if parent is already set
+        ) {
+            return;
+        }
+
 
         this.root = root;
         this.checkIsFiltered(parent, parentIndex);
@@ -169,6 +174,8 @@ export class ChangeTree<T extends Ref=any> {
 
     operation(op: ChangeOperation) {
         this.changes.set(--this.currentCustomOperation, op.op);
+
+        this.root?.changes.set(this, this.changes);
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
@@ -246,7 +253,7 @@ export class ChangeTree<T extends Ref=any> {
 
         // remove `root` reference
         if (previousValue && previousValue[$changes]) {
-            previousValue[$changes].parent = undefined;
+            previousValue[$changes].root = undefined;
 
             //
             // FIXME: this.root is "undefined"

@@ -550,15 +550,13 @@ describe("Type: MapSchema", () => {
 
         decodedState.decode(state.encode());
 
-        const onEntityAddSpy = sinon.spy(function (item, key) {});
-        $(decodedState).entities.onAdd(onEntityAddSpy, false);
-        // $(decodedState).entities.onChange(function (item, key) {})
-        $(decodedState).entities.onRemove(function (item, key) {})
+        let onEntityAddCount = 0;
+        $(decodedState).entities.onAdd(() => onEntityAddCount++, false);
+        $(decodedState).entities.onRemove((item, key) => {})
 
-        const onItemsChangeSpy = sinon.spy(function (item, key) {});
-        $(decodedState).items.onAdd(function (item, key) {}, false)
-        // $(decodedState).items.onChange(onItemsChangeSpy);
-        $(decodedState).items.onRemove(function (item, key) {})
+        let onItemAddCount = 0;
+        $(decodedState).items.onAdd((item, key) => onItemAddCount++, false)
+        $(decodedState).items.onRemove((item, key) => { })
 
         const item1 = state.entities.get("item1");
         const previousWeapon = state.items.get("weapon");
@@ -578,8 +576,7 @@ describe("Type: MapSchema", () => {
             items: { weapon: { id: 1, damage: 10 } }
         }, decodedState.toJSON());
 
-        sinon.assert.calledOnce(onEntityAddSpy);
-        // sinon.assert.calledOnce(onItemsChangeSpy);
+        assert.strictEqual(1, onEntityAddCount);
     });
 
     it("replacing MapSchema should trigger onRemove on previous items", () => {
@@ -594,13 +591,13 @@ describe("Type: MapSchema", () => {
         const $ = getCallbacks(decodedState).$;
         decodedState.decode(state.encode());
 
-        const onRemove = sinon.spy(function(num, i) {});
-        $(decodedState).numbers.onRemove(onRemove);
+        let onRemoveCalls = 0;
+        $(decodedState).numbers.onRemove(() => onRemoveCalls++);
 
         state.numbers = new MapSchema({ four: 1, five: 2, six: 3 });
         decodedState.decode(state.encode());
 
-        sinon.assert.callCount(onRemove, 3);
+        assert.strictEqual(3, onRemoveCalls);
     });
 
     it("should throw error trying to set null or undefined", () => {

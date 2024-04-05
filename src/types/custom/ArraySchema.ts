@@ -2,12 +2,11 @@ import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $getByIndex }
 import type { Schema } from "../../Schema";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
-import { removeChildRefs } from "../utils";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
 
 import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
-import { decodeKeyValueOperation, DataChange } from "../../decoder/DecodeOperation";
+import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
@@ -203,22 +202,13 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         return this.$items.delete(index);
     }
 
-    clear(changes?: DataChange[]) {
+    clear() {
         // discard previous operations.
         this[$changes].discard(true, true);
         this[$changes].indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
-
-        //
-        // When decoding:
-        // - enqueue items for DELETE callback.
-        // - flag child items for garbage collection.
-        //
-        if (changes) {
-            removeChildRefs.call(this, changes);
-        }
 
         // clear items
         this.$items.clear();

@@ -63,8 +63,9 @@ export abstract class Schema {
     }
 
     static is(type: DefinitionType) {
-        const metadata = type[Symbol.metadata];
-        return metadata && Object.prototype.hasOwnProperty.call(metadata, -1);
+        return typeof(type[Symbol.metadata]) === "object";
+        // const metadata = type[Symbol.metadata];
+        // return metadata && Object.prototype.hasOwnProperty.call(metadata, -1);
     }
 
     /**

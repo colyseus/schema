@@ -40,7 +40,7 @@ type CollectionCallback<K, V> = {
     onRemove(callback: (item: V, index: K) => void): void;
 };
 
-type OnInstanceAvailableCallback = (callback: (ref: Ref) => void) => void;
+type OnInstanceAvailableCallback = (callback: (ref: Ref, existing: boolean) => void) => void;
 
 type CallContext = {
     instance?: any,
@@ -187,14 +187,14 @@ export function getStateCallbacks(decoder: Decoder) {
                     if (metadata[prop]) {
                         const instance = context.instance?.[prop];
                         const onInstanceAvailable: OnInstanceAvailableCallback = (
-                            !instance &&
-                            ((callback: (ref: Ref) => void) => {
-                                // @ts-ignore
-                                const dettach = $(context.instance).listen(prop, (value, previousValue) => {
-                                    dettach();
-                                    callback(value);
-                                });
-                            }) || undefined
+                            (callback: (ref: Ref, existing: boolean) => void) => {
+                                $(context.instance).listen(prop, (value, _) => {
+                                    callback(value, false);
+                                }, false);
+                                if (instance) {
+                                    callback(instance, true);
+                                }
+                            }
                         );
                         return getProxy(metadata[prop].type, {
                             instance,
@@ -230,29 +230,29 @@ export function getStateCallbacks(decoder: Decoder) {
              */
             return new Proxy({
                 onAdd: function(callback: (value, key) => void, immediate: boolean = true) {
-                    if (context.instance) {
-                        //
-                        // https://github.com/colyseus/schema/issues/147
-                        // If parent instance has "onAdd" registered, avoid triggering immediate callback.
-                        //
-                        // FIXME: This is a workaround. We should find a better way to handle this.
-                        //
-                        onAdd(context.instance, callback, immediate && !isTriggeringOnAdd);
-
-                    } else if (context.onInstanceAvailable) {
+                    //
+                    // https://github.com/colyseus/schema/issues/147
+                    // If parent instance has "onAdd" registered, avoid triggering immediate callback.
+                    //
+                    // FIXME: "isTriggeringOnAdd" is a workaround. We should find a better way to handle this.
+                    //
+                    if (context.onInstanceAvailable) {
                         // collection instance not received yet
-                        context.onInstanceAvailable((ref: Ref) =>
-                            onAdd(ref, callback, false));
+                        context.onInstanceAvailable((ref: Ref, existing: boolean) =>
+                            onAdd(ref, callback, existing && !isTriggeringOnAdd));
+
+                    } else if (context.instance) {
+                        onAdd(context.instance, callback, immediate && !isTriggeringOnAdd);
                     }
                 },
                 onRemove: function(callback: (value, key) => void) {
-                    if (context.instance) {
-                        onRemove(context.instance, callback);
-
-                    } else if (context.onInstanceAvailable) {
+                    if (context.onInstanceAvailable) {
                         // collection instance not received yet
                         context.onInstanceAvailable((ref: Ref) =>
                             onRemove(ref, callback));
+
+                    } else if (context.instance) {
+                        onRemove(context.instance, callback);
                     }
                 },
             }, {

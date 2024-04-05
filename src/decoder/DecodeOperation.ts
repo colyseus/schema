@@ -4,14 +4,13 @@ import { Schema } from "../Schema";
 import type { Ref } from "../encoder/ChangeTree";
 import type { Decoder } from "./Decoder";
 import * as decode from "../encoding/decode";
-import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
+import { $changes, $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
 
 import type { ArraySchema } from "../types/custom/ArraySchema";
 import type { CollectionSchema } from "../types/custom/CollectionSchema";
-import type { SetSchema } from "../types/custom/SetSchema";
 
 import { getType } from "../types/registry";
-// import { Callback } from "./ReferenceTracker";
+import { Collection } from "../types/HelperTypes";
 
 export interface DataChange<T = any, F = string> {
     ref: Ref,
@@ -107,7 +106,7 @@ export function decodeValue(
         value[$childType] = Object.values(type)[0]; // cache childType for ArraySchema and MapSchema
 
         if (previousValue) {
-            const previousRefId = $root.refIds.get(previousValue);
+            let previousRefId = $root.refIds.get(previousValue);
 
             if (previousRefId && refId !== previousRefId) {
                 $root.removeRef(previousRefId);
@@ -119,9 +118,17 @@ export function decodeValue(
                 let iter: IteratorResult<[any, any]>;
                 while ((iter = entries.next()) && !iter.done) {
                     const [key, value] = iter.value;
+
+                    // if value is a schema, remove its reference
+                    // FIXME: not sure if this is necessary, add more tests to confirm
+                    if (typeof(value) === "object") {
+                        previousRefId = $root.refIds.get(value);
+                        $root.removeRef(previousRefId);
+                    }
+
                     allChanges.push({
-                        ref,
-                        refId,
+                        ref: previousValue,
+                        refId: previousRefId,
                         op: OPERATION.DELETE,
                         field: key,
                         value: undefined,
@@ -201,11 +208,13 @@ export const decodeKeyValueOperation: DecodeOperation = function (
 
     if (operation === OPERATION.CLEAR) {
         //
-        // TODO: refactor me!
-        // The `.clear()` method is calling `$root.removeRef(refId)` for
-        // each item inside this collection
+        // When decoding:
+        // - enqueue items for DELETE callback.
+        // - flag child items for garbage collection.
         //
-        (ref as any).clear(allChanges);
+        decoder.removeChildRefs(ref as unknown as Collection, allChanges);
+
+        (ref as any).clear();
         return;
     }
 

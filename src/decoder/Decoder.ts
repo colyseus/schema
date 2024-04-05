@@ -1,13 +1,14 @@
 import { TypeContext } from "../annotations";
-import { $decoder } from "../types/symbols";
+import { $changes, $decoder } from "../types/symbols";
 import { Schema } from "../Schema";
 
 import * as decode from "../encoding/decode";
-import { SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
+import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Ref } from "../encoder/ChangeTree";
 import { Iterator } from "../encoding/decode";
 import { ReferenceTracker } from "./ReferenceTracker";
 import { DataChange, DecodeState } from "./DecodeOperation";
+import { Collection } from "../types/HelperTypes";
 
 export class Decoder<T extends Schema = any> {
     context: TypeContext;
@@ -121,6 +122,28 @@ export class Decoder<T extends Schema = any> {
 
         // return instance;
         return new (type as any)();
+    }
+
+    removeChildRefs(ref: Collection, allChanges: DataChange[]) {
+        const changeTree = ref[$changes];
+
+        const needRemoveRef = (typeof (changeTree.getType()) !== "string");
+        const refId = changeTree.refId;
+
+        ref.forEach((value: any, key: any) => {
+            allChanges.push({
+                ref: value,
+                refId,
+                op: OPERATION.DELETE,
+                field: key,
+                value: undefined,
+                previousValue: value
+            });
+
+            if (needRemoveRef) {
+                this.$root.removeRef(this.$root.refIds.get(value));
+            }
+        });
     }
 
 }

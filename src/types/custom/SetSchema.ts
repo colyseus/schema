@@ -1,10 +1,10 @@
-import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
-import { removeChildRefs } from "../utils";
 import { registerType } from "../registry";
-import { $changes, $childType, $deleteByIndex, $getByIndex } from "../symbols";
-import { DataChange } from "../../decoder/DecodeOperation";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $getByIndex } from "../symbols";
 import { Collection } from "../HelperTypes";
+import { ChangeTree } from "../../encoder/ChangeTree";
+import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
+import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
 
 export class SetSchema<V=any> implements Collection<number, V> {
 
@@ -13,11 +13,16 @@ export class SetSchema<V=any> implements Collection<number, V> {
 
     protected $refId: number = 0;
 
+    static [$encoder] = encodeKeyValueOperation;
+    static [$decoder] = decodeKeyValueOperation;
+
     static is(type: any) {
         return type['set'] !== undefined;
     }
 
     constructor (initialValues?: Array<V>) {
+        this[$changes] = new ChangeTree(this);
+
         if (initialValues) {
             initialValues.forEach((v) => this.add(v));
         }
@@ -80,22 +85,13 @@ export class SetSchema<V=any> implements Collection<number, V> {
         return this.$items.delete(index);
     }
 
-    clear(changes?: DataChange[]) {
+    clear() {
         // discard previous operations.
         this[$changes].discard(true, true);
         this[$changes].indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
-
-        //
-        // When decoding:
-        // - enqueue items for DELETE callback.
-        // - flag child items for garbage collection.
-        //
-        if (changes) {
-            removeChildRefs.call(this, changes);
-        }
 
         // clear items
         this.$items.clear();

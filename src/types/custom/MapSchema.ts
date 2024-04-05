@@ -1,11 +1,9 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $getByIndex } from "../symbols";
-import { removeChildRefs } from "../utils";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
-
-import { decodeKeyValueOperation, DataChange } from "../../decoder/DecodeOperation";
+import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
 import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
 
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]> {
@@ -135,22 +133,13 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         return this.$items.delete(key);
     }
 
-    clear(changes?: DataChange[]) {
+    clear() {
         // discard previous operations.
         this[$changes].discard(true, true);
         this[$changes].indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
-
-        //
-        // When decoding:
-        // - enqueue items for DELETE callback.
-        // - flag child items for garbage collection.
-        //
-        if (changes) {
-            removeChildRefs.call(this, changes);
-        }
 
         // clear items
         this.$items.clear();

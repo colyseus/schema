@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { Schema, type, ArraySchema, MapSchema, Reflection } from "../src";
 import { $changes } from "../src/types/symbols";
-import { getCallbacks, getDecoder } from "./Schema";
+import { getCallbacks, getDecoder, getEncoder } from "./Schema";
 
 describe("Instance sharing", () => {
     class Position extends Schema {
@@ -33,12 +33,17 @@ describe("Instance sharing", () => {
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        assert.deepEqual({
+        const decoder = getDecoder(decodedState);
+
+        assert.deepStrictEqual({
             player1: { position: { x: 10, y: 10 } },
             arrayOfPlayers: [],
             mapOfPlayers: {}
         }, decodedState.toJSON());
-        assert.strictEqual(5, decodedState['$changes'].root.refs.size);
+
+        assert.strictEqual(5, decoder.$root.refs.size);
+
+        const encoder = getEncoder(state);
 
         state.player2 = player;
 
@@ -46,27 +51,27 @@ describe("Instance sharing", () => {
         assert.strictEqual(2, encoded.length);
 
         decodedState.decode(encoded);
-        assert.deepEqual({
+        assert.deepStrictEqual({
             player1: { position: { x: 10, y: 10 } },
             player2: { position: { x: 10, y: 10 } },
             arrayOfPlayers: [],
             mapOfPlayers: {}
 
         }, decodedState.toJSON());
-        assert.strictEqual(5, decodedState['$changes'].root.refs.size);
+        assert.strictEqual(5, decoder.$root.refs.size);
 
         state.player2 = player;
         state.player1 = undefined;
 
         decodedState.decode(state.encode());
-        assert.deepEqual({
+        assert.deepStrictEqual({
             player2: { position: { x: 10, y: 10 } },
             arrayOfPlayers: [],
             mapOfPlayers: {}
 
         }, decodedState.toJSON());
 
-        assert.strictEqual(5, decodedState['$changes'].root.refs.size, "Player and Position structures should remain.");
+        assert.strictEqual(5, decoder.$root.refs.size, "Player and Position structures should remain.");
     });
 
     it("should drop reference of deleted instance when decoding", () => {
@@ -83,16 +88,16 @@ describe("Instance sharing", () => {
         const decodedState = new State();
         decodedState.decode(state.encodeAll());
 
-        const refCount = decodedState['$changes'].root.refs.size;
+        const decoder = getDecoder(decodedState);
+
+        const refCount = decoder.$root.refs.size;
         assert.strictEqual(5, refCount);
-        // console.log(decodedState['$changes'].root.refs);
 
         state.player1 = undefined;
         state.player2 = undefined;
         decodedState.decode(state.encode());
 
-        const newRefCount = decodedState['$changes'].root.refs.size;
-        // console.log(decodedState['$changes'].root.refs);
+        const newRefCount = decoder.$root.refs.size;
         assert.strictEqual(refCount - 2, newRefCount);
     });
 
@@ -118,7 +123,9 @@ describe("Instance sharing", () => {
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        const refCount = decodedState['$changes'].root.refs.size;
+        const decoder = getDecoder(decodedState);
+
+        const refCount = decoder.$root.refs.size;
         assert.strictEqual(7, refCount);
 
         state.arrayOfPlayers.pop();
@@ -128,7 +135,7 @@ describe("Instance sharing", () => {
 
         decodedState.decode(state.encode());
 
-        const newRefCount = decodedState['$changes'].root.refs.size;
+        const newRefCount = decoder.$root.refs.size;
         assert.strictEqual(refCount - 4, newRefCount);
     });
 
@@ -154,14 +161,16 @@ describe("Instance sharing", () => {
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        const refCount = decodedState['$changes'].root.refs.size;
+        const decoder = getDecoder(decodedState);
+
+        const refCount = decoder.$root.refs.size;
         assert.strictEqual(7, refCount);
 
         state.arrayOfPlayers.clear();
 
         decodedState.decode(state.encode());
 
-        const newRefCount = decodedState['$changes'].root.refs.size;
+        const newRefCount = decoder.$root.refs.size;
         assert.strictEqual(refCount - 4, newRefCount);
     });
 
@@ -176,7 +185,9 @@ describe("Instance sharing", () => {
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        const getRefCount = () => decodedState['$changes'].root.refs.size;
+        const decoder = getDecoder(decodedState);
+
+        const getRefCount = () => decoder.$root.refs.size;
         const firstCount = getRefCount();
 
         state.arrayOfNumbers = [4, 5, 6];
@@ -194,8 +205,8 @@ describe("Instance sharing", () => {
         decodedState.decode(state.encodeAll());
         decodedState.decode(state.encode());
 
-        const getRefCount = () => decodedState['$changes'].root.refs.size;
-        const firstCount = getRefCount();
+        const decoder = getDecoder(decodedState);
+        const numRefs = decoder.$root.refs.size;
 
         state.arrayOfPlayers = new ArraySchema<Player>();
         state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 10, y: 20 }) }));
@@ -203,25 +214,22 @@ describe("Instance sharing", () => {
 
         decodedState.decode(state.encode());
 
-        // force garbage collection.
-        // decodedState['$changes'].root.garbageCollectDeletedRefs();
-
-        assert.strictEqual(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
+        assert.strictEqual(numRefs, decoder.$root.refs.size, "should've dropped reference to previous ArraySchema");
         assert.strictEqual(
             true,
-            Object.values(getDecoder(decodedState).$root.refCounts).every(refCount => refCount > 0),
+            Object.values(decoder.$root.refCounts).every(refCount => refCount > 0),
             "all refCount's should have a valid number."
         );
     });
 
     it("should allow having shared Schema class with no fields", () => {
-        class Quest extends Schema {}
+        class Quest extends Schema { }
         class QuestOne extends Quest {
             @type("string") name: string;
         }
 
         class State extends Schema {
-            @type({map: Quest}) quests = new MapSchema<Quest>();
+            @type({ map: Quest }) quests = new MapSchema<Quest>();
         }
 
         const state = new State();

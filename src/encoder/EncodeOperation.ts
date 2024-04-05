@@ -52,7 +52,10 @@ export function encodeValue(
     operation: OPERATION,
     it: Iterator,
 ) {
+    // console.log("ENCODE VALUE!", { ref: ref.constructor.name, type, value, field, operation });
+
     if (type[Symbol.metadata] !== undefined) {
+        // TODO: move this to the `@type()` annotation
         assertInstanceType(value, type as typeof Schema, ref as Schema, field);
 
         //
@@ -172,10 +175,6 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     // if (value && value[$changes]) {
     //     value[$changes].ensureRefId();
     // }
-
-    // console.log("ENCODE VALUE!", {
-    //     ref: ref.constructor.name, type, value, field, operation
-    // });
 
     // TODO: inline this function call small performance gain
     encodeValue(encoder, bytes, ref, type, value, field, operation, it);

@@ -395,54 +395,6 @@ describe("Next Iteration", () => {
         decoded.decode(encoded);
     });
 
-    it("instances should share parent/root references", () => {
-        class Skill extends Schema {
-            @type("number") damage: number;
-        }
-
-        class Item extends Schema {
-            @type("number") damage: number;
-            @type({ map: Skill }) skills = new Map<string, Skill>();
-        }
-
-        class Player extends Schema {
-            @type("number") x: number;
-            @type("number") y: number;
-            @type(Item) item: Item;
-        }
-
-        class State extends Schema {
-            @type("string") str: string;
-            @type("number") num: number;
-            @type({ map: Player }) players: Map<string, Player>;
-            @type(Player) player: Player;
-        };
-
-        const state = new State();
-        const player = new Player();
-        player.item = new Item();
-        state.player = player;
-
-        const players = new Map<string, Player>();
-        players.set("one", new Player());
-        players.get("one").item = new Item();
-
-        state.players = players;
-
-        // Testing for "root".
-        const $root = state['$changes'].root;
-        assert.ok(player['$changes'].root === $root, "State and Player should have same 'root'.");
-        assert.ok(player.item['$changes'].root === $root, "Player and Item should have same 'root'.");
-        assert.ok(state.players.get("one")['$changes'].root === $root, "Player and Item should have same 'root'.");
-        assert.ok(state.players.get("one").item['$changes'].root === $root, "Player and Item should have same 'root'.");
-
-        // Testing for "parent".
-        assert.ok(state['$changes'].parent === undefined, "State parent should be 'undefined'");
-        assert.ok(state.player['$changes'].parent === state, "Player parent should be State");
-        assert.ok(state.player.item['$changes'].parent === player, "Item parent should be Player");
-        assert.ok(state.players.get("one")['$changes'].parent['$changes'].refId === state.players['$changes'].refId as any, "state.players['one'] parent should be state.players");
-    });
-
     /*
     it("should encode filtered", () => {
         class Item extends Schema {
@@ -588,7 +540,7 @@ describe("Next Iteration", () => {
             player2.name = "Not inside the Map anymore";
 
             const shouldHaveNoChanges = state.encode();
-            assert.deepEqual(noChangesEncoded, shouldHaveNoChanges, "encoded result should be empty.");
+            assert.deepStrictEqual(noChangesEncoded, shouldHaveNoChanges, "encoded result should be empty.");
 
             state.player = player2;
             decoded.decode(state.encode());

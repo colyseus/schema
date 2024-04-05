@@ -1,5 +1,5 @@
 import { Metadata } from "../Metadata";
-import { $changes } from "../types/symbols";
+import { $changes, $childType } from "../types/symbols";
 import { Ref } from "../encoder/ChangeTree";
 import { spliceOne } from "../types/utils";
 import type { MapSchema } from "../types/custom/MapSchema";
@@ -30,6 +30,8 @@ export class ReferenceTracker {
 
     // for decoding
     addRef(refId: number, ref: Ref, incrementCount: boolean = true) {
+        // console.log("ADD REF", { refId, ref: ref.constructor.name, incrementCount });
+
         this.refs.set(refId, ref);
         this.refIds.set(ref, refId);
 
@@ -41,6 +43,9 @@ export class ReferenceTracker {
     // for decoding
     removeRef(refId: number) {
         const refCount = this.refCounts[refId];
+
+        // console.log("REMOVE REF", { refId, refCount, ref: this.refs.get(refId) });
+
         if (refCount === undefined) {
             console.warn(`trying to remove refId '${refId}' that doesn't exist`);
             return;
@@ -76,20 +81,16 @@ export class ReferenceTracker {
             if (Metadata.isValidInstance(ref)) {
                 const metadata: Metadata = ref['constructor'][Symbol.metadata];
                 for (const field in metadata) {
-                    if (typeof (metadata[field].type) !== "string" &&
-                        ref[field] &&
-                        ref[field][$changes]) { // FIXME: this will not work anymore.
-                        this.removeRef(ref[field][$changes].refId);
+                    const childRefId = typeof(ref[field]) === "object" && this.refIds.get(ref[field]);
+                    if (childRefId) {
+                        this.removeRef(childRefId);
                     }
                 }
 
             } else {
-                const metadata: Metadata = ref[$changes].parent['constructor'][Symbol.metadata];
-                const type =  metadata.schema[metadata.fieldsByIndex[ref[$changes].parentIndex]];
-
-                if (typeof (Object.values(type)[0]) === "function") {
+                if (typeof (Object.values(ref[$childType])[0]) === "function") {
                     Array.from((ref as MapSchema).values())
-                        .forEach((child) => this.removeRef(child[$changes].refId));
+                        .forEach((child) => this.removeRef(this.refIds.get(child)));
                 }
             }
 
