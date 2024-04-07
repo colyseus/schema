@@ -7,7 +7,7 @@ import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Ref } from "../encoder/ChangeTree";
 import { Iterator } from "../encoding/decode";
 import { ReferenceTracker } from "./ReferenceTracker";
-import { DataChange, DecodeState } from "./DecodeOperation";
+import { DEFINITION_MISMATCH, DataChange } from "./DecodeOperation";
 import { Collection } from "../types/HelperTypes";
 
 export class Decoder<T extends Schema = any> {
@@ -71,7 +71,7 @@ export class Decoder<T extends Schema = any> {
 
             const result = decoder(this, bytes, it, ref, allChanges);
 
-            if (result === DecodeState.DEFINITION_MISMATCH) {
+            if (result === DEFINITION_MISMATCH) {
                 console.warn("@colyseus/schema: definition mismatch");
 
                 //

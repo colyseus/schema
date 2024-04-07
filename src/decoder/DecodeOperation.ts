@@ -22,9 +22,7 @@ export interface DataChange<T = any, F = string> {
     previousValue: T;
 }
 
-export enum DecodeState {
-    DEFINITION_MISMATCH = 0,
-}
+export const DEFINITION_MISMATCH = -1;
 
 export type DecodeOperation<T extends Schema = any> = (
     decoder: Decoder<T>,
@@ -33,7 +31,7 @@ export type DecodeOperation<T extends Schema = any> = (
     ref: Ref,
     allChanges: DataChange[],
     // callback: Callback,
-) => DecodeState | void;
+) => number | void;
 
 export function decodeValue(
     decoder: Decoder,
@@ -162,7 +160,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
 
     // skip early if field is not defined
     const field = metadata[index];
-    if (field === undefined) { return DecodeState.DEFINITION_MISMATCH; }
+    if (field === undefined) { return DEFINITION_MISMATCH; }
 
     const { value, previousValue } = decodeValue(
         decoder,
