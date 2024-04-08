@@ -109,8 +109,8 @@ describe("Next Iteration", () => {
         }
 
         const state = new State();
-        state.map["one"] = 1;
-        state.map["two"] = 2;
+        state.map.set("one", 1);
+        state.map.set("two", 2);
 
         const decoded = new State();
         decoded.decode(state.encode());
@@ -119,18 +119,18 @@ describe("Next Iteration", () => {
         assert.strictEqual(1, decoded.map.get("one"));
         assert.strictEqual(2, decoded.map.get("two"));
 
-        assert.strictEqual(1, decoded.map["one"]);
-        assert.strictEqual(2, decoded.map["two"]);
+        assert.strictEqual(1, decoded.map.get("one"));
+        assert.strictEqual(2, decoded.map.get("two"));
 
-        delete state.map['one'];
+        state.map.delete('one');
 
         const encoded = state.encode();
 
         decoded.decode(encoded);
 
         assert.strictEqual(1, decoded.map.size);
-        assert.strictEqual(undefined, decoded.map["one"]);
-        assert.strictEqual(2, decoded.map["two"]);
+        assert.strictEqual(undefined, decoded.map.get("one"));
+        assert.strictEqual(2, decoded.map.get("two"));
     });
 
     describe("re-using Schema references", () => {
