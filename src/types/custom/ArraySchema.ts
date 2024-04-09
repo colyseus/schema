@@ -204,7 +204,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     clear() {
         // discard previous operations.
-        this[$changes].discard(true, true);
+        this[$changes].discard(true);
         this[$changes].indexes = {};
 
         // clear previous indexes
@@ -213,7 +213,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         // clear items
         this.$items.clear();
 
-        this[$changes].operation({ index: 0, op: OPERATION.CLEAR });
+        this[$changes].operation({ index: -1, op: OPERATION.CLEAR });
     }
 
     /**

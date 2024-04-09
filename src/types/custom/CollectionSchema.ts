@@ -90,7 +90,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
 
     clear() {
         // discard previous operations.
-        this[$changes].discard(true, true);
+        this[$changes].discard(true);
         this[$changes].indexes = {};
 
         // clear previous indexes
@@ -100,7 +100,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
         this.$items.clear();
 
         // @ts-ignore
-        this[$changes].operation({ index: 0, op: OPERATION.CLEAR });
+        this[$changes].operation({ index: -1, op: OPERATION.CLEAR });
 
         // // touch all structures until reach root
         // this[$changes].touchParents();

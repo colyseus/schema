@@ -1,8 +1,15 @@
 import { Metadata } from "../Metadata";
-import { $changes, $childType } from "../types/symbols";
+import { $childType } from "../types/symbols";
 import { Ref } from "../encoder/ChangeTree";
 import { spliceOne } from "../types/utils";
 import type { MapSchema } from "../types/custom/MapSchema";
+
+class DecodingWarning extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "DecodingWarning";
+    }
+}
 
 /**
  * Used for decoding only.
@@ -43,14 +50,23 @@ export class ReferenceTracker {
     // for decoding
     removeRef(refId: number) {
         const refCount = this.refCounts[refId];
-        // console.log("REMOVE REF", { refId, refCount, ref: this.refs.get(refId) });
 
         if (refCount === undefined) {
-            console.warn(`trying to remove refId '${refId}' that doesn't exist`);
+            try {
+                throw new DecodingWarning("trying to remove refId that doesn't exist");
+            } catch (e) {
+                console.warn(e);
+            }
             return;
         }
+
         if (refCount === 0) {
-            console.warn(`trying to remove refId '${refId}' with 0 refCount`);
+            try {
+                const ref = this.refs.get(refId);
+                throw new DecodingWarning(`trying to remove refId '${refId}' with 0 refCount (${ref.constructor.name}: ${JSON.stringify(ref)})`);
+            } catch (e) {
+                console.warn(e);
+            }
             return;
         }
 

@@ -75,7 +75,6 @@ export class ChangeTree<T extends Ref=any> {
     filteredChanges = new Map<number, OPERATION>();
 
     operations: ChangeOperation[] = [];
-    currentCustomOperation: number = 0;
 
     constructor(ref: T) {
         this.ref = ref;
@@ -158,7 +157,6 @@ export class ChangeTree<T extends Ref=any> {
 
                 if (value && value[$changes]) {
                     callback(value[$changes], metadata[field].index);
-
                 }
             }
 
@@ -173,7 +171,7 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     operation(op: ChangeOperation) {
-        this.changes.set(--this.currentCustomOperation, op.op);
+        this.changes.set(op.index, op.op);
 
         this.root?.changes.set(this, this.changes);
     }
@@ -235,7 +233,11 @@ export class ChangeTree<T extends Ref=any> {
 
     delete(index: number) {
         if (index === undefined) {
-            console.warn(`@colyseus/schema ${this.ref.constructor.name}: trying to delete non-existing index '${index}'`);
+            try {
+                throw new Error(`@colyseus/schema ${this.ref.constructor.name}: trying to delete non-existing index '${index}'`);
+            } catch (e) {
+                console.warn(e);
+            }
             return;
         }
 
@@ -280,7 +282,7 @@ export class ChangeTree<T extends Ref=any> {
         }
     }
 
-    discard(changed: boolean = false, discardAll: boolean = false) {
+    discard(discardAll: boolean = false) {
         //
         // Map, Array, etc:
         // Remove cached key to ensure ADD operations is unsed instead of
@@ -303,9 +305,6 @@ export class ChangeTree<T extends Ref=any> {
         if (discardAll) {
             this.allChanges.clear();
         }
-
-        // re-set `currentCustomOperation`
-        this.currentCustomOperation = 0;
     }
 
     /**

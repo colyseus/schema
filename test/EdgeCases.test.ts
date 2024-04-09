@@ -58,11 +58,7 @@ describe("Edge cases", () => {
         }
     });
 
-    it("SWITCH_TO_STRUCTURE check should not collide", () => {
-        //
-        // The SWITCH_TO_STRUCTURE byte is `193`
-        //
-
+    describe("max fields limitations", () => {
         class Child extends Schema {
             @type("number") n: number;
         }
@@ -134,60 +130,64 @@ describe("Edge cases", () => {
             @type(Child) child64 = new Child();
         }
 
-        const numItems = 100;
+        it("SWITCH_TO_STRUCTURE check should not collide", () => {
+            //
+            // The SWITCH_TO_STRUCTURE byte is `193`
+            //
 
-        const state = new State();
-        for (let i = 0; i < numItems; i++) { state.arrayOfNum.push(i); }
-        // for (let i = 0; i < numItems; i++) { state.mapOfNum.set(i.toString(), i); }
+            const numItems = 100;
+            const state = new State();
+            for (let i = 0; i < numItems; i++) { state.arrayOfNum.push(i); }
+            for (let i = 0; i < numItems; i++) { state.mapOfNum.set(i.toString(), i); }
 
-        state.child.n = 0;
-        state.child64.n = 0;
+            state.child.n = 0;
+            state.child64.n = 0;
 
-        const decodedState = new State();
-        decodedState.decode(state.encode());
+            const decodedState = new State();
+            decodedState.decode(state.encode());
 
-        state.child = undefined;
-        state.child = new Child();
-        state.child.n = 1;
+            state.child = undefined;
+            state.child = new Child();
+            state.child.n = 1;
 
-        // for (let i = 0; i < numItems; i++) {
-        //     state.arrayOfNum[i] = undefined;
-        //     state.arrayOfNum[i] = i * 100;
-        // }
+            for (let i = 0; i < numItems; i++) {
+                state.arrayOfNum[i] = undefined;
+                state.arrayOfNum[i] = i * 100;
+            }
 
-        // for (let i = 0; i < numItems; i++) {
-        //     state.mapOfNum.delete(i.toString());
-        //     state.mapOfNum.set(i.toString(), i * 100);
-        // }
+            for (let i = 0; i < numItems; i++) {
+                state.mapOfNum.delete(i.toString());
+                state.mapOfNum.set(i.toString(), i * 100);
+            }
 
-        console.log(">> WILL ENCODE")
-        const encoded = state.encode();
-        console.log("ENCODED:", [...encoded]);
+            const encoded = state.encode();
 
-        // Should not throw
-        console.log(">> WILL DECODE")
-        decodedState.decode(encoded);
+            // Should not throw
+            decodedState.decode(encoded);
+            state.arrayOfNum.clear();
+            state.arrayOfNum.push(10);
 
-        //
-        // FIXME: this should not throw an error.
-        // SWITCH_TO_STRUCTURE conflicts with `DELETE_AND_ADD` + fieldIndex = 63
-        //
-        assert.throws(() => {
+            state.mapOfNum.clear();
+            state.mapOfNum.set("one", 10);
+
+            decodedState.decode(state.encode());
+            assert.strictEqual(10, decodedState.arrayOfNum[0]);
+        });
+
+        xit("SWITCH_TO_STRUCTURE should not conflict with `DELETE_AND_ADD` on fieldIndex = 63", () => {
+            //
+            // FIXME: this should not throw an error.
+            // SWITCH_TO_STRUCTURE conflicts with `DELETE_AND_ADD` + fieldIndex = 63
+            //
+            const state = new State();
             state.child64 = undefined;
             state.child64 = new Child();
             state.child64.n = 1;
+
+            const decodedState = new State();
             decodedState.decode(state.encode());
         });
-
-        state.arrayOfNum.clear();
-        // state.arrayOfNum.push(10);
-
-        state.mapOfNum.clear();
-        state.mapOfNum.set("one", 10);
-
-        assert.doesNotThrow(() => decodedState.decode(state.encode()));
-
-    });
+    })
 
     it("string: containing specific UTF-8 characters", () => {
         let bytes: Buffer;

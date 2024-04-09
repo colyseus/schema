@@ -1,5 +1,5 @@
 import { TypeContext } from "../annotations";
-import { $changes, $decoder } from "../types/symbols";
+import { $changes, $childType, $decoder } from "../types/symbols";
 import { Schema } from "../Schema";
 
 import * as decode from "../encoding/decode";
@@ -127,7 +127,7 @@ export class Decoder<T extends Schema = any> {
     removeChildRefs(ref: Collection, allChanges: DataChange[]) {
         const changeTree = ref[$changes];
 
-        const needRemoveRef = (typeof (changeTree.getType()) !== "string");
+        const needRemoveRef = typeof (ref[$childType]) !== "string";
         const refId = changeTree.refId;
 
         ref.forEach((value: any, key: any) => {
