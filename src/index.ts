@@ -47,16 +47,21 @@ export {
     type,
     deprecated,
     defineTypes,
+    view,
 
     // Internals
     TypeContext,
 } from "./annotations";
 
 // Annotation types
-export type {
-    DefinitionType,
-    PrimitiveType,
-    Definition,
-} from "./annotations";
+export type { DefinitionType, PrimitiveType, Definition, } from "./annotations";
+
+export { Encoder } from "./encoder/Encoder";
+export { encodeSchemaOperation, encodeKeyValueOperation } from "./encoder/EncodeOperation";
+export { ChangeTree, Ref } from "./encoder/ChangeTree";
+export { StateView } from "./encoder/StateView";
+
+export { Decoder } from "./decoder/Decoder";
+export { decodeSchemaOperation, decodeKeyValueOperation } from "./decoder/DecodeOperation";
 
 export { OPERATION } from "./encoding/spec";

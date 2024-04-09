@@ -61,7 +61,7 @@ export class Encoder<T extends Schema = any> {
             const encoder = ctor[$encoder];
             const isOwned = ctor[$isOwned];
 
-            if (hasView && !view['owned'].has(changeTree)) {
+            if (hasView && !view.items.has(changeTree)) {
                 continue;
             }
 

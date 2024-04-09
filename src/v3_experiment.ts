@@ -1,26 +1,32 @@
 import * as util from "node:util";
 import "./symbol.shim";
 
-import { owned, type } from "./annotations";
-// import { Reflection, ReflectionField, ReflectionType } from "./Reflection";
+import {
+    view,
+    type,
+    Schema,
+    ArraySchema,
+    MapSchema,
+    Encoder,
+    Decoder,
+    StateView,
 
-import { Schema } from "./Schema";
-import { ArraySchema } from "./types/custom/ArraySchema";
-import { MapSchema } from "./types/custom/MapSchema";
+    encode, decode,
+    OPERATION,
+    encodeKeyValueOperation,
+    encodeSchemaOperation,
+    decodeKeyValueOperation,
+    decodeSchemaOperation,
 
-import { Encoder } from "./encoder/Encoder";
-import { Decoder } from "./decoder/Decoder";
-import { OPERATION } from "./encoding/spec";
-import { encodeKeyValueOperation, encodeSchemaOperation, encodeValue } from "./encoder/EncodeOperation";
+    $changes, $decoder, $deleteByIndex, $encoder, $getByIndex, $track,
 
-import * as encode from "./encoding/encode";
-import * as decode from "./encoding/decode";
-import { $changes, $decoder, $deleteByIndex, $encoder, $getByIndex, $track } from "./types/symbols";
-import { decodeKeyValueOperation, decodeSchemaOperation } from "./decoder/DecodeOperation";
-import { ChangeTree, Ref } from "./encoder/ChangeTree";
-import { Metadata } from "./Metadata";
-import { Reflection } from "./Reflection";
-import { StateView } from "./encoder/StateView";
+    Metadata,
+    ChangeTree,
+    Ref,
+    Reflection,
+
+} from ".";
+
 import { getStateCallbacks } from "./decoder/strategy/StateCallbacks";
 import { getRawChangesCallback } from "./decoder/strategy/RawChanges";
 
@@ -149,15 +155,6 @@ function log(message: any) {
     console.log(util.inspect(message, false, 10, true));
 }
 
-Schema[$encoder] = encodeSchemaOperation;
-Schema[$decoder] = decodeSchemaOperation;
-
-MapSchema[$encoder] = encodeKeyValueOperation;
-MapSchema[$decoder] = decodeKeyValueOperation;
-
-ArraySchema[$encoder] = encodeKeyValueOperation;
-ArraySchema[$decoder] = decodeKeyValueOperation;
-
 // // No need to extend Schema!
 // class Vec3 {
 //     x: number;
@@ -249,7 +246,7 @@ class State extends Schema {
     @type("number") num: number = 0;
     @type("string") str = "Hello world!"
 
-    @owned @type([Team]) teams = new ArraySchema<Team>();
+    @view @type([Team]) teams = new ArraySchema<Team>();
 
 
 
@@ -321,7 +318,7 @@ const sharedOffset = it.offset;
 // team1View.owns(state.teams[0]);
 
 const view = new StateView();
-view.owns(state.teams[0]);
+view.add(state.teams[0]);
 
 // view1['owned'].add(state[$changes]);
 // view1['owned'].add(state.teams[$changes]);
@@ -331,7 +328,7 @@ view.owns(state.teams[0]);
 
 const view2 = new StateView<State>();
 console.log(">>> VIEW 2");
-view2.owns(state.teams[1]);
+view2.add(state.teams[1]);
 // view2.owns(state.entities.get("two"));
 
 console.log("> will encode view 1...");
@@ -360,46 +357,6 @@ const decodedState = Reflection.decode<State>(encodedReflection);
 // const decodedState = new State();
 const decoder = new Decoder(decodedState);
 
-const { $ } = getStateCallbacks(decoder); // room
-
-console.log("> register callbacks...");
-
-const s: any = {};
-
-// $(s).entities.onAdd((entity, entityId) => {
-// });
-
-$(decoder.state).listen("str", (value, previousValue) => {
-    console.log("'str' changed:", { value, previousValue });
-});
-
-$(decoder.state).teams.onAdd((team, index) => {
-    console.log("Teams.onAdd =>", { index, refId: decoder.$root.refIds.get(team) });
-
-    $(team).entities.onAdd((entity, entityId) => {
-        console.log(`Entities.onAdd =>`, { teamIndex: index, entityId, refId: decoder.$root.refIds.get(entity) });
-
-        $(entity).onChange(() => {
-            console.log("Entity changed!");
-        });
-
-        $(entity).listen("position", (value, previousValue) => {
-            console.log("entity position ->", value.toJSON());
-        });
-
-        $(entity as Player).cards.onAdd((card, cardIndex) => {
-            console.log(entityId, "card added =>", { card, cardIndex });
-        });
-
-        // const frontendObj: any = {};
-        // $(entity).position.bindTo(frontendObj, ["x", "y", "z"]);
-
-    });
-
-    // $(team).entities.get("one").position.listen("x", (value, previousValue) => {
-    // });
-
-});
 
 // $(decoder.state).teams.onAdd((team, index) => {
 //     // room.$state.bind(team, frontendTeam);
