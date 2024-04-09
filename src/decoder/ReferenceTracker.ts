@@ -43,7 +43,6 @@ export class ReferenceTracker {
     // for decoding
     removeRef(refId: number) {
         const refCount = this.refCounts[refId];
-
         // console.log("REMOVE REF", { refId, refCount, ref: this.refs.get(refId) });
 
         if (refCount === undefined) {

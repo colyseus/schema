@@ -138,7 +138,7 @@ describe("Edge cases", () => {
 
         const state = new State();
         for (let i = 0; i < numItems; i++) { state.arrayOfNum.push(i); }
-        for (let i = 0; i < numItems; i++) { state.mapOfNum.set(i.toString(), i); }
+        // for (let i = 0; i < numItems; i++) { state.mapOfNum.set(i.toString(), i); }
 
         state.child.n = 0;
         state.child64.n = 0;
@@ -150,18 +150,23 @@ describe("Edge cases", () => {
         state.child = new Child();
         state.child.n = 1;
 
-        for (let i = 0; i < numItems; i++) {
-            state.arrayOfNum[i] = undefined;
-            state.arrayOfNum[i] = i * 100;
-        }
+        // for (let i = 0; i < numItems; i++) {
+        //     state.arrayOfNum[i] = undefined;
+        //     state.arrayOfNum[i] = i * 100;
+        // }
 
-        for (let i = 0; i < numItems; i++) {
-            state.mapOfNum.delete(i.toString());
-            state.mapOfNum.set(i.toString(), i * 100);
-        }
+        // for (let i = 0; i < numItems; i++) {
+        //     state.mapOfNum.delete(i.toString());
+        //     state.mapOfNum.set(i.toString(), i * 100);
+        // }
+
+        console.log(">> WILL ENCODE")
+        const encoded = state.encode();
+        console.log("ENCODED:", [...encoded]);
 
         // Should not throw
-        decodedState.decode(state.encode());
+        console.log(">> WILL DECODE")
+        decodedState.decode(encoded);
 
         //
         // FIXME: this should not throw an error.

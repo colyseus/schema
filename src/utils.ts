@@ -1,28 +1,45 @@
-import { Schema } from "./";
-import { ChangeTree } from "./encoder/ChangeTree";
-import { $changes } from "./types/symbols";
+import { Schema } from "./Schema";
+import { OPERATION } from "./encoding/spec";
+import { $changes, $getByIndex } from "./types/symbols";
+
+interface ChangeItem {
+    op: string;
+    index: number;
+    value?: any;
+    refId?: number;
+}
 
 export function dumpChanges(schema: Schema) {
-    const changeTrees: ChangeTree[] = [schema[$changes]];
-    let numChangeTrees = 1;
+    const $root = schema[$changes].root;
 
-    const dump = {};
-    let currentStructure = dump;
+    const dump = {
+        ops: {
+            "ADD": 0,
+            "REMOVE": 0,
+            "REPLACE": 0,
+        },
+        changes: []
+    };
 
-    for (let i = 0; i < numChangeTrees; i++) {
-        const changeTree = changeTrees[i];
+    $root.changes.forEach((operations, changeTree) => {
+        operations.forEach((op, index) => {
+            dump.ops[OPERATION[op]]++;
 
-        changeTree.changes.forEach((_, fieldIndex) => {
-            const ref = changeTree.ref;
+            const value = changeTree.getValue(index);
+            const type = changeTree.getType(index);
+            const refId = value[$changes] && value[$changes].refId;
 
-            const field = ((ref as Schema)['metadata'])
-                ? ref['metadata'][fieldIndex]
-                : ref['$indexes'].get(fieldIndex);
+            const change: ChangeItem = { op: OPERATION[op], index, };
 
-            currentStructure[field] = changeTree.getValue(fieldIndex);
+            if (value?.[$changes]?.refId) {
+                change.value = { [`#refId`]: refId };
+            } else {
+                change.value = value;
+            }
+
+            dump.changes.push(change);
         });
-
-    }
+    });
 
     return dump;
 }

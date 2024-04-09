@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player } from "./Schema";
+import { State, Player, getEncoder } from "./Schema";
 import { MapSchema, dumpChanges, ArraySchema } from "../src";
 
 describe("Utils Test", () => {
@@ -12,11 +12,13 @@ describe("Utils Test", () => {
 
         it("MapSchema", () => {
             const state = new State();
+            getEncoder(state);// initialize encoder
+
             state.mapOfPlayers = new MapSchema<Player>();
 
-            assert.doesNotThrow(() => dumpChanges(state));
+            dumpChanges(state);
 
-            state.mapOfPlayers['one'] = new Player("One", 1, 1);
+            state.mapOfPlayers.set('one', new Player("One", 1, 1));
 
             let dump: any = dumpChanges(state);
             assert.strictEqual(
@@ -27,7 +29,7 @@ describe("Utils Test", () => {
             // discard changes
             state.encode();
 
-            delete state.mapOfPlayers['one'];
+            state.mapOfPlayers.delete('one');
             dump = dumpChanges(state);
 
             assert.strictEqual(
@@ -38,11 +40,13 @@ describe("Utils Test", () => {
 
         it("ArraySchema", () => {
             const state = new State();
+            getEncoder(state);// initialize encoder
+
             state.arrayOfPlayers = new ArraySchema<Player>();
             state.arrayOfPlayers.push(new Player("One", 1, 1));
             state.arrayOfPlayers.push(new Player("Two", 2, 2));
 
-            assert.doesNotThrow(() => dumpChanges(state));
+            dumpChanges(state);
 
             let dump: any = dumpChanges(state);
             assert.strictEqual(

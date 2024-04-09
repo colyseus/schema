@@ -354,7 +354,7 @@ describe("Type: Schema", () => {
             assert.doesNotThrow(() => {
                 const state = new State();
                 state.mapOfPlayers = new MapSchema<Player>();
-                delete state.mapOfPlayers['jake']
+                state.mapOfPlayers.delete('jake')
             });
         });
 
@@ -363,15 +363,15 @@ describe("Type: Schema", () => {
             const state = new State();
             state.player = CONSTANT_PLAYER.clone();
             state.mapOfPlayers = new MapSchema<Player>();
-            state.mapOfPlayers['one'] = CONSTANT_PLAYER.clone();
+            state.mapOfPlayers.set('one', CONSTANT_PLAYER.clone());
             state.arrayOfPlayers = new ArraySchema<Player>();
             state.arrayOfPlayers.push(CONSTANT_PLAYER.clone());
 
             const decodedState = new State();
             decodedState.decode(state.encode());
-            assert.strictEqual(state.player.name, "Cloned");
-            assert.strictEqual(state.mapOfPlayers['one'].name, "Cloned");
-            assert.strictEqual(state.arrayOfPlayers[0].name, "Cloned");
+            assert.strictEqual(decodedState.player.name, "Cloned");
+            assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Cloned");
+            assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cloned");
         });
     });
 
@@ -437,6 +437,20 @@ describe("Type: Schema", () => {
 
             // assert.deepEqual(encoded, [2, 193]);
             assert.ok(decodedState.player instanceof Player);
+        });
+
+        it("should allow to delete Schema reference", () => {
+            const state = new State();
+            state.player = new Player();
+
+            const decodedState = new State();
+            const encoded = state.encode();
+            decodedState.decode(encoded);
+
+            state.player = undefined;
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(decodedState.player, undefined);
         });
 
         it("should encode/decode Schema reference with its properties", () => {

@@ -64,6 +64,12 @@ export function decodeValue(
         if (previousRefId) { $root.removeRef(previousRefId); }
 
         value = null;
+    }
+
+    if (operation === OPERATION.DELETE) {
+        //
+        // Don't do anything
+        //
 
     } else if (Schema.is(type)) {
         const refId = decode.number(bytes, it);
