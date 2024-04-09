@@ -138,7 +138,7 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     const ref = changeTree.ref;
 
     // encode operation
-    encode.uint8(bytes, operation, it);
+    bytes[it.offset++] = operation & 255;
 
     // custom operations
     if (operation === OPERATION.CLEAR) {

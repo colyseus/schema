@@ -145,7 +145,7 @@ export class Encoder<T extends Schema = any> {
         const targetTypeId = this.context.getTypeId(targetType);
 
         if (baseTypeId !== targetTypeId) {
-            encode.uint8(bytes, TYPE_ID, it);
+            bytes[it.offset++] = TYPE_ID & 255;
             encode.number(bytes, targetTypeId, it);
         }
     }
