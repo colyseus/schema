@@ -239,7 +239,7 @@ export function getStateCallbacks(decoder: Decoder) {
                     if (context.onInstanceAvailable) {
                         // collection instance not received yet
                         context.onInstanceAvailable((ref: Ref, existing: boolean) =>
-                            onAdd(ref, callback, existing && !isTriggeringOnAdd));
+                            onAdd(ref, callback, immediate && existing && !isTriggeringOnAdd));
 
                     } else if (context.instance) {
                         onAdd(context.instance, callback, immediate && !isTriggeringOnAdd);
