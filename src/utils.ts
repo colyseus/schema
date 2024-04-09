@@ -2,42 +2,31 @@ import { Schema } from "./Schema";
 import { OPERATION } from "./encoding/spec";
 import { $changes, $getByIndex } from "./types/symbols";
 
-interface ChangeItem {
-    op: string;
-    index: number;
-    value?: any;
-    refId?: number;
+type ChangeItem = [string, number | string, any?];
+
+interface ChangeDump {
+    ops: {
+        ADD?: number;
+        REMOVE?: number;
+        REPLACE?: number;
+    },
+    refs: string[],
 }
 
 export function dumpChanges(schema: Schema) {
     const $root = schema[$changes].root;
 
-    const dump = {
-        ops: {
-            "ADD": 0,
-            "REMOVE": 0,
-            "REPLACE": 0,
-        },
-        changes: []
+    const dump: ChangeDump = {
+        ops: {},
+        refs: []
     };
 
     $root.changes.forEach((operations, changeTree) => {
+        dump.refs.push(`refId#${changeTree.refId}`);
         operations.forEach((op, index) => {
+            const opName = OPERATION[op];
+            if (!dump.ops[opName]) { dump.ops[opName] = 0; }
             dump.ops[OPERATION[op]]++;
-
-            const value = changeTree.getValue(index);
-            const type = changeTree.getType(index);
-            const refId = value[$changes] && value[$changes].refId;
-
-            const change: ChangeItem = { op: OPERATION[op], index, };
-
-            if (value?.[$changes]?.refId) {
-                change.value = { [`#refId`]: refId };
-            } else {
-                change.value = value;
-            }
-
-            dump.changes.push(change);
         });
     });
 

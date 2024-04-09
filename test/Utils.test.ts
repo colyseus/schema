@@ -23,7 +23,7 @@ describe("Utils Test", () => {
             let dump: any = dumpChanges(state);
             assert.strictEqual(
                 JSON.stringify(dump),
-                '{"mapOfPlayers":{"one":{"name":"One","x":1,"y":1}}}'
+                '{"ops":{"ADD":5},"refs":["refId#0","refId#1","refId#2"]}'
             );
 
             // discard changes
@@ -34,7 +34,7 @@ describe("Utils Test", () => {
 
             assert.strictEqual(
                 JSON.stringify(dump),
-                '{"mapOfPlayers":{}}'
+                '{"ops":{"DELETE":1},"refs":["refId#1"]}'
             );
         });
 
@@ -51,7 +51,7 @@ describe("Utils Test", () => {
             let dump: any = dumpChanges(state);
             assert.strictEqual(
                 JSON.stringify(dump),
-                '{"arrayOfPlayers":[{"name":"One","x":1,"y":1},{"name":"Two","x":2,"y":2}]}',
+                '{"ops":{"ADD":9},"refs":["refId#0","refId#1","refId#2","refId#3"]}',
             );
 
             // discard changes
@@ -62,7 +62,7 @@ describe("Utils Test", () => {
 
             assert.strictEqual(
                 JSON.stringify(dump),
-                '{"arrayOfPlayers":[{"name":"One","x":1,"y":1}]}',
+                '{"ops":{"DELETE":1},"refs":["refId#1"]}',
             );
         });
 
