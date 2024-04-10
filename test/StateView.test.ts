@@ -149,15 +149,14 @@ describe("StateView", () => {
         client1.view.add(state.items.get("3"));
 
         const client2 = createClient(state);
-        encodeMultiple(encoder, state, [client1]);
-        // encodeMultiple(encoder, state, [client1, client2]);
+        encodeMultiple(encoder, state, [client1, client2]);
 
         assert.strictEqual(client1.state.prop1, state.prop1);
         assert.strictEqual(client1.state.items.size, 1);
         assert.strictEqual(client1.state.items.get("3").amount, state.items.get("3").amount);
 
-        // assert.strictEqual(client2.state.prop1, state.prop1);
-        // assert.strictEqual(client2.state.items, undefined);
+        assert.strictEqual(client2.state.prop1, state.prop1);
+        assert.strictEqual(client2.state.items, undefined);
     });
 
     it("ArraySchema: should sync single item", () => {
