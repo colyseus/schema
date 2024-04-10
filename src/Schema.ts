@@ -4,7 +4,7 @@ import { DefinitionType } from "./annotations";
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
 import { ChangeTree} from './encoder/ChangeTree';
-import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $isOwned, $track } from './types/symbols';
+import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $track } from './types/symbols';
 import { StateView } from './encoder/StateView';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation';
@@ -77,8 +77,8 @@ export abstract class Schema {
 
     /**
      * Determine if a property must be filtered.
-     * - If returns true, the property is NOT going to be encoded.
-     * - If returns false, the property is going to be encoded.
+     * - If returns false, the property is NOT going to be encoded.
+     * - If returns true, the property is going to be encoded.
      *
      * Encoding with "filters" happens in two steps:
      * - First, the encoder iterates over all "not owned" properties and encodes them.
@@ -89,17 +89,11 @@ export abstract class Schema {
         const field  = metadata[metadata[index]];
 
         if (view === undefined) {
-            return field.owned !== undefined;
+            return field.owned === undefined;
 
         } else {
-            return field.owned && !view['owned'].has(ref[$changes]);
+            return field.owned === undefined || view.items.has(ref[$changes]);
         }
-    }
-
-    static [$isOwned] (ref: Schema, index: number) {
-        const metadata = ref.constructor[Symbol.metadata];
-        const field  = metadata[metadata[index]];
-        return field.owned !== undefined;
     }
 
     // allow inherited classes to have a constructor

@@ -50,6 +50,8 @@ export function decodeValue(
 
     let value: any;
 
+    // console.log("DECODE VALUE", { op: OPERATION[operation], ref: ref.constructor.name, index, });
+
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
         //

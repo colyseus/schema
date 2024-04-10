@@ -1,10 +1,11 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $getByIndex } from "../symbols";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex } from "../symbols";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
 import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
+import type { StateView } from "../../encoder/StateView";
 
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]> {
     protected childType: new () => V;
@@ -14,6 +15,23 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     static [$encoder] = encodeKeyValueOperation;
     static [$decoder] = decodeKeyValueOperation;
+
+    /**
+     * Determine if a property must be filtered.
+     * - If returns false, the property is NOT going to be encoded.
+     * - If returns true, the property is going to be encoded.
+     *
+     * Encoding with "filters" happens in two steps:
+     * - First, the encoder iterates over all "not owned" properties and encodes them.
+     * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
+     */
+    static [$filter] (ref: MapSchema, index: number, view: StateView) {
+        return (
+            !view  ||
+            typeof (ref[$childType]) === "string" ||
+            view.items.has(ref[$getByIndex](index)[$changes])
+        );
+    }
 
     static is(type: any) {
         return type['map'] !== undefined;

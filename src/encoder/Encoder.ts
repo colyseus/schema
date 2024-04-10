@@ -1,11 +1,11 @@
 import type { Schema } from "../Schema";
 import { TypeContext } from "../annotations";
-import { $changes, $encoder, $isOwned } from "../types/symbols";
+import { $changes, $encoder, $filter } from "../types/symbols";
 
 import * as encode from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
 
-import { SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
+import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Root } from "./ChangeTree";
 import { getNextPowerOf2 } from "../utils";
 import { StateView } from "./StateView";
@@ -24,7 +24,7 @@ export class Encoder<T extends Schema = any> {
 
         //
         // TODO: cache and restore "Context" based on root schema
-        // (to avoid creating a new context for each new room)
+        // (to avoid creating a new context for every new room)
         //
         this.context = new TypeContext(root.constructor as typeof Schema);
 
@@ -59,9 +59,10 @@ export class Encoder<T extends Schema = any> {
 
             const ctor = ref['constructor'];
             const encoder = ctor[$encoder];
-            const isOwned = ctor[$isOwned];
+            const filter = ctor[$filter];
 
             if (hasView && !view.items.has(changeTree)) {
+                console.log("skipping changeTree", changeTree.refId, changeTree.ref.constructor.name);
                 continue;
             }
 
@@ -80,7 +81,7 @@ export class Encoder<T extends Schema = any> {
                 //
                 // TODO: how can we optimize filtering out "encode all" operations?
                 //
-                if (!hasView && isOwned && isOwned(ref, fieldIndex)) {
+                if (filter && !filter(ref, fieldIndex, view)) {
                     continue;
                 }
 

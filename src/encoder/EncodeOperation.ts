@@ -52,6 +52,8 @@ export function encodeValue(
     operation: OPERATION,
     it: Iterator,
 ) {
+    // console.log("ENCODE VALUE", { op: OPERATION[operation], ref: ref.constructor.name, field, value });
+
     if (type[Symbol.metadata] !== undefined) {
         // TODO: move this to the `@type()` annotation
         assertInstanceType(value, type as typeof Schema, ref as Schema, field);

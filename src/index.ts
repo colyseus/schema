@@ -1,8 +1,8 @@
 export { Schema } from "./Schema";
 export type { DataChange } from "./decoder/DecodeOperation";
 
-import { $track, $encoder, $decoder, $filter, $isOwned, $getByIndex, $deleteByIndex, $changes, $childType } from "./types/symbols";
-export { $track, $encoder, $decoder, $filter, $isOwned, $getByIndex, $deleteByIndex, $changes, $childType };
+import { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType } from "./types/symbols";
+export { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType };
 
 import { MapSchema } from "./types/custom/MapSchema"
 export { MapSchema };

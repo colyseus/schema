@@ -314,7 +314,7 @@ describe("Type: Schema", () => {
                 class Player extends Entity {
                     @type("string") id: string;
                 }
-            });
+            }, /Duplicate 'id' definition on 'Player'/);
         });
     });
 
