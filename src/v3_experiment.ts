@@ -246,9 +246,7 @@ class State extends Schema {
     @type("number") num: number = 0;
     @type("string") str = "Hello world!"
 
-    @view @type([Team]) teams = new ArraySchema<Team>();
-
-
+    @view() @type([Team]) teams = new ArraySchema<Team>();
 
     // @type({ map: Entity }) entities = new MapSchema<Entity>();
 
@@ -317,8 +315,8 @@ const sharedOffset = it.offset;
 // const team1View = new StateView<State>();
 // team1View.owns(state.teams[0]);
 
-const view = new StateView();
-view.add(state.teams[0]);
+const view1 = new StateView();
+view1.add(state.teams[0]);
 
 // view1['owned'].add(state[$changes]);
 // view1['owned'].add(state.teams[$changes]);
@@ -332,7 +330,7 @@ view2.add(state.teams[1]);
 // view2.owns(state.entities.get("two"));
 
 console.log("> will encode view 1...");
-const viewEncoded1 = encoder.encodeView(view, sharedOffset, it, encoder.sharedBuffer);
+const viewEncoded1 = encoder.encodeView(view1, sharedOffset, it, encoder.sharedBuffer);
 console.log("done. view1 encoded =>", `(${viewEncoded1.byteLength} bytes)`);
 
 console.log("> will encode view 2...");

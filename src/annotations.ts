@@ -321,7 +321,7 @@ export function entity(constructor, context: ClassDecoratorContext) {
 //     }
 // }
 
-export function view<T> (id: number = 0) {
+export function view<T> (tag: string | number = 0) {
     return function(target: T, field: string) {
         const constructor = target.constructor as typeof Schema;
 
