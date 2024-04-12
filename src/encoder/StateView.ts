@@ -42,4 +42,26 @@ export class StateView {
 
         return obj;
     }
+
+    remove(obj: Ref, tag?: number) {
+        if (obj && obj[$changes]) {
+            let changeTree: ChangeTree = obj[$changes];
+            this.items.delete(changeTree);
+
+            // remove tag
+            if (this.tags && this.tags.has(changeTree)) {
+                const tags = this.tags.get(changeTree);
+                if (tag === undefined) {
+                    // delete all tags
+                    this.tags.delete(changeTree);
+                } else {
+                    // delete specific tag
+                    tags.delete(tag);
+                    if (tags.size === 0) {
+                        this.tags.delete(changeTree);
+                    }
+                }
+            }
+        }
+    }
 }

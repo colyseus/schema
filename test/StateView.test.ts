@@ -1,6 +1,7 @@
 import * as assert from "assert";
-import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, Decoder, } from "../src";
-import { createInstanceFromReflection } from "./Schema";
+import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder } from "../src";
+import { createInstanceFromReflection, getDecoder } from "./Schema";
+import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 
 interface ClientView {
     state: Schema;
@@ -8,9 +9,11 @@ interface ClientView {
 }
 
 function createClient<T extends Schema>(from: T) {
+    const state = createInstanceFromReflection(from);
     return {
-        state: createInstanceFromReflection(from),
-        view: new StateView()
+        state,
+        view: new StateView(),
+        $: getStateCallbacks(getDecoder(state)).$
     };
 }
 
@@ -230,6 +233,68 @@ describe("StateView", () => {
             assert.strictEqual(client1.state.items[0].amount, state.items.at(3).amount);
 
             assert.strictEqual(client2.state.prop1, state.prop1);
+            assert.strictEqual(client2.state.items, undefined);
+        });
+
+        it("visibility change should add/remove item", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 5; i++) {
+                state.items.push(new Item().assign({ amount: i }));
+            }
+
+            const encoder = new Encoder(state);
+
+            const client1 = createClient(state);
+            client1.view.add(state.items.at(3));
+
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.items.length, 1);
+            assert.strictEqual(client1.state.items[0].amount, state.items[3].amount);
+
+            // remove item from view
+            client1.view.remove(state.items.at(3));
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.items.length, 0);
+        });
+
+        xit("visibility change should trigger onAdd/onRemove", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 5; i++) {
+                state.items.push(new Item().assign({ amount: i }));
+            }
+
+            const encoder = new Encoder(state);
+
+            const client1 = createClient(state);
+            client1.view.add(state.items.at(3));
+
+            let onAddCalls = 0;
+            client1.$(client1.state).items.onAdd((item, index) => onAddCalls++);
+            let onRemoveCalls = 0;
+            client1.$(client1.state).items.onRemove((item, index) => onRemoveCalls++);
+
+            const client2 = createClient(state);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.items.length, 1);
             assert.strictEqual(client2.state.items, undefined);
         });
     });
