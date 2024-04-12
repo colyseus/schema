@@ -129,11 +129,15 @@ describe("StateView", () => {
         const encoder = new Encoder(state);
 
         const client1 = createClient(state);
-        client1.view.add(state.players);
+        client1.view.add(state.players.get("0"));
         client1.view.add(state.players.get("1"), Tag.ZERO);
         client1.view.add(state.players.get("2"), Tag.ONE);
+        client1.view.add(state.players.get("3"));
+        client1.view.add(state.players.get("4"));
 
         const client2 = createClient(state);
+        client2.view.add(state.players.get("0"));
+
         encodeMultiple(encoder, state, [client1, client2]);
 
         assert.strictEqual(client1.state.prop1, state.prop1);
@@ -152,6 +156,14 @@ describe("StateView", () => {
 
         assert.strictEqual(client2.state.prop1, state.prop1);
         assert.strictEqual(client2.state.players.size, 5);
+        assert.strictEqual(client2.state.players.get("0").tag_default, state.players.get("0").tag_default);
+        for (let i = 0; i < 5; i++) {
+            if (i !== 0) {
+                assert.strictEqual(client2.state.players.get(i.toString()).tag_default, undefined);
+            }
+            assert.strictEqual(client2.state.players.get(i.toString()).tag_0, undefined);
+            assert.strictEqual(client2.state.players.get(i.toString()).tag_1, undefined);
+        }
     });
 
     describe("MapSchema", () => {
@@ -162,6 +174,7 @@ describe("StateView", () => {
 
             class State extends Schema {
                 @type("string") prop1 = "Hello world";
+
                 @view() @type({ map: Item }) items = new MapSchema<Item>();
             }
 
@@ -200,7 +213,7 @@ describe("StateView", () => {
             }
 
             const state = new State();
-            for (let i=0;i<5;i++) {
+            for (let i = 0; i < 5; i++) {
                 state.items.push(new Item().assign({ amount: i }));
             }
 

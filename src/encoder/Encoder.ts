@@ -81,7 +81,6 @@ export class Encoder<T extends Schema = any> {
                 // TODO: avoid checking if no view tags were defined
                 //
                 if (filter && !filter(ref, fieldIndex, view)) {
-                    console.log("skip...", { ref: ref.constructor.name, fieldIndex });
                     continue;
                 }
 

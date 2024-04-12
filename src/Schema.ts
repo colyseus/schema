@@ -104,7 +104,7 @@ export abstract class Schema {
 
         } else {
             // view pass: custom tag
-            const tags = view.tags.get(ref[$changes]);
+            const tags = view.tags?.get(ref[$changes]);
             return tags && tags.has(tag);
         }
     }
