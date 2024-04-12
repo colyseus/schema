@@ -39,6 +39,8 @@ export interface TypeOptions {
     manual?: boolean,
 }
 
+export const DEFAULT_VIEW_TAG = -1;
+
 export class TypeContext {
     types: {[id: number]: typeof Schema} = {};
     schemas = new Map<typeof Schema, number>();
@@ -321,7 +323,7 @@ export function entity(constructor, context: ClassDecoratorContext) {
 //     }
 // }
 
-export function view<T> (tag: string | number = 0) {
+export function view<T> (tag: number = DEFAULT_VIEW_TAG) {
     return function(target: T, field: string) {
         const constructor = target.constructor as typeof Schema;
 
@@ -342,8 +344,8 @@ export function view<T> (tag: string | number = 0) {
             }
         }
 
-        // add owned flag to the field
-        metadata[field].owned = true;
+        // add 'tag' to the field
+        metadata[field].tag = tag;
 
         // map "-2" index as "has filters"
         Object.defineProperty(metadata, -2, {

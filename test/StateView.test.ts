@@ -18,63 +18,30 @@ function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, clients
     const it = { offset: 0 };
 
     // perform shared encode
-    console.log("> SHARED ENCODE...")
+
+    // console.log("> SHARED ENCODE...")
     encoder.encode(it);
-    console.log("< SHARED ENCODE FINISHED...")
+    // console.log("< SHARED ENCODE FINISHED...")
 
     const sharedOffset = it.offset;
-    clients.forEach(client => {
+    clients.forEach((client, i) => {
         if (!client.state) {
             client.state = createInstanceFromReflection(state);
         }
 
         // encode each view
-        console.log("> ENCODE VIEW...");
-        const encoded = encoder.encodeView(client.view, sharedOffset, it);
-        console.log("< ENCODE VIEW FINISHED...");
 
-        console.log("> DECODE VIEW...");
+        // console.log(`> ENCODE VIEW (${i})...`);
+        const encoded = encoder.encodeView(client.view, sharedOffset, it);
+        // console.log(`< ENCODE VIEW (${i}) FINISHED...`);
+
+        // console.log("> DECODE VIEW...");
         client.state.decode(encoded);
-        console.log("< DECODE VIEW FINISHED...");
+        // console.log("< DECODE VIEW FINISHED...");
     });
 }
 
 describe("StateView", () => {
-
-    class Vec3 extends Schema {
-        @type("number") x: number;
-        @type("number") y: number;
-        @type("number") z: number;
-    }
-
-    class Entity extends Schema {
-        @type(Vec3) position = new Vec3().assign({ x: 0, y: 0, z: 0 });
-    }
-
-    class Card extends Schema {
-        @type("string") suit: string;
-        @type("number") num: number;
-    }
-
-    class Player extends Entity {
-        @type(Vec3) rotation = new Vec3().assign({ x: 0, y: 0, z: 0 });
-        @type("string") secret: string = "private info only for this player";
-        @type([Card]) cards = new ArraySchema<Card>(
-            new Card().assign({ suit: "Hearts", num: 1 }),
-            new Card().assign({ suit: "Spaces", num: 2 }),
-            new Card().assign({ suit: "Diamonds", num: 3 }),
-        );
-    }
-
-    class Team extends Schema {
-        @type({ map: Entity }) entities = new MapSchema<Entity>();
-    }
-
-    class State extends Schema {
-        @type("number") num: number = 0;
-        @type("string") str = "Hello world!"
-        @view() @type([Team]) teams = new ArraySchema<Team>();
-    }
 
     it("should filter out a property", () => {
         class State extends Schema {
@@ -109,7 +76,7 @@ describe("StateView", () => {
         }
 
         const state = new State();
-        for (let i=0;i<5;i++) {
+        for (let i = 0; i < 5; i++) {
             state.items.push(new Item().assign({ amount: i }));
         }
 
@@ -128,66 +95,130 @@ describe("StateView", () => {
         assert.strictEqual(client2.state.items, undefined);
     });
 
-    it("MapSchema: should sync single item", () => {
-        class Item extends Schema {
-            @type("number") amount: number;
+    it("tagged properties", () => {
+        enum Tag {
+            ZERO = 0,
+            ONE = 1
+        };
+
+        class Player extends Schema {
+            @view()
+            @type("number") tag_default: number;
+
+            @view(Tag.ZERO)
+            @type("number") tag_0: number;
+
+            @view(Tag.ONE)
+            @type("number") tag_1: number;
         }
 
         class State extends Schema {
             @type("string") prop1 = "Hello world";
-            @view() @type({ map: Item }) items = new MapSchema<Item>();
+            @type({ map: Player }) players = new MapSchema<Player>();
         }
 
         const state = new State();
-        for (let i=0;i<5;i++) {
-            state.items.set(i.toString(), new Item().assign({ amount: i }));
+        for (let i = 0; i < 5; i++) {
+            state.players.set(i.toString(), new Player().assign({
+                tag_default: i,
+                tag_0: i * 2,
+                tag_1: i * 3
+            }));
         }
 
         const encoder = new Encoder(state);
 
         const client1 = createClient(state);
-        client1.view.add(state.items.get("3"));
+        client1.view.add(state.players);
+        client1.view.add(state.players.get("1"), Tag.ZERO);
+        client1.view.add(state.players.get("2"), Tag.ONE);
 
         const client2 = createClient(state);
         encodeMultiple(encoder, state, [client1, client2]);
 
         assert.strictEqual(client1.state.prop1, state.prop1);
-        assert.strictEqual(client1.state.items.size, 1);
-        assert.strictEqual(client1.state.items.get("3").amount, state.items.get("3").amount);
+        assert.strictEqual(client1.state.players.get("0").tag_default, state.players.get("0").tag_default);
+        assert.strictEqual(client1.state.players.get("0").tag_0, undefined);
+        assert.strictEqual(client1.state.players.get("0").tag_1, undefined);
+
+        assert.strictEqual(client1.state.players.get("1").tag_default, state.players.get("1").tag_default);
+        assert.strictEqual(client1.state.players.get("1").tag_0, state.players.get("1").tag_0);
+        assert.strictEqual(client1.state.players.get("1").tag_1, undefined);
+
+        assert.strictEqual(client1.state.players.get("2").tag_default, state.players.get("2").tag_default);
+        assert.strictEqual(client1.state.players.get("2").tag_0, undefined);
+        assert.strictEqual(client1.state.players.get("2").tag_1, state.players.get("2").tag_1);
+        assert.strictEqual(client1.state.players.size, 5);
 
         assert.strictEqual(client2.state.prop1, state.prop1);
-        assert.strictEqual(client2.state.items, undefined);
+        assert.strictEqual(client2.state.players.size, 5);
     });
 
-    it("ArraySchema: should sync single item", () => {
-        class Item extends Schema {
-            @type("number") amount: number;
-        }
+    describe("MapSchema", () => {
+        it("should sync single item", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
 
-        class State extends Schema {
-            @type("string") prop1 = "Hello world";
-            @view() @type([Item]) items = new ArraySchema<Item>();
-        }
+            class State extends Schema {
+                @type("string") prop1 = "Hello world";
+                @view() @type({ map: Item }) items = new MapSchema<Item>();
+            }
 
-        const state = new State();
-        for (let i=0;i<5;i++) {
-            state.items.push(new Item().assign({ amount: i }));
-        }
+            const state = new State();
+            for (let i = 0; i < 5; i++) {
+                state.items.set(i.toString(), new Item().assign({ amount: i }));
+            }
 
-        const encoder = new Encoder(state);
+            const encoder = new Encoder(state);
 
-        const client1 = createClient(state);
-        client1.view.add(state.items.at(3));
+            const client1 = createClient(state);
+            client1.view.add(state.items.get("3"));
 
-        const client2 = createClient(state);
-        encodeMultiple(encoder, state, [client1, client2]);
+            const client2 = createClient(state);
+            encodeMultiple(encoder, state, [client1, client2]);
 
-        assert.strictEqual(client1.state.prop1, state.prop1);
-        assert.strictEqual(client1.state.items.length, 1);
-        assert.strictEqual(client1.state.items[0].amount, state.items.at(3).amount);
+            assert.strictEqual(client1.state.prop1, state.prop1);
+            assert.strictEqual(client1.state.items.size, 1);
+            assert.strictEqual(client1.state.items.get("3").amount, state.items.get("3").amount);
 
-        assert.strictEqual(client2.state.prop1, state.prop1);
-        assert.strictEqual(client2.state.items, undefined);
+            assert.strictEqual(client2.state.prop1, state.prop1);
+            assert.strictEqual(client2.state.items, undefined);
+        });
+
     });
 
-})
+    describe("ArraySchema", () => {
+        it("should sync single item", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @type("string") prop1 = "Hello world";
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i=0;i<5;i++) {
+                state.items.push(new Item().assign({ amount: i }));
+            }
+
+            const encoder = new Encoder(state);
+
+            const client1 = createClient(state);
+            client1.view.add(state.items.at(3));
+
+            const client2 = createClient(state);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.prop1, state.prop1);
+            assert.strictEqual(client1.state.items.length, 1);
+            assert.strictEqual(client1.state.items[0].amount, state.items.at(3).amount);
+
+            assert.strictEqual(client2.state.prop1, state.prop1);
+            assert.strictEqual(client2.state.items, undefined);
+        });
+    });
+
+});

@@ -42,7 +42,7 @@ export class Encoder<T extends Schema = any> {
 
     encode(
         it: Iterator = { offset: 0 },
-        view?: StateView<T>,
+        view?: StateView,
         bytes = this.sharedBuffer,
         changeTrees = this.$root.changes
     ): Buffer {
@@ -62,7 +62,6 @@ export class Encoder<T extends Schema = any> {
             const filter = ctor[$filter];
 
             if (hasView && !view.items.has(changeTree)) {
-                console.log("skipping changeTree", changeTree.refId, changeTree.ref.constructor.name);
                 continue;
             }
 
@@ -74,14 +73,15 @@ export class Encoder<T extends Schema = any> {
             const changesIterator = changes.entries();
 
             for (const [fieldIndex, operation] of changesIterator) {
-
                 //
                 // first pass (encodeAll), identify "filtered" operations without encoding them
                 // they will be encoded per client, based on their view.
                 //
                 // TODO: how can we optimize filtering out "encode all" operations?
+                // TODO: avoid checking if no view tags were defined
                 //
                 if (filter && !filter(ref, fieldIndex, view)) {
+                    console.log("skip...", { ref: ref.constructor.name, fieldIndex });
                     continue;
                 }
 
@@ -124,7 +124,7 @@ export class Encoder<T extends Schema = any> {
         return this.encode(it, undefined, this.sharedBuffer, this.$root.allChanges);
     }
 
-    encodeView(view: StateView<T>, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
+    encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
 
         // try to encode "filtered" changes

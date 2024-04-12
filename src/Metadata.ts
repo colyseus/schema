@@ -4,7 +4,7 @@ import { getType } from "./types/registry";
 export type MetadataField = {
     type: DefinitionType,
     index: number,
-    owned?: boolean,
+    tag?: number,
     unreliable?: boolean,
     deprecated?: boolean,
     descriptor?: PropertyDescriptor,

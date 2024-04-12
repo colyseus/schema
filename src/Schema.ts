@@ -1,5 +1,5 @@
 import { OPERATION } from './encoding/spec';
-import { DefinitionType } from "./annotations";
+import { DEFAULT_VIEW_TAG, DefinitionType } from "./annotations";
 
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
@@ -9,6 +9,7 @@ import { StateView } from './encoder/StateView';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation';
 import { decodeSchemaOperation } from './decoder/DecodeOperation';
+import type { Metadata } from './Metadata';
 
 /**
  * Schema encoder / decoder
@@ -85,14 +86,26 @@ export abstract class Schema {
      * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
      */
     static [$filter] (ref: Schema, index: number, view: StateView) {
-        const metadata = ref.constructor[Symbol.metadata];
+        const metadata: Metadata = ref.constructor[Symbol.metadata];
         const field  = metadata[metadata[index]];
+        const tag = field.tag;
 
         if (view === undefined) {
-            return field.owned === undefined;
+            // shared pass/encode: encode if doesn't have a tag
+            return tag === undefined;
+
+        } else if (tag === undefined) {
+            // view pass: no tag
+            return true;
+
+        } else if (tag === DEFAULT_VIEW_TAG) {
+            // view pass: default tag
+            return view.items.has(ref[$changes]);
 
         } else {
-            return field.owned === undefined || view.items.has(ref[$changes]);
+            // view pass: custom tag
+            const tags = view.tags.get(ref[$changes]);
+            return tags && tags.has(tag);
         }
     }
 

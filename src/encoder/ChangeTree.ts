@@ -179,7 +179,7 @@ export class ChangeTree<T extends Ref=any> {
     change(index: number, operation: OPERATION = OPERATION.ADD) {
         const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
 
-        const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].owned);
+        const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
         const changeSet = (isFiltered)
             ? this.filteredChanges
             : this.changes;
@@ -242,7 +242,7 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
-        const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].owned);
+        const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
         const changeSet = (isFiltered)
             ? this.filteredChanges
             : this.changes;
@@ -343,10 +343,10 @@ export class ChangeTree<T extends Ref=any> {
 
         // Detect if parent has "filters" declared
         while (parent && !this.isFiltered) {
-            const metadata = parent['constructor'][Symbol.metadata];
+            const metadata: Metadata = parent['constructor'][Symbol.metadata];
 
             const fieldName = metadata?.[parentIndex];
-            const isParentOwned = metadata?.[fieldName]?.owned;
+            const isParentOwned = metadata?.[fieldName]?.tag !== undefined;
 
             this.isFiltered = isParentOwned || parent[$changes].isFiltered; // metadata?.[-2]
 
