@@ -60,3 +60,5 @@ export type {
 } from "./annotations";
 
 export { OPERATION } from "./spec";
+
+export type { ToJSON } from './types/HelperTypes';
