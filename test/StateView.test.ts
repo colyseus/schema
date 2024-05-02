@@ -401,7 +401,7 @@ describe("StateView", () => {
 
             // add item to view & encode again
             const encoded = encodeMultiple(encoder, state, [client1])[0];
-            console.log(Array.from(encoded));
+            assert.deepStrictEqual([], Array.from(encoded));
             assert.strictEqual(undefined, client1.state.item.amount);
             assert.strictEqual(undefined, client1.state.item.fov1);
             assert.strictEqual(undefined, client1.state.item.fov2);

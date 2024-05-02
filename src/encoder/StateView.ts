@@ -45,14 +45,9 @@ export class StateView {
                 }
                 tags.add(tag);
 
-                console.log("ADD", { tag }, metadata?.[-3]?.[tag], {
-                    changes: changeTree.changes.get(metadata?.[-3]?.[tag]?.[0]),
-                    filteredChanges: changeTree.filteredChanges.get(metadata?.[-3]?.[tag]?.[0])
-                });
-
                 // add tagged properties
                 metadata?.[-3]?.[tag]?.forEach((index) => {
-                    if (changeTree.changes.get(index) !== OPERATION.DELETE) {
+                    if (changeTree.getChange(index) !== OPERATION.DELETE) {
                         changes.set(index, OPERATION.ADD)
                     }
                 });
@@ -60,7 +55,7 @@ export class StateView {
             } else {
                 // add default tag properties
                 metadata?.[-3]?.[DEFAULT_VIEW_TAG]?.forEach((index) => {
-                    if (changeTree.changes.get(index) !== OPERATION.DELETE) {
+                    if (changeTree.getChange(index) !== OPERATION.DELETE) {
                         changes.set(index, OPERATION.ADD);
                     }
                 });

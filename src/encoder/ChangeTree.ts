@@ -224,9 +224,9 @@ export class ChangeTree<T extends Ref=any> {
         }
     }
 
-    hasChange(index: number) {
-        console.log("hasChange", index, { changes: this.changes.has(index), filteredChanges: this.filteredChanges.has(index) });
-        return this.changes.has(index) || this.filteredChanges.has(index);
+    getChange(index: number) {
+        // TODO: optimize this. avoid checking against multiple instances
+        return this.changes.get(index) ?? this.filteredChanges.get(index);
     }
 
     //
