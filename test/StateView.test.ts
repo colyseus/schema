@@ -265,7 +265,7 @@ describe("StateView", () => {
             assert.strictEqual(undefined, client1.state.item.amount);
         });
 
-        it("view.add(TAG) should encode item for a particular view", () => {
+        it("view.add(TAG) should re-encode a discarded change", () => {
             const FOV_TAG = 1;
 
             class Item extends Schema {
