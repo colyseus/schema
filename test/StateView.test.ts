@@ -27,7 +27,7 @@ function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, clients
     // console.log("< SHARED ENCODE FINISHED...")
 
     const sharedOffset = it.offset;
-    clients.forEach((client, i) => {
+    const encodedViews = clients.map((client, i) => {
         if (!client.state) {
             client.state = createInstanceFromReflection(state);
         }
@@ -42,9 +42,13 @@ function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, clients
         // console.log("> DECODE VIEW...");
         client.state.decode(encoded);
         // console.log("< DECODE VIEW FINISHED...");
+
+        return encoded;
     });
 
     encoder.discardChanges();
+
+    return encodedViews;
 }
 
 describe("StateView", () => {
@@ -102,10 +106,7 @@ describe("StateView", () => {
     });
 
     it("tagged properties", () => {
-        enum Tag {
-            ZERO = 0,
-            ONE = 1
-        };
+        enum Tag { ZERO = 0, ONE = 1 };
 
         class Player extends Schema {
             @view()
@@ -304,6 +305,106 @@ describe("StateView", () => {
 
             assert.strictEqual(undefined, client1.state.item.amount);
             assert.strictEqual(undefined, client1.state.item.fov);
+        });
+
+        it("view.add(TAG) should not encode ADD twice", () => {
+            enum Tag { ONE = 1, TWO = 2 };
+
+            class Item extends Schema {
+                @view() @type("number") amount: number;
+                @view(Tag.ONE) @type("number") fov1: number;
+                @view(Tag.TWO) @type("number") fov2: number;
+            }
+
+            class State extends Schema {
+                @type(Item) item = new Item();
+            }
+
+            const state = new State();
+            state.item = new Item().assign({ amount: 10, });
+
+            const encoder = new Encoder(state);
+
+            const client1 = createClient(state);
+            client1.view.add(state.item);
+
+            encodeMultiple(encoder, state, [client1]);
+            assert.strictEqual(10, client1.state.item.amount);
+            assert.strictEqual(undefined, client1.state.item.fov1);
+            assert.strictEqual(undefined, client1.state.item.fov2);
+
+            // add item to view & encode again
+            client1.view.add(state.item);
+            encodeMultiple(encoder, state, [client1]);
+            assert.strictEqual(10, client1.state.item.amount);
+            assert.strictEqual(undefined, client1.state.item.fov1);
+            assert.strictEqual(undefined, client1.state.item.fov2);
+
+            state.item.fov1 = 20;
+            state.item.fov2 = 30;
+            client1.view.add(state.item, Tag.ONE);
+            const encodedTag1 = encodeMultiple(encoder, state, [client1])[0];
+            assert.strictEqual(10, client1.state.item.amount);
+            assert.strictEqual(20, client1.state.item.fov1);
+            assert.strictEqual(undefined, client1.state.item.fov2);
+
+            client1.view.add(state.item, Tag.TWO);
+            const encodedTag2 = encodeMultiple(encoder, state, [client1])[0];
+
+            // compare encode1 with encode2
+            assert.strictEqual(Array.from(encodedTag1).length, Array.from(encodedTag2).length);
+            assert.strictEqual(Array.from(encodedTag1)[0], Array.from(encodedTag2)[0]);
+            assert.strictEqual(Array.from(encodedTag1)[1], Array.from(encodedTag2)[1]);
+            assert.strictEqual(Array.from(encodedTag1)[2] + 1, Array.from(encodedTag2)[2]); // field index (+1 so 1 -> 2)
+            assert.strictEqual(Array.from(encodedTag1)[3] + 10, Array.from(encodedTag2)[3]); // value (+ 10 so 20 -> 30)
+
+            assert.strictEqual(10, client1.state.item.amount);
+            assert.strictEqual(20, client1.state.item.fov1);
+            assert.strictEqual(30, client1.state.item.fov2);
+        });
+
+        it("view.add(TAG) should not encode ADD on top of a previous REMOVE", () => {
+            enum Tag { ONE = 1, TWO = 2 };
+
+            class Item extends Schema {
+                @view() @type("number") amount: number;
+                @view(Tag.ONE) @type("number") fov1: number;
+                @view(Tag.TWO) @type("number") fov2: number;
+            }
+
+            class State extends Schema {
+                @type(Item) item = new Item();
+            }
+
+            const state = new State();
+            state.item = new Item().assign({
+                amount: 10,
+                fov1: 20,
+                fov2: 30
+            });
+
+            const encoder = new Encoder(state);
+
+            const client1 = createClient(state);
+            encodeMultiple(encoder, state, [client1]);
+            assert.strictEqual(undefined, client1.state.item.amount);
+            assert.strictEqual(undefined, client1.state.item.fov1);
+            assert.strictEqual(undefined, client1.state.item.fov2);
+
+            state.item.amount = undefined;
+            state.item.fov1 = undefined;
+            state.item.fov2 = undefined;
+
+            client1.view.add(state.item);
+            client1.view.add(state.item, Tag.ONE);
+            client1.view.add(state.item, Tag.TWO);
+
+            // add item to view & encode again
+            const encoded = encodeMultiple(encoder, state, [client1])[0];
+            console.log(Array.from(encoded));
+            assert.strictEqual(undefined, client1.state.item.amount);
+            assert.strictEqual(undefined, client1.state.item.fov1);
+            assert.strictEqual(undefined, client1.state.item.fov2);
         });
 
         xit("visibility change should add/remove array items", () => {

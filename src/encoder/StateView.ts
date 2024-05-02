@@ -6,9 +6,13 @@ import { Metadata } from "../Metadata";
 
 export class StateView {
     items: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
+
+    // TODO: use bit manipulation instead of Set<number> ()
     tags?: WeakMap<ChangeTree, Set<number>>;
+
     changes = new Map<ChangeTree, Map<number, OPERATION>>();
 
+    // TODO: allow to set multiple tags
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG) {
         if (obj && obj[$changes]) {
             let changeTree: ChangeTree = obj[$changes];
@@ -17,6 +21,15 @@ export class StateView {
             // TODO: avoid recursive call here
             changeTree.forEachChild((change, _) =>
                 this.add(change.ref, tag));
+
+            // TODO: ArraySchema/MapSchema does not have metadata
+            const metadata: Metadata = obj.constructor[Symbol.metadata];
+
+            let changes = this.changes.get(changeTree);
+            if (changes === undefined) {
+                changes = new Map<number, OPERATION>();
+                this.changes.set(changeTree, changes)
+            }
 
             // set tag
             if (tag !== DEFAULT_VIEW_TAG) {
@@ -31,6 +44,26 @@ export class StateView {
                     tags = this.tags.get(changeTree);
                 }
                 tags.add(tag);
+
+                console.log("ADD", { tag }, metadata?.[-3]?.[tag], {
+                    changes: changeTree.changes.get(metadata?.[-3]?.[tag]?.[0]),
+                    filteredChanges: changeTree.filteredChanges.get(metadata?.[-3]?.[tag]?.[0])
+                });
+
+                // add tagged properties
+                metadata?.[-3]?.[tag]?.forEach((index) => {
+                    if (changeTree.changes.get(index) !== OPERATION.DELETE) {
+                        changes.set(index, OPERATION.ADD)
+                    }
+                });
+
+            } else {
+                // add default tag properties
+                metadata?.[-3]?.[DEFAULT_VIEW_TAG]?.forEach((index) => {
+                    if (changeTree.changes.get(index) !== OPERATION.DELETE) {
+                        changes.set(index, OPERATION.ADD);
+                    }
+                });
             }
 
             // TODO: avoid unnecessary iteration here

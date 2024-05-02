@@ -132,6 +132,12 @@ export class Encoder<T extends Schema = any> {
         // encode visibility changes (add/remove for this view)
         const viewChangesIterator = view.changes.entries();
         for (const [changeTree, changes] of viewChangesIterator) {
+
+            // FIXME: avoid having empty changes if no changes were made
+            if (changes.size === 0) {
+                continue;
+            }
+
             const ref = changeTree.ref;
 
             const ctor = ref['constructor'];
@@ -141,6 +147,7 @@ export class Encoder<T extends Schema = any> {
             encode.number(bytes, changeTree.refId, it);
 
             const changesIterator = changes.entries();
+
             for (const [fieldIndex, operation] of changesIterator) {
                 encoder(this, bytes, changeTree, fieldIndex, operation, it);
             }

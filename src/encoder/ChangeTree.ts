@@ -224,6 +224,11 @@ export class ChangeTree<T extends Ref=any> {
         }
     }
 
+    hasChange(index: number) {
+        console.log("hasChange", index, { changes: this.changes.has(index), filteredChanges: this.filteredChanges.has(index) });
+        return this.changes.has(index) || this.filteredChanges.has(index);
+    }
+
     //
     // used during `.encode()`
     //
