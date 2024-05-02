@@ -36,12 +36,15 @@ function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, clients
 
         // console.log(`> ENCODE VIEW (${i})...`);
         const encoded = encoder.encodeView(client.view, sharedOffset, it);
+        // console.log("ENCODED:", encoded);
         // console.log(`< ENCODE VIEW (${i}) FINISHED...`);
 
         // console.log("> DECODE VIEW...");
         client.state.decode(encoded);
         // console.log("< DECODE VIEW FINISHED...");
     });
+
+    encoder.discardChanges();
 }
 
 describe("StateView", () => {
@@ -236,10 +239,9 @@ describe("StateView", () => {
             assert.strictEqual(client2.state.items, undefined);
         });
 
-        it("visibility change should assign property to undefined", () => {
+        it("view.remove() change should assign property to undefined", () => {
             class Item extends Schema {
                 @view() @type("number") amount: number;
-                @view(1) @type("number") fov: number;
             }
 
             class State extends Schema {
@@ -250,12 +252,10 @@ describe("StateView", () => {
             state.item = new Item().assign({ amount: 10 });
 
             const encoder = new Encoder(state);
-
             const client1 = createClient(state);
             client1.view.add(state.item);
 
             encodeMultiple(encoder, state, [client1]);
-
             assert.strictEqual(10, client1.state.item.amount);
 
             // remove item from view
@@ -263,6 +263,47 @@ describe("StateView", () => {
             encodeMultiple(encoder, state, [client1]);
 
             assert.strictEqual(undefined, client1.state.item.amount);
+        });
+
+        it("view.add(TAG) should encode item for a particular view", () => {
+            const FOV_TAG = 1;
+
+            class Item extends Schema {
+                @view() @type("number") amount: number;
+                @view(FOV_TAG) @type("number") fov: number;
+            }
+
+            class State extends Schema {
+                @type(Item) item = new Item();
+            }
+
+            const state = new State();
+            state.item = new Item().assign({
+                amount: 10,
+                fov: 20
+            });
+
+            const encoder = new Encoder(state);
+
+            const client1 = createClient(state);
+            client1.view.add(state.item);
+
+            encodeMultiple(encoder, state, [client1]);
+            assert.strictEqual(10, client1.state.item.amount);
+            assert.strictEqual(undefined, client1.state.item.fov);
+
+            // add item to view & encode again
+            client1.view.add(state.item, FOV_TAG);
+            encodeMultiple(encoder, state, [client1]);
+            assert.strictEqual(10, client1.state.item.amount);
+            assert.strictEqual(20, client1.state.item.fov);
+
+            // remove item from view
+            client1.view.remove(state.item);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(undefined, client1.state.item.amount);
+            assert.strictEqual(undefined, client1.state.item.fov);
         });
 
         xit("visibility change should add/remove array items", () => {
