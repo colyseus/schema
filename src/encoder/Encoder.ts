@@ -129,6 +129,26 @@ export class Encoder<T extends Schema = any> {
         // try to encode "filtered" changes
         this.encode(it, view, bytes, this.$root.filteredChanges);
 
+        // encode visibility changes (add/remove for this view)
+        const viewChangesIterator = view.changes.entries();
+        for (const [changeTree, changes] of viewChangesIterator) {
+            const ref = changeTree.ref;
+
+            const ctor = ref['constructor'];
+            const encoder = ctor[$encoder];
+
+            bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
+            encode.number(bytes, changeTree.refId, it);
+
+            const changesIterator = changes.entries();
+            for (const [fieldIndex, operation] of changesIterator) {
+                encoder(this, bytes, changeTree, fieldIndex, operation, it);
+            }
+        }
+
+        // clear "view" changes after encoding
+        view.changes.clear();
+
         return Buffer.concat([
             bytes.slice(0, sharedOffset),
             bytes.slice(viewOffset, it.offset)

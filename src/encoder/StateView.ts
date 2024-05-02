@@ -1,10 +1,13 @@
 import { ChangeTree, Ref } from "./ChangeTree";
 import { $changes } from "../types/symbols";
 import { DEFAULT_VIEW_TAG } from "../annotations";
+import { OPERATION } from "../encoding/spec";
+import { Metadata } from "../Metadata";
 
 export class StateView {
     items: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
     tags?: WeakMap<ChangeTree, Set<number>>;
+    changes = new Map<ChangeTree, Map<number, OPERATION>>();
 
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG) {
         if (obj && obj[$changes]) {
@@ -43,23 +46,45 @@ export class StateView {
         return obj;
     }
 
-    remove(obj: Ref, tag?: number) {
-        if (obj && obj[$changes]) {
-            let changeTree: ChangeTree = obj[$changes];
-            this.items.delete(changeTree);
+    remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG) {
+        const changeTree = obj?.[$changes];
+        if (!changeTree) { return; }
 
-            // remove tag
-            if (this.tags && this.tags.has(changeTree)) {
-                const tags = this.tags.get(changeTree);
-                if (tag === undefined) {
-                    // delete all tags
+        this.items.delete(changeTree);
+
+        const ref = changeTree.ref;
+        const metadata: Metadata = ref.constructor[Symbol.metadata];
+
+        let changes = this.changes.get(changeTree);
+        if (changes === undefined) {
+            changes = new Map<number, OPERATION>();
+            this.changes.set(changeTree, changes)
+        }
+
+        if (tag === DEFAULT_VIEW_TAG) {
+            // delete all "tagged" properties.
+            metadata[-2].forEach((index) =>
+                changes.set(index, OPERATION.DELETE));
+
+        } else {
+            // delete only tagged properties
+            metadata[-3][tag].forEach((index) =>
+                changes.set(index, OPERATION.DELETE));
+        }
+
+        // remove tag
+        if (this.tags && this.tags.has(changeTree)) {
+            const tags = this.tags.get(changeTree);
+            if (tag === undefined) {
+                // delete all tags
+                this.tags.delete(changeTree);
+            } else {
+                // delete specific tag
+                tags.delete(tag);
+
+                // if tag set is empty, delete it entirely
+                if (tags.size === 0) {
                     this.tags.delete(changeTree);
-                } else {
-                    // delete specific tag
-                    tags.delete(tag);
-                    if (tags.size === 0) {
-                        this.tags.delete(changeTree);
-                    }
                 }
             }
         }

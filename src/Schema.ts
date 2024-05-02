@@ -87,8 +87,7 @@ export abstract class Schema {
      */
     static [$filter] (ref: Schema, index: number, view: StateView) {
         const metadata: Metadata = ref.constructor[Symbol.metadata];
-        const field  = metadata[metadata[index]];
-        const tag = field.tag;
+        const tag = metadata[metadata[index]].tag;
 
         if (view === undefined) {
             // shared pass/encode: encode if doesn't have a tag

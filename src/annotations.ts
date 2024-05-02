@@ -324,35 +324,26 @@ export function entity(constructor, context: ClassDecoratorContext) {
 // }
 
 export function view<T> (tag: number = DEFAULT_VIEW_TAG) {
-    return function(target: T, field: string) {
+    return function(target: T, fieldName: string) {
         const constructor = target.constructor as typeof Schema;
 
         const parentClass = Object.getPrototypeOf(constructor);
         const parentMetadata = parentClass[Symbol.metadata];
         const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
 
-        if (!metadata[field]) {
+        if (!metadata[fieldName]) {
             //
             // detect index for this field, considering inheritance
             //
-            metadata[field] = {
+            metadata[fieldName] = {
                 type: undefined,
                 index: (metadata[-1] // current structure already has fields defined
                     ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
                     ?? -1) + 1 // no fields defined
-
             }
         }
 
-        // add 'tag' to the field
-        metadata[field].tag = tag;
-
-        // map "-2" index as "has filters"
-        Object.defineProperty(metadata, -2, {
-            value: true,
-            enumerable: false,
-            configurable: true
-        });
+        Metadata.setTag(metadata, fieldName, tag);
     }
 }
 

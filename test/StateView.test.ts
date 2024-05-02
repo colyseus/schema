@@ -236,7 +236,36 @@ describe("StateView", () => {
             assert.strictEqual(client2.state.items, undefined);
         });
 
-        it("visibility change should add/remove item", () => {
+        it("visibility change should assign property to undefined", () => {
+            class Item extends Schema {
+                @view() @type("number") amount: number;
+                @view(1) @type("number") fov: number;
+            }
+
+            class State extends Schema {
+                @type(Item) item = new Item();
+            }
+
+            const state = new State();
+            state.item = new Item().assign({ amount: 10 });
+
+            const encoder = new Encoder(state);
+
+            const client1 = createClient(state);
+            client1.view.add(state.item);
+
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(10, client1.state.item.amount);
+
+            // remove item from view
+            client1.view.remove(state.item);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(undefined, client1.state.item.amount);
+        });
+
+        xit("visibility change should add/remove array items", () => {
             class Item extends Schema {
                 @type("number") amount: number;
             }
@@ -267,7 +296,7 @@ describe("StateView", () => {
             assert.strictEqual(client1.state.items.length, 0);
         });
 
-        xit("visibility change should trigger onAdd/onRemove", () => {
+        xit("visibility change should trigger onAdd/onRemove on arrays", () => {
             class Item extends Schema {
                 @type("number") amount: number;
             }

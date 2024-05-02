@@ -12,7 +12,8 @@ export type MetadataField = {
 
 export type Metadata =
     { [-1]: number; } & // number of fields
-    { [-2]: boolean; } & // has filters
+    { [-2]: number[]; } & // all field indexes with "view" tag
+    { [-3]: {[tag: number]: number[]}; } & // field indexes by "view" tag
     { [field: number]: string; } & // index => field name
     { [field: string]: MetadataField; } // field name => field metadata
 
@@ -47,6 +48,36 @@ export const Metadata = {
             enumerable: false,
             configurable: true,
         });
+    },
+
+    setTag(metadata: Metadata, fieldName: string, tag: number) {
+        // add 'tag' to the field
+        const field = metadata[fieldName];
+        field.tag = tag;
+
+        if (!metadata[-2]) {
+            // -2: all field indexes with "view" tag
+            Object.defineProperty(metadata, -2, {
+                value: [],
+                enumerable: false,
+                configurable: true
+            });
+
+            // -3: field indexes by "view" tag
+            Object.defineProperty(metadata, -3, {
+                value: {},
+                enumerable: false,
+                configurable: true
+            });
+        }
+
+        metadata[-2].push(field.index);
+
+        if (!metadata[-3][tag]) {
+            metadata[-3][tag] = [];
+        }
+
+        metadata[-3][tag].push(field.index);
     },
 
     setFields(target: any, fields: { [field: string]: DefinitionType }) {
