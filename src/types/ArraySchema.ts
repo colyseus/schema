@@ -167,13 +167,13 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         //
         // FIXME: this should be O(1)
         //
-        
+
 	    index = Math.trunc(index) || 0;
 	    // Allow negative indexing from the end
 	    if (index < 0) index += this.length;
 	    // OOB access is guaranteed to return undefined
 	    if (index < 0 || index >= this.length) return undefined;
-        
+
         const key = Array.from(this.$items.keys())[index];
         return this.$items.get(key);
     }
@@ -434,7 +434,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
      * @param callbackfn A function that accepts up to three arguments. The filter method calls the callbackfn function one time for each element in the array.
      * @param thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value.
      */
-    filter(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any)
+    filter(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any): V[]
     filter<S extends V>(callbackfn: (value: V, index: number, array: V[]) => value is S, thisArg?: any): V[] {
         return Array.from(this.$items.values()).filter(callbackfn, thisArg);
     }
