@@ -24,43 +24,9 @@ export class StateView {
 
             // TODO: ArraySchema/MapSchema does not have metadata
             const metadata: Metadata = obj.constructor[Symbol.metadata];
-            const parentIsCollection = (changeTree.parent?.constructor[Symbol.metadata] === undefined);
 
-            if (parentIsCollection) {
-                const parentChangeTree = changeTree.parent[$changes];
-                const parentIndex = changeTree.parentIndex;
-
-                // add parent's tag properties
-                if (parentChangeTree.getChange(parentIndex) !== OPERATION.DELETE) {
-
-                    let parentChanges = this.changes.get(parentChangeTree);
-                    if (parentChanges === undefined) {
-                        parentChanges = new Map<number, OPERATION>();
-                        this.changes.set(parentChangeTree, parentChanges);
-                    }
-
-                    console.log("add parent change", {
-                        parentIndex,
-                        parentChanges,
-                        parentChange: (
-                            parentChangeTree.getChange(parentIndex) &&
-                            OPERATION[parentChangeTree.getChange(parentIndex)]
-                        ),
-                    })
-
-                    if (!this.tags) { this.tags = new WeakMap<ChangeTree, Set<number>>(); }
-                    let tags: Set<number>;
-                    if (!this.tags.has(parentChangeTree)) {
-                        tags = new Set<number>();
-                        this.tags.set(parentChangeTree, tags);
-                    } else {
-                        tags = this.tags.get(parentChangeTree);
-                    }
-                    tags.add(tag);
-
-                    parentChanges.set(parentIndex, OPERATION.ADD);
-                }
-            }
+            // FIXME: this is breaking other tests...
+            this.addParent(changeTree, tag);
 
             //
             // TODO: when adding an item of a MapSchema, the changes may not
@@ -86,7 +52,7 @@ export class StateView {
                 }
                 tags.add(tag);
 
-                console.log("BY TAG:", tag);
+                // console.log("BY TAG:", tag);
 
                 // Ref: add tagged properties
                 metadata?.[-3]?.[tag]?.forEach((index) => {
@@ -97,14 +63,21 @@ export class StateView {
 
             } else {
 
-                console.log("DEFAULT TAG");
+                // console.log("DEFAULT TAG", changeTree.allChanges);
 
-                // add default tag properties
-                metadata?.[-3]?.[DEFAULT_VIEW_TAG]?.forEach((index) => {
+                // // add default tag properties
+                // metadata?.[-3]?.[DEFAULT_VIEW_TAG]?.forEach((index) => {
+                //     if (changeTree.getChange(index) !== OPERATION.DELETE) {
+                //         changes.set(index, OPERATION.ADD);
+                //     }
+                // });
+
+                const it = changeTree.allChanges.keys();
+                for (const index of it) {
                     if (changeTree.getChange(index) !== OPERATION.DELETE) {
                         changes.set(index, OPERATION.ADD);
                     }
-                });
+                }
             }
 
             // TODO: avoid unnecessary iteration here
@@ -118,6 +91,48 @@ export class StateView {
         }
 
         return obj;
+    }
+
+    protected addParent(changeTree: ChangeTree, tag: number) {
+        const parentRef = changeTree.parent;
+        if (!parentRef) { return; }
+
+        const parentChangeTree = parentRef[$changes];
+        const parentIndex = changeTree.parentIndex;
+
+        this.addParent(parentChangeTree, tag);
+
+        // add parent's tag properties
+        if (parentChangeTree.getChange(parentIndex) !== OPERATION.DELETE) {
+
+            let parentChanges = this.changes.get(parentChangeTree);
+            if (parentChanges === undefined) {
+                parentChanges = new Map<number, OPERATION>();
+                this.changes.set(parentChangeTree, parentChanges);
+            }
+
+            // console.log("add parent change", {
+            //     parentIndex,
+            //     parentChanges,
+            //     parentChange: (
+            //         parentChangeTree.getChange(parentIndex) &&
+            //         OPERATION[parentChangeTree.getChange(parentIndex)]
+            //     ),
+            // })
+
+            if (!this.tags) { this.tags = new WeakMap<ChangeTree, Set<number>>(); }
+            let tags: Set<number>;
+            if (!this.tags.has(parentChangeTree)) {
+                tags = new Set<number>();
+                this.tags.set(parentChangeTree, tags);
+            } else {
+                tags = this.tags.get(parentChangeTree);
+            }
+            tags.add(tag);
+
+            parentChanges.set(parentIndex, OPERATION.ADD);
+        }
+
     }
 
     remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG) {

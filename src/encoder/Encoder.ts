@@ -135,6 +135,7 @@ export class Encoder<T extends Schema = any> {
 
             // FIXME: avoid having empty changes if no changes were made
             if (changes.size === 0) {
+                console.log("changes.size === 0", changeTree.ref.constructor.name);
                 continue;
             }
 
