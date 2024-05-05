@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder } from "../src";
+import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree } from "../src";
 import { createInstanceFromReflection, getDecoder } from "./Schema";
 import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 
@@ -373,6 +373,57 @@ describe("StateView", () => {
 
             assert.strictEqual(client2.state.prop1, state.prop1);
             assert.strictEqual(client2.state.items, undefined);
+        });
+
+        it("should allow to add/remove items", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 10; i++) {
+                state.items.set(i.toString(), new Item().assign({ amount: i }));
+            }
+
+            const encoder = new Encoder(state);
+
+            const client1 = createClient(state);
+            const client2 = createClient(state);
+
+            console.log(">> ENCODE 1");
+            const encoded0 = encodeMultiple(encoder, state, [client1, client2]);
+            assert.strictEqual(0, Array.from(encoded0[0]).length);
+            assert.strictEqual(0, Array.from(encoded0[1]).length);
+            assert.strictEqual(client1.state.items, undefined);
+            assert.strictEqual(client2.state.items, undefined);
+
+            client1.view.add(state.items.get("3"));
+            client1.view.add(state.items.get("4"));
+
+            client2.view.add(state.items.get("4"));
+            client2.view.add(state.items.get("5"));
+
+            console.log(Schema.debugRefIds(state));
+
+            console.log(">> ENCODE 2");
+            // first encode
+            const encoded1 = encodeMultiple(encoder, state, [client1, client2]);
+            console.log("second =>", Array.from(encoded1[0]), Array.from(encoded1[1]));
+            assert.strictEqual(Array.from(encoded1[0]).length, Array.from(encoded1[1]).length);
+
+            assert.strictEqual(client1.state.items.size, 2);
+            assert.strictEqual(client1.state.items.get("3").amount, state.items.get("3").amount);
+            assert.strictEqual(client1.state.items.get("4").amount, state.items.get("4").amount);
+
+            assert.strictEqual(client2.state.items.size, 2);
+            assert.strictEqual(client2.state.items.get("4").amount, state.items.get("4").amount);
+            assert.strictEqual(client2.state.items.get("5").amount, state.items.get("5").amount);
+            //
+
         });
 
     });

@@ -171,11 +171,6 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     const type = changeTree.getType(field);
     const value = changeTree.getValue(field);
 
-    // // ensure refId for the value
-    // if (value && value[$changes]) {
-    //     value[$changes].ensureRefId();
-    // }
-
     // TODO: inline this function call small performance gain
     encodeValue(encoder, bytes, ref, type, value, field, operation, it);
 }

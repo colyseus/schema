@@ -24,7 +24,48 @@ export class StateView {
 
             // TODO: ArraySchema/MapSchema does not have metadata
             const metadata: Metadata = obj.constructor[Symbol.metadata];
+            const parentIsCollection = (changeTree.parent?.constructor[Symbol.metadata] === undefined);
 
+            if (parentIsCollection) {
+                const parentChangeTree = changeTree.parent[$changes];
+                const parentIndex = changeTree.parentIndex;
+
+                // add parent's tag properties
+                if (parentChangeTree.getChange(parentIndex) !== OPERATION.DELETE) {
+
+                    let parentChanges = this.changes.get(parentChangeTree);
+                    if (parentChanges === undefined) {
+                        parentChanges = new Map<number, OPERATION>();
+                        this.changes.set(parentChangeTree, parentChanges);
+                    }
+
+                    console.log("add parent change", {
+                        parentIndex,
+                        parentChanges,
+                        parentChange: (
+                            parentChangeTree.getChange(parentIndex) &&
+                            OPERATION[parentChangeTree.getChange(parentIndex)]
+                        ),
+                    })
+
+                    if (!this.tags) { this.tags = new WeakMap<ChangeTree, Set<number>>(); }
+                    let tags: Set<number>;
+                    if (!this.tags.has(parentChangeTree)) {
+                        tags = new Set<number>();
+                        this.tags.set(parentChangeTree, tags);
+                    } else {
+                        tags = this.tags.get(parentChangeTree);
+                    }
+                    tags.add(tag);
+
+                    parentChanges.set(parentIndex, OPERATION.ADD);
+                }
+            }
+
+            //
+            // TODO: when adding an item of a MapSchema, the changes may not
+            // be set (only the parent's changes are set)
+            //
             let changes = this.changes.get(changeTree);
             if (changes === undefined) {
                 changes = new Map<number, OPERATION>();
@@ -45,7 +86,9 @@ export class StateView {
                 }
                 tags.add(tag);
 
-                // add tagged properties
+                console.log("BY TAG:", tag);
+
+                // Ref: add tagged properties
                 metadata?.[-3]?.[tag]?.forEach((index) => {
                     if (changeTree.getChange(index) !== OPERATION.DELETE) {
                         changes.set(index, OPERATION.ADD)
@@ -53,6 +96,9 @@ export class StateView {
                 });
 
             } else {
+
+                console.log("DEFAULT TAG");
+
                 // add default tag properties
                 metadata?.[-3]?.[DEFAULT_VIEW_TAG]?.forEach((index) => {
                     if (changeTree.getChange(index) !== OPERATION.DELETE) {

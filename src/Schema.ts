@@ -3,7 +3,7 @@ import { DEFAULT_VIEW_TAG, DefinitionType } from "./annotations";
 
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
-import { ChangeTree} from './encoder/ChangeTree';
+import { ChangeTree, Ref } from './encoder/ChangeTree';
 import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $track } from './types/symbols';
 import { StateView } from './encoder/StateView';
 
@@ -189,6 +189,23 @@ export abstract class Schema {
 
     protected [$deleteByIndex](index: number) {
         this[this.constructor[Symbol.metadata][index]] = undefined;
+    }
+
+    static debugRefIds(instance: Ref, level: number = 0) {
+        const ref = instance;
+        const changeTree = ref[$changes];
+
+        const indent = (new Array(level).fill(0)).map((_, i) =>
+            (i === level - 1) ? `└─ ` : `   `
+        ).join("");
+
+        let output = "";
+        output +=  `${indent}${ref.constructor.name} (${ref[$changes].refId})\n`;
+
+        changeTree.forEachChild((childChangeTree) =>
+            output += this.debugRefIds(childChangeTree.ref, level + 1));
+
+        return output;
     }
 
 
