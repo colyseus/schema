@@ -6,6 +6,7 @@ import { Metadata } from "../Metadata";
 
 export class StateView {
     items: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
+    invisible: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
 
     // TODO: use bit manipulation instead of Set<number> ()
     tags?: WeakMap<ChangeTree, Set<number>>;
@@ -73,8 +74,13 @@ export class StateView {
                 // });
 
                 const it = changeTree.allChanges.keys();
+                const isInvisible = this.invisible.has(changeTree);
+
                 for (const index of it) {
-                    if (changeTree.getChange(index) !== OPERATION.DELETE) {
+                    if (
+                        (isInvisible || metadata?.[metadata?.[index]].tag === tag) &&
+                        changeTree.getChange(index) !== OPERATION.DELETE
+                    ) {
                         changes.set(index, OPERATION.ADD);
                     }
                 }
@@ -97,8 +103,19 @@ export class StateView {
         const parentRef = changeTree.parent;
         if (!parentRef) { return; }
 
+        // if (
+        //     !parentRef ||
+        //     parentRef.constructor[Symbol.metadata] !== undefined
+        // ) {
+        //     return;
+        // }
+
         const parentChangeTree = parentRef[$changes];
         const parentIndex = changeTree.parentIndex;
+
+        if (!this.invisible.has(parentChangeTree)) {
+            return;
+        }
 
         this.addParent(parentChangeTree, tag);
 

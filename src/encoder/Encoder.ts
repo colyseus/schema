@@ -62,6 +62,8 @@ export class Encoder<T extends Schema = any> {
             const filter = ctor[$filter];
 
             if (hasView && !view.items.has(changeTree)) {
+                // console.log("ADD AS INVISIBLE:", changeTree.ref.constructor.name)
+                view.invisible.add(changeTree);
                 continue;
             }
 
@@ -81,6 +83,8 @@ export class Encoder<T extends Schema = any> {
                 // TODO: avoid checking if no view tags were defined
                 //
                 if (filter && !filter(ref, fieldIndex, view)) {
+                    // console.log("ADD AS INVISIBLE:", fieldIndex, changeTree.ref.constructor.name)
+                    // view?.invisible.add(changeTree);
                     continue;
                 }
 

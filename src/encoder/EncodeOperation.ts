@@ -121,6 +121,8 @@ export const encodeSchemaOperation: EncodeOperation = function (
         return;
     }
 
+    // console.log("encodeSchemaOperation -> ", { ref: changeTree.ref.constructor.name, field, operation: OPERATION[operation] });
+
     // TODO: inline this function call small performance gain
     encodeValue(encoder, bytes, ref, type, value, field, operation, it);
 }
@@ -170,6 +172,8 @@ export const encodeKeyValueOperation: EncodeOperation = function (
 
     const type = changeTree.getType(field);
     const value = changeTree.getValue(field);
+
+    // console.log("encodeKeyValueOperation -> ", { ref: changeTree.ref.constructor.name, field, operation: OPERATION[operation] });
 
     // TODO: inline this function call small performance gain
     encodeValue(encoder, bytes, ref, type, value, field, operation, it);

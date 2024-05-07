@@ -28,6 +28,8 @@ function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, clients
 
     const sharedOffset = it.offset;
     const encodedViews = clients.map((client, i) => {
+        // console.log("(...encode client:", { i }, ")");
+
         if (!client.state) {
             client.state = createInstanceFromReflection(state);
         }
@@ -283,10 +285,12 @@ describe("StateView", () => {
             assert.strictEqual(undefined, client1.state.item.fov2);
 
             client1.view.add(state.item, Tag.TWO);
+            console.log("> LAST ENCODE");
             const encodedTag2 = encodeMultiple(encoder, state, [client1])[0];
 
             // compare encode1 with encode2
-            assert.strictEqual(Array.from(encodedTag1).length, Array.from(encodedTag2).length);
+            assert.strictEqual(4, Array.from(encodedTag1).length, "should encode only the new field");
+            assert.strictEqual(Array.from(encodedTag1).length, Array.from(encodedTag2).length, "encode size should be the same");
             assert.strictEqual(Array.from(encodedTag1)[0], Array.from(encodedTag2)[0]);
             assert.strictEqual(Array.from(encodedTag1)[1], Array.from(encodedTag2)[1]);
             assert.strictEqual(Array.from(encodedTag1)[2] + 1, Array.from(encodedTag2)[2]); // field index (+1 so 1 -> 2)
@@ -394,7 +398,7 @@ describe("StateView", () => {
             const client1 = createClient(state);
             const client2 = createClient(state);
 
-            // console.log(">> ENCODE 1");
+            console.log(">> ENCODE 1");
             const encoded0 = encodeMultiple(encoder, state, [client1, client2]);
             assert.strictEqual(0, Array.from(encoded0[0]).length);
             assert.strictEqual(0, Array.from(encoded0[1]).length);
@@ -407,10 +411,11 @@ describe("StateView", () => {
             client2.view.add(state.items.get("4"));
             client2.view.add(state.items.get("5"));
 
-            // console.log(">> ENCODE 2");
+            console.log(">> ENCODE 2");
 
             // first encode
             const encoded1 = encodeMultiple(encoder, state, [client1, client2]);
+            console.log("=> ", Array.from(encoded1[0]), Array.from(encoded1[1]));
             assert.strictEqual(Array.from(encoded1[0]).length, Array.from(encoded1[1]).length);
 
             assert.strictEqual(client1.state.items.size, 2);
