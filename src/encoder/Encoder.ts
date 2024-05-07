@@ -61,10 +61,14 @@ export class Encoder<T extends Schema = any> {
             const encoder = ctor[$encoder];
             const filter = ctor[$filter];
 
-            if (hasView && !view.items.has(changeTree)) {
-                // console.log("ADD AS INVISIBLE:", changeTree.ref.constructor.name)
-                view.invisible.add(changeTree);
-                continue;
+            if (hasView) {
+                if (!view.items.has(changeTree)) {
+                    view.invisible.add(changeTree);
+                    continue; // skip this change tree
+
+                } else if (view.invisible.has(changeTree)) {
+                    view.invisible.delete(changeTree); // remove from invisible list
+                }
             }
 
             if (changeTree !== rootChangeTree) { // root `refId` is skipped.

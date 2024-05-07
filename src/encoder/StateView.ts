@@ -5,115 +5,122 @@ import { OPERATION } from "../encoding/spec";
 import { Metadata } from "../Metadata";
 
 export class StateView {
+    /**
+     * List of ChangeTree's that are visible to this view
+     */
     items: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
+
+    /**
+     * List of ChangeTree's that are invisible to this view
+     */
     invisible: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
 
-    // TODO: use bit manipulation instead of Set<number> ()
-    tags?: WeakMap<ChangeTree, Set<number>>;
+    tags?: WeakMap<ChangeTree, Set<number>>; // TODO: use bit manipulation instead of Set<number> ()
 
+    /**
+     * Manual "ADD" operations for changes per ChangeTree, specific to this view.
+     * (This is used to force encoding a property, even if it was not changed)
+     */
     changes = new Map<ChangeTree, Map<number, OPERATION>>();
 
     // TODO: allow to set multiple tags
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG) {
-        if (obj && obj[$changes]) {
-            let changeTree: ChangeTree = obj[$changes];
-            this.items.add(changeTree);
+        if (!obj[$changes]) {
+            console.warn("StateView#add(), invalid object:", obj);
+            return this;
+        }
 
-            // TODO: avoid recursive call here
-            changeTree.forEachChild((change, _) =>
-                this.add(change.ref, tag));
+        let changeTree: ChangeTree = obj[$changes];
+        this.items.add(changeTree);
 
-            // TODO: ArraySchema/MapSchema does not have metadata
-            const metadata: Metadata = obj.constructor[Symbol.metadata];
+        // TODO: avoid recursive call here
+        changeTree.forEachChild((change, _) =>
+            this.add(change.ref, tag));
 
-            // FIXME: this is breaking other tests...
-            this.addParent(changeTree, tag);
+        // TODO: ArraySchema/MapSchema does not have metadata
+        const metadata: Metadata = obj.constructor[Symbol.metadata];
 
-            //
-            // TODO: when adding an item of a MapSchema, the changes may not
-            // be set (only the parent's changes are set)
-            //
-            let changes = this.changes.get(changeTree);
-            if (changes === undefined) {
-                changes = new Map<number, OPERATION>();
-                this.changes.set(changeTree, changes)
+        // FIXME: this is breaking other tests...
+        this.addParent(changeTree, tag);
+
+        //
+        // TODO: when adding an item of a MapSchema, the changes may not
+        // be set (only the parent's changes are set)
+        //
+        let changes = this.changes.get(changeTree);
+        if (changes === undefined) {
+            changes = new Map<number, OPERATION>();
+            this.changes.set(changeTree, changes)
+        }
+
+        // set tag
+        if (tag !== DEFAULT_VIEW_TAG) {
+            if (!this.tags) {
+                this.tags = new WeakMap<ChangeTree, Set<number>>();
             }
-
-            // set tag
-            if (tag !== DEFAULT_VIEW_TAG) {
-                if (!this.tags) {
-                    this.tags = new WeakMap<ChangeTree, Set<number>>();
-                }
-                let tags: Set<number>;
-                if (!this.tags.has(changeTree)) {
-                    tags = new Set<number>();
-                    this.tags.set(changeTree, tags);
-                } else {
-                    tags = this.tags.get(changeTree);
-                }
-                tags.add(tag);
-
-                // console.log("BY TAG:", tag);
-
-                // Ref: add tagged properties
-                metadata?.[-3]?.[tag]?.forEach((index) => {
-                    if (changeTree.getChange(index) !== OPERATION.DELETE) {
-                        changes.set(index, OPERATION.ADD)
-                    }
-                });
-
+            let tags: Set<number>;
+            if (!this.tags.has(changeTree)) {
+                tags = new Set<number>();
+                this.tags.set(changeTree, tags);
             } else {
-
-                // console.log("DEFAULT TAG", changeTree.allChanges);
-
-                // // add default tag properties
-                // metadata?.[-3]?.[DEFAULT_VIEW_TAG]?.forEach((index) => {
-                //     if (changeTree.getChange(index) !== OPERATION.DELETE) {
-                //         changes.set(index, OPERATION.ADD);
-                //     }
-                // });
-
-                const it = changeTree.allChanges.keys();
-                const isInvisible = this.invisible.has(changeTree);
-
-                for (const index of it) {
-                    if (
-                        (isInvisible || metadata?.[metadata?.[index]].tag === tag) &&
-                        changeTree.getChange(index) !== OPERATION.DELETE
-                    ) {
-                        changes.set(index, OPERATION.ADD);
-                    }
-                }
+                tags = this.tags.get(changeTree);
             }
+            tags.add(tag);
 
-            // TODO: avoid unnecessary iteration here
-            while (
-                changeTree.parent &&
-                (changeTree = changeTree.parent[$changes]) &&
-                (changeTree.isFiltered || changeTree.isPartiallyFiltered)
-            ) {
-                this.items.add(changeTree);
+            // console.log("BY TAG:", tag);
+
+            // Ref: add tagged properties
+            metadata?.[-3]?.[tag]?.forEach((index) => {
+                if (changeTree.getChange(index) !== OPERATION.DELETE) {
+                    changes.set(index, OPERATION.ADD)
+                }
+            });
+
+        } else {
+
+            // console.log("DEFAULT TAG", changeTree.allChanges);
+
+            // // add default tag properties
+            // metadata?.[-3]?.[DEFAULT_VIEW_TAG]?.forEach((index) => {
+            //     if (changeTree.getChange(index) !== OPERATION.DELETE) {
+            //         changes.set(index, OPERATION.ADD);
+            //     }
+            // });
+
+            const it = changeTree.allChanges.keys();
+            const isInvisible = this.invisible.has(changeTree);
+
+            for (const index of it) {
+                if (
+                    (isInvisible || metadata?.[metadata?.[index]].tag === tag) &&
+                    changeTree.getChange(index) !== OPERATION.DELETE
+                ) {
+                    changes.set(index, OPERATION.ADD);
+                }
             }
         }
 
-        return obj;
+        // TODO: avoid unnecessary iteration here
+        while (
+            changeTree.parent &&
+            (changeTree = changeTree.parent[$changes]) &&
+            (changeTree.isFiltered || changeTree.isPartiallyFiltered)
+        ) {
+            this.items.add(changeTree);
+        }
+
+        return this;
     }
 
     protected addParent(changeTree: ChangeTree, tag: number) {
         const parentRef = changeTree.parent;
         if (!parentRef) { return; }
 
-        // if (
-        //     !parentRef ||
-        //     parentRef.constructor[Symbol.metadata] !== undefined
-        // ) {
-        //     return;
-        // }
-
         const parentChangeTree = parentRef[$changes];
         const parentIndex = changeTree.parentIndex;
 
         if (!this.invisible.has(parentChangeTree)) {
+            // parent is already available, no need to add it!
             return;
         }
 
@@ -153,8 +160,11 @@ export class StateView {
     }
 
     remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG) {
-        const changeTree = obj?.[$changes];
-        if (!changeTree) { return; }
+        const changeTree = obj[$changes];
+        if (!changeTree) {
+            console.warn("StateView#remove(), invalid object:", obj);
+            return this;
+        }
 
         this.items.delete(changeTree);
 
@@ -194,5 +204,7 @@ export class StateView {
                 }
             }
         }
+
+        return this;
     }
 }
