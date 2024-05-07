@@ -23,7 +23,7 @@ export class StateView {
      */
     changes = new Map<ChangeTree, Map<number, OPERATION>>();
 
-    // TODO: allow to set multiple tags
+    // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG) {
         if (!obj[$changes]) {
             console.warn("StateView#add(), invalid object:", obj);
@@ -33,14 +33,15 @@ export class StateView {
         let changeTree: ChangeTree = obj[$changes];
         this.items.add(changeTree);
 
-        // TODO: avoid recursive call here
+        // Add children of this ChangeTree to this view
         changeTree.forEachChild((change, _) =>
             this.add(change.ref, tag));
 
-        // TODO: ArraySchema/MapSchema does not have metadata
+        // FIXME: ArraySchema/MapSchema does not have metadata
         const metadata: Metadata = obj.constructor[Symbol.metadata];
 
-        // FIXME: this is breaking other tests...
+        // add parent ChangeTree's, if they are invisible to this view
+        // TODO: REFACTOR addParent()
         this.addParent(changeTree, tag);
 
         //
