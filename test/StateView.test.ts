@@ -398,7 +398,6 @@ describe("StateView", () => {
             const client1 = createClient(state);
             const client2 = createClient(state);
 
-            console.log(">> ENCODE 1");
             const encoded0 = encodeMultiple(encoder, state, [client1, client2]);
             assert.strictEqual(0, Array.from(encoded0[0]).length);
             assert.strictEqual(0, Array.from(encoded0[1]).length);
@@ -411,11 +410,8 @@ describe("StateView", () => {
             client2.view.add(state.items.get("4"));
             client2.view.add(state.items.get("5"));
 
-            console.log(">> ENCODE 2");
-
             // first encode
             const encoded1 = encodeMultiple(encoder, state, [client1, client2]);
-            console.log("=> ", Array.from(encoded1[0]), Array.from(encoded1[1]));
             assert.strictEqual(Array.from(encoded1[0]).length, Array.from(encoded1[1]).length);
 
             assert.strictEqual(client1.state.items.size, 2);

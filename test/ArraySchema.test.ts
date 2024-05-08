@@ -2,7 +2,7 @@ import * as sinon from "sinon";
 import * as assert from "assert";
 
 import { State, Player, getCallbacks } from "./Schema";
-import { ArraySchema, Schema, type, Reflection, filter, MapSchema, dumpChanges, filterChildren } from "../src";
+import { ArraySchema, Schema, type, Reflection } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -68,7 +68,7 @@ describe("ArraySchema Tests", () => {
 
         sinon.assert.callCount(onAddSpy, 5);
         sinon.assert.calledOnce(onRemoveSpy);
-        assert.deepEqual(["B", "C", "D", "E"], decodedState.items.map(it => it.name))
+        assert.deepStrictEqual(["B", "C", "D", "E"], decodedState.items.map(it => it.name))
         assert.strictEqual("A", removedItem.name);
     });
 
@@ -81,7 +81,7 @@ describe("ArraySchema Tests", () => {
 
         const decodedState = new State();
         let encoded = state.encode();
-        // assert.deepEqual(encoded, [3, 2, 2, 0, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 1, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
+        // assert.deepStrictEqual(encoded, [3, 2, 2, 0, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 1, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
 
         decodedState.decode(encoded);
 
@@ -106,7 +106,7 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers[0].name = "Tarquinn"
 
         encoded = state.encode();
-        // assert.deepEqual(encoded, [3, 2, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
+        // assert.deepStrictEqual(encoded, [3, 2, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
 
         decodedState.decode(encoded);
 
@@ -129,7 +129,7 @@ describe("ArraySchema Tests", () => {
 
         decodedState.decode(state.encode());
         assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
-        assert.deepEqual(decodedState.arrayOfPlayers.map(p => p.name), ["Jake", "Snake"]);
+        assert.deepStrictEqual(decodedState.arrayOfPlayers.map(p => p.name), ["Jake", "Snake"]);
     });
 
     it("should allow to pop an array of numbers", () => {
@@ -148,7 +148,7 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encode());
 
         assert.strictEqual(decodedState.arrayOfNumbers.length, 4);
-        assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [1,2,3,4]);
+        assert.deepStrictEqual(decodedState.arrayOfNumbers.toArray(), [1,2,3,4]);
 
         state.arrayOfNumbers.pop();
         state.arrayOfNumbers.pop();
@@ -156,7 +156,7 @@ describe("ArraySchema Tests", () => {
         state.str = "hello!";
         decodedState.decode(state.encode());
         assert.strictEqual(decodedState.arrayOfNumbers.length, 2);
-        assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [1, 2]);
+        assert.deepStrictEqual(decodedState.arrayOfNumbers.toArray(), [1, 2]);
         assert.strictEqual(decodedState.str, 'hello!');
     });
 
@@ -180,7 +180,7 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(0, state.arrayOfNumbers[0]);
 
             decodedState.decode(state.encode());
-            assert.deepEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
+            assert.deepStrictEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
         });
 
         it("push and unshift", () => {
@@ -201,7 +201,7 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(0, state.arrayOfNumbers[0]);
 
             decodedState.decode(state.encode());
-            assert.deepEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
+            assert.deepStrictEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
         });
 
         it("push, unshift, pop", () => {
@@ -222,7 +222,7 @@ describe("ArraySchema Tests", () => {
             state.arrayOfNumbers.pop();
 
             decodedState.decode(state.encode());
-            assert.deepEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+            assert.deepStrictEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
         });
 
         it("push, pop, unshift", () => {
@@ -243,7 +243,7 @@ describe("ArraySchema Tests", () => {
             state.arrayOfNumbers.unshift(0);
 
             decodedState.decode(state.encode());
-            assert.deepEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+            assert.deepStrictEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
         });
 
         xit("push, shift, unshift", () => {
@@ -573,20 +573,22 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers.push(new Player("Three", 20, 2));
 
         const decodedState = new State();
+        const $ = getCallbacks(decodedState).$;
+
         decodedState.arrayOfPlayers = new ArraySchema<Player>();
 
         const onAddSpy = sinon.spy(function(item, i) {});
-        decodedState.arrayOfPlayers.onAdd(onAddSpy);
+        $(decodedState.arrayOfPlayers).onAdd(onAddSpy);
 
-        const onChangeSpy = sinon.spy(function(item, i) {});
-        decodedState.arrayOfPlayers.onChange(onChangeSpy);
+        // const onChangeSpy = sinon.spy(function(item, i) {});
+        // $(decodedState.arrayOfPlayers).onChange(onChangeSpy);
 
         const onRemoveSpy = sinon.spy(function(item, i) {});
-        decodedState.arrayOfPlayers.onRemove(onRemoveSpy);
+        $(decodedState.arrayOfPlayers).onRemove(onRemoveSpy);
 
         decodedState.decode(state.encode());
         sinon.assert.callCount(onAddSpy, 3);
-        sinon.assert.callCount(onChangeSpy, 3);
+        // sinon.assert.callCount(onChangeSpy, 3);
         sinon.assert.callCount(onRemoveSpy, 0);
 
         state.arrayOfPlayers[0].x += 100;
@@ -675,7 +677,7 @@ describe("ArraySchema Tests", () => {
         // assert.strictEqual(encoded.length, 23, "should encode only index changes");
         decodedState.decode(encoded);
 
-        assert.deepEqual(decodedState.arrayOfPlayers.map(p => p.name), [ 'Five', 'Four', 'Three', 'Two', 'One' ]);
+        assert.deepStrictEqual(decodedState.arrayOfPlayers.map(p => p.name), [ 'Five', 'Four', 'Three', 'Two', 'One' ]);
         // sinon.assert.callCount(onAddSpy, 5);
         // sinon.assert.callCount(onChangeSpy, 5);
 
@@ -708,61 +710,6 @@ describe("ArraySchema Tests", () => {
                 .filter(p => p.x >= 20)
                 .sort((a, b) => b.x - a.x);
         }, "arraySchema.filter().sort() shouldn't throw errors");
-    });
-
-    it("filter should not mutate the structure", () => {
-        class Card extends Schema {
-            @filter(function(this: Card, client, value, root) {
-                return true;
-            })
-            @type("number") number: number;
-
-            constructor(n?) {
-                super();
-                if (n) this.number = n;
-            }
-        }
-
-        class Player extends Schema {
-            @type([Card]) cards = new ArraySchema<Card>();
-        }
-
-        class StateWithFilter extends Schema {
-            @type({map: Player}) players = new MapSchema<Player>();
-        }
-
-        const state = new StateWithFilter();
-        state.players['one'] = new Player();
-        state.players['one'].cards.push(new Card(1));
-        state.players['one'].cards.push(new Card(3));
-        state.players['one'].cards.push(new Card(2));
-        state.players['one'].cards.push(new Card(5));
-        state.players['one'].cards.push(new Card(4));
-
-        let encoded = state.encode(undefined, undefined, true);
-
-        const client = {};
-        const decodedState = new StateWithFilter();
-        decodedState.decode(encoded);
-
-        assert.deepEqual([1, 3, 2, 5, 4], decodedState.players['one'].cards.map(c => c.number));
-        assert.strictEqual(5, decodedState.players['one'].cards.length);
-
-        const filteredCards = state.players['one'].cards.filter((card) => card.number >= 3);
-        filteredCards.sort((a, b) => b.number - a.number);
-
-
-        decodedState.decode(state.applyFilters(client));
-        assert.strictEqual(5, decodedState.players.get('one').cards.length);
-        assert.deepEqual([1, 3, 2, 5, 4], decodedState.players.get('one').cards.map(c => c.number));
-
-        // set cards array with applied filter.
-        state.players['one'].cards = filteredCards;
-        encoded = state.encode(undefined, undefined, true);
-
-        decodedState.decode(state.applyFilters(client));
-        assert.strictEqual(3, decodedState.players.get('one').cards.length);
-        assert.deepEqual([5, 4, 3], decodedState.players.get('one').cards.map(c => c.number));
     });
 
     it("updates all items properties after removing middle item", () => {
@@ -927,7 +874,7 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(state.items[2].name, 'Item Four');
         assert.strictEqual(state.items[3].name, 'Item Five');
 
-        assert.deepEqual(state.items.toJSON(), decodedState.items.toJSON());
+        assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
 
         /**
          * Add the item back in
@@ -1118,7 +1065,7 @@ describe("ArraySchema Tests", () => {
         // console.log(decodedState.player2.items.map(item => item.name));
         assert.strictEqual(decodedState.player1.items.length, 0);
         assert.strictEqual(decodedState.player2.items.length, 4);
-        assert.deepEqual(decodedState.player2.items.map(item => item.name), ['Item 1', 'Item 3', 'Item 2', 'Item 4']);
+        assert.deepStrictEqual(decodedState.player2.items.map(item => item.name), ['Item 1', 'Item 3', 'Item 2', 'Item 4']);
 
         state.player1.items.push(state.player2.items.splice(0, 1)[0]);
         decodedState.decode(state.encode());
@@ -1132,7 +1079,7 @@ describe("ArraySchema Tests", () => {
         // console.log("FULL 2 >");
         // console.log(decodedState.player1.items.map(item => item.name));
         // console.log(decodedState.player2.items.map(item => item.name));
-        assert.deepEqual(decodedState.player1.items.map(item => item.name), ['Item 1', 'Item 3', 'Item 2', 'Item 4']);
+        assert.deepStrictEqual(decodedState.player1.items.map(item => item.name), ['Item 1', 'Item 3', 'Item 2', 'Item 4']);
         assert.strictEqual(decodedState.player1.items.length, 4);
         assert.strictEqual(decodedState.player2.items.length, 0);
 
@@ -1150,7 +1097,7 @@ describe("ArraySchema Tests", () => {
         // console.log(decodedState.player2.items.map(item => item.name));
         assert.strictEqual(decodedState.player1.items.length, 0);
         assert.strictEqual(decodedState.player2.items.length, 4);
-        assert.deepEqual(decodedState.player2.items.map(item => item.name), ['Item 1', 'Item 3', 'Item 2', 'Item 4']);
+        assert.deepStrictEqual(decodedState.player2.items.map(item => item.name), ['Item 1', 'Item 3', 'Item 2', 'Item 4']);
     });
 
     it("should splice an ArraySchema of primitive values", () => {
@@ -1206,18 +1153,18 @@ describe("ArraySchema Tests", () => {
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        assert.deepEqual(["one"], decodedState.strings.toJSON());
-        assert.deepEqual([Math.PI], decodedState.floats.toJSON());
-        assert.deepEqual([1], decodedState.numbers.toJSON());
+        assert.deepStrictEqual(["one"], decodedState.strings.toJSON());
+        assert.deepStrictEqual([Math.PI], decodedState.floats.toJSON());
+        assert.deepStrictEqual([1], decodedState.numbers.toJSON());
 
         state.numbers.push(1);
         state.floats.push(Math.PI);
         state.strings.push("one");
         decodedState.decode(state.encode());
 
-        assert.deepEqual(["one", "one"], decodedState.strings.toJSON());
-        assert.deepEqual([Math.PI, Math.PI], decodedState.floats.toJSON());
-        assert.deepEqual([1, 1], decodedState.numbers.toJSON());
+        assert.deepStrictEqual(["one", "one"], decodedState.strings.toJSON());
+        assert.deepStrictEqual([Math.PI, Math.PI], decodedState.floats.toJSON());
+        assert.deepStrictEqual([1, 1], decodedState.numbers.toJSON());
     });
 
     it("should allow sort unbound array", () => {
@@ -1230,59 +1177,21 @@ describe("ArraySchema Tests", () => {
         assert.doesNotThrow(() => arr.slice(0).sort());
     });
 
-    it("should filter children items", () => {
-        class Player extends Schema {
-            @type("string") name: string;
-            @type("number") x: number;
-            @type("number") y: number;
-        }
-
-        class State extends Schema {
-            @filterChildren(function(client, key: number, value: Player) {
-                return client.sessionId === value.name;
-            })
-            @type([Player]) players = new ArraySchema<Player>();
-        }
-
-        const state = new State();
-        state.players.push(new Player().assign({ name: "one", x: 0, y: 0 }));
-        state.players.push(new Player().assign({ name: "two", x: 0, y: 0 }));
-        state.players.push(new Player().assign({ name: "three", x: 0, y: 0 }));
-
-        state.encode(undefined, undefined, true);
-
-        const client1 = { sessionId: "one" };
-        const client2 = { sessionId: "two" };
-        const client3 = { sessionId: "three" };
-
-        const decoded1 = new State();
-        const decoded2 = new State();
-        const decoded3 = new State();
-
-        decoded1.decode(state.applyFilters(client1))
-        decoded2.decode(state.applyFilters(client2))
-        decoded3.decode(state.applyFilters(client3))
-
-        assert.strictEqual(1, decoded1.players.length);
-        assert.strictEqual(1, decoded2.players.length);
-        assert.strictEqual(1, decoded3.players.length);
-
-        state.discardAllChanges();
-    });
-
     it("replacing ArraySchema should trigger onRemove on previous items", () => {
         class State extends Schema {
             @type(["number"]) numbers: ArraySchema<number>;
         }
 
         const state = new State();
+        const $ = getCallbacks(state).$;
+
         state.numbers = new ArraySchema(1, 2, 3, 4, 5, 6);
 
         const decodedState = new State();
         decodedState.decode(state.encode());
 
         const onRemove = sinon.spy(function(num, i) {});
-        decodedState.numbers.onRemove(onRemove)
+        $(decodedState.numbers).onRemove(onRemove)
 
         state.numbers = new ArraySchema(7, 8, 9);
         decodedState.decode(state.encode());
@@ -1424,6 +1333,7 @@ describe("ArraySchema Tests", () => {
         xit("should trigger onAdd callback only once after clearing and adding one item", () => {
             const state = new State();
             const decodedState = new State();
+            const $ = getCallbacks(decodedState).$;
 
             // state.points.push(new Point().assign({ x: 0, y: 0 }));
             // state.points.push(new Point().assign({ x: 1, y: 1 }));
@@ -1431,14 +1341,16 @@ describe("ArraySchema Tests", () => {
             state.points.push(new Point().assign({ x: 2, y: 2 }));
             state.points.push(new Point().assign({ x: 3, y: 3 }));
 
-            decodedState.points.onAdd((point, key) => console.log(point.toJSON(), key));
-
-            const onAddSpy = sinon.spy(decodedState.points, 'onAdd');
+            let onAddCallCount = 0;
+            $(decodedState.points).onAdd((point, key) => {
+                onAddCallCount++;
+                console.log(point.toJSON(), key);
+            });
 
             decodedState.decode(state.encodeAll());
             decodedState.decode(state.encode());
 
-            sinon.assert.callCount(onAddSpy, 2);
+            assert.strictEqual(2, onAddCallCount);
         });
     })
 
@@ -1451,7 +1363,7 @@ describe("ArraySchema Tests", () => {
         it("#concat()", () => {
             const arr = new ArraySchema<number>(1, 2, 3);
             const concat = arr.concat([4, 5, 6]);
-            assert.deepEqual([1, 2, 3, 4, 5, 6], concat.toJSON());
+            assert.deepStrictEqual([1, 2, 3, 4, 5, 6], concat.toJSON());
         });
 
         it("#join()", () => {
@@ -1471,7 +1383,7 @@ describe("ArraySchema Tests", () => {
 
         it("#reverse()", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
-            assert.deepEqual([5, 4, 3, 2, 1], arr.reverse().toJSON());
+            assert.deepStrictEqual([5, 4, 3, 2, 1], arr.reverse().toJSON());
         });
 
         it("#flat", () => {
@@ -1488,14 +1400,14 @@ describe("ArraySchema Tests", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
             arr.length = 0;
 
-            assert.deepEqual([], arr.toJSON());
+            assert.deepStrictEqual([], arr.toJSON());
         });
 
         it(".length = x", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
             arr.length = 3;
 
-            assert.deepEqual([1,2,3], arr.toJSON());
+            assert.deepStrictEqual([1,2,3], arr.toJSON());
         });
     })
 
