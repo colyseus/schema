@@ -252,7 +252,6 @@ export class ChangeTree<T extends Ref=any> {
             ? this.filteredChanges
             : this.changes;
 
-
         const previousValue = this.getValue(index);
 
         changeSet.set(index, OPERATION.DELETE);

@@ -1,6 +1,6 @@
-import { Schema } from "./Schema";
+import type { Schema } from "./Schema";
 import { OPERATION } from "./encoding/spec";
-import { $changes, $getByIndex } from "./types/symbols";
+import { $changes } from "./types/symbols";
 
 type ChangeItem = [string, number | string, any?];
 
@@ -11,6 +11,12 @@ interface ChangeDump {
         REPLACE?: number;
     },
     refs: string[],
+}
+
+export function getIndent(level: number) {
+    return (new Array(level).fill(0)).map((_, i) =>
+        (i === level - 1) ? `└─ ` : `   `
+    ).join("");
 }
 
 export function dumpChanges(schema: Schema) {

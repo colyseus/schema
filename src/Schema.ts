@@ -10,6 +10,7 @@ import { StateView } from './encoder/StateView';
 import { encodeSchemaOperation } from './encoder/EncodeOperation';
 import { decodeSchemaOperation } from './decoder/DecodeOperation';
 import type { Metadata } from './Metadata';
+import { getIndent } from './utils';
 
 /**
  * Schema encoder / decoder
@@ -195,17 +196,74 @@ export abstract class Schema {
         const ref = instance;
         const changeTree = ref[$changes];
 
-        const indent = (new Array(level).fill(0)).map((_, i) =>
-            (i === level - 1) ? `└─ ` : `   `
-        ).join("");
-
         let output = "";
-        output +=  `${indent}${ref.constructor.name} (${ref[$changes].refId})\n`;
+        output += `${getIndent(level)}${ref.constructor.name} (${ref[$changes].refId})\n`;
 
         changeTree.forEachChild((childChangeTree) =>
             output += this.debugRefIds(childChangeTree.ref, level + 1));
 
         return output;
+    }
+
+    static debugCurrentChanges(ref: Ref) {
+        let output = "";
+
+        const rootChangeTree = ref[$changes];
+        const changeTrees: Map<ChangeTree, ChangeTree[]> = new Map();
+
+        let totalInstances = 0;
+        let totalOperations = 0;
+
+        for (const [changeTree, changes] of (rootChangeTree.root.changes.entries())) {
+            let includeChangeTree = false;
+            let parentChangeTrees: ChangeTree[] = [];
+            let parentChangeTree = changeTree.parent?.[$changes];
+
+            if (changeTree === rootChangeTree) {
+                includeChangeTree = true;
+
+            } else {
+                while (parentChangeTree !== undefined) {
+                    parentChangeTrees.push(parentChangeTree);
+                    if (parentChangeTree.ref === ref) {
+                        includeChangeTree = true;
+                        break;
+                    }
+                    parentChangeTree = parentChangeTree.parent?.[$changes];
+                }
+            }
+
+            if (includeChangeTree) {
+                totalInstances += 1;
+                totalOperations += changes.size;
+                changeTrees.set(changeTree, parentChangeTrees.reverse());
+            }
+        }
+
+        output += "---\n"
+        output += `root refId: ${rootChangeTree.refId}\n`;
+        output += `Total instances: ${totalInstances}\n`;
+        output += `Total changes: ${totalOperations}\n`;
+        output += "---\n"
+
+        // based on root.changes, display a tree of changes that has the "ref" instance as parent
+        for (const [changeTree, parentChangeTrees] of changeTrees.entries()) {
+            parentChangeTrees.forEach((parentChangeTree, level) => {
+                output += `${getIndent(level)}${parentChangeTree.ref.constructor.name} (refId: ${parentChangeTree.refId})\n`;
+            });
+
+            const changes = changeTree.changes;
+            const level = parentChangeTrees.length;
+            const indent = getIndent(level);
+
+            output += `${indent}${changeTree.ref.constructor.name} (refId: ${changeTree.refId}) - changes: ${changes.size}\n`;
+
+            for (const [index, operation] of changes) {
+                output += `${getIndent(level + 1)}${OPERATION[operation]}: ${index}\n`;
+            }
+        }
+
+        return `${output}`;
     }
 
 

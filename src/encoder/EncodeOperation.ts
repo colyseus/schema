@@ -152,6 +152,11 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     // encode index
     encode.number(bytes, field, it);
 
+    // Do not encode value for DELETE operations
+    if (operation === OPERATION.DELETE) {
+        return;
+    }
+
     //
     // encode "alias" for dynamic fields (maps)
     //
@@ -163,11 +168,6 @@ export const encodeKeyValueOperation: EncodeOperation = function (
             const dynamicIndex = changeTree.ref['$indexes'].get(field);
             encode.string(bytes, dynamicIndex, it);
         }
-    }
-
-    // Do not encode value for DELETE operations
-    if (operation === OPERATION.DELETE) {
-        return;
     }
 
     const type = changeTree.getType(field);

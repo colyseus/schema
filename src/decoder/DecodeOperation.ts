@@ -30,7 +30,6 @@ export type DecodeOperation<T extends Schema = any> = (
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[],
-    // callback: Callback,
 ) => number | void;
 
 export function decodeValue(
@@ -43,7 +42,6 @@ export function decodeValue(
     bytes: Buffer,
     it: decode.Iterator,
     allChanges: DataChange[],
-    // callback: Callback
 ) {
     const $root = decoder.$root;
     const previousValue = ref[$getByIndex](index);
@@ -157,7 +155,6 @@ export const decodeSchemaOperation: DecodeOperation = function (
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[],
-    // callback: Callback
 ) {
     const first_byte = bytes[it.offset++];
     const metadata: Metadata = ref['constructor'][Symbol.metadata];
@@ -205,12 +202,15 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     it: decode.Iterator,
     ref: Ref,
     allChanges: DataChange[]
-    // callback: Callback
 ) {
-    const first_byte = bytes[it.offset++];
-
     // "uncompressed" index + operation (array/map items)
-    const operation = first_byte;
+    const operation = bytes[it.offset++];
+
+    console.log("decodeKeyValueOperation...", {
+        ref: ref.constructor.name,
+        refId: decoder.currentRefId,
+        operation: OPERATION[operation]
+    });
 
     if (operation === OPERATION.CLEAR) {
         //
@@ -233,6 +233,9 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         dynamicIndex = (typeof(ref['set']) === "function")
             ? decode.string(bytes, it) // MapSchema
             : index;
+
+        console.log("decode operation... setIndex:", { index, dynamicIndex });
+
         ref['setIndex'](index, dynamicIndex);
 
     } else {

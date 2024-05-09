@@ -58,6 +58,8 @@ export class Decoder<T extends Schema = any> {
                 this.currentRefId = decode.number(bytes, it);
                 const nextRef = $root.refs.get(this.currentRefId) as Schema;
 
+                console.log("Decoder... SWITCH_TO_STRUCTURE =>", nextRef.constructor.name, `(${this.currentRefId})`);
+
                 //
                 // Trying to access a reference that haven't been decoded yet.
                 //
@@ -68,7 +70,6 @@ export class Decoder<T extends Schema = any> {
             }
 
             const decoder = ref['constructor'][$decoder];
-
             const result = decoder(this, bytes, it, ref, allChanges);
 
             if (result === DEFINITION_MISMATCH) {

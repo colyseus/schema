@@ -1,7 +1,7 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
 
-import { State, Player, getCallbacks } from "./Schema";
+import { State, Player, getCallbacks, getEncoder } from "./Schema";
 import { ArraySchema, Schema, type, Reflection } from "../src";
 
 describe("ArraySchema Tests", () => {
@@ -47,27 +47,27 @@ describe("ArraySchema Tests", () => {
         state.items.push(new Item().assign({ name: "E" }));
 
         const decodedState = new State();
+        const $ = getCallbacks(decodedState).$;
 
-        const $ = getCallbacks(state).$;
+        let onAddCount = 0;
+        $(decodedState).items.onAdd(() => onAddCount++);
 
-        const onAddSpy = sinon.spy(function(item, i) {});
-        $(decodedState.items).onAdd(onAddSpy);
-
+        let onRemoveCount = 0;
         let removedItem: Item;
-        const onRemoveSpy = sinon.spy(function(item, i) {
+        $(decodedState).items.onRemove((item, index) => {
             removedItem = item;
+            onRemoveCount++;
         });
-        $(decodedState.items).onRemove(onRemoveSpy);
 
         decodedState.decode(state.encodeAll());
+        assert.strictEqual(5, onAddCount);
 
         // state.items.shift();
         state.items.splice(0, 1);
 
         decodedState.decode(state.encode());
 
-        sinon.assert.callCount(onAddSpy, 5);
-        sinon.assert.calledOnce(onRemoveSpy);
+        assert.strictEqual(1, onRemoveCount);
         assert.deepStrictEqual(["B", "C", "D", "E"], decodedState.items.map(it => it.name))
         assert.strictEqual("A", removedItem.name);
     });
@@ -153,8 +153,17 @@ describe("ArraySchema Tests", () => {
         state.arrayOfNumbers.pop();
         state.arrayOfNumbers.pop();
 
+        console.log(Schema.debugCurrentChanges(state.arrayOfNumbers));
+
         state.str = "hello!";
-        decodedState.decode(state.encode());
+        console.log("\n>> WILL ENCODE 2")
+        console.log(Schema.debugRefIds(state));
+        const encoded = state.encode();
+        console.log("<< END ENCODE")
+        console.log(">> WILL DECODE")
+        decodedState.decode(encoded);
+        console.log("DONE.")
+
         assert.strictEqual(decodedState.arrayOfNumbers.length, 2);
         assert.deepStrictEqual(decodedState.arrayOfNumbers.toArray(), [1, 2]);
         assert.strictEqual(decodedState.str, 'hello!');

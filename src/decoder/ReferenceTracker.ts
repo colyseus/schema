@@ -37,8 +37,6 @@ export class ReferenceTracker {
 
     // for decoding
     addRef(refId: number, ref: Ref, incrementCount: boolean = true) {
-        // console.log("ADD REF", { refId, ref: ref.constructor.name, incrementCount });
-
         this.refs.set(refId, ref);
         this.refIds.set(ref, refId);
 
@@ -118,15 +116,15 @@ export class ReferenceTracker {
         this.deletedRefs.clear();
     }
 
-    addCallback(refId: number, field: string | number, callback: Function) {
+    addCallback(refId: number, fieldOrOperation: string | number, callback: Function) {
         if (!this.callbacks[refId]) {
             this.callbacks[refId] = {};
         }
-        if (!this.callbacks[refId][field]) {
-            this.callbacks[refId][field] = [];
+        if (!this.callbacks[refId][fieldOrOperation]) {
+            this.callbacks[refId][fieldOrOperation] = [];
         }
-        this.callbacks[refId][field].push(callback);
-        return () => this.removeCallback(refId, field, callback);
+        this.callbacks[refId][fieldOrOperation].push(callback);
+        return () => this.removeCallback(refId, fieldOrOperation, callback);
     }
 
     removeCallback(refId: number, field: string | number, callback: Function) {

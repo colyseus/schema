@@ -63,6 +63,8 @@ export function getStateCallbacks(decoder: Decoder) {
             const ref = change.ref;
             const $callbacks = callbacks[refId];
 
+            console.log("CHANGE:", change);
+
             if (!$callbacks) { continue; }
 
             //
@@ -188,8 +190,14 @@ export function getStateCallbacks(decoder: Decoder) {
                         const instance = context.instance?.[prop];
                         const onInstanceAvailable: OnInstanceAvailableCallback = (
                             (callback: (ref: Ref, existing: boolean) => void) => {
-                                $(context.instance).listen(prop, (value, _) => {
+                                const unbind = $(context.instance).listen(prop, (value, _) => {
                                     callback(value, false);
+
+                                    // FIXME: by "unbinding" the callback here,
+                                    // it will not support when the server
+                                    // re-instantiates the instance.
+                                    unbind();
+
                                 }, false);
                                 if (instance) {
                                     callback(instance, true);
@@ -213,6 +221,10 @@ export function getStateCallbacks(decoder: Decoder) {
             });
 
         } else {
+            /**
+             * Collection instances
+             */
+
             const onAdd = function (ref: Ref, callback: (value: any, key: any) => void, immediate: boolean) {
                 // Trigger callback on existing items
                 if (immediate) {
@@ -225,9 +237,6 @@ export function getStateCallbacks(decoder: Decoder) {
                 return $root.addCallback($root.refIds.get(ref), OPERATION.DELETE, callback);
             };
 
-            /**
-             * Collection instances
-             */
             return new Proxy({
                 onAdd: function(callback: (value, key) => void, immediate: boolean = true) {
                     //
