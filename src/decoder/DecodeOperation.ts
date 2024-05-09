@@ -206,12 +206,6 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     // "uncompressed" index + operation (array/map items)
     const operation = bytes[it.offset++];
 
-    console.log("decodeKeyValueOperation...", {
-        ref: ref.constructor.name,
-        refId: decoder.currentRefId,
-        operation: OPERATION[operation]
-    });
-
     if (operation === OPERATION.CLEAR) {
         //
         // When decoding:
@@ -233,8 +227,6 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         dynamicIndex = (typeof(ref['set']) === "function")
             ? decode.string(bytes, it) // MapSchema
             : index;
-
-        console.log("decode operation... setIndex:", { index, dynamicIndex });
 
         ref['setIndex'](index, dynamicIndex);
 

@@ -637,12 +637,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     protected [$deleteByIndex](index: number) {
         const key = this.$indexes.get(index);
-        console.log("DELETE BY INDEX:", {
-            index,
-            key,
-            $items_has: this.$items.has(key),
-            $indexes_has: this.$indexes.has(index),
-        });
         this.$items.delete(key);
         this.$indexes.delete(index);
     }

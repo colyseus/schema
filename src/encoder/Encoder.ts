@@ -46,7 +46,7 @@ export class Encoder<T extends Schema = any> {
         bytes = this.sharedBuffer,
         changeTrees = this.$root.changes
     ): Buffer {
-        const offset = it.offset; // cache current offset in case we need to resize the buffer
+        const initialOffset = it.offset; // cache current offset in case we need to resize the buffer
 
         const isEncodeAll = this.$root.allChanges === changeTrees;
         const hasView = (view !== undefined);
@@ -71,7 +71,8 @@ export class Encoder<T extends Schema = any> {
                 }
             }
 
-            if (changeTree !== rootChangeTree) { // root `refId` is skipped.
+            // skip root `refId` if it's the first change tree
+            if (it.offset !== initialOffset || changeTree !== rootChangeTree) {
                 bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
                 encode.number(bytes, changeTree.refId, it);
             }
@@ -104,7 +105,7 @@ export class Encoder<T extends Schema = any> {
             // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
             //
             this.sharedBuffer = Buffer.allocUnsafeSlow(newSize);
-            return this.encode({ offset }, view);
+            return this.encode({ offset: initialOffset }, view);
 
         } else {
             //

@@ -153,16 +153,9 @@ describe("ArraySchema Tests", () => {
         state.arrayOfNumbers.pop();
         state.arrayOfNumbers.pop();
 
-        console.log(Schema.debugCurrentChanges(state.arrayOfNumbers));
-
         state.str = "hello!";
-        console.log("\n>> WILL ENCODE 2")
-        console.log(Schema.debugRefIds(state));
         const encoded = state.encode();
-        console.log("<< END ENCODE")
-        console.log(">> WILL DECODE")
         decodedState.decode(encoded);
-        console.log("DONE.")
 
         assert.strictEqual(decodedState.arrayOfNumbers.length, 2);
         assert.deepStrictEqual(decodedState.arrayOfNumbers.toArray(), [1, 2]);
