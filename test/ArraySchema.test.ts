@@ -2,7 +2,7 @@ import * as sinon from "sinon";
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder } from "./Schema";
-import { ArraySchema, Schema, type, Reflection } from "../src";
+import { ArraySchema, Schema, type, Reflection, $changes } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -80,9 +80,8 @@ describe("ArraySchema Tests", () => {
         );
 
         const decodedState = new State();
-        let encoded = state.encode();
-        // assert.deepStrictEqual(encoded, [3, 2, 2, 0, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 1, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
 
+        let encoded = state.encode();
         decodedState.decode(encoded);
 
         const jake = decodedState.arrayOfPlayers[0];
@@ -93,7 +92,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(snake.name, "Snake Sanders");
 
         state.arrayOfPlayers.push(new Player("Katarina Lyons"));
-        decodedState.decode(state.encode());
+        encoded = state.encode();
+        decodedState.decode(encoded);
 
         const tarquinn = decodedState.arrayOfPlayers[2];
 
@@ -577,35 +577,29 @@ describe("ArraySchema Tests", () => {
         const decodedState = new State();
         const $ = getCallbacks(decodedState).$;
 
-        decodedState.arrayOfPlayers = new ArraySchema<Player>();
+        let onAddCount = 0;
+        $(decodedState).arrayOfPlayers.onAdd(() => onAddCount++);
 
-        const onAddSpy = sinon.spy(function(item, i) {});
-        $(decodedState.arrayOfPlayers).onAdd(onAddSpy);
-
-        // const onChangeSpy = sinon.spy(function(item, i) {});
-        // $(decodedState.arrayOfPlayers).onChange(onChangeSpy);
-
-        const onRemoveSpy = sinon.spy(function(item, i) {});
-        $(decodedState.arrayOfPlayers).onRemove(onRemoveSpy);
+        let onRemoveCount = 0;
+        $(decodedState).arrayOfPlayers.onRemove(() => onRemoveCount++);
 
         decodedState.decode(state.encode());
-        sinon.assert.callCount(onAddSpy, 3);
-        // sinon.assert.callCount(onChangeSpy, 3);
-        sinon.assert.callCount(onRemoveSpy, 0);
+        assert.strictEqual(3, onAddCount);
+        assert.strictEqual(0, onRemoveCount);
 
         state.arrayOfPlayers[0].x += 100;
         state.arrayOfPlayers.push(new Player("Four", 50, 3));
         state.arrayOfPlayers.push(new Player("Five", 40, 4));
 
         decodedState.decode(state.encode());
-        sinon.assert.callCount(onAddSpy, 5);
-        // sinon.assert.callCount(onChangeSpy, 1);
-        sinon.assert.callCount(onRemoveSpy, 0);
+
+        assert.strictEqual(5, onAddCount);
+        assert.strictEqual(0, onRemoveCount);
 
         state.arrayOfPlayers.pop();
         state.arrayOfPlayers.pop();
         decodedState.decode(state.encode());
-        sinon.assert.callCount(onRemoveSpy, 2);
+        assert.strictEqual(2, onRemoveCount);
     });
 
     it("should support 'in' operator", () => {
@@ -1192,13 +1186,13 @@ describe("ArraySchema Tests", () => {
         const decodedState = new State();
         decodedState.decode(state.encode());
 
-        const onRemove = sinon.spy(function(num, i) {});
-        $(decodedState.numbers).onRemove(onRemove)
+        let onRemoveCount = 0;
+        $(decodedState).numbers.onRemove(() => onRemoveCount++)
 
         state.numbers = new ArraySchema(7, 8, 9);
         decodedState.decode(state.encode());
 
-        sinon.assert.callCount(onRemove, 6);
+        assert.strictEqual(6, onRemoveCount);
     });
 
     it("re-assignments should be ignored", () => {
@@ -1321,15 +1315,22 @@ describe("ArraySchema Tests", () => {
                 new Point().assign({ x: 2, y: 2 }),
             );
 
-            let decodedState = new State();
-            decodedState.decode(state.encodeAll());
+            const decodedState = new State();
+            let encoded = state.encodeAll();
+            decodedState.decode(encoded);
             assert.strictEqual(3, decodedState.points.length);
 
             state.points.clear();
 
-            decodedState = new State();
-            decodedState.decode(state.encodeAll());
+            encoded = state.encode();
+            decodedState.decode(encoded);
             assert.strictEqual(0, decodedState.points.length);
+
+            const decodedState2 = new State();
+
+            encoded = state.encodeAll();
+            decodedState2.decode(encoded);
+            assert.strictEqual(0, decodedState2.points.length);
         });
 
         xit("should trigger onAdd callback only once after clearing and adding one item", () => {

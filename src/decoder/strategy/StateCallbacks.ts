@@ -63,8 +63,6 @@ export function getStateCallbacks(decoder: Decoder) {
             const ref = change.ref;
             const $callbacks = callbacks[refId];
 
-            console.log("CHANGE:", change);
-
             if (!$callbacks) { continue; }
 
             //
@@ -74,15 +72,22 @@ export function getStateCallbacks(decoder: Decoder) {
                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
                 change.previousValue instanceof Schema
             ) {
-                callbacks[$root.refIds.get(change.previousValue)]?.[OPERATION.DELETE]?.forEach(callback =>
-                    callback());
+                const deleteCallbacks = callbacks[$root.refIds.get(change.previousValue)]?.[OPERATION.DELETE];
+                for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
+                    deleteCallbacks[i]();
+                }
+                // callbacks[$root.refIds.get(change.previousValue)]?.[OPERATION.DELETE]?.forEach(callback =>
+                //     callback());
             }
 
             if (ref instanceof Schema) {
                 if (!uniqueRefIds.has(refId)) {
                     try {
                         // trigger onChange
-                        $callbacks?.[OPERATION.REPLACE]?.forEach(callback => callback());
+                        const replaceCallbacks = $callbacks?.[OPERATION.REPLACE];
+                        for (let i = replaceCallbacks?.length - 1; i >= 0; i--) {
+                            replaceCallbacks[i]();
+                        }
 
                     } catch (e) {
                         console.error(e);
@@ -91,8 +96,10 @@ export function getStateCallbacks(decoder: Decoder) {
 
                 try {
                     if ($callbacks.hasOwnProperty(change.field)) {
-                        $callbacks[change.field]?.forEach((callback) =>
-                            callback(change.value, change.previousValue));
+                        const fieldCallbacks = $callbacks[change.field];
+                        for (let i = fieldCallbacks?.length - 1; i >= 0; i--) {
+                            fieldCallbacks[i](change.value, change.previousValue);
+                        }
                     }
 
                 } catch (e) {
@@ -107,8 +114,10 @@ export function getStateCallbacks(decoder: Decoder) {
                     // triger onAdd
 
                     isTriggeringOnAdd = true;
-                    $callbacks[OPERATION.ADD]?.forEach(callback =>
-                        callback(change.value, change.dynamicIndex ?? change.field));
+                    const addCallbacks = $callbacks[OPERATION.ADD];
+                    for (let i = addCallbacks?.length - 1; i >= 0; i--) {
+                        addCallbacks[i](change.value, change.dynamicIndex ?? change.field);
+                    }
                     isTriggeringOnAdd = false;
 
                 } else if (change.op === OPERATION.DELETE) {
@@ -118,26 +127,34 @@ export function getStateCallbacks(decoder: Decoder) {
                     //
                     if (change.previousValue !== undefined) {
                         // triger onRemove
-                        $callbacks[OPERATION.DELETE]?.forEach(callback =>
-                            callback(change.previousValue, change.dynamicIndex ?? change.field));
+                        const deleteCallbacks = $callbacks[OPERATION.DELETE];
+                        for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
+                            deleteCallbacks[i](change.previousValue, change.dynamicIndex ?? change.field);
+                        }
                     }
 
                 } else if (change.op === OPERATION.DELETE_AND_ADD) {
                     // triger onRemove
                     if (change.previousValue !== undefined) {
-                        $callbacks[OPERATION.DELETE]?.forEach(callback =>
-                            callback(change.previousValue, change.dynamicIndex ?? change.field));
+                        const deleteCallbacks = $callbacks[OPERATION.DELETE];
+                        for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
+                            deleteCallbacks[i](change.previousValue, change.dynamicIndex ?? change.field);
+                        }
                     }
 
                     // triger onAdd
-                    $callbacks[OPERATION.ADD]?.forEach(callback =>
-                        callback(change.value, change.dynamicIndex ?? change.field));
+                    const addCallbacks = $callbacks[OPERATION.ADD];
+                    for (let i = addCallbacks?.length - 1; i >= 0; i--) {
+                        addCallbacks[i](change.value, change.dynamicIndex ?? change.field);
+                    }
                 }
 
                 // trigger onChange
                 if (change.value !== change.previousValue) {
-                    $callbacks[OPERATION.REPLACE]?.forEach(callback =>
-                        callback(change.value, change.dynamicIndex ?? change.field));
+                    const replaceCallbacks = $callbacks[OPERATION.REPLACE];
+                    for (let i = replaceCallbacks?.length - 1; i >= 0; i--) {
+                        replaceCallbacks[i](change.value, change.dynamicIndex ?? change.field);
+                    }
                 }
             }
 
@@ -196,6 +213,7 @@ export function getStateCallbacks(decoder: Decoder) {
                                     // FIXME: by "unbinding" the callback here,
                                     // it will not support when the server
                                     // re-instantiates the instance.
+                                    //
                                     unbind();
 
                                 }, false);

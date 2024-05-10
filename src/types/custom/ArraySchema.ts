@@ -190,20 +190,21 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         }
 
         const changeTree = this[$changes];
-
-        if (value[$changes] !== undefined) {
-            value[$changes].setParent(this, changeTree.root, index);
-        }
-
         const operation = changeTree.indexes?.[index]?.op ?? OPERATION.ADD;
 
         this.$indexes.set(index, index);
         this.$items.set(index, value);
 
         changeTree.change(index, operation);
-        // this.change(changeTree, index, operation)
-
         changeTree.indexes[index] = index;
+
+        //
+        // set value's parent after the value is set
+        // (to avoid encoding "refId" operations before parent's "ADD" operation)
+        //
+        if (value[$changes] !== undefined) {
+            value[$changes].setParent(this, changeTree.root, index);
+        }
     }
 
     deleteAt(index: number) {
@@ -222,8 +223,24 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     clear() {
         // discard previous operations.
-        this[$changes].discard(true);
-        this[$changes].indexes = {};
+        const changeTree = this[$changes]
+
+        // discard children
+        changeTree.forEachChild((changeTree, _) => {
+            changeTree.discard(true);
+
+            //
+            // TODO: add tests with instance sharing + .clear()
+            // FIXME: this.root? is required because it is being called at decoding time.
+            //
+            // TODO: do not use [$changes] at decoding time.
+            //
+            changeTree.root?.changes.delete(changeTree);
+            changeTree.root?.allChanges.delete(changeTree);
+        });
+
+        changeTree.discard(true);
+        changeTree.indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
@@ -231,7 +248,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         // clear items
         this.$items.clear();
 
-        this[$changes].operation({ index: -1, op: OPERATION.CLEAR });
+        changeTree.operation(-1, OPERATION.CLEAR);
     }
 
     /**

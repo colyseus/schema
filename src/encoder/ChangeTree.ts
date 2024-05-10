@@ -27,11 +27,6 @@ export type Ref = Schema
     | CollectionSchema
     | SetSchema;
 
-export interface ChangeOperation {
-    op: OPERATION,
-    index: number,
-}
-
 export class Root {
     protected nextUniqueId: number = 0;
 
@@ -73,8 +68,6 @@ export class ChangeTree<T extends Ref=any> {
     allChanges = new Map<number, OPERATION>();
     changes = new Map<number, OPERATION>();
     filteredChanges = new Map<number, OPERATION>();
-
-    operations: ChangeOperation[] = [];
 
     constructor(ref: T) {
         this.ref = ref;
@@ -170,9 +163,8 @@ export class ChangeTree<T extends Ref=any> {
         }
     }
 
-    operation(op: ChangeOperation) {
-        this.changes.set(op.index, op.op);
-
+    operation(index: number, op: OPERATION) {
+        this.changes.set(index, op);
         this.root?.changes.set(this, this.changes);
     }
 
@@ -295,12 +287,13 @@ export class ChangeTree<T extends Ref=any> {
         // TODO: refactor this. this is not relevant for Collection and Set.
         //
         if (!(Metadata.isValidInstance(this.ref))) {
-            this.changes.forEach((op, fieldIndex) => {
-                if (op === OPERATION.DELETE) {
-                    const index = this.ref['getIndex'](fieldIndex)
+            const changes = this.changes.entries();
+            for (const [fieldIndex, operation] of changes) {
+                if (operation === OPERATION.DELETE) {
+                    const index = this.ref[$getByIndex](fieldIndex)
                     delete this.indexes[index];
                 }
-            });
+            }
         }
 
         this.changes.clear();

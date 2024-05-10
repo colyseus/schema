@@ -247,20 +247,26 @@ export abstract class Schema {
         output += "---\n"
 
         // based on root.changes, display a tree of changes that has the "ref" instance as parent
+        const visitedParents = new WeakSet<ChangeTree>();
         for (const [changeTree, parentChangeTrees] of changeTrees.entries()) {
             parentChangeTrees.forEach((parentChangeTree, level) => {
-                output += `${getIndent(level)}${parentChangeTree.ref.constructor.name} (refId: ${parentChangeTree.refId})\n`;
+                if (!visitedParents.has(parentChangeTree)) {
+                    output += `${getIndent(level)}${parentChangeTree.ref.constructor.name} (refId: ${parentChangeTree.refId})\n`;
+                    visitedParents.add(parentChangeTree);
+                }
             });
 
             const changes = changeTree.changes;
             const level = parentChangeTrees.length;
             const indent = getIndent(level);
 
-            output += `${indent}${changeTree.ref.constructor.name} (refId: ${changeTree.refId}) - changes: ${changes.size}\n`;
+            const parentIndex = (level > 0) ? `(${changeTree.parentIndex}) ` : "";
+            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.refId}) - changes: ${changes.size}\n`;
 
             for (const [index, operation] of changes) {
                 output += `${getIndent(level + 1)}${OPERATION[operation]}: ${index}\n`;
             }
+
         }
 
         return `${output}`;

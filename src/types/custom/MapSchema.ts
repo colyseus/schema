@@ -152,9 +152,11 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     clear() {
+        const changeTree = this[$changes];
+
         // discard previous operations.
-        this[$changes].discard(true);
-        this[$changes].indexes = {};
+        changeTree.discard(true);
+        changeTree.indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
@@ -162,7 +164,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         // clear items
         this.$items.clear();
 
-        this[$changes].operation({ index: -1, op: OPERATION.CLEAR });
+        changeTree.operation(-1, OPERATION.CLEAR);
     }
 
     has (key: K) {

@@ -104,9 +104,11 @@ export class SetSchema<V=any> implements Collection<number, V> {
     }
 
     clear() {
+        const changeTree = this[$changes];
+
         // discard previous operations.
-        this[$changes].discard(true);
-        this[$changes].indexes = {};
+        changeTree.discard(true);
+        changeTree.indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
@@ -114,11 +116,7 @@ export class SetSchema<V=any> implements Collection<number, V> {
         // clear items
         this.$items.clear();
 
-        // @ts-ignore
-        this[$changes].operation({ index: -1, op: OPERATION.CLEAR });
-
-        // // touch all structures until reach root
-        // this.$changes.touchParents();
+        changeTree.operation(-1, OPERATION.CLEAR);
     }
 
     has (value: V): boolean {
