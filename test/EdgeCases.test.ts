@@ -330,7 +330,6 @@ describe("Edge cases", () => {
 
             const state = new State();
             const decodedState = new State();
-            // const decodedState = Reflection.decode<State>(Reflection.encode(state))
 
             const $ = getCallbacks(decodedState).$;
 

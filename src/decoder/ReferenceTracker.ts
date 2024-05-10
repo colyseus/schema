@@ -3,6 +3,7 @@ import { $childType } from "../types/symbols";
 import { Ref } from "../encoder/ChangeTree";
 import { spliceOne } from "../types/utils";
 import type { MapSchema } from "../types/custom/MapSchema";
+import { OPERATION } from "../encoding/spec";
 
 class DecodingWarning extends Error {
     constructor(message: string) {
@@ -117,6 +118,14 @@ export class ReferenceTracker {
     }
 
     addCallback(refId: number, fieldOrOperation: string | number, callback: Function) {
+        if (refId === undefined) {
+            const name = (typeof(fieldOrOperation) === "number")
+                    ? OPERATION[fieldOrOperation]
+                    : fieldOrOperation
+            throw new Error(
+                `Can't addCallback on '${name}' (refId is undefined)`
+            );
+        }
         if (!this.callbacks[refId]) {
             this.callbacks[refId] = {};
         }

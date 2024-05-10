@@ -217,7 +217,9 @@ export function getStateCallbacks(decoder: Decoder) {
                                     unbind();
 
                                 }, false);
-                                if (instance) {
+
+                                // has existing value
+                                if ($root.refIds.get(instance) !== undefined) {
                                     callback(instance, true);
                                 }
                             }

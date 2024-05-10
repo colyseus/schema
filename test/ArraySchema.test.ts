@@ -263,10 +263,6 @@ describe("ArraySchema Tests", () => {
             state.cards.shift();
             state.cards.unshift(3);
 
-            // console.log("cards", state.cards);
-            // console.log("cards.$items", state.cards['$items']);
-            // console.log("cards.at(0)", state.cards.at(0));
-
             decodedState.decode(state.encode());
 
             assert.deepStrictEqual(3, decodedState.cards[0]);
@@ -322,8 +318,6 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decoded.numbers[7], 22);
         assert.strictEqual(decoded.numbers[8], 23);
         assert.strictEqual(decoded.numbers[9], 24);
-
-        // console.log(decoded.toJSON());
     });
 
     it("should allow using push/pop between patches", () => {
@@ -360,8 +354,6 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decoded.numbers[4], 21);
         assert.strictEqual(decoded.numbers[5], 22);
         assert.strictEqual(decoded.numbers[6], 23);
-
-        // console.log(decoded.toJSON());
     });
 
     it("should not encode a higher number of items than array actually have", () => {
@@ -1179,11 +1171,10 @@ describe("ArraySchema Tests", () => {
         }
 
         const state = new State();
-        const $ = getCallbacks(state).$;
-
         state.numbers = new ArraySchema(1, 2, 3, 4, 5, 6);
 
         const decodedState = new State();
+        const $ = getCallbacks(decodedState).$;
         decodedState.decode(state.encode());
 
         let onRemoveCount = 0;

@@ -48,8 +48,6 @@ export function decodeValue(
 
     let value: any;
 
-    // console.log("DECODE VALUE", { op: OPERATION[operation], ref: ref.constructor.name, index, });
-
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
         //
@@ -112,7 +110,7 @@ export function decodeValue(
         if (previousValue) {
             let previousRefId = $root.refIds.get(previousValue);
 
-            if (previousRefId && refId !== previousRefId) {
+            if (previousRefId !== undefined && refId !== previousRefId) {
                 $root.removeRef(previousRefId);
 
                 //
