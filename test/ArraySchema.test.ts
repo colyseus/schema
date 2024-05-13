@@ -317,6 +317,40 @@ describe("ArraySchema Tests", () => {
         });
     });
 
+    it("push, splice, push", () => {
+        class State extends Schema {
+            @type(["number"]) cards = new ArraySchema<number>();
+        }
+
+        const state = new State();
+        const decodedState = new State();
+        const $ = getCallbacks(decodedState).$;
+
+        const onAddIndexes: Array<{ item: number, index: number }> = [];
+        const onRemoveIndexes: Array<{ item: number, index: number }> = [];
+        $(decodedState).cards.onAdd((item, index) => onAddIndexes.push({ item, index }));
+        $(decodedState).cards.onRemove((item, index) => onRemoveIndexes.push({ item, index }));
+
+        decodedState.decode(state.encodeAll());
+
+        state.cards.push(1);
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(1, state.cards[0]);
+        assert.deepStrictEqual([{ item: 1, index: 0 }], onAddIndexes);
+
+        state.cards.splice(0, 1);
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(undefined, state.cards[0]);
+        assert.deepStrictEqual([{ item: 1, index: 0 }], onAddIndexes);
+
+        state.cards.push(2);
+        decodedState.decode(state.encode());
+        assert.strictEqual(2, state.cards[0]);
+        assert.deepStrictEqual([{ item: 1, index: 0 }, { item: 2, index: 0 }], onAddIndexes);
+    });
+
     it("should allow using push/pop before encoding", () => {
         class State extends Schema {
             @type(["number"]) numbers = new ArraySchema<number>();
