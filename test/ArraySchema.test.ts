@@ -162,6 +162,53 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decodedState.str, 'hello!');
     });
 
+    describe("ArraySchema#shift()", () => {
+        it("shift + push + splice", () => {
+            class State extends Schema {
+                @type(["string"]) turns = new ArraySchema<string>();
+            }
+
+            const state = new State();
+            const decodedState = new State();
+
+            state.turns[0] = "one";
+            state.turns[1] = "two";
+            state.turns[2] = "three";
+
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(3, state.turns.length);
+            assert.strictEqual("one", state.turns[0]);
+            assert.strictEqual("two", state.turns[1]);
+            assert.strictEqual("three", state.turns[2]);
+
+            state.turns.push(state.turns.shift());
+            state.turns.splice(1, 1);
+            decodedState.decode(state.encode());
+
+            assert.strictEqual("two", state.turns[0]);
+            assert.strictEqual("one", state.turns[1]);
+            assert.strictEqual(undefined, state.turns[2]);
+
+            state.turns.push(state.turns.shift());
+            decodedState.decode(state.encode());
+
+            assert.strictEqual("one", state.turns[0]);
+            assert.strictEqual("two", state.turns[1]);
+
+            state.turns.push(state.turns.shift());
+            decodedState.decode(state.encode());
+
+            assert.strictEqual("two", state.turns[0]);
+            assert.strictEqual("one", state.turns[1]);
+
+            state.turns.clear();
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(0, state.turns.length);
+        });
+    });
+
     describe("ArraySchema#unshift()", () => {
         it("only unshift", () => {
             class State extends Schema {
@@ -248,7 +295,7 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
         });
 
-        xit("push, shift, unshift", () => {
+        it("push, shift, unshift", () => {
             class State extends Schema {
                 @type(["number"]) cards = new ArraySchema<number>();
             }
