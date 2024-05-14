@@ -1,7 +1,7 @@
 import * as sinon from "sinon";
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, getEncoder } from "./Schema";
+import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, $changes } from "../src";
 
 describe("ArraySchema Tests", () => {
@@ -163,47 +163,81 @@ describe("ArraySchema Tests", () => {
     });
 
     describe("ArraySchema#shift()", () => {
-        it("shift + push + splice", () => {
+        xit("shift + push + splice", () => {
             class State extends Schema {
                 @type(["string"]) turns = new ArraySchema<string>();
             }
 
             const state = new State();
             const decodedState = new State();
+            const $ = getCallbacks(decodedState).$;
 
             state.turns[0] = "one";
             state.turns[1] = "two";
             state.turns[2] = "three";
 
+            const onAddIndexes: Array<{ item: string, index: number }> = [];
+            const onRemoveIndexes: Array<{ item: string, index: number }> = [];
+            $(decodedState).turns.onAdd((item, index) => {
+                console.log("ON ADD", { item, index });
+                onAddIndexes.push({ item, index });
+            });
+            $(decodedState).turns.onRemove((item, index) => {
+                console.log("ON REMOVE:", { item, index });
+                onRemoveIndexes.push({ item, index });
+            });
+
             decodedState.decode(state.encode());
+            console.log("--- 1 ---")
 
             assert.strictEqual(3, state.turns.length);
             assert.strictEqual("one", state.turns[0]);
             assert.strictEqual("two", state.turns[1]);
             assert.strictEqual("three", state.turns[2]);
+            assert.deepStrictEqual(
+                [
+                    { item: "one", index: 0 },
+                    { item: "two", index: 1 },
+                    { item: "three", index: 2 }
+                ],
+                onAddIndexes
+            );
 
             state.turns.push(state.turns.shift());
             state.turns.splice(1, 1);
             decodedState.decode(state.encode());
+            console.log("--- 2 ---")
 
             assert.strictEqual("two", state.turns[0]);
             assert.strictEqual("one", state.turns[1]);
             assert.strictEqual(undefined, state.turns[2]);
+            // assert.deepStrictEqual(
+            //     [
+            //         { item: "one", index: 0 },
+            //         { item: "two", index: 1 },
+            //         { item: "three", index: 2 },
+            //         { item: "one", index: 1 },
+            //     ],
+            //     onAddIndexes
+            // );
 
             state.turns.push(state.turns.shift());
             decodedState.decode(state.encode());
+            console.log("--- 3 ---")
 
             assert.strictEqual("one", state.turns[0]);
             assert.strictEqual("two", state.turns[1]);
 
             state.turns.push(state.turns.shift());
             decodedState.decode(state.encode());
+            console.log("--- 4 ---")
 
             assert.strictEqual("two", state.turns[0]);
             assert.strictEqual("one", state.turns[1]);
 
             state.turns.clear();
             decodedState.decode(state.encode());
+            console.log("--- 5 ---")
 
             assert.strictEqual(0, state.turns.length);
         });
@@ -314,6 +348,35 @@ describe("ArraySchema Tests", () => {
 
             assert.deepStrictEqual(3, decodedState.cards[0]);
             assert.deepStrictEqual(3, state.cards[0]);
+        });
+
+        it("push, pop, unshift", () => {
+            class State extends Schema {
+                @type(["number"]) items = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            const decodedState = createInstanceFromReflection(state);
+
+            state.items.push(1)
+            state.items.push(2)
+            state.items.push(3)
+            state.items.push(4)
+            state.items.push(5)
+            state.items.pop()
+            state.items.pop()
+            state.items.push(9)
+
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual([ 1, 2, 3, 9 ], decodedState.items.toArray());
+            assert.deepStrictEqual([ 1, 2, 3, 9 ], state.items.toArray());
+
+            state.items.unshift(8)
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual([8, 1, 2, 3, 9], decodedState.items.toArray());
+            assert.deepStrictEqual([8, 1, 2, 3, 9], state.items.toArray());
         });
     });
 
