@@ -1,4 +1,3 @@
-import * as sinon from "sinon";
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";

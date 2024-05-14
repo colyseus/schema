@@ -1,4 +1,3 @@
-import * as sinon from "sinon";
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection } from "./Schema";
@@ -163,7 +162,7 @@ describe("ArraySchema Tests", () => {
     });
 
     describe("ArraySchema#shift()", () => {
-        xit("shift + push + splice", () => {
+        it("shift + push + splice", () => {
             class State extends Schema {
                 @type(["string"]) turns = new ArraySchema<string>();
             }
@@ -1468,7 +1467,7 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(0, decodedState2.points.length);
         });
 
-        xit("should trigger onAdd callback only once after clearing and adding one item", () => {
+        it("should trigger onAdd callback only once after clearing and adding one item", () => {
             const state = new State();
             const decodedState = new State();
             const $ = getCallbacks(decodedState).$;
@@ -1480,13 +1479,18 @@ describe("ArraySchema Tests", () => {
             state.points.push(new Point().assign({ x: 3, y: 3 }));
 
             let onAddCallCount = 0;
-            $(decodedState.points).onAdd((point, key) => {
+            $(decodedState).points.onAdd((point, key) => {
                 onAddCallCount++;
                 console.log(point.toJSON(), key);
             });
 
             decodedState.decode(state.encodeAll());
             decodedState.decode(state.encode());
+
+            assert.deepStrictEqual([
+                { x: 2, y: 2 },
+                { x: 3, y: 3 }
+            ], decodedState.points.toJSON());
 
             assert.strictEqual(2, onAddCallCount);
         });
