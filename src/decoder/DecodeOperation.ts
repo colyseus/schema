@@ -4,8 +4,9 @@ import { Schema } from "../Schema";
 import type { Ref } from "../encoder/ChangeTree";
 import type { Decoder } from "./Decoder";
 import * as decode from "../encoding/decode";
-import { $changes, $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
+import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
 
+import type { MapSchema } from "../types/custom/MapSchema";
 import type { ArraySchema } from "../types/custom/ArraySchema";
 import type { CollectionSchema } from "../types/custom/CollectionSchema";
 
@@ -37,7 +38,6 @@ export function decodeValue(
     operation: OPERATION,
     ref: Ref,
     index: number,
-    dynamicIndex: any,
     type: any,
     bytes: Buffer,
     it: decode.Iterator,
@@ -170,7 +170,6 @@ export const decodeSchemaOperation: DecodeOperation = function (
         operation,
         ref,
         index,
-        undefined, // no "dynamic index"
         metadata[field].type,
         bytes,
         it,
@@ -222,14 +221,13 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     let dynamicIndex: number | string;
 
     if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
-        dynamicIndex = (typeof(ref['set']) === "function")
-            ? decode.string(bytes, it) // MapSchema
-            : index;
-
-        ref['setIndex'](index, dynamicIndex);
+        if (typeof(ref['set']) === "function") {
+            dynamicIndex = decode.string(bytes, it); // MapSchema
+            ref['setIndex'](index, dynamicIndex);
+        }
 
     } else {
-        dynamicIndex = ref['getIndex'](index);
+        dynamicIndex = index;
     }
 
     const { value, previousValue } = decodeValue(
@@ -237,7 +235,6 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         operation,
         ref,
         index,
-        dynamicIndex as string,
         type,
         bytes,
         it,
@@ -246,15 +243,17 @@ export const decodeKeyValueOperation: DecodeOperation = function (
 
     if (value !== null && value !== undefined) {
         if (typeof(ref['set']) === "function") {
-            ref['$items'].set(dynamicIndex as string, value);
+            // MapSchema
+            (ref as MapSchema)['$items'].set(dynamicIndex as string, value);
 
-        } else if (typeof(ref['setAt']) === "function") {
-            (ref as ArraySchema).setAt(index, value);
+        } else if (typeof(ref['$setAt']) === "function") {
+            // ArraySchema
+            (ref as ArraySchema)['$setAt'](index, value);
 
         } else if (typeof(ref['add']) === "function") {
+            // CollectionSchema && SetSchema
             const index = (ref as CollectionSchema).add(value);
 
-            // if (index !== false) { // (SetSchema)
             if (typeof(index) === "number") {
                 ref['setIndex'](index, index);
             }

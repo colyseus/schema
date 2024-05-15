@@ -116,7 +116,7 @@ export class SetSchema<V=any> implements Collection<number, V> {
         // clear items
         this.$items.clear();
 
-        changeTree.operation(-1, OPERATION.CLEAR);
+        changeTree.operation(OPERATION.CLEAR);
     }
 
     has (value: V): boolean {
@@ -203,7 +203,7 @@ export class SetSchema<V=any> implements Collection<number, V> {
             // server-side
             cloned = new SetSchema();
             this.forEach((value) => {
-                if (value['$changes']) {
+                if (value[$changes]) {
                     cloned.add(value['clone']());
                 } else {
                     cloned.add(value);

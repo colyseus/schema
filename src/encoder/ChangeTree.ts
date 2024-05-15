@@ -64,6 +64,7 @@ export class ChangeTree<T extends Ref=any> {
     parentIndex?: number;
 
     indexes: {[index: string]: any} = {};
+    currentOperationIndex: number = 0;
 
     allChanges = new Map<number, OPERATION>();
     changes = new Map<number, OPERATION>();
@@ -163,8 +164,8 @@ export class ChangeTree<T extends Ref=any> {
         }
     }
 
-    operation(index: number, op: OPERATION) {
-        this.changes.set(index, op);
+    operation(op: OPERATION) {
+        this.changes.set(--this.currentOperationIndex, op);
         this.root?.changes.set(this, this.changes);
     }
 
@@ -298,6 +299,9 @@ export class ChangeTree<T extends Ref=any> {
 
         this.changes.clear();
         this.filteredChanges.clear();
+
+        // reset operation index
+        this.currentOperationIndex = 0;
 
         if (discardAll) {
             this.allChanges.clear();

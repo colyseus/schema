@@ -5,18 +5,21 @@ export const TYPE_ID = 213;
  * Encoding Schema field operations.
  */
 export enum OPERATION {
-    // (10000000) add new structure/primitive
-    ADD = 128,
+    ADD = 128,            // (10000000) add new structure/primitive
+    REPLACE = 0,          // (00000001) replace structure/primitive
+    DELETE = 64,          // (01000000) delete field
+    DELETE_AND_ADD = 192, // (11000000) DELETE field, followed by an ADD
 
-    // (00000001) replace structure/primitive
-    REPLACE = 0, //
-
-    // (01000000) delete field
-    DELETE = 64,
-
-    // (11000000) DELETE field, followed by an ADD
-    DELETE_AND_ADD = 192,
-
-    // Custom Operations
+    /**
+     * Collection operations
+     */
     CLEAR = 10,
+
+    /**
+     * ArraySchema operations
+     */
+    PUSH = 11,
+    UNSHIFT = 12,
+    REVERSE = 15,
+
 }

@@ -93,6 +93,8 @@ export class Encoder<T extends Schema = any> {
                     continue;
                 }
 
+                // console.log("ENCODE:", { ref: changeTree.ref.constructor.name, fieldIndex, operation: OPERATION[operation] })
+
                 encoder(this, bytes, changeTree, fieldIndex, operation, it);
             }
         }

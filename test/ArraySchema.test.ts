@@ -1334,15 +1334,15 @@ describe("ArraySchema Tests", () => {
             @type(["number"]) numbers = new ArraySchema<number>();
         }
         const state = new State();
-        state.numbers.setAt(0, 1);
-        state.numbers.setAt(1, 2);
-        state.numbers.setAt(2, 3);
+        state.numbers.changeAt(0, 1);
+        state.numbers.changeAt(1, 2);
+        state.numbers.changeAt(2, 3);
         assert.ok(state.encode().length > 0);
 
         // re-assignments, should not be enqueued
-        state.numbers.setAt(0, 1);
-        state.numbers.setAt(1, 2);
-        state.numbers.setAt(2, 3);
+        state.numbers.changeAt(0, 1);
+        state.numbers.changeAt(1, 2);
+        state.numbers.changeAt(2, 3);
         assert.ok(state.encode().length === 0);
     });
 

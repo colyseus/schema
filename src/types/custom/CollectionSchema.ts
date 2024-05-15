@@ -119,7 +119,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
         // clear items
         this.$items.clear();
 
-        changeTree.operation(-1, OPERATION.CLEAR);
+        changeTree.operation(OPERATION.CLEAR);
     }
 
     has (value: V): boolean {

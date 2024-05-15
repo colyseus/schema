@@ -164,7 +164,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         // clear items
         this.$items.clear();
 
-        changeTree.operation(-1, OPERATION.CLEAR);
+        changeTree.operation(OPERATION.CLEAR);
     }
 
     has (key: K) {

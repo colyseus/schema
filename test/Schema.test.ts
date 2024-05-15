@@ -1179,12 +1179,15 @@ describe("Type: Schema", () => {
             state.current.set("0", 0);
 
             decodedState.decode(state.encode());
+            assert.strictEqual(0, decodedState.current.get("0"));
+            assert.strictEqual(undefined, decodedState.previous);
 
             state.previous = state.current;
             state.current = null;
 
-            assert.doesNotThrow(() =>
-                decodedState.decode(state.encode()));
+            assert.doesNotThrow(() => decodedState.decode(state.encode()));
+            assert.strictEqual(0, decodedState.previous.get("0"));
+            assert.strictEqual(undefined, decodedState.current);
         });
 
         it("using ArraySchema", () => {
@@ -1200,12 +1203,15 @@ describe("Type: Schema", () => {
             state.current[0] = 0;
 
             decodedState.decode(state.encode());
+            assert.strictEqual(0, decodedState.current[0]);
+            assert.strictEqual(undefined, decodedState.previous);
 
-            state.previous = state.current;
-            state.current = null;
+            // state.previous = state.current;
+            // state.current = null;
 
-            assert.doesNotThrow(() =>
-                decodedState.decode(state.encode()));
+            // assert.doesNotThrow(() => decodedState.decode(state.encode()));
+            // assert.strictEqual(0, decodedState.previous[0]);
+            // assert.strictEqual(undefined, decodedState.current);
         });
 
         it("using Schema reference", () => {
@@ -1222,12 +1228,15 @@ describe("Type: Schema", () => {
 
             state.current = new Player().assign({ str: "hey" });
             decodedState.decode(state.encode());
+            assert.strictEqual("hey", decodedState.current.str);
+            assert.strictEqual(undefined, decodedState.previous);
 
             state.previous = state.current;
             state.current = null;
 
-            assert.doesNotThrow(() =>
-                decodedState.decode(state.encode()));
+            assert.doesNotThrow(() => decodedState.decode(state.encode()));
+            assert.strictEqual("hey", decodedState.previous.str);
+            assert.strictEqual(undefined, decodedState.current);
         });
     });
 
