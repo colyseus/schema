@@ -224,8 +224,9 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         if (typeof(ref['set']) === "function") {
             dynamicIndex = decode.string(bytes, it); // MapSchema
             ref['setIndex'](index, dynamicIndex);
+        } else {
+            dynamicIndex = index; // ArraySchema
         }
-
     } else {
         dynamicIndex = index;
     }

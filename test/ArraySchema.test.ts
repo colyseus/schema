@@ -560,8 +560,7 @@ describe("ArraySchema Tests", () => {
         // console.log("AFTER SHIFT =>", state.arrayOfPlayers.toArray().map(n => n.name));
         state.arrayOfPlayers[1].name = "Cyberhawk updated!";
 
-        let encoded = state.encode();
-        decodedState.decode(encoded);
+        decodedState.decode(state.encode());
 
         assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
         assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Snake updated!");

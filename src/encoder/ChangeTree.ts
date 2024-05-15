@@ -177,12 +177,11 @@ export class ChangeTree<T extends Ref=any> {
             ? this.filteredChanges
             : this.changes;
 
-        const previousChange = changeSet.get(index);
-
-        if (!previousChange || previousChange === OPERATION.DELETE) {
-            const op = (!previousChange)
+        const previousOperation = changeSet.get(index);
+        if (!previousOperation || previousOperation === OPERATION.DELETE) {
+            const op = (!previousOperation)
                 ? operation
-                : (previousChange === OPERATION.DELETE)
+                : (previousOperation === OPERATION.DELETE)
                     ? OPERATION.DELETE_AND_ADD
                     : operation
             changeSet.set(index, op);

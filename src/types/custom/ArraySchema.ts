@@ -138,20 +138,28 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     }
 
     push(...values: V[]) {
-        const previousLength = this.items.length;
-        const length = this.items.push(...values);
+        let length = this.items.length;
 
         values.forEach((value, i) => {
+            // skip null values
+            if (value === undefined || value === null) {
+                return;
+            }
+
             const changeTree = this[$changes];
-            changeTree.change(previousLength + i, OPERATION.ADD);
+            changeTree.change(length, OPERATION.ADD);
+
+            this.items.push(value);
 
             //
             // set value's parent after the value is set
             // (to avoid encoding "refId" operations before parent's "ADD" operation)
             //
             if (value[$changes] !== undefined) {
-                value[$changes].setParent(this, changeTree.root, previousLength);
+                value[$changes].setParent(this, changeTree.root, length);
             }
+
+            length++;
         });
 
         return length;
@@ -267,11 +275,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * Removes the first element from an array and returns it.
      */
     shift(): V | undefined {
-        const value = this.items.shift();
-        if (value === undefined) { return undefined; }
-
+        if (this.items.length === 0) {
+            return undefined;
+        }
         this.$deleteAt(0);
-        return value;
+        return this.items.shift();
     }
 
     /**
