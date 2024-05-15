@@ -274,3 +274,59 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         });
     }
 }
+
+export const decodeArray: DecodeOperation = function (
+    decoder: Decoder<any>,
+    bytes: Buffer,
+    it: decode.Iterator,
+    ref: Ref,
+    allChanges: DataChange[]
+) {
+    // "uncompressed" index + operation (array/map items)
+    const operation = bytes[it.offset++];
+
+    if (operation === OPERATION.CLEAR) {
+        //
+        // When decoding:
+        // - enqueue items for DELETE callback.
+        // - flag child items for garbage collection.
+        //
+        decoder.removeChildRefs(ref as unknown as Collection, allChanges);
+        (ref as ArraySchema).clear();
+        return;
+    }
+
+    const index = decode.number(bytes, it);
+    const type = ref[$childType];
+
+    let dynamicIndex: number | string = index;
+
+    const { value, previousValue } = decodeValue(
+        decoder,
+        operation,
+        ref,
+        index,
+        type,
+        bytes,
+        it,
+        allChanges,
+    );
+
+    if (value !== null && value !== undefined) {
+        // ArraySchema
+        (ref as ArraySchema)['$setAt'](index, value);
+    }
+
+    // add change
+    if (previousValue !== value) {
+        allChanges.push({
+            ref,
+            refId: decoder.currentRefId,
+            op: operation,
+            field: "", // FIXME: remove this
+            dynamicIndex,
+            value,
+            previousValue,
+        });
+    }
+}

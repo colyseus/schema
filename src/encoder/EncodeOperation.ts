@@ -174,3 +174,47 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     // TODO: inline this function call small performance gain
     encodeValue(encoder, bytes, ref, type, value, field, operation, it);
 }
+
+/**
+ * Used for collections (MapSchema, ArraySchema, etc.)
+ * @private
+ */
+export const encodeArray: EncodeOperation = function (
+    encoder: Encoder,
+    bytes: Buffer,
+    changeTree: ChangeTree,
+    field: number,
+    operation: OPERATION,
+    it: Iterator,
+) {
+    const ref = changeTree.ref;
+
+    // encode operation
+    bytes[it.offset++] = operation & 255;
+
+    // custom operations
+    if (operation === OPERATION.CLEAR) {
+        return;
+    }
+
+    // encode index
+    encode.number(bytes, field, it);
+
+    // Do not encode value for DELETE operations
+    if (operation === OPERATION.DELETE) {
+        return;
+    }
+
+    const type = changeTree.getType(field);
+    const value = changeTree.getValue(field);
+
+    // console.log("encodeArray -> ", {
+    //     ref: changeTree.ref.constructor.name,
+    //     field,
+    //     operation: OPERATION[operation],
+    //     value: value?.toJSON(),
+    // });
+
+    // TODO: inline this function call small performance gain
+    encodeValue(encoder, bytes, ref, type, value, field, operation, it);
+}

@@ -1,12 +1,12 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex } from "../symbols";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd } from "../symbols";
 import type { Schema } from "../../Schema";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
 
-import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
-import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
+import { encodeArray } from "../../encoder/EncodeOperation";
+import { decodeArray } from "../../decoder/DecodeOperation";
 import type { StateView } from "../../encoder/StateView";
 
 const DEFAULT_SORT = (a: any, b: any) => {
@@ -19,13 +19,12 @@ const DEFAULT_SORT = (a: any, b: any) => {
 
 export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     [n: number]: V;
+
     protected items: V[] = [];
+    protected tmpItems: V[] = [];
 
-    // #childType: any;
-    // #hasSchemaItems: boolean = false;
-
-    static [$encoder] = encodeKeyValueOperation;
-    static [$decoder] = decodeKeyValueOperation;
+    static [$encoder] = encodeArray;
+    static [$decoder] = decodeArray;
 
     /**
      * Determine if a property must be filtered.
@@ -84,6 +83,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                     } else {
                         obj.changeAt(key as unknown as number, setValue);
                         this.items[key as unknown as number] = setValue;
+                        this.tmpItems[key as unknown as number] = setValue;
                     }
 
                     return true;
@@ -117,12 +117,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         return proxy;
     }
 
-    // set [$childType] (type: any) {
-    //     this.#hasSchemaItems = typeof (type[Symbol.metadata]) === "object";
-    //     this.#childType = type;
-    // }
-    // get [$childType]() { return this.#childType; }
-
     set length (newLength: number) {
         if (newLength === 0) {
             this.clear();
@@ -138,7 +132,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     }
 
     push(...values: V[]) {
-        let length = this.items.length;
+        let length = this.tmpItems.length;
 
         values.forEach((value, i) => {
             // skip null values
@@ -147,9 +141,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             }
 
             const changeTree = this[$changes];
-            changeTree.change(length, OPERATION.ADD);
+            changeTree.add(length);
+            // changeTree.indexes[length] = length;
 
             this.items.push(value);
+            this.tmpItems.push(value);
 
             //
             // set value's parent after the value is set
@@ -169,10 +165,23 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * Removes the last element from an array and returns it.
      */
     pop(): V | undefined {
-        const index = this.items.length - 1;
-        if (index < 0) { return undefined; }
+        let index: number = -1;
+
+        // find last non-undefined index
+        for (let i = this.tmpItems.length - 1; i >= 0; i--) {
+            if (this.tmpItems[i] !== undefined) {
+                index = i;
+                break;
+            }
+        }
+
+        if (index < 0) {
+            return undefined;
+        }
 
         this[$changes].delete(index);
+        this.tmpItems[index] = undefined;
+
         return this.items.pop();
     }
 
@@ -207,18 +216,20 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     }
 
     protected deleteAt(index: number) {
-        // const item = this.#items[index];
-        // const key = Array.from(this.$items.keys())[index];
-        // if (key === undefined) { return false; }
         return this.$deleteAt(index);
     }
 
-    protected $deleteAt(index: number) {
-        this[$changes].delete(index);
+    protected $deleteAt(index: number, operation?: OPERATION) {
+        this[$changes].delete(index, operation);
     }
 
     protected $setAt(index: number, value: V) {
-        this.items[index] = value;
+        if (index === 0 && this.items[index] !== undefined) {
+            // handle decoding unshift
+            this.items.unshift(value);
+        } else {
+            this.items[index] = value;
+        }
     }
 
     clear() {
@@ -275,10 +286,13 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * Removes the first element from an array and returns it.
      */
     shift(): V | undefined {
-        if (this.items.length === 0) {
-            return undefined;
-        }
-        this.$deleteAt(0);
+        if (this.items.length === 0) { return undefined; }
+
+        // const index = Number(Object.keys(changeTree.indexes)[0]);
+        const index = this.tmpItems.findIndex((item, i) => item === this.items[0]);
+        const changeTree = this[$changes];
+        changeTree.delete(index);
+
         return this.items.shift();
     }
 
@@ -323,6 +337,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             this.$deleteAt(i);
         }
 
+
         for (let i = 0; i < items.length; i++) {
             this.changeAt(start + i, items[i]);
         }
@@ -335,7 +350,16 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * @param items  Elements to insert at the start of the Array.
      */
     unshift(...items: V[]): number {
-        items.forEach((_, index) => this[$changes].change(index, OPERATION.ADD));
+        const changeTree = this[$changes];
+
+        // shift indexes
+        changeTree.shiftChangeIndexes(items.length);
+
+        items.forEach((_, index) =>
+            changeTree.change(index, OPERATION.ADD));
+
+        this.tmpItems.unshift(...items);
+
         return this.items.unshift(...items);
     }
 
@@ -604,11 +628,19 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     }
 
     protected [$getByIndex](index: number) {
-        return this.items[index];
+        return this.tmpItems[index];
     }
 
     protected [$deleteByIndex](index: number) {
-        this.items.splice(index, 1);
+        this.items[index] = undefined;
+    }
+
+    protected [$onEncodeEnd]() {
+        this.tmpItems = this.items.slice();
+    }
+
+    protected [$onDecodeEnd]() {
+        this.items = this.items.filter((item) => item !== undefined);
     }
 
     toArray() {

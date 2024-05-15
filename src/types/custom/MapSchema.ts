@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex } from "../symbols";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex } from "../symbols";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
@@ -207,6 +207,17 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         const key = this.$indexes.get(index);
         this.$items.delete(key);
         this.$indexes.delete(index);
+    }
+
+    protected [$onEncodeEnd]() {
+        const changeTree = this[$changes];
+        const changes = changeTree.changes.entries();
+        for (const [fieldIndex, operation] of changes) {
+            if (operation === OPERATION.DELETE) {
+                const index = this[$getByIndex](fieldIndex) as string;
+                delete changeTree.indexes[index];
+            }
+        }
     }
 
     toJSON() {

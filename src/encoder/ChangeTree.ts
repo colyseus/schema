@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec";
 import { Schema } from "../Schema";
-import { $changes, $childType, $decoder, $encoder, $getByIndex } from "../types/symbols";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex } from "../types/symbols";
 
 import type { MapSchema } from "../types/custom/MapSchema";
 import type { ArraySchema } from "../types/custom/ArraySchema";
@@ -200,6 +200,41 @@ export class ChangeTree<T extends Ref=any> {
         }
     }
 
+    shiftChangeIndexes(shiftIndex: number) {
+        // Used only during ArraySchema#unshift()
+        const changeSet = (this.isFiltered)
+            ? this.filteredChanges
+            : this.changes;
+
+        // Convert the changeSet to an array of [index, op] entries
+        const entries = Array.from(changeSet.entries());
+
+        // Clear the changeSet to prepare for re-insertion
+        changeSet.clear();
+
+        // Re-insert each entry with the shifted index
+        for (const [index, op] of entries) {
+            changeSet.set(index + shiftIndex, op);
+        }
+    }
+
+    add(index: number) {
+        const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
+
+        const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
+        const changeSet = (isFiltered) ? this.filteredChanges : this.changes;
+
+        changeSet.set(index, OPERATION.ADD);
+        this.allChanges.set(index, OPERATION.ADD);
+
+        if (isFiltered) {
+            this.root?.filteredChanges.set(this, this.filteredChanges);
+
+        } else {
+            this.root?.changes.set(this, this.changes);
+        }
+    }
+
     getType(index?: number) {
         if (Metadata.isValidInstance(this.ref)) {
             const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
@@ -228,7 +263,7 @@ export class ChangeTree<T extends Ref=any> {
         return this.ref[$getByIndex](index);
     }
 
-    delete(index: number) {
+    delete(index: number, operation?: OPERATION) {
         if (index === undefined) {
             try {
                 throw new Error(`@colyseus/schema ${this.ref.constructor.name}: trying to delete non-existing index '${index}'`);
@@ -246,7 +281,7 @@ export class ChangeTree<T extends Ref=any> {
 
         const previousValue = this.getValue(index);
 
-        changeSet.set(index, OPERATION.DELETE);
+        changeSet.set(index, operation ?? OPERATION.DELETE);
 
         this.allChanges.delete(index);
 
@@ -280,21 +315,11 @@ export class ChangeTree<T extends Ref=any> {
 
     discard(discardAll: boolean = false) {
         //
-        // Map, Array, etc:
-        // Remove cached key to ensure ADD operations is unsed instead of
-        // REPLACE in case same key is used on next patches.
+        // > MapSchema:
+        //      Remove cached key to ensure ADD operations is unsed instead of
+        //      REPLACE in case same key is used on next patches.
         //
-        // TODO: refactor this. this is not relevant for Collection and Set.
-        //
-        if (!(Metadata.isValidInstance(this.ref))) {
-            const changes = this.changes.entries();
-            for (const [fieldIndex, operation] of changes) {
-                if (operation === OPERATION.DELETE) {
-                    const index = this.ref[$getByIndex](fieldIndex)
-                    delete this.indexes[index];
-                }
-            }
-        }
+        this.ref[$onEncodeEnd]?.();
 
         this.changes.clear();
         this.filteredChanges.clear();

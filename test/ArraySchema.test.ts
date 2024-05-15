@@ -162,7 +162,7 @@ describe("ArraySchema Tests", () => {
     });
 
     describe("ArraySchema#shift()", () => {
-        it("shift + push + splice", () => {
+        it("shift, push, splice", () => {
             class State extends Schema {
                 @type(["string"]) turns = new ArraySchema<string>();
             }
@@ -579,6 +579,7 @@ describe("ArraySchema Tests", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
+        console.log("---------------")
         assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
 
         const jake = decodedState.arrayOfPlayers[0];
@@ -588,6 +589,9 @@ describe("ArraySchema Tests", () => {
         assert.deepStrictEqual(['Snake', 'Cyberhawk'], removedItems.map((player) => player.name));
 
         decodedState.decode(state.encode());
+        console.log("---------------")
+
+        console.log("FINAL =>", decodedState.arrayOfPlayers.toJSON());
 
         assert.strictEqual(decodedState.arrayOfPlayers.length, 1);
         assert.strictEqual("Jake", decodedState.arrayOfPlayers[0].name);
@@ -653,8 +657,7 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers.push(new Player("Katarina Lyons"));
         state.arrayOfPlayers.shift();
 
-        let encoded = state.encode();
-        decodedState.decode(encoded);
+        decodedState.decode(state.encode());
 
         assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
         assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Snake Sanders");
@@ -667,8 +670,7 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers.push(new Player("Jake Badlands"));
         state.arrayOfPlayers.shift();
 
-        encoded = state.encode();
-        decodedState.decode(encoded);
+        decodedState.decode(state.encode());
 
         assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
         assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
@@ -685,6 +687,7 @@ describe("ArraySchema Tests", () => {
         );
 
         const decodedState = new State();
+        console.log("----------------")
         decodedState.decode(state.encode());
         assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
 
@@ -693,8 +696,13 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers.shift();
         state.arrayOfPlayers.push(new Player("Katarina Lyons"));
 
-        let encoded = state.encode();
-        decodedState.decode(encoded);
+        console.log("----------------")
+        console.log(Schema.debugRefIds(state));
+        //
+        console.log("----------------")
+        decodedState.decode(state.encode());
+
+        console.log("DECODED =>", decodedState.toJSON());
 
         assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
         assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
@@ -1333,15 +1341,15 @@ describe("ArraySchema Tests", () => {
             @type(["number"]) numbers = new ArraySchema<number>();
         }
         const state = new State();
-        state.numbers.changeAt(0, 1);
-        state.numbers.changeAt(1, 2);
-        state.numbers.changeAt(2, 3);
+        state.numbers[0] = 1;
+        state.numbers[1] = 2;
+        state.numbers[2] = 3;
         assert.ok(state.encode().length > 0);
 
         // re-assignments, should not be enqueued
-        state.numbers.changeAt(0, 1);
-        state.numbers.changeAt(1, 2);
-        state.numbers.changeAt(2, 3);
+        state.numbers[0] = 1;
+        state.numbers[1] = 2;
+        state.numbers[2] = 3;
         assert.ok(state.encode().length === 0);
     });
 
@@ -1555,7 +1563,6 @@ describe("ArraySchema Tests", () => {
     describe("ArraySchema <-> Array type interchangability", () => {
         it("should allow assigning array to an ArraySchema", () => {
             class State extends Schema {
-                // @ts-ignore
                 @type(["number"]) numbers: number[] = new ArraySchema<number>();
             }
 

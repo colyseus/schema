@@ -1,5 +1,5 @@
 import { TypeContext } from "../annotations";
-import { $changes, $childType, $decoder } from "../types/symbols";
+import { $changes, $childType, $decoder, $onDecodeEnd } from "../types/symbols";
 import { Schema } from "../Schema";
 
 import * as decode from "../encoding/decode";
@@ -7,7 +7,7 @@ import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Ref } from "../encoder/ChangeTree";
 import { Iterator } from "../encoding/decode";
 import { ReferenceTracker } from "./ReferenceTracker";
-import { DEFINITION_MISMATCH, DataChange } from "./DecodeOperation";
+import { DEFINITION_MISMATCH, DataChange, DecodeOperation } from "./DecodeOperation";
 import { Collection } from "../types/HelperTypes";
 
 export class Decoder<T extends Schema = any> {
@@ -46,6 +46,8 @@ export class Decoder<T extends Schema = any> {
         const $root = this.$root;
         const totalBytes = bytes.byteLength;
 
+        let decoder: DecodeOperation = ref['constructor'][$decoder];
+
         this.currentRefId = 0;
 
         while (it.offset < totalBytes) {
@@ -62,12 +64,13 @@ export class Decoder<T extends Schema = any> {
                 // Trying to access a reference that haven't been decoded yet.
                 //
                 if (!nextRef) { throw new Error(`"refId" not found: ${this.currentRefId}`); }
+                ref[$onDecodeEnd]?.()
                 ref = nextRef;
+                decoder = ref['constructor'][$decoder];
 
                 continue;
             }
 
-            const decoder = ref['constructor'][$decoder];
             const result = decoder(this, bytes, it, ref, allChanges);
 
             if (result === DEFINITION_MISMATCH) {
@@ -91,6 +94,9 @@ export class Decoder<T extends Schema = any> {
                 continue;
             }
         }
+
+        // FIXME: DRY with SWITCH_TO_STRUCTURE block.
+        ref[$onDecodeEnd]?.()
 
         // trigger changes
         this.triggerChanges?.(allChanges);

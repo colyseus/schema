@@ -57,7 +57,7 @@ export {
 export type { DefinitionType, PrimitiveType, Definition, } from "./annotations";
 
 export { Encoder } from "./encoder/Encoder";
-export { encodeSchemaOperation, encodeKeyValueOperation } from "./encoder/EncodeOperation";
+export { encodeSchemaOperation, encodeArray as encodeKeyValueOperation } from "./encoder/EncodeOperation";
 export { ChangeTree, Ref } from "./encoder/ChangeTree";
 export { StateView } from "./encoder/StateView";
 

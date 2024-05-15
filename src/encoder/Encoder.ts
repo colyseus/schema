@@ -1,6 +1,6 @@
 import type { Schema } from "../Schema";
 import { TypeContext } from "../annotations";
-import { $changes, $encoder, $filter } from "../types/symbols";
+import { $changes, $encoder, $filter, $onEncodeEnd } from "../types/symbols";
 
 import * as encode from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
@@ -93,6 +93,8 @@ export class Encoder<T extends Schema = any> {
                     continue;
                 }
 
+                // console.log("Encoder...", { ref: changeTree.ref.constructor.name, fieldIndex, operation: OPERATION[operation] })
+
                 encoder(this, bytes, changeTree, fieldIndex, operation, it);
             }
         }
@@ -116,8 +118,9 @@ export class Encoder<T extends Schema = any> {
                 // FIXME: avoid iterating over change trees twice.
                 //
                 const changeTreesIterator = changeTrees.entries();
-                for (const [changeTree, changes] of changeTreesIterator) {
+                for (const [changeTree, _] of changeTreesIterator) {
                     changeTree.changes.clear();
+                    changeTree.ref[$onEncodeEnd]?.();
                 }
 
                 this.$root.clear();

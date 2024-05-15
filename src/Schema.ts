@@ -197,7 +197,7 @@ export abstract class Schema {
         const changeTree = ref[$changes];
 
         let output = "";
-        output += `${getIndent(level)}${ref.constructor.name} (${ref[$changes].refId})\n`;
+        output += `${getIndent(level)}${ref.constructor.name} (${ref[$changes].refId}) - ${JSON.stringify(ref.toJSON())}\n`;
 
         changeTree.forEachChild((childChangeTree) =>
             output += this.debugRefIds(childChangeTree.ref, level + 1));

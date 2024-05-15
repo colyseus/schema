@@ -17,3 +17,14 @@ export const $changes = Symbol('$changes');
  * (MapSchema, ArraySchema, etc.)
  */
 export const $childType = Symbol('$childType');
+
+/**
+ * Optional "discard" method for custom types (ArraySchema)
+ * (Discards changes for next serialization)
+ */
+export const $onEncodeEnd = Symbol('$onEncodeEnd');
+
+/**
+ * When decoding, this method is called after the instance is fully decoded
+ */
+export const $onDecodeEnd = Symbol("$onDecodeEnd");
