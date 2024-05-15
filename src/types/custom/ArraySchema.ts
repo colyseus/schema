@@ -251,8 +251,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         });
 
         changeTree.discard(true);
-
         changeTree.operation(OPERATION.CLEAR);
+
+        this.items.length = 0;
+        this.tmpItems.length = 0;
     }
 
     /**
@@ -628,7 +630,13 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     }
 
     protected [$getByIndex](index: number) {
-        return this.tmpItems[index];
+        //
+        // TODO: avoid unecessary `this.tmpItems` check during decoding.
+        //
+        //    ENCODING uses `this.tmpItems`
+        //    DECODING uses `this.items`
+        //
+        return this.tmpItems[index] ?? this.items[index];
     }
 
     protected [$deleteByIndex](index: number) {
