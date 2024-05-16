@@ -767,7 +767,7 @@ describe("ArraySchema Tests", () => {
         assert.ok("length" in decodedState.arrayOfPlayers === true);
     });
 
-    it("should allow sort", () => {
+    it("should allow to sort", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema<Player>();
         state.arrayOfPlayers.push(new Player().assign({
@@ -1375,7 +1375,7 @@ describe("ArraySchema Tests", () => {
             }
         }
 
-        it("should PUSH + shuffle", () => {
+        it("should push and shuffle", () => {
             const state = new MyState();
 
             state.cards.push(new Card().assign({ id: 1, types: new ArraySchema<CardType>() }));
@@ -1396,7 +1396,7 @@ describe("ArraySchema Tests", () => {
             );
         });
 
-        it("should POP + shuffle", () => {
+        it("should pop and shuffle", () => {
             const state = new MyState();
 
             state.cards.push(new Card().assign({ id: 1, types: new ArraySchema<CardType>() }));
@@ -1417,7 +1417,7 @@ describe("ArraySchema Tests", () => {
             );
         });
 
-        it("should SPLICE + shuffle", () => {
+        it("should splice and shuffle", () => {
             const state = new MyState();
 
             state.cards.push(new Card().assign({ id: 1, types: new ArraySchema<CardType>() }));

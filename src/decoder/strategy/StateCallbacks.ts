@@ -215,7 +215,6 @@ export function getStateCallbacks(decoder: Decoder) {
                                     // re-instantiates the instance.
                                     //
                                     unbind();
-
                                 }, false);
 
                                 // has existing value
