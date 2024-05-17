@@ -48,8 +48,6 @@ export function decodeValue(
 
     let value: any;
 
-    // console.log("Decoding...", { type, operation: OPERATION[operation], index});
-
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
         //
@@ -229,7 +227,8 @@ export const decodeKeyValueOperation: DecodeOperation = function (
             dynamicIndex = index; // ArraySchema
         }
     } else {
-        dynamicIndex = index;
+        // get dynamic index from "ref"
+        dynamicIndex = ref['getIndex'](index);
     }
 
     const { value, previousValue } = decodeValue(

@@ -76,8 +76,7 @@ describe("Next Iteration", () => {
 
     it("add and modify a map item", () => {
         class State extends Schema {
-            @type({ map: "number" })
-            map = new Map<string, number>();
+            @type({ map: "number" }) map = new Map<string, number>();
         }
 
         const state = new State();
@@ -85,21 +84,17 @@ describe("Next Iteration", () => {
         state.map.set("two", 2);
         state.map.set("three", 3);
 
-        const decoded = new State();
+        const decodedState = new State();
+        decodedState.decode(state.encode());
 
-        let encoded = state.encode();
-        decoded.decode(encoded);
-
-        assert.deepEqual(decoded.map.get("one"), 1);
-        assert.deepEqual(decoded.map.get("two"), 2);
-        assert.deepEqual(decoded.map.get("three"), 3);
+        assert.strictEqual(decodedState.map.get("one"), 1);
+        assert.strictEqual(decodedState.map.get("two"), 2);
+        assert.strictEqual(decodedState.map.get("three"), 3);
 
         state.map.set("two", 22);
+        decodedState.decode(state.encode());
 
-        encoded = state.encode();
-        decoded.decode(encoded);
-
-        assert.deepEqual(decoded.map.get("two"), 22);
+        assert.deepStrictEqual(decodedState.map.get("two"), 22);
     });
 
     it("MapSchema should be backwards-compatible with @colyseus/schema 0.5", () => {
