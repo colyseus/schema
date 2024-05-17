@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection } from "./Schema";
+import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, $changes } from "../src";
 
 describe("ArraySchema Tests", () => {
@@ -770,34 +770,13 @@ describe("ArraySchema Tests", () => {
     it("should allow to sort", () => {
         const state = new State();
         state.arrayOfPlayers = new ArraySchema<Player>();
-        state.arrayOfPlayers.push(new Player().assign({
-            name: "One",
-            x: 10,
-            y: 0
-        }));
-        state.arrayOfPlayers.push(new Player().assign({
-            name: "Two",
-            x: 30,
-            y: 1
-        }));
-        state.arrayOfPlayers.push(new Player().assign({
-            name: "Three",
-            x: 20,
-            y: 2
-        }));
-        state.arrayOfPlayers.push(new Player().assign({
-            name: "Four",
-            x: 50,
-            y: 3
-        }));
-        state.arrayOfPlayers.push(new Player().assign({
-            name: "Five",
-            x: 40,
-            y: 4
-        }));
+        state.arrayOfPlayers.push(new Player().assign({ name: "One", x: 10, y: 0 }));
+        state.arrayOfPlayers.push(new Player().assign({ name: "Two", x: 30, y: 1 }));
+        state.arrayOfPlayers.push(new Player().assign({ name: "Three", x: 20, y: 2 }));
+        state.arrayOfPlayers.push(new Player().assign({ name: "Four", x: 50, y: 3 }));
+        state.arrayOfPlayers.push(new Player().assign({ name: "Five", x: 40, y: 4 }));
 
         const decodedState = new State();
-        decodedState.arrayOfPlayers = new ArraySchema<Player>();
 
         // decodedState.arrayOfPlayers.onAdd = function(item, i) {};
         // const onAddSpy = sinon.spy(decodedState.arrayOfPlayers, 'onAdd');
@@ -808,21 +787,26 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encode());
         // sinon.assert.callCount(onAddSpy, 5);
         // sinon.assert.callCount(onChangeSpy, 0);
+        assert.deepStrictEqual(state.arrayOfPlayers.toArray(), decodedState.arrayOfPlayers.toArray());
+        assert.deepStrictEqual(decodedState.arrayOfPlayers.map(p => p.name), ['One', 'Two', 'Three', 'Four', 'Five']);
 
         state.arrayOfPlayers.sort((a, b) => b.y - a.y);
 
-        const encoded = state.encode();
         // assert.strictEqual(encoded.length, 23, "should encode only index changes");
-        decodedState.decode(encoded);
+        decodedState.decode(state.encode());
 
+        assert.deepStrictEqual(state.arrayOfPlayers.toArray(), decodedState.arrayOfPlayers.toArray());
         assert.deepStrictEqual(decodedState.arrayOfPlayers.map(p => p.name), [ 'Five', 'Four', 'Three', 'Two', 'One' ]);
         // sinon.assert.callCount(onAddSpy, 5);
         // sinon.assert.callCount(onChangeSpy, 5);
 
-        state.arrayOfPlayers.sort((a, b) => b.x - a.x);
+        state.arrayOfPlayers.sort((a, b) => a.x - b.x);
         decodedState.decode(state.encode());
         // sinon.assert.callCount(onAddSpy, 5);
         // sinon.assert.callCount(onChangeSpy, 10);
+
+        assert.deepStrictEqual(state.arrayOfPlayers.toArray(), decodedState.arrayOfPlayers.toArray());
+        assert.deepStrictEqual(decodedState.arrayOfPlayers.map(p => p.name), ['One', 'Three', 'Two', 'Five', 'Four']);
 
         for (var a = 0; a < 100; a++) {
             for (var b = 0; b < state.arrayOfPlayers.length; b++) {
@@ -832,6 +816,7 @@ describe("ArraySchema Tests", () => {
 
             state.arrayOfPlayers.sort((a, b) => b.x - a.x);
             decodedState.decode(state.encode());
+            assert.deepStrictEqual(state.arrayOfPlayers.toArray(), decodedState.arrayOfPlayers.toArray());
             // sinon.assert.callCount(onAddSpy, 5);
         }
     });
@@ -1353,56 +1338,77 @@ describe("ArraySchema Tests", () => {
         assert.ok(state.encode().length === 0);
     });
 
-    describe("mixed operations along with shuffle", () => {
-        class CardType extends Schema {
-            @type("uint16") id: number;
-            @type("string") title: string;
-          }
-
+    describe("mixed operations along with sort", () => {
         class Card extends Schema {
             @type("uint16") id: number;
-            @type([CardType]) types = new ArraySchema<CardType>();
           }
 
         class MyState extends Schema {
             @type([Card]) cards = new ArraySchema<Card>();
         }
 
-        function shuffle(temp: ArraySchema): void {
-            for (let i = temp.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [temp[i], temp[j]] = [temp[j], temp[i]];
+        function shuffle(array) {
+            let currentIndex = array.length;
+
+            // While there remain elements to shuffle...
+            while (currentIndex != 0) {
+
+                // Pick a remaining element...
+                let randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+
+                // console.log(`[array[${currentIndex}], array[${randomIndex}]] = [array[${randomIndex}], array[${currentIndex}]]`);
+
+                // And swap it with the current element.
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
             }
         }
 
-        it("should push and shuffle", () => {
+        it("should push and move entries", () => {
             const state = new MyState();
-
-            state.cards.push(new Card().assign({ id: 1, types: new ArraySchema<CardType>() }));
-            state.cards.push(new Card().assign({ id: 2, types: new ArraySchema<CardType>() }));
-            state.cards.push(new Card().assign({ id: 3, types: new ArraySchema<CardType>() }));
-            state.cards.push(new Card().assign({ id: 4, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 2 }));
+            state.cards.push(new Card().assign({ id: 3 }));
+            state.cards.push(new Card().assign({ id: 4 }));
+            state.cards.push(new Card().assign({ id: 5 }));
 
             const decodedState = new MyState();
             decodedState.decode(state.encode());
 
-            state.cards.push(new Card().assign({ id: 5, types: new ArraySchema<CardType>() }));
-            shuffle(state.cards);
+            state.cards.push(new Card().assign({ id: 6 }));
+
+            [state.cards[4], state.cards[3]] = [state.cards[3], state.cards[4]];
+            [state.cards[3], state.cards[2]] = [state.cards[2], state.cards[3]];
+            [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
+            [state.cards[1], state.cards[1]] = [state.cards[1], state.cards[1]];
+            [state.cards[0], state.cards[0]] = [state.cards[0], state.cards[0]];
+
+            // shuffle(state.cards);
 
             decodedState.decode(state.encode());
-            assert.deepStrictEqual(
-                decodedState.cards.map(c => c.id).sort(),
-                [1, 2, 3, 4, 5]
-            );
+
+            assert.deepStrictEqual(state.cards.toJSON(), decodedState.cards.toJSON());
+            assert.strictEqual(state.cards.length, decodedState.cards.length);
+
+            const $root = getDecoder(decodedState).$root;
+            const refCounts = $root.refCounts;
+
+            assert.strictEqual($root.refs.size, 7, "should have 7 refs");
+            assert.strictEqual(refCounts[0], 1, JSON.stringify($root.refs.get(0).toJSON()));
+            assert.strictEqual(refCounts[1], 1, JSON.stringify($root.refs.get(1).toJSON()));
+            assert.strictEqual(refCounts[2], 1, JSON.stringify($root.refs.get(2).toJSON()));
+            assert.strictEqual(refCounts[3], 1, JSON.stringify($root.refs.get(3).toJSON()));
+            assert.strictEqual(refCounts[4], 1, JSON.stringify($root.refs.get(4).toJSON()));
+            assert.strictEqual(refCounts[5], 1, JSON.stringify($root.refs.get(5).toJSON()));
+            assert.strictEqual(refCounts[6], 1, JSON.stringify($root.refs.get(6).toJSON()));
         });
 
         it("should pop and shuffle", () => {
             const state = new MyState();
 
-            state.cards.push(new Card().assign({ id: 1, types: new ArraySchema<CardType>() }));
-            state.cards.push(new Card().assign({ id: 2, types: new ArraySchema<CardType>() }));
-            state.cards.push(new Card().assign({ id: 3, types: new ArraySchema<CardType>() }));
-            state.cards.push(new Card().assign({ id: 4, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 1 }));
+            state.cards.push(new Card().assign({ id: 2 }));
+            state.cards.push(new Card().assign({ id: 3 }));
+            state.cards.push(new Card().assign({ id: 4 }));
 
             const decodedState = new MyState();
             decodedState.decode(state.encode());
@@ -1420,10 +1426,10 @@ describe("ArraySchema Tests", () => {
         it("should splice and shuffle", () => {
             const state = new MyState();
 
-            state.cards.push(new Card().assign({ id: 1, types: new ArraySchema<CardType>() }));
-            state.cards.push(new Card().assign({ id: 2, types: new ArraySchema<CardType>() }));
-            state.cards.push(new Card().assign({ id: 3, types: new ArraySchema<CardType>() }));
-            state.cards.push(new Card().assign({ id: 4, types: new ArraySchema<CardType>() }));
+            state.cards.push(new Card().assign({ id: 1 }));
+            state.cards.push(new Card().assign({ id: 2 }));
+            state.cards.push(new Card().assign({ id: 3 }));
+            state.cards.push(new Card().assign({ id: 4 }));
 
             const decodedState = new MyState();
             decodedState.decode(state.encode());

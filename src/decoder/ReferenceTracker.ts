@@ -44,6 +44,10 @@ export class ReferenceTracker {
         if (incrementCount) {
             this.refCounts[refId] = (this.refCounts[refId] || 0) + 1;
         }
+
+        if (this.deletedRefs.has(refId)) {
+            this.deletedRefs.delete(refId);
+        }
     }
 
     // for decoding
@@ -69,8 +73,9 @@ export class ReferenceTracker {
             return;
         }
 
-        this.refCounts[refId] = refCount - 1;
-        this.deletedRefs.add(refId);
+        if ((this.refCounts[refId] = refCount - 1) <= 0) {
+            this.deletedRefs.add(refId);
+        }
     }
 
     clearRefs() {

@@ -192,15 +192,17 @@ export abstract class Schema {
         this[this.constructor[Symbol.metadata][index]] = undefined;
     }
 
-    static debugRefIds(instance: Ref, level: number = 0) {
+    static debugRefIds(instance: Ref, jsonContents: boolean = true, level: number = 0) {
         const ref = instance;
         const changeTree = ref[$changes];
 
+        const contents = (jsonContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
+
         let output = "";
-        output += `${getIndent(level)}${ref.constructor.name} (${ref[$changes].refId}) - ${JSON.stringify(ref.toJSON())}\n`;
+        output += `${getIndent(level)}${ref.constructor.name} (${ref[$changes].refId})${contents}\n`;
 
         changeTree.forEachChild((childChangeTree) =>
-            output += this.debugRefIds(childChangeTree.ref, level + 1));
+            output += this.debugRefIds(childChangeTree.ref, jsonContents, level + 1));
 
         return output;
     }

@@ -4,7 +4,7 @@ import { Schema } from "../Schema";
 import type { Ref } from "../encoder/ChangeTree";
 import type { Decoder } from "./Decoder";
 import * as decode from "../encoding/decode";
-import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
+import { $changes, $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
 
 import type { MapSchema } from "../types/custom/MapSchema";
 import type { ArraySchema } from "../types/custom/ArraySchema";
@@ -48,6 +48,8 @@ export function decodeValue(
 
     let value: any;
 
+    // console.log("Decoding...", { type, operation: OPERATION[operation], index});
+
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
         //
@@ -73,22 +75,21 @@ export function decodeValue(
         const refId = decode.number(bytes, it);
         value = $root.refs.get(refId);
 
-        if (operation !== OPERATION.REPLACE) {
-            const childType = decoder.getInstanceType(bytes, it, type);
+        if (previousValue) {
+            const previousRefId = $root.refIds.get(previousValue);
+            if (previousRefId && refId !== previousRefId) {
+                $root.removeRef(previousRefId);
+            }
+        }
 
+        if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+            const childType = decoder.getInstanceType(bytes, it, type);
             if (!value) {
                 value = decoder.createInstanceOfType(childType);
-
-                if (previousValue) {
-                    const previousRefId = $root.refIds.get(previousValue);
-                    if (previousRefId && refId !== previousRefId) {
-                        $root.removeRef(previousRefId);
-                    }
-                }
             }
-
-            $root.addRef(refId, value, (value !== previousValue));
         }
+
+        $root.addRef(refId, value, (value !== previousValue));
 
     } else if (typeof(type) === "string") {
         //
@@ -249,7 +250,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
 
         } else if (typeof(ref['$setAt']) === "function") {
             // ArraySchema
-            (ref as ArraySchema)['$setAt'](index, value);
+            (ref as ArraySchema)['$setAt'](index, value, operation);
 
         } else if (typeof(ref['add']) === "function") {
             // CollectionSchema && SetSchema
@@ -314,8 +315,11 @@ export const decodeArray: DecodeOperation = function (
 
     if (value !== null && value !== undefined) {
         // ArraySchema
-        (ref as ArraySchema)['$setAt'](index, value);
+        (ref as ArraySchema)['$setAt'](index, value, operation);
     }
+
+    // console.log("decodeArray", { value: value?.toJSON(), operation: OPERATION[operation], index, dynamicIndex });
+    // console.log("Entries ->", ref.toJSON());
 
     // add change
     if (previousValue !== value) {

@@ -75,6 +75,7 @@ export class Encoder<T extends Schema = any> {
             if (it.offset !== initialOffset || changeTree !== rootChangeTree) {
                 bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
                 encode.number(bytes, changeTree.refId, it);
+                // console.log("-> Encode SWITCH_TO_STRUCTURE", changeTree.refId, changeTree.ref.constructor.name)
             }
 
             const changesIterator = changes.entries();
@@ -93,7 +94,7 @@ export class Encoder<T extends Schema = any> {
                     continue;
                 }
 
-                // console.log("Encoder...", { ref: changeTree.ref.constructor.name, fieldIndex, operation: OPERATION[operation] })
+                // console.log("Encoder...", { ref: `${changeTree.ref.constructor.name} (${changeTree.refId})`, fieldIndex, operation: OPERATION[operation] })
 
                 encoder(this, bytes, changeTree, fieldIndex, operation, it);
             }
@@ -119,8 +120,7 @@ export class Encoder<T extends Schema = any> {
                 //
                 const changeTreesIterator = changeTrees.entries();
                 for (const [changeTree, _] of changeTreesIterator) {
-                    changeTree.changes.clear();
-                    changeTree.ref[$onEncodeEnd]?.();
+                    changeTree.endEncode();
                 }
 
                 this.$root.clear();

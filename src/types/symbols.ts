@@ -19,6 +19,12 @@ export const $changes = Symbol('$changes');
 export const $childType = Symbol('$childType');
 
 /**
+ * Special ChangeTree property to identify new instances
+ * (Once they're encoded, they're not new anymore)
+ */
+export const $isNew = Symbol("$isNew");
+
+/**
  * Optional "discard" method for custom types (ArraySchema)
  * (Discards changes for next serialization)
  */

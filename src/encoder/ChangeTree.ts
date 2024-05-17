@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec";
 import { Schema } from "../Schema";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex } from "../types/symbols";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $isNew } from "../types/symbols";
 
 import type { MapSchema } from "../types/custom/MapSchema";
 import type { ArraySchema } from "../types/custom/ArraySchema";
@@ -69,6 +69,8 @@ export class ChangeTree<T extends Ref=any> {
     allChanges = new Map<number, OPERATION>();
     changes = new Map<number, OPERATION>();
     filteredChanges = new Map<number, OPERATION>();
+
+    [$isNew] = true;
 
     constructor(ref: T) {
         this.ref = ref;
@@ -218,13 +220,13 @@ export class ChangeTree<T extends Ref=any> {
         }
     }
 
-    add(index: number) {
+    indexedOperation(index: number, operation: OPERATION) {
         const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
 
         const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
         const changeSet = (isFiltered) ? this.filteredChanges : this.changes;
 
-        changeSet.set(index, OPERATION.ADD);
+        changeSet.set(index, operation);
         this.allChanges.set(index, OPERATION.ADD);
 
         if (isFiltered) {
@@ -311,6 +313,14 @@ export class ChangeTree<T extends Ref=any> {
         } else {
             this.root?.changes.set(this, this.changes);
         }
+    }
+
+    endEncode() {
+        this.changes.clear();
+        this.ref[$onEncodeEnd]?.();
+
+        // Not a new instance anymore
+        delete this[$isNew];
     }
 
     discard(discardAll: boolean = false) {

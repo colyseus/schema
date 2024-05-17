@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd } from "../symbols";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $isNew } from "../symbols";
 import type { Schema } from "../../Schema";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
@@ -81,7 +81,22 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                         obj.deleteAt(key as unknown as number);
 
                     } else {
-                        obj.changeAt(key as unknown as number, setValue);
+                        if (setValue[$changes]) {
+                            if (obj.items[key as unknown as number] !== undefined) {
+                                if (setValue[$changes][$isNew]) {
+                                    this[$changes].indexedOperation(Number(key), OPERATION.MOVE_AND_ADD);
+
+                                } else {
+                                    this[$changes].indexedOperation(Number(key), OPERATION.MOVE);
+
+                                }
+                            } else if (setValue[$changes][$isNew]) {
+                                this[$changes].indexedOperation(Number(key), OPERATION.ADD);
+                            }
+                        } else {
+                            obj.changeAt(Number(key), setValue);
+                        }
+
                         this.items[key as unknown as number] = setValue;
                         this.tmpItems[key as unknown as number] = setValue;
                     }
@@ -141,7 +156,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             }
 
             const changeTree = this[$changes];
-            changeTree.add(length);
+            changeTree.indexedOperation(length, OPERATION.ADD);
             // changeTree.indexes[length] = length;
 
             this.items.push(value);
@@ -204,7 +219,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         const operation = changeTree.indexes?.[index]?.op ?? OPERATION.ADD;
 
         changeTree.change(index, operation);
-        // changeTree.indexes[index] = index;
 
         //
         // set value's parent after the value is set
@@ -223,10 +237,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         this[$changes].delete(index, operation);
     }
 
-    protected $setAt(index: number, value: V) {
-        if (index === 0 && this.items[index] !== undefined) {
+    protected $setAt(index: number, value: V, operation: OPERATION) {
+        if (
+            index === 0 &&
+            operation === OPERATION.ADD &&
+            this.items[index] !== undefined
+        ) {
             // handle decoding unshift
             this.items.unshift(value);
+
         } else {
             this.items[index] = value;
         }
@@ -281,6 +300,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     reverse(): ArraySchema<V> {
         this[$changes].operation(OPERATION.REVERSE);
         this.items.reverse();
+        this.tmpItems.reverse();
         return this;
     }
 
@@ -319,8 +339,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * ```
      */
     sort(compareFn: (a: V, b: V) => number = DEFAULT_SORT): this {
+        const changeTree = this[$changes];
         const sortedItems = this.items.sort(compareFn);
-        sortedItems.forEach((item, i) => this.changeAt(i, item));
+        sortedItems.forEach((_, i) => changeTree.change(i, OPERATION.REPLACE));
+        this.tmpItems.sort(compareFn);
         return this;
     }
 

@@ -56,6 +56,8 @@ export function encodeValue(
         // TODO: move this to the `@type()` annotation
         assertInstanceType(value, type as typeof Schema, ref as Schema, field);
 
+        // console.log("ENCODE ->", field, `${value.constructor.name} (${value[$changes].refId})`, OPERATION[operation]);
+
         //
         // Encode refId for this instance.
         // The actual instance is going to be encoded on next `changeTree` iteration.
