@@ -313,7 +313,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         // const index = Number(Object.keys(changeTree.indexes)[0]);
         const index = this.tmpItems.findIndex((item, i) => item === this.items[0]);
         const changeTree = this[$changes];
+
         changeTree.delete(index);
+        changeTree.shiftAllChangeIndexes(-1, index);
 
         return this.items.shift();
     }
@@ -350,23 +352,44 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * Removes elements from an array and, if necessary, inserts new elements in their place, returning the deleted elements.
      * @param start The zero-based location in the array from which to start removing elements.
      * @param deleteCount The number of elements to remove.
-     * @param items Elements to insert into the array in place of the deleted elements.
+     * @param insertItems Elements to insert into the array in place of the deleted elements.
      */
     splice(
         start: number,
-        deleteCount: number = this.length - start,
-        ...items: V[]
+        deleteCount: number = this.items.length - start,
+        ...insertItems: V[]
     ): V[] {
+        const tmpItemsLength = this.tmpItems.length;
+        const changeTree = this[$changes];
+        const insertCount = insertItems.length;
+
+        // build up-to-date list of indexes, excluding removed values.
+        const indexes: number[] = [];
+        for (let i = 0; i < tmpItemsLength; i++) {
+            if (this.tmpItems[i] !== undefined) {
+                indexes.push(i);
+            }
+        }
+
+        // delete operations at correct index
         for (let i = start; i < start + deleteCount; i++) {
-            this.$deleteAt(i);
+            const index = indexes[i];
+            this.tmpItems[index] = undefined;
+            changeTree.delete(index);
+
+            //
+            // delete exceeding indexes from "allChanges"
+            // (prevent .encodeAll() from encoding non-existing items)
+            //
+            changeTree.shiftAllChangeIndexes(-1, index)
         }
 
-
-        for (let i = 0; i < items.length; i++) {
-            this.changeAt(start + i, items[i]);
+        // force insert operations
+        for (let i = 0; i < insertCount; i++) {
+            changeTree.indexedOperation(indexes[start] + i, OPERATION.ADD);
         }
 
-        return this.items.splice(start, deleteCount, ...items);
+        return this.items.splice(start, deleteCount, ...insertItems);
     }
 
     /**

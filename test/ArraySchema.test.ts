@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder } from "./Schema";
+import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, $changes } from "../src";
 
 describe("ArraySchema Tests", () => {
@@ -618,15 +618,18 @@ describe("ArraySchema Tests", () => {
 
     it("should adjust the indexes of the elements after a splice", () => {
         const state = new State();
-        const p1 = new Player("Jake")
-        const p2 = new Player("Snake")
-        const p3 = new Player("Cyberhawk")
-        const p4 = new Player("Katarina Lyons")
+        const p1 = new Player("Jake");
+        const p2 = new Player("Snake");
+        const p3 = new Player("Cyberhawk");
+        const p4 = new Player("Katarina Lyons");
 
-        const newPlayer = new Player("John")
+        const newPlayer = new Player("John");
 
-        state.arrayOfPlayers = new ArraySchema(p1, p2, p3, p4)
-        state.arrayOfPlayers.splice(1, 2, newPlayer)
+        state.arrayOfPlayers = new ArraySchema(p1, p2, p3, p4);
+        state.arrayOfPlayers.splice(1, 2, newPlayer);
+
+        console.log("changes:", state.arrayOfPlayers[$changes].changes);
+        console.log("allChanges:", state.arrayOfPlayers[$changes].allChanges);
 
         const decodedState = new State();
         decodedState.decode(state.encode());
@@ -635,6 +638,13 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Jake");
         assert.strictEqual(decodedState.arrayOfPlayers[1].name, "John");
         assert.strictEqual(decodedState.arrayOfPlayers[2].name, "Katarina Lyons");
+
+        const freshDecode = new State();
+        freshDecode.decode(state.encodeAll());
+        assert.strictEqual(freshDecode.arrayOfPlayers.length, 3);
+        assert.strictEqual(freshDecode.arrayOfPlayers[0].name, "Jake");
+        assert.strictEqual(freshDecode.arrayOfPlayers[1].name, "John");
+        assert.strictEqual(freshDecode.arrayOfPlayers[2].name, "Katarina Lyons");
     })
 
     it("should allow to push and shift", () => {
@@ -657,6 +667,13 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers.push(new Player("Katarina Lyons"));
         state.arrayOfPlayers.shift();
 
+        console.log(Schema.debugRefIds(state));
+
+        console.log("changes:", state.arrayOfPlayers[$changes].changes);
+        console.log("allChanges:", state.arrayOfPlayers[$changes].allChanges);
+
+        assertDeepStrictEqualEncodeAll(state);
+
         decodedState.decode(state.encode());
 
         assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
@@ -676,6 +693,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
         assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
         assert.strictEqual(decodedState.arrayOfPlayers[2].name, "Jake Badlands");
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to shift and push", () => {
@@ -842,18 +861,11 @@ describe("ArraySchema Tests", () => {
          * After remiving "Item 3", items 4 and 5 would get their
          * `idx` updated. Rest of properties should remain unchanged.
          */
-        const stringifyItem = i => `[${i.idx}] ${i.name} (${i.id})`;
 
         class Item extends Schema {
-            @type("uint8") id: number;
+            @type("uint8") id: number = Math.round(Math.random() * 250);
             @type("uint8") idx: number;
             @type("string") name: string;
-            constructor(name, idx) {
-                super();
-                this.idx = idx;
-                this.name = name;
-                this.id = Math.round(Math.random() * 250);
-            }
         }
         class Player extends Schema {
             @type([Item]) items = new ArraySchema<Item>();
@@ -866,11 +878,13 @@ describe("ArraySchema Tests", () => {
         const decodedState = new State();
         decodedState.decode(state.encodeAll());
 
-        state.player1.items.push(new Item("Item 0", 0));
-        state.player1.items.push(new Item("Item 1", 1));
-        state.player1.items.push(new Item("Item 2", 2));
-        state.player1.items.push(new Item("Item 3", 3));
-        state.player1.items.push(new Item("Item 4", 4));
+        state.player1.items.push(new Item().assign({ name: "Item 0", idx: 0 }));
+        state.player1.items.push(new Item().assign({ name: "Item 1", idx: 1 }));
+        state.player1.items.push(new Item().assign({ name: "Item 2", idx: 2 }));
+        state.player1.items.push(new Item().assign({ name: "Item 3", idx: 3 }));
+        state.player1.items.push(new Item().assign({ name: "Item 4", idx: 4 }));
+
+        console.log('--------------------')
         decodedState.decode(state.encodeAll());
         assert.strictEqual(decodedState.player1.items.length, 5);
 
@@ -878,6 +892,10 @@ describe("ArraySchema Tests", () => {
         const [spliced] = state.player1.items.splice(2, 1);
         assert.strictEqual("Item 2", spliced.name);
 
+        console.log(state.player1.items[$changes].changes);
+        console.log(state.player1.items[$changes].allChanges);
+
+        console.log('--------------------')
         decodedState.decode(state.encode());
 
         assert.strictEqual(decodedState.player1.items.length, 4);
@@ -885,24 +903,30 @@ describe("ArraySchema Tests", () => {
         // Update `idx` of each item
         state.player1.items.forEach((item, idx) => item.idx = idx);
 
+        console.log('--------------------')
         // After below encoding, Item 4 is not marked as `changed`
         decodedState.decode(state.encode());
 
-        const resultPreEncoding = state.player1.items.map(stringifyItem).join(',');
-        const resultPostEncoding = decodedState.player1.items.map(stringifyItem).join(',');
-
         // Ensure all data is perserved and `idx` is updated for each item
-        assert.strictEqual(
-            resultPostEncoding,
-            resultPreEncoding,
+        assert.deepStrictEqual(
+            state.player1.items.toJSON(),
+            decodedState.player1.items.toJSON(),
             `There's a difference between state and decoded state on some items`
         );
 
+        console.log("items ->", state.player1.items.toJSON());
+
         const decodedState2 = new State();
+        console.log('--------------------')
+
         decodedState2.decode(state.encodeAll());
 
-        const resultNewClientPostEncoding = decodedState2.player1.items.map(stringifyItem).join(',');
-        assert.strictEqual(resultPreEncoding, resultNewClientPostEncoding);
+        // Ensure all data is perserved and `idx` is updated for each item
+        assert.deepStrictEqual(
+            state.player1.items.toJSON(),
+            decodedState2.player1.items.toJSON(),
+            `There's a difference between state and decoded state on some items`
+        );
     });
 
     it("updates an item after removing another", () => {
@@ -1018,10 +1042,6 @@ describe("ArraySchema Tests", () => {
 
         class Item extends Schema {
             @type("string") name: string;
-            constructor(name) {
-                super();
-                this.name = name;
-            }
         }
         class Player extends Schema {
             @type([Item]) items = new ArraySchema<Item>();
@@ -1035,9 +1055,9 @@ describe("ArraySchema Tests", () => {
 
         decodedState.decode(state.encode());
 
-        state.player.items.push(new Item("Item 1"));
-        state.player.items.push(new Item("Item 2"));
-        state.player.items.push(new Item("Item 3"));
+        state.player.items.push(new Item().assign({ name: "Item 1" }));
+        state.player.items.push(new Item().assign({ name: "Item 2" }));
+        state.player.items.push(new Item().assign({ name: "Item 3" }));
 
         decodedState.decode(state.encode());
 
@@ -1048,10 +1068,7 @@ describe("ArraySchema Tests", () => {
         state.player.items.splice(0, 1);
 
         decodedState.decode(state.encode());
-
-        const resultPreDecoding = state.player.items.map(stringifyItem).join(', ')
-        const resultPostDecoding = decodedState.player.items.map(stringifyItem).join(', ')
-        assert.strictEqual(resultPreDecoding, resultPostDecoding);
+        assert.deepStrictEqual(state.player.items.toJSON(), decodedState.player.items.toJSON());
 
         assert.strictEqual(decodedState.player.items.length, 1);
         assert.strictEqual(decodedState.player.items[0].name, `Item 3`);

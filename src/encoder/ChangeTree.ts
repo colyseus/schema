@@ -203,36 +203,51 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     shiftChangeIndexes(shiftIndex: number) {
-        // Used only during ArraySchema#unshift()
+        //
+        // Used only during:
+        //
+        // - ArraySchema#unshift()
+        //
         const changeSet = (this.isFiltered)
             ? this.filteredChanges
             : this.changes;
 
-        // Convert the changeSet to an array of [index, op] entries
-        const entries = Array.from(changeSet.entries());
-
-        // Clear the changeSet to prepare for re-insertion
+        const changeSetEntries = Array.from(changeSet.entries());
         changeSet.clear();
 
         // Re-insert each entry with the shifted index
-        for (const [index, op] of entries) {
+        for (const [index, op] of changeSetEntries) {
             changeSet.set(index + shiftIndex, op);
         }
+    }
+
+    shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0) {
+        //
+        // Used only during:
+        //
+        // - ArraySchema#splice()
+        //
+        Array.from(this.allChanges.entries()).forEach(([index, op]) => {
+            // console.log('shiftAllChangeIndexes', index >= startIndex, { index, op, shiftIndex, startIndex })
+            if (index >= startIndex) {
+                this.allChanges.delete(index);
+                this.allChanges.set(index + shiftIndex, op);
+            }
+        });
     }
 
     indexedOperation(index: number, operation: OPERATION) {
         const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
 
         const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
-        const changeSet = (isFiltered) ? this.filteredChanges : this.changes;
-
-        changeSet.set(index, operation);
         this.allChanges.set(index, OPERATION.ADD);
 
         if (isFiltered) {
+            this.filteredChanges.set(index, operation);
             this.root?.filteredChanges.set(this, this.filteredChanges);
 
         } else {
+            this.changes.set(index, operation);
             this.root?.changes.set(this, this.changes);
         }
     }
@@ -286,6 +301,8 @@ export class ChangeTree<T extends Ref=any> {
         changeSet.set(index, operation ?? OPERATION.DELETE);
 
         this.allChanges.delete(index);
+
+        console.log("DELETE, previousValue ->", { index, previousValue: previousValue?.toJSON(), previousValueRefId: previousValue?.[$changes]?.refId });
 
         // remove `root` reference
         if (previousValue && previousValue[$changes]) {

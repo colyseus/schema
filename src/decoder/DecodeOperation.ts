@@ -64,6 +64,8 @@ export function decodeValue(
         value = null;
     }
 
+    // console.log("DECODE VALUE...", { operation: OPERATION[operation], index, type, previousValue: previousValue?.toJSON() });
+
     if (operation === OPERATION.DELETE) {
         //
         // Don't do anything
@@ -72,6 +74,8 @@ export function decodeValue(
     } else if (Schema.is(type)) {
         const refId = decode.number(bytes, it);
         value = $root.refs.get(refId);
+
+        console.log("DECODE VALUE", { refId, value, index });
 
         if (previousValue) {
             const previousRefId = $root.refIds.get(previousValue);
@@ -312,7 +316,10 @@ export const decodeArray: DecodeOperation = function (
         allChanges,
     );
 
-    if (value !== null && value !== undefined) {
+    if (
+        value !== null && value !== undefined &&
+        value !== previousValue // avoid setting same value twice (if index === 0 it will result in a "unshift" for ArraySchema)
+    ) {
         // ArraySchema
         (ref as ArraySchema)['$setAt'](index, value, operation);
     }

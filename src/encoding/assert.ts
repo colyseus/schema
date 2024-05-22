@@ -53,6 +53,6 @@ export function assertInstanceType(
     field: string | number,
 ) {
     if (!(value instanceof type)) {
-        throw new EncodeSchemaError(`a '${type.name}' was expected, but '${(value as any).constructor.name}' was provided in ${klass.constructor.name}#${field}`);
+        throw new EncodeSchemaError(`a '${type.name}' was expected, but '${value && (value as any).constructor.name}' was provided in ${klass.constructor.name}#${field}`);
     }
 }

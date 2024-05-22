@@ -215,6 +215,7 @@ export const encodeArray: EncodeOperation = function (
     //     field,
     //     operation: OPERATION[operation],
     //     value: value?.toJSON(),
+    //     items: ref.toJSON(),
     // });
 
     // TODO: inline this function call small performance gain

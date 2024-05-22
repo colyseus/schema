@@ -2,6 +2,7 @@ import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator } from "../s
 import { Decoder } from "../src/decoder/Decoder";
 import { Encoder } from "../src/encoder/Encoder";
 import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
+import assert = require("assert");
 
 // augment Schema to add encode/decode methods
 // (workaround to keep tests working while we don't migrate the tests to the new API)
@@ -20,6 +21,12 @@ export function getCallbacks(state: Schema) {
 export function getDecoder(state: Schema) {
     if (!state['_decoder']) { state['_decoder'] = new Decoder(state); }
     return state['_decoder'] as Decoder;
+}
+
+export function assertDeepStrictEqualEncodeAll(state: Schema) {
+    const freshDecode = createInstanceFromReflection(state);
+    freshDecode.decode(state.encodeAll());
+    assert.deepStrictEqual(freshDecode.toJSON(), state.toJSON());
 }
 
 export function getEncoder(state: Schema) {
