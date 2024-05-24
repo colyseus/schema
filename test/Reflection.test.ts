@@ -43,33 +43,31 @@ describe("Reflection", () => {
         const reflected = new Reflection();
         reflected.decode(Reflection.encode(state));
 
-        console.log(reflected.toJSON());
-
-        // assert.deepStrictEqual(
-        //     reflected.toJSON(),
-        //     {
-        //         types: [
-        //             {
-        //                 id: 0,
-        //                 fields: [
-        //                     { name: 'fieldString', type: 'string' },
-        //                     { name: 'fieldNumber', type: 'number' },
-        //                     { name: 'player', type: 'ref', referencedType: 1 },
-        //                     { name: 'arrayOfPlayers', type: 'array', referencedType: 1 },
-        //                     { name: 'mapOfPlayers', type: 'map', referencedType: 1 }
-        //                 ]
-        //             },
-        //             {
-        //                 id: 1,
-        //                 fields: [
-        //                     { name: 'name', type: 'string' },
-        //                     { name: 'x', type: 'number' },
-        //                     { name: 'y', type: 'number' }
-        //                 ]
-        //             }
-        //         ]
-        //     }
-        // );
+        assert.deepStrictEqual(
+            reflected.toJSON(),
+            {
+                types: [
+                    {
+                        id: 0,
+                        fields: [
+                            { name: 'fieldString', type: 'string' },
+                            { name: 'fieldNumber', type: 'number' },
+                            { name: 'player', type: 'ref', referencedType: 1 },
+                            { name: 'arrayOfPlayers', type: 'array', referencedType: 1 },
+                            { name: 'mapOfPlayers', type: 'map', referencedType: 1 }
+                        ]
+                    },
+                    {
+                        id: 1,
+                        fields: [
+                            { name: 'name', type: 'string' },
+                            { name: 'x', type: 'number' },
+                            { name: 'y', type: 'number' }
+                        ]
+                    }
+                ]
+            }
+        );
     });
 
     it("reflected fields must initialize as undefined", () => {
