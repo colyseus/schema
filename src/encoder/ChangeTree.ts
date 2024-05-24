@@ -236,11 +236,11 @@ export class ChangeTree<T extends Ref=any> {
         });
     }
 
-    indexedOperation(index: number, operation: OPERATION) {
+    indexedOperation(index: number, operation: OPERATION, allChangesIndex = index) {
         const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
 
         const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
-        this.allChanges.set(index, OPERATION.ADD);
+        this.allChanges.set(allChangesIndex, OPERATION.ADD);
 
         if (isFiltered) {
             this.filteredChanges.set(index, operation);

@@ -5,6 +5,7 @@ import { MapSchema } from './types/custom/MapSchema';
 import { Metadata } from "./Metadata";
 import { $changes, $childType, $track } from "./types/symbols";
 import { TypeDefinition, getType } from "./types/registry";
+import { OPERATION } from "./encoding/spec";
 
 /**
  * Data types
@@ -461,11 +462,10 @@ export function getPropertyDescriptor(
     return {
         get: function () { return this[fieldCached]; },
         set: function (this: Schema, value: any) {
+            const previousValue = this[fieldCached];
 
             // skip if value is the same as cached.
-            if (value === this[fieldCached]) {
-                return;
-            }
+            if (value === previousValue) { return; }
 
             if (
                 value !== undefined &&
@@ -485,9 +485,16 @@ export function getPropertyDescriptor(
                     value[$childType] = Object.values(type)[0];
                 }
 
+                //
+                // Replacing existing "ref", remove it from root.
+                // TODO: if there are other references to this instance, we should not remove it from root.
+                //
+                if (previousValue !== undefined) {
+                    this[$changes].root?.remove(previousValue[$changes]);
+                }
+
                 // flag the change for encoding.
-                // this[$changes].change(fieldIndex);
-                this.constructor[$track](this[$changes], fieldIndex);
+                this.constructor[$track](this[$changes], fieldIndex, OPERATION.ADD);
 
                 //
                 // call setParent() recursively for this and its child
@@ -501,7 +508,7 @@ export function getPropertyDescriptor(
                     );
                 }
 
-            } else if (this[fieldCached] !== undefined) {
+            } else if (previousValue !== undefined) {
                 //
                 // Setting a field to `null` or `undefined` will delete it.
                 //

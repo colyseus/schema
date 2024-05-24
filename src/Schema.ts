@@ -213,16 +213,18 @@ export abstract class Schema {
             ? changeTree.allChanges
             : changeTree.changes;
 
-        let output = `${instance.constructor.name} (${changeTree.refId}) -> CHANGES:\n`;
+        const changeSetName = (isEncodeAll) ? "allChanges" : "changes";
+
+        let output = `${instance.constructor.name} (${changeTree.refId}) -> .${changeSetName}:\n`;
 
         Array.from(changeSet).forEach(([index, operation]) => {
-            output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(index))})\n`;
+            output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(index, isEncodeAll))})\n`;
         });
 
         return output;
     }
 
-    static debugCurrentChanges(ref: Ref) {
+    static debugChangesDeep(ref: Ref) {
         let output = "";
 
         const rootChangeTree = ref[$changes];

@@ -27,6 +27,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decodedState.blocks.length, 1);
         assert.ok(decodedState.blocks.at(0) instanceof Block);
         assert.ok(decodedState.blocks.at(1) === undefined);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should trigger onAdd / onRemove properly on splice", () => {
@@ -69,6 +71,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(1, onRemoveCount);
         assert.deepStrictEqual(["B", "C", "D", "E"], decodedState.items.map(it => it.name))
         assert.strictEqual("A", removedItem.name);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should encode array with two values", () => {
@@ -698,7 +702,6 @@ describe("ArraySchema Tests", () => {
         );
 
         const decodedState = new State();
-        console.log("----------------")
         decodedState.decode(state.encode());
         assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
 
@@ -707,17 +710,13 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers.shift();
         state.arrayOfPlayers.push(new Player("Katarina Lyons"));
 
-        console.log("----------------")
-        console.log(Schema.debugRefIds(state));
-        //
-        console.log("----------------")
         decodedState.decode(state.encode());
-
-        console.log("DECODED =>", decodedState.toJSON());
 
         assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
         assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
         assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should trigger onAdd / onChange / onRemove", () => {
@@ -753,6 +752,8 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers.pop();
         decodedState.decode(state.encode());
         assert.strictEqual(2, onRemoveCount);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should support 'in' operator", () => {
@@ -776,6 +777,8 @@ describe("ArraySchema Tests", () => {
         assert.ok(3 in decodedState.arrayOfPlayers === false);
         assert.ok(Symbol.iterator in decodedState.arrayOfPlayers === true);
         assert.ok("length" in decodedState.arrayOfPlayers === true);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to sort", () => {
@@ -830,6 +833,8 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual(state.arrayOfPlayers.toArray(), decodedState.arrayOfPlayers.toArray());
             // sinon.assert.callCount(onAddSpy, 5);
         }
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to filter and then sort", () => {
@@ -844,6 +849,8 @@ describe("ArraySchema Tests", () => {
                 .filter(p => p.x >= 20)
                 .sort((a, b) => b.x - a.x);
         }, "arraySchema.filter().sort() shouldn't throw errors");
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("updates all items properties after removing middle item", () => {
@@ -919,6 +926,8 @@ describe("ArraySchema Tests", () => {
             decodedState2.player1.items.toJSON(),
             `There's a difference between state and decoded state on some items`
         );
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("updates an item after removing another", () => {
@@ -961,6 +970,8 @@ describe("ArraySchema Tests", () => {
             preEncoding,
             `new name of Item 3 was not reflected during recent encoding/decoding.`
         );
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("tests splicing one item out and adding it back again", () => {
@@ -1027,6 +1038,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(state.items[2].name, 'Item Four');
         assert.strictEqual(state.items[3].name, 'Item Five');
         assert.strictEqual(state.items[4].name, 'Item Three');
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("multiple splices in one go", () => {
@@ -1064,6 +1077,8 @@ describe("ArraySchema Tests", () => {
 
         assert.strictEqual(decodedState.player.items.length, 1);
         assert.strictEqual(decodedState.player.items[0].name, `Item 3`);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("keeps items in order after splicing multiple items in one go", () => {
@@ -1125,6 +1140,8 @@ describe("ArraySchema Tests", () => {
         decodedState.player.items.forEach((item, index) => {
             assert.strictEqual(item.name, `Item ${expectedB[index]}`);
         })
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to transfer object between ArraySchema", () => {
@@ -1230,6 +1247,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decodedState.player1.items.length, 0);
         assert.strictEqual(decodedState.player2.items.length, 4);
         assert.deepStrictEqual(decodedState.player2.items.map(item => item.name), ['Item 1', 'Item 3', 'Item 2', 'Item 4']);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should splice an ArraySchema of primitive values", () => {
@@ -1268,6 +1287,8 @@ describe("ArraySchema Tests", () => {
             preEncoding,
             `new name of Item 3 was not reflected during recent encoding/decoding.`
         );
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow ArraySchema of repeated primitive values", () => {
@@ -1297,6 +1318,8 @@ describe("ArraySchema Tests", () => {
         assert.deepStrictEqual(["one", "one"], decodedState.strings.toJSON());
         assert.deepStrictEqual([Math.PI, Math.PI], decodedState.floats.toJSON());
         assert.deepStrictEqual([1, 1], decodedState.numbers.toJSON());
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow sort unbound array", () => {
@@ -1324,10 +1347,19 @@ describe("ArraySchema Tests", () => {
         let onRemoveCount = 0;
         $(decodedState).numbers.onRemove(() => onRemoveCount++)
 
+        // state.numbers = undefined;
         state.numbers = new ArraySchema(7, 8, 9);
         decodedState.decode(state.encode());
 
         assert.strictEqual(6, onRemoveCount);
+
+        const refCounts = getDecoder(decodedState).$root.refCounts;
+        assert.deepStrictEqual(refCounts, {
+            0: 1,
+            2: 1
+        });
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("re-assignments should be ignored", () => {
@@ -1345,6 +1377,8 @@ describe("ArraySchema Tests", () => {
         state.numbers[1] = 2;
         state.numbers[2] = 3;
         assert.ok(state.encode().length === 0);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     describe("mixed operations along with sort", () => {
@@ -1407,6 +1441,8 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(refCounts[4], 1, JSON.stringify($root.refs.get(4).toJSON()));
             assert.strictEqual(refCounts[5], 1, JSON.stringify($root.refs.get(5).toJSON()));
             assert.strictEqual(refCounts[6], 1, JSON.stringify($root.refs.get(6).toJSON()));
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("should pop and shuffle", () => {
@@ -1428,6 +1464,8 @@ describe("ArraySchema Tests", () => {
                 decodedState.cards.map(c => c.id).sort(),
                 [1, 2, 3]
             );
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("should splice and move", () => {
@@ -1451,7 +1489,10 @@ describe("ArraySchema Tests", () => {
             state.cards.splice(2, 1);
             [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
 
-            decodedState.decode(state.encode());
+            const encoded = state.encode();
+            assert.strictEqual(8, encoded.length);
+
+            decodedState.decode(encoded);
 
             assert.deepStrictEqual(onAddIds, [2, 3, 4, 5]);
             assert.deepStrictEqual(onRemoveIds, [4]);
@@ -1542,6 +1583,14 @@ describe("ArraySchema Tests", () => {
             encoded = state.encodeAll();
             decodedState2.decode(encoded);
             assert.strictEqual(0, decodedState2.points.length);
+
+            assertDeepStrictEqualEncodeAll(state);
+
+            const refCounts = getDecoder(decodedState).$root.refCounts;
+            assert.deepStrictEqual(refCounts, {
+                0: 1,
+                1: 1,
+            });
         });
 
         it("should trigger onAdd callback only once after clearing and adding one item", () => {
@@ -1570,6 +1619,8 @@ describe("ArraySchema Tests", () => {
             ], decodedState.points.toJSON());
 
             assert.strictEqual(2, onAddCallCount);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     })
 
@@ -1642,6 +1693,8 @@ describe("ArraySchema Tests", () => {
             const decodedState = new State();
             decodedState.decode(state.encode());
             assert.deepStrictEqual([1, 2, 3, 4, 5], Array.from(decodedState.numbers));
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
     });

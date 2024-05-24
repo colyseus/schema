@@ -78,7 +78,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             set: (obj, key, setValue) => {
                 if (typeof (key) !== "symbol" && !isNaN(key as any)) {
                     if (setValue === undefined || setValue === null) {
-                        obj.deleteAt(key as unknown as number);
+                        obj.$deleteAt(key as unknown as number);
 
                     } else {
                         if (setValue[$changes]) {
@@ -97,7 +97,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                                 this[$changes].indexedOperation(Number(key), OPERATION.ADD);
                             }
                         } else {
-                            obj.changeAt(Number(key), setValue);
+                            obj.$changeAt(Number(key), setValue);
                         }
 
                         this.items[key as unknown as number] = setValue;
@@ -112,7 +112,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
             deleteProperty: (obj, prop) => {
                 if (typeof (prop) === "number") {
-                    obj.deleteAt(prop);
+                    obj.$deleteAt(prop);
 
                 } else {
                     delete obj[prop];
@@ -159,7 +159,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             }
 
             const changeTree = this[$changes];
-            changeTree.indexedOperation(length, OPERATION.ADD);
+            changeTree.indexedOperation(length, OPERATION.ADD, this.items.length);
             // changeTree.indexes[length] = length;
 
             this.items.push(value);
@@ -207,7 +207,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         return this.items[index];
     }
 
-    changeAt(index: number, value: V) {
+    protected $changeAt(index: number, value: V) {
         if (value === undefined || value === null) {
             console.error("ArraySchema items cannot be null nor undefined; Use `deleteAt(index)` instead.");
             return;
@@ -230,10 +230,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         if (value[$changes] !== undefined) {
             value[$changes].setParent(this, changeTree.root, index);
         }
-    }
-
-    protected deleteAt(index: number) {
-        return this.$deleteAt(index);
     }
 
     protected $deleteAt(index: number, operation?: OPERATION) {
@@ -366,8 +362,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         deleteCount: number = this.items.length - start,
         ...insertItems: V[]
     ): V[] {
-        const tmpItemsLength = this.tmpItems.length;
         const changeTree = this[$changes];
+
+        const tmpItemsLength = this.tmpItems.length;
         const insertCount = insertItems.length;
 
         // build up-to-date list of indexes, excluding removed values.
@@ -690,17 +687,12 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         //    ENCODING uses `this.tmpItems` (or `this.items` if `isEncodeAll` is true)
         //    DECODING uses `this.items`
         //
-
-        // return this.tmpItems[index] ?? this.items[index];
-
         return (isEncodeAll)
             ? this.items[index]
             : this.tmpItems[index] ?? this.items[index];
     }
 
     protected [$deleteByIndex](index: number) {
-        console.log("DELETE BY INDEX!", { index });
-        // this.items[index] = undefined;
         this.items[index] = undefined;
     }
 
@@ -710,10 +702,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     protected [$onDecodeEnd]() {
         this.items = this.items.filter((item) => item !== undefined);
-
-        // this.items = this.tmpItems.filter((item) => item !== undefined);
-        // // shallow copy
-        // this.tmpItems = this.items.slice();
     }
 
     toArray() {
