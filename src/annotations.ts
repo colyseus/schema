@@ -440,12 +440,16 @@ export function type (
                 ? getType("array")
                 : (typeof(Object.keys(type)[0]) === "string") && getType(Object.keys(type)[0]);
 
+            const childType = (complexTypeKlass)
+                ? Object.values(type)[0]
+                : type;
+
             Metadata.addField(
                 metadata,
                 fieldIndex,
                 field,
                 type,
-                getPropertyDescriptor(`_${field}`, fieldIndex, type, complexTypeKlass, metadata, field)
+                getPropertyDescriptor(`_${field}`, fieldIndex, childType, complexTypeKlass, metadata, field)
             );
         }
     }
@@ -462,7 +466,7 @@ export function getPropertyDescriptor(
     return {
         get: function () { return this[fieldCached]; },
         set: function (this: Schema, value: any) {
-            const previousValue = this[fieldCached];
+            const previousValue = this[fieldCached] || undefined;
 
             // skip if value is the same as cached.
             if (value === previousValue) { return; }
@@ -482,14 +486,14 @@ export function getPropertyDescriptor(
                         value = new MapSchema(value);
                     }
 
-                    value[$childType] = Object.values(type)[0];
+                    value[$childType] = type;
                 }
 
                 //
                 // Replacing existing "ref", remove it from root.
                 // TODO: if there are other references to this instance, we should not remove it from root.
                 //
-                if (previousValue !== undefined) {
+                if (previousValue !== undefined && previousValue[$changes]) {
                     this[$changes].root?.remove(previousValue[$changes]);
                 }
 
