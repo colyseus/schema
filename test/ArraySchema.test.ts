@@ -1391,8 +1391,6 @@ describe("ArraySchema Tests", () => {
             [state.cards[1], state.cards[1]] = [state.cards[1], state.cards[1]];
             [state.cards[0], state.cards[0]] = [state.cards[0], state.cards[0]];
 
-            // shuffle(state.cards);
-
             decodedState.decode(state.encode());
 
             assert.deepStrictEqual(state.cards.toJSON(), decodedState.cards.toJSON());
@@ -1450,72 +1448,64 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
 
-            console.log({ onAddIds, onRemoveIds })
-
             state.cards.splice(2, 1);
-            console.log("SPLICE, CHANGES ->", Schema.debugChanges(state.cards));
-
             [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
-            console.log("MOVE, CHANGES ->", Schema.debugChanges(state.cards));
-            console.log("ALL CHANGES ->", Schema.debugChanges(state.cards, true));
-
-            console.log("tmpItems:", state.cards['tmpItems'].map(c => c.id))
-            console.log("items", state.cards['items'].map(c => c.id))
-
-            console.log(Schema.debugRefIds(state));
 
             decodedState.decode(state.encode());
-            console.log({ onAddIds, onRemoveIds })
 
-            console.log("decoded ->", decodedState.cards.toJSON());
+            assert.deepStrictEqual(onAddIds, [2, 3, 4, 5]);
+            assert.deepStrictEqual(onRemoveIds, [4]);
 
             const refCounts = getDecoder(decodedState).$root.refCounts;
-            console.log("REFS =>", refCounts);
-
-            // assert.strictEqual(refCounts[0], 1);
-            // assert.strictEqual(refCounts[1], 1);
-            // assert.strictEqual(refCounts[2], 1);
-            // assert.strictEqual(refCounts[3], 1);
-            // assert.strictEqual(refCounts[4], 1);
-            // assert.strictEqual(refCounts[5], 1);
+            assert.deepStrictEqual(refCounts, {
+                0: 1,
+                1: 1,
+                2: 1,
+                3: 1,
+                5: 1
+            });
 
             assert.deepStrictEqual(
                 decodedState.cards.map(c => c.id).sort(),
                 [2, 3, 5]
             );
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("should splice and shuffle", () => {
             const state = new MyState();
 
-            state.cards.push(new Card().assign({ id: 1 }));
             state.cards.push(new Card().assign({ id: 2 }));
             state.cards.push(new Card().assign({ id: 3 }));
             state.cards.push(new Card().assign({ id: 4 }));
+            state.cards.push(new Card().assign({ id: 5 }));
 
             const decodedState = new MyState();
             decodedState.decode(state.encode());
 
             state.cards.splice(2, 1);
-            console.log("splice, changes ->", state.cards[$changes].changes);
 
             [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
-
-            // [state.cards[1], state.cards[0]] = [state.cards[0], state.cards[1]];
-            // [state.cards[0], state.cards[0]] = [state.cards[0], state.cards[0]];
-
-            // shuffle(state.cards);
-
-            console.log('cards =>', state.cards.toJSON());
-            console.log("changes ->", state.cards[$changes].changes);
-            console.log("allChanges ->", state.cards[$changes].allChanges);
+            [state.cards[1], state.cards[0]] = [state.cards[0], state.cards[1]];
+            [state.cards[0], state.cards[0]] = [state.cards[0], state.cards[0]];
 
             decodedState.decode(state.encode());
-            console.log("decoded ->", decodedState.cards.toJSON());
+
+            const refCounts = getDecoder(decodedState).$root.refCounts;
+            assert.deepStrictEqual(refCounts, {
+                0: 1,
+                1: 1,
+                2: 1,
+                3: 1,
+                5: 1
+            });
+
             assert.deepStrictEqual(
                 decodedState.cards.map(c => c.id).sort(),
-                [1, 2, 4]
+                [2, 3, 5]
             );
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 

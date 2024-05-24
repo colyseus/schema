@@ -89,7 +89,12 @@ export function decodeValue(
 
         if (previousValue) {
             const previousRefId = $root.refIds.get(previousValue);
-            if (previousRefId && refId !== previousRefId) {
+            if (
+                previousRefId &&
+                refId !== previousRefId &&
+                // FIXME: we may need to check for REPLACE operation as well
+                ((operation & OPERATION.DELETE) === OPERATION.DELETE)
+            ) {
                 $root.removeRef(previousRefId);
             }
         }
@@ -99,9 +104,10 @@ export function decodeValue(
             if (!value) {
                 value = decoder.createInstanceOfType(childType);
             }
+
+            $root.addRef(refId, value, (value !== previousValue));
         }
 
-        $root.addRef(refId, value, (value !== previousValue));
 
     } else if (typeof(type) === "string") {
         //
@@ -333,9 +339,6 @@ export const decodeArray: DecodeOperation = function (
         // ArraySchema
         (ref as ArraySchema)['$setAt'](index, value, operation);
     }
-
-    // console.log("decodeArray", { value: value && value?.toJSON(), operation: OPERATION[operation], index });
-    // console.log("Entries ->", ref.toJSON());
 
     // add change
     if (previousValue !== value) {

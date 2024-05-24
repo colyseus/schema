@@ -81,6 +81,10 @@ export function getStateCallbacks(decoder: Decoder) {
             }
 
             if (ref instanceof Schema) {
+                //
+                // Handle schema instance
+                //
+
                 if (!uniqueRefIds.has(refId)) {
                     try {
                         // trigger onChange
@@ -108,7 +112,9 @@ export function getStateCallbacks(decoder: Decoder) {
                 }
 
             } else {
-                // is a collection of items
+                //
+                // Handle collection of items
+                //
 
                 if (change.op === OPERATION.ADD && change.previousValue === undefined) {
                     // triger onAdd
@@ -120,10 +126,9 @@ export function getStateCallbacks(decoder: Decoder) {
                     }
                     isTriggeringOnAdd = false;
 
-                } else if (change.op === OPERATION.DELETE) {
+                } else if ((change.op & OPERATION.DELETE) === OPERATION.DELETE) {
                     //
                     // FIXME: `previousValue` should always be available.
-                    // ADD + DELETE operations are still encoding DELETE operation.
                     //
                     if (change.previousValue !== undefined) {
                         // triger onRemove
@@ -133,19 +138,13 @@ export function getStateCallbacks(decoder: Decoder) {
                         }
                     }
 
-                } else if (change.op === OPERATION.DELETE_AND_ADD) {
-                    // triger onRemove
-                    if (change.previousValue !== undefined) {
-                        const deleteCallbacks = $callbacks[OPERATION.DELETE];
-                        for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
-                            deleteCallbacks[i](change.previousValue, change.dynamicIndex ?? change.field);
+                    // Handle DELETE_AND_ADD operations
+                    // FIXME: should we set "isTriggeringOnAdd" here?
+                    if ((change.op & OPERATION.ADD) === OPERATION.ADD) {
+                        const addCallbacks = $callbacks[OPERATION.ADD];
+                        for (let i = addCallbacks?.length - 1; i >= 0; i--) {
+                            addCallbacks[i](change.value, change.dynamicIndex ?? change.field);
                         }
-                    }
-
-                    // triger onAdd
-                    const addCallbacks = $callbacks[OPERATION.ADD];
-                    for (let i = addCallbacks?.length - 1; i >= 0; i--) {
-                        addCallbacks[i](change.value, change.dynamicIndex ?? change.field);
                     }
                 }
 
