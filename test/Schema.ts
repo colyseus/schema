@@ -25,7 +25,8 @@ export function getDecoder(state: Schema) {
 
 export function assertDeepStrictEqualEncodeAll(state: Schema) {
     const freshDecode = createInstanceFromReflection(state);
-    freshDecode.decode(state.encodeAll());
+    const encodeAll = state.encodeAll()
+    freshDecode.decode(encodeAll);
     assert.deepStrictEqual(freshDecode.toJSON(), state.toJSON());
 }
 

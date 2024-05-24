@@ -38,6 +38,8 @@ export class ReferenceTracker {
 
     // for decoding
     addRef(refId: number, ref: Ref, incrementCount: boolean = true) {
+        // console.log("ADD REF:", refId, ref.constructor.name, ref.toJSON());
+
         this.refs.set(refId, ref);
         this.refIds.set(ref, refId);
 
@@ -53,6 +55,10 @@ export class ReferenceTracker {
     // for decoding
     removeRef(refId: number) {
         const refCount = this.refCounts[refId];
+
+        const ref = this.refs.get(refId);
+
+        // console.log("REMOVE REF:", refId, ref, ref && ref.toJSON());
 
         if (refCount === undefined) {
             try {

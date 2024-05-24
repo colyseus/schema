@@ -50,21 +50,33 @@ export function decodeValue(
 
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
+        // Flag `refId` for garbage collection.
+        const previousRefId = $root.refIds.get(previousValue);
+        if (previousRefId !== undefined) { $root.removeRef(previousRefId); }
+
         //
         // Delete operations
         //
         if (operation !== OPERATION.DELETE_AND_ADD) {
             ref[$deleteByIndex](index);
-        }
 
-        // Flag `refId` for garbage collection.
-        const previousRefId = $root.refIds.get(previousValue);
-        if (previousRefId) { $root.removeRef(previousRefId); }
+            // //
+            // // FIXME: is this in the correct place?
+            // //      (This is sounding like a workaround just for ArraySchema, see
+            // //       "should splice and move" test on ArraySchema.test.ts)
+            // //
+            // allChanges.push({
+            //     ref,
+            //     refId: decoder.currentRefId,
+            //     op: OPERATION.DELETE,
+            //     field: index as unknown as string,
+            //     value: undefined,
+            //     previousValue,
+            // });
+        }
 
         value = null;
     }
-
-    // console.log("DECODE VALUE...", { operation: OPERATION[operation], index, type, previousValue: previousValue?.toJSON() });
 
     if (operation === OPERATION.DELETE) {
         //
@@ -74,8 +86,6 @@ export function decodeValue(
     } else if (Schema.is(type)) {
         const refId = decode.number(bytes, it);
         value = $root.refs.get(refId);
-
-        console.log("DECODE VALUE", { refId, value, index });
 
         if (previousValue) {
             const previousRefId = $root.refIds.get(previousValue);
@@ -324,7 +334,7 @@ export const decodeArray: DecodeOperation = function (
         (ref as ArraySchema)['$setAt'](index, value, operation);
     }
 
-    // console.log("decodeArray", { value: value?.toJSON(), operation: OPERATION[operation], index, dynamicIndex });
+    // console.log("decodeArray", { value: value && value?.toJSON(), operation: OPERATION[operation], index });
     // console.log("Entries ->", ref.toJSON());
 
     // add change

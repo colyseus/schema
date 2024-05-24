@@ -87,8 +87,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                                     this[$changes].indexedOperation(Number(key), OPERATION.MOVE_AND_ADD);
 
                                 } else {
-                                    this[$changes].indexedOperation(Number(key), OPERATION.MOVE);
-
+                                    if ((obj[$changes].getChange(Number(key)) & OPERATION.DELETE) === OPERATION.DELETE) {
+                                        this[$changes].indexedOperation(Number(key), OPERATION.DELETE_AND_MOVE);
+                                    } else {
+                                        this[$changes].indexedOperation(Number(key), OPERATION.MOVE);
+                                    }
                                 }
                             } else if (setValue[$changes][$isNew]) {
                                 this[$changes].indexedOperation(Number(key), OPERATION.ADD);
@@ -246,6 +249,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             // handle decoding unshift
             this.items.unshift(value);
 
+        } else if (operation === OPERATION.DELETE_AND_MOVE) {
+            this.items.splice(index, 1);
+            this.items[index] = value;
+
         } else {
             this.items[index] = value;
         }
@@ -374,19 +381,21 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         // delete operations at correct index
         for (let i = start; i < start + deleteCount; i++) {
             const index = indexes[i];
-            this.tmpItems[index] = undefined;
             changeTree.delete(index);
-
-            //
-            // delete exceeding indexes from "allChanges"
-            // (prevent .encodeAll() from encoding non-existing items)
-            //
-            changeTree.shiftAllChangeIndexes(-1, index)
+            this.tmpItems[index] = undefined;
         }
 
         // force insert operations
         for (let i = 0; i < insertCount; i++) {
             changeTree.indexedOperation(indexes[start] + i, OPERATION.ADD);
+        }
+
+        //
+        // delete exceeding indexes from "allChanges"
+        // (prevent .encodeAll() from encoding non-existing items)
+        //
+        if (deleteCount > insertCount) {
+            changeTree.shiftAllChangeIndexes(-(deleteCount - insertCount), indexes[start + insertCount]);
         }
 
         return this.items.splice(start, deleteCount, ...insertItems);
@@ -674,17 +683,24 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         return this.items.toSpliced.apply(copy, arguments);
     }
 
-    protected [$getByIndex](index: number) {
+    protected [$getByIndex](index: number, isEncodeAll: boolean = false) {
         //
         // TODO: avoid unecessary `this.tmpItems` check during decoding.
         //
-        //    ENCODING uses `this.tmpItems`
+        //    ENCODING uses `this.tmpItems` (or `this.items` if `isEncodeAll` is true)
         //    DECODING uses `this.items`
         //
-        return this.tmpItems[index] ?? this.items[index];
+
+        // return this.tmpItems[index] ?? this.items[index];
+
+        return (isEncodeAll)
+            ? this.items[index]
+            : this.tmpItems[index] ?? this.items[index];
     }
 
     protected [$deleteByIndex](index: number) {
+        console.log("DELETE BY INDEX!", { index });
+        // this.items[index] = undefined;
         this.items[index] = undefined;
     }
 
@@ -694,6 +710,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     protected [$onDecodeEnd]() {
         this.items = this.items.filter((item) => item !== undefined);
+
+        // this.items = this.tmpItems.filter((item) => item !== undefined);
+        // // shallow copy
+        // this.tmpItems = this.items.slice();
     }
 
     toArray() {

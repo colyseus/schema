@@ -18,7 +18,8 @@ export type EncodeOperation<T extends Ref = any> = (
     changeTree: ChangeTree<T>,
     index: number,
     operation: OPERATION,
-    it: Iterator
+    it: Iterator,
+    isEncodeAll: boolean
 ) => void;
 
 export function encodePrimitiveType(
@@ -40,7 +41,7 @@ export function encodePrimitiveType(
     } else {
         throw new EncodeSchemaError(`a '${type}' was expected, but ${value} was provided in ${klass.constructor.name}#${field}`);
     }
-}
+};
 
 export function encodeValue(
     encoder: Encoder,
@@ -188,6 +189,7 @@ export const encodeArray: EncodeOperation = function (
     field: number,
     operation: OPERATION,
     it: Iterator,
+    isEncodeAll: boolean,
 ) {
     const ref = changeTree.ref;
 
@@ -208,7 +210,7 @@ export const encodeArray: EncodeOperation = function (
     }
 
     const type = changeTree.getType(field);
-    const value = changeTree.getValue(field);
+    const value = changeTree.getValue(field, isEncodeAll);
 
     // console.log("encodeArray -> ", {
     //     ref: changeTree.ref.constructor.name,

@@ -276,8 +276,11 @@ export class ChangeTree<T extends Ref=any> {
     //
     // used during `.encode()`
     //
-    getValue(index: number) {
-        return this.ref[$getByIndex](index);
+    getValue(index: number, isEncodeAll: boolean = false) {
+        //
+        // `isEncodeAll` param is only used by ArraySchema
+        //
+        return this.ref[$getByIndex](index, isEncodeAll);
     }
 
     delete(index: number, operation?: OPERATION) {
@@ -301,8 +304,6 @@ export class ChangeTree<T extends Ref=any> {
         changeSet.set(index, operation ?? OPERATION.DELETE);
 
         this.allChanges.delete(index);
-
-        console.log("DELETE, previousValue ->", { index, previousValue: previousValue?.toJSON(), previousValueRefId: previousValue?.[$changes]?.refId });
 
         // remove `root` reference
         if (previousValue && previousValue[$changes]) {

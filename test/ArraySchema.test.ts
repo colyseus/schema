@@ -628,9 +628,6 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers = new ArraySchema(p1, p2, p3, p4);
         state.arrayOfPlayers.splice(1, 2, newPlayer);
 
-        console.log("changes:", state.arrayOfPlayers[$changes].changes);
-        console.log("allChanges:", state.arrayOfPlayers[$changes].allChanges);
-
         const decodedState = new State();
         decodedState.decode(state.encode());
 
@@ -666,11 +663,6 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers[1].name = "Snake Sanders";
         state.arrayOfPlayers.push(new Player("Katarina Lyons"));
         state.arrayOfPlayers.shift();
-
-        console.log(Schema.debugRefIds(state));
-
-        console.log("changes:", state.arrayOfPlayers[$changes].changes);
-        console.log("allChanges:", state.arrayOfPlayers[$changes].allChanges);
 
         assertDeepStrictEqualEncodeAll(state);
 
@@ -1374,7 +1366,7 @@ describe("ArraySchema Tests", () => {
                 let randomIndex = Math.floor(Math.random() * currentIndex);
                 currentIndex--;
 
-                // console.log(`[array[${currentIndex}], array[${randomIndex}]] = [array[${randomIndex}], array[${currentIndex}]]`);
+                // console.log(`[array[${currentIndex}], array[${randomIndex}]] = [array[${randomIndex}], array[${currentIndex}]];`);
 
                 // And swap it with the current element.
                 [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
@@ -1440,6 +1432,59 @@ describe("ArraySchema Tests", () => {
             );
         });
 
+        it("should splice and move", () => {
+            const state = new MyState();
+
+            state.cards.push(new Card().assign({ id: 2 }));
+            state.cards.push(new Card().assign({ id: 3 }));
+            state.cards.push(new Card().assign({ id: 4 }));
+            state.cards.push(new Card().assign({ id: 5 }));
+
+            const decodedState = new MyState();
+            const $ = getCallbacks(decodedState).$;
+
+            let onAddIds: number[] = [];
+            let onRemoveIds: number[] = [];
+            $(decodedState).cards.onAdd((item, i) => onAddIds.push(item.id));
+            $(decodedState).cards.onRemove((item, i) => onRemoveIds.push(item.id));
+
+            decodedState.decode(state.encode());
+
+            console.log({ onAddIds, onRemoveIds })
+
+            state.cards.splice(2, 1);
+            console.log("SPLICE, CHANGES ->", Schema.debugChanges(state.cards));
+
+            [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
+            console.log("MOVE, CHANGES ->", Schema.debugChanges(state.cards));
+            console.log("ALL CHANGES ->", Schema.debugChanges(state.cards, true));
+
+            console.log("tmpItems:", state.cards['tmpItems'].map(c => c.id))
+            console.log("items", state.cards['items'].map(c => c.id))
+
+            console.log(Schema.debugRefIds(state));
+
+            decodedState.decode(state.encode());
+            console.log({ onAddIds, onRemoveIds })
+
+            console.log("decoded ->", decodedState.cards.toJSON());
+
+            const refCounts = getDecoder(decodedState).$root.refCounts;
+            console.log("REFS =>", refCounts);
+
+            // assert.strictEqual(refCounts[0], 1);
+            // assert.strictEqual(refCounts[1], 1);
+            // assert.strictEqual(refCounts[2], 1);
+            // assert.strictEqual(refCounts[3], 1);
+            // assert.strictEqual(refCounts[4], 1);
+            // assert.strictEqual(refCounts[5], 1);
+
+            assert.deepStrictEqual(
+                decodedState.cards.map(c => c.id).sort(),
+                [2, 3, 5]
+            );
+        });
+
         it("should splice and shuffle", () => {
             const state = new MyState();
 
@@ -1452,9 +1497,21 @@ describe("ArraySchema Tests", () => {
             decodedState.decode(state.encode());
 
             state.cards.splice(2, 1);
-            shuffle(state.cards);
+            console.log("splice, changes ->", state.cards[$changes].changes);
+
+            [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
+
+            // [state.cards[1], state.cards[0]] = [state.cards[0], state.cards[1]];
+            // [state.cards[0], state.cards[0]] = [state.cards[0], state.cards[0]];
+
+            // shuffle(state.cards);
+
+            console.log('cards =>', state.cards.toJSON());
+            console.log("changes ->", state.cards[$changes].changes);
+            console.log("allChanges ->", state.cards[$changes].allChanges);
 
             decodedState.decode(state.encode());
+            console.log("decoded ->", decodedState.cards.toJSON());
             assert.deepStrictEqual(
                 decodedState.cards.map(c => c.id).sort(),
                 [1, 2, 4]

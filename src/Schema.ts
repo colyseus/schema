@@ -207,6 +207,21 @@ export abstract class Schema {
         return output;
     }
 
+    static debugChanges(instance: Ref, isEncodeAll: boolean = false) {
+        const changeTree = instance[$changes];
+        const changeSet = (isEncodeAll)
+            ? changeTree.allChanges
+            : changeTree.changes;
+
+        let output = `${instance.constructor.name} (${changeTree.refId}) -> CHANGES:\n`;
+
+        Array.from(changeSet).forEach(([index, operation]) => {
+            output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(index))})\n`;
+        });
+
+        return output;
+    }
+
     static debugCurrentChanges(ref: Ref) {
         let output = "";
 
