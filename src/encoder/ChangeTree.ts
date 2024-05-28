@@ -96,7 +96,12 @@ export class ChangeTree<T extends Ref=any> {
         if (this.isFiltered || this.isPartiallyFiltered) {
             this.root.filteredChanges.set(this, this.filteredChanges);
         }
+
         this.root.allChanges.set(this, this.allChanges);
+
+        // this.forEachChild((changeTree, _) => {
+        //     changeTree.setRoot(root);
+        // });
 
         this.allChanges.forEach((_, index) => {
             const childRef = this.ref[$getByIndex](index);

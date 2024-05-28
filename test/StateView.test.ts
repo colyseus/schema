@@ -1,6 +1,6 @@
 import * as assert from "assert";
-import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree } from "../src";
-import { createInstanceFromReflection, getDecoder } from "./Schema";
+import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes } from "../src";
+import { createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
 import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 
 interface ClientView {
@@ -459,7 +459,44 @@ describe("StateView", () => {
             assert.strictEqual(client2.state.items, undefined);
         });
 
-        xit("visibility change should add/remove array items", () => {
+        it("should splice correct item", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 5; i++) {
+                state.items.push(new Item().assign({ amount: i + 2 }));
+            }
+
+            const encoder = getEncoder(state);
+
+            // client1 has only one item
+            const client1 = createClient(state);
+            client1.view.add(state.items.at(3));
+
+            // client2 has all items
+            const client2 = createClient(state);
+            client2.view.add(state.items);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.items.length, 1);
+            assert.strictEqual(client1.state.items[0].amount, state.items.at(3).amount);
+            assert.deepStrictEqual(client2.state.items.toJSON(), state.items.toJSON());
+
+            state.items.splice(3, 1);
+            console.log(state.items[$changes].root === encoder.$root);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.items.length, 0);
+            assert.deepStrictEqual(client2.state.items.toJSON(), state.items.toJSON());
+        });
+
+        it("visibility change should add/remove array items", () => {
             class Item extends Schema {
                 @type("number") amount: number;
             }

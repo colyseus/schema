@@ -630,8 +630,13 @@ describe("ArraySchema Tests", () => {
         const p3 = new Player("Cyberhawk")
         const p4 = new Player("Katarina Lyons")
 
+        const _ = getEncoder(state);
+
         state.arrayOfPlayers = new ArraySchema(p1, p2)
         state.arrayOfPlayers.splice(0, 2, p3, p4)
+
+        console.log(Schema.debugRefIds(state));
+        console.log(Schema.debugChanges(state.arrayOfPlayers));
 
         const decodedState = new State();
         decodedState.decode(state.encode());
@@ -1068,8 +1073,6 @@ describe("ArraySchema Tests", () => {
     });
 
     it("multiple splices in one go", () => {
-        const stringifyItem = i => `${i.name}`;
-
         class Item extends Schema {
             @type("string") name: string;
         }
@@ -1089,13 +1092,18 @@ describe("ArraySchema Tests", () => {
         state.player.items.push(new Item().assign({ name: "Item 2" }));
         state.player.items.push(new Item().assign({ name: "Item 3" }));
 
+        console.log(Schema.debugChanges(state.player.items));
+
         decodedState.decode(state.encode());
 
         // ========================================
 
         // Remove Items 1 and 2 in two separate splice executions
         state.player.items.splice(0, 1);
+        console.log(Schema.debugChanges(state.player.items));
+
         state.player.items.splice(0, 1);
+        console.log(Schema.debugChanges(state.player.items));
 
         decodedState.decode(state.encode());
         assert.deepStrictEqual(state.player.items.toJSON(), decodedState.player.items.toJSON());

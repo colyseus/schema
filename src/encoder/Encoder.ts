@@ -88,6 +88,7 @@ export class Encoder<T extends Schema = any> {
                 // TODO: avoid checking if no view tags were defined
                 //
                 if (filter && !filter(ref, fieldIndex, view)) {
+                    console.log("SKIP FIELD:", fieldIndex, changeTree.ref.constructor.name)
                     // console.log("ADD AS INVISIBLE:", fieldIndex, changeTree.ref.constructor.name)
                     // view?.invisible.add(changeTree);
                     continue;

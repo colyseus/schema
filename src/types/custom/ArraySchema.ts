@@ -22,6 +22,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     protected items: V[] = [];
     protected tmpItems: V[] = [];
+    // protected deletedIndexes: {[index: number]: boolean} = {};
 
     static [$encoder] = encodeArray;
     static [$decoder] = decodeArray;
@@ -169,9 +170,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             // set value's parent after the value is set
             // (to avoid encoding "refId" operations before parent's "ADD" operation)
             //
-            if (value[$changes] !== undefined) {
-                value[$changes].setParent(this, changeTree.root, length);
-            }
+            value[$changes]?.setParent(this, changeTree.root, length);
 
             length++;
         });
@@ -188,6 +187,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         // find last non-undefined index
         for (let i = this.tmpItems.length - 1; i >= 0; i--) {
             if (this.tmpItems[i] !== undefined) {
+            // if (this.deletedIndexes[i] !== true) {
                 index = i;
                 break;
             }
@@ -200,6 +200,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         this[$changes].delete(index, undefined, this.items.length - 1);
 
         this.tmpItems[index] = undefined;
+        // this.deletedIndexes[index] = true;
 
         return this.items.pop();
     }
@@ -208,6 +209,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         return this.items[index];
     }
 
+    // encoding only
     protected $changeAt(index: number, value: V) {
         if (value === undefined || value === null) {
             console.error("ArraySchema items cannot be null nor undefined; Use `deleteAt(index)` instead.");
@@ -228,15 +230,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         // set value's parent after the value is set
         // (to avoid encoding "refId" operations before parent's "ADD" operation)
         //
-        if (value[$changes] !== undefined) {
-            value[$changes].setParent(this, changeTree.root, index);
-        }
+        value[$changes]?.setParent(this, changeTree.root, index);
     }
 
+    // encoding only
     protected $deleteAt(index: number, operation?: OPERATION) {
         this[$changes].delete(index, operation);
     }
 
+    // decoding only
     protected $setAt(index: number, value: V, operation: OPERATION) {
         if (
             index === 0 &&
@@ -347,7 +349,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     sort(compareFn: (a: V, b: V) => number = DEFAULT_SORT): this {
         const changeTree = this[$changes];
         const sortedItems = this.items.sort(compareFn);
+
+        // wouldn't OPERATION.MOVE make more sense here?
         sortedItems.forEach((_, i) => changeTree.change(i, OPERATION.REPLACE));
+
         this.tmpItems.sort(compareFn);
         return this;
     }
@@ -372,6 +377,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         const indexes: number[] = [];
         for (let i = 0; i < tmpItemsLength; i++) {
             if (this.tmpItems[i] !== undefined) {
+            // if (this.deletedIndexes[i] !== true) {
                 indexes.push(i);
             }
         }
@@ -381,11 +387,16 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             const index = indexes[i];
             changeTree.delete(index);
             this.tmpItems[index] = undefined;
+            // this.deletedIndexes[index] = true;
         }
 
         // force insert operations
         for (let i = 0; i < insertCount; i++) {
-            changeTree.indexedOperation(indexes[start] + i, OPERATION.ADD);
+            const addIndex = indexes[start] + i;
+            changeTree.indexedOperation(addIndex, OPERATION.ADD);
+
+            // set value's parent/root
+            insertItems[i][$changes]?.setParent(this, changeTree.root, addIndex);
         }
 
         //
@@ -704,6 +715,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     protected [$onEncodeEnd]() {
         this.tmpItems = this.items.slice();
+        // this.deletedIndexes = {};
     }
 
     protected [$onDecodeEnd]() {

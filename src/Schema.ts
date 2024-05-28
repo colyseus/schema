@@ -207,6 +207,14 @@ export abstract class Schema {
         return output;
     }
 
+    /**
+     * Return a string representation of the changes on a Schema instance.
+     * The list of changes is cleared after each encode.
+     *
+     * @param instance Schema instance
+     * @param isEncodeAll Return "full encode" instead of current change set.
+     * @returns
+     */
     static debugChanges(instance: Ref, isEncodeAll: boolean = false) {
         const changeTree = instance[$changes];
 
@@ -215,11 +223,21 @@ export abstract class Schema {
 
         let output = `${instance.constructor.name} (${changeTree.refId}) -> .${changeSetName}:\n`;
 
-        Array.from(changeSet)
-            .sort((a, b) => a[0] - b[0])
-            .forEach(([index, operation]) =>
-                output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(index, isEncodeAll))})\n`
-            );
+        function dumpChangeSet(changeSet: Map<number, OPERATION>) {
+            Array.from(changeSet)
+                .sort((a, b) => a[0] - b[0])
+                .forEach(([index, operation]) =>
+                    output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(index, isEncodeAll))})\n`
+                );
+        }
+
+        dumpChangeSet(changeSet);
+
+        // display filtered changes
+        if (!isEncodeAll && changeTree.filteredChanges?.size > 0) {
+            output += `${instance.constructor.name} (${changeTree.refId}) -> .filteredChanges:\n`;
+            dumpChangeSet(changeTree.filteredChanges);
+        }
 
         return output;
     }
