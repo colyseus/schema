@@ -209,17 +209,17 @@ export abstract class Schema {
 
     static debugChanges(instance: Ref, isEncodeAll: boolean = false) {
         const changeTree = instance[$changes];
-        const changeSet = (isEncodeAll)
-            ? changeTree.allChanges
-            : changeTree.changes;
 
+        const changeSet = (isEncodeAll) ? changeTree.allChanges : changeTree.changes;
         const changeSetName = (isEncodeAll) ? "allChanges" : "changes";
 
         let output = `${instance.constructor.name} (${changeTree.refId}) -> .${changeSetName}:\n`;
 
-        Array.from(changeSet).forEach(([index, operation]) => {
-            output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(index, isEncodeAll))})\n`;
-        });
+        Array.from(changeSet)
+            .sort((a, b) => a[0] - b[0])
+            .forEach(([index, operation]) =>
+                output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(index, isEncodeAll))})\n`
+            );
 
         return output;
     }

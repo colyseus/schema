@@ -408,6 +408,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         // shift indexes
         changeTree.shiftChangeIndexes(items.length);
 
+        // new index
+        changeTree.allChanges.set(items.length, OPERATION.ADD);
+
+        // FIXME: should we use OPERATION.MOVE here instead?
         items.forEach((_, index) =>
             changeTree.change(index, OPERATION.ADD));
 
