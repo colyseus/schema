@@ -409,11 +409,12 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         changeTree.shiftChangeIndexes(items.length);
 
         // new index
-        changeTree.allChanges.set(items.length, OPERATION.ADD);
+        changeTree.allChanges.set(this.items.length, OPERATION.ADD);
 
         // FIXME: should we use OPERATION.MOVE here instead?
-        items.forEach((_, index) =>
-            changeTree.change(index, OPERATION.ADD));
+        items.forEach((_, index) => {
+            changeTree.change(index, OPERATION.ADD)
+        });
 
         this.tmpItems.unshift(...items);
 

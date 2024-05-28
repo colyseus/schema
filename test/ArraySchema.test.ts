@@ -360,7 +360,7 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        it("push, pop, unshift", () => {
+        it("push, pop -> encode -> unshift", () => {
             class State extends Schema {
                 @type(["number"]) items = new ArraySchema<number>();
             }
@@ -387,6 +387,8 @@ describe("ArraySchema Tests", () => {
 
             assert.deepStrictEqual([8, 1, 2, 3, 9], decodedState.items.toArray());
             assert.deepStrictEqual([8, 1, 2, 3, 9], state.items.toArray());
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
@@ -422,6 +424,8 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encode());
         assert.strictEqual(2, state.cards[0]);
         assert.deepStrictEqual([{ item: 1, index: 0 }, { item: 2, index: 0 }], onAddIndexes);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow using push/pop before encoding", () => {
@@ -472,6 +476,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decoded.numbers[7], 22);
         assert.strictEqual(decoded.numbers[8], 23);
         assert.strictEqual(decoded.numbers[9], 24);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow using push/pop between patches", () => {
@@ -508,6 +514,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decoded.numbers[4], 21);
         assert.strictEqual(decoded.numbers[5], 22);
         assert.strictEqual(decoded.numbers[6], 23);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should not encode a higher number of items than array actually have", () => {
@@ -550,6 +558,8 @@ describe("ArraySchema Tests", () => {
         // console.log("DECODED =>", decodedState.toJSON());
         assert.strictEqual(decodedState.anotherOne.length, 5);
         assert.strictEqual(decodedState.arrayOfNumbers.length, 4);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to shift an array", () => {
@@ -578,6 +588,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Cyberhawk updated!");
         assert.strictEqual(snake, decodedState.arrayOfPlayers[0]);
         assert.strictEqual(cyberhawk, decodedState.arrayOfPlayers[1]);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to splice an array", () => {
@@ -607,6 +619,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decodedState.arrayOfPlayers.length, 1);
         assert.strictEqual("Jake", decodedState.arrayOfPlayers[0].name);
         assert.strictEqual(jake, decodedState.arrayOfPlayers[0]);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to insert elements with splice", () => {
@@ -625,6 +639,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decodedState.arrayOfPlayers.length, 2);
         assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cyberhawk");
         assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
+
+        assertDeepStrictEqualEncodeAll(state);
     })
 
     it("should adjust the indexes of the elements after a splice", () => {
@@ -653,6 +669,8 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(freshDecode.arrayOfPlayers[0].name, "Jake");
         assert.strictEqual(freshDecode.arrayOfPlayers[1].name, "John");
         assert.strictEqual(freshDecode.arrayOfPlayers[2].name, "Katarina Lyons");
+
+        assertDeepStrictEqualEncodeAll(state);
     })
 
     it("should allow to push and shift", () => {
