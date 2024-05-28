@@ -197,7 +197,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             return undefined;
         }
 
-        this[$changes].delete(index);
+        this[$changes].delete(index, undefined, this.items.length - 1);
+
         this.tmpItems[index] = undefined;
 
         return this.items.pop();

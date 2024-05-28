@@ -283,7 +283,7 @@ export class ChangeTree<T extends Ref=any> {
         return this.ref[$getByIndex](index, isEncodeAll);
     }
 
-    delete(index: number, operation?: OPERATION) {
+    delete(index: number, operation?: OPERATION, allChangesIndex = index) {
         if (index === undefined) {
             try {
                 throw new Error(`@colyseus/schema ${this.ref.constructor.name}: trying to delete non-existing index '${index}'`);
@@ -303,7 +303,7 @@ export class ChangeTree<T extends Ref=any> {
 
         changeSet.set(index, operation ?? OPERATION.DELETE);
 
-        this.allChanges.delete(index);
+        this.allChanges.delete(allChangesIndex);
 
         // remove `root` reference
         if (previousValue && previousValue[$changes]) {
