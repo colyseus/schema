@@ -550,32 +550,32 @@ describe("Type: Schema", () => {
             assert.deepStrictEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one"]);
         });
 
-        it.skip("should allow moving items from one map key to another", () => {
+        it("should allow moving items from one map key to another", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema();
 
-            state.mapOfPlayers['one'] = new Player("Jake Badlands");
-            state.mapOfPlayers['two'] = new Player("Snake Sanders");
+            state.mapOfPlayers.set('one', new Player("Jake Badlands"));
+            state.mapOfPlayers.set('two', new Player("Snake Sanders"));
 
             const decodedState = new State();
             decodedState.decode(state.encode());
 
-            const decodedJake = decodedState.mapOfPlayers['one'];
-            const decodedSnake = decodedState.mapOfPlayers['two'];
-            assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one", "two"]);
+            const decodedJake = decodedState.mapOfPlayers.get('one');
+            const decodedSnake = decodedState.mapOfPlayers.get('two');
+            assert.deepStrictEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one", "two"]);
 
             // swap Jake / Snake keys
-            const jake = state.mapOfPlayers['one'];
-            const snake = state.mapOfPlayers['two'];
-            console.log("WILL ASSIGN!");
-            state.mapOfPlayers['one'] = snake;
-            state.mapOfPlayers['two'] = jake;
+            const jake = state.mapOfPlayers.get('one');
+            const snake = state.mapOfPlayers.get('two');
+            state.mapOfPlayers.set('one', snake);
+            state.mapOfPlayers.set('two', jake);
 
-            const encoded = state.encode();
-            decodedState.decode(encoded);
+            decodedState.decode(state.encode());
 
-            assert.strictEqual(decodedState.mapOfPlayers['one'], decodedSnake);
-            assert.strictEqual(decodedState.mapOfPlayers['two'], decodedJake);
+            assert.deepStrictEqual(decodedState.mapOfPlayers.get('one'), decodedSnake);
+            assert.deepStrictEqual(decodedState.mapOfPlayers.get('two'), decodedJake);
+
+            assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
         });
 
         it("should allow maps with numeric indexes", () => {
