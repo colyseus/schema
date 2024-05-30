@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity } from "./Schema";
+import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll } from "./Schema";
 import { Schema, ArraySchema, MapSchema, type, Metadata, $changes } from "../src";
 
 describe("Type: Schema", () => {
@@ -1041,6 +1041,8 @@ describe("Type: Schema", () => {
             assert.strictEqual(decodedState2.map.get('one').arrayOfChildren[0].entity.another.position.x, 100);
             assert.strictEqual(decodedState2.map.get('one').arrayOfChildren[0].entity.another.position.y, 200);
             assert.strictEqual(decodedState2.map.get('one').arrayOfChildren[0].entity.another.position.z, 300);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
@@ -1080,6 +1082,8 @@ describe("Type: Schema", () => {
             state.action.active = true;
             decodedState.decode(state.encode());
             assert.strictEqual(true, decodedState.action.active);
+
+            assertDeepStrictEqualEncodeAll(state);
         })
     });
 
@@ -1115,6 +1119,8 @@ describe("Type: Schema", () => {
             assert.strictEqual(decodedState.map.get('two').arrayOfChildren[0].entity.another.position.z, 400);
 
             assert.deepStrictEqual(state.toJSON(), state.clone().toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
@@ -1141,6 +1147,8 @@ describe("Type: Schema", () => {
                 arrayOfPlayers: [{ name: 'Katarina' }],
                 mapOfPlayers: { one: { name: 'Cyberhalk', x: 100, y: 50 } }
             })
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("should be able to re-construct entire schema tree", () => {
@@ -1161,7 +1169,9 @@ describe("Type: Schema", () => {
             const json = state.toJSON();
 
             const newState = new State().assign(json);
-            assert.deepEqual(json, newState.toJSON());
+            assert.deepStrictEqual(json, newState.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
@@ -1188,6 +1198,8 @@ describe("Type: Schema", () => {
             assert.doesNotThrow(() => decodedState.decode(state.encode()));
             assert.strictEqual(0, decodedState.previous.get("0"));
             assert.strictEqual(undefined, decodedState.current);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("using ArraySchema", () => {
@@ -1206,12 +1218,14 @@ describe("Type: Schema", () => {
             assert.strictEqual(0, decodedState.current[0]);
             assert.strictEqual(undefined, decodedState.previous);
 
-            // state.previous = state.current;
-            // state.current = null;
+            state.previous = state.current;
+            state.current = null;
 
-            // assert.doesNotThrow(() => decodedState.decode(state.encode()));
-            // assert.strictEqual(0, decodedState.previous[0]);
-            // assert.strictEqual(undefined, decodedState.current);
+            assert.doesNotThrow(() => decodedState.decode(state.encode()));
+            assert.strictEqual(0, decodedState.previous[0]);
+            assert.strictEqual(undefined, decodedState.current);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("using Schema reference", () => {
@@ -1237,6 +1251,8 @@ describe("Type: Schema", () => {
             assert.doesNotThrow(() => decodedState.decode(state.encode()));
             assert.strictEqual("hey", decodedState.previous.str);
             assert.strictEqual(undefined, decodedState.current);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
