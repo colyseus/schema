@@ -24,5 +24,6 @@ export enum OPERATION {
     UNSHIFT = 12,
     REVERSE = 15,
     MOVE = 32,
+    DELETE_BY_REFID = 33,
 
 }

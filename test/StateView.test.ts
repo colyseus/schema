@@ -488,9 +488,15 @@ describe("StateView", () => {
             assert.strictEqual(client1.state.items[0].amount, state.items.at(3).amount);
             assert.deepStrictEqual(client2.state.items.toJSON(), state.items.toJSON());
 
-            state.items.splice(3, 1);
-            console.log(state.items[$changes].root === encoder.$root);
+            console.log(Schema.debugRefIds(state));
+
+            const removedItems = state.items.splice(3, 1);
+            assert.strictEqual(1, removedItems.length);
+            assert.strictEqual(5, removedItems[0].amount);
             encodeMultiple(encoder, state, [client1, client2]);
+
+            console.log("client1 ->", client1.state.items.toJSON());
+            console.log("client2 ->", client2.state.items.toJSON());
 
             assert.strictEqual(client1.state.items.length, 0);
             assert.deepStrictEqual(client2.state.items.toJSON(), state.items.toJSON());

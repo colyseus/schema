@@ -11,6 +11,7 @@ import type { Schema } from "../Schema";
 import type { PrimitiveType } from "../annotations";
 
 import type { Iterator } from "../encoding/decode";
+import type { ArraySchema } from "../types/custom/ArraySchema";
 
 export type EncodeOperation<T extends Ref = any> = (
     encoder: Encoder,
@@ -19,7 +20,8 @@ export type EncodeOperation<T extends Ref = any> = (
     index: number,
     operation: OPERATION,
     it: Iterator,
-    isEncodeAll: boolean
+    isEncodeAll: boolean,
+    hasView: boolean,
 ) => void;
 
 export function encodePrimitiveType(
@@ -188,8 +190,22 @@ export const encodeArray: EncodeOperation = function (
     operation: OPERATION,
     it: Iterator,
     isEncodeAll: boolean,
+    hasView: boolean,
 ) {
     const ref = changeTree.ref;
+
+    if (
+        hasView &&
+        operation === OPERATION.DELETE &&
+        typeof (changeTree.getType(field)) !== "string"
+    ) {
+        // encode delete by refId (array of schemas)
+        bytes[it.offset++] = OPERATION.DELETE_BY_REFID;
+        const value =  (changeTree.ref as ArraySchema)['tmpItems'][field];
+        const refId = value[$changes].refId;
+        encode.number(bytes, refId, it);
+        return;
+    }
 
     // encode operation
     bytes[it.offset++] = operation & 255;

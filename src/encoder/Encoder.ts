@@ -1,11 +1,11 @@
 import type { Schema } from "../Schema";
 import { TypeContext } from "../annotations";
-import { $changes, $encoder, $filter, $onEncodeEnd } from "../types/symbols";
+import { $changes, $encoder, $filter } from "../types/symbols";
 
 import * as encode from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
 
-import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
+import { SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Root } from "./ChangeTree";
 import { getNextPowerOf2 } from "../utils";
 import { StateView } from "./StateView";
@@ -94,7 +94,7 @@ export class Encoder<T extends Schema = any> {
                     continue;
                 }
 
-                encoder(this, bytes, changeTree, fieldIndex, operation, it, isEncodeAll);
+                encoder(this, bytes, changeTree, fieldIndex, operation, it, isEncodeAll, hasView);
             }
         }
 
@@ -112,16 +112,11 @@ export class Encoder<T extends Schema = any> {
             //
             // only clear changes after making sure buffer resize is not required.
             //
-            if (!isEncodeAll) {
+            if (!isEncodeAll && !hasView) {
                 //
                 // FIXME: avoid iterating over change trees twice.
                 //
-                const changeTreesIterator = changeTrees.entries();
-                for (const [changeTree, _] of changeTreesIterator) {
-                    changeTree.endEncode();
-                }
-
-                this.$root.clear();
+                this.onEndEncode(changeTrees);
             }
 
             // return bytes;
@@ -142,7 +137,6 @@ export class Encoder<T extends Schema = any> {
         // encode visibility changes (add/remove for this view)
         const viewChangesIterator = view.changes.entries();
         for (const [changeTree, changes] of viewChangesIterator) {
-
             // FIXME: avoid having empty changes if no changes were made
             if (changes.size === 0) {
                 console.log("changes.size === 0", changeTree.ref.constructor.name);
@@ -160,7 +154,9 @@ export class Encoder<T extends Schema = any> {
             const changesIterator = changes.entries();
 
             for (const [fieldIndex, operation] of changesIterator) {
-                encoder(this, bytes, changeTree, fieldIndex, operation, it);
+                // isEncodeAll = false
+                // hasView = true
+                encoder(this, bytes, changeTree, fieldIndex, operation, it, false, true);
             }
         }
 
@@ -173,9 +169,24 @@ export class Encoder<T extends Schema = any> {
         ]);
     }
 
+    onEndEncode(changeTrees = this.$root.changes) {
+        const changeTreesIterator = changeTrees.entries();
+        for (const [changeTree, _] of changeTreesIterator) {
+            changeTree.endEncode();
+        }
+    }
+
     discardChanges() {
-        this.$root.changes.clear();
-        this.$root.filteredChanges.clear();
+        // discard shared changes
+        if (this.$root.changes.size > 0) {
+            this.onEndEncode(this.$root.changes);
+            this.$root.changes.clear();
+        }
+        // discard filtered changes
+        if (this.$root.filteredChanges.size > 0) {
+            this.onEndEncode(this.$root.filteredChanges);
+            this.$root.filteredChanges.clear();
+        }
     }
 
     tryEncodeTypeId (bytes: Buffer, baseType: typeof Schema, targetType: typeof Schema, it: Iterator) {

@@ -179,9 +179,24 @@ export class StateView {
         }
 
         if (tag === DEFAULT_VIEW_TAG) {
-            // delete all "tagged" properties.
-            metadata[-2].forEach((index) =>
-                changes.set(index, OPERATION.DELETE));
+            // parent is collection (Map/Array)
+            const parent = changeTree.parent;
+            if (!Metadata.isValidInstance(parent)) {
+                const parentChangeTree = parent[$changes];
+                let changes = this.changes.get(parentChangeTree);
+                if (changes === undefined) {
+                    changes = new Map<number, OPERATION>();
+                    this.changes.set(parentChangeTree, changes)
+                }
+                // DELETE / DELETE BY REF ID
+                changes.set(changeTree.parentIndex, OPERATION.DELETE);
+
+            } else {
+                // delete all "tagged" properties.
+                metadata[-2].forEach((index) =>
+                    changes.set(index, OPERATION.DELETE));
+            }
+
 
         } else {
             // delete only tagged properties

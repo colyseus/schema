@@ -22,7 +22,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     protected items: V[] = [];
     protected tmpItems: V[] = [];
-    // protected deletedIndexes: {[index: number]: boolean} = {};
+    protected deletedIndexes: {[index: number]: boolean} = {};
 
     static [$encoder] = encodeArray;
     static [$decoder] = decodeArray;
@@ -40,7 +40,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         return (
             !view ||
             typeof (ref[$childType]) === "string" ||
-            view.items.has(ref[$getByIndex](index)[$changes])
+            // view.items.has(ref[$getByIndex](index)[$changes])
+            view.items.has(ref['tmpItems'][index]?.[$changes])
         );
     }
 
@@ -186,8 +187,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
         // find last non-undefined index
         for (let i = this.tmpItems.length - 1; i >= 0; i--) {
-            if (this.tmpItems[i] !== undefined) {
-            // if (this.deletedIndexes[i] !== true) {
+            // if (this.tmpItems[i] !== undefined) {
+            if (this.deletedIndexes[i] !== true) {
                 index = i;
                 break;
             }
@@ -199,8 +200,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
         this[$changes].delete(index, undefined, this.items.length - 1);
 
-        this.tmpItems[index] = undefined;
-        // this.deletedIndexes[index] = true;
+        // this.tmpItems[index] = undefined;
+        this.deletedIndexes[index] = true;
 
         return this.items.pop();
     }
@@ -376,8 +377,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         // build up-to-date list of indexes, excluding removed values.
         const indexes: number[] = [];
         for (let i = 0; i < tmpItemsLength; i++) {
-            if (this.tmpItems[i] !== undefined) {
-            // if (this.deletedIndexes[i] !== true) {
+            // if (this.tmpItems[i] !== undefined) {
+            if (this.deletedIndexes[i] !== true) {
                 indexes.push(i);
             }
         }
@@ -386,8 +387,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         for (let i = start; i < start + deleteCount; i++) {
             const index = indexes[i];
             changeTree.delete(index);
-            this.tmpItems[index] = undefined;
-            // this.deletedIndexes[index] = true;
+            // this.tmpItems[index] = undefined;
+            this.deletedIndexes[index] = true;
         }
 
         // force insert operations
@@ -704,9 +705,16 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         //    ENCODING uses `this.tmpItems` (or `this.items` if `isEncodeAll` is true)
         //    DECODING uses `this.items`
         //
+
         return (isEncodeAll)
             ? this.items[index]
-            : this.tmpItems[index] ?? this.items[index];
+            : this.deletedIndexes[index]
+                ? this.items[index]
+                : this.tmpItems[index] || this.items[index];
+
+        // return (isEncodeAll)
+        //     ? this.items[index]
+        //     : this.tmpItems[index] ?? this.items[index];
     }
 
     protected [$deleteByIndex](index: number) {
@@ -715,7 +723,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     protected [$onEncodeEnd]() {
         this.tmpItems = this.items.slice();
-        // this.deletedIndexes = {};
+        this.deletedIndexes = {};
     }
 
     protected [$onDecodeEnd]() {

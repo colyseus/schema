@@ -299,7 +299,7 @@ export const decodeArray: DecodeOperation = function (
     decoder: Decoder<any>,
     bytes: Buffer,
     it: decode.Iterator,
-    ref: Ref,
+    ref: ArraySchema,
     allChanges: DataChange[]
 ) {
     // "uncompressed" index + operation (array/map items)
@@ -313,6 +313,13 @@ export const decodeArray: DecodeOperation = function (
         //
         decoder.removeChildRefs(ref as unknown as Collection, allChanges);
         (ref as ArraySchema).clear();
+        return;
+
+    } else if (operation === OPERATION.DELETE_BY_REFID) {
+        const refId = decode.number(bytes, it);
+        const valueByRefId = decoder.$root.refs.get(refId);
+        const index = ref.findIndex((value) => value === valueByRefId);
+        ref[$deleteByIndex](index);
         return;
     }
 
