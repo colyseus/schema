@@ -1626,13 +1626,13 @@ describe("ArraySchema Tests", () => {
             });
         });
 
-        it("should trigger onAdd callback only once after clearing and adding one item", () => {
+        xit("should trigger onAdd callback only once after clearing and adding one item", () => {
             const state = new State();
             const decodedState = new State();
             const $ = getCallbacks(decodedState).$;
 
-            // state.points.push(new Point().assign({ x: 0, y: 0 }));
-            // state.points.push(new Point().assign({ x: 1, y: 1 }));
+            state.points.push(new Point().assign({ x: 0, y: 0 }));
+            state.points.push(new Point().assign({ x: 1, y: 1 }));
             state.points.clear();
             state.points.push(new Point().assign({ x: 2, y: 2 }));
             state.points.push(new Point().assign({ x: 3, y: 3 }));

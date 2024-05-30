@@ -533,7 +533,7 @@ describe("StateView", () => {
             assert.strictEqual(client1.state.items.length, 0);
         });
 
-        xit("visibility change should trigger onAdd/onRemove on arrays", () => {
+        it("visibility change should trigger onAdd/onRemove on arrays", () => {
             class Item extends Schema {
                 @type("number") amount: number;
             }
@@ -550,18 +550,28 @@ describe("StateView", () => {
             const encoder = new Encoder(state);
 
             const client1 = createClient(state);
+            const client2 = createClient(state);
+
             client1.view.add(state.items.at(3));
+            client2.view.add(state.items);
 
             let onAddCalls = 0;
-            client1.$(client1.state).items.onAdd((item, index) => onAddCalls++);
             let onRemoveCalls = 0;
-            client1.$(client1.state).items.onRemove((item, index) => onRemoveCalls++);
+            client1.$(client1.state).items.onAdd(() => onAddCalls++);
+            client1.$(client1.state).items.onRemove(() => onRemoveCalls++);
 
-            const client2 = createClient(state);
             encodeMultiple(encoder, state, [client1, client2]);
 
             assert.strictEqual(client1.state.items.length, 1);
-            assert.strictEqual(client2.state.items, undefined);
+            assert.strictEqual(client2.state.items.length, 5);
+            assert.strictEqual(1, onAddCalls);
+
+            client1.view.remove(state.items.at(3));
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.items.length, 0);
+            assert.strictEqual(client2.state.items.length, 5);
+            assert.strictEqual(1, onRemoveCalls);
         });
     });
 

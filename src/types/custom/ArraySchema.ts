@@ -259,6 +259,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     }
 
     clear() {
+        // skip if already clear
+        if (this.items.length === 0) { return; }
+
         // discard previous operations.
         const changeTree = this[$changes]
 

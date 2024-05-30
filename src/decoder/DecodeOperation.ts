@@ -316,10 +316,20 @@ export const decodeArray: DecodeOperation = function (
         return;
 
     } else if (operation === OPERATION.DELETE_BY_REFID) {
+        // TODO: refactor here, try to follow same flow as below
         const refId = decode.number(bytes, it);
-        const valueByRefId = decoder.$root.refs.get(refId);
-        const index = ref.findIndex((value) => value === valueByRefId);
+        const previousValue = decoder.$root.refs.get(refId);
+        const index = ref.findIndex((value) => value === previousValue);
         ref[$deleteByIndex](index);
+        allChanges.push({
+            ref,
+            refId: decoder.currentRefId,
+            op: OPERATION.DELETE,
+            field: "", // FIXME: remove this
+            dynamicIndex: index,
+            value: undefined,
+            previousValue,
+        });
         return;
     }
 
