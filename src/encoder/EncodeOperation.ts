@@ -48,7 +48,7 @@ export function encodePrimitiveType(
 export function encodeValue(
     encoder: Encoder,
     bytes: Buffer,
-    ref: Schema,
+    ref: Ref,
     type: any,
     value: any,
     field: string | number,
@@ -102,7 +102,7 @@ export function encodeValue(
 export const encodeSchemaOperation: EncodeOperation = function (
     encoder: Encoder,
     bytes: Buffer,
-    changeTree: ChangeTree,
+    changeTree: ChangeTree<Schema>,
     index: number,
     operation: OPERATION,
     it: Iterator,
@@ -185,7 +185,7 @@ export const encodeKeyValueOperation: EncodeOperation = function (
 export const encodeArray: EncodeOperation = function (
     encoder: Encoder,
     bytes: Buffer,
-    changeTree: ChangeTree,
+    changeTree: ChangeTree<ArraySchema>,
     field: number,
     operation: OPERATION,
     it: Iterator,
@@ -201,7 +201,7 @@ export const encodeArray: EncodeOperation = function (
     ) {
         // encode delete by refId (array of schemas)
         bytes[it.offset++] = OPERATION.DELETE_BY_REFID;
-        const value =  (changeTree.ref as ArraySchema)['tmpItems'][field];
+        const value =  ref['tmpItems'][field];
         const refId = value[$changes].refId;
         encode.number(bytes, refId, it);
         return;
