@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { Schema, type, ArraySchema, MapSchema, Reflection } from "../src";
 import { $changes } from "../src/types/symbols";
-import { getCallbacks, getDecoder, getEncoder } from "./Schema";
+import { createInstanceFromReflection, getCallbacks, getDecoder, getEncoder } from "./Schema";
 
 describe("Instance sharing", () => {
     class Position extends Schema {
@@ -241,9 +241,10 @@ describe("Instance sharing", () => {
         assert.strictEqual("one", (decodedState.quests.get('one') as QuestOne).name);
     });
 
-    xit("client-side: should trigger on all shared places", () => {
+    it("client-side: should trigger on all shared places", () => {
         class Player extends Schema {
             @type("number") hp: number;
+            @type("number") mp: number;
         }
 
         class State extends Schema {
@@ -257,19 +258,22 @@ describe("Instance sharing", () => {
         state.player1 = player
         state.player2 = player;
 
-        const decodedState = Reflection.decode<State>(Reflection.encode(state));
-
+        const decodedState = createInstanceFromReflection(state);
         const $ = getCallbacks(decodedState).$;
 
-        let numTriggered = 0;
-        $(decodedState).player1.listen('hp', () => numTriggered++);
-        $(decodedState).player2.listen('hp', () => numTriggered++);
+        let numHpChangeTriggered = 0;
+        let numMpChangeTriggered = 0;
+        $(decodedState).player1.listen('hp', () => numHpChangeTriggered++);
+        $(decodedState).player2.listen('hp', () => numHpChangeTriggered++);
+        $(decodedState).player1.listen('mp', () => numMpChangeTriggered++);
+        $(decodedState).player2.listen('mp', () => numMpChangeTriggered++);
 
         decodedState.decode(state.encode());
 
         assert.strictEqual(decodedState.player1.hp, 100);
         assert.strictEqual(decodedState.player2.hp, 100);
-        assert.strictEqual(2, numTriggered);
+        assert.strictEqual(2, numHpChangeTriggered);
+        assert.strictEqual(0, numMpChangeTriggered);
     })
 
 });

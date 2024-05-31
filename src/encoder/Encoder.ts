@@ -5,7 +5,7 @@ import { $changes, $encoder, $filter } from "../types/symbols";
 import * as encode from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
 
-import { SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
+import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Root } from "./ChangeTree";
 import { getNextPowerOf2 } from "../utils";
 import { StateView } from "./StateView";

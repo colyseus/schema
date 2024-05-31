@@ -952,25 +952,32 @@ describe("Type: Schema", () => {
             state.mapOfPlayers.delete('jake');
         });
 
-        // encoding from a decoded structure might not yet be supported
-        xit('should encode map with primitive values from decoded state', () => {
+        //
+        // Encoding from a decoded structure is not supported
+        //
+        // This is not a real usage scenario yet, but on a peer-to-peer setup
+        // this feature would play an interesting role.
+        //
+        it.skip('should encode map with primitive values from decoded state', () => {
             class TestMapSchema extends Schema {
                 @type({ map: 'number' }) value = new MapSchema<number>();
             }
-            const state = new TestMapSchema();
 
+            const state = new TestMapSchema();
             state.value.set('k1', 1);
+
             const firstEncoded = state.encodeAll();
 
             const decodedState1 = new TestMapSchema();
             decodedState1.decode(firstEncoded);
-            assert.deepStrictEqual(decodedState1.toJSON(), state.toJSON(), `decodedState1.toJSON() EQ state.toJSON()`);
+            assert.deepStrictEqual(decodedState1.toJSON(), state.toJSON());
+
             const secondEncoded = decodedState1.encodeAll();
-            assert.deepStrictEqual(secondEncoded, firstEncoded, `firstEncoded EQ secondEncoded`);
+            assert.deepStrictEqual(secondEncoded, firstEncoded);
 
             const decodedState2 = new TestMapSchema();
             decodedState2.decode(secondEncoded);
-            assert.deepStrictEqual(decodedState2.toJSON(), state.toJSON(), `decodedState2.toJSON() EQ state.toJSON()`);
+            assert.deepStrictEqual(decodedState2.toJSON(), state.toJSON());
         });
 
         it('should discard deleted map items', () => {
@@ -1192,8 +1199,9 @@ describe("Type: Schema", () => {
             assert.strictEqual(0, decodedState.current.get("0"));
             assert.strictEqual(undefined, decodedState.previous);
 
-            state.previous = state.current;
-            state.current = null;
+            [state.current, state.previous] = [null, state.current];
+            // state.previous = state.current;
+            // state.current = null;
 
             assert.doesNotThrow(() => decodedState.decode(state.encode()));
             assert.strictEqual(0, decodedState.previous.get("0"));
@@ -1218,8 +1226,9 @@ describe("Type: Schema", () => {
             assert.strictEqual(0, decodedState.current[0]);
             assert.strictEqual(undefined, decodedState.previous);
 
-            state.previous = state.current;
-            state.current = null;
+            [state.current, state.previous] = [null, state.current];
+            // state.previous = state.current;
+            // state.current = null;
 
             assert.doesNotThrow(() => decodedState.decode(state.encode()));
             assert.strictEqual(0, decodedState.previous[0]);
@@ -1245,8 +1254,9 @@ describe("Type: Schema", () => {
             assert.strictEqual("hey", decodedState.current.str);
             assert.strictEqual(undefined, decodedState.previous);
 
-            state.previous = state.current;
-            state.current = null;
+            [state.current, state.previous] = [null, state.current];
+            // state.previous = state.current;
+            // state.current = null;
 
             assert.doesNotThrow(() => decodedState.decode(state.encode()));
             assert.strictEqual("hey", decodedState.previous.str);

@@ -162,32 +162,43 @@ export function getStateCallbacks(decoder: Decoder) {
     };
 
     function getProxy(metadataOrType: Metadata | DefinitionType, context: CallContext) {
-        let metadata: Metadata = context.instance?.constructor[Symbol.metadata];
+        let metadata: Metadata = context.instance?.constructor[Symbol.metadata] || metadataOrType;
         let isCollection = (
             (context.instance && typeof (context.instance['forEach']) === "function") ||
-            (metadataOrType && Object.keys(metadataOrType)[0] !== "ref")
+            (metadataOrType && typeof (metadataOrType[Symbol.metadata]) === "undefined")
         );
 
         if (metadata && !isCollection) {
+
+            const onAdd = function (
+                ref: Ref,
+                prop: string,
+                callback: (value: any, previousValue: any) => void, immediate: boolean
+            ) {
+                // immediate trigger
+                if (
+                    immediate &&
+                    context.instance[prop] !== undefined &&
+                    !isTriggeringOnAdd // FIXME: This is a workaround (https://github.com/colyseus/schema/issues/147)
+                ) {
+                    callback(context.instance[prop], undefined);
+                }
+                return $root.addCallback($root.refIds.get(ref), prop, callback);
+            }
+
             /**
              * Schema instances
              */
             return new Proxy({
                 listen: function listen(prop: string, callback: (value: any, previousValue: any) => void, immediate: boolean = true) {
-                    // immediate trigger
-                    if (
-                        immediate &&
-                        context.instance[prop] !== undefined &&
-                        !isTriggeringOnAdd // FIXME: This is a workaround
-                                           // (https://github.com/colyseus/schema/issues/147)
-                    ) {
-                        callback(context.instance[prop], undefined);
+                    if (context.instance) {
+                        return onAdd(context.instance, prop, callback, immediate);
+
+                    } else {
+                        // collection instance not received yet
+                        context.onInstanceAvailable((ref: Ref, existing: boolean) =>
+                            onAdd(ref, prop, callback, immediate && existing));
                     }
-                    return $root.addCallback(
-                        $root.refIds.get(context.instance),
-                        prop,
-                        callback
-                    );
                 },
                 onChange: function onChange(callback: () => void) {
                     return $root.addCallback(
@@ -213,7 +224,7 @@ export function getStateCallbacks(decoder: Decoder) {
                                     // it will not support when the server
                                     // re-instantiates the instance.
                                     //
-                                    unbind();
+                                    unbind?.();
                                 }, false);
 
                                 // has existing value

@@ -398,7 +398,7 @@ describe("ArraySchema Tests", () => {
         }
 
         const state = new State();
-        const decodedState = new State();
+        const decodedState = createInstanceFromReflection(state);
         const $ = getCallbacks(decodedState).$;
 
         const onAddIndexes: Array<{ item: number, index: number }> = [];
