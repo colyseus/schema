@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
+import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll } from "./Schema";
 import { MapSchema, type, Schema, ArraySchema, Reflection } from "../src";
 
 describe("Type: MapSchema", () => {
@@ -20,7 +20,8 @@ describe("Type: MapSchema", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
-        assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ['jake', 'katarina']);
+        assert.deepStrictEqual(Array.from(decodedState.mapOfPlayers.keys()), ['jake', 'katarina']);
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("using number as key should not throw error", async () => {
@@ -34,6 +35,8 @@ describe("Type: MapSchema", () => {
         // @ts-ignore
         state.players.set(3, new Player());
         assert.doesNotThrow(() => state.encodeAll());
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("forEach()", () => {
@@ -50,8 +53,8 @@ describe("Type: MapSchema", () => {
             values.push(value);
         });
 
-        assert.deepEqual(keys, ['one', 'two', 'three']);
-        assert.deepEqual(values, [1, 2, 3]);
+        assert.deepStrictEqual(keys, ['one', 'two', 'three']);
+        assert.deepStrictEqual(values, [1, 2, 3]);
     });
 
     it("should allow to clear a Map", () => {
@@ -67,6 +70,8 @@ describe("Type: MapSchema", () => {
         state.mapOfPlayers.clear();
         decodedState.decode(state.encode());
         assert.strictEqual(0, decodedState.mapOfPlayers.size);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to CLEAR and ADD in the same patch", () => {
@@ -82,11 +87,13 @@ describe("Type: MapSchema", () => {
         state.mapOfPlayers.set("three", new Player().assign({ name: "Three", x: 10, y: 10 }));
         decodedState.decode(state.encode());
 
-        assert.deepEqual({
+        assert.deepStrictEqual({
             mapOfPlayers: {
                 three: { name: "Three", x: 10, y: 10 }
             }
         }, state.toJSON());
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to CLEAR and REPLACE in the same patch", () => {
@@ -103,11 +110,13 @@ describe("Type: MapSchema", () => {
 
         decodedState.decode(state.encode());
 
-        assert.deepEqual({
+        assert.deepStrictEqual({
             mapOfPlayers: {
                 two: { name: "Jake again", x: 10, y: 10 }
             }
         }, state.toJSON());
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     /*
@@ -229,6 +238,8 @@ describe("Type: MapSchema", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encodeAll());
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to remove and set an item in the same place", () => {
@@ -266,6 +277,8 @@ describe("Type: MapSchema", () => {
 
         assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake 2");
         assert.strictEqual(decodedState.mapOfPlayers.get('two').name, "Katarina 2");
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("removing a non-existing item should not remove anything", () => {
@@ -284,6 +297,8 @@ describe("Type: MapSchema", () => {
         decodedState.decode(state.encode());
 
         assert.deepStrictEqual(Array.from(decodedState.duels.keys()), ['one', 'two']);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow map of primitive types", () => {
@@ -309,6 +324,8 @@ describe("Type: MapSchema", () => {
                 }
             }
         });
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("removing items should have as very few bytes", () => {
@@ -330,6 +347,8 @@ describe("Type: MapSchema", () => {
 
         // TODO: we could get lower than that.
         assert.ok(encoded.length <= 12);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should not encode item if added and removed at the same patch", () => {
@@ -358,7 +377,7 @@ describe("Type: MapSchema", () => {
         //
         // TODO: improve me! `DELETE` operation should not be encoded here.
         // this test conflicts with encodeAll() + encode() for other structures, where DELETE operation is necessary.
-        // // assert.deepEqual([ 4, 1, 0, 1, 11, 193 ], patchBytes);
+        // // assert.deepStrictEqual([ 4, 1, 0, 1, 11, 193 ], patchBytes);
         //
 
         decodedState.decode(patchBytes);
@@ -370,6 +389,8 @@ describe("Type: MapSchema", () => {
         decodedState.decode(state.encode());
 
         assert.strictEqual(1, onRemoveCalls);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("re-assignments should be ignored", () => {
@@ -387,9 +408,11 @@ describe("Type: MapSchema", () => {
         state.numbers.set("two", 2);
         state.numbers.set("three", 3);
         assert.ok(state.encode().length === 0);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
-    it("should consider the field of map schema value change", (done) => {
+    it("should consider the field of map schema value change", () => {
         class Player extends Schema {
             @type("string") id: string
             @type("string") name: string;
@@ -431,7 +454,8 @@ describe("Type: MapSchema", () => {
         assert.strictEqual(decodeState.players.get('76355').next,'8848');//1->2
         assert.strictEqual(decodeState.players.get('8848').next,'8658');//2->3
         assert.strictEqual(decodeState.players.get('8658').next,'76355')//3->1
-        done();
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should iterate though map values", () => {
@@ -516,6 +540,8 @@ describe("Type: MapSchema", () => {
 
         assert.strictEqual(false, decodedState2.entities.has("item1"), "'item1' should've been deleted.");
         assert.strictEqual(false, decodedState2.entities.has("item2"), "'item2' should've been deleted.");
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow to move a key from one map to another", () => {
@@ -576,6 +602,8 @@ describe("Type: MapSchema", () => {
         }, decodedState.toJSON());
 
         assert.strictEqual(1, onEntityAddCount);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("replacing MapSchema should trigger onRemove on previous items", () => {
@@ -597,6 +625,8 @@ describe("Type: MapSchema", () => {
         decodedState.decode(state.encode());
 
         assert.strictEqual(3, onRemoveCalls);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should throw error trying to set null or undefined", () => {
@@ -620,10 +650,10 @@ describe("Type: MapSchema", () => {
         previousMap.set('three', 3);
 
         assert.doesNotThrow(() => map = new MapSchema<number>(previousMap));
-        assert.deepEqual(map.toJSON(), previousMap.toJSON());
+        assert.deepStrictEqual(map.toJSON(), previousMap.toJSON());
 
         assert.doesNotThrow(() => map = new MapSchema<number>(previousMap.toJSON()));
-        assert.deepEqual(map.toJSON(), previousMap.toJSON());
+        assert.deepStrictEqual(map.toJSON(), previousMap.toJSON());
     });
 
 });

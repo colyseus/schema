@@ -23,9 +23,12 @@ export function getDecoder(state: Schema) {
     return state['_decoder'] as Decoder;
 }
 
+/**
+ * This assertion simulates a new client joining the room, and receiving the initial state.
+ */
 export function assertDeepStrictEqualEncodeAll(state: Schema) {
     const freshDecode = createInstanceFromReflection(state);
-    const encodeAll = state.encodeAll()
+    const encodeAll = state.encodeAll();
     freshDecode.decode(encodeAll);
     assert.deepStrictEqual(freshDecode.toJSON(), state.toJSON());
 }
