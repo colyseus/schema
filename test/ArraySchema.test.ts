@@ -12,6 +12,52 @@ describe("ArraySchema Tests", () => {
         });
     });
 
+    describe("ArraySchema#shift()", () => {
+        it("shift + push", () => {
+            class State extends Schema {
+                @type(["string"]) turns = new ArraySchema<string>();
+            }
+
+            const state = new State();
+            state.turns.push("one");
+            state.turns.push("two");
+            state.turns.push("three");
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(3, state.turns.length);
+            assert.strictEqual("one", state.turns[0]);
+            assert.strictEqual("two", state.turns[1]);
+            assert.strictEqual("three", state.turns[2]);
+
+            state.turns.push(state.turns.shift());
+            decodedState.decode(state.encode());
+
+            assert.strictEqual("two", state.turns[0]);
+            assert.strictEqual("three", state.turns[1]);
+            assert.strictEqual("one", state.turns[2]);
+
+            state.turns.push(state.turns.shift());
+            decodedState.decode(state.encode());
+
+            assert.strictEqual("three", state.turns[0]);
+            assert.strictEqual("one", state.turns[1]);
+            assert.strictEqual("two", state.turns[2]);
+
+            state.turns.push(state.turns.shift());
+            decodedState.decode(state.encode());
+
+            assert.strictEqual("one", state.turns[0]);
+            assert.strictEqual("two", state.turns[1]);
+            assert.strictEqual("three", state.turns[2]);
+
+            state.turns.clear();
+            decodedState.decode(state.encode());
+            assert.strictEqual(0, state.turns.length);
+        });
+    });
+
     it("should not crash when pushing an undefined value", () => {
         class Block extends Schema {
             @type("number") num: number;
@@ -1522,6 +1568,18 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([1, 2, 3, 4, 5], Array.from(decodedState.numbers));
         });
 
+    });
+
+    describe("Edge cases", () => {
+        xit("set values by index, sort, and then get values by index", () => {
+            const arr = new ArraySchema<number>();
+            arr[0] = 100;
+            arr[1] = 50;
+
+            const copy = arr.slice(0).sort((a, b) => a - b);
+            assert.strictEqual(50, copy[0]);
+            assert.strictEqual(100, copy[1]);
+        });
     });
 
 });
