@@ -3,7 +3,7 @@ import * as assert from "assert";
 import { nanoid } from "nanoid";
 import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection } from "../src";
 
-import { State, Player, getCallbacks } from "./Schema";
+import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll } from "./Schema";
 
 describe("Edge cases", () => {
     it("Schema should support up to 64 fields", () => {
@@ -23,6 +23,8 @@ describe("Edge cases", () => {
         for (let i = 0; i < maxFields; i++) {
             assert.strictEqual("value " + i, decodedState[`field_${i}`]);
         }
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should support more than 255 schema types", () => {
@@ -56,6 +58,8 @@ describe("Edge cases", () => {
         for (let i = 0; i < maxSchemaTypes; i++) {
             assert.strictEqual("value " + i, (decodedState.children[i] as any).str);
         }
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     describe("max fields limitations", () => {
@@ -172,6 +176,8 @@ describe("Edge cases", () => {
 
             decodedState.decode(state.encode());
             assert.strictEqual(10, decodedState.arrayOfNum[0]);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         xit("SWITCH_TO_STRUCTURE should not conflict with `DELETE_AND_ADD` on fieldIndex = 63", () => {
@@ -186,8 +192,10 @@ describe("Edge cases", () => {
 
             const decodedState = new State();
             decodedState.decode(state.encode());
+
+            assertDeepStrictEqualEncodeAll(state);
         });
-    })
+    });
 
     it("string: containing specific UTF-8 characters", () => {
         let bytes: Buffer;
@@ -250,10 +258,11 @@ describe("Edge cases", () => {
 
         decodedState3.decode(state.encode()); // patch existing client.
         assert.strictEqual(JSON.stringify(decodedState3), JSON.stringify(decodedState4));
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
-    it("DELETE_AND_ADD unintentionally dropping refId's", (done) => {
-        var uniqid = 0;
+    it("DELETE_AND_ADD unintentionally dropping refId's", () => {
         class TileStatusSchema extends Schema {
             @type("string") state: string;
         }
@@ -306,7 +315,7 @@ describe("Edge cases", () => {
             decodeState.decode(state.encode());
         }
 
-        done();
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     describe("concurrency", () => {
@@ -338,13 +347,11 @@ describe("Edge cases", () => {
             const onAddCalledFor: string[] = [];
             const onRemovedCalledFor: string[] = [];
 
-            $(decodedState).entities.onAdd(function(entity, key) {
-                onAddCalledFor.push(key);
-            });
+            $(decodedState).entities.onAdd((entity, key) =>
+                onAddCalledFor.push(key));
 
-            $(decodedState).entities.onRemove(function(entity, key) {
-                onRemovedCalledFor.push(key);
-            });
+            $(decodedState).entities.onRemove((entity, key) =>
+                onRemovedCalledFor.push(key));
 
             // insert 100 items.
             for (let i = 0; i < 100; i++) {
@@ -367,7 +374,7 @@ describe("Edge cases", () => {
                     setTimeout(() => {
                         const index = 'item' + i;
                         removedIndexes.push(index);
-                        delete state.entities[index];
+                        state.entities.delete(index);
                     }, Math.floor(Math.random() * 10));
                 }
 
