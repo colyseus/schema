@@ -29,6 +29,7 @@ export type Ref = Schema
 
 export class Root {
     protected nextUniqueId: number = 0;
+    refCount = new WeakMap<ChangeTree, number>();
 
     allChanges = new Map<ChangeTree, Map<number, OPERATION>>();
     changes = new Map<ChangeTree, Map<number, OPERATION>>();
@@ -40,10 +41,25 @@ export class Root {
         return this.nextUniqueId++;
     }
 
+    add (changeTree: ChangeTree) {
+        const refCount = this.refCount.get(changeTree) || 0;
+        this.refCount.set(changeTree, refCount + 1);
+    }
+
     remove(changeTree: ChangeTree) {
-        this.allChanges.delete(changeTree);
-        this.changes.delete(changeTree);
-        this.filteredChanges.delete(changeTree);
+        const refCount = this.refCount.get(changeTree);
+        if (refCount <= 1) {
+            this.allChanges.delete(changeTree);
+            this.changes.delete(changeTree);
+            this.filteredChanges.delete(changeTree);
+            this.refCount.delete(changeTree);
+
+        } else {
+            this.refCount.set(changeTree, refCount - 1);
+        }
+
+        changeTree.forEachChild((child, _) =>
+            this.remove(child));
     }
 
     clear() {
@@ -63,7 +79,7 @@ export class ChangeTree<T extends Ref=any> {
     parent?: Ref;
     parentIndex?: number;
 
-    indexes: {[index: string]: any} = {};
+    indexes: {[index: string]: any} = {}; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
     currentOperationIndex: number = 0;
 
     allChanges = new Map<number, OPERATION>();
@@ -78,6 +94,7 @@ export class ChangeTree<T extends Ref=any> {
 
     setRoot(root: Root) {
         this.root = root;
+        this.root.add(this);
 
         //
         // At Schema initialization, the "root" structure might not be available
@@ -119,13 +136,18 @@ export class ChangeTree<T extends Ref=any> {
         this.parent = parent;
         this.parentIndex = parentIndex;
 
-        if (
-            !root || // avoid setting parents with empty `root`
-            root === this.root // skip if parent is already set
-        ) {
+        // avoid setting parents with empty `root`
+        if (!root) { return; }
+
+        root.add(this);
+
+        // skip if parent is already set
+        if (root === this.root) {
+            this.forEachChild((changeTree, atIndex) => {
+                changeTree.setParent(this.ref, root, atIndex);
+            });
             return;
         }
-
 
         this.root = root;
         this.checkIsFiltered(parent, parentIndex);
@@ -362,6 +384,10 @@ export class ChangeTree<T extends Ref=any> {
 
         if (discardAll) {
             this.allChanges.clear();
+
+            // remove children references
+            this.forEachChild((changeTree, _) =>
+                this.root?.remove(changeTree));
         }
     }
 

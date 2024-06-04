@@ -122,14 +122,12 @@ export const encodeSchemaOperation: EncodeOperation = function (
         return;
     }
 
-    // console.log("encodeSchemaOperation -> ", { ref: changeTree.ref.constructor.name, field, operation: OPERATION[operation] });
-
     // TODO: inline this function call small performance gain
     encodeValue(encoder, bytes, ref, type, value, field, operation, it);
 }
 
 /**
- * Used for collections (MapSchema, ArraySchema, etc.)
+ * Used for collections (MapSchema, CollectionSchema, SetSchema)
  * @private
  */
 export const encodeKeyValueOperation: EncodeOperation = function (

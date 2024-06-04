@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { Schema, type, ArraySchema, MapSchema, Reflection } from "../src";
 import { $changes } from "../src/types/symbols";
-import { createInstanceFromReflection, getCallbacks, getDecoder, getEncoder } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getCallbacks, getDecoder, getEncoder } from "./Schema";
 
 describe("Instance sharing", () => {
     class Position extends Schema {
@@ -72,6 +72,7 @@ describe("Instance sharing", () => {
         }, decodedState.toJSON());
 
         assert.strictEqual(5, decoder.$root.refs.size, "Player and Position structures should remain.");
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should drop reference of deleted instance when decoding", () => {
@@ -99,6 +100,8 @@ describe("Instance sharing", () => {
 
         const newRefCount = decoder.$root.refs.size;
         assert.strictEqual(refCount - 2, newRefCount);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("sharing items inside ArraySchema", () => {
@@ -137,6 +140,8 @@ describe("Instance sharing", () => {
 
         const newRefCount = decoder.$root.refs.size;
         assert.strictEqual(refCount - 4, newRefCount);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("clearing ArraySchema", () => {
@@ -172,6 +177,8 @@ describe("Instance sharing", () => {
 
         const newRefCount = decoder.$root.refs.size;
         assert.strictEqual(refCount - 4, newRefCount);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("replacing ArraySchema should drop previous refId", () => {
@@ -194,6 +201,8 @@ describe("Instance sharing", () => {
         decodedState.decode(state.encode());
 
         assert.strictEqual(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("replacing ArraySchema should drop children's refId's", () => {
@@ -220,6 +229,8 @@ describe("Instance sharing", () => {
             Object.values(decoder.$root.refCounts).every(refCount => refCount > 0),
             "all refCount's should have a valid number."
         );
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow having shared Schema class with no fields", () => {
@@ -239,6 +250,8 @@ describe("Instance sharing", () => {
         decodedState.decode(state.encode());
 
         assert.strictEqual("one", (decodedState.quests.get('one') as QuestOne).name);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("client-side: should trigger on all shared places", () => {
@@ -274,6 +287,40 @@ describe("Instance sharing", () => {
         assert.strictEqual(decodedState.player2.hp, 100);
         assert.strictEqual(2, numHpChangeTriggered);
         assert.strictEqual(0, numMpChangeTriggered);
-    })
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
+    describe("change tracking", () => {
+        it("should track change of cleared container + modified instance", () => {
+            class Player extends Schema {
+                @type("number") hp: number;
+            }
+
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+                @type(Player) leader: Player;
+            }
+
+            const state = new State();
+            state.players.set("one", new Player().assign({ hp: 100 }));
+            state.players.set("two", new Player().assign({ hp: 100 }));
+            state.leader = state.players.get("one");
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+
+            state.leader.hp = 50;
+            state.players.clear();
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+    });
 
 });

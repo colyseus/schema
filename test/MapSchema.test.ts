@@ -258,7 +258,7 @@ describe("Type: MapSchema", () => {
 
         state.discardAllChanges();
 
-        delete state.mapOfPlayers['one'];
+        state.mapOfPlayers.delete('one');
         state.mapOfPlayers.set('one', new Player("Jake 2"));
 
         encoded = state.encode();
@@ -269,7 +269,7 @@ describe("Type: MapSchema", () => {
         assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake 2");
         assert.strictEqual(decodedState.mapOfPlayers.get('two').name, "Katarina");
 
-        delete state.mapOfPlayers['two'];
+        state.mapOfPlayers.delete('two');
         state.mapOfPlayers.set('two', new Player("Katarina 2"));
 
         encoded = state.encode();
