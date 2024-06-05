@@ -1,57 +1,8 @@
 import * as assert from "assert";
 import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes } from "../src";
-import { createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
+import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder } from "./Schema";
 import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 
-interface ClientView {
-    state: Schema;
-    view: StateView;
-}
-
-function createClient<T extends Schema>(from: T) {
-    const state = createInstanceFromReflection(from);
-    return {
-        state,
-        view: new StateView(),
-        $: getStateCallbacks(getDecoder(state)).$
-    };
-}
-
-function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, clients: ClientView[]) {
-    const it = { offset: 0 };
-
-    // perform shared encode
-
-    // console.log("> SHARED ENCODE...")
-    encoder.encode(it);
-    // console.log("< SHARED ENCODE FINISHED...")
-
-    const sharedOffset = it.offset;
-    const encodedViews = clients.map((client, i) => {
-        // console.log("(...encode client:", { i }, ")");
-
-        if (!client.state) {
-            client.state = createInstanceFromReflection(state);
-        }
-
-        // encode each view
-
-        // console.log(`> ENCODE VIEW (${i})...`);
-        const encoded = encoder.encodeView(client.view, sharedOffset, it);
-        // console.log("ENCODED:", encoded);
-        // console.log(`< ENCODE VIEW (${i}) FINISHED...`);
-
-        // console.log("> DECODE VIEW...");
-        client.state.decode(encoded);
-        // console.log("< DECODE VIEW FINISHED...");
-
-        return encoded;
-    });
-
-    encoder.discardChanges();
-
-    return encodedViews;
-}
 
 describe("StateView", () => {
 
@@ -64,10 +15,10 @@ describe("StateView", () => {
         const state = new State();
         const encoder = new Encoder(state);
 
-        const client1 = createClient(state);
+        const client1 = createClientWithView(state);
         client1.view.add(state);
 
-        const client2 = createClient(state);
+        const client2 = createClientWithView(state);
         encodeMultiple(encoder, state, [client1, client2]);
 
         assert.strictEqual(client1.state.prop1, state.prop1);
@@ -75,6 +26,8 @@ describe("StateView", () => {
 
         assert.strictEqual(client2.state.prop1, state.prop1);
         assert.strictEqual(client2.state.prop2, undefined);
+
+        assertEncodeAllMultiple(encoder, state, [client1, client2])
     });
 
     it("should filter items inside a collection", () => {
@@ -94,10 +47,10 @@ describe("StateView", () => {
 
         const encoder = new Encoder(state);
 
-        const client1 = createClient(state);
+        const client1 = createClientWithView(state);
         client1.view.add(state.items);
 
-        const client2 = createClient(state);
+        const client2 = createClientWithView(state);
         encodeMultiple(encoder, state, [client1, client2]);
 
         assert.strictEqual(client1.state.prop1, state.prop1);
@@ -105,6 +58,8 @@ describe("StateView", () => {
 
         assert.strictEqual(client2.state.prop1, state.prop1);
         assert.strictEqual(client2.state.items, undefined);
+
+        assertEncodeAllMultiple(encoder, state, [client1, client2])
     });
 
     describe("tagged properties", () => {
@@ -138,14 +93,14 @@ describe("StateView", () => {
 
             const encoder = new Encoder(state);
 
-            const client1 = createClient(state);
+            const client1 = createClientWithView(state);
             client1.view.add(state.players.get("0"));
             client1.view.add(state.players.get("1"), Tag.ZERO);
             client1.view.add(state.players.get("2"), Tag.ONE);
             client1.view.add(state.players.get("3"));
             client1.view.add(state.players.get("4"));
 
-            const client2 = createClient(state);
+            const client2 = createClientWithView(state);
             client2.view.add(state.players.get("0"));
 
             encodeMultiple(encoder, state, [client1, client2]);
@@ -174,6 +129,8 @@ describe("StateView", () => {
                 assert.strictEqual(client2.state.players.get(i.toString()).tag_0, undefined);
                 assert.strictEqual(client2.state.players.get(i.toString()).tag_1, undefined);
             }
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
         });
 
         it("view.remove() change should assign property to undefined", () => {
@@ -189,7 +146,7 @@ describe("StateView", () => {
             state.item = new Item().assign({ amount: 10 });
 
             const encoder = new Encoder(state);
-            const client1 = createClient(state);
+            const client1 = createClientWithView(state);
             client1.view.add(state.item);
 
             encodeMultiple(encoder, state, [client1]);
@@ -200,6 +157,8 @@ describe("StateView", () => {
             encodeMultiple(encoder, state, [client1]);
 
             assert.strictEqual(undefined, client1.state.item.amount);
+
+            assertEncodeAllMultiple(encoder, state, [client1])
         });
 
         it("view.add(TAG) should re-encode a discarded change", () => {
@@ -222,7 +181,7 @@ describe("StateView", () => {
 
             const encoder = new Encoder(state);
 
-            const client1 = createClient(state);
+            const client1 = createClientWithView(state);
             client1.view.add(state.item);
 
             encodeMultiple(encoder, state, [client1]);
@@ -241,6 +200,8 @@ describe("StateView", () => {
 
             assert.strictEqual(undefined, client1.state.item.amount);
             assert.strictEqual(undefined, client1.state.item.fov);
+
+            assertEncodeAllMultiple(encoder, state, [client1])
         });
 
         it("view.add(TAG) should not encode ADD twice", () => {
@@ -261,7 +222,7 @@ describe("StateView", () => {
 
             const encoder = new Encoder(state);
 
-            const client1 = createClient(state);
+            const client1 = createClientWithView(state);
             client1.view.add(state.item);
 
             encodeMultiple(encoder, state, [client1]);
@@ -285,7 +246,6 @@ describe("StateView", () => {
             assert.strictEqual(undefined, client1.state.item.fov2);
 
             client1.view.add(state.item, Tag.TWO);
-            console.log("> LAST ENCODE");
             const encodedTag2 = encodeMultiple(encoder, state, [client1])[0];
 
             // compare encode1 with encode2
@@ -299,6 +259,8 @@ describe("StateView", () => {
             assert.strictEqual(10, client1.state.item.amount);
             assert.strictEqual(20, client1.state.item.fov1);
             assert.strictEqual(30, client1.state.item.fov2);
+
+            assertEncodeAllMultiple(encoder, state, [client1])
         });
 
         it("view.add(TAG) should not encode ADD on top of a previous REMOVE", () => {
@@ -323,7 +285,7 @@ describe("StateView", () => {
 
             const encoder = new Encoder(state);
 
-            const client1 = createClient(state);
+            const client1 = createClientWithView(state);
             encodeMultiple(encoder, state, [client1]);
             assert.strictEqual(undefined, client1.state.item.amount);
             assert.strictEqual(undefined, client1.state.item.fov1);
@@ -343,6 +305,8 @@ describe("StateView", () => {
             assert.strictEqual(undefined, client1.state.item.amount);
             assert.strictEqual(undefined, client1.state.item.fov1);
             assert.strictEqual(undefined, client1.state.item.fov2);
+
+            assertEncodeAllMultiple(encoder, state, [client1])
         });
     });
 
@@ -365,10 +329,10 @@ describe("StateView", () => {
 
             const encoder = new Encoder(state);
 
-            const client1 = createClient(state);
+            const client1 = createClientWithView(state);
             client1.view.add(state.items.get("3"));
 
-            const client2 = createClient(state);
+            const client2 = createClientWithView(state);
             encodeMultiple(encoder, state, [client1, client2]);
 
             assert.strictEqual(client1.state.prop1, state.prop1);
@@ -377,6 +341,8 @@ describe("StateView", () => {
 
             assert.strictEqual(client2.state.prop1, state.prop1);
             assert.strictEqual(client2.state.items, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
         });
 
         it("should allow to add/remove items", () => {
@@ -395,8 +361,8 @@ describe("StateView", () => {
 
             const encoder = new Encoder(state);
 
-            const client1 = createClient(state);
-            const client2 = createClient(state);
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
 
             const encoded0 = encodeMultiple(encoder, state, [client1, client2]);
             assert.strictEqual(0, Array.from(encoded0[0]).length);
@@ -423,6 +389,7 @@ describe("StateView", () => {
             assert.strictEqual(client2.state.items.get("5").amount, state.items.get("5").amount);
             //
 
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
         });
 
     });
@@ -445,10 +412,10 @@ describe("StateView", () => {
 
             const encoder = new Encoder(state);
 
-            const client1 = createClient(state);
+            const client1 = createClientWithView(state);
             client1.view.add(state.items.at(3));
 
-            const client2 = createClient(state);
+            const client2 = createClientWithView(state);
             encodeMultiple(encoder, state, [client1, client2]);
 
             assert.strictEqual(client1.state.prop1, state.prop1);
@@ -457,6 +424,8 @@ describe("StateView", () => {
 
             assert.strictEqual(client2.state.prop1, state.prop1);
             assert.strictEqual(client2.state.items, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
         });
 
         it("should splice correct item", () => {
@@ -476,11 +445,11 @@ describe("StateView", () => {
             const encoder = getEncoder(state);
 
             // client1 has only one item
-            const client1 = createClient(state);
+            const client1 = createClientWithView(state);
             client1.view.add(state.items.at(3));
 
             // client2 has all items
-            const client2 = createClient(state);
+            const client2 = createClientWithView(state);
             client2.view.add(state.items);
             encodeMultiple(encoder, state, [client1, client2]);
 
@@ -488,18 +457,15 @@ describe("StateView", () => {
             assert.strictEqual(client1.state.items[0].amount, state.items.at(3).amount);
             assert.deepStrictEqual(client2.state.items.toJSON(), state.items.toJSON());
 
-            console.log(Schema.debugRefIds(state));
-
             const removedItems = state.items.splice(3, 1);
             assert.strictEqual(1, removedItems.length);
             assert.strictEqual(5, removedItems[0].amount);
             encodeMultiple(encoder, state, [client1, client2]);
 
-            console.log("client1 ->", client1.state.items.toJSON());
-            console.log("client2 ->", client2.state.items.toJSON());
-
             assert.strictEqual(client1.state.items.length, 0);
             assert.deepStrictEqual(client2.state.items.toJSON(), state.items.toJSON());
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
         });
 
         it("visibility change should add/remove array items", () => {
@@ -518,7 +484,7 @@ describe("StateView", () => {
 
             const encoder = new Encoder(state);
 
-            const client1 = createClient(state);
+            const client1 = createClientWithView(state);
             client1.view.add(state.items.at(3));
 
             encodeMultiple(encoder, state, [client1]);
@@ -531,6 +497,8 @@ describe("StateView", () => {
             encodeMultiple(encoder, state, [client1]);
 
             assert.strictEqual(client1.state.items.length, 0);
+
+            assertEncodeAllMultiple(encoder, state, [client1])
         });
 
         it("visibility change should trigger onAdd/onRemove on arrays", () => {
@@ -549,8 +517,8 @@ describe("StateView", () => {
 
             const encoder = new Encoder(state);
 
-            const client1 = createClient(state);
-            const client2 = createClient(state);
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
 
             client1.view.add(state.items.at(3));
             client2.view.add(state.items);
@@ -572,6 +540,8 @@ describe("StateView", () => {
             assert.strictEqual(client1.state.items.length, 0);
             assert.strictEqual(client2.state.items.length, 5);
             assert.strictEqual(1, onRemoveCalls);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
         });
     });
 

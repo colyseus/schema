@@ -1,4 +1,4 @@
-import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator } from "../src";
+import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator, StateView } from "../src";
 import { Decoder } from "../src/decoder/Decoder";
 import { Encoder } from "../src/encoder/Encoder";
 import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
@@ -57,16 +57,73 @@ Schema.prototype.encodeAll = function() {
     return getEncoder(this).encodeAll();
 }
 
-// interface IUser {
-//     name: string;
-// }
+export function createClientWithView<T extends Schema>(from: T, stateView: StateView = new StateView()) {
+    const state = createInstanceFromReflection(from);
+    return {
+        state,
+        view: stateView,
+        $: getStateCallbacks(getDecoder(state)).$
+    };
+}
 
-// interface ResponseMessage {
-//     user: IUser,
-//     str: string;
-//     n: number;
-//     shortcode: {[id: string]: string};
-// }
+export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, clients: Array<{ state: Schema, view: StateView }>) {
+    const it = { offset: 0 };
+
+    // perform shared encode
+    encoder.encode(it);
+
+    const sharedOffset = it.offset;
+    const encodedViews = clients.map((client, i) => {
+        if (!client.state) {
+            client.state = createInstanceFromReflection(state);
+        }
+
+        // encode each view
+        const encoded = encoder.encodeView(client.view, sharedOffset, it);
+        client.state.decode(encoded);
+
+        return encoded;
+    });
+
+    encoder.discardChanges();
+    return encodedViews;
+}
+
+export function assertEncodeAllMultiple<T extends Schema>(encoder: Encoder<T>, state: T, referenceClients: Array<{ state: Schema, view: StateView }>) {
+    const clients = referenceClients.map((client) => createClientWithView(state, client.view));
+
+    const it = { offset: 0 };
+
+    // perform shared encode
+
+    // console.log("> ENCODE ALL");
+    encoder.encodeAll(it);
+    // console.log("ENCODED!");
+
+    const sharedOffset = it.offset;
+    const encodedViews = clients.map((client, i) => {
+        if (!client.state) {
+            client.state = createInstanceFromReflection(state);
+        }
+
+        // encode each view
+        // console.log(`> ENCODE VIEW: client${i + 1}`);
+
+        const encoded = encoder.encodeAllView(client.view, sharedOffset, it);
+        client.state.decode(encoded);
+
+        return encoded;
+    });
+
+    referenceClients.forEach((referenceClient, i) => {
+        // console.log("--------------------");
+        // console.log("reference state ->", referenceClient.state.toJSON())
+        // console.log("actual state ->", clients[i].state.toJSON());
+        assert.deepStrictEqual(referenceClient.state.toJSON(), clients[i].state.toJSON(), `client${i + 1} state mismatch`);
+    });
+
+    return encodedViews;
+}
 
 /**
  * No filters example

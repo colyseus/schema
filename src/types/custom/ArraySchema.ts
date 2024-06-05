@@ -37,6 +37,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
      */
     static [$filter] (ref: ArraySchema, index: number, view: StateView) {
+        // console.log("ArraSchema[$filter] VIEW??", !view)
         return (
             !view ||
             typeof (ref[$childType]) === "string" ||

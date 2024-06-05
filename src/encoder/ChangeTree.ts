@@ -31,7 +31,11 @@ export class Root {
     protected nextUniqueId: number = 0;
     refCount = new WeakMap<ChangeTree, number>();
 
+    // all changes
     allChanges = new Map<ChangeTree, Map<number, OPERATION>>();
+    allFilteredChanges = new Map<ChangeTree, Map<number, OPERATION>>();
+
+    // pending changes to be encoded
     changes = new Map<ChangeTree, Map<number, OPERATION>>();
     filteredChanges = new Map<ChangeTree, Map<number, OPERATION>>();
 
@@ -51,7 +55,12 @@ export class Root {
         if (refCount <= 1) {
             this.allChanges.delete(changeTree);
             this.changes.delete(changeTree);
-            this.filteredChanges.delete(changeTree);
+
+            if (changeTree.isFiltered || changeTree.isPartiallyFiltered) {
+                this.allFilteredChanges.delete(changeTree);
+                this.filteredChanges.delete(changeTree);
+            }
+
             this.refCount.delete(changeTree);
 
         } else {
@@ -83,8 +92,10 @@ export class ChangeTree<T extends Ref=any> {
     currentOperationIndex: number = 0;
 
     allChanges = new Map<number, OPERATION>();
+    allFilteredChanges = new Map<number, OPERATION>();;
+
     changes = new Map<number, OPERATION>();
-    filteredChanges = new Map<number, OPERATION>();
+    filteredChanges = new Map<number, OPERATION>();;
 
     [$isNew] = true;
 
@@ -110,22 +121,27 @@ export class ChangeTree<T extends Ref=any> {
         if (!this.isFiltered) {
             this.root.changes.set(this, this.changes);
         }
+
         if (this.isFiltered || this.isPartiallyFiltered) {
+            this.root.allFilteredChanges.set(this, this.filteredChanges);
             this.root.filteredChanges.set(this, this.filteredChanges);
+
+        } else {
+            this.root.allChanges.set(this, this.allChanges);
         }
 
-        this.root.allChanges.set(this, this.allChanges);
+        // this.root.allChanges.set(this, this.allChanges);
 
-        // this.forEachChild((changeTree, _) => {
-        //     changeTree.setRoot(root);
-        // });
-
-        this.allChanges.forEach((_, index) => {
-            const childRef = this.ref[$getByIndex](index);
-            if (childRef && childRef[$changes]) {
-                childRef[$changes].setRoot(root);
-            }
+        this.forEachChild((changeTree, _) => {
+            changeTree.setRoot(root);
         });
+
+        // this.allChanges.forEach((_, index) => {
+        //     const childRef = this.ref[$getByIndex](index);
+        //     if (childRef && childRef[$changes]) {
+        //         childRef[$changes].setRoot(root);
+        //     }
+        // });
     }
 
     setParent(
@@ -155,10 +171,13 @@ export class ChangeTree<T extends Ref=any> {
         if (!this.isFiltered) {
             this.root.changes.set(this, this.changes);
         }
+
         if (this.isFiltered || this.isPartiallyFiltered) {
             this.root.filteredChanges.set(this, this.filteredChanges);
+            this.root.allFilteredChanges.set(this, this.filteredChanges);
+        } else {
+            this.root.allChanges.set(this, this.allChanges);
         }
-        this.root.allChanges.set(this, this.allChanges);
 
         this.ensureRefId();
 
@@ -219,12 +238,13 @@ export class ChangeTree<T extends Ref=any> {
         //
         // TODO: are DELETE operations being encoded as ADD here ??
         //
-        this.allChanges.set(index, OPERATION.ADD);
 
         if (isFiltered) {
+            this.allFilteredChanges.set(index, OPERATION.ADD);
             this.root?.filteredChanges.set(this, this.filteredChanges);
 
         } else {
+            this.allChanges.set(index, OPERATION.ADD);
             this.root?.changes.set(this, this.changes);
         }
     }
@@ -249,16 +269,20 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0) {
+        const allChangeSet = (this.isFiltered || this.isPartiallyFiltered)
+            ? this.allFilteredChanges
+            : this.allChanges;
+
         //
         // Used only during:
         //
         // - ArraySchema#splice()
         //
-        Array.from(this.allChanges.entries()).forEach(([index, op]) => {
+        Array.from(allChangeSet.entries()).forEach(([index, op]) => {
             // console.log('shiftAllChangeIndexes', index >= startIndex, { index, op, shiftIndex, startIndex })
             if (index >= startIndex) {
-                this.allChanges.delete(index);
-                this.allChanges.set(index + shiftIndex, op);
+                allChangeSet.delete(index);
+                allChangeSet.set(index + shiftIndex, op);
             }
         });
     }
@@ -267,13 +291,14 @@ export class ChangeTree<T extends Ref=any> {
         const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
 
         const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
-        this.allChanges.set(allChangesIndex, OPERATION.ADD);
 
         if (isFiltered) {
+            this.allFilteredChanges.set(allChangesIndex, OPERATION.ADD);
             this.filteredChanges.set(index, operation);
             this.root?.filteredChanges.set(this, this.filteredChanges);
 
         } else {
+            this.allChanges.set(allChangesIndex, OPERATION.ADD);
             this.changes.set(index, operation);
             this.root?.changes.set(this, this.changes);
         }
@@ -330,8 +355,6 @@ export class ChangeTree<T extends Ref=any> {
 
         changeSet.set(index, operation ?? OPERATION.DELETE);
 
-        this.allChanges.delete(allChangesIndex);
-
         // remove `root` reference
         if (previousValue && previousValue[$changes]) {
             previousValue[$changes].root = undefined;
@@ -353,9 +376,11 @@ export class ChangeTree<T extends Ref=any> {
         // FIXME: this is looking a bit ugly (and repeated from `.change()`)
         //
         if (isFiltered) {
+            this.allFilteredChanges.delete(allChangesIndex);
             this.root?.filteredChanges.set(this, this.filteredChanges);
 
         } else {
+            this.allChanges.delete(allChangesIndex);
             this.root?.changes.set(this, this.changes);
         }
     }
@@ -384,6 +409,7 @@ export class ChangeTree<T extends Ref=any> {
 
         if (discardAll) {
             this.allChanges.clear();
+            this.allFilteredChanges.clear();
 
             // remove children references
             this.forEachChild((changeTree, _) =>
@@ -448,6 +474,9 @@ export class ChangeTree<T extends Ref=any> {
             const changes = this.changes;
             this.changes = this.filteredChanges;
             this.filteredChanges = changes;
+
+            // this.allFilteredChanges = this.allChanges;
+            // this.allChanges.clear();
         }
     }
 

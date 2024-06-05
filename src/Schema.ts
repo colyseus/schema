@@ -239,6 +239,12 @@ export abstract class Schema {
             dumpChangeSet(changeTree.filteredChanges);
         }
 
+        // display filtered changes
+        if (isEncodeAll && changeTree.allFilteredChanges?.size > 0) {
+            output += `${instance.constructor.name} (${changeTree.refId}) -> .allFilteredChanges:\n`;
+            dumpChangeSet(changeTree.allFilteredChanges);
+        }
+
         return output;
     }
 

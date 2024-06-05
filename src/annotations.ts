@@ -563,8 +563,15 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
                 set: function (this: Schema, value: any) { /* throw new Error(`${field} is deprecated.`); */ },
                 enumerable: false,
                 configurable: true
-            }
+            };
         }
+
+        // flag metadata[field] as non-enumerable
+        Object.defineProperty(metadata, field, {
+            value: metadata[field],
+            enumerable: false,
+            configurable: true
+        });
     }
 }
 

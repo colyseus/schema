@@ -9,6 +9,7 @@ import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Root } from "./ChangeTree";
 import { getNextPowerOf2 } from "../utils";
 import { StateView } from "./StateView";
+import { Metadata } from "../Metadata";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = 8 * 1024;// 8KB
@@ -88,11 +89,23 @@ export class Encoder<T extends Schema = any> {
                 // TODO: avoid checking if no view tags were defined
                 //
                 if (filter && !filter(ref, fieldIndex, view)) {
-                    console.log("SKIP FIELD:", fieldIndex, changeTree.ref.constructor.name)
+                    // console.log("SKIP FIELD:", {
+                    //     ref: changeTree.ref.constructor.name,
+                    //     metadata:  changeTree.ref.constructor[Symbol.metadata],
+                    //     fieldIndex,
+                    // })
+
                     // console.log("ADD AS INVISIBLE:", fieldIndex, changeTree.ref.constructor.name)
                     // view?.invisible.add(changeTree);
                     continue;
                 }
+
+                // console.log("WILL ENCODE", {
+                //     ref: changeTree.ref.constructor.name,
+                //     fieldIndex,
+                //     metadata: changeTree.ref.constructor[Symbol.metadata]?.[fieldIndex],
+                //     operation: OPERATION[operation],
+                // });
 
                 encoder(this, bytes, changeTree, fieldIndex, operation, it, isEncodeAll, hasView);
             }
@@ -125,7 +138,23 @@ export class Encoder<T extends Schema = any> {
     }
 
     encodeAll(it: Iterator = { offset: 0 }) {
+        // console.log("ALL CHANGES!", this.$root.allChanges);
+
         return this.encode(it, undefined, this.sharedBuffer, this.$root.allChanges);
+    }
+
+    encodeAllView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
+        const viewOffset = it.offset;
+
+        // console.log("allFilteredChanges:", this.$root.allFilteredChanges);
+
+        // try to encode "filtered" changes
+        this.encode(it, view, bytes, this.$root.allFilteredChanges);
+
+        return Buffer.concat([
+            bytes.slice(0, sharedOffset),
+            bytes.slice(viewOffset, it.offset)
+        ]);
     }
 
     encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
@@ -137,9 +166,9 @@ export class Encoder<T extends Schema = any> {
         // encode visibility changes (add/remove for this view)
         const viewChangesIterator = view.changes.entries();
         for (const [changeTree, changes] of viewChangesIterator) {
-            // FIXME: avoid having empty changes if no changes were made
             if (changes.size === 0) {
-                console.log("changes.size === 0", changeTree.ref.constructor.name);
+                // FIXME: avoid having empty changes if no changes were made
+                // console.log("changes.size === 0", changeTree.ref.constructor.name);
                 continue;
             }
 
@@ -160,6 +189,10 @@ export class Encoder<T extends Schema = any> {
             }
         }
 
+        //
+        // TODO: only clear view changes after all views are encoded
+        // (to allow re-using StateView's for multiple clients)
+        //
         // clear "view" changes after encoding
         view.changes.clear();
 
