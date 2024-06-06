@@ -389,7 +389,7 @@ describe("StateView", () => {
             assert.strictEqual(client2.state.items.get("5").amount, state.items.get("5").amount);
             //
 
-            // assertEncodeAllMultiple(encoder, state, [client1, client2])
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
         });
 
     });
