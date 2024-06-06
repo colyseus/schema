@@ -92,7 +92,7 @@ export class ChangeTree<T extends Ref=any> {
     currentOperationIndex: number = 0;
 
     allChanges = new Map<number, OPERATION>();
-    allFilteredChanges = new Map<number, OPERATION>();;
+    allFilteredChanges = new Map<number, OPERATION>();
 
     changes = new Map<number, OPERATION>();
     filteredChanges = new Map<number, OPERATION>();;
@@ -123,14 +123,16 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         if (this.isFiltered || this.isPartiallyFiltered) {
-            this.root.allFilteredChanges.set(this, this.filteredChanges);
+            this.root.allFilteredChanges.set(this, this.allFilteredChanges);
             this.root.filteredChanges.set(this, this.filteredChanges);
 
-        } else {
-            this.root.allChanges.set(this, this.allChanges);
+        // } else {
+        //     this.root.allChanges.set(this, this.allChanges);
         }
 
-        // this.root.allChanges.set(this, this.allChanges);
+        if (!this.isFiltered) {
+            this.root.allChanges.set(this, this.allChanges);
+        }
 
         this.forEachChild((changeTree, _) => {
             changeTree.setRoot(root);
@@ -269,15 +271,21 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0) {
-        const allChangeSet = (this.isFiltered || this.isPartiallyFiltered)
-            ? this.allFilteredChanges
-            : this.allChanges;
-
         //
         // Used only during:
         //
         // - ArraySchema#splice()
         //
+        if (this.isFiltered || this.isPartiallyFiltered) {
+            this._shiftAllChangeIndexes(shiftIndex, startIndex, this.allFilteredChanges);
+            this._shiftAllChangeIndexes(shiftIndex, startIndex, this.allChanges);
+
+        } else {
+            this._shiftAllChangeIndexes(shiftIndex, startIndex, this.allChanges);
+        }
+    }
+
+    private _shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0, allChangeSet: Map<number, OPERATION>) {
         Array.from(allChangeSet.entries()).forEach(([index, op]) => {
             // console.log('shiftAllChangeIndexes', index >= startIndex, { index, op, shiftIndex, startIndex })
             if (index >= startIndex) {
@@ -289,7 +297,6 @@ export class ChangeTree<T extends Ref=any> {
 
     indexedOperation(index: number, operation: OPERATION, allChangesIndex = index) {
         const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
-
         const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
 
         if (isFiltered) {
@@ -376,12 +383,12 @@ export class ChangeTree<T extends Ref=any> {
         // FIXME: this is looking a bit ugly (and repeated from `.change()`)
         //
         if (isFiltered) {
-            this.allFilteredChanges.delete(allChangesIndex);
             this.root?.filteredChanges.set(this, this.filteredChanges);
+            this.allFilteredChanges.delete(allChangesIndex);
 
         } else {
-            this.allChanges.delete(allChangesIndex);
             this.root?.changes.set(this, this.changes);
+            this.allChanges.delete(allChangesIndex);
         }
     }
 
@@ -475,8 +482,10 @@ export class ChangeTree<T extends Ref=any> {
             this.changes = this.filteredChanges;
             this.filteredChanges = changes;
 
-            // this.allFilteredChanges = this.allChanges;
-            // this.allChanges.clear();
+            // swap "all changes" reference
+            const allFilteredChanges = this.allFilteredChanges;
+            this.allFilteredChanges = this.allChanges;
+            this.allChanges = allFilteredChanges;
         }
     }
 

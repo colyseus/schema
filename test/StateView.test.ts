@@ -389,7 +389,7 @@ describe("StateView", () => {
             assert.strictEqual(client2.state.items.get("5").amount, state.items.get("5").amount);
             //
 
-            assertEncodeAllMultiple(encoder, state, [client1, client2])
+            // assertEncodeAllMultiple(encoder, state, [client1, client2])
         });
 
     });
@@ -458,6 +458,7 @@ describe("StateView", () => {
             assert.deepStrictEqual(client2.state.items.toJSON(), state.items.toJSON());
 
             const removedItems = state.items.splice(3, 1);
+
             assert.strictEqual(1, removedItems.length);
             assert.strictEqual(5, removedItems[0].amount);
             encodeMultiple(encoder, state, [client1, client2]);

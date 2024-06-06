@@ -95,10 +95,7 @@ export function assertEncodeAllMultiple<T extends Schema>(encoder: Encoder<T>, s
     const it = { offset: 0 };
 
     // perform shared encode
-
-    // console.log("> ENCODE ALL");
     encoder.encodeAll(it);
-    // console.log("ENCODED!");
 
     const sharedOffset = it.offset;
     const encodedViews = clients.map((client, i) => {
@@ -116,9 +113,6 @@ export function assertEncodeAllMultiple<T extends Schema>(encoder: Encoder<T>, s
     });
 
     referenceClients.forEach((referenceClient, i) => {
-        // console.log("--------------------");
-        // console.log("reference state ->", referenceClient.state.toJSON())
-        // console.log("actual state ->", clients[i].state.toJSON());
         assert.deepStrictEqual(referenceClient.state.toJSON(), clients[i].state.toJSON(), `client${i + 1} state mismatch`);
     });
 

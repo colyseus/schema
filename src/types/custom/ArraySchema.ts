@@ -278,6 +278,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             //
             changeTree.root?.changes.delete(changeTree);
             changeTree.root?.allChanges.delete(changeTree);
+            changeTree.root?.allFilteredChanges.delete(changeTree);
         });
 
         changeTree.discard(true);
@@ -426,7 +427,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         changeTree.shiftChangeIndexes(items.length);
 
         // new index
-        changeTree.allChanges.set(this.items.length, OPERATION.ADD);
+        if (changeTree.isFiltered) {
+            changeTree.filteredChanges.set(this.items.length, OPERATION.ADD);
+        } else {
+            changeTree.allChanges.set(this.items.length, OPERATION.ADD);
+        }
 
         // FIXME: should we use OPERATION.MOVE here instead?
         items.forEach((_, index) => {

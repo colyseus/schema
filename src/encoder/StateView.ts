@@ -88,7 +88,10 @@ export class StateView {
             //     }
             // });
 
-            const it = changeTree.allChanges.keys();
+            const allChangesSet = (changeTree.isFiltered || changeTree.isPartiallyFiltered)
+                ? changeTree.allFilteredChanges
+                : changeTree.allChanges;
+            const it = allChangesSet.keys();
             const isInvisible = this.invisible.has(changeTree);
 
             for (const index of it) {

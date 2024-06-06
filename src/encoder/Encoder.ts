@@ -89,11 +89,7 @@ export class Encoder<T extends Schema = any> {
                 // TODO: avoid checking if no view tags were defined
                 //
                 if (filter && !filter(ref, fieldIndex, view)) {
-                    // console.log("SKIP FIELD:", {
-                    //     ref: changeTree.ref.constructor.name,
-                    //     metadata:  changeTree.ref.constructor[Symbol.metadata],
-                    //     fieldIndex,
-                    // })
+                    // console.log("SKIP FIELD:", { ref: changeTree.ref.constructor.name, fieldIndex, })
 
                     // console.log("ADD AS INVISIBLE:", fieldIndex, changeTree.ref.constructor.name)
                     // view?.invisible.add(changeTree);
@@ -103,7 +99,6 @@ export class Encoder<T extends Schema = any> {
                 // console.log("WILL ENCODE", {
                 //     ref: changeTree.ref.constructor.name,
                 //     fieldIndex,
-                //     metadata: changeTree.ref.constructor[Symbol.metadata]?.[fieldIndex],
                 //     operation: OPERATION[operation],
                 // });
 
@@ -138,7 +133,11 @@ export class Encoder<T extends Schema = any> {
     }
 
     encodeAll(it: Iterator = { offset: 0 }) {
-        // console.log("ALL CHANGES!", this.$root.allChanges);
+        // console.log(`encodeAll(), this.$root.allChanges (${this.$root.allChanges.size})`);
+
+        // Array.from(this.$root.allChanges.entries()).map((item) => {
+        //     console.log("->", item[0].refId, item[0].ref.toJSON());
+        // });
 
         return this.encode(it, undefined, this.sharedBuffer, this.$root.allChanges);
     }
@@ -146,7 +145,8 @@ export class Encoder<T extends Schema = any> {
     encodeAllView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
 
-        // console.log("allFilteredChanges:", this.$root.allFilteredChanges);
+        // console.log(`encodeAllView(), this.$root.allFilteredChanges (${this.$root.allFilteredChanges.size})`);
+        // this.debugAllFilteredChanges();
 
         // try to encode "filtered" changes
         this.encode(it, view, bytes, this.$root.allFilteredChanges);
@@ -156,6 +156,18 @@ export class Encoder<T extends Schema = any> {
             bytes.slice(viewOffset, it.offset)
         ]);
     }
+
+
+    // debugAllFilteredChanges() {
+    //     Array.from(this.$root.allFilteredChanges.entries()).map((item) => {
+    //         console.log("->", { refId: item[0].refId }, item[0].ref.toJSON());
+    //         if (Array.isArray(item[0].ref.toJSON())) {
+    //             item[1].forEach((op, key) => {
+    //                 console.log("  ->", { key, op: OPERATION[op] });
+    //             })
+    //         }
+    //     });
+    // }
 
     encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
