@@ -3,7 +3,6 @@ import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeT
 import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder } from "./Schema";
 import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 
-
 describe("StateView", () => {
 
     it("should filter out a property", () => {
@@ -543,6 +542,13 @@ describe("StateView", () => {
             assert.strictEqual(1, onRemoveCalls);
 
             assertEncodeAllMultiple(encoder, state, [client1, client2])
+        });
+    });
+
+    describe("Nested instances", () => {
+        xit("should sync nested instances", () => {
+            class State extends Schema {
+            }
         });
     });
 
