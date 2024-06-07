@@ -208,6 +208,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     }
 
     at(index: number) {
+        // Allow negative indexing from the end
+        if (index < 0) index += this.length;
         return this.items[index];
     }
 
@@ -508,7 +510,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * @param callbackfn A function that accepts up to three arguments. The filter method calls the callbackfn function one time for each element in the array.
      * @param thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value.
      */
-    filter(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any)
+    filter(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any): V[]
     filter<S extends V>(callbackfn: (value: V, index: number, array: V[]) => value is S, thisArg?: any): V[] {
         return this.items.filter(callbackfn, thisArg);
     }
