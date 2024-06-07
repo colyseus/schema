@@ -1789,7 +1789,7 @@ describe("ArraySchema Tests", () => {
     });
 
     describe("Edge cases", () => {
-        xit("set values by index, sort, and then get values by index", () => {
+        it("set values by index, sort, and then get values by index", () => {
             const arr = new ArraySchema<number>();
             arr[0] = 100;
             arr[1] = 50;
