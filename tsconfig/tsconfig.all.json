@@ -5,7 +5,9 @@
         "lib": ["ES2018"],
         "noImplicitAny": false,
         "inlineSources": true,
-        "sourceMap": true
+        "sourceMap": true,
+        "experimentalDecorators": true,
+        "useDefineForClassFields": false,
     },
     "include": [
       "../src/**/*.ts"

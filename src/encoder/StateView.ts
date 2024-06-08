@@ -3,6 +3,10 @@ import { $changes } from "../types/symbols";
 import { DEFAULT_VIEW_TAG } from "../annotations";
 import { OPERATION } from "../encoding/spec";
 import { Metadata } from "../Metadata";
+import type { Schema } from "../Schema";
+
+export function createView(root: Schema) {
+}
 
 export class StateView {
     /**

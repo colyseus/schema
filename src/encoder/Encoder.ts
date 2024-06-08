@@ -5,11 +5,10 @@ import { $changes, $encoder, $filter } from "../types/symbols";
 import * as encode from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
 
-import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
+import { SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Root } from "./ChangeTree";
 import { getNextPowerOf2 } from "../utils";
-import { StateView } from "./StateView";
-import { Metadata } from "../Metadata";
+import type { StateView } from "./StateView";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = 8 * 1024;// 8KB
@@ -18,7 +17,7 @@ export class Encoder<T extends Schema = any> {
     context: TypeContext;
     state: T;
 
-    $root: Root;
+    root: Root;
 
     constructor(root: T) {
         this.setRoot(root);
@@ -36,20 +35,20 @@ export class Encoder<T extends Schema = any> {
     }
 
     protected setRoot(state: T) {
-        this.$root = new Root();
+        this.root = new Root();
         this.state = state;
-        state[$changes].setRoot(this.$root);
+        state[$changes].setRoot(this.root);
     }
 
     encode(
         it: Iterator = { offset: 0 },
         view?: StateView,
         bytes = this.sharedBuffer,
-        changeTrees = this.$root.changes
+        changeTrees = this.root.changes
     ): Buffer {
         const initialOffset = it.offset; // cache current offset in case we need to resize the buffer
 
-        const isEncodeAll = this.$root.allChanges === changeTrees;
+        const isEncodeAll = this.root.allChanges === changeTrees;
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
@@ -139,7 +138,7 @@ export class Encoder<T extends Schema = any> {
         //     console.log("->", item[0].refId, item[0].ref.toJSON());
         // });
 
-        return this.encode(it, undefined, this.sharedBuffer, this.$root.allChanges);
+        return this.encode(it, undefined, this.sharedBuffer, this.root.allChanges);
     }
 
     encodeAllView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
@@ -149,7 +148,7 @@ export class Encoder<T extends Schema = any> {
         // this.debugAllFilteredChanges();
 
         // try to encode "filtered" changes
-        this.encode(it, view, bytes, this.$root.allFilteredChanges);
+        this.encode(it, view, bytes, this.root.allFilteredChanges);
 
         return Buffer.concat([
             bytes.slice(0, sharedOffset),
@@ -173,7 +172,7 @@ export class Encoder<T extends Schema = any> {
         const viewOffset = it.offset;
 
         // try to encode "filtered" changes
-        this.encode(it, view, bytes, this.$root.filteredChanges);
+        this.encode(it, view, bytes, this.root.filteredChanges);
 
         // encode visibility changes (add/remove for this view)
         const viewChangesIterator = view.changes.entries();
@@ -214,7 +213,7 @@ export class Encoder<T extends Schema = any> {
         ]);
     }
 
-    onEndEncode(changeTrees = this.$root.changes) {
+    onEndEncode(changeTrees = this.root.changes) {
         const changeTreesIterator = changeTrees.entries();
         for (const [changeTree, _] of changeTreesIterator) {
             changeTree.endEncode();
@@ -223,14 +222,14 @@ export class Encoder<T extends Schema = any> {
 
     discardChanges() {
         // discard shared changes
-        if (this.$root.changes.size > 0) {
-            this.onEndEncode(this.$root.changes);
-            this.$root.changes.clear();
+        if (this.root.changes.size > 0) {
+            this.onEndEncode(this.root.changes);
+            this.root.changes.clear();
         }
         // discard filtered changes
-        if (this.$root.filteredChanges.size > 0) {
-            this.onEndEncode(this.$root.filteredChanges);
-            this.$root.filteredChanges.clear();
+        if (this.root.filteredChanges.size > 0) {
+            this.onEndEncode(this.root.filteredChanges);
+            this.root.filteredChanges.clear();
         }
     }
 

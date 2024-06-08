@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "3.0.0-alpha.0",
+  "version": "3.0.0-alpha.1",
   "description": "Binary state serializer with delta encoding for games",
   "bin": {
     "schema-codegen": "./bin/schema-codegen"
@@ -57,7 +57,7 @@
   "license": "MIT",
   "devDependencies": {
     "@msgpack/msgpack": "^1.9.1",
-    "@rollup/plugin-typescript": "^8.2.0",
+    "@rollup/plugin-typescript": "^11.1.6",
     "@types/benchmark": "^2.1.0",
     "@types/glob": "^7.1.1",
     "@types/mocha": "^5.2.5",
