@@ -22,6 +22,7 @@
  */
 
 import { SWITCH_TO_STRUCTURE } from "./spec";
+import type { BufferLike } from "./encode";
 
 /**
  * msgpack implementation highly based on notepack.io
@@ -30,9 +31,11 @@ import { SWITCH_TO_STRUCTURE } from "./spec";
 
 export interface Iterator { offset: number; }
 
-function utf8Read(bytes, offset, length) {
+export function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
+  it.offset += length;
+
   var string = '', chr = 0;
-  for (var i = offset, end = offset + length; i < end; i++) {
+  for (var i = it.offset, end = it.offset + length; i < end; i++) {
     var byte = bytes[i];
     if ((byte & 0x80) === 0x00) {
       string += String.fromCharCode(byte);
@@ -74,45 +77,45 @@ function utf8Read(bytes, offset, length) {
   return string;
 }
 
-export function int8 (bytes: number[], it: Iterator) {
+export function int8 (bytes: BufferLike, it: Iterator) {
     return uint8(bytes, it) << 24 >> 24;
 };
 
-export function uint8 (bytes: number[], it: Iterator) {
+export function uint8 (bytes: BufferLike, it: Iterator) {
     return bytes[it.offset++];
 };
 
-export function int16 (bytes: number[], it: Iterator) {
+export function int16 (bytes: BufferLike, it: Iterator) {
     return uint16(bytes, it) << 16 >> 16;
 };
 
-export function uint16 (bytes: number[], it: Iterator) {
+export function uint16 (bytes: BufferLike, it: Iterator) {
     return bytes[it.offset++] | bytes[it.offset++] << 8;
 };
 
-export function int32 (bytes: number[], it: Iterator) {
+export function int32 (bytes: BufferLike, it: Iterator) {
     return bytes[it.offset++] | bytes[it.offset++] << 8 | bytes[it.offset++] << 16 | bytes[it.offset++] << 24;
 };
 
-export function uint32 (bytes: number[], it: Iterator) {
+export function uint32 (bytes: BufferLike, it: Iterator) {
     return int32(bytes, it) >>> 0;
 };
 
-export function float32(bytes: number[], it: Iterator) {
+export function float32(bytes: BufferLike, it: Iterator) {
   return readFloat32(bytes, it);
 }
 
-export function float64(bytes: number[], it: Iterator) {
+export function float64(bytes: BufferLike, it: Iterator) {
   return readFloat64(bytes, it);
 }
 
-export function int64(bytes: number[], it: Iterator) {
+export function int64(bytes: BufferLike, it: Iterator) {
   const low = uint32(bytes, it);
   const high = int32(bytes, it) * Math.pow(2, 32);
   return high + low;
 };
 
-export function uint64(bytes: number[], it: Iterator) {
+export function uint64(bytes: BufferLike, it: Iterator) {
   const low = uint32(bytes, it);
   const high = uint32(bytes, it) * Math.pow(2, 32);
   return high + low;
@@ -124,22 +127,22 @@ const _int32 = new Int32Array(2);
 const _float32 = new Float32Array(_int32.buffer);
 const _float64 = new Float64Array(_int32.buffer);
 
-export function readFloat32 (bytes: number[], it: Iterator) {
+export function readFloat32 (bytes: BufferLike, it: Iterator) {
     _int32[0] = int32(bytes, it);
     return _float32[0];
 };
 
-export function readFloat64 (bytes: number[], it: Iterator) {
+export function readFloat64 (bytes: BufferLike, it: Iterator) {
     _int32[_isLittleEndian ? 0 : 1] = int32(bytes, it);
     _int32[_isLittleEndian ? 1 : 0] = int32(bytes, it);
     return _float64[0];
 };
 
-export function boolean (bytes: number[], it: Iterator) {
+export function boolean (bytes: BufferLike, it: Iterator) {
     return uint8(bytes, it) > 0;
 };
 
-export function string (bytes, it: Iterator) {
+export function string (bytes: BufferLike, it: Iterator) {
   const prefix = bytes[it.offset++];
   let length: number;
 
@@ -157,13 +160,10 @@ export function string (bytes, it: Iterator) {
     length = uint32(bytes, it);
   }
 
-  const value = utf8Read(bytes, it.offset, length);
-  it.offset += length;
-
-  return value;
+  return utf8Read(bytes, it, length);
 }
 
-export function stringCheck(bytes, it: Iterator) {
+export function stringCheck(bytes: BufferLike, it: Iterator) {
   const prefix = bytes[it.offset];
   return (
     // fixstr
@@ -177,7 +177,7 @@ export function stringCheck(bytes, it: Iterator) {
   );
 }
 
-export function number (bytes, it: Iterator) {
+export function number (bytes: BufferLike, it: Iterator) {
   const prefix = bytes[it.offset++];
 
   if (prefix < 0x80) {
@@ -230,7 +230,7 @@ export function number (bytes, it: Iterator) {
   }
 };
 
-export function numberCheck (bytes, it: Iterator) {
+export function numberCheck (bytes: BufferLike, it: Iterator) {
   const prefix = bytes[it.offset];
   // positive fixint - 0x00 - 0x7f
   // float 32        - 0xca
@@ -249,7 +249,7 @@ export function numberCheck (bytes, it: Iterator) {
   );
 }
 
-export function arrayCheck (bytes, it: Iterator) {
+export function arrayCheck (bytes: BufferLike, it: Iterator) {
   return bytes[it.offset] < 0xa0;
 
   // const prefix = bytes[it.offset] ;
@@ -268,7 +268,7 @@ export function arrayCheck (bytes, it: Iterator) {
   // return prefix;
 }
 
-export function switchStructureCheck(bytes, it: Iterator) {
+export function switchStructureCheck(bytes: BufferLike, it: Iterator) {
   return (
       // previous byte should be `SWITCH_TO_STRUCTURE`
       bytes[it.offset - 1] === SWITCH_TO_STRUCTURE &&
