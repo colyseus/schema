@@ -35,7 +35,7 @@ let textEncoder: TextEncoder;
 // @ts-ignore
 try { textEncoder = new TextEncoder(); } catch (e) { }
 
-function utf8Length(str) {
+export function utf8Length(str) {
   var c = 0, length = 0;
   for (var i = 0, l = str.length; i < l; i++) {
     c = str.charCodeAt(i);
