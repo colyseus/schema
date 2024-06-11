@@ -39,8 +39,6 @@ export class Root {
     changes = new Map<ChangeTree, Map<number, OPERATION>>();
     filteredChanges = new Map<ChangeTree, Map<number, OPERATION>>();
 
-    views: StateView[] = [];
-
     getNextUniqueId() {
         return this.nextUniqueId++;
     }
