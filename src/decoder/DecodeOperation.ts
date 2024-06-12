@@ -4,7 +4,7 @@ import { Schema } from "../Schema";
 import type { Ref } from "../encoder/ChangeTree";
 import type { Decoder } from "./Decoder";
 import * as decode from "../encoding/decode";
-import { $changes, $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
+import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
 
 import type { MapSchema } from "../types/custom/MapSchema";
 import type { ArraySchema } from "../types/custom/ArraySchema";
@@ -43,7 +43,7 @@ export function decodeValue(
     it: decode.Iterator,
     allChanges: DataChange[],
 ) {
-    const $root = decoder.$root;
+    const $root = decoder.root;
     const previousValue = ref[$getByIndex](index);
 
     let value: any;
@@ -318,7 +318,7 @@ export const decodeArray: DecodeOperation = function (
     } else if (operation === OPERATION.DELETE_BY_REFID) {
         // TODO: refactor here, try to follow same flow as below
         const refId = decode.number(bytes, it);
-        const previousValue = decoder.$root.refs.get(refId);
+        const previousValue = decoder.root.refs.get(refId);
         const index = ref.findIndex((value) => value === previousValue);
         ref[$deleteByIndex](index);
         allChanges.push({

@@ -43,7 +43,7 @@ export class Encoder<T extends Schema = any> {
     encode(
         it: Iterator = { offset: 0 },
         view?: StateView,
-        bytes = this.sharedBuffer,
+        buffer = this.sharedBuffer,
         changeTrees = this.root.changes
     ): Buffer {
         const initialOffset = it.offset; // cache current offset in case we need to resize the buffer
@@ -73,8 +73,8 @@ export class Encoder<T extends Schema = any> {
 
             // skip root `refId` if it's the first change tree
             if (it.offset !== initialOffset || changeTree !== rootChangeTree) {
-                bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-                encode.number(bytes, changeTree.refId, it);
+                buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
+                encode.number(buffer, changeTree.refId, it);
             }
 
             const changesIterator = changes.entries();
@@ -101,13 +101,13 @@ export class Encoder<T extends Schema = any> {
                 //     operation: OPERATION[operation],
                 // });
 
-                encoder(this, bytes, changeTree, fieldIndex, operation, it, isEncodeAll, hasView);
+                encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView);
             }
         }
 
-        if (it.offset > bytes.byteLength) {
+        if (it.offset > buffer.byteLength) {
             const newSize = getNextPowerOf2(this.sharedBuffer.byteLength * 2);
-            console.warn("@colyseus/schema encode buffer overflow. Current buffer size: " + bytes.byteLength + ", encoding offset: " + it.offset + ", new size: " + newSize);
+            console.warn("@colyseus/schema encode buffer overflow. Current buffer size: " + buffer.byteLength + ", encoding offset: " + it.offset + ", new size: " + newSize);
 
             //
             // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
@@ -127,7 +127,7 @@ export class Encoder<T extends Schema = any> {
             }
 
             // return bytes;
-            return bytes.slice(0, it.offset);
+            return buffer.slice(0, it.offset);
         }
     }
 

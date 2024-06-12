@@ -14,7 +14,7 @@ export class Decoder<T extends Schema = any> {
     context: TypeContext;
 
     state: T;
-    $root: ReferenceTracker;
+    root: ReferenceTracker;
 
     currentRefId: number = 0;
 
@@ -32,8 +32,8 @@ export class Decoder<T extends Schema = any> {
 
     protected setRoot(root: T) {
         this.state = root;
-        this.$root = new ReferenceTracker();
-        this.$root.addRef(0, root);
+        this.root = new ReferenceTracker();
+        this.root.addRef(0, root);
     }
 
     decode(
@@ -43,7 +43,7 @@ export class Decoder<T extends Schema = any> {
     ) {
         const allChanges: DataChange[] = [];
 
-        const $root = this.$root;
+        const $root = this.root;
         const totalBytes = bytes.byteLength;
 
         let decoder: DecodeOperation = ref['constructor'][$decoder];
@@ -146,7 +146,7 @@ export class Decoder<T extends Schema = any> {
             });
 
             if (needRemoveRef) {
-                this.$root.removeRef(this.$root.refIds.get(value));
+                this.root.removeRef(this.root.refIds.get(value));
             }
         });
     }

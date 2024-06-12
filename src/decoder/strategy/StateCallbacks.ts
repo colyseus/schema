@@ -49,7 +49,7 @@ type CallContext = {
 }
 
 export function getStateCallbacks(decoder: Decoder) {
-    const $root = decoder.$root;
+    const $root = decoder.root;
     const callbacks = $root.callbacks;
 
     let isTriggeringOnAdd = false;

@@ -56,7 +56,7 @@ export function utf8Length(str) {
   return length;
 }
 
-export function utf8Write(view, str, it) {
+export function utf8Write(view: BufferLike, str: string, it: Iterator) {
   var c = 0;
   for (var i = 0, l = str.length; i < l; i++) {
     c = str.charCodeAt(i);
