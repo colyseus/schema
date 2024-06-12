@@ -24,7 +24,7 @@ export class ReflectionType extends Schema {
 export class Reflection extends Schema {
     @type([ ReflectionType ]) types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
 
-    static encode (instance: Schema, context?: TypeContext) {
+    static encode(instance: Schema, context?: TypeContext, it: Iterator = { offset: 0 }) {
         if (!context) {
             context = new TypeContext(instance.constructor as typeof Schema);
         }
@@ -96,7 +96,6 @@ export class Reflection extends Schema {
             buildType(type, klass[Symbol.metadata]);
         }
 
-        const it = { offset: 0 };
         const buf = encoder.encodeAll(it);
         return Buffer.from(buf, 0, it.offset);
     }
