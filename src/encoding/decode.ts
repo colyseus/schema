@@ -32,8 +32,6 @@ import type { BufferLike } from "./encode";
 export interface Iterator { offset: number; }
 
 export function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
-  it.offset += length;
-
   var string = '', chr = 0;
   for (var i = it.offset, end = it.offset + length; i < end; i++) {
     var byte = bytes[i];
@@ -74,6 +72,7 @@ export function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
     // (do not throw error to avoid server/client from crashing due to hack attemps)
     // throw new Error('Invalid byte ' + byte.toString(16));
   }
+  it.offset += length;
   return string;
 }
 
