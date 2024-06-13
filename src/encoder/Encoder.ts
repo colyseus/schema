@@ -131,14 +131,14 @@ export class Encoder<T extends Schema = any> {
         }
     }
 
-    encodeAll(it: Iterator = { offset: 0 }) {
+    encodeAll(it: Iterator = { offset: 0 }, buffer: Buffer = this.sharedBuffer) {
         // console.log(`encodeAll(), this.$root.allChanges (${this.$root.allChanges.size})`);
 
         // Array.from(this.$root.allChanges.entries()).map((item) => {
         //     console.log("->", item[0].refId, item[0].ref.toJSON());
         // });
 
-        return this.encode(it, undefined, this.sharedBuffer, this.root.allChanges);
+        return this.encode(it, undefined, buffer, this.root.allChanges);
     }
 
     encodeAllView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
