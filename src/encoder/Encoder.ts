@@ -106,14 +106,20 @@ export class Encoder<T extends Schema = any> {
         }
 
         if (it.offset > buffer.byteLength) {
-            const newSize = getNextPowerOf2(this.sharedBuffer.byteLength * 2);
+            const newSize = getNextPowerOf2(buffer.byteLength * 2);
             console.warn("@colyseus/schema encode buffer overflow. Current buffer size: " + buffer.byteLength + ", encoding offset: " + it.offset + ", new size: " + newSize);
 
             //
             // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
             //
-            this.sharedBuffer = Buffer.allocUnsafeSlow(newSize);
-            return this.encode({ offset: initialOffset }, view);
+            buffer = Buffer.allocUnsafeSlow(newSize);
+
+            // assign resized buffer to local sharedBuffer
+            if (buffer === this.sharedBuffer) {
+                this.sharedBuffer = buffer;
+            }
+
+            return this.encode({ offset: initialOffset }, view, buffer);
 
         } else {
             //
