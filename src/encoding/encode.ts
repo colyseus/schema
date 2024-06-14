@@ -35,26 +35,30 @@ let textEncoder: TextEncoder;
 // @ts-ignore
 try { textEncoder = new TextEncoder(); } catch (e) { }
 
-export function utf8Length(str) {
-  var c = 0, length = 0;
-  for (var i = 0, l = str.length; i < l; i++) {
-    c = str.charCodeAt(i);
-    if (c < 0x80) {
-      length += 1;
+const hasBufferByteLength = (typeof Buffer !== 'undefined' && Buffer.byteLength);
+
+export const utf8Length = (hasBufferByteLength)
+    ? Buffer.byteLength // node
+    : function (str: string, _?: any) {
+        var c = 0, length = 0;
+        for (var i = 0, l = str.length; i < l; i++) {
+            c = str.charCodeAt(i);
+            if (c < 0x80) {
+                length += 1;
+            }
+            else if (c < 0x800) {
+                length += 2;
+            }
+            else if (c < 0xd800 || c >= 0xe000) {
+                length += 3;
+            }
+            else {
+                i++;
+                length += 4;
+            }
+        }
+        return length;
     }
-    else if (c < 0x800) {
-      length += 2;
-    }
-    else if (c < 0xd800 || c >= 0xe000) {
-      length += 3;
-    }
-    else {
-      i++;
-      length += 4;
-    }
-  }
-  return length;
-}
 
 export function utf8Write(view: BufferLike, str: string, it: Iterator) {
   var c = 0;
@@ -166,8 +170,7 @@ export function string(bytes: BufferLike, value: string, it: Iterator) {
   // encode `null` strings as empty.
   if (!value) { value = ""; }
 
-  // let length = utf8Length(value);
-  let length = Buffer.byteLength(value, "utf8");
+  let length = utf8Length(value, "utf8");
   let size = 0;
 
   // fixstr
