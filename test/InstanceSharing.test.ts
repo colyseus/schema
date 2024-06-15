@@ -41,7 +41,7 @@ describe("Instance sharing", () => {
             mapOfPlayers: {}
         }, decodedState.toJSON());
 
-        assert.strictEqual(5, decoder.$root.refs.size);
+        assert.strictEqual(5, decoder.root.refs.size);
 
         const encoder = getEncoder(state);
 
@@ -58,7 +58,7 @@ describe("Instance sharing", () => {
             mapOfPlayers: {}
 
         }, decodedState.toJSON());
-        assert.strictEqual(5, decoder.$root.refs.size);
+        assert.strictEqual(5, decoder.root.refs.size);
 
         state.player2 = player;
         state.player1 = undefined;
@@ -71,7 +71,7 @@ describe("Instance sharing", () => {
 
         }, decodedState.toJSON());
 
-        assert.strictEqual(5, decoder.$root.refs.size, "Player and Position structures should remain.");
+        assert.strictEqual(5, decoder.root.refs.size, "Player and Position structures should remain.");
         assertDeepStrictEqualEncodeAll(state);
     });
 
@@ -91,14 +91,14 @@ describe("Instance sharing", () => {
 
         const decoder = getDecoder(decodedState);
 
-        const refCount = decoder.$root.refs.size;
+        const refCount = decoder.root.refs.size;
         assert.strictEqual(5, refCount);
 
         state.player1 = undefined;
         state.player2 = undefined;
         decodedState.decode(state.encode());
 
-        const newRefCount = decoder.$root.refs.size;
+        const newRefCount = decoder.root.refs.size;
         assert.strictEqual(refCount - 2, newRefCount);
 
         assertDeepStrictEqualEncodeAll(state);
@@ -128,7 +128,7 @@ describe("Instance sharing", () => {
 
         const decoder = getDecoder(decodedState);
 
-        const refCount = decoder.$root.refs.size;
+        const refCount = decoder.root.refs.size;
         assert.strictEqual(7, refCount);
 
         state.arrayOfPlayers.pop();
@@ -138,7 +138,7 @@ describe("Instance sharing", () => {
 
         decodedState.decode(state.encode());
 
-        const newRefCount = decoder.$root.refs.size;
+        const newRefCount = decoder.root.refs.size;
         assert.strictEqual(refCount - 4, newRefCount);
 
         assertDeepStrictEqualEncodeAll(state);
@@ -168,14 +168,14 @@ describe("Instance sharing", () => {
 
         const decoder = getDecoder(decodedState);
 
-        const refCount = decoder.$root.refs.size;
+        const refCount = decoder.root.refs.size;
         assert.strictEqual(7, refCount);
 
         state.arrayOfPlayers.clear();
 
         decodedState.decode(state.encode());
 
-        const newRefCount = decoder.$root.refs.size;
+        const newRefCount = decoder.root.refs.size;
         assert.strictEqual(refCount - 4, newRefCount);
 
         assertDeepStrictEqualEncodeAll(state);
@@ -194,7 +194,7 @@ describe("Instance sharing", () => {
 
         const decoder = getDecoder(decodedState);
 
-        const getRefCount = () => decoder.$root.refs.size;
+        const getRefCount = () => decoder.root.refs.size;
         const firstCount = getRefCount();
 
         state.arrayOfNumbers = [4, 5, 6];
@@ -215,7 +215,7 @@ describe("Instance sharing", () => {
         decodedState.decode(state.encode());
 
         const decoder = getDecoder(decodedState);
-        const numRefs = decoder.$root.refs.size;
+        const numRefs = decoder.root.refs.size;
 
         state.arrayOfPlayers = new ArraySchema<Player>();
         state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 10, y: 20 }) }));
@@ -223,10 +223,10 @@ describe("Instance sharing", () => {
 
         decodedState.decode(state.encode());
 
-        assert.strictEqual(numRefs, decoder.$root.refs.size, "should've dropped reference to previous ArraySchema");
+        assert.strictEqual(numRefs, decoder.root.refs.size, "should've dropped reference to previous ArraySchema");
         assert.strictEqual(
             true,
-            Object.values(decoder.$root.refCounts).every(refCount => refCount > 0),
+            Object.values(decoder.root.refCounts).every(refCount => refCount > 0),
             "all refCount's should have a valid number."
         );
 

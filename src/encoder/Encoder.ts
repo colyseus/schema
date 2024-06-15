@@ -132,15 +132,14 @@ export class Encoder<T extends Schema = any> {
                 this.onEndEncode(changeTrees);
             }
 
-            // return bytes;
-            return buffer.slice(0, it.offset);
+            return buffer.subarray(0, it.offset);
         }
     }
 
     encodeAll(it: Iterator = { offset: 0 }, buffer: Buffer = this.sharedBuffer) {
-        // console.log(`encodeAll(), this.$root.allChanges (${this.$root.allChanges.size})`);
+        // console.log(`encodeAll(), this.root.allChanges (${this.root.allChanges.size})`);
 
-        // Array.from(this.$root.allChanges.entries()).map((item) => {
+        // Array.from(this.root.allChanges.entries()).map((item) => {
         //     console.log("->", item[0].refId, item[0].ref.toJSON());
         // });
 
@@ -150,21 +149,21 @@ export class Encoder<T extends Schema = any> {
     encodeAllView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
 
-        // console.log(`encodeAllView(), this.$root.allFilteredChanges (${this.$root.allFilteredChanges.size})`);
+        // console.log(`encodeAllView(), this.root.allFilteredChanges (${this.root.allFilteredChanges.size})`);
         // this.debugAllFilteredChanges();
 
         // try to encode "filtered" changes
         this.encode(it, view, bytes, this.root.allFilteredChanges);
 
         return Buffer.concat([
-            bytes.slice(0, sharedOffset),
-            bytes.slice(viewOffset, it.offset)
+            bytes.subarray(0, sharedOffset),
+            bytes.subarray(viewOffset, it.offset)
         ]);
     }
 
 
     // debugAllFilteredChanges() {
-    //     Array.from(this.$root.allFilteredChanges.entries()).map((item) => {
+    //     Array.from(this.root.allFilteredChanges.entries()).map((item) => {
     //         console.log("->", { refId: item[0].refId }, item[0].ref.toJSON());
     //         if (Array.isArray(item[0].ref.toJSON())) {
     //             item[1].forEach((op, key) => {
@@ -214,8 +213,8 @@ export class Encoder<T extends Schema = any> {
         view.changes.clear();
 
         return Buffer.concat([
-            bytes.slice(0, sharedOffset),
-            bytes.slice(viewOffset, it.offset)
+            bytes.subarray(0, sharedOffset),
+            bytes.subarray(viewOffset, it.offset)
         ]);
     }
 
