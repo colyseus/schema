@@ -1,12 +1,12 @@
 {
   "name": "@colyseus/schema",
-  "version": "2.0.33",
+  "version": "2.0.34",
   "description": "Binary state serializer with delta encoding for games",
   "bin": {
     "schema-codegen": "./bin/schema-codegen"
   },
   "scripts": {
-    "build": "tsc && rollup -c rollup.config.js",
+    "build": "tsc && rollup -c rollup.config.mjs",
     "watch": "tsc -w",
     "test": "mocha --require ts-node/register test/*.test.ts test/**/*.test.ts",
     "coverage": "nyc mocha --require ts-node/register --require source-map-support/register --recursive test/**Test.ts",
@@ -57,7 +57,7 @@
   "license": "MIT",
   "devDependencies": {
     "@msgpack/msgpack": "^1.9.1",
-    "@rollup/plugin-typescript": "^8.2.0",
+    "@rollup/plugin-typescript": "^11.1.6",
     "@types/benchmark": "^2.1.0",
     "@types/glob": "^7.1.1",
     "@types/mocha": "^5.2.5",
@@ -73,13 +73,13 @@
     "nanoid": "^3.1.10",
     "nyc": "^14.1.1",
     "rimraf": "^3.0.0",
-    "rollup": "^2.40.0",
+    "rollup": "^4.18.0",
     "sinon": "^7.2.2",
     "source-map-support": "^0.5.13",
     "ts-node": "^7.0.1",
     "tslib": "^2.1.0",
     "tsx": "^3.13.0",
-    "typescript": "^5.2.2"
+    "typescript": "^5.4.5"
   },
   "nyc": {
     "extension": [
