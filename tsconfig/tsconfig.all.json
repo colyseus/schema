@@ -4,6 +4,7 @@
         "moduleResolution": "node",
         "lib": ["ES2018"],
         "experimentalDecorators": true,
+        "useDefineForClassFields": false,
         "noImplicitAny": false,
         "inlineSources": true,
         "sourceMap": true
