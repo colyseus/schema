@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes } from "../src";
-import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder } from "./Schema";
+import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection } from "./Schema";
 import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 
 describe("StateView", () => {
@@ -387,6 +387,67 @@ describe("StateView", () => {
             assert.strictEqual(client2.state.items.get("4").amount, state.items.get("4").amount);
             assert.strictEqual(client2.state.items.get("5").amount, state.items.get("5").amount);
             //
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
+        });
+
+        it("should hide a single field on child structure", () => {
+            class Vec2 extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+            }
+
+            class Item extends Schema {
+                @view() @type(Vec2) position: Vec2;
+                @type("number") health: number = 100;
+            }
+
+            class State extends Schema {
+                @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = new Encoder(state);
+
+            for (let i = 1; i <= 5; i++) {
+                state.items.set(i.toString(), new Item().assign({
+                    position: new Vec2().assign({ x: i * 10, y: i * 10 }),
+                    health: 200
+                }));
+            }
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state.items.get("1"));
+
+            const client2 = createClientWithView(state);
+            client2.view.add(state.items.get("2"));
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // client 1 should have only the position field
+            assert.strictEqual(5, client1.state.items.size);
+            assert.deepStrictEqual({ x: 10, y: 10 }, client1.state.items.get("1").position.toJSON());
+            assert.strictEqual(200, client1.state.items.get("1").health);
+            assert.strictEqual(undefined, client1.state.items.get("2").position);
+            assert.strictEqual(200, client1.state.items.get("2").health);
+            assert.strictEqual(undefined, client1.state.items.get("3").position);
+            assert.strictEqual(200, client1.state.items.get("3").health);
+            assert.strictEqual(undefined, client1.state.items.get("4").position);
+            assert.strictEqual(200, client1.state.items.get("4").health);
+            assert.strictEqual(undefined, client1.state.items.get("5").position);
+            assert.strictEqual(200, client1.state.items.get("5").health);
+
+            // client 2 should have only the position field
+            assert.strictEqual(5, client2.state.items.size);
+            assert.strictEqual(undefined, client2.state.items.get("1").position);
+            assert.strictEqual(200, client2.state.items.get("1").health);
+            assert.deepStrictEqual({ x: 20, y: 20 }, client2.state.items.get("2").position.toJSON());
+            assert.strictEqual(200, client2.state.items.get("2").health);
+            assert.strictEqual(undefined, client2.state.items.get("3").position);
+            assert.strictEqual(200, client2.state.items.get("3").health);
+            assert.strictEqual(undefined, client2.state.items.get("4").position);
+            assert.strictEqual(200, client2.state.items.get("4").health);
+            assert.strictEqual(undefined, client2.state.items.get("5").position);
+            assert.strictEqual(200, client2.state.items.get("5").health);
 
             assertEncodeAllMultiple(encoder, state, [client1, client2])
         });

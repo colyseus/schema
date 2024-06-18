@@ -170,13 +170,12 @@ export class ChangeTree<T extends Ref=any> {
 
         if (!this.isFiltered) {
             this.root.changes.set(this, this.changes);
+            this.root.allChanges.set(this, this.allChanges);
         }
 
         if (this.isFiltered || this.isPartiallyFiltered) {
             this.root.filteredChanges.set(this, this.filteredChanges);
             this.root.allFilteredChanges.set(this, this.filteredChanges);
-        } else {
-            this.root.allChanges.set(this, this.allChanges);
         }
 
         this.ensureRefId();
@@ -285,7 +284,6 @@ export class ChangeTree<T extends Ref=any> {
 
     private _shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0, allChangeSet: Map<number, OPERATION>) {
         Array.from(allChangeSet.entries()).forEach(([index, op]) => {
-            // console.log('shiftAllChangeIndexes', index >= startIndex, { index, op, shiftIndex, startIndex })
             if (index >= startIndex) {
                 allChangeSet.delete(index);
                 allChangeSet.set(index + shiftIndex, op);
@@ -452,7 +450,7 @@ export class ChangeTree<T extends Ref=any> {
 
     protected checkIsFiltered(parent: Ref, parentIndex: number) {
         // Detect if current structure has "filters" declared
-        this.isPartiallyFiltered = this.ref['constructor']?.[Symbol.metadata]?.[-2];
+        this.isPartiallyFiltered = (this.ref['constructor']?.[Symbol.metadata]?.[-2] !== undefined);
 
         // TODO: support "partially filtered", where the instance is visible, but only a field is not.
 

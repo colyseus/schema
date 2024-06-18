@@ -5,7 +5,7 @@ import { $changes, $encoder, $filter } from "../types/symbols";
 import * as encode from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
 
-import { SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
+import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Root } from "./ChangeTree";
 import { getNextPowerOf2 } from "../utils";
 import type { StateView } from "./StateView";
@@ -140,7 +140,7 @@ export class Encoder<T extends Schema = any> {
         // console.log(`encodeAll(), this.root.allChanges (${this.root.allChanges.size})`);
 
         // Array.from(this.root.allChanges.entries()).map((item) => {
-        //     console.log("->", item[0].refId, item[0].ref.toJSON());
+        //     console.log("->", { ref: item[0].ref.constructor.name, refId: item[0].refId, changes: item[1].size });
         // });
 
         return this.encode(it, undefined, buffer, this.root.allChanges);
@@ -162,16 +162,16 @@ export class Encoder<T extends Schema = any> {
     }
 
 
-    // debugAllFilteredChanges() {
-    //     Array.from(this.root.allFilteredChanges.entries()).map((item) => {
-    //         console.log("->", { refId: item[0].refId }, item[0].ref.toJSON());
-    //         if (Array.isArray(item[0].ref.toJSON())) {
-    //             item[1].forEach((op, key) => {
-    //                 console.log("  ->", { key, op: OPERATION[op] });
-    //             })
-    //         }
-    //     });
-    // }
+    debugAllFilteredChanges() {
+        Array.from(this.root.allFilteredChanges.entries()).map((item) => {
+            console.log("->", { refId: item[0].refId, changes: item[1].size }, item[0].ref.toJSON());
+            if (Array.isArray(item[0].ref.toJSON())) {
+                item[1].forEach((op, key) => {
+                    console.log("  ->", { key, op: OPERATION[op] });
+                })
+            }
+        });
+    }
 
     encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
