@@ -1,55 +1,47 @@
 <div align="center">
-  <img src="logo.png?raw=true" />
+  <img src="logo.png?raw=true" width="50%" />
   <br>
-  <br>
-
   <p>
     An incremental binary state serializer with delta encoding for games.<br>
-    Although it was born to be used on <a href="https://github.com/colyseus/colyseus">Colyseus</a>, this library can be used as standalone.
+    Made for <a href="https://github.com/colyseus/colyseus">Colyseus</a>, yet can be used standalone.
   </p>
 </div>
 
-## Defining Schema
+# Features
 
-As Colyseus is written in TypeScript, the schema is defined as type annotations inside the state class. Additional server logic may be added to that class, but client-side generated (not implemented) files will consider only the schema itself.
+- Flexible Schema Definition
+- Optimized Data Encoding
+- Automatic State Synchronization
+- Client-side Change Detection
+- Per-client portions of the state
+- Type Safety
+- *...decoders available for multiple languages (C#, Lua, Haxe)*
+
+## Schema definition
+
+`@colyseus/schema` uses type annotations to define types of synchronized properties.
 
 ```typescript
 import { Schema, type, ArraySchema, MapSchema } from '@colyseus/schema';
 
 export class Player extends Schema {
-  @type("string")
-  name: string;
-
-  @type("number")
-  x: number;
-
-  @type("number")
-  y: number;
+  @type("string") name: string;
+  @type("number") x: number;
+  @type("number") y: number;
 }
 
-export class State extends Schema {
-  @type('string')
-  fieldString: string;
-
-  @type('number') // varint
-  fieldNumber: number;
-
-  @type(Player)
-  player: Player;
-
-  @type([ Player ])
-  arrayOfPlayers: ArraySchema<Player>;
-
-  @type({ map: Player })
-  mapOfPlayers: MapSchema<Player>;
+export class MyState extends Schema {
+  @type('string') fieldString: string;
+  @type('number') fieldNumber: number;
+  @type(Player) player: Player;
+  @type([ Player ]) arrayOfPlayers: ArraySchema<Player>;
+  @type({ map: Player }) mapOfPlayers: MapSchema<Player>;
 }
 ```
 
-See [example](test/Schema.ts).
-
 ## Supported types
 
-## Primitive Types
+### Primitive Types
 
 | Type | Description | Limitation |
 |------|-------------|------------|
@@ -79,14 +71,14 @@ name: string;
 name: number;
 ```
 
-#### Custom `Schema` type
+#### Child `Schema` structures
 
 ```typescript
 @type(Player)
 player: Player;
 ```
 
-#### Array of custom `Schema` type
+#### Array of `Schema` structure
 
 ```typescript
 @type([ Player ])
@@ -105,7 +97,7 @@ arrayOfNumbers: ArraySchema<number>;
 arrayOfStrings: ArraySchema<string>;
 ```
 
-#### Map of custom `Schema` type
+#### Map of `Schema` structure
 
 ```typescript
 @type({ map: Player })
@@ -114,7 +106,7 @@ mapOfPlayers: MapSchema<Player>;
 
 #### Map of a primitive type
 
-You can't mix types inside maps.
+You can't mix primitive types inside maps.
 
 ```typescript
 @type({ map: "number" })
@@ -122,6 +114,123 @@ mapOfNumbers: MapSchema<number>;
 
 @type({ map: "string" })
 mapOfStrings: MapSchema<string>;
+```
+
+### Reflection
+
+The Schema definitions can encode itself through `Reflection`. You can have the
+definition implementation in the server-side, and just send the encoded
+reflection to the client-side, for example:
+
+```typescript
+import { Schema, type, Reflection } from "@colyseus/schema";
+
+class MyState extends Schema {
+  @type("string") currentTurn: string;
+  // ... more definitions
+}
+
+// send `encodedStateSchema` across the network
+const encodedStateSchema = Reflection.encode(new MyState());
+
+// instantiate `MyState` in the client-side, without having its definition:
+const myState = Reflection.decode(encodedStateSchema);
+```
+
+### `StateView` / `@view()`
+
+You can use `@view()` to filter properties that should be sent only to `StateView`'s that have access to it.
+
+```typescript
+import { Schema, type, view } from "@colyseus/schema";
+
+class Player extends Schema {
+  @view() @type("string") secret: string;
+  @type("string") notSecret: string;
+}
+
+class MyState extends Schema {
+  @type({ map: Player }) players = new MapSchema<Player>();
+}
+```
+
+Using the `StateView`
+
+```typescript
+const view = new StateView();
+view.add(player);
+```
+
+## Encoder
+
+There are 3 majour features of the `Encoder` class:
+
+- Encoding the full state
+- Encoding the state changes
+- Encoding state with filters (properties using `@view()` tag)
+
+```typescript
+import { Encoder } from "@colyseus/schema";
+
+const state = new MyState();
+const encoder = new Encoder(state);
+```
+
+New clients must receive the full state on their first connection:
+
+```typescript
+const fullEncode = encoder.encodeAll();
+// ... send "fullEncode" to client and decode it
+```
+
+Further state changes must be sent in order:
+
+```typescript
+const changesBuffer = encoder.encode();
+// ... send "changesBuffer" to client and decode it
+```
+
+### Encoding with views
+
+When using `@view()` and `StateView`'s, a single "full encode" must be used for multiple views. Each view also must add its own changes.
+
+```typescript
+// shared buffer iterator
+const it = { offset: 0 };
+
+// shared full encode
+encoder.encodeAll(it);
+const sharedOffset = it.offset;
+
+// view 1
+const fullEncode1 = encoder.encodeAllView(view1, sharedOffset, it);
+// ... send "fullEncode1" to client1 and decode it
+
+// view 2
+const fullEncode2 = encoder.encodeAllView(view2, sharedOffset, it);
+// ... send "fullEncode" to client2 and decode it
+```
+
+Encoding changes per views:
+
+```typescript
+// shared buffer iterator
+const it = { offset: 0 };
+
+// shared changes encode
+encoder.encode(it);
+const sharedOffset = it.offset;
+
+// view 1
+const view1Encoded = this.encoder.encodeView(view1, sharedOffset, it);
+// ... send "view1Encoded" to client1 and decode it
+
+// view 2
+const view2Encoded = this.encoder.encodeView(view2, sharedOffset, it);
+// ... send "view2Encoded" to client2 and decode it
+
+// discard all changes after encoding is done.
+encoder.discardChanges();
 ```
 
 ### Backwards/forwards compability
@@ -134,44 +243,6 @@ This is particularly useful for native-compiled targets, such as C#, C++,
 Haxe, etc - where the client-side can potentially not have the most
 up-to-date version of the schema definitions.
 
-### Reflection
-
-The Schema definitions can encode itself through `Reflection`. You can have the
-definition implementation in the server-side, and just send the encoded
-reflection to the client-side, for example:
-
-```typescript
-import { Schema, type, Reflection } from "@colyseus/schema";
-
-class MyState extends Schema {
-  @type("string")
-  currentTurn: string;
-
-  // more definitions relating to more Schema types.
-}
-
-// send `encodedStateSchema` across the network
-const encodedStateSchema = Reflection.encode(new MyState());
-
-// instantiate `MyState` in the client-side, without having its definition:
-const myState = Reflection.decode(encodedStateSchema);
-```
-
-### Data filters
-
-On the example below, considering we're making a card game, we are filtering the cards to be available only for the owner of the cards, or if the card has been flagged as `"revealed"`.
-
-```typescript
-import { Schema, type, filter } from "@colyseus/schema";
-
-export class State extends Schema {
-  @filterChildren(function(client: any, key: string, value: Card, root: State) {
-      return (value.ownerId === client.sessionId) || value.revealed;
-  })
-  @type({ map: Card })
-  cards = new MapSchema<Card>();
-}
-```
 
 ## Limitations and best practices
 
@@ -184,7 +255,6 @@ export class State extends Schema {
 - `@colyseus/schema` encodes only field values in the specified order.
   - Both encoder (server) and decoder (client) must have same schema definition.
   - The order of the fields must be the same.
-- Avoid manipulating indexes of an array. This result in at least `2` extra bytes for each index change. **Example:** If you have an array of 20 items, and remove the first item (through `shift()`) this means `38` extra bytes to be serialized.
 
 ## Generating client-side schema files (for strictly typed languages)
 
