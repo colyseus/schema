@@ -61,6 +61,13 @@ export class Encoder<T extends Schema = any> {
             const encoder = ctor[$encoder];
             const filter = ctor[$filter];
 
+            // try { throw new Error(); } catch (e) {
+            //     // only print if not coming from Reflection.ts
+            //     if (!e.stack.includes("src/Reflection.ts")) {
+            //         console.log("ChangeTree:", { ref: ref.constructor.name, });
+            //     }
+            // }
+
             if (hasView) {
                 if (!view.items.has(changeTree)) {
                     view.invisible.add(changeTree);
@@ -95,11 +102,16 @@ export class Encoder<T extends Schema = any> {
                     continue;
                 }
 
-                // console.log("WILL ENCODE", {
-                //     ref: changeTree.ref.constructor.name,
-                //     fieldIndex,
-                //     operation: OPERATION[operation],
-                // });
+                // try { throw new Error(); } catch (e) {
+                //     // only print if not coming from Reflection.ts
+                //     if (!e.stack.includes("src/Reflection.ts")) {
+                //         // console.log("WILL ENCODE", {
+                //         //     ref: changeTree.ref.constructor.name,
+                //         //     fieldIndex,
+                //         //     operation: OPERATION[operation],
+                //         // });
+                //     }
+                // }
 
                 encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView);
             }

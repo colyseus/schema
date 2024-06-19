@@ -57,16 +57,52 @@ Schema.prototype.encodeAll = function() {
     return getEncoder(this).encodeAll();
 }
 
-export function createClientWithView<T extends Schema>(from: T, stateView: StateView = new StateView()) {
+export interface ClientWithState<T> {
+    state: T;
+    view: StateView;
+    $: any;
+    needFullEncode: boolean;
+}
+
+export function createClientWithView<T extends Schema>(from: T, stateView: StateView = new StateView()): ClientWithState<T> {
     const state = createInstanceFromReflection(from);
     return {
         state,
         view: stateView,
-        $: getStateCallbacks(getDecoder(state)).$
+        $: getStateCallbacks(getDecoder(state)).$,
+        needFullEncode: true,
     };
 }
 
-export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, clients: Array<{ state: Schema, view: StateView }>) {
+export function encodeAllForView<T extends Schema>(encoder: Encoder<T>, client: ClientWithState<T>, printEncodeAll?: boolean) {
+    const buf = Buffer.alloc(4096);
+    const itAll = { offset: 0 };
+    const fullEncode = encoder.encodeAll(itAll, buf);
+
+    if (printEncodeAll) {
+        const tmpState = createInstanceFromReflection(client.state);
+        tmpState.decode(fullEncode);
+        console.log("TMP STATE =>", tmpState);
+        console.log({ fullEncode: Array.from(fullEncode) });
+    }
+
+    const sharedOffset = itAll.offset;
+    const fullEncodeForView = encoder.encodeAllView(client.view, sharedOffset, itAll, buf);
+    client.state.decode(fullEncodeForView);
+    client.needFullEncode = false;
+}
+
+export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, clients: Array<ClientWithState<T>>) {
+    // check if "encode all" is needed for each client.
+    clients.map((client, i) => {
+        // construct state if needed
+        if (!client.state) { client.state = createInstanceFromReflection(state); }
+        // decode full state if needed
+        if (client.needFullEncode) {
+            encodeAllForView(encoder, client);
+        }
+    });
+
     const it = { offset: 0 };
 
     // perform shared encode
@@ -74,14 +110,9 @@ export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, 
 
     const sharedOffset = it.offset;
     const encodedViews = clients.map((client, i) => {
-        if (!client.state) {
-            client.state = createInstanceFromReflection(state);
-        }
-
         // encode each view
         const encoded = encoder.encodeView(client.view, sharedOffset, it);
         client.state.decode(encoded);
-
         return encoded;
     });
 

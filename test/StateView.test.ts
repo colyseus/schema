@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes } from "../src";
-import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection } from "./Schema";
+import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView } from "./Schema";
 import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 
 describe("StateView", () => {
@@ -407,49 +407,68 @@ describe("StateView", () => {
             }
 
             const state = new State();
-            const encoder = new Encoder(state);
+            const encoder = getEncoder(state);
 
-            for (let i = 1; i <= 5; i++) {
+            function createItem(i: number) {
                 state.items.set(i.toString(), new Item().assign({
                     position: new Vec2().assign({ x: i * 10, y: i * 10 }),
-                    health: 200
+                    health: i * 100
                 }));
             }
+
+            createItem(1);
+            createItem(2);
 
             const client1 = createClientWithView(state);
             client1.view.add(state.items.get("1"));
 
             const client2 = createClientWithView(state);
             client2.view.add(state.items.get("2"));
+
             encodeMultiple(encoder, state, [client1, client2]);
 
             // client 1 should have only the position field
-            assert.strictEqual(5, client1.state.items.size);
+            assert.strictEqual(2, client1.state.items.size);
             assert.deepStrictEqual({ x: 10, y: 10 }, client1.state.items.get("1").position.toJSON());
-            assert.strictEqual(200, client1.state.items.get("1").health);
+            assert.strictEqual(100, client1.state.items.get("1").health);
             assert.strictEqual(undefined, client1.state.items.get("2").position);
             assert.strictEqual(200, client1.state.items.get("2").health);
-            assert.strictEqual(undefined, client1.state.items.get("3").position);
-            assert.strictEqual(200, client1.state.items.get("3").health);
-            assert.strictEqual(undefined, client1.state.items.get("4").position);
-            assert.strictEqual(200, client1.state.items.get("4").health);
-            assert.strictEqual(undefined, client1.state.items.get("5").position);
-            assert.strictEqual(200, client1.state.items.get("5").health);
 
             // client 2 should have only the position field
-            assert.strictEqual(5, client2.state.items.size);
+            assert.strictEqual(2, client2.state.items.size);
             assert.strictEqual(undefined, client2.state.items.get("1").position);
-            assert.strictEqual(200, client2.state.items.get("1").health);
+            assert.strictEqual(100, client2.state.items.get("1").health);
             assert.deepStrictEqual({ x: 20, y: 20 }, client2.state.items.get("2").position.toJSON());
             assert.strictEqual(200, client2.state.items.get("2").health);
-            assert.strictEqual(undefined, client2.state.items.get("3").position);
-            assert.strictEqual(200, client2.state.items.get("3").health);
-            assert.strictEqual(undefined, client2.state.items.get("4").position);
-            assert.strictEqual(200, client2.state.items.get("4").health);
-            assert.strictEqual(undefined, client2.state.items.get("5").position);
-            assert.strictEqual(200, client2.state.items.get("5").health);
 
-            assertEncodeAllMultiple(encoder, state, [client1, client2])
+            // create client3 and add new item to his view
+            createItem(3);
+            const client3 = createClientWithView(state);
+            client3.view.add(state.items.get("3"));
+
+            encodeMultiple(encoder, state, [client1, client2, client3]);
+
+            assert.strictEqual(3, client1.state.items.size);
+            assert.strictEqual(300, client1.state.items.get("3").health);
+
+            assert.strictEqual(300, client2.state.items.get("3").health);
+            assert.strictEqual(3, client2.state.items.size);
+
+            // client 3 should have only the position field
+            assert.strictEqual(3, client3.state.items.size);
+            assert.deepStrictEqual({ x: 30, y: 30 }, client3.state.items.get("3").position.toJSON());
+            assert.strictEqual(undefined, client3.state.items.get("1").position);
+            assert.strictEqual(100, client3.state.items.get("1").health);
+            assert.strictEqual(undefined, client3.state.items.get("2").position);
+            assert.strictEqual(200, client3.state.items.get("2").health);
+
+            // create client4 and add new item to his view
+            createItem(4);
+            const client4 = createClientWithView(state);
+            client4.view.add(state.items.get("4"));
+
+            encodeMultiple(encoder, state, [client1, client2, client3, client4]);
+            assertEncodeAllMultiple(encoder, state, [client1, client2, client3, client4])
         });
 
     });

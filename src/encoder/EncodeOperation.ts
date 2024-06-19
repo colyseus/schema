@@ -172,6 +172,19 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     const type = changeTree.getType(field);
     const value = changeTree.getValue(field);
 
+    // try { throw new Error(); } catch (e) {
+    //     // only print if not coming from Reflection.ts
+    //     if (!e.stack.includes("src/Reflection.ts")) {
+    //         console.log("encodeKeyValueOperation -> ", {
+    //             ref: changeTree.ref.constructor.name,
+    //             field,
+    //             operation: OPERATION[operation],
+    //             value: value?.toJSON(),
+    //             items: ref.toJSON(),
+    //         });
+    //     }
+    // }
+
     // TODO: inline this function call small performance gain
     encodeValue(encoder, bytes, ref, type, value, field, operation, it);
 }
