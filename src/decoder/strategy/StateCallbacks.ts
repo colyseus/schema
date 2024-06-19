@@ -21,23 +21,63 @@ export type CallbackProxy<T> = unknown extends T // is "any"?
     ? InstanceCallback<T> & CollectionCallback<any, any>
     : T extends Collection<infer K, infer V, infer _>
         ? CollectionCallback<K, V>
-        : InstanceCallback<T>
+        : InstanceCallback<T>;
 
 type InstanceCallback<T> = {
+    /**
+     * Trigger callback when value of a property changes.
+     *
+     * @param prop name of the property
+     * @param callback callback to be triggered on property change
+     * @param immediate trigger immediatelly if property has been already set.
+     */
     listen<K extends NonFunctionPropNames<T>>(
         prop: K,
         callback: (value: T[K], previousValue: T[K]) => void,
         immediate?: boolean,
     )
+    /**
+     * Trigger callback whenever any property changed within this instance.
+     *
+     * @param prop name of the property
+     * @param callback callback to be triggered on property change
+     * @param immediate trigger immediatelly if property has been already set.
+     */
     onChange(callback: () => void): void;
+
+    /**
+     * Bind properties to another object. Changes on the properties will be reflected on the target object.
+     *
+     * @param targetObject object to bind properties to
+     * @param properties list of properties to bind. If not provided, all properties will be bound.
+     */
     bindTo(targetObject: any, properties?: Array<NonFunctionPropNames<T>>): void;
 } & {
     [K in NonFunctionNonPrimitivePropNames<T>]: CallbackProxy<T[K]>;
 }
 
 type CollectionCallback<K, V> = {
+    /**
+     * Trigger callback when an item has been added to the collection.
+     *
+     * @param callback
+     * @param immediate
+     */
     onAdd(callback: (item: V, index: K) => void, immediate?: boolean): void;
+
+    /**
+     * Trigger callback when an item has been removed to the collection.
+     *
+     * @param callback
+     */
     onRemove(callback: (item: V, index: K) => void): void;
+
+    // /**
+    //  * Trigger callback when an item has been removed to the collection.
+    //  *
+    //  * @param callback
+    //  */
+    // onChange(callback: (item: V, index: K) => void): void;
 };
 
 type OnInstanceAvailableCallback = (callback: (ref: Ref, existing: boolean) => void) => void;
@@ -48,7 +88,12 @@ type CallContext = {
     onInstanceAvailable?: OnInstanceAvailableCallback,
 }
 
-export function getStateCallbacks<T extends Schema>(decoder: Decoder<T>): CallbackProxy<T> {
+export function getStateCallbacks<T extends Schema>(
+    decoder: Decoder<T>
+): {
+    $: (<F extends Schema>(instance: F) => CallbackProxy<F>),
+    $state: CallbackProxy<T>,
+} {
     const $root = decoder.root;
     const callbacks = $root.callbacks;
 
@@ -84,30 +129,28 @@ export function getStateCallbacks<T extends Schema>(decoder: Decoder<T>): Callba
                 //
 
                 if (!uniqueRefIds.has(refId)) {
-                    try {
-                        // trigger onChange
-                        const replaceCallbacks = $callbacks?.[OPERATION.REPLACE];
-                        for (let i = replaceCallbacks?.length - 1; i >= 0; i--) {
-                            replaceCallbacks[i]();
-                        }
-
-                    } catch (e) {
-                        console.error(e);
+                    // trigger onChange
+                    const replaceCallbacks = $callbacks?.[OPERATION.REPLACE];
+                    for (let i = replaceCallbacks?.length - 1; i >= 0; i--) {
+                        replaceCallbacks[i]();
+                        // try {
+                        // } catch (e) {
+                        //     console.error(e);
+                        // }
                     }
                 }
 
-                try {
-                    if ($callbacks.hasOwnProperty(change.field)) {
-                        const fieldCallbacks = $callbacks[change.field];
-                        for (let i = fieldCallbacks?.length - 1; i >= 0; i--) {
-                            fieldCallbacks[i](change.value, change.previousValue);
-                        }
+                if ($callbacks.hasOwnProperty(change.field)) {
+                    const fieldCallbacks = $callbacks[change.field];
+                    for (let i = fieldCallbacks?.length - 1; i >= 0; i--) {
+                        fieldCallbacks[i](change.value, change.previousValue);
+                        // try {
+                        // } catch (e) {
+                        //     console.error(e);
+                        // }
                     }
-
-                } catch (e) {
-                    //
-                    console.error(e);
                 }
+
 
             } else {
                 //
@@ -206,12 +249,20 @@ export function getStateCallbacks<T extends Schema>(decoder: Decoder<T>): Callba
                     );
                 },
                 bindTo: function bindTo(targetObject: any, properties?: string[]) {
-                    // return $root.addCallback(
-                    //     $root.refIds.get(context.instance),
-                    //     OPERATION.BIND,
-                    //     callback
-                    // );
-                    console.log("bindTo", targetObject, properties);
+                    //
+                    // TODO: refactor this implementation. There is room for improvement here.
+                    //
+                    if (!properties) {
+                        properties = Object.keys(metadata);
+                    }
+                    return $root.addCallback(
+                        $root.refIds.get(context.instance),
+                        OPERATION.REPLACE,
+                        () => {
+                            properties.forEach((prop) =>
+                                targetObject[prop] = context.instance[prop])
+                        }
+                    );
                 }
             }, {
                 get(target, prop: string) {
@@ -313,5 +364,8 @@ export function getStateCallbacks<T extends Schema>(decoder: Decoder<T>): Callba
         return getProxy(undefined, { instance }) as CallbackProxy<T>;
     }
 
-    return $(decoder.state);
+    return {
+        $,
+        $state: $(decoder.state),
+    };
 }

@@ -94,14 +94,14 @@ describe("ArraySchema Tests", () => {
         state.items.push(new Item().assign({ name: "E" }));
 
         const decodedState = new State();
-        const $ = getCallbacks(decodedState);
+        const { $state } = getCallbacks(decodedState);
 
         let onAddCount = 0;
-        $.items.onAdd(() => onAddCount++);
+        $state.items.onAdd(() => onAddCount++);
 
         let onRemoveCount = 0;
         let removedItem: Item;
-        $.items.onRemove((item, index) => {
+        $state.items.onRemove((item, index) => {
             removedItem = item;
             onRemoveCount++;
         });
@@ -219,7 +219,7 @@ describe("ArraySchema Tests", () => {
 
             const state = new State();
             const decodedState = new State();
-            const $ = getCallbacks(decodedState);
+            const { $state } = getCallbacks(decodedState);
 
             state.turns[0] = "one";
             state.turns[1] = "two";
@@ -227,11 +227,11 @@ describe("ArraySchema Tests", () => {
 
             const onAddIndexes: Array<{ item: string, index: number }> = [];
             const onRemoveIndexes: Array<{ item: string, index: number }> = [];
-            $.turns.onAdd((item, index) => {
+            $state.turns.onAdd((item, index) => {
                 console.log("ON ADD", { item, index });
                 onAddIndexes.push({ item, index });
             });
-            $.turns.onRemove((item, index) => {
+            $state.turns.onRemove((item, index) => {
                 console.log("ON REMOVE:", { item, index });
                 onRemoveIndexes.push({ item, index });
             });
@@ -445,12 +445,12 @@ describe("ArraySchema Tests", () => {
 
         const state = new State();
         const decodedState = createInstanceFromReflection(state);
-        const $ = getCallbacks(decodedState);
+        const { $state } = getCallbacks(decodedState);
 
         const onAddIndexes: Array<{ item: number, index: number }> = [];
         const onRemoveIndexes: Array<{ item: number, index: number }> = [];
-        $.cards.onAdd((item, index) => onAddIndexes.push({ item, index }));
-        $.cards.onRemove((item, index) => onRemoveIndexes.push({ item, index }));
+        $state.cards.onAdd((item, index) => onAddIndexes.push({ item, index }));
+        $state.cards.onRemove((item, index) => onRemoveIndexes.push({ item, index }));
 
         decodedState.decode(state.encodeAll());
 
@@ -803,13 +803,13 @@ describe("ArraySchema Tests", () => {
         state.arrayOfPlayers.push(new Player("Three", 20, 2));
 
         const decodedState = new State();
-        const $ = getCallbacks(decodedState);
+        const { $state } = getCallbacks(decodedState);
 
         let onAddCount = 0;
-        $.arrayOfPlayers.onAdd(() => onAddCount++);
+        $state.arrayOfPlayers.onAdd(() => onAddCount++);
 
         let onRemoveCount = 0;
-        $.arrayOfPlayers.onRemove(() => onRemoveCount++);
+        $state.arrayOfPlayers.onRemove(() => onRemoveCount++);
 
         decodedState.decode(state.encode());
         assert.strictEqual(3, onAddCount);
@@ -1420,11 +1420,11 @@ describe("ArraySchema Tests", () => {
         state.numbers = new ArraySchema(1, 2, 3, 4, 5, 6);
 
         const decodedState = new State();
-        const $ = getCallbacks(decodedState);
+        const { $state } = getCallbacks(decodedState);
         decodedState.decode(state.encode());
 
         let onRemoveCount = 0;
-        $.numbers.onRemove(() => onRemoveCount++)
+        $state.numbers.onRemove(() => onRemoveCount++)
 
         // state.numbers = undefined;
         state.numbers = new ArraySchema(7, 8, 9);
@@ -1556,12 +1556,12 @@ describe("ArraySchema Tests", () => {
             state.cards.push(new Card().assign({ id: 5 }));
 
             const decodedState = new MyState();
-            const $ = getCallbacks(decodedState);
+            const { $state } = getCallbacks(decodedState);
 
             let onAddIds: number[] = [];
             let onRemoveIds: number[] = [];
-            $.cards.onAdd((item, i) => onAddIds.push(item.id));
-            $.cards.onRemove((item, i) => onRemoveIds.push(item.id));
+            $state.cards.onAdd((item, i) => onAddIds.push(item.id));
+            $state.cards.onRemove((item, i) => onRemoveIds.push(item.id));
 
             decodedState.decode(state.encode());
 
@@ -1675,7 +1675,7 @@ describe("ArraySchema Tests", () => {
         xit("should trigger onAdd callback only once after clearing and adding one item", () => {
             const state = new State();
             const decodedState = new State();
-            const $ = getCallbacks(decodedState);
+            const { $state } = getCallbacks(decodedState);
 
             state.points.push(new Point().assign({ x: 0, y: 0 }));
             state.points.push(new Point().assign({ x: 1, y: 1 }));
@@ -1684,7 +1684,7 @@ describe("ArraySchema Tests", () => {
             state.points.push(new Point().assign({ x: 3, y: 3 }));
 
             let onAddCallCount = 0;
-            $.points.onAdd((point, key) => {
+            $state.points.onAdd((point, key) => {
                 onAddCallCount++;
                 console.log(point.toJSON(), key);
             });

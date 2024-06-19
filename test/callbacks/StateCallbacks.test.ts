@@ -16,15 +16,15 @@ describe("StateCallbacks", () => {
         const decodedState = createInstanceFromReflection(state);
         decodedState.decode(state.encode());
 
-        const $ = getCallbacks(decodedState);
+        const { $state } = getCallbacks(decodedState);
 
         state.boardTiles.push('one');
         state.actionType = 1;
 
         const actionOrder: any[] = [];
 
-        $.boardTiles.onAdd((item, key) => actionOrder.push("boardTiles.onAdd"));
-        $.listen('actionType', (curr, prev) => actionOrder.push("actionType"));
+        $state.boardTiles.onAdd((item, key) => actionOrder.push("boardTiles.onAdd"));
+        $state.listen('actionType', (curr, prev) => actionOrder.push("actionType"));
 
         decodedState.decode(state.encode());
 
@@ -42,13 +42,30 @@ describe("StateCallbacks", () => {
         }
 
         const state = new State();
-        state.players.set("one", new Player().assign({ x: 10, y: 10 }));
+        const player = new Player().assign({ x: 10, y: 10 });
+        state.players.set("one", player);
 
         const decodedState = createInstanceFromReflection(state);
+        const bound: any = {};
+
+        const { $state, $ } = getCallbacks(decodedState);
+
+        $state.players.onAdd((player, key) => {
+            $(player).bindTo(bound);
+        });
+
         decodedState.decode(state.encode());
 
-        const $ = getCallbacks(decodedState);
+        assert.strictEqual(10, bound.x);
+        assert.strictEqual(10, bound.y);
 
+        player.x = 20;
+        player.y = 30;
+
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(20, bound.x);
+        assert.strictEqual(30, bound.y);
     });
 
 
