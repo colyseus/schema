@@ -56,7 +56,7 @@ export {
 // Annotation types
 export type { DefinitionType, PrimitiveType, Definition, } from "./annotations";
 
-export { getStateCallbacks } from "./decoder/strategy/StateCallbacks";
+export { getStateCallbacks, CallbackProxy } from "./decoder/strategy/StateCallbacks";
 export { getRawChangesCallback } from "./decoder/strategy/RawChanges";
 
 export { Encoder } from "./encoder/Encoder";
