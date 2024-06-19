@@ -44,11 +44,11 @@ export class Encoder<T extends Schema = any> {
         it: Iterator = { offset: 0 },
         view?: StateView,
         buffer = this.sharedBuffer,
-        changeTrees = this.root.changes
+        changeTrees = this.root.changes,
+        isEncodeAll = this.root.allChanges === changeTrees,
     ): Buffer {
         const initialOffset = it.offset; // cache current offset in case we need to resize the buffer
 
-        const isEncodeAll = this.root.allChanges === changeTrees;
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
@@ -131,7 +131,7 @@ export class Encoder<T extends Schema = any> {
                 this.sharedBuffer = buffer;
             }
 
-            return this.encode({ offset: initialOffset }, view, buffer);
+            return this.encode({ offset: initialOffset }, view, buffer, changeTrees, isEncodeAll);
 
         } else {
             //
@@ -155,7 +155,7 @@ export class Encoder<T extends Schema = any> {
         //     console.log("->", { ref: item[0].ref.constructor.name, refId: item[0].refId, changes: item[1].size });
         // });
 
-        return this.encode(it, undefined, buffer, this.root.allChanges);
+        return this.encode(it, undefined, buffer, this.root.allChanges, true);
     }
 
     encodeAllView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
@@ -165,7 +165,7 @@ export class Encoder<T extends Schema = any> {
         // this.debugAllFilteredChanges();
 
         // try to encode "filtered" changes
-        this.encode(it, view, bytes, this.root.allFilteredChanges);
+        this.encode(it, view, bytes, this.root.allFilteredChanges, true);
 
         return Buffer.concat([
             bytes.subarray(0, sharedOffset),

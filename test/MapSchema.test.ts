@@ -358,13 +358,13 @@ describe("Type: MapSchema", () => {
 
         // const decodedState = createInstanceFromReflection(state);
         const decodedState = new State();
-        const $ = getCallbacks(decodedState).$;
+        const $ = getCallbacks(decodedState);
 
         let onRemoveCalls = 0;
         let onAddCalls = 0;
 
-        $(decodedState).mapOfPlayers.onRemove(() => onRemoveCalls++);
-        $(decodedState).mapOfPlayers.onAdd(() => onAddCalls++);
+        $.mapOfPlayers.onRemove(() => onRemoveCalls++);
+        $.mapOfPlayers.onAdd(() => onAddCalls++);
 
         decodedState.decode(state.encode());
 
@@ -565,7 +565,7 @@ describe("Type: MapSchema", () => {
         const state = new State();
 
         const decodedState = new State();
-        const $ = getCallbacks(decodedState).$;
+        const $ = getCallbacks(decodedState);
         decodedState.decode(state.encodeAll());
 
         state.entities.set("item1", new Item().assign({ id: 1, damage: 10 }));
@@ -576,12 +576,12 @@ describe("Type: MapSchema", () => {
         decodedState.decode(state.encode());
 
         let onEntityAddCount = 0;
-        $(decodedState).entities.onAdd(() => onEntityAddCount++, false);
-        $(decodedState).entities.onRemove((item, key) => {})
+        $.entities.onAdd(() => onEntityAddCount++, false);
+        $.entities.onRemove((item, key) => {})
 
         let onItemAddCount = 0;
-        $(decodedState).items.onAdd((item, key) => onItemAddCount++, false)
-        $(decodedState).items.onRemove((item, key) => { })
+        $.items.onAdd((item, key) => onItemAddCount++, false)
+        $.items.onRemove((item, key) => { })
 
         const item1 = state.entities.get("item1");
         const previousWeapon = state.items.get("weapon");
@@ -615,11 +615,11 @@ describe("Type: MapSchema", () => {
         state.numbers = new MapSchema({ one: 1, two: 2, three: 3 });
 
         const decodedState = new State();
-        const $ = getCallbacks(decodedState).$;
+        const $ = getCallbacks(decodedState);
         decodedState.decode(state.encode());
 
         let onRemoveCalls = 0;
-        $(decodedState).numbers.onRemove(() => onRemoveCalls++);
+        $.numbers.onRemove(() => onRemoveCalls++);
 
         state.numbers = new MapSchema({ four: 1, five: 2, six: 3 });
         decodedState.decode(state.encode());

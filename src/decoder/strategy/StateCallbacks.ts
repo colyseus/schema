@@ -17,7 +17,7 @@ import type { ArraySchema } from "../../types/custom/ArraySchema";
 // - Avoid closures by allowing to pass a context. (https://github.com/colyseus/schema/issues/155#issuecomment-1804694081)
 //
 
-type GetProxyType<T> = unknown extends T // is "any"?
+export type CallbackProxy<T> = unknown extends T // is "any"?
     ? InstanceCallback<T> & CollectionCallback<any, any>
     : T extends Collection<infer K, infer V, infer _>
         ? CollectionCallback<K, V>
@@ -32,7 +32,7 @@ type InstanceCallback<T> = {
     onChange(callback: () => void): void;
     bindTo(targetObject: any, properties?: Array<NonFunctionPropNames<T>>): void;
 } & {
-    [K in NonFunctionNonPrimitivePropNames<T>]: GetProxyType<T[K]>;
+    [K in NonFunctionNonPrimitivePropNames<T>]: CallbackProxy<T[K]>;
 }
 
 type CollectionCallback<K, V> = {
@@ -48,7 +48,7 @@ type CallContext = {
     onInstanceAvailable?: OnInstanceAvailableCallback,
 }
 
-export function getStateCallbacks(decoder: Decoder) {
+export function getStateCallbacks<T extends Schema>(decoder: Decoder<T>): CallbackProxy<T> {
     const $root = decoder.root;
     const callbacks = $root.callbacks;
 
@@ -76,8 +76,6 @@ export function getStateCallbacks(decoder: Decoder) {
                 for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
                     deleteCallbacks[i]();
                 }
-                // callbacks[$root.refIds.get(change.previousValue)]?.[OPERATION.DELETE]?.forEach(callback =>
-                //     callback());
             }
 
             if (ref instanceof Schema) {
@@ -206,9 +204,13 @@ export function getStateCallbacks(decoder: Decoder) {
                         OPERATION.REPLACE,
                         callback
                     );
-
                 },
                 bindTo: function bindTo(targetObject: any, properties?: string[]) {
+                    // return $root.addCallback(
+                    //     $root.refIds.get(context.instance),
+                    //     OPERATION.BIND,
+                    //     callback
+                    // );
                     console.log("bindTo", targetObject, properties);
                 }
             }, {
@@ -307,20 +309,9 @@ export function getStateCallbacks(decoder: Decoder) {
         }
     }
 
-    function $<T>(instance: T): GetProxyType<T> {
-        return getProxy(undefined, { instance }) as GetProxyType<T>;
+    function $<T>(instance: T): CallbackProxy<T> {
+        return getProxy(undefined, { instance }) as CallbackProxy<T>;
     }
 
-    return {
-        $,
-        trigger: function trigger(changes: DataChange[]) {
-            for (let i = 0, l = changes.length; i < l; i++) {
-                const change = changes[i];
-
-                change.op
-                change.ref
-            }
-        }
-    }
-
+    return $(decoder.state);
 }

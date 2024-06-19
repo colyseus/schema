@@ -605,8 +605,8 @@ describe("StateView", () => {
 
             let onAddCalls = 0;
             let onRemoveCalls = 0;
-            client1.$(client1.state).items.onAdd(() => onAddCalls++);
-            client1.$(client1.state).items.onRemove(() => onRemoveCalls++);
+            client1.$.items.onAdd(() => onAddCalls++);
+            client1.$.items.onRemove(() => onRemoveCalls++);
 
             encodeMultiple(encoder, state, [client1, client2]);
 

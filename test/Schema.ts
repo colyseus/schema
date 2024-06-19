@@ -1,7 +1,7 @@
 import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator, StateView } from "../src";
 import { Decoder } from "../src/decoder/Decoder";
 import { Encoder } from "../src/encoder/Encoder";
-import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
+import { CallbackProxy, getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 import assert = require("assert");
 
 // augment Schema to add encode/decode methods
@@ -14,13 +14,13 @@ declare module "../src/Schema" {
   }
 }
 
-export function getCallbacks(state: Schema) {
+export function getCallbacks<T extends Schema>(state: T): CallbackProxy<T> {
     return getStateCallbacks(getDecoder(state));
 }
 
-export function getDecoder(state: Schema) {
+export function getDecoder<T extends Schema>(state: T) {
     if (!state['_decoder']) { state['_decoder'] = new Decoder(state); }
-    return state['_decoder'] as Decoder;
+    return state['_decoder'] as Decoder<T>;
 }
 
 /**
@@ -31,6 +31,10 @@ export function assertDeepStrictEqualEncodeAll(state: Schema) {
     const encodeAll = state.encodeAll();
     freshDecode.decode(encodeAll);
     assert.deepStrictEqual(freshDecode.toJSON(), state.toJSON());
+
+    // // perform a regular encode right full decode
+    // freshDecode.decode(state.encode());
+    // assert.deepStrictEqual(freshDecode.toJSON(), state.toJSON());
 }
 
 export function getEncoder(state: Schema) {
@@ -69,7 +73,7 @@ export function createClientWithView<T extends Schema>(from: T, stateView: State
     return {
         state,
         view: stateView,
-        $: getStateCallbacks(getDecoder(state)).$,
+        $: getStateCallbacks(getDecoder(state)),
         needFullEncode: true,
     };
 }
