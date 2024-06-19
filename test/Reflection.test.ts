@@ -1,6 +1,7 @@
 import * as util from "util";
 import * as assert from "assert";
 import { Reflection, Schema, type, MapSchema, ArraySchema } from "../src";
+import { createInstanceFromReflection } from "./Schema";
 
 /**
  * No filters example
@@ -238,5 +239,32 @@ describe("Reflection", () => {
 
         const decodedState = Reflection.decode(Reflection.encode(state));
         assert.doesNotThrow(() => decodedState.decode(state.encode()));
+    });
+
+    it("should allow to be re-constructed from previous reflected state", () => {
+        const state = new State();
+        state.fieldString = "Hello world!";
+        state.fieldNumber = 100;
+        state.player = new Player().assign({ name: "p1", x: 1, y: 2 });
+        state.arrayOfPlayers = new ArraySchema();
+        state.arrayOfPlayers.push(new Player().assign({ name: "p2", x: 3, y: 4 }));
+        state.mapOfPlayers = new MapSchema();
+        state.mapOfPlayers.set("one", new Player().assign({ name: "p2", x: 3, y: 4 }));
+        const encoded = state.encodeAll();
+
+        const reflected1 = createInstanceFromReflection(state);
+        const reflected2 = createInstanceFromReflection(reflected1);
+        const reflected3 = createInstanceFromReflection(reflected2);
+        const reflected4 = createInstanceFromReflection(reflected3);
+
+        reflected1.decode(encoded);
+        reflected2.decode(encoded);
+        reflected3.decode(encoded);
+        reflected4.decode(encoded);
+
+        assert.deepStrictEqual(state.toJSON(), reflected1.toJSON());
+        assert.deepStrictEqual(state.toJSON(), reflected2.toJSON());
+        assert.deepStrictEqual(state.toJSON(), reflected3.toJSON());
+        assert.deepStrictEqual(state.toJSON(), reflected4.toJSON());
     });
 });
