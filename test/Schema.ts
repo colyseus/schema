@@ -15,10 +15,7 @@ declare module "../src/Schema" {
 }
 
 
-export function getCallbacks<T extends Schema>(state: T): {
-    $: (<F extends Schema>(instance: F) => CallbackProxy<F>),
-    $state: CallbackProxy<T>,
-} {
+export function getCallbacks<T extends Schema>(state: T): (<F extends Schema>(instance: F) => CallbackProxy<F>) {
     return getStateCallbacks(getDecoder(state));
 }
 

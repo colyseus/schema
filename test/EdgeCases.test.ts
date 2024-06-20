@@ -339,17 +339,17 @@ describe("Edge cases", () => {
             const state = new State();
             const decodedState = new State();
 
-            const { $state } = getCallbacks(decodedState);
+            const $ = getCallbacks(decodedState);
 
             decodedState.decode(state.encode());
 
             const onAddCalledFor: string[] = [];
             const onRemovedCalledFor: string[] = [];
 
-            $state.entities.onAdd((entity, key) =>
+            $(decodedState).entities.onAdd((entity, key) =>
                 onAddCalledFor.push(key));
 
-            $state.entities.onRemove((entity, key) =>
+            $(decodedState).entities.onRemove((entity, key) =>
                 onRemovedCalledFor.push(key));
 
             // insert 100 items.

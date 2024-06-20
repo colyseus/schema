@@ -16,15 +16,15 @@ describe("StateCallbacks", () => {
         const decodedState = createInstanceFromReflection(state);
         decodedState.decode(state.encode());
 
-        const { $state } = getCallbacks(decodedState);
+        const $ = getCallbacks(decodedState);
 
         state.boardTiles.push('one');
         state.actionType = 1;
 
         const actionOrder: any[] = [];
 
-        $state.boardTiles.onAdd((item, key) => actionOrder.push("boardTiles.onAdd"));
-        $state.listen('actionType', (curr, prev) => actionOrder.push("actionType"));
+        $(decodedState).boardTiles.onAdd((item, key) => actionOrder.push("boardTiles.onAdd"));
+        $(decodedState).listen('actionType', (curr, prev) => actionOrder.push("actionType"));
 
         decodedState.decode(state.encode());
 
@@ -48,9 +48,9 @@ describe("StateCallbacks", () => {
         const decodedState = createInstanceFromReflection(state);
         const bound: any = {};
 
-        const { $state, $ } = getCallbacks(decodedState);
+        const $ = getCallbacks(decodedState);
 
-        $state.players.onAdd((player, key) => {
+        $(decodedState).players.onAdd((player, key) => {
             $(player).bindTo(bound);
         });
 

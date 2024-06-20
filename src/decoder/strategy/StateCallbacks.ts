@@ -17,6 +17,8 @@ import type { ArraySchema } from "../../types/custom/ArraySchema";
 // - Avoid closures by allowing to pass a context. (https://github.com/colyseus/schema/issues/155#issuecomment-1804694081)
 //
 
+export type GetCallbackProxy = (<T extends Schema>(instance: T) => CallbackProxy<T>);
+
 export type CallbackProxy<T> = unknown extends T // is "any"?
     ? InstanceCallback<T> & CollectionCallback<any, any>
     : T extends Collection<infer K, infer V, infer _>
@@ -88,12 +90,8 @@ type CallContext = {
     onInstanceAvailable?: OnInstanceAvailableCallback,
 }
 
-export function getStateCallbacks<T extends Schema>(
-    decoder: Decoder<T>
-): {
-    $: (<F extends Schema>(instance: F) => CallbackProxy<F>),
-    $state: CallbackProxy<T>,
-} {
+
+export function getStateCallbacks<T extends Schema>(decoder: Decoder<T>): GetCallbackProxy {
     const $root = decoder.root;
     const callbacks = $root.callbacks;
 
@@ -364,8 +362,5 @@ export function getStateCallbacks<T extends Schema>(
         return getProxy(undefined, { instance }) as CallbackProxy<T>;
     }
 
-    return {
-        $,
-        $state: $(decoder.state),
-    };
+    return $;
 }

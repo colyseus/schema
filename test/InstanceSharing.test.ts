@@ -272,14 +272,14 @@ describe("Instance sharing", () => {
         state.player2 = player;
 
         const decodedState = createInstanceFromReflection(state);
-        const { $state } = getCallbacks(decodedState);
+        const $ = getCallbacks(decodedState);
 
         let numHpChangeTriggered = 0;
         let numMpChangeTriggered = 0;
-        $state.player1.listen('hp', () => numHpChangeTriggered++);
-        $state.player2.listen('hp', () => numHpChangeTriggered++);
-        $state.player1.listen('mp', () => numMpChangeTriggered++);
-        $state.player2.listen('mp', () => numMpChangeTriggered++);
+        $(decodedState).player1.listen('hp', () => numHpChangeTriggered++);
+        $(decodedState).player2.listen('hp', () => numHpChangeTriggered++);
+        $(decodedState).player1.listen('mp', () => numMpChangeTriggered++);
+        $(decodedState).player2.listen('mp', () => numMpChangeTriggered++);
 
         decodedState.decode(state.encode());
 
