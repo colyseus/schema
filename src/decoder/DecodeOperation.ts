@@ -251,6 +251,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         dynamicIndex = ref['getIndex'](index);
     }
 
+
     const { value, previousValue } = decodeValue(
         decoder,
         operation,
@@ -303,7 +304,10 @@ export const decodeArray: DecodeOperation = function (
     allChanges: DataChange[]
 ) {
     // "uncompressed" index + operation (array/map items)
-    const operation = bytes[it.offset++];
+    let operation = bytes[it.offset++];
+
+    let isSchemaChild: boolean;
+    let index: number;
 
     if (operation === OPERATION.CLEAR) {
         //
@@ -319,7 +323,7 @@ export const decodeArray: DecodeOperation = function (
         // TODO: refactor here, try to follow same flow as below
         const refId = decode.number(bytes, it);
         const previousValue = decoder.root.refs.get(refId);
-        const index = ref.findIndex((value) => value === previousValue);
+        index = ref.findIndex((value) => value === previousValue);
         ref[$deleteByIndex](index);
         allChanges.push({
             ref,
@@ -330,10 +334,26 @@ export const decodeArray: DecodeOperation = function (
             value: undefined,
             previousValue,
         });
+
         return;
+
+    } else if (operation === OPERATION.ADD_BY_REFID) {
+        isSchemaChild = true;
+        // operation = OPERATION.ADD;
+
+        const refId = decode.number(bytes, it);
+        const itemByRefId = decoder.root.refs.get(refId);
+
+        // use existing index, or push new value
+        index = (itemByRefId)
+            ? ref.findIndex((value) => value === itemByRefId)
+            : ref.length;
+
+    } else {
+        isSchemaChild = false;
+        index = decode.number(bytes, it);
     }
 
-    const index = decode.number(bytes, it);
     const type = ref[$childType];
 
     let dynamicIndex: number | string = index;

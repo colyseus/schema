@@ -204,18 +204,22 @@ export const encodeArray: EncodeOperation = function (
     hasView: boolean,
 ) {
     const ref = changeTree.ref;
+    const useOperationByRefId = hasView && changeTree.isFiltered && (typeof (changeTree.getType(field)) !== "string");
 
-    if (
-        hasView &&
-        operation === OPERATION.DELETE &&
-        typeof (changeTree.getType(field)) !== "string"
-    ) {
-        // encode delete by refId (array of schemas)
-        bytes[it.offset++] = OPERATION.DELETE_BY_REFID;
-        const value =  ref['tmpItems'][field];
-        const refId = value[$changes].refId;
-        encode.number(bytes, refId, it);
-        return;
+    let refOrIndex: number;
+
+    if (useOperationByRefId) {
+        refOrIndex = ref['tmpItems'][field][$changes].refId;
+
+        if (operation === OPERATION.DELETE) {
+            operation = OPERATION.DELETE_BY_REFID;
+
+        } else if (operation === OPERATION.ADD) {
+            operation = OPERATION.ADD_BY_REFID;
+        }
+
+    } else {
+        refOrIndex = field;
     }
 
     // encode operation
@@ -227,7 +231,7 @@ export const encodeArray: EncodeOperation = function (
     }
 
     // encode index
-    encode.number(bytes, field, it);
+    encode.number(bytes, refOrIndex, it);
 
     // Do not encode value for DELETE operations
     if (operation === OPERATION.DELETE) {

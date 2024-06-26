@@ -102,6 +102,7 @@ export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, 
     clients.map((client, i) => {
         // construct state if needed
         if (!client.state) { client.state = createInstanceFromReflection(state); }
+
         // decode full state if needed
         if (client.needFullEncode) {
             encodeAllForView(encoder, client);

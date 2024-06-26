@@ -25,5 +25,6 @@ export enum OPERATION {
     REVERSE = 15,
     MOVE = 32,
     DELETE_BY_REFID = 33, // This operation is only used at ENCODING time. During DECODING, DELETE_BY_REFID is converted to DELETE
+    ADD_BY_REFID = 129,
 
 }

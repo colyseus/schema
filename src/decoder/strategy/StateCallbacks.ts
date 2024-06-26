@@ -155,17 +155,7 @@ export function getStateCallbacks<T extends Schema>(decoder: Decoder<T>): GetCal
                 // Handle collection of items
                 //
 
-                if (change.op === OPERATION.ADD && change.previousValue === undefined) {
-                    // triger onAdd
-
-                    isTriggeringOnAdd = true;
-                    const addCallbacks = $callbacks[OPERATION.ADD];
-                    for (let i = addCallbacks?.length - 1; i >= 0; i--) {
-                        addCallbacks[i](change.value, change.dynamicIndex ?? change.field);
-                    }
-                    isTriggeringOnAdd = false;
-
-                } else if ((change.op & OPERATION.DELETE) === OPERATION.DELETE) {
+                if ((change.op & OPERATION.DELETE) === OPERATION.DELETE) {
                     //
                     // FIXME: `previousValue` should always be available.
                     //
@@ -185,6 +175,16 @@ export function getStateCallbacks<T extends Schema>(decoder: Decoder<T>): GetCal
                             addCallbacks[i](change.value, change.dynamicIndex ?? change.field);
                         }
                     }
+
+                } else if ((change.op & OPERATION.ADD) === OPERATION.ADD && change.previousValue === undefined) {
+                    // triger onAdd
+
+                    isTriggeringOnAdd = true;
+                    const addCallbacks = $callbacks[OPERATION.ADD];
+                    for (let i = addCallbacks?.length - 1; i >= 0; i--) {
+                        addCallbacks[i](change.value, change.dynamicIndex ?? change.field);
+                    }
+                    isTriggeringOnAdd = false;
                 }
 
                 // trigger onChange
