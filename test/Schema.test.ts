@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll } from "./Schema";
+import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection } from "./Schema";
 import { Schema, ArraySchema, MapSchema, type, Metadata, $changes } from "../src";
 
 describe("Type: Schema", () => {
@@ -372,6 +372,28 @@ describe("Type: Schema", () => {
             assert.strictEqual(decodedState.player.name, "Cloned");
             assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Cloned");
             assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cloned");
+        });
+
+        it("should support Object.assign() on constructor", () => {
+            class Player extends Schema {
+                constructor(data: Partial<Player>) {
+                    super();
+                    Object.assign(this, data);
+                }
+                @type("string") str: string;
+                @type("number") num: number;
+            }
+            class State extends Schema {
+                @type({map: Player}) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            state.players.set("one", new Player({ str: "Hello", num: 123 }));
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual({ players: { one: { str: 'Hello', num: 123 } } }, decodedState.toJSON());
         });
     });
 
