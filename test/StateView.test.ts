@@ -307,6 +307,61 @@ describe("StateView", () => {
 
             assertEncodeAllMultiple(encoder, state, [client1])
         });
+
+        it("view.add(TAG) with nested types", () => {
+            enum Tag { ONE = 1, TWO = 2 };
+
+            class Vec3 extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+                @type("number") z: number;
+            }
+
+            class Player extends Schema {
+                @type("number") pub: number;
+                @view() @type("number") priv: number;
+                @view(Tag.ONE) @type(Vec3) position: Vec3;
+                @view(Tag.TWO) @type("number") tagged: number;
+            }
+
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            function addPlayer(i: number) {
+                const player = new Player().assign({
+                    pub: i,
+                    priv: i * 2,
+                    position: new Vec3().assign({ x: i * 10, y: i * 10, z: i * 10 }),
+                    tagged: i * 3
+                });
+                state.players.set(i.toString(), player);
+                return player;
+            }
+
+            const p1 = addPlayer(1);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(p1);
+
+            const p2 = addPlayer(2);
+
+            const client2 = createClientWithView(state);
+            client2.view.add(p2);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual({ pub: 1, priv: 2 }, client1.state.players.get("1").toJSON());
+            assert.deepStrictEqual({ pub: 2 }, client1.state.players.get("2").toJSON());
+
+            assert.deepStrictEqual({ pub: 1 }, client2.state.players.get("1").toJSON());
+            assert.deepStrictEqual({ pub: 2, priv: 4 }, client2.state.players.get("2").toJSON());
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
+        });
     });
 
     describe("MapSchema", () => {

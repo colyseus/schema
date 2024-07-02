@@ -34,15 +34,20 @@ export class StateView {
             return this;
         }
 
+        // FIXME: ArraySchema/MapSchema does not have metadata
+        const metadata: Metadata = obj.constructor[Symbol.metadata];
+
         let changeTree: ChangeTree = obj[$changes];
         this.items.add(changeTree);
 
         // Add children of this ChangeTree to this view
-        changeTree.forEachChild((change, _) =>
-            this.add(change.ref, tag));
-
-        // FIXME: ArraySchema/MapSchema does not have metadata
-        const metadata: Metadata = obj.constructor[Symbol.metadata];
+        changeTree.forEachChild((change, index) => {
+            // Do not ADD children that don't have the same tag
+            if (metadata && metadata[metadata[index]].tag !== tag) {
+                return;
+            }
+            this.add(change.ref, tag);
+        });
 
         // add parent ChangeTree's, if they are invisible to this view
         // TODO: REFACTOR addParent()
@@ -71,8 +76,6 @@ export class StateView {
                 tags = this.tags.get(changeTree);
             }
             tags.add(tag);
-
-            // console.log("BY TAG:", tag);
 
             // Ref: add tagged properties
             metadata?.[-3]?.[tag]?.forEach((index) => {
