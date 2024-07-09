@@ -117,6 +117,15 @@ export const Metadata = {
         return metadata[field].deprecated === true;
     },
 
+    init(klass: any) {
+        //
+        // Used only to initialize an empty Schema (Encoder#constructor)
+        //
+        const metadata = {};
+        klass.constructor[Symbol.metadata] = metadata;
+        Object.defineProperty(metadata, -1, { value: 0, enumerable: false, configurable: true });
+    },
+
     isValidInstance(klass: any) {
         return (
             klass.constructor[Symbol.metadata] &&

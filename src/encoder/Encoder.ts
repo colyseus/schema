@@ -9,6 +9,7 @@ import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Root } from "./ChangeTree";
 import { getNextPowerOf2 } from "../utils";
 import type { StateView } from "./StateView";
+import { Metadata } from "../Metadata";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = 8 * 1024;// 8KB
@@ -37,6 +38,12 @@ export class Encoder<T extends Schema = any> {
     protected setRoot(state: T) {
         this.root = new Root();
         this.state = state;
+
+        // Workaround to allow using an empty Schema.
+        if (state.constructor[Symbol.metadata] === undefined) {
+            Metadata.init(state);
+        }
+
         state[$changes].setRoot(this.root);
     }
 

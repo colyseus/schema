@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection } from "./Schema";
-import { Schema, ArraySchema, MapSchema, type, Metadata, $changes } from "../src";
+import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder } from "../src";
 
 describe("Type: Schema", () => {
 
@@ -315,6 +315,17 @@ describe("Type: Schema", () => {
                     @type("string") id: string;
                 }
             }, /Duplicate 'id' definition on 'Player'/);
+        });
+
+        it("should allow empty Schema", () => {
+            class State extends Schema {}
+            const state = new State();
+            const encoder = new Encoder(state);
+            assert.strictEqual(state, encoder.state);
+
+            const decoder = new Decoder(createInstanceFromReflection(state));
+            decoder.decode(encoder.encodeAll());
+            assert.deepStrictEqual(decoder.state.toJSON(), encoder.state.toJSON());
         });
     });
 
