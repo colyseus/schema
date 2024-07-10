@@ -385,6 +385,29 @@ describe("Type: Schema", () => {
             assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cloned");
         });
 
+        it("should allow to .assign() with null and undefined", () => {
+            const CONSTANT_PLAYER = new Player("Cloned", 100, 100);
+            const state1 = new State();
+            state1.player = CONSTANT_PLAYER.clone();
+            state1.mapOfPlayers = new MapSchema<Player>();
+            state1.mapOfPlayers.set('one', CONSTANT_PLAYER.clone());
+            state1.arrayOfPlayers = new ArraySchema<Player>();
+            state1.arrayOfPlayers.push(CONSTANT_PLAYER.clone());
+            assertDeepStrictEqualEncodeAll(state1);
+            state1.assign({ player: null, mapOfPlayers: null, arrayOfPlayers: null, });
+            assertDeepStrictEqualEncodeAll(state1);
+
+            const state2 = new State();
+            state2.player = CONSTANT_PLAYER.clone();
+            state2.mapOfPlayers = new MapSchema<Player>();
+            state2.mapOfPlayers.set('one', CONSTANT_PLAYER.clone());
+            state2.arrayOfPlayers = new ArraySchema<Player>();
+            state2.arrayOfPlayers.push(CONSTANT_PLAYER.clone());
+            assertDeepStrictEqualEncodeAll(state2);
+            state2.assign({ player: undefined, mapOfPlayers: undefined, arrayOfPlayers: undefined, });
+            assertDeepStrictEqualEncodeAll(state2);
+        });
+
         it("should support Object.assign() on constructor", () => {
             class Player extends Schema {
                 constructor(data: Partial<Player>) {
