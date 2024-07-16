@@ -91,7 +91,7 @@ type CallContext = {
 }
 
 
-export function getStateCallbacks<T extends Schema>(decoder: Decoder<T>): GetCallbackProxy {
+export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>): GetCallbackProxy {
     const $root = decoder.root;
     const callbacks = $root.callbacks;
 

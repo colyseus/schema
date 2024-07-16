@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { Schema, type, ArraySchema, MapSchema, getStateCallbacks, decodeSchemaOperation, Decoder } from "../../src";
+import { Schema, type, ArraySchema, MapSchema, getDecoderStateCallbacks, decodeSchemaOperation, Decoder } from "../../src";
 import { createInstanceFromReflection, getCallbacks, getDecoder } from "../Schema";
 
 describe("StateCallbacks", () => {

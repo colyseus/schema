@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes } from "../src";
 import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView } from "./Schema";
-import { getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
+import { getDecoderStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 
 describe("StateView", () => {
 

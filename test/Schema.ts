@@ -1,7 +1,7 @@
 import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator, StateView } from "../src";
 import { Decoder } from "../src/decoder/Decoder";
 import { Encoder } from "../src/encoder/Encoder";
-import { CallbackProxy, getStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
+import { CallbackProxy, getDecoderStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 import assert = require("assert");
 
 // augment Schema to add encode/decode methods
@@ -16,7 +16,7 @@ declare module "../src/Schema" {
 
 
 export function getCallbacks<T extends Schema>(state: T): (<F extends Schema>(instance: F) => CallbackProxy<F>) {
-    return getStateCallbacks(getDecoder(state));
+    return getDecoderStateCallbacks(getDecoder(state));
 }
 
 export function getDecoder<T extends Schema>(state: T) {
@@ -74,7 +74,7 @@ export function createClientWithView<T extends Schema>(from: T, stateView: State
     return {
         state,
         view: stateView,
-        $: getStateCallbacks(getDecoder(state)),
+        $: getDecoderStateCallbacks(getDecoder(state)),
         needFullEncode: true,
     };
 }
