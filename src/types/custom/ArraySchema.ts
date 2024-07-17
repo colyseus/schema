@@ -471,6 +471,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * @param thisArg An object to which the this keyword can refer in the callbackfn function.
      * If thisArg is omitted, undefined is used as the this value.
      */
+    every<S extends V>(predicate: (value: V, index: number, array: V[]) => value is S, thisArg?: any): this is S[];
     every(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean {
         return this.items.every(callbackfn, thisArg);
     }
@@ -690,7 +691,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     //
     // ES2023
     //
-    with(index: number, value: V): V[] {
+    with(index: number, value: V): ArraySchema<V> {
         const copy = this.items.slice();
         copy[index] = value;
         return new ArraySchema(...copy);
