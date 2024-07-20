@@ -2,7 +2,7 @@ import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks, Schema } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
-import { DataChange } from "..";
+import { DataChange, ToJSON } from "..";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
@@ -654,7 +654,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
         return Array.from(this.$items.values());
     }
 
-    toJSON() {
+    toJSON(): ToJSON<V>[] {
         return this.toArray().map((value) => {
             return (typeof (value['toJSON']) === "function")
                 ? value['toJSON']()

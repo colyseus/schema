@@ -10,20 +10,6 @@ export type NonFunctionPropNames<T> = {
     [K in keyof T]: T[K] extends Function ? never : K
 }[keyof T];
 
-type Primitive = string | number | bigint | boolean | symbol | undefined | null;
-
-export type ToJSON<T> =T extends Primitive
-    // Keep primitive values as-is, and do not omit their methods
-    ? T
-    // On objects, remove methods with NonFunctionProps
-    : NonFunctionProps<{
-        [K in keyof T]: T[K] extends MapSchema<infer U>
-        ? Record<string, ToJSON<U>>
-        : T[K] extends Map<string, infer U>
-        ? Record<string, ToJSON<U>>
-        : T[K] extends ArraySchema<infer U>
-        ? ToJSON<U>[]
-        : T[K] extends Schema
-        ? ToJSON<T[K]>
-        : T[K]
-    }>
+export type ToJSON<T> = T extends {
+    toJSON(): unknown
+} ? ReturnType<T['toJSON']> : T

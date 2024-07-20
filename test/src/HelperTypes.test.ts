@@ -1,5 +1,5 @@
-import {ArraySchema, MapSchema, Schema, ToJSON, type} from "../../src";
-import {Equals} from "../helpers/Equals";
+import { ArraySchema, CollectionSchema, MapSchema, Schema, SetSchema, ToJSON, type } from "../../src";
+import { Equals } from "../helpers/Equals";
 
 // Reused across multiple tests
 export class VecSchema extends Schema {
@@ -38,6 +38,10 @@ describe("ToJSON type tests", () => {
             time: number
             pos: { x: number, y: number }
         }> = true
+        const _t2: ToJSON<C> = {
+            time: 1,
+            pos: { x: 1, y: 2 }
+        }
     })
 
     it("Primitive type on root", () => {
@@ -49,6 +53,10 @@ describe("ToJSON type tests", () => {
             time: number
             name: string
         }> = true
+        const _t2: ToJSON<C> = {
+            time: 1,
+            name: "name"
+        }
     })
 
     it("Schema type on root", () => {
@@ -61,6 +69,32 @@ describe("ToJSON type tests", () => {
                 y: number
             }
         }> = true
+        const _t2: ToJSON<C> = {
+            ballPos: {
+                x: 1,
+                y: 2
+            }
+        }
+    })
+
+    it("Map on root", () => {
+        class C extends Schema {
+            @type({map: VecSchema}) positions: MapSchema<VecSchema>
+        }
+        const _t1: Equals<ToJSON<C>, {
+            positions: Record<string, {
+                x: number
+                y: number
+            }>
+        }> = true
+        const _t2: ToJSON<C> = {
+            positions: {
+                a: {
+                    x: 1,
+                    y: 2
+                }
+            }
+        }
     })
 
     it("MapSchema on root", () => {
@@ -73,6 +107,14 @@ describe("ToJSON type tests", () => {
                 y: number
             }>
         }> = true
+        const _t2: ToJSON<C> = {
+            positions: {
+                a: {
+                    x: 1,
+                    y: 2
+                }
+            }
+        }
     })
 
     it("ArraySchema on root", () => {
@@ -85,5 +127,47 @@ describe("ToJSON type tests", () => {
                 y: number
             }>
         }> = true
+        const _t2: ToJSON<C> = {
+            positions: [{
+                x: 1,
+                y: 2
+            }]
+        }
+    })
+
+    it("SetSchema on root", () => {
+        class C extends Schema {
+            @type({map: VecSchema}) positions: SetSchema<VecSchema>
+        }
+        const _t1: Equals<ToJSON<C>, {
+            positions: Array<{
+                x: number
+                y: number
+            }>
+        }> = true
+        const _t2: ToJSON<C> = {
+            positions: [{
+                x: 1,
+                y: 2
+            }]
+        }
+    })
+
+    it("CollectionSchema on root", () => {
+        class C extends Schema {
+            @type({map: VecSchema}) positions: CollectionSchema<VecSchema>
+        }
+        const _t1: Equals<ToJSON<C>, {
+            positions: Array<{
+                x: number
+                y: number
+            }>
+        }> = true
+        const _t2: ToJSON<C> = {
+            positions: [{
+                x: 1,
+                y: 2
+            }]
+        }
     })
 })

@@ -1,6 +1,6 @@
 import { SchemaDecoderCallbacks } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
-import { DataChange } from "..";
+import { DataChange, ToJSON } from "..";
 import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 
@@ -243,7 +243,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         this.$indexes.delete(index);
     }
 
-    toJSON() {
+    toJSON(): Record<K, ToJSON<V>> {
         const map: any = {};
 
         this.forEach((value, key) => {

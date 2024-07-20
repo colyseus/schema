@@ -2,7 +2,7 @@ import { ChangeTree } from "../changes/ChangeTree";
 import { OPERATION } from "../spec";
 import { SchemaDecoderCallbacks } from "../Schema";
 import { addCallback, removeChildRefs } from "./utils";
-import { DataChange } from "..";
+import { DataChange, ToJSON } from "..";
 
 export class SetSchema<V=any> implements SchemaDecoderCallbacks {
     protected $changes: ChangeTree = new ChangeTree(this);
@@ -166,8 +166,8 @@ export class SetSchema<V=any> implements SchemaDecoderCallbacks {
         return Array.from(this.$items.values());
     }
 
-    toJSON() {
-        const values: V[] = [];
+    toJSON(): ToJSON<V>[] {
+        const values: ToJSON<V>[] = [];
 
         this.forEach((value, key) => {
             values.push(
