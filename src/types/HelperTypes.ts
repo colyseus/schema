@@ -12,14 +12,18 @@ export type NonFunctionPropNames<T> = {
 
 type Primitive = string | number | bigint | boolean | symbol | undefined | null;
 
-export type ToJSON<T> = T extends Primitive ? T : NonFunctionProps<{
-    [K in keyof T]: T[K] extends MapSchema<infer U>
+export type ToJSON<T> =T extends Primitive
+    // Keep primitive values as-is, and do not omit their methods
+    ? T
+    // On objects, remove methods with NonFunctionProps
+    : NonFunctionProps<{
+        [K in keyof T]: T[K] extends MapSchema<infer U>
         ? Record<string, ToJSON<U>>
         : T[K] extends Map<string, infer U>
-            ? Record<string, ToJSON<U>>
-            : T[K] extends ArraySchema<infer U>
-                ? ToJSON<U>[]
-                : T[K] extends Schema
-                    ? ToJSON<T[K]>
-                    : T[K]
-}>
+        ? Record<string, ToJSON<U>>
+        : T[K] extends ArraySchema<infer U>
+        ? ToJSON<U>[]
+        : T[K] extends Schema
+        ? ToJSON<T[K]>
+        : T[K]
+    }>
