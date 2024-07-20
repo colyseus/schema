@@ -1,7 +1,3 @@
-import { ArraySchema } from "./ArraySchema";
-import { MapSchema } from "./MapSchema";
-import { Schema } from "../Schema";
-
 export type NonFunctionProps<T> = Omit<T, {
     [K in keyof T]: T[K] extends Function ? K : never;
 }[keyof T]>;
