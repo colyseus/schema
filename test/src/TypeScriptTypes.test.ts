@@ -1,6 +1,6 @@
 import * as assert from "assert";
-import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity } from "./Schema";
-import { Schema, ArraySchema, MapSchema, type } from "../src";
+import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity } from "../Schema";
+import { Schema, ArraySchema, MapSchema, type } from "../../src";
 
 describe("TypeScript Types", () => {
     it("strict null/undefined checks", () => {
