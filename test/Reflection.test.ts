@@ -1,7 +1,7 @@
 import * as util from "util";
 import * as assert from "assert";
 import { Reflection, Schema, type, MapSchema, ArraySchema } from "../src";
-import { createInstanceFromReflection } from "./Schema";
+import { createInstanceFromReflection, getEncoder } from "./Schema";
 
 /**
  * No filters example
@@ -150,7 +150,6 @@ describe("Reflection", () => {
                     fields: [
                         { name: 'x', type: 'number' },
                         { name: 'y', type: 'number' },
-                        { name: 'name', type: 'string' }
                     ]
                 },
                 {

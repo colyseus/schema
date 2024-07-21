@@ -330,6 +330,8 @@ export function view<T> (tag: number = DEFAULT_VIEW_TAG) {
 
         const parentClass = Object.getPrototypeOf(constructor);
         const parentMetadata = parentClass[Symbol.metadata];
+
+        // TODO: use Metadata.initialize()
         const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
 
         if (!metadata[fieldName]) {
@@ -356,6 +358,8 @@ export function unreliable<T> (target: T, field: string) {
 
     const parentClass = Object.getPrototypeOf(constructor);
     const parentMetadata = parentClass[Symbol.metadata];
+
+    // TODO: use Metadata.initialize()
     const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
 
     if (!metadata[field]) {
@@ -389,8 +393,8 @@ export function type (
         TypeContext.register(constructor);
 
         const parentClass = Object.getPrototypeOf(constructor);
-        const parentMetadata = parentClass[Symbol.metadata];
-        const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
+        const parentMetadata = parentClass && parentClass[Symbol.metadata];
+        const metadata = Metadata.initialize(constructor, parentMetadata);
 
         let fieldIndex: number;
 

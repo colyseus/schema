@@ -1,7 +1,8 @@
 import * as assert from "assert";
 
-import { Schema, type, MapSchema } from "../src";
+import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
 import { defineTypes } from "../src/annotations";
+import { createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
 
 describe("Definition Tests", () => {
 
@@ -33,7 +34,54 @@ describe("Definition Tests", () => {
         class IDontExist extends Schema {}
 
         const obj = new IDontExist();
-        assert.deepEqual(Object.keys(obj), []);
+        assert.deepStrictEqual(Object.keys(obj), []);
+    });
+
+    describe("Inheritance", () => {
+        it("should use different metadata instances on inheritance", () => {
+            class Props extends Schema {
+                @type("string") str: string;
+            }
+            class ExtendedProps extends Props {
+                @type("string") id: string;
+                @type("string") value: string;
+            }
+            class State extends Schema {
+                @type(Props) props = new Props();
+                @type(ExtendedProps) extendedProps = new ExtendedProps();
+            }
+
+            assert.ok(Props[Symbol.metadata] !== ExtendedProps[Symbol.metadata]);
+            assert.strictEqual(ExtendedProps[Symbol.metadata][0], Props[Symbol.metadata][0]);
+
+            assert.strictEqual(0, ExtendedProps[Symbol.metadata].str.index);
+            assert.strictEqual(1, ExtendedProps[Symbol.metadata].id.index);
+            assert.strictEqual(2, ExtendedProps[Symbol.metadata].value.index);
+
+            assert.strictEqual(0, Props[Symbol.metadata][-1]);
+            assert.strictEqual(2, ExtendedProps[Symbol.metadata][-1]);
+
+            const state = new State();
+            const originalContext = getDecoder(state).context;
+
+            const reflectedState = createInstanceFromReflection(state);
+            const reflectedContext = getDecoder(reflectedState).context;
+
+            assert.strictEqual(
+                originalContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].str.index,
+                reflectedContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].str.index
+            );
+
+            assert.strictEqual(
+                originalContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].id.index,
+                reflectedContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].id.index
+            );
+
+            assert.strictEqual(
+                originalContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].value.index,
+                reflectedContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].value.index
+            );
+        });
     });
 
     describe("defineTypes", () => {

@@ -112,11 +112,11 @@ export class Encoder<T extends Schema = any> {
                 // try { throw new Error(); } catch (e) {
                 //     // only print if not coming from Reflection.ts
                 //     if (!e.stack.includes("src/Reflection.ts")) {
-                //         // console.log("WILL ENCODE", {
-                //         //     ref: changeTree.ref.constructor.name,
-                //         //     fieldIndex,
-                //         //     operation: OPERATION[operation],
-                //         // });
+                //         console.log("WILL ENCODE", {
+                //             ref: changeTree.ref.constructor.name,
+                //             fieldIndex,
+                //             operation: OPERATION[operation],
+                //         });
                 //     }
                 // }
 

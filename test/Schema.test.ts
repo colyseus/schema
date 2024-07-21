@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection } from "./Schema";
+import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
 import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder } from "../src";
 
 describe("Type: Schema", () => {
@@ -1110,21 +1110,21 @@ describe("Type: Schema", () => {
     });
 
     describe("Inheritance", () => {
-        class Action extends Schema {
-            @type("boolean") active: boolean;
-        }
-        class BattleAction extends Action {
-            @type("number") damage: number;
-        }
-        class MoveAction extends Action {
-            @type("string") targetTile: string;
-            @type("number") speed: number;
-        }
-        class State extends Schema {
-            @type(Action) action: Action;
-        }
-
         it("using direct Schema -> Schema reference", () => {
+            class Action extends Schema {
+                @type("boolean") active: boolean;
+            }
+            class BattleAction extends Action {
+                @type("number") damage: number;
+            }
+            class MoveAction extends Action {
+                @type("string") targetTile: string;
+                @type("number") speed: number;
+            }
+            class State extends Schema {
+                @type(Action) action: Action;
+            }
+
             const state = new State();
             state.action = new Action().assign({ active: false });
 

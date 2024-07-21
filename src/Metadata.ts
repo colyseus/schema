@@ -120,10 +120,48 @@ export const Metadata = {
     init(klass: any) {
         //
         // Used only to initialize an empty Schema (Encoder#constructor)
+        // TODO: remove/refactor this...
         //
         const metadata = {};
         klass.constructor[Symbol.metadata] = metadata;
-        Object.defineProperty(metadata, -1, { value: 0, enumerable: false, configurable: true });
+        Object.defineProperty(metadata, -1, {
+            value: 0,
+            enumerable: false,
+            configurable: true,
+        });
+    },
+
+    initialize(constructor: any, parentMetadata?: any) {
+        let metadata: Metadata = constructor[Symbol.metadata] ?? Object.create(null);
+
+        // make sure inherited classes have their own metadata object.
+        if (constructor[Symbol.metadata] === parentMetadata) {
+            metadata = Object.create(null);
+
+            if (parentMetadata) {
+                // assign parent metadata to current
+                Object.assign(metadata, parentMetadata);
+
+                for (let i = 0; i <= parentMetadata[-1]; i++) {
+                    Object.defineProperty(metadata, i, {
+                        value: parentMetadata[i],
+                        enumerable: false,
+                        configurable: true,
+                    });
+                }
+
+                Object.defineProperty(metadata, -1, {
+                    value: parentMetadata[-1],
+                    enumerable: false,
+                    configurable: true,
+                    writable: true,
+                });
+            }
+        }
+
+        constructor[Symbol.metadata] = metadata;
+
+        return metadata;
     },
 
     isValidInstance(klass: any) {

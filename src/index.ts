@@ -4,6 +4,8 @@ export type { DataChange } from "./decoder/DecodeOperation";
 import { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType } from "./types/symbols";
 export { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType };
 
+export type { ToJSON } from "./types/HelperTypes";
+
 import { MapSchema } from "./types/custom/MapSchema"
 export { MapSchema };
 

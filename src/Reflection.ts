@@ -106,62 +106,72 @@ export class Reflection extends Schema {
         const reflectionDecoder = new Decoder(reflection);
         reflectionDecoder.decode(bytes, it);
 
-        const context = new TypeContext();
+        const typeContext = new TypeContext();
 
-        const schemaTypes = reflection.types.reduce((types, reflectionType) => {
-            const parentKlass: typeof Schema = types[reflectionType.extendsId] || Schema;
-            const schema: typeof Schema = class _ extends parentKlass {};
+        // 1st pass, initialize metadata + inheritance
+        reflection.types.forEach((reflectionType) => {
+            const parentClass: typeof Schema = typeContext.get(reflectionType.extendsId) ?? Schema;
+            const schema: typeof Schema = class _ extends parentClass {};
 
-            // const _metadata = Object.create(_classSuper[Symbol.metadata] ?? null);
-            const _metadata = parentKlass && parentKlass[Symbol.metadata] || Object.create(null);
-            Object.defineProperty(schema, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata })
+            const parentMetadata = parentClass[Symbol.metadata];
 
             // register for inheritance support
             TypeContext.register(schema);
 
-            const typeid = reflectionType.id;
-            types[typeid] = schema
-            context.add(schema, typeid);
-            return types;
+            // for inheritance support
+            Metadata.initialize(schema, parentMetadata);
+
+            typeContext.add(schema, reflectionType.id);
         }, {});
 
+        // 2nd pass, set fields
         reflection.types.forEach((reflectionType) => {
-            const schemaType = schemaTypes[reflectionType.id];
+            const schemaType = typeContext.get(reflectionType.id);
             const metadata = schemaType[Symbol.metadata];
 
-            const parentKlass = reflection.types[reflectionType.extendsId];
-            const parentFieldIndex = parentKlass && parentKlass.fields.length || 0;
+            // FIXME: use metadata[-1] to get field count
+            const parentFieldIndex = 0;
+
+            // console.log("--------------------");
+            // // console.log("reflectionType", reflectionType.toJSON());
+            // console.log("reflectionType.fields", reflectionType.fields.toJSON());
+            // console.log("parentFieldIndex", parentFieldIndex);
+
+            //
+            // FIXME: set fields using parentKlass as well
+            // currently the fields are duplicated on inherited classes
+            //
+            // // const parentKlass = reflection.types[reflectionType.extendsId];
+            // // parentKlass.fields
 
             reflectionType.fields.forEach((field, i) => {
                 const fieldIndex = parentFieldIndex + i;
 
                 if (field.referencedType !== undefined) {
                     let fieldType = field.type;
-                    let refType = schemaTypes[field.referencedType];
+                    let refType: PrimitiveType = typeContext.get(field.referencedType);
 
                     // map or array of primitive type (-1)
                     if (!refType) {
                         const typeInfo = field.type.split(":");
                         fieldType = typeInfo[0];
-                        refType = typeInfo[1];
+                        refType = typeInfo[1] as PrimitiveType; // string
                     }
 
                     if (fieldType === "ref") {
-                        // type(refType)(schemaType.prototype, field.name);
                         Metadata.addField(metadata, fieldIndex, field.name, refType);
 
                     } else {
-                        // type({ [fieldType]: refType } as DefinitionType)(schemaType.prototype, field.name);
                         Metadata.addField(metadata, fieldIndex, field.name, { [fieldType]: refType } as DefinitionType);
                     }
 
                 } else {
-                    // type(field.type as PrimitiveType)(schemaType.prototype, field.name);
                     Metadata.addField(metadata, fieldIndex, field.name, field.type as PrimitiveType);
                 }
             });
         });
 
-        return new (schemaTypes[0])();
+        // @ts-ignore
+        return new (typeContext.get(0))();
     }
 }
