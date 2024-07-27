@@ -126,7 +126,12 @@ export class Encoder<T extends Schema = any> {
 
         if (it.offset > buffer.byteLength) {
             const newSize = getNextPowerOf2(buffer.byteLength * 2);
-            console.warn("@colyseus/schema encode buffer overflow. Current buffer size: " + buffer.byteLength + ", encoding offset: " + it.offset + ", new size: " + newSize);
+            console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
+
+    import { Encoder } from "@colyseus/schema";
+    Encoder.BUFFER_SIZE = ${Math.round(newSize / 1024)} * 1024; // ${Math.round(newSize / 1024)} KB
+`);
+
 
             //
             // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
