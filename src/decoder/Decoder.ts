@@ -4,10 +4,10 @@ import { Schema } from "../Schema";
 
 import * as decode from "../encoding/decode";
 import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
-import { Ref } from "../encoder/ChangeTree";
-import { Iterator } from "../encoding/decode";
+import type { Ref } from "../encoder/ChangeTree";
+import type { Iterator } from "../encoding/decode";
 import { ReferenceTracker } from "./ReferenceTracker";
-import { DEFINITION_MISMATCH, DataChange, DecodeOperation } from "./DecodeOperation";
+import { DEFINITION_MISMATCH, type DataChange, type DecodeOperation } from "./DecodeOperation";
 import { Collection } from "../types/HelperTypes";
 
 export class Decoder<T extends Schema = any> {

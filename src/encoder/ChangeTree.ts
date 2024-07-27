@@ -10,7 +10,6 @@ import type { SetSchema } from "../types/custom/SetSchema";
 import { Metadata } from "../Metadata";
 import type { EncodeOperation } from "./EncodeOperation";
 import type { DecodeOperation } from "../decoder/DecodeOperation";
-import type { StateView } from "./StateView";
 
 declare global {
     interface Object {
