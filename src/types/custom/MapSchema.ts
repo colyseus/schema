@@ -26,10 +26,12 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
      */
     static [$filter] (ref: MapSchema, index: number, view: StateView) {
+        const exists = ref[$getByIndex](index) !== undefined;
+        const existsAndChanges = exists && view.items.has(ref[$getByIndex](index)[$changes])
         return (
             !view  ||
             typeof (ref[$childType]) === "string" ||
-            view.items.has(ref[$getByIndex](index)[$changes])
+            existsAndChanges
         );
     }
 
