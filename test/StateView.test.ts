@@ -377,13 +377,14 @@ describe("StateView", () => {
             }
 
             const state = new State();
+            const encoder = new Encoder(state);
+            const client1 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1]);
+
             for (let i = 0; i < 5; i++) {
                 state.items.set(i.toString(), new Item().assign({ amount: i }));
             }
 
-            const encoder = new Encoder(state);
-
-            const client1 = createClientWithView(state);
             client1.view.add(state.items.get("3"));
 
             const client2 = createClientWithView(state);
