@@ -32,20 +32,23 @@ type InstanceCallback<T> = {
      * @param prop name of the property
      * @param callback callback to be triggered on property change
      * @param immediate trigger immediatelly if property has been already set.
+     * @return callback to detach the listener
      */
     listen<K extends NonFunctionPropNames<T>>(
         prop: K,
         callback: (value: T[K], previousValue: T[K]) => void,
         immediate?: boolean,
-    )
+    ): () => void;
+
     /**
      * Trigger callback whenever any property changed within this instance.
      *
      * @param prop name of the property
      * @param callback callback to be triggered on property change
      * @param immediate trigger immediatelly if property has been already set.
+     * @return callback to detach the listener
      */
-    onChange(callback: () => void): void;
+    onChange(callback: () => void): () => void;
 
     /**
      * Bind properties to another object. Changes on the properties will be reflected on the target object.
@@ -64,15 +67,17 @@ type CollectionCallback<K, V> = {
      *
      * @param callback
      * @param immediate
+     * @return callback to detach the onAdd listener
      */
-    onAdd(callback: (item: V, index: K) => void, immediate?: boolean): void;
+    onAdd(callback: (item: V, index: K) => void, immediate?: boolean): () => void;
 
     /**
      * Trigger callback when an item has been removed to the collection.
      *
      * @param callback
+     * @return callback to detach the onRemove listener
      */
-    onRemove(callback: (item: V, index: K) => void): void;
+    onRemove(callback: (item: V, index: K) => void): () => void;
 
     // /**
     //  * Trigger callback when an item has been removed to the collection.
@@ -235,8 +240,13 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
 
                     } else {
                         // collection instance not received yet
-                        context.onInstanceAvailable((ref: Ref, existing: boolean) =>
-                            onAdd(ref, prop, callback, immediate && existing));
+                        let detachCallback = () => {};
+
+                        context.onInstanceAvailable((ref: Ref, existing: boolean) => {
+                            detachCallback = onAdd(ref, prop, callback, immediate && existing)
+                        });
+
+                        return () => detachCallback();
                     }
                 },
                 onChange: function onChange(callback: () => void) {
@@ -327,21 +337,30 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     //
                     if (context.onInstanceAvailable) {
                         // collection instance not received yet
-                        context.onInstanceAvailable((ref: Ref, existing: boolean) =>
-                            onAdd(ref, callback, immediate && existing && !isTriggeringOnAdd));
+                        let detachCallback = () => {};
 
+                        context.onInstanceAvailable((ref: Ref, existing: boolean) => {
+                            detachCallback = onAdd(ref, callback, immediate && existing && !isTriggeringOnAdd);
+                        });
+
+                        return () => detachCallback();
                     } else if (context.instance) {
-                        onAdd(context.instance, callback, immediate && !isTriggeringOnAdd);
+                        return onAdd(context.instance, callback, immediate && !isTriggeringOnAdd);
                     }
                 },
                 onRemove: function(callback: (value, key) => void) {
                     if (context.onInstanceAvailable) {
                         // collection instance not received yet
-                        context.onInstanceAvailable((ref: Ref) =>
-                            onRemove(ref, callback));
+                        let detachCallback = () => {};
+
+                        context.onInstanceAvailable((ref: Ref) => {
+                            detachCallback = onRemove(ref, callback)
+                        });
+
+                        return () => detachCallback();
 
                     } else if (context.instance) {
-                        onRemove(context.instance, callback);
+                        return onRemove(context.instance, callback);
                     }
                 },
             }, {
