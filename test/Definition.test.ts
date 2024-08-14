@@ -54,6 +54,8 @@ describe("Definition Tests", () => {
 
                 state.map.set("two", new Item());
                 decodedState.decode(state.encode());
+
+                assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
             });
         });
     });
