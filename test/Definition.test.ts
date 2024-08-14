@@ -30,11 +30,32 @@ describe("Definition Tests", () => {
         assert.deepStrictEqual(Object.keys(obj.players.get('one')), ['x', 'y', 'somethingPrivate']);
     });
 
-    it("should allow a Schema instance with no fields", () => {
-        class IDontExist extends Schema {}
+    describe("no fields", () => {
+        it("should allow a Schema instance with no fields", () => {
+            class IDontExist extends Schema { }
 
-        const obj = new IDontExist();
-        assert.deepStrictEqual(Object.keys(obj), []);
+            const obj = new IDontExist();
+            assert.deepStrictEqual(Object.keys(obj), []);
+        });
+
+        it("should allow a MapSchema child with no fields ", () => {
+            class Item extends Schema { }
+
+            class State extends Schema {
+                @type({ map: Item }) map: MapSchema<Item> = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const decodedState = createInstanceFromReflection(state);
+
+            assert.doesNotThrow(() => {
+                state.map.set("one", new Item());
+                decodedState.decode(state.encodeAll());
+
+                state.map.set("two", new Item());
+                decodedState.decode(state.encode());
+            });
+        });
     });
 
     describe("Inheritance", () => {
