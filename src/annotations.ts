@@ -87,6 +87,14 @@ export class TypeContext {
         }
 
         this.types[typeid] = schema;
+
+        //
+        // Workaround to allow using an empty Schema (with no `@type()` fields)
+        //
+        if (schema[Symbol.metadata] === undefined) {
+            Metadata.init(schema);
+        }
+
         this.schemas.set(schema, typeid);
         return true;
     }

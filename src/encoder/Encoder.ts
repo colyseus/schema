@@ -21,13 +21,13 @@ export class Encoder<T extends Schema = any> {
     root: Root;
 
     constructor(root: T) {
-        this.setRoot(root);
-
         //
         // TODO: cache and restore "Context" based on root schema
         // (to avoid creating a new context for every new room)
         //
         this.context = new TypeContext(root.constructor as typeof Schema);
+
+        this.setRoot(root);
 
         // console.log(">>>>>>>>>>>>>>>> Encoder types");
         // this.context.schemas.forEach((id, schema) => {
@@ -38,12 +38,6 @@ export class Encoder<T extends Schema = any> {
     protected setRoot(state: T) {
         this.root = new Root();
         this.state = state;
-
-        // Workaround to allow using an empty Schema.
-        if (state.constructor[Symbol.metadata] === undefined) {
-            Metadata.init(state);
-        }
-
         state[$changes].setRoot(this.root);
     }
 

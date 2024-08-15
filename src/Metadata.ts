@@ -123,7 +123,7 @@ export const Metadata = {
         // TODO: remove/refactor this...
         //
         const metadata = {};
-        klass.constructor[Symbol.metadata] = metadata;
+        klass[Symbol.metadata] = metadata;
         Object.defineProperty(metadata, -1, {
             value: 0,
             enumerable: false,
