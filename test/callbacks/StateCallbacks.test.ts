@@ -69,8 +69,13 @@ describe("StateCallbacks", () => {
     });
 
     it("should support nested onAdd, attached BEFORE data is available ", () => {
+        class Prop extends Schema {
+            @type("number") lvl: number;
+        }
+
         class Item extends Schema {
             @type("string") type: string;
+            @type({ map: Prop }) properties = new MapSchema<Prop>();
         }
 
         class Player extends Schema {
@@ -86,8 +91,20 @@ describe("StateCallbacks", () => {
         const player = new Player().assign({
             name: "Player one",
             items: new MapSchema<Item>({
-                sword: new Item().assign({ type: 'sword' }),
-                shield: new Item().assign({ type: 'shield' }),
+                sword: new Item().assign({
+                    type: 'sword',
+                    properties: new MapSchema<Prop>({
+                        "one": new Prop().assign({ lvl: 1 }),
+                        "two": new Prop().assign({ lvl: 2 }),
+                    })
+                }),
+                shield: new Item().assign({
+                    type: 'shield' ,
+                    properties: new MapSchema<Prop>({
+                        "three": new Prop().assign({ lvl: 3 }),
+                        "four": new Prop().assign({ lvl: 4 }),
+                    })
+                }),
             })
         });
         state.players.set("one", player);
@@ -97,22 +114,34 @@ describe("StateCallbacks", () => {
 
         let onPlayerAddCount = 0;
         let onItemAddCount = 0;
+        let onPropertyAddCount = 0;
 
         $(decodedState).players.onAdd((player, key) => {
             onPlayerAddCount++;
+
             $(player).items.onAdd((item, key) => {
                 onItemAddCount++;
+
+                $(item).properties.onAdd((prop, key) => {
+                    onPropertyAddCount++;
+                });
             });
         });
 
         decodedState.decode(state.encode());
         assert.strictEqual(1, onPlayerAddCount);
         assert.strictEqual(2, onItemAddCount);
+        assert.strictEqual(4, onPropertyAddCount);
     });
 
     it("should support nested onAdd, attached AFTER data is available ", () => {
+        class Prop extends Schema {
+            @type("number") lvl: number;
+        }
+
         class Item extends Schema {
             @type("string") type: string;
+            @type({ map: Prop }) properties = new MapSchema<Prop>();
         }
 
         class Player extends Schema {
@@ -128,10 +157,23 @@ describe("StateCallbacks", () => {
         const player = new Player().assign({
             name: "Player one",
             items: new MapSchema<Item>({
-                sword: new Item().assign({ type: 'sword' }),
-                shield: new Item().assign({ type: 'shield' }),
+                sword: new Item().assign({
+                    type: 'sword',
+                    properties: new MapSchema<Prop>({
+                        "one": new Prop().assign({ lvl: 1 }),
+                        "two": new Prop().assign({ lvl: 2 }),
+                    })
+                }),
+                shield: new Item().assign({
+                    type: 'shield' ,
+                    properties: new MapSchema<Prop>({
+                        "three": new Prop().assign({ lvl: 3 }),
+                        "four": new Prop().assign({ lvl: 4 }),
+                    })
+                }),
             })
         });
+
         state.players.set("one", player);
 
         const decodedState = createInstanceFromReflection(state);
@@ -139,18 +181,25 @@ describe("StateCallbacks", () => {
 
         let onPlayerAddCount = 0;
         let onItemAddCount = 0;
+        let onPropertyAddCount = 0;
 
         decodedState.decode(state.encode());
 
         $(decodedState).players.onAdd((player, key) => {
             onPlayerAddCount++;
+
             $(player).items.onAdd((item, key) => {
                 onItemAddCount++;
+
+                $(item).properties.onAdd((prop, key) => {
+                    onPropertyAddCount++;
+                });
             });
         });
 
         assert.strictEqual(1, onPlayerAddCount);
         assert.strictEqual(2, onItemAddCount);
+        assert.strictEqual(4, onPropertyAddCount);
     });
 
 });
