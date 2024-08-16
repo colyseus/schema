@@ -330,6 +330,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     currentOnAddCallback = callback;
                     callback(value, key);
                     onAddCalls.delete(callback)
+                    currentOnAddCallback = undefined;
                 });
             };
 
