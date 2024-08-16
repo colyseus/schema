@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { Schema, type, MapSchema, ArraySchema, filter, filterChildren } from "../src";
+import { Schema, type, MapSchema, ArraySchema } from "../src";
 
 describe("Next Iteration", () => {
 
@@ -76,8 +76,7 @@ describe("Next Iteration", () => {
 
     it("add and modify a map item", () => {
         class State extends Schema {
-            @type({ map: "number" })
-            map = new Map<string, number>();
+            @type({ map: "number" }) map = new Map<string, number>();
         }
 
         const state = new State();
@@ -85,21 +84,17 @@ describe("Next Iteration", () => {
         state.map.set("two", 2);
         state.map.set("three", 3);
 
-        const decoded = new State();
+        const decodedState = new State();
+        decodedState.decode(state.encode());
 
-        let encoded = state.encode();
-        decoded.decode(encoded);
-
-        assert.deepEqual(decoded.map.get("one"), 1);
-        assert.deepEqual(decoded.map.get("two"), 2);
-        assert.deepEqual(decoded.map.get("three"), 3);
+        assert.strictEqual(decodedState.map.get("one"), 1);
+        assert.strictEqual(decodedState.map.get("two"), 2);
+        assert.strictEqual(decodedState.map.get("three"), 3);
 
         state.map.set("two", 22);
+        decodedState.decode(state.encode());
 
-        encoded = state.encode();
-        decoded.decode(encoded);
-
-        assert.deepEqual(decoded.map.get("two"), 22);
+        assert.deepStrictEqual(decodedState.map.get("two"), 22);
     });
 
     it("MapSchema should be backwards-compatible with @colyseus/schema 0.5", () => {
@@ -109,8 +104,8 @@ describe("Next Iteration", () => {
         }
 
         const state = new State();
-        state.map["one"] = 1;
-        state.map["two"] = 2;
+        state.map.set("one", 1);
+        state.map.set("two", 2);
 
         const decoded = new State();
         decoded.decode(state.encode());
@@ -119,18 +114,18 @@ describe("Next Iteration", () => {
         assert.strictEqual(1, decoded.map.get("one"));
         assert.strictEqual(2, decoded.map.get("two"));
 
-        assert.strictEqual(1, decoded.map["one"]);
-        assert.strictEqual(2, decoded.map["two"]);
+        assert.strictEqual(1, decoded.map.get("one"));
+        assert.strictEqual(2, decoded.map.get("two"));
 
-        delete state.map['one'];
+        state.map.delete('one');
 
         const encoded = state.encode();
 
         decoded.decode(encoded);
 
         assert.strictEqual(1, decoded.map.size);
-        assert.strictEqual(undefined, decoded.map["one"]);
-        assert.strictEqual(2, decoded.map["two"]);
+        assert.strictEqual(undefined, decoded.map.get("one"));
+        assert.strictEqual(2, decoded.map.get("two"));
     });
 
     describe("re-using Schema references", () => {
@@ -216,6 +211,7 @@ describe("Next Iteration", () => {
         });
     });
 
+    /*
     it("add and modify a filtered primitive map item", () => {
         class State extends Schema {
             @filterChildren(function(client, key, value, root) {
@@ -277,7 +273,9 @@ describe("Next Iteration", () => {
         decoded3.decode(encoded3);
         assert.strictEqual(decoded3.map.size, 1);
     });
+    */
 
+    /*
     it("add and modify a filtered Schema map item", () => {
         class Player extends Schema {
             @type("number") x: number;
@@ -347,6 +345,7 @@ describe("Next Iteration", () => {
         assert.strictEqual(decoded3.map.size, 1);
         assert.deepEqual(decoded3.map.get("three").x, 33);
     });
+    */
 
     it("should encode string", () => {
         class Item extends Schema {
@@ -391,54 +390,7 @@ describe("Next Iteration", () => {
         decoded.decode(encoded);
     });
 
-    it("instances should share parent/root references", () => {
-        class Skill extends Schema {
-            @type("number") damage: number;
-        }
-
-        class Item extends Schema {
-            @type("number") damage: number;
-            @type({ map: Skill }) skills = new Map<string, Skill>();
-        }
-
-        class Player extends Schema {
-            @type("number") x: number;
-            @type("number") y: number;
-            @type(Item) item: Item;
-        }
-
-        class State extends Schema {
-            @type("string") str: string;
-            @type("number") num: number;
-            @type({ map: Player }) players: Map<string, Player>;
-            @type(Player) player: Player;
-        };
-
-        const state = new State();
-        const player = new Player();
-        player.item = new Item();
-        state.player = player;
-
-        const players = new Map<string, Player>();
-        players.set("one", new Player());
-        players.get("one").item = new Item();
-
-        state.players = players;
-
-        // Testing for "root".
-        const $root = state['$changes'].root;
-        assert.ok(player['$changes'].root === $root, "State and Player should have same 'root'.");
-        assert.ok(player.item['$changes'].root === $root, "Player and Item should have same 'root'.");
-        assert.ok(state.players.get("one")['$changes'].root === $root, "Player and Item should have same 'root'.");
-        assert.ok(state.players.get("one").item['$changes'].root === $root, "Player and Item should have same 'root'.");
-
-        // Testing for "parent".
-        assert.ok(state['$changes'].parent === undefined, "State parent should be 'undefined'");
-        assert.ok(state.player['$changes'].parent === state, "Player parent should be State");
-        assert.ok(state.player.item['$changes'].parent === player, "Item parent should be Player");
-        assert.ok(state.players.get("one")['$changes'].parent['$changes'].refId === state.players['$changes'].refId as any, "state.players['one'] parent should be state.players");
-    });
-
+    /*
     it("should encode filtered", () => {
         class Item extends Schema {
             @type("number") damage: number;
@@ -507,6 +459,7 @@ describe("Next Iteration", () => {
         assert.strictEqual(2, decoded1.player.x);
         assert.strictEqual(6, decoded1.player.item.damage);
     });
+    */
 
     it("encoding / decoding deep items", () => {
         class Item extends Schema {
@@ -582,7 +535,7 @@ describe("Next Iteration", () => {
             player2.name = "Not inside the Map anymore";
 
             const shouldHaveNoChanges = state.encode();
-            assert.deepEqual(noChangesEncoded, shouldHaveNoChanges, "encoded result should be empty.");
+            assert.deepStrictEqual(noChangesEncoded, shouldHaveNoChanges, "encoded result should be empty.");
 
             state.player = player2;
             decoded.decode(state.encode());

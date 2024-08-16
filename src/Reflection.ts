@@ -1,58 +1,53 @@
-import { type, PrimitiveType, Context, DefinitionType } from "./annotations";
-import { Schema } from "./Schema";
-import { ArraySchema } from "./types/ArraySchema";
-import { getType } from "./types/typeRegistry";
+import { type, PrimitiveType, DefinitionType, TypeContext } from "./annotations";
+import { Metadata } from "./Metadata";
+import { ArraySchema } from "./types/custom/ArraySchema";
 import { Iterator } from "./encoding/decode";
-
-const reflectionContext = { context: new Context() };
+import { Encoder } from "./encoder/Encoder";
+import { Decoder } from "./decoder/Decoder";
+import { Schema } from "./Schema";
 
 /**
  * Reflection
  */
 export class ReflectionField extends Schema {
-    @type("string", reflectionContext)
-    name: string;
-
-    @type("string", reflectionContext)
-    type: string;
-
-    @type("number", reflectionContext)
-    referencedType: number;
+    @type("string") name: string;
+    @type("string") type: string;
+    @type("number") referencedType: number;
 }
 
 export class ReflectionType extends Schema {
-    @type("number", reflectionContext)
-    id: number;
-
-    @type([ ReflectionField ], reflectionContext)
-    fields: ArraySchema<ReflectionField> = new ArraySchema<ReflectionField>();
+    @type("number") id: number;
+    @type("number") extendsId: number;
+    @type([ ReflectionField ]) fields = new ArraySchema<ReflectionField>();
 }
 
 export class Reflection extends Schema {
-    @type([ ReflectionType ], reflectionContext)
-    types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
+    @type([ ReflectionType ]) types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
 
-    @type("number", reflectionContext)
-    rootType: number;
-
-    static encode (instance: Schema) {
-        const rootSchemaType = instance.constructor as typeof Schema;
+    static encode(instance: Schema, context?: TypeContext, it: Iterator = { offset: 0 }) {
+        context ??= new TypeContext(instance.constructor as typeof Schema);
 
         const reflection = new Reflection();
-        reflection.rootType = rootSchemaType._typeid;
+        const encoder = new Encoder(reflection);
 
-        const buildType = (currentType: ReflectionType, schema: any) => {
-            for (let fieldName in schema) {
+        const buildType = (currentType: ReflectionType, metadata: Metadata) => {
+            for (const fieldName in metadata) {
+                // skip fields from parent classes
+                if (!Object.prototype.hasOwnProperty.call(metadata, fieldName)) {
+                    continue;
+                }
+
                 const field = new ReflectionField();
                 field.name = fieldName;
 
                 let fieldType: string;
 
-                if (typeof (schema[fieldName]) === "string") {
-                    fieldType = schema[fieldName];
+                const type = metadata[fieldName].type;
+
+                if (typeof (type) === "string") {
+                    fieldType = type;
 
                 } else {
-                    const type = schema[fieldName];
                     let childTypeSchema: typeof Schema;
 
                     //
@@ -60,7 +55,7 @@ export class Reflection extends Schema {
                     //
                     if (Schema.is(type)) {
                         fieldType = "ref";
-                        childTypeSchema = schema[fieldName];
+                        childTypeSchema = type as typeof Schema;
 
                     } else {
                         fieldType = Object.keys(type)[0];
@@ -74,7 +69,7 @@ export class Reflection extends Schema {
                     }
 
                     field.referencedType = (childTypeSchema)
-                        ? childTypeSchema._typeid
+                        ? context.getTypeId(childTypeSchema)
                         : -1;
                 }
 
@@ -85,75 +80,96 @@ export class Reflection extends Schema {
             reflection.types.push(currentType);
         }
 
-        const types = rootSchemaType._context?.types;
-        for (let typeid in types) {
+        for (let typeid in context.types) {
+            const klass = context.types[typeid];
             const type = new ReflectionType();
             type.id = Number(typeid);
-            buildType(type, types[typeid]._definition.schema);
+
+            // support inheritance
+            const inheritFrom = Object.getPrototypeOf(klass);
+            if (inheritFrom !== Schema) {
+                type.extendsId = context.schemas.get(inheritFrom);
+            }
+
+            buildType(type, klass[Symbol.metadata]);
         }
 
-        return reflection.encodeAll();
+        const buf = encoder.encodeAll(it);
+        return Buffer.from(buf, 0, it.offset);
     }
 
-    static decode<T extends Schema = Schema>(bytes: number[], it?: Iterator): T {
-        const context = new Context();
-
+    static decode<T extends Schema = Schema>(bytes: Buffer, it?: Iterator): T {
         const reflection = new Reflection();
-        reflection.decode(bytes, it);
 
-        const schemaTypes = reflection.types.reduce((types, reflectionType) => {
-            const schema: typeof Schema = class _ extends Schema {};
-            const typeid = reflectionType.id;
-            types[typeid] = schema
-            context.add(schema, typeid);
-            return types;
+        const reflectionDecoder = new Decoder(reflection);
+        reflectionDecoder.decode(bytes, it);
+
+        const typeContext = new TypeContext();
+
+        // 1st pass, initialize metadata + inheritance
+        reflection.types.forEach((reflectionType) => {
+            const parentClass: typeof Schema = typeContext.get(reflectionType.extendsId) ?? Schema;
+            const schema: typeof Schema = class _ extends parentClass {};
+
+            const parentMetadata = parentClass[Symbol.metadata];
+
+            // register for inheritance support
+            TypeContext.register(schema);
+
+            // for inheritance support
+            Metadata.initialize(schema, parentMetadata);
+
+            typeContext.add(schema, reflectionType.id);
         }, {});
 
+        // 2nd pass, set fields
         reflection.types.forEach((reflectionType) => {
-            const schemaType = schemaTypes[reflectionType.id];
+            const schemaType = typeContext.get(reflectionType.id);
+            const metadata = schemaType[Symbol.metadata];
 
-            reflectionType.fields.forEach(field => {
+            // FIXME: use metadata[-1] to get field count
+            const parentFieldIndex = 0;
+
+            // console.log("--------------------");
+            // // console.log("reflectionType", reflectionType.toJSON());
+            // console.log("reflectionType.fields", reflectionType.fields.toJSON());
+            // console.log("parentFieldIndex", parentFieldIndex);
+
+            //
+            // FIXME: set fields using parentKlass as well
+            // currently the fields are duplicated on inherited classes
+            //
+            // // const parentKlass = reflection.types[reflectionType.extendsId];
+            // // parentKlass.fields
+
+            reflectionType.fields.forEach((field, i) => {
+                const fieldIndex = parentFieldIndex + i;
+
                 if (field.referencedType !== undefined) {
                     let fieldType = field.type;
-                    let refType = schemaTypes[field.referencedType];
+                    let refType: PrimitiveType = typeContext.get(field.referencedType);
 
                     // map or array of primitive type (-1)
                     if (!refType) {
                         const typeInfo = field.type.split(":");
                         fieldType = typeInfo[0];
-                        refType = typeInfo[1];
+                        refType = typeInfo[1] as PrimitiveType; // string
                     }
 
                     if (fieldType === "ref") {
-                        type(refType, { context })(schemaType.prototype, field.name);
+                        Metadata.addField(metadata, fieldIndex, field.name, refType);
 
                     } else {
-                        type({ [fieldType]: refType } as DefinitionType, { context })(schemaType.prototype, field.name);
+                        Metadata.addField(metadata, fieldIndex, field.name, { [fieldType]: refType } as DefinitionType);
                     }
 
                 } else {
-                    type(field.type as PrimitiveType, { context })(schemaType.prototype, field.name);
+                    Metadata.addField(metadata, fieldIndex, field.name, field.type as PrimitiveType);
                 }
             });
-        })
+        });
 
-        const rootType: any = schemaTypes[reflection.rootType];
-        const rootInstance = new rootType();
-
-        /**
-         * auto-initialize referenced types on root type
-         * to allow registering listeners immediatelly on client-side
-         */
-        for (let fieldName in rootType._definition.schema) {
-            const fieldType = rootType._definition.schema[fieldName];
-
-            if (typeof(fieldType) !== "string") {
-                rootInstance[fieldName] = (typeof (fieldType) === "function")
-                    ? new (fieldType as any)() // is a schema reference
-                    : new (getType(Object.keys(fieldType)[0])).constructor(); // is a "collection"
-            }
-        }
-
-        return rootInstance;
+        // @ts-ignore
+        return new (typeContext.get(0))();
     }
 }

@@ -1,7 +1,8 @@
 import * as assert from "assert";
 
-import { Schema, type, MapSchema, filter, hasFilter, ArraySchema } from "../src";
-import { defineTypes, Context } from "../src/annotations";
+import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
+import { defineTypes } from "../src/annotations";
+import { createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
 
 describe("Definition Tests", () => {
 
@@ -22,18 +23,88 @@ describe("Definition Tests", () => {
         }
 
         const obj = new MySchema();
-        obj.players['one'] = new Player();
+        obj.players.set('one', new Player());
 
-        assert.deepEqual(Object.keys(obj), ['str', 'players', 'notSynched']);
-        assert.deepEqual(Array.from(obj.players.keys()), ['one']);
-        assert.deepEqual(Object.keys(obj.players['one']), ['x', 'y', 'somethingPrivate']);
+        assert.deepStrictEqual(Object.keys(obj), ['str', 'players', 'notSynched']);
+        assert.deepStrictEqual(Array.from(obj.players.keys()), ['one']);
+        assert.deepStrictEqual(Object.keys(obj.players.get('one')), ['x', 'y', 'somethingPrivate']);
     });
 
-    it("should allow a Schema instance with no fields", () => {
-        class IDontExist extends Schema {}
+    describe("no fields", () => {
+        it("should allow a Schema instance with no fields", () => {
+            class IDontExist extends Schema { }
 
-        const obj = new IDontExist();
-        assert.deepEqual(Object.keys(obj), []);
+            const obj = new IDontExist();
+            assert.deepStrictEqual(Object.keys(obj), []);
+        });
+
+        it("should allow a MapSchema child with no fields ", () => {
+            class Item extends Schema { }
+
+            class State extends Schema {
+                @type({ map: Item }) map: MapSchema<Item> = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const decodedState = createInstanceFromReflection(state);
+
+            assert.doesNotThrow(() => {
+                state.map.set("one", new Item());
+                decodedState.decode(state.encodeAll());
+
+                state.map.set("two", new Item());
+                decodedState.decode(state.encode());
+
+                assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+            });
+        });
+    });
+
+    describe("Inheritance", () => {
+        it("should use different metadata instances on inheritance", () => {
+            class Props extends Schema {
+                @type("string") str: string;
+            }
+            class ExtendedProps extends Props {
+                @type("string") id: string;
+                @type("string") value: string;
+            }
+            class State extends Schema {
+                @type(Props) props = new Props();
+                @type(ExtendedProps) extendedProps = new ExtendedProps();
+            }
+
+            assert.ok(Props[Symbol.metadata] !== ExtendedProps[Symbol.metadata]);
+            assert.strictEqual(ExtendedProps[Symbol.metadata][0], Props[Symbol.metadata][0]);
+
+            assert.strictEqual(0, ExtendedProps[Symbol.metadata].str.index);
+            assert.strictEqual(1, ExtendedProps[Symbol.metadata].id.index);
+            assert.strictEqual(2, ExtendedProps[Symbol.metadata].value.index);
+
+            assert.strictEqual(0, Props[Symbol.metadata][-1]);
+            assert.strictEqual(2, ExtendedProps[Symbol.metadata][-1]);
+
+            const state = new State();
+            const originalContext = getDecoder(state).context;
+
+            const reflectedState = createInstanceFromReflection(state);
+            const reflectedContext = getDecoder(reflectedState).context;
+
+            assert.strictEqual(
+                originalContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].str.index,
+                reflectedContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].str.index
+            );
+
+            assert.strictEqual(
+                originalContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].id.index,
+                reflectedContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].id.index
+            );
+
+            assert.strictEqual(
+                originalContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].value.index,
+                reflectedContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].value.index
+            );
+        });
     });
 
     describe("defineTypes", () => {
@@ -50,143 +121,4 @@ describe("Definition Tests", () => {
         });
     });
 
-    describe("hasFilter()", () => {
-        it("should return false", () => {
-            const type = Context.create();
-
-            class State extends Schema {
-                @type("string") str: string;
-            }
-
-            assert.ok(!hasFilter(State));
-        });
-
-        it("should return true", () => {
-            const type = Context.create();
-
-            class State extends Schema {
-                @filter(function (client, value, root) {
-                    return true;
-                })
-                @type("string") str: string;
-            }
-
-            assert.ok(hasFilter(State));
-        });
-
-        it("should be able to navigate on recursive structures", () => {
-            const type = Context.create();
-
-            class Container extends Schema {
-                @type("string") name: string;
-
-                @type([Container]) arrayOfContainers: ArraySchema<Container>;
-                @type({ map: Container }) mapOfContainers: MapSchema<Container>;
-            }
-            class State extends Schema {
-                @type(Container) root: Container;
-            }
-
-            const fun = () => hasFilter(State);
-
-            assert.doesNotThrow(fun);
-            assert.strictEqual(false, fun());
-        });
-
-        it("should be able to navigate on more complex recursive array structures", () => {
-            const context = new Context();
-            const type = Context.create({ context });
-
-            class ContainerA extends Schema {
-                @type("string") contAName: string;
-            }
-            class ContainerB extends Schema {
-                @type("string") contBName: string;
-            }
-            class State extends Schema {
-            }
-
-            const allContainers = [State, ContainerA, ContainerB];
-            allContainers.forEach((cont) => {
-                defineTypes(cont, {
-                    containersA: [ContainerA],
-                    containersB: [ContainerB],
-                }, { context });
-            });
-
-            const fun = () => hasFilter(State);
-
-            assert.doesNotThrow(fun);
-            assert.strictEqual(false, fun());
-        });
-
-        it("should find filter on more complex recursive map structures", () => {
-            const type = Context.create();
-
-            class ContainerA extends Schema {
-                @type("string") contAName: string;
-            }
-            class ContainerB extends Schema {
-                @filter(function (client, value, root) { return true; })
-                @type("string")
-                contBName: string;
-            }
-            class State extends Schema {
-            }
-
-            const allContainers = [State, ContainerA, ContainerB];
-            allContainers.forEach((cont) => {
-                defineTypes(cont, {
-                    containersA: { map: ContainerA },
-                    containersB: { map: ContainerB },
-                });
-            });
-
-            assert.ok(hasFilter(State));
-        });
-
-        it("should find filter on more complex recursive structures - map", () => {
-            const type = Context.create();
-
-            class ContainerA extends Schema {
-                @type("string") contAName: string;
-            }
-            class ContainerB extends Schema {
-                @filter(function (client, value, root) { return true; })
-                @type("string")
-                contBName: string;
-            }
-            class State extends Schema {
-            }
-
-            const allContainers = [State, ContainerA, ContainerB];
-            allContainers.forEach((cont) => {
-                defineTypes(cont, {
-                    containersA: { map: ContainerA },
-                    containersB: { map: ContainerB },
-                });
-            });
-
-            assert.ok(hasFilter(State));
-        });
-
-        it("should be able to navigate on maps and arrays of primitive types", () => {
-            const type = Context.create();
-
-            class State extends Schema {
-                @type(["string"]) stringArr: MapSchema<string>;
-                @type(["number"]) numberArr: MapSchema<number>;
-                @type(["boolean"]) booleanArr: MapSchema<boolean>;
-                @type({ map: "string" }) stringMap: MapSchema<string>;
-                @type({ map: "number" }) numberMap: MapSchema<number>;
-                @type({ map: "boolean" }) booleanMap: MapSchema<boolean>;
-            }
-
-            const fun = () => hasFilter(State);
-
-            assert.doesNotThrow(fun);
-            assert.strictEqual(false, fun());
-        });
-
-    });
 });

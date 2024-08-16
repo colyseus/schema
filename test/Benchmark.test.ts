@@ -5,11 +5,11 @@ import { MapSchema } from "../src";
 
 import { assertExecutionTime } from "./helpers/test_helpers";
 
-
-describe("Benchmark Test", () => {
-    const state = new State();
+describe("Benchmarks", () => {
+    let state: State;
 
     beforeEach(() => {
+        state = new State();
         state.mapOfPlayers = new MapSchema();
         for (let i = 0; i < 200; i++) {
             state.mapOfPlayers.set("p" + i, new Player().assign({

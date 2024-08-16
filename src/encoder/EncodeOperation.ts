@@ -1,0 +1,254 @@
+import { OPERATION } from "../encoding/spec";
+import { $changes } from "../types/symbols";
+import { getType } from "../types/registry";
+
+import * as encode from "../encoding/encode";
+import { EncodeSchemaError, assertInstanceType, assertType } from "../encoding/assert";
+
+import type { ChangeTree, Ref } from "./ChangeTree";
+import type { Encoder } from "./Encoder";
+import type { Schema } from "../Schema";
+import type { PrimitiveType } from "../annotations";
+
+import type { Iterator } from "../encoding/decode";
+import type { ArraySchema } from "../types/custom/ArraySchema";
+
+export type EncodeOperation<T extends Ref = any> = (
+    encoder: Encoder,
+    bytes: Buffer,
+    changeTree: ChangeTree<T>,
+    index: number,
+    operation: OPERATION,
+    it: Iterator,
+    isEncodeAll: boolean,
+    hasView: boolean,
+) => void;
+
+export function encodePrimitiveType(
+    type: PrimitiveType,
+    bytes: Buffer,
+    value: any,
+    klass: Schema,
+    field: string | number,
+    it: Iterator,
+) {
+    assertType(value, type as string, klass, field);
+
+    const encodeFunc = encode[type as string];
+
+    if (encodeFunc) {
+        encodeFunc(bytes, value, it);
+        // encodeFunc(bytes, value);
+
+    } else {
+        throw new EncodeSchemaError(`a '${type}' was expected, but ${value} was provided in ${klass.constructor.name}#${field}`);
+    }
+};
+
+export function encodeValue(
+    encoder: Encoder,
+    bytes: Buffer,
+    ref: Ref,
+    type: any,
+    value: any,
+    field: string | number,
+    operation: OPERATION,
+    it: Iterator,
+) {
+    if (type[Symbol.metadata] !== undefined) {
+        // TODO: move this to the `@type()` annotation
+        assertInstanceType(value, type as typeof Schema, ref as Schema, field);
+
+        //
+        // Encode refId for this instance.
+        // The actual instance is going to be encoded on next `changeTree` iteration.
+        //
+        encode.number(bytes, value[$changes].refId, it);
+
+        // Try to encode inherited TYPE_ID if it's an ADD operation.
+        if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+            encoder.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema, it);
+        }
+
+    } else if (typeof (type) === "string") {
+        //
+        // Primitive values
+        //
+        encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field, it);
+
+    } else {
+        //
+        // Custom type (MapSchema, ArraySchema, etc)
+        //
+        const definition = getType(Object.keys(type)[0]);
+
+        //
+        // ensure a ArraySchema has been provided
+        //
+        assertInstanceType(ref[field], definition.constructor, ref as Schema, field);
+
+        //
+        // Encode refId for this instance.
+        // The actual instance is going to be encoded on next `changeTree` iteration.
+        //
+        encode.number(bytes, value[$changes].refId, it);
+    }
+}
+
+/**
+ * Used for Schema instances.
+ * @private
+ */
+export const encodeSchemaOperation: EncodeOperation = function (
+    encoder: Encoder,
+    bytes: Buffer,
+    changeTree: ChangeTree<Schema>,
+    index: number,
+    operation: OPERATION,
+    it: Iterator,
+) {
+    const ref = changeTree.ref;
+    const metadata = ref['constructor'][Symbol.metadata];
+
+    const field = metadata[index];
+    const type = metadata[field].type;
+    const value = ref[field];
+
+    // "compress" field index + operation
+    bytes[it.offset++] = (index | operation) & 255;
+
+    // Do not encode value for DELETE operations
+    if (operation === OPERATION.DELETE) {
+        return;
+    }
+
+    // TODO: inline this function call small performance gain
+    encodeValue(encoder, bytes, ref, type, value, field, operation, it);
+}
+
+/**
+ * Used for collections (MapSchema, CollectionSchema, SetSchema)
+ * @private
+ */
+export const encodeKeyValueOperation: EncodeOperation = function (
+    encoder: Encoder,
+    bytes: Buffer,
+    changeTree: ChangeTree,
+    field: number,
+    operation: OPERATION,
+    it: Iterator,
+) {
+    const ref = changeTree.ref;
+
+    // encode operation
+    bytes[it.offset++] = operation & 255;
+
+    // custom operations
+    if (operation === OPERATION.CLEAR) {
+        return;
+    }
+
+    // encode index
+    encode.number(bytes, field, it);
+
+    // Do not encode value for DELETE operations
+    if (operation === OPERATION.DELETE) {
+        return;
+    }
+
+    //
+    // encode "alias" for dynamic fields (maps)
+    //
+    if ((operation & OPERATION.ADD) == OPERATION.ADD) { // ADD or DELETE_AND_ADD
+        if (typeof(ref['set']) === "function") {
+            //
+            // MapSchema dynamic key
+            //
+            const dynamicIndex = changeTree.ref['$indexes'].get(field);
+            encode.string(bytes, dynamicIndex, it);
+        }
+    }
+
+    const type = changeTree.getType(field);
+    const value = changeTree.getValue(field);
+
+    // try { throw new Error(); } catch (e) {
+    //     // only print if not coming from Reflection.ts
+    //     if (!e.stack.includes("src/Reflection.ts")) {
+    //         console.log("encodeKeyValueOperation -> ", {
+    //             ref: changeTree.ref.constructor.name,
+    //             field,
+    //             operation: OPERATION[operation],
+    //             value: value?.toJSON(),
+    //             items: ref.toJSON(),
+    //         });
+    //     }
+    // }
+
+    // TODO: inline this function call small performance gain
+    encodeValue(encoder, bytes, ref, type, value, field, operation, it);
+}
+
+/**
+ * Used for collections (MapSchema, ArraySchema, etc.)
+ * @private
+ */
+export const encodeArray: EncodeOperation = function (
+    encoder: Encoder,
+    bytes: Buffer,
+    changeTree: ChangeTree<ArraySchema>,
+    field: number,
+    operation: OPERATION,
+    it: Iterator,
+    isEncodeAll: boolean,
+    hasView: boolean,
+) {
+    const ref = changeTree.ref;
+    const useOperationByRefId = hasView && changeTree.isFiltered && (typeof (changeTree.getType(field)) !== "string");
+
+    let refOrIndex: number;
+
+    if (useOperationByRefId) {
+        refOrIndex = ref['tmpItems'][field][$changes].refId;
+
+        if (operation === OPERATION.DELETE) {
+            operation = OPERATION.DELETE_BY_REFID;
+
+        } else if (operation === OPERATION.ADD) {
+            operation = OPERATION.ADD_BY_REFID;
+        }
+
+    } else {
+        refOrIndex = field;
+    }
+
+    // encode operation
+    bytes[it.offset++] = operation & 255;
+
+    // custom operations
+    if (operation === OPERATION.CLEAR) {
+        return;
+    }
+
+    // encode index
+    encode.number(bytes, refOrIndex, it);
+
+    // Do not encode value for DELETE operations
+    if (operation === OPERATION.DELETE) {
+        return;
+    }
+
+    const type = changeTree.getType(field);
+    const value = changeTree.getValue(field, isEncodeAll);
+
+    // console.log("encodeArray -> ", {
+    //     ref: changeTree.ref.constructor.name,
+    //     field,
+    //     operation: OPERATION[operation],
+    //     value: value?.toJSON(),
+    //     items: ref.toJSON(),
+    // });
+
+    // TODO: inline this function call small performance gain
+    encodeValue(encoder, bytes, ref, type, value, field, operation, it);
+}

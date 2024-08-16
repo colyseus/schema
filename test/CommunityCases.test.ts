@@ -1,12 +1,10 @@
-import * as util from "util";
 import * as assert from "assert";
-import { nanoid } from "nanoid";
-import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Context } from "../src";
+import { Schema, type, Reflection } from "../src";
 
 describe("Community cases", () => {
 
-    xit("colyseus/schema/issues/143", () => {
-        class OptionalSubScheam extends Schema {
+    it("colyseus/schema/issues/143", () => {
+        class OptionalChildSchema extends Schema {
             @type('number')  index: number = 200;
             @type('string')  my_string: string = 'a good string';
         }
@@ -14,15 +12,22 @@ describe("Community cases", () => {
         class Test extends Schema {
             @type('number') size: number = 0; // total number of storage slots in this container.
             @type('boolean') transient?: boolean;
-            @type(OptionalSubScheam) sub?: OptionalSubScheam;
+            @type(OptionalChildSchema) sub?: OptionalChildSchema;
         }
 
-        const testobj = new Test();
-        const encoded = testobj.encodeAll(false);
-        const handshake = Reflection.encode(testobj);
+        const state = new Test();
+        const encoded = state.encodeAll();
+        const handshake = Reflection.encode(state);
 
-        const clientobj = Reflection.decode<Test>(handshake);
-        assert.strictEqual(clientobj.sub, undefined);
+        const decodedState = Reflection.decode<Test>(handshake);
+        assert.strictEqual(decodedState.sub, undefined);
+
+        decodedState.decode(encoded);
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+
+        state.sub = new OptionalChildSchema();
+        decodedState.decode(state.encode());
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
     });
 
 });

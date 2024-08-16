@@ -1,19 +1,24 @@
 export { Schema } from "./Schema";
-export type { DataChange } from "./Schema";
+export type { DataChange } from "./decoder/DecodeOperation";
 
-import { MapSchema } from "./types/MapSchema"
+import { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType } from "./types/symbols";
+export { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType };
+
+export type { ToJSON } from "./types/HelperTypes";
+
+import { MapSchema } from "./types/custom/MapSchema"
 export { MapSchema };
 
-import { ArraySchema } from "./types/ArraySchema";
+import { ArraySchema } from "./types/custom/ArraySchema";
 export { ArraySchema };
 
-import { CollectionSchema } from "./types/CollectionSchema";
+import { CollectionSchema } from "./types/custom/CollectionSchema";
 export { CollectionSchema };
 
-import { SetSchema } from "./types/SetSchema";
+import { SetSchema } from "./types/custom/SetSchema";
 export { SetSchema };
 
-import { registerType } from "./types/typeRegistry";
+import { registerType } from "./types/registry";
 export { registerType };
 
 registerType("map", { constructor: MapSchema });
@@ -37,28 +42,31 @@ export {
     ReflectionField,
 } from "./Reflection";
 
+export { Metadata } from "./Metadata";
+
 export {
     // Annotations
     type,
     deprecated,
-    filter,
-    filterChildren,
     defineTypes,
-    hasFilter,
+    view,
 
     // Internals
-    SchemaDefinition,
-    Context,
+    TypeContext,
 } from "./annotations";
 
 // Annotation types
-export type {
-    DefinitionType,
-    PrimitiveType,
-    Definition,
-    FilterCallback,
-} from "./annotations";
+export type { DefinitionType, PrimitiveType, Definition, } from "./annotations";
 
-export { OPERATION } from "./spec";
+export { getDecoderStateCallbacks, CallbackProxy, GetCallbackProxy } from "./decoder/strategy/StateCallbacks";
+export { getRawChangesCallback } from "./decoder/strategy/RawChanges";
 
-export type { ToJSON } from './types/HelperTypes';
+export { Encoder } from "./encoder/Encoder";
+export { encodeSchemaOperation, encodeArray as encodeKeyValueOperation } from "./encoder/EncodeOperation";
+export { ChangeTree, Ref } from "./encoder/ChangeTree";
+export { StateView } from "./encoder/StateView";
+
+export { Decoder } from "./decoder/Decoder";
+export { decodeSchemaOperation, decodeKeyValueOperation } from "./decoder/DecodeOperation";
+
+export { OPERATION } from "./encoding/spec";

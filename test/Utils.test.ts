@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player } from "./Schema";
+import { State, Player, getEncoder } from "./Schema";
 import { MapSchema, dumpChanges, ArraySchema } from "../src";
 
 describe("Utils Test", () => {
@@ -12,42 +12,46 @@ describe("Utils Test", () => {
 
         it("MapSchema", () => {
             const state = new State();
+            getEncoder(state);// initialize encoder
+
             state.mapOfPlayers = new MapSchema<Player>();
 
-            assert.doesNotThrow(() => dumpChanges(state));
+            dumpChanges(state);
 
-            state.mapOfPlayers['one'] = new Player("One", 1, 1);
+            state.mapOfPlayers.set('one', new Player("One", 1, 1));
 
             let dump: any = dumpChanges(state);
             assert.strictEqual(
                 JSON.stringify(dump),
-                '{"mapOfPlayers":{"one":{"name":"One","x":1,"y":1}}}'
+                '{"ops":{"ADD":5},"refs":["refId#0","refId#1","refId#2"]}'
             );
 
             // discard changes
             state.encode();
 
-            delete state.mapOfPlayers['one'];
+            state.mapOfPlayers.delete('one');
             dump = dumpChanges(state);
 
             assert.strictEqual(
                 JSON.stringify(dump),
-                '{"mapOfPlayers":{}}'
+                '{"ops":{"DELETE":1},"refs":["refId#1"]}'
             );
         });
 
         it("ArraySchema", () => {
             const state = new State();
+            getEncoder(state);// initialize encoder
+
             state.arrayOfPlayers = new ArraySchema<Player>();
             state.arrayOfPlayers.push(new Player("One", 1, 1));
             state.arrayOfPlayers.push(new Player("Two", 2, 2));
 
-            assert.doesNotThrow(() => dumpChanges(state));
+            dumpChanges(state);
 
             let dump: any = dumpChanges(state);
             assert.strictEqual(
                 JSON.stringify(dump),
-                '{"arrayOfPlayers":[{"name":"One","x":1,"y":1},{"name":"Two","x":2,"y":2}]}',
+                '{"ops":{"ADD":9},"refs":["refId#0","refId#1","refId#2","refId#3"]}',
             );
 
             // discard changes
@@ -58,7 +62,7 @@ describe("Utils Test", () => {
 
             assert.strictEqual(
                 JSON.stringify(dump),
-                '{"arrayOfPlayers":[{"name":"One","x":1,"y":1}]}',
+                '{"ops":{"DELETE":1},"refs":["refId#1"]}',
             );
         });
 

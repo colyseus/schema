@@ -21,116 +21,128 @@
  * SOFTWARE
  */
 
+import type { TextEncoder } from "util";
+import type { Iterator } from "./decode";
+
+export type BufferLike = number[] | ArrayBufferLike;
+
 /**
  * msgpack implementation highly based on notepack.io
  * https://github.com/darrachequesne/notepack
  */
 
+let textEncoder: TextEncoder;
+// @ts-ignore
+try { textEncoder = new TextEncoder(); } catch (e) { }
 
-function utf8Length(str) {
-  var c = 0, length = 0;
-  for (var i = 0, l = str.length; i < l; i++) {
-    c = str.charCodeAt(i);
-    if (c < 0x80) {
-      length += 1;
-    }
-    else if (c < 0x800) {
-      length += 2;
-    }
-    else if (c < 0xd800 || c >= 0xe000) {
-      length += 3;
-    }
-    else {
-      i++;
-      length += 4;
-    }
-  }
-  return length;
-}
+const hasBufferByteLength = (typeof Buffer !== 'undefined' && Buffer.byteLength);
 
-export function utf8Write(view, offset, str) {
+export const utf8Length = (hasBufferByteLength)
+    ? Buffer.byteLength // node
+    : function (str: string, _?: any) {
+        var c = 0, length = 0;
+        for (var i = 0, l = str.length; i < l; i++) {
+            c = str.charCodeAt(i);
+            if (c < 0x80) {
+                length += 1;
+            }
+            else if (c < 0x800) {
+                length += 2;
+            }
+            else if (c < 0xd800 || c >= 0xe000) {
+                length += 3;
+            }
+            else {
+                i++;
+                length += 4;
+            }
+        }
+        return length;
+    }
+
+export function utf8Write(view: BufferLike, str: string, it: Iterator) {
   var c = 0;
   for (var i = 0, l = str.length; i < l; i++) {
     c = str.charCodeAt(i);
     if (c < 0x80) {
-      view[offset++] = c;
+      view[it.offset++] = c;
     }
     else if (c < 0x800) {
-      view[offset++] = 0xc0 | (c >> 6);
-      view[offset++] = 0x80 | (c & 0x3f);
+      view[it.offset++] = 0xc0 | (c >> 6);
+      view[it.offset++] = 0x80 | (c & 0x3f);
     }
     else if (c < 0xd800 || c >= 0xe000) {
-      view[offset++] = 0xe0 | (c >> 12);
-      view[offset++] = 0x80 | (c >> 6 & 0x3f);
-      view[offset++] = 0x80 | (c & 0x3f);
+      view[it.offset++] = 0xe0 | (c >> 12);
+      view[it.offset++] = 0x80 | (c >> 6 & 0x3f);
+      view[it.offset++] = 0x80 | (c & 0x3f);
     }
     else {
       i++;
       c = 0x10000 + (((c & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
-      view[offset++] = 0xf0 | (c >> 18);
-      view[offset++] = 0x80 | (c >> 12 & 0x3f);
-      view[offset++] = 0x80 | (c >> 6 & 0x3f);
-      view[offset++] = 0x80 | (c & 0x3f);
+      view[it.offset++] = 0xf0 | (c >> 18);
+      view[it.offset++] = 0x80 | (c >> 12 & 0x3f);
+      view[it.offset++] = 0x80 | (c >> 6 & 0x3f);
+      view[it.offset++] = 0x80 | (c & 0x3f);
     }
   }
 }
 
-export function int8(bytes, value) {
-  bytes.push(value & 255);
+export function int8(bytes: BufferLike, value: number, it: Iterator) {
+    bytes[it.offset++] = value & 255;
 };
 
-export function uint8(bytes, value) {
-  bytes.push(value & 255);
+export function uint8(bytes: BufferLike, value: number, it: Iterator) {
+    bytes[it.offset++] = value & 255;
 };
 
-export function int16(bytes, value) {
-  bytes.push(value & 255);
-  bytes.push((value >> 8) & 255);
+export function int16(bytes: BufferLike, value: number, it: Iterator) {
+    bytes[it.offset++] = value & 255;
+    bytes[it.offset++] = (value >> 8) & 255;
 };
 
-export function uint16(bytes, value) {
-  bytes.push(value & 255);
-  bytes.push((value >> 8) & 255);
+export function uint16(bytes: BufferLike, value: number, it: Iterator) {
+    bytes[it.offset++] = value & 255;
+    bytes[it.offset++] = (value >> 8) & 255;
 };
 
-export function int32(bytes, value) {
-  bytes.push(value & 255);
-  bytes.push((value >> 8) & 255);
-  bytes.push((value >> 16) & 255);
-  bytes.push((value >> 24) & 255);
+export function int32(bytes: BufferLike, value: number, it: Iterator) {
+  bytes[it.offset++] = value & 255;
+  bytes[it.offset++] = (value >> 8) & 255;
+  bytes[it.offset++] = (value >> 16) & 255;
+  bytes[it.offset++] = (value >> 24) & 255;
 };
 
-export function uint32(bytes, value) {
+export function uint32(bytes: BufferLike, value: number, it: Iterator) {
   const b4 = value >> 24;
   const b3 = value >> 16;
   const b2 = value >> 8;
   const b1 = value;
-  bytes.push(b1 & 255);
-  bytes.push(b2 & 255);
-  bytes.push(b3 & 255);
-  bytes.push(b4 & 255);
+  bytes[it.offset++] = b1 & 255;
+  bytes[it.offset++] = b2 & 255;
+  bytes[it.offset++] = b3 & 255;
+  bytes[it.offset++] = b4 & 255;
 };
 
-export function int64(bytes, value) {
+export function int64(bytes: BufferLike, value: number, it: Iterator) {
   const high = Math.floor(value / Math.pow(2, 32));
   const low = value >>> 0;
-  uint32(bytes, low);
-  uint32(bytes, high);
+  uint32(bytes, low, it);
+  uint32(bytes, high, it);
 };
 
-export function uint64(bytes, value) {
+export function uint64(bytes: BufferLike, value: number, it: Iterator) {
   const high = (value / Math.pow(2, 32)) >> 0;
   const low = value >>> 0;
-  uint32(bytes, low);
-  uint32(bytes, high);
+  uint32(bytes, low, it);
+  uint32(bytes, high, it);
 };
 
-export function float32(bytes, value) {
-  writeFloat32(bytes, value);
+export function float32(bytes: BufferLike, value: number, it: Iterator) {
+  writeFloat32(bytes, value, it);
 }
 
-export function float64(bytes, value) {
-  writeFloat64(bytes, value);
+export function float64(bytes: BufferLike, value: number, it: Iterator) {
+  writeFloat64(bytes, value, it);
 }
 
 // force little endian to facilitate decoding on multiple implementations
@@ -139,69 +151,69 @@ const _int32 = new Int32Array(2);
 const _float32 = new Float32Array(_int32.buffer);
 const _float64 = new Float64Array(_int32.buffer);
 
-export function writeFloat32(bytes, value) {
+export function writeFloat32(bytes: BufferLike, value: number, it: Iterator) {
   _float32[0] = value;
-  int32(bytes, _int32[0]);
+  int32(bytes, _int32[0], it);
 };
 
-export function writeFloat64(bytes, value) {
+export function writeFloat64(bytes: BufferLike, value: number, it: Iterator) {
   _float64[0] = value;
-  int32(bytes, _int32[_isLittleEndian ? 0 : 1]);
-  int32(bytes, _int32[_isLittleEndian ? 1 : 0]);
+  int32(bytes, _int32[_isLittleEndian ? 0 : 1], it);
+  int32(bytes, _int32[_isLittleEndian ? 1 : 0], it);
 };
 
-export function boolean(bytes, value) {
-  return uint8(bytes, value ? 1 : 0);
+export function boolean(bytes: BufferLike, value: number, it: Iterator) {
+  bytes[it.offset++] = value ? 1 : 0; // uint8
 };
 
-export function string(bytes, value) {
+export function string(bytes: BufferLike, value: string, it: Iterator) {
   // encode `null` strings as empty.
   if (!value) { value = ""; }
 
-  let length = utf8Length(value);
+  let length = utf8Length(value, "utf8");
   let size = 0;
 
   // fixstr
   if (length < 0x20) {
-    bytes.push(length | 0xa0);
+    bytes[it.offset++] = length | 0xa0;
     size = 1;
   }
   // str 8
   else if (length < 0x100) {
-    bytes.push(0xd9);
-    uint8(bytes, length);
+    bytes[it.offset++] = 0xd9;
+    bytes[it.offset++] = length % 255;
     size = 2;
   }
   // str 16
   else if (length < 0x10000) {
-    bytes.push(0xda);
-    uint16(bytes, length);
+    bytes[it.offset++] = 0xda;
+    uint16(bytes, length, it);
     size = 3;
   }
   // str 32
   else if (length < 0x100000000) {
-    bytes.push(0xdb);
-    uint32(bytes, length);
+    bytes[it.offset++] = 0xdb;
+    uint32(bytes, length, it);
     size = 5;
   } else {
     throw new Error('String too long');
   }
 
-  utf8Write(bytes, bytes.length, value);
+  utf8Write(bytes, value, it);
 
   return size + length;
 }
 
-export function number(bytes, value) {
+export function number(bytes: BufferLike, value: number, it: Iterator) {
   if (isNaN(value)) {
-    return number(bytes, 0);
+    return number(bytes, 0, it);
 
   } else if (!isFinite(value)) {
-    return number(bytes, (value > 0) ? Number.MAX_SAFE_INTEGER : -Number.MAX_SAFE_INTEGER);
+    return number(bytes, (value > 0) ? Number.MAX_SAFE_INTEGER : -Number.MAX_SAFE_INTEGER, it);
 
   } else if (value !== (value|0)) {
-    bytes.push(0xcb);
-    writeFloat64(bytes, value);
+    bytes[it.offset++] = 0xcb;
+    writeFloat64(bytes, value, it);
     return 9;
 
     // TODO: encode float 32?
@@ -216,68 +228,68 @@ export function number(bytes, value) {
   if (value >= 0) {
     // positive fixnum
     if (value < 0x80) {
-      uint8(bytes, value);
+      bytes[it.offset++] = value & 255; // uint8
       return 1;
     }
 
     // uint 8
     if (value < 0x100) {
-      bytes.push(0xcc);
-      uint8(bytes, value);
+      bytes[it.offset++] = 0xcc;
+      bytes[it.offset++] = value & 255; // uint8
       return 2;
     }
 
     // uint 16
     if (value < 0x10000) {
-      bytes.push(0xcd);
-      uint16(bytes, value);
+      bytes[it.offset++] = 0xcd;
+      uint16(bytes, value, it);
       return 3;
     }
 
     // uint 32
     if (value < 0x100000000) {
-      bytes.push(0xce);
-      uint32(bytes, value);
+      bytes[it.offset++] = 0xce;
+      uint32(bytes, value, it);
       return 5;
     }
 
     // uint 64
-    bytes.push(0xcf);
-    uint64(bytes, value);
+    bytes[it.offset++] = 0xcf;
+    uint64(bytes, value, it);
     return 9;
 
   } else {
 
     // negative fixnum
     if (value >= -0x20) {
-      bytes.push(0xe0 | (value + 0x20));
+      bytes[it.offset++] = 0xe0 | (value + 0x20);
       return 1;
     }
 
     // int 8
     if (value >= -0x80) {
-      bytes.push(0xd0);
-      int8(bytes, value);
+      bytes[it.offset++] = 0xd0;
+      int8(bytes, value, it);
       return 2;
     }
 
     // int 16
     if (value >= -0x8000) {
-      bytes.push(0xd1);
-      int16(bytes, value);
+      bytes[it.offset++] = 0xd1;
+      int16(bytes, value, it);
       return 3;
     }
 
     // int 32
     if (value >= -0x80000000) {
-      bytes.push(0xd2);
-      int32(bytes, value);
+      bytes[it.offset++] = 0xd2;
+      int32(bytes, value, it);
       return 5;
     }
 
     // int 64
-    bytes.push(0xd3);
-    int64(bytes, value);
+    bytes[it.offset++] = 0xd3;
+    int64(bytes, value, it);
     return 9;
   }
 }

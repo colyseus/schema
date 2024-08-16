@@ -1,61 +1,74 @@
-import { ChangeTree } from "../changes/ChangeTree";
-import { OPERATION } from "../spec";
-import { SchemaDecoderCallbacks } from "../Schema";
-import { addCallback, removeChildRefs } from "./utils";
-import { DataChange } from "..";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex } from "../symbols";
+import { ChangeTree } from "../../encoder/ChangeTree";
+import { OPERATION } from "../../encoding/spec";
+import { registerType } from "../registry";
+import { Collection } from "../HelperTypes";
+import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
+import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
+import type { StateView } from "../../encoder/StateView";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
-export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
-    protected $changes: ChangeTree = new ChangeTree(this);
-
+export class CollectionSchema<V=any> implements Collection<K, V>{
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
 
     protected $refId: number = 0;
 
-    //
-    // Decoding callbacks
-    //
-    public $callbacks: { [operation: number]: Array<(item: V, key: string) => void> };
-    public onAdd(callback: (item: V, key: string) => void, triggerAll: boolean = true) {
-        return addCallback(
-            (this.$callbacks || (this.$callbacks = [])),
-            OPERATION.ADD,
-            callback,
-            (triggerAll)
-                ? this.$items
-                : undefined
+    static [$encoder] = encodeKeyValueOperation;
+    static [$decoder] = decodeKeyValueOperation;
+
+    /**
+     * Determine if a property must be filtered.
+     * - If returns false, the property is NOT going to be encoded.
+     * - If returns true, the property is going to be encoded.
+     *
+     * Encoding with "filters" happens in two steps:
+     * - First, the encoder iterates over all "not owned" properties and encodes them.
+     * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
+     */
+    static [$filter] (ref: CollectionSchema, index: number, view: StateView) {
+        return (
+            !view ||
+            typeof (ref[$childType]) === "string" ||
+            view.items.has(ref[$getByIndex](index)[$changes])
         );
     }
-    public onRemove(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.DELETE, callback); }
-    public onChange(callback: (item: V, key: string) => void) { return addCallback(this.$callbacks || (this.$callbacks = []), OPERATION.REPLACE, callback); }
 
     static is(type: any) {
         return type['collection'] !== undefined;
     }
 
     constructor (initialValues?: Array<V>) {
+        this[$changes] = new ChangeTree(this);
+
         if (initialValues) {
             initialValues.forEach((v) => this.add(v));
         }
+
+        Object.defineProperty(this, $childType, {
+            value: undefined,
+            enumerable: false,
+            writable: true,
+            configurable: true,
+        });
     }
 
     add(value: V) {
         // set "index" for reference.
         const index = this.$refId++;
 
-        const isRef = (value['$changes']) !== undefined;
+        const isRef = (value[$changes]) !== undefined;
         if (isRef) {
-            (value['$changes'] as ChangeTree).setParent(this, this.$changes.root, index);
+            value[$changes].setParent(this, this[$changes].root, index);
         }
 
-        this.$changes.indexes[index] = index;
+        this[$changes].indexes[index] = index;
 
         this.$indexes.set(index, index);
         this.$items.set(index, value);
 
-        this.$changes.change(index);
+        this[$changes].change(index);
 
         return index;
     }
@@ -87,36 +100,26 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
             return false;
         }
 
-        this.$changes.delete(index);
+        this[$changes].delete(index);
         this.$indexes.delete(index);
 
         return this.$items.delete(index);
     }
 
-    clear(changes?: DataChange[]) {
+    clear() {
+        const changeTree = this[$changes];
+
         // discard previous operations.
-        this.$changes.discard(true, true);
-        this.$changes.indexes = {};
+        changeTree.discard(true);
+        changeTree.indexes = {};
 
         // clear previous indexes
         this.$indexes.clear();
 
-        //
-        // When decoding:
-        // - enqueue items for DELETE callback.
-        // - flag child items for garbage collection.
-        //
-        if (changes) {
-            removeChildRefs.call(this, changes);
-        }
-
         // clear items
         this.$items.clear();
 
-        this.$changes.operation({ index: 0, op: OPERATION.CLEAR });
-
-        // touch all structures until reach root
-        this.$changes.touchParents();
+        changeTree.operation(OPERATION.CLEAR);
     }
 
     has (value: V): boolean {
@@ -135,6 +138,11 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
         return this.$items.size;
     }
 
+    /** Iterator */
+    [Symbol.iterator](): IterableIterator<V> {
+        return this.$items.values();
+    }
+
     protected setIndex(index: number, key: number) {
         this.$indexes.set(index, key);
     }
@@ -143,11 +151,11 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
         return this.$indexes.get(index);
     }
 
-    protected getByIndex(index: number) {
+    protected [$getByIndex](index: number) {
         return this.$items.get(this.$indexes.get(index));
     }
 
-    protected deleteByIndex(index: number) {
+    protected [$deleteByIndex](index: number) {
         const key = this.$indexes.get(index);
         this.$items.delete(key);
         this.$indexes.delete(index);
@@ -185,7 +193,7 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
             // server-side
             cloned = new CollectionSchema();
             this.forEach((value) => {
-                if (value['$changes']) {
+                if (value[$changes]) {
                     cloned.add(value['clone']());
                 } else {
                     cloned.add(value);
@@ -197,3 +205,5 @@ export class CollectionSchema<V=any> implements SchemaDecoderCallbacks {
     }
 
 }
+
+registerType("collection", { constructor: CollectionSchema, });

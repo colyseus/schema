@@ -1,27 +1,23 @@
 import * as assert from "assert";
-import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity } from "./Schema";
-import { Schema, ArraySchema, MapSchema, type } from "../src";
+import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
+import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder } from "../src";
 
-describe("Schema Usage", () => {
+describe("Type: Schema", () => {
 
     describe("declaration", () => {
         it("default values", () => {
             class DataObject extends Schema {
-                @type("string")
-                stringValue = "initial value";
-
-                @type("number")
-                intValue = 300;
+                @type("string") stringValue = "initial value";
+                @type("number") intValue = 300;
             }
 
-            let data = new DataObject();
+            const data = new DataObject();
             assert.strictEqual(data.stringValue, "initial value");
             assert.strictEqual(data.intValue, 300);
-            assert.deepEqual(DataObject._definition.schema, {
+            assert.deepStrictEqual(Metadata.getFields(DataObject), {
                 stringValue: 'string',
                 intValue: 'number',
             });
-            // assert.deepEqual(data.encode(), [0, 173, 105, 110, 105, 116, 105, 97, 108, 32, 118, 97, 108, 117, 101, 1, 205, 44, 1]);
         });
 
         it("uint8", () => {
@@ -300,7 +296,7 @@ describe("Schema Usage", () => {
             const state = new MyState();
             state.currentTurn = "Hello world!";
 
-            assert.deepStrictEqual([], state.encode(), "nothing should be encoded");
+            assert.deepStrictEqual([], [...state.encode()], "nothing should be encoded");
             state.setDirty("currentTurn");
 
             const decodedState = new MyState();
@@ -318,38 +314,49 @@ describe("Schema Usage", () => {
                 class Player extends Entity {
                     @type("string") id: string;
                 }
-            });
+            }, /Duplicate 'id' definition on 'Player'/);
+        });
+
+        it("should allow empty Schema", () => {
+            class State extends Schema {}
+            const state = new State();
+            const encoder = new Encoder(state);
+            assert.strictEqual(state, encoder.state);
+
+            const decoder = new Decoder(createInstanceFromReflection(state));
+            decoder.decode(encoder.encodeAll());
+            assert.deepStrictEqual(decoder.state.toJSON(), encoder.state.toJSON());
         });
     });
 
     describe("detecting changes", () => {
         it("Schema", () => {
             const state = new State();
-            assert.strictEqual(false, state['$changes'].changed);
+            assert.strictEqual(false, state[$changes].changed);
 
             state.fieldNumber = 10;
-            assert.strictEqual(true, state['$changes'].changed);
+            assert.strictEqual(true, state[$changes].changed);
 
             state.player = new Player().assign({ name: "Hello" });
-            assert.strictEqual(true, state['$changes'].changed);
+            assert.strictEqual(true, state[$changes].changed);
 
             state.discardAllChanges();
-            assert.strictEqual(false, state['$changes'].changed);
+            assert.strictEqual(false, state[$changes].changed);
 
             state.player.name = "Changed...";
-            assert.strictEqual(true, state.player['$changes'].changed);
+            assert.strictEqual(true, state.player[$changes].changed);
         });
 
         it("MapSchema", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema<Player>();
-            state.mapOfPlayers['one'] = new Player().assign({ name: "One" });
+            state.mapOfPlayers.set('one', new Player().assign({ name: "One" }));
 
             state.discardAllChanges();
-            assert.strictEqual(false, state['$changes'].changed);
+            assert.strictEqual(false, state[$changes].changed);
 
-            state.mapOfPlayers['one'].name = "Changed...";
-            assert.strictEqual(true, state.mapOfPlayers['one']['$changes'].changed);
+            state.mapOfPlayers.get('one').name = "Changed...";
+            assert.strictEqual(true, state.mapOfPlayers.get('one')[$changes].changed);
         });
     })
 
@@ -358,7 +365,7 @@ describe("Schema Usage", () => {
             assert.doesNotThrow(() => {
                 const state = new State();
                 state.mapOfPlayers = new MapSchema<Player>();
-                delete state.mapOfPlayers['jake']
+                state.mapOfPlayers.delete('jake')
             });
         });
 
@@ -367,15 +374,60 @@ describe("Schema Usage", () => {
             const state = new State();
             state.player = CONSTANT_PLAYER.clone();
             state.mapOfPlayers = new MapSchema<Player>();
-            state.mapOfPlayers['one'] = CONSTANT_PLAYER.clone();
+            state.mapOfPlayers.set('one', CONSTANT_PLAYER.clone());
             state.arrayOfPlayers = new ArraySchema<Player>();
             state.arrayOfPlayers.push(CONSTANT_PLAYER.clone());
 
             const decodedState = new State();
             decodedState.decode(state.encode());
-            assert.strictEqual(state.player.name, "Cloned");
-            assert.strictEqual(state.mapOfPlayers['one'].name, "Cloned");
-            assert.strictEqual(state.arrayOfPlayers[0].name, "Cloned");
+            assert.strictEqual(decodedState.player.name, "Cloned");
+            assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Cloned");
+            assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Cloned");
+        });
+
+        it("should allow to .assign() with null and undefined", () => {
+            const CONSTANT_PLAYER = new Player("Cloned", 100, 100);
+            const state1 = new State();
+            state1.player = CONSTANT_PLAYER.clone();
+            state1.mapOfPlayers = new MapSchema<Player>();
+            state1.mapOfPlayers.set('one', CONSTANT_PLAYER.clone());
+            state1.arrayOfPlayers = new ArraySchema<Player>();
+            state1.arrayOfPlayers.push(CONSTANT_PLAYER.clone());
+            assertDeepStrictEqualEncodeAll(state1);
+            state1.assign({ player: null, mapOfPlayers: null, arrayOfPlayers: null, });
+            assertDeepStrictEqualEncodeAll(state1);
+
+            const state2 = new State();
+            state2.player = CONSTANT_PLAYER.clone();
+            state2.mapOfPlayers = new MapSchema<Player>();
+            state2.mapOfPlayers.set('one', CONSTANT_PLAYER.clone());
+            state2.arrayOfPlayers = new ArraySchema<Player>();
+            state2.arrayOfPlayers.push(CONSTANT_PLAYER.clone());
+            assertDeepStrictEqualEncodeAll(state2);
+            state2.assign({ player: undefined, mapOfPlayers: undefined, arrayOfPlayers: undefined, });
+            assertDeepStrictEqualEncodeAll(state2);
+        });
+
+        it("should support Object.assign() on constructor", () => {
+            class Player extends Schema {
+                constructor(data: Partial<Player>) {
+                    super();
+                    Object.assign(this, data);
+                }
+                @type("string") str: string;
+                @type("number") num: number;
+            }
+            class State extends Schema {
+                @type({map: Player}) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            state.players.set("one", new Player({ str: "Hello", num: 123 }));
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual({ players: { one: { str: 'Hello', num: 123 } } }, decodedState.toJSON());
         });
     });
 
@@ -443,6 +495,20 @@ describe("Schema Usage", () => {
             assert.ok(decodedState.player instanceof Player);
         });
 
+        it("should allow to delete Schema reference", () => {
+            const state = new State();
+            state.player = new Player();
+
+            const decodedState = new State();
+            const encoded = state.encode();
+            decodedState.decode(encoded);
+
+            state.player = undefined;
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(decodedState.player, undefined);
+        });
+
         it("should encode/decode Schema reference with its properties", () => {
             const state = new State();
             state.player = new Player();
@@ -503,69 +569,69 @@ describe("Schema Usage", () => {
             const decodedState = new State();
             decodedState.decode(encoded);
 
-            const playerOne = decodedState.mapOfPlayers['one'];
-            const playerTwo = decodedState.mapOfPlayers['two'];
+            const playerOne = decodedState.mapOfPlayers.get('one');
+            const playerTwo = decodedState.mapOfPlayers.get('two');
 
-            assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one", "two"]);
+            assert.deepStrictEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one", "two"]);
             assert.strictEqual(playerOne.name, "Jake Badlands");
             assert.strictEqual(playerTwo.name, "Snake Sanders");
 
-            state.mapOfPlayers['one'].name = "Tarquinn";
+            state.mapOfPlayers.get('one').name = "Tarquinn";
 
             encoded = state.encode();
             // assert.deepEqual(encoded, [4, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
 
             decodedState.decode(encoded);
 
-            assert.strictEqual(playerOne, decodedState.mapOfPlayers['one']);
-            assert.strictEqual(decodedState.mapOfPlayers['one'].name, "Tarquinn");
+            assert.strictEqual(playerOne, decodedState.mapOfPlayers.get('one'));
+            assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Tarquinn");
         });
 
         it("should allow adding and removing items from map", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema();
 
-            state.mapOfPlayers['one'] = new Player("Jake Badlands");
-            state.mapOfPlayers['two'] = new Player("Snake Sanders");
+            state.mapOfPlayers.set('one', new Player("Jake Badlands"));
+            state.mapOfPlayers.set('two', new Player("Snake Sanders"));
 
             const decodedState = new State();
             decodedState.decode(state.encode());
 
-            assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one", "two"]);
-            assert.strictEqual(decodedState.mapOfPlayers['one'].name, "Jake Badlands");
-            assert.strictEqual(decodedState.mapOfPlayers['two'].name, "Snake Sanders");
+            assert.deepStrictEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one", "two"]);
+            assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake Badlands");
+            assert.strictEqual(decodedState.mapOfPlayers.get('two').name, "Snake Sanders");
 
-            delete state.mapOfPlayers['two'];
+            state.mapOfPlayers.delete('two');
             decodedState.decode(state.encode());
-            assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one"]);
+            assert.deepStrictEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one"]);
         });
 
-        it.skip("should allow moving items from one map key to another", () => {
+        it("should allow moving items from one map key to another", () => {
             const state = new State();
             state.mapOfPlayers = new MapSchema();
 
-            state.mapOfPlayers['one'] = new Player("Jake Badlands");
-            state.mapOfPlayers['two'] = new Player("Snake Sanders");
+            state.mapOfPlayers.set('one', new Player("Jake Badlands"));
+            state.mapOfPlayers.set('two', new Player("Snake Sanders"));
 
             const decodedState = new State();
             decodedState.decode(state.encode());
 
-            const decodedJake = decodedState.mapOfPlayers['one'];
-            const decodedSnake = decodedState.mapOfPlayers['two'];
-            assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one", "two"]);
+            const decodedJake = decodedState.mapOfPlayers.get('one');
+            const decodedSnake = decodedState.mapOfPlayers.get('two');
+            assert.deepStrictEqual(Array.from(decodedState.mapOfPlayers.keys()), ["one", "two"]);
 
             // swap Jake / Snake keys
-            const jake = state.mapOfPlayers['one'];
-            const snake = state.mapOfPlayers['two'];
-            console.log("WILL ASSIGN!");
-            state.mapOfPlayers['one'] = snake;
-            state.mapOfPlayers['two'] = jake;
+            const jake = state.mapOfPlayers.get('one');
+            const snake = state.mapOfPlayers.get('two');
+            state.mapOfPlayers.set('one', snake);
+            state.mapOfPlayers.set('two', jake);
 
-            const encoded = state.encode();
-            decodedState.decode(encoded);
+            decodedState.decode(state.encode());
 
-            assert.strictEqual(decodedState.mapOfPlayers['one'], decodedSnake);
-            assert.strictEqual(decodedState.mapOfPlayers['two'], decodedJake);
+            assert.deepStrictEqual(decodedState.mapOfPlayers.get('one'), decodedSnake);
+            assert.deepStrictEqual(decodedState.mapOfPlayers.get('two'), decodedJake);
+
+            assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
         });
 
         it("should allow maps with numeric indexes", () => {
@@ -605,7 +671,7 @@ describe("Schema Usage", () => {
             assert.strictEqual(state.fieldString, "Hello world!");
             assert.strictEqual(state.fieldNumber, 50);
             assert.ok(state.player instanceof Player);
-            assert.strictEqual(state.player['$changes'].parent, state);
+            assert.strictEqual(state.player[$changes].parent, state);
             assert.strictEqual(state.player.name, "Jake Badlands");
             assert.strictEqual(state.player.x, undefined);
             assert.strictEqual(state.player.y, 50);
@@ -628,13 +694,13 @@ describe("Schema Usage", () => {
              */
 
             // are Player and State unchanged?
-            assert.strictEqual(state.player['$changes'].changed, false);
-            assert.strictEqual(state['$changes'].changed, false);
+            assert.strictEqual(state.player[$changes].changed, false);
+            assert.strictEqual(state[$changes].changed, false);
 
             state.player.x = 30;
 
             // Player and State should've changes!
-            assert.strictEqual(state.player['$changes'].changed, true);
+            assert.strictEqual(state.player[$changes].changed, true);
             // assert.strictEqual(state['$changes'].changed, true);
 
             const serializedChanges = state.encode();
@@ -699,8 +765,7 @@ describe("Schema Usage", () => {
 
         it("should support map of numbers", () => {
             class MyState extends Schema {
-                @type({ map: "number" })
-                mapOfNumbers: MapSchema<number>;
+                @type({ map: "number" }) mapOfNumbers: MapSchema<number>;
             }
 
             const state = new MyState();
@@ -711,15 +776,15 @@ describe("Schema Usage", () => {
 
             const decodedState = new MyState();
             decodedState.decode(encoded);
-            assert.deepEqual(decodedState.mapOfNumbers.toJSON(), { 'zero': 0, 'one': 1, 'two': 2 });
+            assert.deepStrictEqual(decodedState.mapOfNumbers.toJSON(), { 'zero': 0, 'one': 1, 'two': 2 });
 
             // mutate map
-            state.mapOfNumbers['three'] = 3;
+            state.mapOfNumbers.set('three', 3);
             encoded = state.encode();
             // assert.deepEqual(encoded, []);
 
             decodedState.decode(encoded);
-            assert.deepEqual(decodedState.mapOfNumbers.toJSON(), { 'zero': 0, 'one': 1, 'two': 2, 'three': 3 });
+            assert.deepStrictEqual(decodedState.mapOfNumbers.toJSON(), { 'zero': 0, 'one': 1, 'two': 2, 'three': 3 });
         });
 
         describe("no changes", () => {
@@ -744,14 +809,10 @@ describe("Schema Usage", () => {
                 });
                 assert.ok(state.encode().length > 0);
 
-                state.mapOfPlayers['jake'].x = 50;
-                state.mapOfPlayers['jake'].y = 50;
-                state.mapOfPlayers['jake'].thisPropDoesntExist = 100;
+                state.mapOfPlayers.get('jake').x = 50;
+                state.mapOfPlayers.get('jake').y = 50;
 
-                const encoded = state.encode();
-
-                // TODO: this should be 0 ideally.
-                assert.ok(encoded.length <= 2, "updates with same value shouldn't trigger change.");
+                assert.strictEqual(0, state.encode().length, "updates with same value shouldn't trigger change.");
             });
         });
     });
@@ -790,11 +851,8 @@ describe("Schema Usage", () => {
 
         it("number maximum and minimum values", () => {
             class MyState extends Schema {
-                @type("number")
-                myNumber: number = 1;
-
-                @type("uint8")
-                uint8: number = 50;
+                @type("number") myNumber: number = 1;
+                @type("uint8") uint8: number = 50;
             };
 
             const state = new MyState();
@@ -833,21 +891,10 @@ describe("Schema Usage", () => {
             class Entity extends Schema {
                 @type("number") x: number;
                 @type("number") y: number;
-
-                constructor (x?: number, y?: number) {
-                    super();
-                    this.x = x;
-                    this.y = y;
-                }
             }
 
             class Player extends Entity {
                 @type("string") name: string;
-
-                constructor (name?: string, x?: number, y?: number) {
-                    super(x, y);
-                    this.name = name;
-                }
             }
 
             class MyState extends Schema {
@@ -871,13 +918,15 @@ describe("Schema Usage", () => {
 
             assert.throws(() => {
                 const state = new MyState();
-                state.mapOfPlayers['one'] = new Entity();
+                // @ts-ignore
+                state.mapOfPlayers.set('one', new Entity());
                 state.encode();
             }, /a 'player' was expected/ig);
 
             assert.throws(() => {
                 const state = new MyState();
-                state.mapOfPlayers['one'] = {};
+                // @ts-ignore
+                state.mapOfPlayers.set('one', {});
                 state.encode();
             }, /a 'player' was expected/ig);
 
@@ -889,18 +938,18 @@ describe("Schema Usage", () => {
 
             assert.throws(() => {
                 const state = new MyState();
-                (state as any).player = new Entity(100, 100);
+                (state as any).player = new Entity().assign({ x: 0, y: 0 });
                 state.encode();
             }, /a 'Player' was expected, but 'Entity' was provided/ig);
 
             assert.doesNotThrow(() => {
                 const state = new MyState();
-                state.entity = new Player("Player name", 50, 50);
+                state.entity = new Player().assign({ name: "Player name", x: 50, y: 50 });
                 state.encode();
             });
 
             const state = new MyState();
-            (state as any).player = new Player("Name", 100, 100);
+            (state as any).player = new Player().assign({ name: "Name", x: 100, y: 100 });
 
             const decodedState = new MyState();
             decodedState.decode(state.encodeAll());
@@ -938,18 +987,13 @@ describe("Schema Usage", () => {
         });
     })
 
-    describe("encodeAll", () => {
+    describe("encoder: encodeAll", () => {
         it('should encode everything again', () => {
             const state = new State();
 
-            // state.mapOfPlayers = new MapSchema<Player>({
-            //     jake: new Player("Jake"),
-            //     katarina: new Player("Katarina"),
-            // });
-
             state.mapOfPlayers = new MapSchema<Player>();
-            state.mapOfPlayers['jake'] = new Player("Jake");
-            state.mapOfPlayers['katarina'] = new Player("Jake");
+            state.mapOfPlayers.set('jake', new Player("Jake"));
+            state.mapOfPlayers.set('katarina', new Player("Jake"));
             state.encodeAll();
 
             const decodedState = new State();
@@ -957,66 +1001,64 @@ describe("Schema Usage", () => {
             assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ['jake', 'katarina']);
 
             let jakeX = Math.random() * 2000;
-            state.mapOfPlayers['jake'].x = jakeX;
+            state.mapOfPlayers.get('jake').x = jakeX;
             decodedState.decode(state.encode());
-            assert.strictEqual(decodedState.mapOfPlayers['jake'].x.toFixed(3), jakeX.toFixed(3));
+            assert.strictEqual(decodedState.mapOfPlayers.get('jake').x.toFixed(3), jakeX.toFixed(3));
 
-            delete state.mapOfPlayers['jake'];
+            state.mapOfPlayers.delete('jake');
         });
 
-        it('should encode map with primitive values from decoded state', () => {
+        //
+        // Encoding from a decoded structure is not supported
+        //
+        // This is not a real usage scenario yet, but on a peer-to-peer setup
+        // this feature would play an interesting role.
+        //
+        it.skip('should encode map with primitive values from decoded state', () => {
             class TestMapSchema extends Schema {
-                @type({ map: 'number' })
-                value = new MapSchema<number>();
+                @type({ map: 'number' }) value = new MapSchema<number>();
             }
-            const state = new TestMapSchema();
 
+            const state = new TestMapSchema();
             state.value.set('k1', 1);
+
             const firstEncoded = state.encodeAll();
 
             const decodedState1 = new TestMapSchema();
             decodedState1.decode(firstEncoded);
-            assert.deepStrictEqual(decodedState1.toJSON(), state.toJSON(), `decodedState1.toJSON() EQ state.toJSON()`);
+            assert.deepStrictEqual(decodedState1.toJSON(), state.toJSON());
+
             const secondEncoded = decodedState1.encodeAll();
-            assert.deepStrictEqual(secondEncoded, firstEncoded, `firstEncoded EQ secondEncoded`);
+            assert.deepStrictEqual(secondEncoded, firstEncoded);
 
             const decodedState2 = new TestMapSchema();
             decodedState2.decode(secondEncoded);
-            assert.deepStrictEqual(decodedState2.toJSON(), state.toJSON(), `decodedState2.toJSON() EQ state.toJSON()`);
+            assert.deepStrictEqual(decodedState2.toJSON(), state.toJSON());
         });
 
         it('should discard deleted map items', () => {
             class Player extends Schema {
-                @type("number")
-                xp: number;
-
-                constructor (xp: number) {
-                    super();
-                    this.xp = xp;
-                }
+                @type("number") xp: number;
             }
             class MyState extends Schema {
-                @type({map: Player})
-                players = new MapSchema<Player>();
-
-                @type("number")
-                n = 100;
+                @type({map: Player}) players = new MapSchema<Player>();
+                @type("number") n = 100;
             }
 
             const state = new MyState();
-            state.players['one'] = new Player(100);
-            state.players['two'] = new Player(100);
+            state.players.set('one', new Player().assign({ xp: 100 }));
+            state.players.set('two', new Player().assign({ xp: 100 }));
 
             const decodedState1 = new MyState();
             decodedState1.decode(state.encodeAll());
             assert.deepEqual(Array.from(decodedState1.players.keys()), ['one', 'two']);
             assert.strictEqual(decodedState1.n, 100);
 
-            delete state.players['two'];
+            state.players.delete('two');
 
             const decodedState2 = new MyState();
             decodedState2.decode(state.encodeAll());
-            assert.deepEqual(Array.from(decodedState2.players.keys()), ['one']);
+            assert.deepStrictEqual(Array.from(decodedState2.players.keys()), ['one']);
             assert.strictEqual(decodedState2.n, 100);
         });
 
@@ -1024,8 +1066,8 @@ describe("Schema Usage", () => {
             const state = new State();
 
             state.mapOfPlayers = new MapSchema<Player>();
-            state.mapOfPlayers['jake'] = new Player("Jake");
-            state.mapOfPlayers['katarina'] = new Player("Jake");
+            state.mapOfPlayers.set('jake', new Player("Jake"));
+            state.mapOfPlayers.set('katarina', new Player("Jake"));
             state.encode();
 
             const decodedPlayer = new Player();
@@ -1045,42 +1087,44 @@ describe("Schema Usage", () => {
             deepChild.entity.another.position = new Position(100, 200, 300);
             deepMap.arrayOfChildren.push(deepChild);
 
-            state.map['one'] = deepMap;
+            state.map.set('one', deepMap);
 
             const decodedState = new DeepState();
             decodedState.decode(state.encodeAll());
 
-            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.name, "Player one");
-            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
-            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
-            assert.strictEqual(decodedState.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
+            assert.strictEqual(decodedState.map.get('one').arrayOfChildren[0].entity.name, "Player one");
+            assert.strictEqual(decodedState.map.get('one').arrayOfChildren[0].entity.another.position.x, 100);
+            assert.strictEqual(decodedState.map.get('one').arrayOfChildren[0].entity.another.position.y, 200);
+            assert.strictEqual(decodedState.map.get('one').arrayOfChildren[0].entity.another.position.z, 300);
 
 
             const decodedState2 = new DeepState();
             decodedState2.decode(state.encodeAll());
-            assert.strictEqual(decodedState2.map['one'].arrayOfChildren[0].entity.name, "Player one");
-            assert.strictEqual(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.x, 100);
-            assert.strictEqual(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.y, 200);
-            assert.strictEqual(decodedState2.map['one'].arrayOfChildren[0].entity.another.position.z, 300);
+            assert.strictEqual(decodedState2.map.get('one').arrayOfChildren[0].entity.name, "Player one");
+            assert.strictEqual(decodedState2.map.get('one').arrayOfChildren[0].entity.another.position.x, 100);
+            assert.strictEqual(decodedState2.map.get('one').arrayOfChildren[0].entity.another.position.y, 200);
+            assert.strictEqual(decodedState2.map.get('one').arrayOfChildren[0].entity.another.position.z, 300);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
     describe("Inheritance", () => {
-        class Action extends Schema {
-            @type("boolean") active: boolean;
-        }
-        class BattleAction extends Action {
-            @type("number") damage: number;
-        }
-        class MoveAction extends Action {
-            @type("string") targetTile: string;
-            @type("number") speed: number;
-        }
-        class State extends Schema {
-            @type(Action) action: Action;
-        }
-
         it("using direct Schema -> Schema reference", () => {
+            class Action extends Schema {
+                @type("boolean") active: boolean;
+            }
+            class BattleAction extends Action {
+                @type("number") damage: number;
+            }
+            class MoveAction extends Action {
+                @type("string") targetTile: string;
+                @type("number") speed: number;
+            }
+            class State extends Schema {
+                @type(Action) action: Action;
+            }
+
             const state = new State();
             state.action = new Action().assign({ active: false });
 
@@ -1101,13 +1145,15 @@ describe("Schema Usage", () => {
             state.action.active = true;
             decodedState.decode(state.encode());
             assert.strictEqual(true, decodedState.action.active);
+
+            assertDeepStrictEqualEncodeAll(state);
         })
     });
 
     describe("clone()", () => {
         it("should allow to clone deep structures", () => {
             const state = new DeepState();
-            state.map['one'] = new DeepMap();
+            state.map.set('one', new DeepMap());
 
             const deepChild = new DeepChild();
             deepChild.entity.name = "Player one";
@@ -1117,7 +1163,7 @@ describe("Schema Usage", () => {
             const decodedState = new DeepState();
             decodedState.decode(state.encodeAll());
 
-            state.map.set('two', state.map['one'].clone());
+            state.map.set('two', state.map.get('one').clone());
             state.map.get('two').arrayOfChildren[0].entity.name = "Player two";
             state.map.get('two').arrayOfChildren[0].entity.another.position.x = 200;
             state.map.get('two').arrayOfChildren[0].entity.another.position.y = 300;
@@ -1136,6 +1182,8 @@ describe("Schema Usage", () => {
             assert.strictEqual(decodedState.map.get('two').arrayOfChildren[0].entity.another.position.z, 400);
 
             assert.deepStrictEqual(state.toJSON(), state.clone().toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
@@ -1150,18 +1198,20 @@ describe("Schema Usage", () => {
             state.player.x = 10;
 
             state.mapOfPlayers = new MapSchema();
-            state.mapOfPlayers['one'] = new Player("Cyberhalk", 100, 50);
+            state.mapOfPlayers.set('one', new Player().assign({ name: "Cyberhalk", x: 100, y: 50 }));
 
             state.arrayOfPlayers = new ArraySchema();
             state.arrayOfPlayers.push(new Player("Katarina"))
 
-            assert.deepEqual(state.toJSON(), {
+            assert.deepStrictEqual(state.toJSON(), {
                 fieldString: 'string',
                 fieldNumber: 10,
                 player: { name: 'Jake', x: 10 },
                 arrayOfPlayers: [{ name: 'Katarina' }],
                 mapOfPlayers: { one: { name: 'Cyberhalk', x: 100, y: 50 } }
             })
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("should be able to re-construct entire schema tree", () => {
@@ -1182,7 +1232,9 @@ describe("Schema Usage", () => {
             const json = state.toJSON();
 
             const newState = new State().assign(json);
-            assert.deepEqual(json, newState.toJSON());
+            assert.deepStrictEqual(json, newState.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
@@ -1200,12 +1252,18 @@ describe("Schema Usage", () => {
             state.current.set("0", 0);
 
             decodedState.decode(state.encode());
+            assert.strictEqual(0, decodedState.current.get("0"));
+            assert.strictEqual(undefined, decodedState.previous);
 
-            state.previous = state.current;
-            state.current = null;
+            [state.current, state.previous] = [null, state.current];
+            // state.previous = state.current;
+            // state.current = null;
 
-            assert.doesNotThrow(() =>
-                decodedState.decode(state.encode()));
+            assert.doesNotThrow(() => decodedState.decode(state.encode()));
+            assert.strictEqual(0, decodedState.previous.get("0"));
+            assert.strictEqual(undefined, decodedState.current);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("using ArraySchema", () => {
@@ -1221,12 +1279,18 @@ describe("Schema Usage", () => {
             state.current[0] = 0;
 
             decodedState.decode(state.encode());
+            assert.strictEqual(0, decodedState.current[0]);
+            assert.strictEqual(undefined, decodedState.previous);
 
-            state.previous = state.current;
-            state.current = null;
+            [state.current, state.previous] = [null, state.current];
+            // state.previous = state.current;
+            // state.current = null;
 
-            assert.doesNotThrow(() =>
-                decodedState.decode(state.encode()));
+            assert.doesNotThrow(() => decodedState.decode(state.encode()));
+            assert.strictEqual(0, decodedState.previous[0]);
+            assert.strictEqual(undefined, decodedState.current);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("using Schema reference", () => {
@@ -1243,12 +1307,18 @@ describe("Schema Usage", () => {
 
             state.current = new Player().assign({ str: "hey" });
             decodedState.decode(state.encode());
+            assert.strictEqual("hey", decodedState.current.str);
+            assert.strictEqual(undefined, decodedState.previous);
 
-            state.previous = state.current;
-            state.current = null;
+            [state.current, state.previous] = [null, state.current];
+            // state.previous = state.current;
+            // state.current = null;
 
-            assert.doesNotThrow(() =>
-                decodedState.decode(state.encode()));
+            assert.doesNotThrow(() => decodedState.decode(state.encode()));
+            assert.strictEqual("hey", decodedState.previous.str);
+            assert.strictEqual(undefined, decodedState.current);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
