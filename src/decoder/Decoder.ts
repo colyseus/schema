@@ -21,7 +21,8 @@ export class Decoder<T extends Schema = any> {
     triggerChanges?: (allChanges: DataChange[]) => void;
 
     constructor(root: T, context?: TypeContext) {
-        this.setRoot(root);
+        this.setState(root);
+
         this.context = context || new TypeContext(root.constructor as typeof Schema);
 
         // console.log(">>>>>>>>>>>>>>>> Decoder types");
@@ -30,7 +31,7 @@ export class Decoder<T extends Schema = any> {
         // });
     }
 
-    protected setRoot(root: T) {
+    protected setState(root: T) {
         this.state = root;
         this.root = new ReferenceTracker();
         this.root.addRef(0, root);

@@ -20,14 +20,16 @@ export class Encoder<T extends Schema = any> {
 
     root: Root;
 
-    constructor(root: T) {
+    constructor(state: T) {
+        this.root = new Root();
+
         //
         // TODO: cache and restore "Context" based on root schema
         // (to avoid creating a new context for every new room)
         //
-        this.context = new TypeContext(root.constructor as typeof Schema);
+        this.context = new TypeContext(state.constructor as typeof Schema);
 
-        this.setRoot(root);
+        this.setState(state);
 
         // console.log(">>>>>>>>>>>>>>>> Encoder types");
         // this.context.schemas.forEach((id, schema) => {
@@ -35,10 +37,9 @@ export class Encoder<T extends Schema = any> {
         // });
     }
 
-    protected setRoot(state: T) {
-        this.root = new Root();
+    protected setState(state: T) {
         this.state = state;
-        state[$changes].setRoot(this.root);
+        this.state[$changes].setRoot(this.root);
     }
 
     encode(
@@ -47,9 +48,8 @@ export class Encoder<T extends Schema = any> {
         buffer = this.sharedBuffer,
         changeTrees = this.root.changes,
         isEncodeAll = this.root.allChanges === changeTrees,
+        initialOffset = it.offset // cache current offset in case we need to resize the buffer
     ): Buffer {
-        const initialOffset = it.offset; // cache current offset in case we need to resize the buffer
-
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
@@ -96,8 +96,6 @@ export class Encoder<T extends Schema = any> {
                 // TODO: avoid checking if no view tags were defined
                 //
                 if (filter && !filter(ref, fieldIndex, view)) {
-                    // console.log("SKIP FIELD:", { ref: changeTree.ref.constructor.name, fieldIndex, })
-
                     // console.log("ADD AS INVISIBLE:", fieldIndex, changeTree.ref.constructor.name)
                     // view?.invisible.add(changeTree);
                     continue;
@@ -194,9 +192,6 @@ export class Encoder<T extends Schema = any> {
     encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
 
-        // try to encode "filtered" changes
-        this.encode(it, view, bytes, this.root.filteredChanges);
-
         // encode visibility changes (add/remove for this view)
         const viewChangesIterator = view.changes.entries();
         for (const [changeTree, changes] of viewChangesIterator) {
@@ -229,6 +224,9 @@ export class Encoder<T extends Schema = any> {
         //
         // clear "view" changes after encoding
         view.changes.clear();
+
+        // try to encode "filtered" changes
+        this.encode(it, view, bytes, this.root.filteredChanges, false, viewOffset);
 
         return Buffer.concat([
             bytes.subarray(0, sharedOffset),

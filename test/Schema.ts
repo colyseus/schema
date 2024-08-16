@@ -43,8 +43,9 @@ export function getEncoder(state: Schema) {
     return state['_encoder'] as Encoder;
 }
 
-export function createInstanceFromReflection<T extends Schema>(state: T) {
-    return Reflection.decode<T>(Reflection.encode(state, getEncoder(state).context))
+export function createInstanceFromReflection<T extends Schema>(state: T, encoder?: Encoder<T>) {
+    encoder ??= getEncoder(state);
+    return Reflection.decode<T>(Reflection.encode(state, encoder.context))
 }
 
 Schema.prototype.encode = function(it: Iterator) {
@@ -69,8 +70,8 @@ export interface ClientWithState<T> {
     needFullEncode: boolean;
 }
 
-export function createClientWithView<T extends Schema>(from: T, stateView: StateView = new StateView()): ClientWithState<T> {
-    const state = createInstanceFromReflection(from);
+export function createClientWithView<T extends Schema>(from: T, stateView: StateView = new StateView(), encoder?: Encoder): ClientWithState<T> {
+    const state = createInstanceFromReflection(from, encoder);
     return {
         state,
         view: stateView,

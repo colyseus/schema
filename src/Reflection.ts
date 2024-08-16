@@ -25,9 +25,7 @@ export class Reflection extends Schema {
     @type([ ReflectionType ]) types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
 
     static encode(instance: Schema, context?: TypeContext, it: Iterator = { offset: 0 }) {
-        if (!context) {
-            context = new TypeContext(instance.constructor as typeof Schema);
-        }
+        context ??= new TypeContext(instance.constructor as typeof Schema);
 
         const reflection = new Reflection();
         const encoder = new Encoder(reflection);

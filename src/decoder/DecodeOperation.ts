@@ -182,7 +182,10 @@ export const decodeSchemaOperation: DecodeOperation = function (
 
     // skip early if field is not defined
     const field = metadata[index];
-    if (field === undefined) { return DEFINITION_MISMATCH; }
+    if (field === undefined) {
+        console.warn("@colyseus/schema: field not defined at", { index, ref: ref.constructor.name, metadata });
+        return DEFINITION_MISMATCH;
+    }
 
     const { value, previousValue } = decodeValue(
         decoder,

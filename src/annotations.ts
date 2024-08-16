@@ -103,14 +103,14 @@ export class TypeContext {
         return this.schemas.get(klass);
     }
 
-    private discoverTypes(klass: typeof Schema) {
+    private discoverTypes(klass: typeof Schema, parentFieldViewTag?: number) {
         if (!this.add(klass)) {
             return;
         }
 
         // add classes inherited from this base class
         TypeContext.inheritedTypes.get(klass)?.forEach((child) => {
-            this.discoverTypes(child);
+            this.discoverTypes(child, parentFieldViewTag);
         });
 
         // skip if no fields are defined for this class.
@@ -127,7 +127,18 @@ export class TypeContext {
         }
 
         for (const field in metadata) {
+            //
+            // Modify the field's metadata to include the parent field's view tag
+            //
+            if (
+                parentFieldViewTag !== undefined &&
+                metadata[field].tag === undefined
+            ) {
+                metadata[field].tag = parentFieldViewTag;
+            }
+
             const fieldType = metadata[field].type;
+            const viewTag = metadata[field].tag;
 
             if (typeof(fieldType) === "string") {
                 continue;
@@ -138,10 +149,10 @@ export class TypeContext {
                 if (type === "string") {
                     continue;
                 }
-                this.discoverTypes(type as typeof Schema);
+                this.discoverTypes(type as typeof Schema, viewTag);
 
             } else if (typeof(fieldType) === "function") {
-                this.discoverTypes(fieldType);
+                this.discoverTypes(fieldType, viewTag);
 
             } else {
                 const type = Object.values(fieldType)[0];
@@ -151,7 +162,7 @@ export class TypeContext {
                     continue;
                 }
 
-                this.discoverTypes(type as typeof Schema);
+                this.discoverTypes(type as typeof Schema, viewTag);
             }
         }
     }

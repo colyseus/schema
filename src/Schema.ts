@@ -248,7 +248,7 @@ export abstract class Schema {
         return output;
     }
 
-    static debugChangesDeep(ref: Ref) {
+    static debugChangesDeep(ref: Ref, changeSetName: "changes" | "allChanges" | "allFilteredChanges" | "filteredChanges" = "changes") {
         let output = "";
 
         const rootChangeTree = ref[$changes];
@@ -257,7 +257,7 @@ export abstract class Schema {
         let totalInstances = 0;
         let totalOperations = 0;
 
-        for (const [changeTree, changes] of (rootChangeTree.root.changes.entries())) {
+        for (const [changeTree, changes] of (rootChangeTree.root[changeSetName].entries())) {
             let includeChangeTree = false;
             let parentChangeTrees: ChangeTree[] = [];
             let parentChangeTree = changeTree.parent?.[$changes];

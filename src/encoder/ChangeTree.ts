@@ -204,7 +204,7 @@ export class ChangeTree<T extends Ref=any> {
             // MapSchema / ArraySchema, etc.
             (this.ref as MapSchema).forEach((value, key) => {
                 if (Metadata.isValidInstance(value)) {
-                    callback(value[$changes], this.ref[$changes].indexes[key]);
+                    callback(value[$changes], this.ref[$changes].indexes[key] ?? key);
                 }
             });
         }
@@ -238,8 +238,10 @@ export class ChangeTree<T extends Ref=any> {
         //
 
         if (isFiltered) {
-            this.allFilteredChanges.set(index, OPERATION.ADD);
             this.root?.filteredChanges.set(this, this.filteredChanges);
+
+            this.allFilteredChanges.set(index, OPERATION.ADD);
+            this.root?.allFilteredChanges.set(this, this.allFilteredChanges);
 
         } else {
             this.allChanges.set(index, OPERATION.ADD);

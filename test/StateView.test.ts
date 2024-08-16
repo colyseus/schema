@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes } from "../src";
+import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION } from "../src";
 import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView } from "./Schema";
 import { getDecoderStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 
@@ -29,7 +29,7 @@ describe("StateView", () => {
         assertEncodeAllMultiple(encoder, state, [client1, client2])
     });
 
-    it("should filter items inside a collection", () => {
+    it("should allow adding detached instances to the view", () => {
         class Item extends Schema {
             @type("number") amount: number;
         }
@@ -40,25 +40,23 @@ describe("StateView", () => {
         }
 
         const state = new State();
-        for (let i = 0; i < 5; i++) {
-            state.items.push(new Item().assign({ amount: i }));
-        }
-
-        const encoder = new Encoder(state);
+        const encoder = getEncoder(state);
 
         const client1 = createClientWithView(state);
         client1.view.add(state.items);
 
-        const client2 = createClientWithView(state);
-        encodeMultiple(encoder, state, [client1, client2]);
+        for (let i = 0; i < 5; i++) {
+            const item = new Item().assign({ amount: i });
+            client1.view.add(item);
+            state.items.push(item);
+        }
+
+        encodeMultiple(encoder, state, [client1]);
 
         assert.strictEqual(client1.state.prop1, state.prop1);
         assert.strictEqual(client1.state.items.length, 5);
 
-        assert.strictEqual(client2.state.prop1, state.prop1);
-        assert.strictEqual(client2.state.items, undefined);
-
-        assertEncodeAllMultiple(encoder, state, [client1, client2])
+        assertEncodeAllMultiple(encoder, state, [client1])
     });
 
     describe("tagged properties", () => {
@@ -365,20 +363,20 @@ describe("StateView", () => {
     });
 
     describe("MapSchema", () => {
-        it("should sync single item", () => {
+        it("should sync single item from map", () => {
             class Item extends Schema {
                 @type("number") amount: number;
             }
 
             class State extends Schema {
                 @type("string") prop1 = "Hello world";
-
                 @view() @type({ map: Item }) items = new MapSchema<Item>();
             }
 
             const state = new State();
             const encoder = new Encoder(state);
-            const client1 = createClientWithView(state);
+
+            const client1 = createClientWithView(state, new StateView(), encoder);
             encodeMultiple(encoder, state, [client1]);
 
             for (let i = 0; i < 5; i++) {
@@ -387,7 +385,7 @@ describe("StateView", () => {
 
             client1.view.add(state.items.get("3"));
 
-            const client2 = createClientWithView(state);
+            const client2 = createClientWithView(state, new StateView(), encoder);
             encodeMultiple(encoder, state, [client1, client2]);
 
             assert.strictEqual(client1.state.prop1, state.prop1);
@@ -397,7 +395,7 @@ describe("StateView", () => {
             assert.strictEqual(client2.state.prop1, state.prop1);
             assert.strictEqual(client2.state.items, undefined);
 
-            assertEncodeAllMultiple(encoder, state, [client1, client2])
+            assertEncodeAllMultiple(encoder, state, [client1])
         });
 
         it("should allow to add/remove items", () => {
@@ -530,6 +528,68 @@ describe("StateView", () => {
     });
 
     describe("ArraySchema", () => {
+        it("should allow to add ArraySchema with its contents", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @type("string") prop1 = "Hello world";
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.state = new State();
+
+            for (let i = 0; i < 5; i++) {
+                state.items.push(new Item().assign({ amount: i }));
+            }
+
+            client1.view.add(state.items);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.prop1, state.prop1);
+            assert.strictEqual(client1.state.items.length, 5);
+
+            assertEncodeAllMultiple(encoder, state, [client1])
+        });
+
+        it("should filter items inside a collection", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @type("string") prop1 = "Hello world";
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+
+            for (let i = 0; i < 5; i++) {
+                const item = new Item().assign({ amount: i });
+                state.items.push(item);
+                client1.view.add(item);
+            }
+
+            const client2 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.prop1, state.prop1);
+            assert.strictEqual(client1.state.items.length, 5);
+
+            assert.strictEqual(client2.state.prop1, state.prop1);
+            assert.strictEqual(client2.state.items, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
+        });
+
         it("should sync single item", () => {
             class Item extends Schema {
                 @type("number") amount: number;
