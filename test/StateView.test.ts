@@ -374,9 +374,9 @@ describe("StateView", () => {
             }
 
             const state = new State();
-            const encoder = new Encoder(state);
+            const encoder = getEncoder(state);
 
-            const client1 = createClientWithView(state, new StateView(), encoder);
+            const client1 = createClientWithView(state);
             encodeMultiple(encoder, state, [client1]);
 
             for (let i = 0; i < 5; i++) {
@@ -385,7 +385,7 @@ describe("StateView", () => {
 
             client1.view.add(state.items.get("3"));
 
-            const client2 = createClientWithView(state, new StateView(), encoder);
+            const client2 = createClientWithView(state);
             encodeMultiple(encoder, state, [client1, client2]);
 
             assert.strictEqual(client1.state.prop1, state.prop1);
