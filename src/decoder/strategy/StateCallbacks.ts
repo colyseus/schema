@@ -214,7 +214,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
 
         if (metadata && !isCollection) {
 
-            const onAdd = function (
+            const onAddListen = function (
                 ref: Ref,
                 prop: string,
                 callback: (value: any, previousValue: any) => void, immediate: boolean
@@ -223,7 +223,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 if (
                     immediate &&
                     context.instance[prop] !== undefined &&
-                    !onAddCalls.has(callback) // Workaround for https://github.com/colyseus/schema/issues/147
+                    !onAddCalls.has(currentOnAddCallback) // Workaround for https://github.com/colyseus/schema/issues/147
                 ) {
                     callback(context.instance[prop], undefined);
                 }
@@ -236,14 +236,14 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
             return new Proxy({
                 listen: function listen(prop: string, callback: (value: any, previousValue: any) => void, immediate: boolean = true) {
                     if (context.instance) {
-                        return onAdd(context.instance, prop, callback, immediate);
+                        return onAddListen(context.instance, prop, callback, immediate);
 
                     } else {
                         // collection instance not received yet
                         let detachCallback = () => {};
 
                         context.onInstanceAvailable((ref: Ref, existing: boolean) => {
-                            detachCallback = onAdd(ref, prop, callback, immediate && existing)
+                            detachCallback = onAddListen(ref, prop, callback, immediate && existing && !onAddCalls.has(currentOnAddCallback))
                         });
 
                         return () => detachCallback();

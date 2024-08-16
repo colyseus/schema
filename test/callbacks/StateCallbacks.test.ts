@@ -68,7 +68,7 @@ describe("StateCallbacks", () => {
         assert.strictEqual(30, bound.y);
     });
 
-    it("should support nested onAdd, attached BEFORE data is available ", () => {
+    it("should support nested onAdd, attached BEFORE data is available", () => {
         class Prop extends Schema {
             @type("number") lvl: number;
         }
@@ -113,16 +113,28 @@ describe("StateCallbacks", () => {
         const $ = getCallbacks(decodedState);
 
         let onPlayerAddCount = 0;
+        let onPlayerListen = 0;
+
         let onItemAddCount = 0;
+        let onItemListen = 0
+
         let onPropertyAddCount = 0;
+        let onPropertyListen = 0;
 
         $(decodedState).players.onAdd((player, key) => {
             onPlayerAddCount++;
 
+            $(player).listen("name", () => onPlayerListen++);
+
             $(player).items.onAdd((item, key) => {
                 onItemAddCount++;
 
+                $(item).listen("type", () => onItemListen++);
+
                 $(item).properties.onAdd((prop, key) => {
+
+                    $(prop).listen("lvl", () => onPropertyListen++);
+
                     onPropertyAddCount++;
                 });
             });
@@ -130,8 +142,13 @@ describe("StateCallbacks", () => {
 
         decodedState.decode(state.encode());
         assert.strictEqual(1, onPlayerAddCount);
+        assert.strictEqual(1, onPlayerListen);
+
         assert.strictEqual(2, onItemAddCount);
+        assert.strictEqual(2, onItemListen);
+
         assert.strictEqual(4, onPropertyAddCount);
+        assert.strictEqual(4, onPropertyListen);
     });
 
     it("should support nested onAdd, attached AFTER data is available ", () => {
@@ -180,26 +197,43 @@ describe("StateCallbacks", () => {
         const $ = getCallbacks(decodedState);
 
         let onPlayerAddCount = 0;
+        let onPlayerListen = 0;
+
         let onItemAddCount = 0;
+        let onItemListen = 0
+
         let onPropertyAddCount = 0;
+        let onPropertyListen = 0;
 
         decodedState.decode(state.encode());
 
         $(decodedState).players.onAdd((player, key) => {
             onPlayerAddCount++;
 
+            $(player).listen("name", () => onPlayerListen++);
+
             $(player).items.onAdd((item, key) => {
                 onItemAddCount++;
 
+                $(item).listen("type", () => onItemListen++);
+
                 $(item).properties.onAdd((prop, key) => {
+
+                    $(prop).listen("lvl", () => onPropertyListen++);
+
                     onPropertyAddCount++;
                 });
             });
         });
 
         assert.strictEqual(1, onPlayerAddCount);
+        assert.strictEqual(1, onPlayerListen);
+
         assert.strictEqual(2, onItemAddCount);
+        assert.strictEqual(2, onItemListen);
+
         assert.strictEqual(4, onPropertyAddCount);
+        assert.strictEqual(4, onPropertyListen);
     });
 
 });
