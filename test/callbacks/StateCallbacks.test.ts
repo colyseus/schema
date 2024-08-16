@@ -68,5 +68,89 @@ describe("StateCallbacks", () => {
         assert.strictEqual(30, bound.y);
     });
 
+    it("should support nested onAdd, attached BEFORE data is available ", () => {
+        class Item extends Schema {
+            @type("string") type: string;
+        }
+
+        class Player extends Schema {
+            @type("string") name: string;
+            @type({ map: Item }) items = new MapSchema<Item>();
+        }
+
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+        }
+
+        const state = new State();
+        const player = new Player().assign({
+            name: "Player one",
+            items: new MapSchema<Item>({
+                sword: new Item().assign({ type: 'sword' }),
+                shield: new Item().assign({ type: 'shield' }),
+            })
+        });
+        state.players.set("one", player);
+
+        const decodedState = createInstanceFromReflection(state);
+        const $ = getCallbacks(decodedState);
+
+        let onPlayerAddCount = 0;
+        let onItemAddCount = 0;
+
+        $(decodedState).players.onAdd((player, key) => {
+            onPlayerAddCount++;
+            $(player).items.onAdd((item, key) => {
+                onItemAddCount++;
+            });
+        });
+
+        decodedState.decode(state.encode());
+        assert.strictEqual(1, onPlayerAddCount);
+        assert.strictEqual(2, onItemAddCount);
+    });
+
+    it("should support nested onAdd, attached AFTER data is available ", () => {
+        class Item extends Schema {
+            @type("string") type: string;
+        }
+
+        class Player extends Schema {
+            @type("string") name: string;
+            @type({ map: Item }) items = new MapSchema<Item>();
+        }
+
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+        }
+
+        const state = new State();
+        const player = new Player().assign({
+            name: "Player one",
+            items: new MapSchema<Item>({
+                sword: new Item().assign({ type: 'sword' }),
+                shield: new Item().assign({ type: 'shield' }),
+            })
+        });
+        state.players.set("one", player);
+
+        const decodedState = createInstanceFromReflection(state);
+        const $ = getCallbacks(decodedState);
+
+        let onPlayerAddCount = 0;
+        let onItemAddCount = 0;
+
+        decodedState.decode(state.encode());
+
+        $(decodedState).players.onAdd((player, key) => {
+            onPlayerAddCount++;
+            $(player).items.onAdd((item, key) => {
+                onItemAddCount++;
+            });
+        });
+
+        assert.strictEqual(1, onPlayerAddCount);
+        assert.strictEqual(2, onItemAddCount);
+    });
 
 });

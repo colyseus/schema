@@ -6,7 +6,7 @@ import { DataChange } from "../DecodeOperation";
 import { OPERATION } from "../../encoding/spec";
 import { DefinitionType } from "../../annotations";
 import { Schema } from "../../Schema";
-import type { ArraySchema } from "../../types/custom/ArraySchema";
+import type { CollectionSchema } from "../../types/custom/CollectionSchema";
 
 //
 // Discussion: https://github.com/colyseus/schema/issues/155
@@ -100,7 +100,8 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
     const $root = decoder.root;
     const callbacks = $root.callbacks;
 
-    let isTriggeringOnAdd = false;
+    const onAddCalls: WeakMap<Function, boolean> = new WeakMap();
+    let currentOnAddCallback: Function | undefined;
 
     decoder.triggerChanges = function (allChanges: DataChange[]) {
         const uniqueRefIds = new Set<number>();
@@ -173,7 +174,6 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     }
 
                     // Handle DELETE_AND_ADD operations
-                    // FIXME: should we set "isTriggeringOnAdd" here?
                     if ((change.op & OPERATION.ADD) === OPERATION.ADD) {
                         const addCallbacks = $callbacks[OPERATION.ADD];
                         for (let i = addCallbacks?.length - 1; i >= 0; i--) {
@@ -183,13 +183,10 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
 
                 } else if ((change.op & OPERATION.ADD) === OPERATION.ADD && change.previousValue === undefined) {
                     // triger onAdd
-
-                    isTriggeringOnAdd = true;
                     const addCallbacks = $callbacks[OPERATION.ADD];
                     for (let i = addCallbacks?.length - 1; i >= 0; i--) {
                         addCallbacks[i](change.value, change.dynamicIndex ?? change.field);
                     }
-                    isTriggeringOnAdd = false;
                 }
 
                 // trigger onChange
@@ -205,7 +202,10 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
         }
     };
 
-    function getProxy(metadataOrType: Metadata | DefinitionType, context: CallContext) {
+    function getProxy(
+        metadataOrType: Metadata | DefinitionType,
+        context: CallContext
+    ) {
         let metadata: Metadata = context.instance?.constructor[Symbol.metadata] || metadataOrType;
         let isCollection = (
             (context.instance && typeof (context.instance['forEach']) === "function") ||
@@ -223,7 +223,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 if (
                     immediate &&
                     context.instance[prop] !== undefined &&
-                    !isTriggeringOnAdd // FIXME: This is a workaround (https://github.com/colyseus/schema/issues/147)
+                    !onAddCalls.has(callback) // Workaround for https://github.com/colyseus/schema/issues/147
                 ) {
                     callback(context.instance[prop], undefined);
                 }
@@ -249,6 +249,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                         return () => detachCallback();
                     }
                 },
+
                 onChange: function onChange(callback: () => void) {
                     return $root.addCallback(
                         $root.refIds.get(context.instance),
@@ -256,10 +257,12 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                         callback
                     );
                 },
+
+                //
+                // TODO: refactor `bindTo()` implementation.
+                // There is room for improvement.
+                //
                 bindTo: function bindTo(targetObject: any, properties?: string[]) {
-                    //
-                    // TODO: refactor this implementation. There is room for improvement here.
-                    //
                     if (!properties) {
                         properties = Object.keys(metadata);
                     }
@@ -295,7 +298,8 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                             }
                         );
                         return getProxy(metadata[prop].type, {
-                            instance,
+                            // make sure refId is available, otherwise need to wait for the instance to be available.
+                            instance: ($root.refIds.get(instance) && instance),
                             parentInstance: context.instance,
                             onInstanceAvailable,
                         });
@@ -318,9 +322,15 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
             const onAdd = function (ref: Ref, callback: (value: any, key: any) => void, immediate: boolean) {
                 // Trigger callback on existing items
                 if (immediate) {
-                    (ref as ArraySchema).forEach((v, k) => callback(v, k));
+                    (ref as CollectionSchema).forEach((v, k) => callback(v, k));
                 }
-                return $root.addCallback($root.refIds.get(ref), OPERATION.ADD, callback);
+
+                return $root.addCallback($root.refIds.get(ref), OPERATION.ADD, (value, key) => {
+                    onAddCalls.set(callback, true);
+                    currentOnAddCallback = callback;
+                    callback(value, key);
+                    onAddCalls.delete(callback)
+                });
             };
 
             const onRemove = function (ref: Ref, callback: (value: any, key: any) => void) {
@@ -333,19 +343,19 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     // https://github.com/colyseus/schema/issues/147
                     // If parent instance has "onAdd" registered, avoid triggering immediate callback.
                     //
-                    // FIXME: "isTriggeringOnAdd" is a workaround. We should find a better way to handle this.
-                    //
-                    if (context.onInstanceAvailable) {
+
+                    if (context.instance) {
+                        return onAdd(context.instance, callback, immediate && !onAddCalls.has(currentOnAddCallback));
+
+                    } else if (context.onInstanceAvailable) {
                         // collection instance not received yet
                         let detachCallback = () => {};
 
                         context.onInstanceAvailable((ref: Ref, existing: boolean) => {
-                            detachCallback = onAdd(ref, callback, immediate && existing && !isTriggeringOnAdd);
+                            detachCallback = onAdd(ref, callback, immediate && existing && !onAddCalls.has(currentOnAddCallback));
                         });
 
                         return () => detachCallback();
-                    } else if (context.instance) {
-                        return onAdd(context.instance, callback, immediate && !isTriggeringOnAdd);
                     }
                 },
                 onRemove: function(callback: (value, key) => void) {
