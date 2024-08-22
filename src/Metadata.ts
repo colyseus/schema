@@ -14,7 +14,6 @@ export type Metadata =
     { [-1]: number; } & // number of fields
     { [-2]: number[]; } & // all field indexes with "view" tag
     { [-3]: {[tag: number]: number[]}; } & // field indexes by "view" tag
-    { [-4]: boolean; } & // is "owned" by parent structure
     { [field: number]: string; } & // index => field name
     { [field: string]: MetadataField; } // field name => field metadata
 

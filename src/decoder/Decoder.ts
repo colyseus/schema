@@ -67,6 +67,7 @@ export class Decoder<T extends Schema = any> {
                 if (!nextRef) { throw new Error(`"refId" not found: ${this.currentRefId}`); }
                 ref[$onDecodeEnd]?.()
                 ref = nextRef;
+
                 decoder = ref['constructor'][$decoder];
 
                 continue;

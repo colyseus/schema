@@ -83,7 +83,7 @@ export class Encoder<T extends Schema = any> {
 
             // skip root `refId` if it's the first change tree
             // (unless it "hasView", which will need to revisit the root)
-            if (hasView || changeTree !== rootChangeTree) {
+            if (hasView || it.offset > initialOffset || changeTree !== rootChangeTree) {
                 buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
                 encode.number(buffer, changeTree.refId, it);
             }
