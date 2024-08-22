@@ -7,6 +7,7 @@ import type { ArraySchema } from "../types/custom/ArraySchema";
 import type { CollectionSchema } from "../types/custom/CollectionSchema";
 import type { SetSchema } from "../types/custom/SetSchema";
 
+import { Root } from "./Root";
 import { Metadata } from "../Metadata";
 import type { EncodeOperation } from "./EncodeOperation";
 import type { DecodeOperation } from "../decoder/DecodeOperation";
@@ -25,53 +26,6 @@ export type Ref = Schema
     | MapSchema
     | CollectionSchema
     | SetSchema;
-
-export class Root {
-    protected nextUniqueId: number = 0;
-    refCount = new WeakMap<ChangeTree, number>();
-
-    // all changes
-    allChanges = new Map<ChangeTree, Map<number, OPERATION>>();
-    allFilteredChanges = new Map<ChangeTree, Map<number, OPERATION>>();
-
-    // pending changes to be encoded
-    changes = new Map<ChangeTree, Map<number, OPERATION>>();
-    filteredChanges = new Map<ChangeTree, Map<number, OPERATION>>();
-
-    getNextUniqueId() {
-        return this.nextUniqueId++;
-    }
-
-    add (changeTree: ChangeTree) {
-        const refCount = this.refCount.get(changeTree) || 0;
-        this.refCount.set(changeTree, refCount + 1);
-    }
-
-    remove(changeTree: ChangeTree) {
-        const refCount = this.refCount.get(changeTree);
-        if (refCount <= 1) {
-            this.allChanges.delete(changeTree);
-            this.changes.delete(changeTree);
-
-            if (changeTree.isFiltered || changeTree.isPartiallyFiltered) {
-                this.allFilteredChanges.delete(changeTree);
-                this.filteredChanges.delete(changeTree);
-            }
-
-            this.refCount.delete(changeTree);
-
-        } else {
-            this.refCount.set(changeTree, refCount - 1);
-        }
-
-        changeTree.forEachChild((child, _) =>
-            this.remove(child));
-    }
-
-    clear() {
-        this.changes.clear();
-    }
-}
 
 export class ChangeTree<T extends Ref=any> {
     ref: T;
@@ -122,9 +76,6 @@ export class ChangeTree<T extends Ref=any> {
         if (this.isFiltered || this.isPartiallyFiltered) {
             this.root.allFilteredChanges.set(this, this.allFilteredChanges);
             this.root.filteredChanges.set(this, this.filteredChanges);
-
-        // } else {
-        //     this.root.allChanges.set(this, this.allChanges);
         }
 
         if (!this.isFiltered) {
@@ -453,19 +404,39 @@ export class ChangeTree<T extends Ref=any> {
         // Detect if current structure has "filters" declared
         this.isPartiallyFiltered = (this.ref['constructor']?.[Symbol.metadata]?.[-2] !== undefined);
 
-        // TODO: support "partially filtered", where the instance is visible, but only a field is not.
+        if (parent && !Metadata.isValidInstance(parent)) {
+            const parentChangeTree = parent[$changes];
+            parent = parentChangeTree.parent;
+            parentIndex = parentChangeTree.parentIndex;
+        }
 
-        // Detect if parent has "filters" declared
-        while (parent && !this.isFiltered) {
-            const metadata: Metadata = parent['constructor'][Symbol.metadata];
+        const parentMetadata = parent?.['constructor']?.[Symbol.metadata];
 
-            const fieldName = metadata?.[parentIndex];
-            const isParentOwned = metadata?.[fieldName]?.tag !== undefined;
+        this.isFiltered = (
+            parent &&
+            parentMetadata?.[-2]?.includes(parentIndex)
+        );
 
-            this.isFiltered = isParentOwned || parent[$changes].isFiltered; // metadata?.[-2]
+        // this.isFiltered = this.ref['constructor']?.[Symbol.metadata]?.[-4];
 
-            parent = parent[$changes].parent;
-        };
+        // // Detect if parent has "filters" declared
+        // while (parent && !this.isFiltered) {
+        //     const metadata: Metadata = parent['constructor'][Symbol.metadata];
+        //     // this.isFiltered = metadata?.[-4];
+
+        //     const fieldName = metadata?.[parentIndex];
+        //     const isParentOwned = metadata?.[fieldName]?.tag !== undefined;
+        //     this.isFiltered = isParentOwned || parent[$changes].isFiltered; // metadata?.[-2]
+
+        //     parent = parent[$changes].parent;
+        // };
+
+        // console.log("ChangeTree.checkIsFiltered", {
+        //     parent: parent?.constructor.name,
+        //     ref: this.ref.constructor.name,
+        //     isFiltered: this.isFiltered,
+        //     isPartiallyFiltered: this.isPartiallyFiltered,
+        // });
 
         //
         // TODO: refactor this!

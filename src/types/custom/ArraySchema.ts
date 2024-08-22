@@ -163,7 +163,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
             const changeTree = this[$changes];
             changeTree.indexedOperation(length, OPERATION.ADD, this.items.length);
-            // changeTree.indexes[length] = length;
 
             this.items.push(value);
             this.tmpItems.push(value);

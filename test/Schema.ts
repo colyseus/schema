@@ -85,6 +85,8 @@ export function encodeAllForView<T extends Schema>(encoder: Encoder<T>, client: 
     const itAll = { offset: 0 };
     const fullEncode = encoder.encodeAll(itAll, buf);
 
+    // console.log(`FULL ENCODE: (${fullEncode.length})`, Array.from(fullEncode));
+
     if (printEncodeAll) {
         const tmpState = createInstanceFromReflection(client.state);
         tmpState.decode(fullEncode);
@@ -94,6 +96,9 @@ export function encodeAllForView<T extends Schema>(encoder: Encoder<T>, client: 
 
     const sharedOffset = itAll.offset;
     const fullEncodeForView = encoder.encodeAllView(client.view, sharedOffset, itAll, buf);
+
+    // console.log(`FULL ENCODE FOR VIEW: (${fullEncodeForView.length})`, Array.from(fullEncodeForView));
+
     client.state.decode(fullEncodeForView);
     client.needFullEncode = false;
 }

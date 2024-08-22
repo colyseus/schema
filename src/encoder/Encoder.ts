@@ -1,15 +1,17 @@
 import type { Schema } from "../Schema";
-import { TypeContext } from "../annotations";
+import { TypeContext } from "../types/TypeContext";
 import { $changes, $encoder, $filter } from "../types/symbols";
 
 import * as encode from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
 
 import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
-import { Root } from "./ChangeTree";
+import { Root } from "./Root";
 import { getNextPowerOf2 } from "../utils";
+
 import type { StateView } from "./StateView";
-import { Metadata } from "../Metadata";
+import type { Metadata } from "../Metadata";
+import type { ChangeTree } from "./ChangeTree";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = 8 * 1024;// 8KB
@@ -21,13 +23,13 @@ export class Encoder<T extends Schema = any> {
     root: Root;
 
     constructor(state: T) {
-        this.root = new Root();
 
         //
         // TODO: cache and restore "Context" based on root schema
         // (to avoid creating a new context for every new room)
         //
         this.context = new TypeContext(state.constructor as typeof Schema);
+        this.root = new Root(this.context);
 
         this.setState(state);
 
@@ -80,7 +82,8 @@ export class Encoder<T extends Schema = any> {
             }
 
             // skip root `refId` if it's the first change tree
-            if (it.offset !== initialOffset || changeTree !== rootChangeTree) {
+            // (unless it "hasView", which will need to revisit the root)
+            if (hasView || changeTree !== rootChangeTree) {
                 buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
                 encode.number(buffer, changeTree.refId, it);
             }
@@ -124,7 +127,6 @@ export class Encoder<T extends Schema = any> {
     Encoder.BUFFER_SIZE = ${Math.round(newSize / 1024)} * 1024; // ${Math.round(newSize / 1024)} KB
 `);
 
-
             //
             // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
             //
@@ -153,11 +155,8 @@ export class Encoder<T extends Schema = any> {
     }
 
     encodeAll(it: Iterator = { offset: 0 }, buffer: Buffer = this.sharedBuffer) {
-        // console.log(`encodeAll(), this.root.allChanges (${this.root.allChanges.size})`);
-
-        // Array.from(this.root.allChanges.entries()).map((item) => {
-        //     console.log("->", { ref: item[0].ref.constructor.name, refId: item[0].refId, changes: item[1].size });
-        // });
+        // console.log(`\nencodeAll(), this.root.allChanges (${this.root.allChanges.size})`);
+        // this.debugChanges("allChanges");
 
         return this.encode(it, undefined, buffer, this.root.allChanges, true);
     }
@@ -165,11 +164,11 @@ export class Encoder<T extends Schema = any> {
     encodeAllView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
 
-        // console.log(`encodeAllView(), this.root.allFilteredChanges (${this.root.allFilteredChanges.size})`);
-        // this.debugAllFilteredChanges();
+        // console.log(`\nencodeAllView(), this.root.allFilteredChanges (${this.root.allFilteredChanges.size})`);
+        // this.debugChanges("allFilteredChanges");
 
         // try to encode "filtered" changes
-        this.encode(it, view, bytes, this.root.allFilteredChanges, true);
+        this.encode(it, view, bytes, this.root.allFilteredChanges, true, viewOffset);
 
         return Buffer.concat([
             bytes.subarray(0, sharedOffset),
@@ -177,20 +176,34 @@ export class Encoder<T extends Schema = any> {
         ]);
     }
 
+    debugChanges(
+        field:  "changes" | "allFilteredChanges" | "allChanges" | "filteredChanges" | Map<ChangeTree, Map<number, OPERATION>>
+    ) {
+        const changeSet = (typeof (field) === "string")
+            ? this.root[field]
+            : field;
 
-    debugAllFilteredChanges() {
-        Array.from(this.root.allFilteredChanges.entries()).map((item) => {
-            console.log("->", { refId: item[0].refId, changes: item[1].size }, item[0].ref.toJSON());
-            if (Array.isArray(item[0].ref.toJSON())) {
-                item[1].forEach((op, key) => {
-                    console.log("  ->", { key, op: OPERATION[op] });
-                })
-            }
+        Array.from(changeSet.entries()).map((item) => {
+            const metadata: Metadata = item[0].ref.constructor[Symbol.metadata];
+            console.log("->", { ref: item[0].ref.constructor.name, refId: item[0].refId, changes: item[1].size });
+            item[1].forEach((op, index) => {
+                console.log("  ->", {
+                    index,
+                    field: metadata?.[index],
+                    op: OPERATION[op],
+                });
+            });
         });
     }
 
     encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
+
+        // console.log(`\nencodeView(), view.changes (${view.changes.size})`);
+        // this.debugChanges(view.changes);
+
+        // console.log(`\nencodeView(), this.root.filteredChanges (${this.root.filteredChanges.size})`);
+        // this.debugChanges("filteredChanges");
 
         // encode visibility changes (add/remove for this view)
         const viewChangesIterator = view.changes.entries();

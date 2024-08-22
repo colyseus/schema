@@ -42,18 +42,10 @@ export {
     ReflectionField,
 } from "./Reflection";
 
+// Annotations, Metadata and TypeContext
 export { Metadata } from "./Metadata";
-
-export {
-    // Annotations
-    type,
-    deprecated,
-    defineTypes,
-    view,
-
-    // Internals
-    TypeContext,
-} from "./annotations";
+export { type, deprecated, defineTypes, view, } from "./annotations";
+export { TypeContext } from "./types/TypeContext";
 
 // Annotation types
 export type { DefinitionType, PrimitiveType, Definition, } from "./annotations";

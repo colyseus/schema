@@ -528,6 +528,52 @@ describe("StateView", () => {
     });
 
     describe("ArraySchema", () => {
+        it("should allow both filtered and unfiltered arrays", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @type([Item]) unfilteredItems = new ArraySchema<Item>();
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            for (let i = 0; i < 3; i++) {
+                state.items.push(new Item().assign({ amount: i }));
+                state.unfilteredItems.push(new Item().assign({ amount: i }));
+            }
+
+            client2.view.add(state.items);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.unfilteredItems.at(0).amount, state.unfilteredItems.at(0).amount);
+            assert.strictEqual(client1.state.unfilteredItems.at(1).amount, state.unfilteredItems.at(1).amount);
+            assert.strictEqual(client1.state.unfilteredItems.at(2).amount, state.unfilteredItems.at(2).amount);
+
+            assert.strictEqual(client1.state.items, undefined);
+            assert.strictEqual(client1.state.unfilteredItems.length, 3);
+
+            assert.strictEqual(client2.state.items.at(0).amount, state.items.at(0).amount);
+            assert.strictEqual(client2.state.items.at(1).amount, state.items.at(1).amount);
+            assert.strictEqual(client2.state.items.at(2).amount, state.items.at(2).amount);
+
+            assert.strictEqual(client2.state.unfilteredItems.at(0).amount, state.unfilteredItems.at(0).amount);
+            assert.strictEqual(client2.state.unfilteredItems.at(1).amount, state.unfilteredItems.at(1).amount);
+            assert.strictEqual(client2.state.unfilteredItems.at(2).amount, state.unfilteredItems.at(2).amount);
+
+            assert.strictEqual(client2.state.items.length, 3);
+            assert.strictEqual(client2.state.unfilteredItems.length, 3);
+
+            assertEncodeAllMultiple(encoder, state, [client1])
+        });
+
         it("should allow to add ArraySchema with its contents", () => {
             class Item extends Schema {
                 @type("number") amount: number;
@@ -542,7 +588,6 @@ describe("StateView", () => {
             const encoder = getEncoder(state);
 
             const client1 = createClientWithView(state);
-            client1.state = new State();
 
             for (let i = 0; i < 5; i++) {
                 state.items.push(new Item().assign({ amount: i }));

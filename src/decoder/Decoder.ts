@@ -1,4 +1,4 @@
-import { TypeContext } from "../annotations";
+import { TypeContext } from "../types/TypeContext";
 import { $changes, $childType, $decoder, $onDecodeEnd } from "../types/symbols";
 import { Schema } from "../Schema";
 
