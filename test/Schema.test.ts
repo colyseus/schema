@@ -835,7 +835,8 @@ describe("Type: Schema", () => {
             assert.strictEqual(decodedState.myString, undefined);
 
             assert.throws(() => {
-                (state as any).myString = {};
+                // @ts-ignore
+                state.myString = {};
                 decodedState.decode(state.encode());
             }, /a 'string' was expected/ig);
 
@@ -1220,8 +1221,8 @@ describe("Type: Schema", () => {
             state.fieldString = "Hello world";
 
             state.mapOfPlayers = new MapSchema<Player>();
-            state.mapOfPlayers['one'] = new Player().assign({ name: "Player one", x: 1, y: 1 });
-            state.mapOfPlayers['two'] = new Player().assign({ name: "Player two", x: 2, y: 2 });
+            state.mapOfPlayers.set('one', new Player().assign({ name: "Player one", x: 1, y: 1 }));
+            state.mapOfPlayers.set('two', new Player().assign({ name: "Player two", x: 2, y: 2 }));
 
             state.arrayOfPlayers = new ArraySchema<Player>();
             state.arrayOfPlayers.push(new Player().assign({name: "One"}));
@@ -1229,10 +1230,8 @@ describe("Type: Schema", () => {
 
             state.player = new Player().assign({ name: "A player", x: 0, y: 0 });
 
-            const json = state.toJSON();
-
-            const newState = new State().assign(json);
-            assert.deepStrictEqual(json, newState.toJSON());
+            const newState = new State().assign(state);
+            assert.deepStrictEqual(state.toJSON(), newState.toJSON());
 
             assertDeepStrictEqualEncodeAll(state);
         });

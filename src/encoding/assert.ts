@@ -3,6 +3,7 @@ import { CollectionSchema } from "../types/custom/CollectionSchema";
 import { MapSchema } from "../types/custom/MapSchema";
 import { SetSchema } from "../types/custom/SetSchema";
 import { ArraySchema } from "../types/custom/ArraySchema";
+import type { Ref } from "../encoder/ChangeTree";
 
 export class EncodeSchemaError extends Error {}
 
@@ -43,16 +44,16 @@ export function assertType(value: any, type: string, klass: Schema, field: strin
 }
 
 export function assertInstanceType(
-    value: Schema,
+    value: Ref,
     type: typeof Schema
         | typeof ArraySchema
         | typeof MapSchema
         | typeof CollectionSchema
         | typeof SetSchema,
-    klass: Schema,
+    instance: Ref,
     field: string | number,
 ) {
     if (!(value instanceof type)) {
-        throw new EncodeSchemaError(`a '${type.name}' was expected, but '${value && (value as any).constructor.name}' was provided in ${klass.constructor.name}#${field}`);
+        throw new EncodeSchemaError(`a '${type.name}' was expected, but '${value && (value as any).constructor.name}' was provided in ${instance.constructor.name}#${field}`);
     }
 }

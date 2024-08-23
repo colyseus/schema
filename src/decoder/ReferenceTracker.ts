@@ -98,8 +98,9 @@ export class ReferenceTracker {
             // Ensure child schema instances have their references removed as well.
             //
             if (Metadata.isValidInstance(ref)) {
-                const metadata: Metadata = ref['constructor'][Symbol.metadata];
-                for (const field in metadata) {
+                const metadata: Metadata = ref.constructor[Symbol.metadata];
+                for (const index in metadata) {
+                    const field = metadata[index as any as number].name;
                     const childRefId = typeof(ref[field]) === "object" && this.refIds.get(ref[field]);
                     if (childRefId) {
                         this.removeRef(childRefId);

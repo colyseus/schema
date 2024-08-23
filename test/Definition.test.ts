@@ -77,9 +77,9 @@ describe("Definition Tests", () => {
             assert.ok(Props[Symbol.metadata] !== ExtendedProps[Symbol.metadata]);
             assert.strictEqual(ExtendedProps[Symbol.metadata][0], Props[Symbol.metadata][0]);
 
-            assert.strictEqual(0, ExtendedProps[Symbol.metadata].str.index);
-            assert.strictEqual(1, ExtendedProps[Symbol.metadata].id.index);
-            assert.strictEqual(2, ExtendedProps[Symbol.metadata].value.index);
+            assert.strictEqual("str", ExtendedProps[Symbol.metadata][0].name);
+            assert.strictEqual("id", ExtendedProps[Symbol.metadata][1].name);
+            assert.strictEqual("value", ExtendedProps[Symbol.metadata][2].name);
 
             assert.strictEqual(0, Props[Symbol.metadata][-1]);
             assert.strictEqual(2, ExtendedProps[Symbol.metadata][-1]);
@@ -91,18 +91,21 @@ describe("Definition Tests", () => {
             const reflectedContext = getDecoder(reflectedState).context;
 
             assert.strictEqual(
-                originalContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].str.index,
-                reflectedContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].str.index
+                // state.extendedProps -> props.str
+                originalContext.types[0][Symbol.metadata][1].type[Symbol.metadata][0].index,
+                reflectedContext.types[0][Symbol.metadata][1].type[Symbol.metadata][0].index
             );
 
             assert.strictEqual(
-                originalContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].id.index,
-                reflectedContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].id.index
+                // state.extendedProps -> props.id
+                originalContext.types[0][Symbol.metadata][1].type[Symbol.metadata][1].index,
+                reflectedContext.types[0][Symbol.metadata][1].type[Symbol.metadata][1].index
             );
 
             assert.strictEqual(
-                originalContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].value.index,
-                reflectedContext.types[0][Symbol.metadata].extendedProps.type[Symbol.metadata].value.index
+                // state.extendedProps -> props.value
+                originalContext.types[0][Symbol.metadata][1].type[Symbol.metadata][2].index,
+                reflectedContext.types[0][Symbol.metadata][1].type[Symbol.metadata][2].index
             );
         });
     });

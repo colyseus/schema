@@ -4,7 +4,7 @@ import { DEFAULT_VIEW_TAG, DefinitionType } from "./annotations";
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
 import { ChangeTree, Ref } from './encoder/ChangeTree';
-import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $track } from './types/symbols';
+import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $track } from './types/symbols';
 import { StateView } from './encoder/StateView';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation';
@@ -31,37 +31,7 @@ export abstract class Schema {
             writable: true
         });
 
-        const metadata = instance.constructor[Symbol.metadata];
-
-        // Define property descriptors
-        for (const field in metadata) {
-            if (metadata[field].descriptor) {
-                // for encoder
-                Object.defineProperty(instance, `_${field}`, {
-                    value: undefined,
-                    writable: true,
-                    enumerable: false,
-                    configurable: true,
-                });
-                Object.defineProperty(instance, field, metadata[field].descriptor);
-
-            } else {
-                // for decoder
-                Object.defineProperty(instance, field,  {
-                    value: undefined,
-                    writable: true,
-                    enumerable: true,
-                    configurable: true,
-                });
-            }
-
-            // Object.defineProperty(instance, field, {
-            //     ...instance.constructor[Symbol.metadata][field].descriptor
-            // });
-            // if (args[0]?.hasOwnProperty(field)) {
-            //     instance[field] = args[0][field];
-            // }
-        }
+        Object.defineProperties(instance, instance.constructor[Symbol.metadata]?.[$descriptors] || {});
     }
 
     static is(type: DefinitionType) {
@@ -88,7 +58,7 @@ export abstract class Schema {
      */
     static [$filter] (ref: Schema, index: number, view: StateView) {
         const metadata: Metadata = ref.constructor[Symbol.metadata];
-        const tag = metadata[metadata[index]].tag;
+        const tag = metadata[index]?.tag;
 
         if (view === undefined) {
             // shared pass/encode: encode if doesn't have a tag
@@ -135,21 +105,25 @@ export abstract class Schema {
      * @param operation OPERATION to perform (detected automatically)
      */
     public setDirty<K extends NonFunctionPropNames<this>>(property: K | number, operation?: OPERATION) {
+        const metadata: Metadata = this.constructor[Symbol.metadata];
         this[$changes].change(
-            this.constructor[Symbol.metadata][property as string].index,
+            metadata[metadata[property as string]].index,
             operation
         );
     }
 
     clone (): this {
         const cloned = new ((this as any).constructor);
-        const metadata = this.constructor[Symbol.metadata];
+        const metadata: Metadata = this.constructor[Symbol.metadata];
 
         //
         // TODO: clone all properties, not only annotated ones
         //
         // for (const field in this) {
-        for (const field in metadata) {
+        for (const fieldIndex in metadata) {
+            // const field = metadata[metadata[fieldIndex]].name;
+            const field = metadata[fieldIndex as any as number].name;
+
             if (
                 typeof (this[field]) === "object" &&
                 typeof (this[field]?.clone) === "function"
@@ -162,15 +136,17 @@ export abstract class Schema {
                 cloned[field] = this[field];
             }
         }
+
         return cloned;
     }
 
     toJSON () {
-        const metadata = this.constructor[Symbol.metadata];
-
         const obj: unknown = {};
-        for (const fieldName in metadata) {
-            const field = metadata[fieldName];
+
+        const metadata = this.constructor[Symbol.metadata];
+        for (const index in metadata) {
+            const field = metadata[index];
+            const fieldName = field.name;
             if (!field.deprecated && this[fieldName] !== null && typeof (this[fieldName]) !== "undefined") {
                 obj[fieldName] = (typeof (this[fieldName]['toJSON']) === "function")
                     ? this[fieldName]['toJSON']()
@@ -185,11 +161,13 @@ export abstract class Schema {
     }
 
     protected [$getByIndex](index: number) {
-        return this[this.constructor[Symbol.metadata][index]];
+        const metadata: Metadata = this.constructor[Symbol.metadata];
+        return this[metadata[index].name];
     }
 
     protected [$deleteByIndex](index: number) {
-        this[this.constructor[Symbol.metadata][index]] = undefined;
+        const metadata: Metadata = this.constructor[Symbol.metadata];
+        this[metadata[index].name] = undefined;
     }
 
     static debugRefIds(instance: Ref, jsonContents: boolean = true, level: number = 0) {

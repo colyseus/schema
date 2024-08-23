@@ -32,7 +32,10 @@ export class Reflection extends Schema {
         const encoder = new Encoder(reflection);
 
         const buildType = (currentType: ReflectionType, metadata: Metadata) => {
-            for (const fieldName in metadata) {
+            for (const fieldIndex in metadata) {
+                const index = Number(fieldIndex);
+                const fieldName = metadata[index].name;
+
                 // skip fields from parent classes
                 if (!Object.prototype.hasOwnProperty.call(metadata, fieldName)) {
                     continue;
@@ -43,7 +46,7 @@ export class Reflection extends Schema {
 
                 let fieldType: string;
 
-                const type = metadata[fieldName].type;
+                const type = metadata[index].type;
 
                 if (typeof (type) === "string") {
                     fieldType = type;
@@ -128,20 +131,7 @@ export class Reflection extends Schema {
             const schemaType = typeContext.get(reflectionType.id);
             const metadata = schemaType[Symbol.metadata];
 
-            // FIXME: use metadata[-1] to get field count
             const parentFieldIndex = 0;
-
-            // console.log("--------------------");
-            // // console.log("reflectionType", reflectionType.toJSON());
-            // console.log("reflectionType.fields", reflectionType.fields.toJSON());
-            // console.log("parentFieldIndex", parentFieldIndex);
-
-            //
-            // FIXME: set fields using parentKlass as well
-            // currently the fields are duplicated on inherited classes
-            //
-            // // const parentKlass = reflection.types[reflectionType.extendsId];
-            // // parentKlass.fields
 
             reflectionType.fields.forEach((field, i) => {
                 const fieldIndex = parentFieldIndex + i;

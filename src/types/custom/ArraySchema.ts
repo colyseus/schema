@@ -8,6 +8,7 @@ import { Collection } from "../HelperTypes";
 import { encodeArray } from "../../encoder/EncodeOperation";
 import { decodeArray } from "../../decoder/DecodeOperation";
 import type { StateView } from "../../encoder/StateView";
+import { assertInstanceType } from "../../encoding/assert";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();
@@ -85,6 +86,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
                     } else {
                         if (setValue[$changes]) {
+                            assertInstanceType(setValue, obj[$childType] as typeof Schema, obj, key);
+
                             if (obj.items[key as unknown as number] !== undefined) {
                                 if (setValue[$changes][$isNew]) {
                                     this[$changes].indexedOperation(Number(key), OPERATION.MOVE_AND_ADD);
@@ -99,6 +102,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                             } else if (setValue[$changes][$isNew]) {
                                 this[$changes].indexedOperation(Number(key), OPERATION.ADD);
                             }
+
                         } else {
                             obj.$changeAt(Number(key), setValue);
                         }
@@ -159,6 +163,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             // skip null values
             if (value === undefined || value === null) {
                 return;
+
+            } else if (typeof (value) === "object" && this[$childType]) {
+                assertInstanceType(value as any, this[$childType] as typeof Schema, this, i);
             }
 
             const changeTree = this[$changes];

@@ -55,9 +55,9 @@ export class Encoder<T extends Schema = any> {
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
-        const changeTreesIterator = changeTrees.entries();
+        const shouldClearChanges = !isEncodeAll && !hasView;
 
-        for (const [changeTree, changes] of changeTreesIterator) {
+        for (const [changeTree, changes] of changeTrees.entries()) {
             const ref = changeTree.ref;
 
             const ctor = ref['constructor'];
@@ -117,6 +117,10 @@ export class Encoder<T extends Schema = any> {
 
                 encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView);
             }
+
+            // if (shouldClearChanges) {
+            //     changeTree.endEncode();
+            // }
         }
 
         if (it.offset > buffer.byteLength) {
@@ -143,7 +147,7 @@ export class Encoder<T extends Schema = any> {
             //
             // only clear changes after making sure buffer resize is not required.
             //
-            if (!isEncodeAll && !hasView) {
+            if (shouldClearChanges) {
                 //
                 // FIXME: avoid iterating over change trees twice.
                 //

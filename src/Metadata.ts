@@ -1,39 +1,63 @@
 import { getPropertyDescriptor, type DefinitionType } from "./annotations";
 import { getType } from "./types/registry";
+import { $descriptors } from "./types/symbols";
 
 export type MetadataField = {
     type: DefinitionType,
+    name: string,
     index: number,
     tag?: number,
     unreliable?: boolean,
     deprecated?: boolean,
-    descriptor?: PropertyDescriptor,
 };
 
 export type Metadata =
     { [-1]: number; } & // number of fields
     { [-2]: number[]; } & // all field indexes with "view" tag
     { [-3]: {[tag: number]: number[]}; } & // field indexes by "view" tag
-    { [field: number]: string; } & // index => field name
-    { [field: string]: MetadataField; } // field name => field metadata
+    { [field: number]: MetadataField; } & // index => field name
+    { [field: string]: number; } & // field name => field metadata
+    { [$descriptors]: { [field: string]: PropertyDescriptor } }  // property descriptors
 
 export const Metadata = {
 
-    addField(metadata: any, index: number, field: string, type: DefinitionType, descriptor?: PropertyDescriptor) {
+    addField(metadata: any, index: number, name: string, type: DefinitionType, descriptor?: PropertyDescriptor) {
         if (index > 64) {
-            throw new Error(`Can't define field '${field}'.\nSchema instances may only have up to 64 fields.`);
+            throw new Error(`Can't define field '${name}'.\nSchema instances may only have up to 64 fields.`);
         }
 
-        metadata[field] = Object.assign(
-            metadata[field] || {}, // avoid overwriting previous field metadata (@owned / @deprecated)
+        metadata[index] = Object.assign(
+            metadata[index] || {}, // avoid overwriting previous field metadata (@owned / @deprecated)
             {
                 type: (Array.isArray(type))
                     ? { array: type[0] }
                     : type,
                 index,
-                descriptor,
+                name,
             }
         );
+
+        // create "descriptors" map
+        metadata[$descriptors] ??= {};
+
+        if (descriptor) {
+            // for encoder
+            metadata[$descriptors][name] = descriptor;
+            metadata[$descriptors][`_${name}`] = {
+                value: undefined,
+                writable: true,
+                enumerable: false,
+                configurable: true,
+            };
+        } else {
+            // for decoder
+            metadata[$descriptors][name] = {
+                value: undefined,
+                writable: true,
+                enumerable: true,
+                configurable: true,
+            };
+        }
 
         // map -1 as last field index
         Object.defineProperty(metadata, -1, {
@@ -42,17 +66,19 @@ export const Metadata = {
             configurable: true
         });
 
-        // map index => field name (non enumerable)
-        Object.defineProperty(metadata, index, {
-            value: field,
+        // map field name => index (non enumerable)
+        Object.defineProperty(metadata, name, {
+            value: index,
             enumerable: false,
             configurable: true,
         });
     },
 
     setTag(metadata: Metadata, fieldName: string, tag: number) {
+        const index = metadata[fieldName];
+        const field = metadata[index];
+
         // add 'tag' to the field
-        const field = metadata[fieldName];
         field.tag = tag;
 
         if (!metadata[-2]) {
@@ -71,26 +97,17 @@ export const Metadata = {
             });
         }
 
-        metadata[-2].push(field.index);
+        metadata[-2].push(index);
 
         if (!metadata[-3][tag]) {
             metadata[-3][tag] = [];
         }
 
-        metadata[-3][tag].push(field.index);
+        metadata[-3][tag].push(index);
     },
 
     setFields(target: any, fields: { [field: string]: DefinitionType }) {
         const metadata = (target.prototype.constructor[Symbol.metadata] ??= {});
-
-        // target[$track] = function (changeTree, index: number, operation: OPERATION = OPERATION.ADD) {
-        //     changeTree.change(index, operation, encodeSchemaOperation);
-        // };
-
-        // target[$encoder] = encodeSchemaOperation;
-        // target[$decoder] = decodeSchemaOperation;
-
-        // if (!target.prototype.toJSON) { target.prototype.toJSON = Schema.prototype.toJSON; }
 
         let index = 0;
         for (const field in fields) {
@@ -106,7 +123,7 @@ export const Metadata = {
                 index,
                 field,
                 type,
-                getPropertyDescriptor(`_${field}`, index, type, complexTypeKlass, metadata, field)
+                getPropertyDescriptor(`_${field}`, index, type, complexTypeKlass)
             );
 
             index++;
@@ -131,7 +148,7 @@ export const Metadata = {
         });
     },
 
-    initialize(constructor: any, parentMetadata?: any) {
+    initialize(constructor: any, parentMetadata?: Metadata) {
         let metadata: Metadata = constructor[Symbol.metadata] ?? Object.create(null);
 
         // make sure inherited classes have their own metadata object.
@@ -143,8 +160,9 @@ export const Metadata = {
                 Object.assign(metadata, parentMetadata);
 
                 for (let i = 0; i <= parentMetadata[-1]; i++) {
-                    Object.defineProperty(metadata, i, {
-                        value: parentMetadata[i],
+                    const fieldName = parentMetadata[i].name;
+                    Object.defineProperty(metadata, fieldName, {
+                        value: parentMetadata[fieldName],
                         enumerable: false,
                         configurable: true,
                     });
@@ -172,10 +190,10 @@ export const Metadata = {
     },
 
     getFields(klass: any) {
-        const metadata = klass[Symbol.metadata];
+        const metadata: Metadata = klass[Symbol.metadata];
         const fields = {};
         for (let i = 0; i <= metadata[-1]; i++) {
-            fields[metadata[i]] = metadata[metadata[i]].type;
+            fields[metadata[i].name] = metadata[i].type;
         }
         return fields;
     }

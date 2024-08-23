@@ -84,7 +84,7 @@ export class StateView {
                 : changeTree.allChanges;
 
             changeSet.forEach((op, index) => {
-                const tagAtIndex = metadata?.[metadata?.[index]].tag;
+                const tagAtIndex = metadata?.[index].tag;
                 if (
                     (
                         isInvisible || // if "invisible", include all
@@ -101,7 +101,7 @@ export class StateView {
         // Add children of this ChangeTree to this view
         changeTree.forEachChild((change, index) => {
             // Do not ADD children that don't have the same tag
-            if (metadata && metadata[metadata[index]].tag !== tag) {
+            if (metadata && metadata[index].tag !== tag) {
                 return;
             }
             this.add(change.ref, tag, false);
@@ -166,7 +166,7 @@ export class StateView {
         let changes = this.changes.get(changeTree);
         if (changes === undefined) {
             changes = new Map<number, OPERATION>();
-            this.changes.set(changeTree, changes)
+            this.changes.set(changeTree, changes);
         }
 
         if (tag === DEFAULT_VIEW_TAG) {

@@ -84,19 +84,11 @@ export class TypeContext {
             this.parentFiltered[`${this.schemas.get(klass)}-${parentIndex}`] = true;
         }
 
-        for (const field in metadata) {
-            // //
-            // // Modify the field's metadata to include the parent field's view tag
-            // //
-            // if (
-            //     parentFieldViewTag !== undefined &&
-            //     metadata[field].tag === undefined
-            // ) {
-            //     metadata[field].tag = parentFieldViewTag;
-            // }
+        for (const fieldIndex in metadata) {
+            const index = fieldIndex as any as number;
 
-            const fieldType = metadata[field].type;
-            const viewTag = metadata[field].tag;
+            const fieldType = metadata[index].type;
+            const viewTag = metadata[index].tag;
 
             if (typeof (fieldType) === "string") {
                 continue;
@@ -104,10 +96,13 @@ export class TypeContext {
 
             if (Array.isArray(fieldType)) {
                 const type = fieldType[0];
+
+                // skip primitive types
                 if (type === "string") {
                     continue;
                 }
-                this.discoverTypes(type as typeof Schema, metadata[field].index, viewTag);
+
+                this.discoverTypes(type as typeof Schema, index, viewTag);
 
             } else if (typeof (fieldType) === "function") {
                 this.discoverTypes(fieldType as typeof Schema, viewTag);
@@ -120,7 +115,7 @@ export class TypeContext {
                     continue;
                 }
 
-                this.discoverTypes(type as typeof Schema, metadata[field].index, viewTag);
+                this.discoverTypes(type as typeof Schema, index, viewTag);
             }
         }
     }

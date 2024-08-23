@@ -174,7 +174,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
     allChanges: DataChange[],
 ) {
     const first_byte = bytes[it.offset++];
-    const metadata: Metadata = ref['constructor'][Symbol.metadata];
+    const metadata: Metadata = ref.constructor[Symbol.metadata];
 
     // "compressed" index + operation
     const operation = (first_byte >> 6) << 6
@@ -192,14 +192,14 @@ export const decodeSchemaOperation: DecodeOperation = function (
         operation,
         ref,
         index,
-        metadata[field].type,
+        field.type,
         bytes,
         it,
         allChanges,
     );
 
     if (value !== null && value !== undefined) {
-        ref[field] = value;
+        ref[field.name] = value;
     }
 
     // add change
@@ -208,7 +208,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
             ref,
             refId: decoder.currentRefId,
             op: operation,
-            field: field,
+            field: field.name,
             value,
             previousValue,
         });
@@ -308,8 +308,6 @@ export const decodeArray: DecodeOperation = function (
 ) {
     // "uncompressed" index + operation (array/map items)
     let operation = bytes[it.offset++];
-
-    let isSchemaChild: boolean;
     let index: number;
 
     if (operation === OPERATION.CLEAR) {
@@ -341,9 +339,6 @@ export const decodeArray: DecodeOperation = function (
         return;
 
     } else if (operation === OPERATION.ADD_BY_REFID) {
-        isSchemaChild = true;
-        // operation = OPERATION.ADD;
-
         const refId = decode.number(bytes, it);
         const itemByRefId = decoder.root.refs.get(refId);
 
@@ -353,7 +348,6 @@ export const decodeArray: DecodeOperation = function (
             : ref.length;
 
     } else {
-        isSchemaChild = false;
         index = decode.number(bytes, it);
     }
 

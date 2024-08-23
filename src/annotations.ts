@@ -3,10 +3,11 @@ import { Schema } from './Schema';
 import { ArraySchema } from './types/custom/ArraySchema';
 import { MapSchema } from './types/custom/MapSchema';
 import { Metadata } from "./Metadata";
-import { $changes, $childType, $track } from "./types/symbols";
+import { $changes, $childType, $descriptors, $track } from "./types/symbols";
 import { TypeDefinition, getType } from "./types/registry";
 import { OPERATION } from "./encoding/spec";
 import { TypeContext } from "./types/TypeContext";
+import { assertInstanceType, assertType } from "./encoding/assert";
 
 /**
  * Data types
@@ -227,18 +228,19 @@ export function view<T> (tag: number = DEFAULT_VIEW_TAG) {
 
         // TODO: use Metadata.initialize()
         const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
+        // const fieldIndex = metadata[fieldName];
 
-        if (!metadata[fieldName]) {
-            //
-            // detect index for this field, considering inheritance
-            //
-            metadata[fieldName] = {
-                type: undefined,
-                index: (metadata[-1] // current structure already has fields defined
-                    ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
-                    ?? -1) + 1 // no fields defined
-            }
-        }
+        // if (!metadata[fieldIndex]) {
+        //     //
+        //     // detect index for this field, considering inheritance
+        //     //
+        //     metadata[fieldIndex] = {
+        //         type: undefined,
+        //         index: (metadata[-1] // current structure already has fields defined
+        //             ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
+        //             ?? -1) + 1 // no fields defined
+        //     }
+        // }
 
         Metadata.setTag(metadata, fieldName, tag);
     }
@@ -256,20 +258,20 @@ export function unreliable<T> (target: T, field: string) {
     // TODO: use Metadata.initialize()
     const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
 
-    if (!metadata[field]) {
-        //
-        // detect index for this field, considering inheritance
-        //
-        metadata[field] = {
-            type: undefined,
-            index: (metadata[-1] // current structure already has fields defined
-                ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
-                ?? -1) + 1 // no fields defined
-        }
-    }
+    // if (!metadata[field]) {
+    //     //
+    //     // detect index for this field, considering inheritance
+    //     //
+    //     metadata[field] = {
+    //         type: undefined,
+    //         index: (metadata[-1] // current structure already has fields defined
+    //             ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
+    //             ?? -1) + 1 // no fields defined
+    //     }
+    // }
 
     // add owned flag to the field
-    metadata[field].unreliable = true;
+    metadata[metadata[field]].unreliable = true;
 }
 
 export function type (
@@ -290,17 +292,17 @@ export function type (
         const parentMetadata = parentClass && parentClass[Symbol.metadata];
         const metadata = Metadata.initialize(constructor, parentMetadata);
 
-        let fieldIndex: number;
+        let fieldIndex: number = metadata[field];
 
         /**
          * skip if descriptor already exists for this field (`@deprecated()`)
          */
-        if (metadata[field]) {
-            if (metadata[field].deprecated) {
+        if (metadata[fieldIndex]) {
+            if (metadata[fieldIndex].deprecated) {
                 // do not create accessors for deprecated properties.
                 return;
 
-            } else if (metadata[field].descriptor !== undefined) {
+            } else if (metadata[fieldIndex].type !== undefined) {
                 // trying to define same property multiple times across inheritance.
                 // https://github.com/colyseus/colyseus-unity3d/issues/131#issuecomment-814308572
                 try {
@@ -310,9 +312,6 @@ export function type (
                     const definitionAtLine = e.stack.split("\n")[4].trim();
                     throw new Error(`${e.message} ${definitionAtLine}`);
                 }
-
-            } else {
-                fieldIndex = metadata[field].index;
             }
 
         } else {
@@ -326,12 +325,18 @@ export function type (
         }
 
         if (options && options.manual) {
-            Metadata.addField(metadata, fieldIndex, field, type, {
-                // do not declare getter/setter descriptor
-                enumerable: true,
-                configurable: true,
-                writable: true,
-            });
+            Metadata.addField(
+                metadata,
+                fieldIndex,
+                field,
+                type,
+                {
+                    // do not declare getter/setter descriptor
+                    enumerable: true,
+                    configurable: true,
+                    writable: true,
+                }
+            );
 
         } else {
             const complexTypeKlass = (Array.isArray(type))
@@ -347,7 +352,7 @@ export function type (
                 fieldIndex,
                 field,
                 type,
-                getPropertyDescriptor(`_${field}`, fieldIndex, childType, complexTypeKlass, metadata, field)
+                getPropertyDescriptor(`_${field}`, fieldIndex, childType, complexTypeKlass)
             );
         }
     }
@@ -358,8 +363,6 @@ export function getPropertyDescriptor(
     fieldIndex: number,
     type: DefinitionType,
     complexTypeKlass: TypeDefinition,
-    metadata: Metadata,
-    field: string,
 ) {
     return {
         get: function () { return this[fieldCached]; },
@@ -385,6 +388,12 @@ export function getPropertyDescriptor(
                     }
 
                     value[$childType] = type;
+
+                } else if (typeof (type) !== "string") {
+                    assertInstanceType(value, type as typeof Schema, this, fieldCached.substring(1));
+
+                } else {
+                    assertType(value, type, this, fieldCached.substring(1));
                 }
 
                 //
@@ -406,7 +415,7 @@ export function getPropertyDescriptor(
                     value[$changes].setParent(
                         this,
                         this[$changes].root,
-                        metadata[field].index,
+                        fieldIndex,
                     );
                 }
 
@@ -440,23 +449,25 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
         const parentClass = Object.getPrototypeOf(constructor);
         const parentMetadata = parentClass[Symbol.metadata];
         const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
+        const fieldIndex = metadata[field];
 
-        if (!metadata[field]) {
-            //
-            // detect index for this field, considering inheritance
-            //
-            metadata[field] = {
-                type: undefined,
-                index: (metadata[-1] // current structure already has fields defined
-                    ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
-                    ?? -1) + 1 // no fields defined
-            }
-        }
+        // if (!metadata[field]) {
+        //     //
+        //     // detect index for this field, considering inheritance
+        //     //
+        //     metadata[field] = {
+        //         type: undefined,
+        //         index: (metadata[-1] // current structure already has fields defined
+        //             ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
+        //             ?? -1) + 1 // no fields defined
+        //     }
+        // }
 
-        metadata[field].deprecated = true;
+        metadata[fieldIndex].deprecated = true;
 
         if (throws) {
-            metadata[field].descriptor = {
+            metadata[$descriptors] ??= {};
+            metadata[$descriptors][field] = {
                 get: function () { throw new Error(`${field} is deprecated.`); },
                 set: function (this: Schema, value: any) { /* throw new Error(`${field} is deprecated.`); */ },
                 enumerable: false,
@@ -465,8 +476,8 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
         }
 
         // flag metadata[field] as non-enumerable
-        Object.defineProperty(metadata, field, {
-            value: metadata[field],
+        Object.defineProperty(metadata, fieldIndex, {
+            value: metadata[fieldIndex],
             enumerable: false,
             configurable: true
         });

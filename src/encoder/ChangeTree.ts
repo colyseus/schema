@@ -143,11 +143,11 @@ export class ChangeTree<T extends Ref=any> {
             const metadata: Metadata = this.ref['constructor'][Symbol.metadata];
 
             // FIXME: need to iterate over parent metadata instead.
-            for (const field in metadata) {
-                const value = this.ref[field];
+            for (const index in metadata) {
+                const value = this.ref[metadata[index as any as number].name];
 
                 if (value && value[$changes]) {
-                    callback(value[$changes], metadata[field].index);
+                    callback(value[$changes], metadata[index as any as number].index);
                 }
             }
 
@@ -169,7 +169,7 @@ export class ChangeTree<T extends Ref=any> {
     change(index: number, operation: OPERATION = OPERATION.ADD) {
         const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
 
-        const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
+        const isFiltered = this.isFiltered || (metadata?.[index]?.tag !== undefined);
         const changeSet = (isFiltered)
             ? this.filteredChanges
             : this.changes;
@@ -181,17 +181,15 @@ export class ChangeTree<T extends Ref=any> {
                 : (previousOperation === OPERATION.DELETE)
                     ? OPERATION.DELETE_AND_ADD
                     : operation
+            //
+            // TODO: are DELETE operations being encoded as ADD here ??
+            //
             changeSet.set(index, op);
         }
 
-        //
-        // TODO: are DELETE operations being encoded as ADD here ??
-        //
-
         if (isFiltered) {
-            this.root?.filteredChanges.set(this, this.filteredChanges);
-
             this.allFilteredChanges.set(index, OPERATION.ADD);
+            this.root?.filteredChanges.set(this, this.filteredChanges);
             this.root?.allFilteredChanges.set(this, this.allFilteredChanges);
 
         } else {
@@ -245,7 +243,7 @@ export class ChangeTree<T extends Ref=any> {
 
     indexedOperation(index: number, operation: OPERATION, allChangesIndex = index) {
         const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
-        const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
+        const isFiltered = this.isFiltered || (metadata?.[index].tag !== undefined);
 
         if (isFiltered) {
             this.allFilteredChanges.set(allChangesIndex, OPERATION.ADD);
@@ -262,7 +260,7 @@ export class ChangeTree<T extends Ref=any> {
     getType(index?: number) {
         if (Metadata.isValidInstance(this.ref)) {
             const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
-            return metadata[metadata[index]].type;
+            return metadata[index].type;
 
         } else {
             //
@@ -300,8 +298,8 @@ export class ChangeTree<T extends Ref=any> {
             return;
         }
 
-        const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
-        const isFiltered = this.isFiltered || (metadata && metadata[metadata[index]].tag !== undefined);
+        const metadata: Metadata = this.ref['constructor'][Symbol.metadata];
+        const isFiltered = this.isFiltered || (metadata?.[index].tag !== undefined);
         const changeSet = (isFiltered)
             ? this.filteredChanges
             : this.changes;
@@ -342,6 +340,8 @@ export class ChangeTree<T extends Ref=any> {
 
     endEncode() {
         this.changes.clear();
+
+        // ArraySchema and MapSchema have a custom "encode end" method
         this.ref[$onEncodeEnd]?.();
 
         // Not a new instance anymore
@@ -404,56 +404,33 @@ export class ChangeTree<T extends Ref=any> {
         // Detect if current structure has "filters" declared
         this.isPartiallyFiltered = (this.ref['constructor']?.[Symbol.metadata]?.[-2] !== undefined);
 
-        if (parent && !Metadata.isValidInstance(parent)) {
-            const parentChangeTree = parent[$changes];
-            parent = parentChangeTree.parent;
-            parentIndex = parentChangeTree.parentIndex;
-        }
+        if (parent) {
+            if (!Metadata.isValidInstance(parent)) {
+                const parentChangeTree = parent[$changes];
+                parent = parentChangeTree.parent;
+                parentIndex = parentChangeTree.parentIndex;
+            }
 
-        const parentMetadata = parent?.['constructor']?.[Symbol.metadata];
+            const parentMetadata = parent?.['constructor']?.[Symbol.metadata];
+            this.isFiltered = (parent && parentMetadata?.[-2]?.includes(parentIndex));
 
-        this.isFiltered = (
-            parent &&
-            parentMetadata?.[-2]?.includes(parentIndex)
-        );
+            //
+            // TODO: refactor this!
+            //
+            //      swapping `changes` and `filteredChanges` is required here
+            //      because "isFiltered" may not be imedialely available on `change()`
+            //
+            if (this.isFiltered && this.changes.size > 0) {
+                // swap changes reference
+                const changes = this.changes;
+                this.changes = this.filteredChanges;
+                this.filteredChanges = changes;
 
-        // this.isFiltered = this.ref['constructor']?.[Symbol.metadata]?.[-4];
-
-        // // Detect if parent has "filters" declared
-        // while (parent && !this.isFiltered) {
-        //     const metadata: Metadata = parent['constructor'][Symbol.metadata];
-        //     // this.isFiltered = metadata?.[-4];
-
-        //     const fieldName = metadata?.[parentIndex];
-        //     const isParentOwned = metadata?.[fieldName]?.tag !== undefined;
-        //     this.isFiltered = isParentOwned || parent[$changes].isFiltered; // metadata?.[-2]
-
-        //     parent = parent[$changes].parent;
-        // };
-
-        // console.log("ChangeTree.checkIsFiltered", {
-        //     parent: parent?.constructor.name,
-        //     ref: this.ref.constructor.name,
-        //     isFiltered: this.isFiltered,
-        //     isPartiallyFiltered: this.isPartiallyFiltered,
-        // });
-
-        //
-        // TODO: refactor this!
-        //
-        //      swapping `changes` and `filteredChanges` is required here
-        //      because "isFiltered" may not be imedialely available on `change()`
-        //
-        if (this.isFiltered && this.changes.size > 0) {
-            // swap changes reference
-            const changes = this.changes;
-            this.changes = this.filteredChanges;
-            this.filteredChanges = changes;
-
-            // swap "all changes" reference
-            const allFilteredChanges = this.allFilteredChanges;
-            this.allFilteredChanges = this.allChanges;
-            this.allChanges = allFilteredChanges;
+                // swap "all changes" reference
+                const allFilteredChanges = this.allFilteredChanges;
+                this.allFilteredChanges = this.allChanges;
+                this.allChanges = allFilteredChanges;
+            }
         }
     }
 

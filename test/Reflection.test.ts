@@ -134,7 +134,8 @@ describe("Reflection", () => {
         }
 
         const reflected = new Reflection();
-        reflected.decode(Reflection.encode(new MyState()))
+        const encoded = Reflection.encode(new MyState());
+        reflected.decode(encoded)
 
         assert.deepStrictEqual(reflected.toJSON(), {
             types: [

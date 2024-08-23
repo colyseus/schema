@@ -264,7 +264,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 //
                 bindTo: function bindTo(targetObject: any, properties?: string[]) {
                     if (!properties) {
-                        properties = Object.keys(metadata);
+                        properties = Object.keys(metadata).map((index) => metadata[index as any as number].name);
                     }
                     return $root.addCallback(
                         $root.refIds.get(context.instance),
@@ -277,7 +277,8 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 }
             }, {
                 get(target, prop: string) {
-                    if (metadata[prop]) {
+                    const metadataField = metadata[metadata[prop]];
+                    if (metadataField) {
                         const instance = context.instance?.[prop];
                         const onInstanceAvailable: OnInstanceAvailableCallback = (
                             (callback: (ref: Ref, existing: boolean) => void) => {
@@ -297,7 +298,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                                 }
                             }
                         );
-                        return getProxy(metadata[prop].type, {
+                        return getProxy(metadataField.type, {
                             // make sure refId is available, otherwise need to wait for the instance to be available.
                             instance: ($root.refIds.get(instance) && instance),
                             parentInstance: context.instance,

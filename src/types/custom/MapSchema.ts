@@ -6,6 +6,8 @@ import { Collection } from "../HelperTypes";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
 import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
 import type { StateView } from "../../encoder/StateView";
+import type { Schema } from "../../Schema";
+import { assertInstanceType } from "../../encoding/assert";
 
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]> {
     protected childType: new () => V;
@@ -71,6 +73,9 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     set(key: K, value: V) {
         if (value === undefined || value === null) {
             throw new Error(`MapSchema#set('${key}', ${value}): trying to set ${value} value on '${key}'.`);
+
+        } else if (typeof(value) === "object" && this[$childType]) {
+            assertInstanceType(value as any, this[$childType] as typeof Schema, this, key);
         }
 
         // Force "key" as string

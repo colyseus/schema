@@ -142,7 +142,7 @@ describe("StateView", () => {
             const state = new State();
             state.item = new Item().assign({ amount: 10 });
 
-            const encoder = new Encoder(state);
+            const encoder = getEncoder(state);
             const client1 = createClientWithView(state);
             client1.view.add(state.item);
 

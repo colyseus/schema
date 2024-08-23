@@ -7,6 +7,8 @@ export const $filter = Symbol("$filter");
 export const $getByIndex = Symbol("$getByIndex");
 export const $deleteByIndex = Symbol("$deleteByIndex");
 
+export const $descriptors = Symbol("$descriptors");
+
 /**
  * Used to hold ChangeTree instances whitin the structures
  */

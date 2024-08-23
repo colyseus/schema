@@ -1,9 +1,5 @@
 export { Schema } from "./Schema";
 export type { DataChange } from "./decoder/DecodeOperation";
-
-import { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType } from "./types/symbols";
-export { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType };
-
 export type { ToJSON } from "./types/HelperTypes";
 
 import { MapSchema } from "./types/custom/MapSchema"
@@ -30,6 +26,7 @@ registerType("collection", { constructor: CollectionSchema, });
 export { dumpChanges } from "./utils";
 
 // Encoder / Decoder
+export { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType } from "./types/symbols";
 export type { Iterator } from "./encoding/decode";
 import * as encode from "./encoding/encode";
 import * as decode from "./encoding/decode";

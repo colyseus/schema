@@ -3,7 +3,7 @@ import { $changes } from "../types/symbols";
 import { getType } from "../types/registry";
 
 import * as encode from "../encoding/encode";
-import { EncodeSchemaError, assertInstanceType, assertType } from "../encoding/assert";
+// import { EncodeSchemaError, assertInstanceType, assertType } from "../encoding/assert";
 
 import type { ChangeTree, Ref } from "./ChangeTree";
 import type { Encoder } from "./Encoder";
@@ -12,6 +12,7 @@ import type { PrimitiveType } from "../annotations";
 
 import type { Iterator } from "../encoding/decode";
 import type { ArraySchema } from "../types/custom/ArraySchema";
+import type { Metadata } from "../Metadata";
 
 export type EncodeOperation<T extends Ref = any> = (
     encoder: Encoder,
@@ -24,40 +25,27 @@ export type EncodeOperation<T extends Ref = any> = (
     hasView: boolean,
 ) => void;
 
-export function encodePrimitiveType(
-    type: PrimitiveType,
-    bytes: Buffer,
-    value: any,
-    klass: Schema,
-    field: string | number,
-    it: Iterator,
-) {
-    assertType(value, type as string, klass, field);
-
-    const encodeFunc = encode[type as string];
-
-    if (encodeFunc) {
-        encodeFunc(bytes, value, it);
-        // encodeFunc(bytes, value);
-
-    } else {
-        throw new EncodeSchemaError(`a '${type}' was expected, but ${value} was provided in ${klass.constructor.name}#${field}`);
-    }
-};
-
 export function encodeValue(
     encoder: Encoder,
     bytes: Buffer,
-    ref: Ref,
+    // ref: Ref,
     type: any,
     value: any,
-    field: string | number,
+    // field: string | number,
     operation: OPERATION,
     it: Iterator,
 ) {
-    if (type[Symbol.metadata] !== undefined) {
-        // TODO: move this to the `@type()` annotation
-        assertInstanceType(value, type as typeof Schema, ref as Schema, field);
+    if (typeof (type) === "string") {
+        //
+        // Primitive values
+        //
+        // assertType(value, type as string, ref as Schema, field);
+
+        encode[type]?.(bytes, value, it);
+
+    } else if (type[Symbol.metadata] !== undefined) {
+        // // TODO: move this to the `@type()` annotation
+        // assertInstanceType(value, type as typeof Schema, ref as Schema, field);
 
         //
         // Encode refId for this instance.
@@ -70,22 +58,16 @@ export function encodeValue(
             encoder.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema, it);
         }
 
-    } else if (typeof (type) === "string") {
-        //
-        // Primitive values
-        //
-        encodePrimitiveType(type as PrimitiveType, bytes, value, ref as Schema, field, it);
-
     } else {
-        //
-        // Custom type (MapSchema, ArraySchema, etc)
-        //
-        const definition = getType(Object.keys(type)[0]);
+        // //
+        // // Custom type (MapSchema, ArraySchema, etc)
+        // //
+        // const definition = getType(Object.keys(type)[0]);
 
-        //
-        // ensure a ArraySchema has been provided
-        //
-        assertInstanceType(ref[field], definition.constructor, ref as Schema, field);
+        // //
+        // // ensure a ArraySchema has been provided
+        // //
+        // assertInstanceType(ref[field], definition.constructor, ref as Schema, field);
 
         //
         // Encode refId for this instance.
@@ -107,13 +89,6 @@ export const encodeSchemaOperation: EncodeOperation = function (
     operation: OPERATION,
     it: Iterator,
 ) {
-    const ref = changeTree.ref;
-    const metadata = ref['constructor'][Symbol.metadata];
-
-    const field = metadata[index];
-    const type = metadata[field].type;
-    const value = ref[field];
-
     // "compress" field index + operation
     bytes[it.offset++] = (index | operation) & 255;
 
@@ -122,8 +97,21 @@ export const encodeSchemaOperation: EncodeOperation = function (
         return;
     }
 
+    const ref = changeTree.ref;
+    const metadata: Metadata = ref['constructor'][Symbol.metadata];
+    const field = metadata[index];
+
     // TODO: inline this function call small performance gain
-    encodeValue(encoder, bytes, ref, type, value, field, operation, it);
+    encodeValue(
+        encoder,
+        bytes,
+        // ref,
+        metadata[index].type,
+        ref[field.name],
+        // index,
+        operation,
+        it
+    );
 }
 
 /**
@@ -134,12 +122,10 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     encoder: Encoder,
     bytes: Buffer,
     changeTree: ChangeTree,
-    field: number,
+    index: number,
     operation: OPERATION,
     it: Iterator,
 ) {
-    const ref = changeTree.ref;
-
     // encode operation
     bytes[it.offset++] = operation & 255;
 
@@ -149,12 +135,14 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     }
 
     // encode index
-    encode.number(bytes, field, it);
+    encode.number(bytes, index, it);
 
     // Do not encode value for DELETE operations
     if (operation === OPERATION.DELETE) {
         return;
     }
+
+    const ref = changeTree.ref;
 
     //
     // encode "alias" for dynamic fields (maps)
@@ -164,13 +152,13 @@ export const encodeKeyValueOperation: EncodeOperation = function (
             //
             // MapSchema dynamic key
             //
-            const dynamicIndex = changeTree.ref['$indexes'].get(field);
+            const dynamicIndex = changeTree.ref['$indexes'].get(index);
             encode.string(bytes, dynamicIndex, it);
         }
     }
 
-    const type = changeTree.getType(field);
-    const value = changeTree.getValue(field);
+    const type = changeTree.getType(index);
+    const value = changeTree.getValue(index);
 
     // try { throw new Error(); } catch (e) {
     //     // only print if not coming from Reflection.ts
@@ -186,7 +174,16 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     // }
 
     // TODO: inline this function call small performance gain
-    encodeValue(encoder, bytes, ref, type, value, field, operation, it);
+    encodeValue(
+        encoder,
+        bytes,
+        // ref,
+        type,
+        value,
+        // index,
+        operation,
+        it
+    );
 }
 
 /**
@@ -250,5 +247,14 @@ export const encodeArray: EncodeOperation = function (
     // });
 
     // TODO: inline this function call small performance gain
-    encodeValue(encoder, bytes, ref, type, value, field, operation, it);
+    encodeValue(
+        encoder,
+        bytes,
+        // ref,
+        type,
+        value,
+        // field,
+        operation,
+        it
+    );
 }
