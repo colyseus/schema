@@ -11,7 +11,7 @@ import { CollectionSchema } from './types/CollectionSchema';
 import { SetSchema } from './types/SetSchema';
 
 import { ChangeTree, Ref, ChangeOperation } from "./changes/ChangeTree";
-import { NonFunctionPropKeys, NonFunctionPropNames, NonFunctionProps, ToJSON} from './types/HelperTypes';
+import { NonFunctionPropNames, ToJSON} from './types/HelperTypes';
 import { ClientState } from './filters';
 import { getType } from './types/typeRegistry';
 import { ReferenceTracker } from './changes/ReferenceTracker';
@@ -895,7 +895,7 @@ export abstract class Schema {
     }
 
     toJSON (): {
-        [Key in NonFunctionPropKeys<this>]: this[Key] extends Function ? never : ToJSON<this[Key]>
+        [Key in NonFunctionPropNames<this>]: this[Key] extends Function ? never : ToJSON<this[Key]>
     } {
         const schema = this._definition.schema;
         const deprecated = this._definition.deprecated;
@@ -909,7 +909,7 @@ export abstract class Schema {
             }
         }
         return obj as {
-            [Key in NonFunctionPropKeys<this>]: this[Key] extends Function ? never : ToJSON<this[Key]>
+            [Key in NonFunctionPropNames<this>]: this[Key] extends Function ? never : ToJSON<this[Key]>
         }
     }
 

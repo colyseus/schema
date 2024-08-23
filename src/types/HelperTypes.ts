@@ -1,5 +1,3 @@
-export type NonFunctionPropKeys<T> = keyof NonFunctionProps<T>;
-
 export type NonFunctionProps<T> = Omit<T, {
     [K in keyof T]: T[K] extends Function ? K : never;
 }[keyof T]>;
