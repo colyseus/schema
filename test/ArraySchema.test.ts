@@ -959,7 +959,6 @@ describe("ArraySchema Tests", () => {
         state.player1.items.push(new Item().assign({ name: "Item 3", idx: 3 }));
         state.player1.items.push(new Item().assign({ name: "Item 4", idx: 4 }));
 
-        console.log('--------------------')
         decodedState.decode(state.encodeAll());
         assert.strictEqual(decodedState.player1.items.length, 5);
 
@@ -967,10 +966,6 @@ describe("ArraySchema Tests", () => {
         const [spliced] = state.player1.items.splice(2, 1);
         assert.strictEqual("Item 2", spliced.name);
 
-        console.log(state.player1.items[$changes].changes);
-        console.log(state.player1.items[$changes].allChanges);
-
-        console.log('--------------------')
         decodedState.decode(state.encode());
 
         assert.strictEqual(decodedState.player1.items.length, 4);
@@ -978,7 +973,6 @@ describe("ArraySchema Tests", () => {
         // Update `idx` of each item
         state.player1.items.forEach((item, idx) => item.idx = idx);
 
-        console.log('--------------------')
         // After below encoding, Item 4 is not marked as `changed`
         decodedState.decode(state.encode());
 
@@ -989,11 +983,7 @@ describe("ArraySchema Tests", () => {
             `There's a difference between state and decoded state on some items`
         );
 
-        console.log("items ->", state.player1.items.toJSON());
-
         const decodedState2 = new State();
-        console.log('--------------------')
-
         decodedState2.decode(state.encodeAll());
 
         // Ensure all data is perserved and `idx` is updated for each item
