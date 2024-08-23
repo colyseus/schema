@@ -243,7 +243,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, S
         this.$indexes.delete(index);
     }
 
-    toJSON(): Record<K, ToJSON<V>> {
+    toJSON(): { [key in K]: ToJSON<V> } {
         const map: any = {};
 
         this.forEach((value, key) => {

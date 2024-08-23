@@ -77,97 +77,160 @@ describe("ToJSON type tests", () => {
         }
     })
 
-    it("Map on root", () => {
-        class C extends Schema {
-            @type({map: VecSchema}) positions: MapSchema<VecSchema>
-        }
-        const _t1: Equals<ToJSON<C>, {
-            positions: Record<string, {
-                x: number
-                y: number
-            }>
-        }> = true
-        const _t2: ToJSON<C> = {
-            positions: {
-                a: {
-                    x: 1,
-                    y: 2
+    describe("MapSchema", () => {
+        it("allows MapSchema on root", () => {
+            class C extends Schema {
+                @type({map: VecSchema}) positions: MapSchema<VecSchema>
+            }
+
+            const _t1: Equals<ToJSON<C>, {
+                positions: Record<string, {
+                    x: number
+                    y: number
+                }>
+            }> = true
+            const _t2: ToJSON<C> = {
+                positions: {
+                    a: {
+                        x: 1,
+                        y: 2
+                    }
                 }
             }
-        }
-    })
+        })
 
-    it("MapSchema on root", () => {
-        class C extends Schema {
-            @type({map: VecSchema}) positions: MapSchema<VecSchema>
-        }
-        const _t1: Equals<ToJSON<C>, {
-            positions: Record<string, {
-                x: number
-                y: number
-            }>
-        }> = true
-        const _t2: ToJSON<C> = {
-            positions: {
-                a: {
-                    x: 1,
-                    y: 2
+        it("allows recursive schemas", () => {
+            class C extends Schema {
+                @type({ map: C }) mapToSelf: MapSchema<C>
+            }
+            type T1 = {
+                mapToSelf: Record<string, T1>
+            }
+            const _t1: Equals<ToJSON<C>, T1> = true
+            const _t2: ToJSON<C> = {
+                mapToSelf: {
+                    a: {
+                        mapToSelf: {
+                        }
+                    }
                 }
             }
-        }
+        })
     })
 
-    it("ArraySchema on root", () => {
-        class C extends Schema {
-            @type({map: VecSchema}) positions: ArraySchema<VecSchema>
-        }
-        const _t1: Equals<ToJSON<C>, {
-            positions: Array<{
-                x: number
-                y: number
-            }>
-        }> = true
-        const _t2: ToJSON<C> = {
-            positions: [{
-                x: 1,
-                y: 2
-            }]
-        }
+    describe("ArraySchema", () => {
+        it("allows ArraySchema on root", () => {
+            class C extends Schema {
+                @type({array: VecSchema}) positions: ArraySchema<VecSchema>
+            }
+            const _t1: Equals<ToJSON<C>, {
+                positions: Array<{
+                    x: number
+                    y: number
+                }>
+            }> = true
+            const _t2: ToJSON<C> = {
+                positions: [{
+                    x: 1,
+                    y: 2
+                }]
+            }
+        })
+
+        it("allows recursive schemas", () => {
+            class C extends Schema {
+                @type({ array: C }) arrayOfSelf: ArraySchema<C>
+            }
+            type T1 = {
+                arrayOfSelf: Array<T1>
+            }
+            const _t1: Equals<ToJSON<C>, T1> = true
+            const _t2: ToJSON<C> = {
+                arrayOfSelf: [{
+                    arrayOfSelf: []
+                }, {
+                    arrayOfSelf: [{
+                        arrayOfSelf: []
+                    }]
+                }]
+            }
+        })
     })
 
-    it("SetSchema on root", () => {
-        class C extends Schema {
-            @type({map: VecSchema}) positions: SetSchema<VecSchema>
-        }
-        const _t1: Equals<ToJSON<C>, {
-            positions: Array<{
-                x: number
-                y: number
-            }>
-        }> = true
-        const _t2: ToJSON<C> = {
-            positions: [{
-                x: 1,
-                y: 2
-            }]
-        }
+    describe("SetSchema", () => {
+        it("allows SetSchema on root", () => {
+            class C extends Schema {
+                @type({set: VecSchema}) positions: SetSchema<VecSchema>
+            }
+            const _t1: Equals<ToJSON<C>, {
+                positions: Array<{
+                    x: number
+                    y: number
+                }>
+            }> = true
+            const _t2: ToJSON<C> = {
+                positions: [{
+                    x: 1,
+                    y: 2
+                }]
+            }
+        })
+        it("allows recursive schemas", () => {
+            class C extends Schema {
+                @type({ set: C }) setOfSelf: SetSchema<C>
+            }
+            type T1 = {
+                setOfSelf: Array<T1>
+            }
+            const _t1: Equals<ToJSON<C>, T1> = true
+            const _t2: ToJSON<C> = {
+                setOfSelf: [{
+                    setOfSelf: []
+                }, {
+                    setOfSelf: [{
+                        setOfSelf: []
+                    }]
+                }]
+            }
+        })
     })
 
-    it("CollectionSchema on root", () => {
-        class C extends Schema {
-            @type({map: VecSchema}) positions: CollectionSchema<VecSchema>
-        }
-        const _t1: Equals<ToJSON<C>, {
-            positions: Array<{
-                x: number
-                y: number
-            }>
-        }> = true
-        const _t2: ToJSON<C> = {
-            positions: [{
-                x: 1,
-                y: 2
-            }]
-        }
+    describe("CollectionSchema", () => {
+        it("allows CollectionSchema on root", () => {
+            class C extends Schema {
+                @type({collection: VecSchema}) positions: CollectionSchema<VecSchema>
+            }
+            const _t1: Equals<ToJSON<C>, {
+                positions: Array<{
+                    x: number
+                    y: number
+                }>
+            }> = true
+            const _t2: ToJSON<C> = {
+                positions: [{
+                    x: 1,
+                    y: 2
+                }]
+            }
+        })
+
+        it("allows recursive schemas", () => {
+            class C extends Schema {
+                @type({ collection: C }) collectionOfSelf: CollectionSchema<C>
+            }
+            type T1 = {
+                collectionOfSelf: Array<T1>
+            }
+            const _t1: Equals<ToJSON<C>, T1> = true
+            const _t2: ToJSON<C> = {
+                collectionOfSelf: [{
+                    collectionOfSelf: []
+                }, {
+                    collectionOfSelf: [{
+                        collectionOfSelf: []
+                    }]
+                }]
+            }
+        })
     })
 })
