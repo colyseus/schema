@@ -41,6 +41,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
 
     constructor (initialValues?: Array<V>) {
         this[$changes] = new ChangeTree(this);
+        this[$changes].indexes = {};
 
         if (initialValues) {
             initialValues.forEach((v) => this.add(v));

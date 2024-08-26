@@ -137,6 +137,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         });
 
         this[$changes] = new ChangeTree(proxy);
+        this[$changes].indexes = {};
         this.push.apply(this, items);
 
         return proxy;

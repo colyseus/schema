@@ -1,7 +1,8 @@
 import * as assert from "assert";
 
 import { ChangeTree } from "../src/encoder/ChangeTree";
-import { Schema, type, MapSchema, ArraySchema, $changes } from "../src";
+import { Schema, type, view, MapSchema, ArraySchema, $changes } from "../src";
+import { getEncoder } from "./Schema";
 
 describe("ChangeTree", () => {
     it("instances should share parent/root references", () => {
@@ -111,6 +112,46 @@ describe("ChangeTree", () => {
         const changes: ChangeTree = state.game[$changes];
         assert.deepStrictEqual(Array.from(changes.changes.keys()), [0])
         assert.deepStrictEqual(Array.from(changes.allChanges.keys()), [0])
+    });
+
+    it("should not instantiate 'filteredChanges'", () => {
+        class MyState extends Schema {
+            @type("string") str: string;
+        }
+
+        const state = new MyState();
+        assert.strictEqual(undefined, state[$changes].filteredChanges);
+        assert.strictEqual(undefined, state[$changes].allFilteredChanges);
+    })
+
+    it("should instantiate 'filteredChanges'", () => {
+        class MyState extends Schema {
+            @view() @type("string") str: string;
+        }
+
+        const state = new MyState();
+        assert.ok(state[$changes].filteredChanges instanceof Map);
+        assert.ok(state[$changes].allFilteredChanges instanceof Map);
+    })
+
+    it("detached instance and filtered changes", () => {
+        class Item extends Schema {
+            @type("number") amount: number;
+        }
+
+        class State extends Schema {
+            @type("string") prop1 = "Hello world";
+            @view() @type([Item]) items = new ArraySchema<Item>();
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+
+        for (let i = 0; i < 5; i++) {
+            state.items.push(new Item().assign({ amount: i }));
+        }
+
+        assert.strictEqual(-1, Array.from(encoder.root.allFilteredChanges.values()).findIndex((value) => value === undefined))
     });
 
 });

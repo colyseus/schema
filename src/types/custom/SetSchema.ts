@@ -40,6 +40,7 @@ export class SetSchema<V=any> implements Collection<number, V> {
 
     constructor (initialValues?: Array<V>) {
         this[$changes] = new ChangeTree(this);
+        this[$changes].indexes = {};
 
         if (initialValues) {
             initialValues.forEach((v) => this.add(v));

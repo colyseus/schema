@@ -15,6 +15,7 @@ export type Metadata =
     { [-1]: number; } & // number of fields
     { [-2]: number[]; } & // all field indexes with "view" tag
     { [-3]: {[tag: number]: number[]}; } & // field indexes by "view" tag
+    { [-4]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
     { [field: number]: MetadataField; } & // index => field name
     { [field: string]: number; } & // field name => field metadata
     { [$descriptors]: { [field: string]: PropertyDescriptor } }  // property descriptors
@@ -72,6 +73,18 @@ export const Metadata = {
             enumerable: false,
             configurable: true,
         });
+
+        // if child Ref/complex type, add to -4
+        if (typeof (metadata[index].type) !== "string") {
+            if (metadata[-4] === undefined) {
+                Object.defineProperty(metadata, -4, {
+                    value: [],
+                    enumerable: false,
+                    configurable: true,
+                });
+            }
+            metadata[-4].push(index);
+        }
     },
 
     setTag(metadata: Metadata, fieldName: string, tag: number) {

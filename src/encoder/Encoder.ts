@@ -1,6 +1,6 @@
 import type { Schema } from "../Schema";
 import { TypeContext } from "../types/TypeContext";
-import { $changes, $encoder, $filter } from "../types/symbols";
+import { $changes, $encoder, $filter, $isNew, $onEncodeEnd } from "../types/symbols";
 
 import * as encode from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
@@ -255,6 +255,14 @@ export class Encoder<T extends Schema = any> {
         const changeTreesIterator = changeTrees.entries();
         for (const [changeTree, _] of changeTreesIterator) {
             changeTree.endEncode();
+            // changeTree.changes.clear();
+
+            // // ArraySchema and MapSchema have a custom "encode end" method
+            // changeTree.ref[$onEncodeEnd]?.();
+
+            // // Not a new instance anymore
+            // delete changeTree[$isNew];
+
         }
     }
 

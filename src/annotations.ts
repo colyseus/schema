@@ -8,6 +8,7 @@ import { TypeDefinition, getType } from "./types/registry";
 import { OPERATION } from "./encoding/spec";
 import { TypeContext } from "./types/TypeContext";
 import { assertInstanceType, assertType } from "./encoding/assert";
+import type { Ref } from "./encoder/ChangeTree";
 
 /**
  * Data types
@@ -396,28 +397,24 @@ export function getPropertyDescriptor(
                     assertType(value, type, this, fieldCached.substring(1));
                 }
 
+                const changeTree = this[$changes];
+
                 //
                 // Replacing existing "ref", remove it from root.
                 // TODO: if there are other references to this instance, we should not remove it from root.
                 //
                 if (previousValue !== undefined && previousValue[$changes]) {
-                    this[$changes].root?.remove(previousValue[$changes]);
+                    changeTree.root?.remove(previousValue[$changes]);
                 }
 
                 // flag the change for encoding.
-                this.constructor[$track](this[$changes], fieldIndex, OPERATION.ADD);
+                this.constructor[$track](changeTree, fieldIndex, OPERATION.ADD);
 
                 //
                 // call setParent() recursively for this and its child
                 // structures.
                 //
-                if (value[$changes]) {
-                    value[$changes].setParent(
-                        this,
-                        this[$changes].root,
-                        fieldIndex,
-                    );
-                }
+                (value as Ref)[$changes]?.setParent(this, changeTree.root, fieldIndex);
 
             } else if (previousValue !== undefined) {
                 //

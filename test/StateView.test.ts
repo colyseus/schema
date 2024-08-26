@@ -408,11 +408,12 @@ describe("StateView", () => {
             }
 
             const state = new State();
-            for (let i = 0; i < 10; i++) {
-                state.items.set(i.toString(), new Item().assign({ amount: i }));
-            }
 
-            const encoder = new Encoder(state);
+            for (let i = 0; i < 10; i++) {
+                const item = new Item().assign({ amount: i });
+                state.items.set(i.toString(), item);
+            }
+            const encoder = getEncoder(state);
 
             const client1 = createClientWithView(state);
             const client2 = createClientWithView(state);

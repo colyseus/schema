@@ -34,7 +34,7 @@ export class StateView {
             return this;
         }
 
-        // FIXME: ArraySchema/MapSchema does not have metadata
+        // FIXME: ArraySchema/MapSchema do not have metadata
         const metadata: Metadata = obj.constructor[Symbol.metadata];
         const changeTree: ChangeTree = obj[$changes];
         this.items.add(changeTree);

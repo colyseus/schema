@@ -41,6 +41,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     constructor (initialValues?: Map<K, V> | Record<K, V>) {
         this[$changes] = new ChangeTree(this);
+        this[$changes].indexes = {};
 
         if (initialValues) {
             if (

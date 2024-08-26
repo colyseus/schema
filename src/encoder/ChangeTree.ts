@@ -32,66 +32,80 @@ export class ChangeTree<T extends Ref=any> {
     refId: number;
 
     root?: Root;
-
-    isFiltered?: boolean;
-    isPartiallyFiltered?: boolean;
-
     parent?: Ref;
     parentIndex?: number;
 
-    indexes: {[index: string]: any} = {}; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
+    isFiltered: boolean = false;
+    isPartiallyFiltered: boolean = false;
+
     currentOperationIndex: number = 0;
 
-    allChanges = new Map<number, OPERATION>();
-    allFilteredChanges = new Map<number, OPERATION>();
-
     changes = new Map<number, OPERATION>();
-    filteredChanges = new Map<number, OPERATION>();;
+    allChanges = new Map<number, OPERATION>();
+
+    allFilteredChanges: Map<number, OPERATION>;
+    filteredChanges: Map<number, OPERATION>;
+
+    indexes: {[index: string]: any}; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
 
     [$isNew] = true;
 
     constructor(ref: T) {
         this.ref = ref;
+
+        //
+        // Does this structure have "filters" declared?
+        //
+        if (ref.constructor[Symbol.metadata]?.[-2]) {
+            this.allFilteredChanges = new Map<number, OPERATION>();
+            this.filteredChanges = new Map<number, OPERATION>();
+        }
     }
 
     setRoot(root: Root) {
         this.root = root;
         this.root.add(this);
 
-        //
-        // At Schema initialization, the "root" structure might not be available
-        // yet, as it only does once the "Encoder" has been set up.
-        //
-        // So the "parent" may be already set without a "root".
-        //
-        this.checkIsFiltered(this.parent, this.parentIndex);
+        const metadata: Metadata = this.ref.constructor[Symbol.metadata];
 
-        // unique refId for the ChangeTree.
-        this.ensureRefId();
+        if (this.root.types.hasFilters) {
+            //
+            // At Schema initialization, the "root" structure might not be available
+            // yet, as it only does once the "Encoder" has been set up.
+            //
+            // So the "parent" may be already set without a "root".
+            //
+            this.checkIsFiltered(metadata, this.parent, this.parentIndex);
+
+            if (this.isFiltered || this.isPartiallyFiltered) {
+                this.root.allFilteredChanges.set(this, this.allFilteredChanges);
+                this.root.filteredChanges.set(this, this.filteredChanges);
+            }
+        }
 
         if (!this.isFiltered) {
             this.root.changes.set(this, this.changes);
-        }
-
-        if (this.isFiltered || this.isPartiallyFiltered) {
-            this.root.allFilteredChanges.set(this, this.allFilteredChanges);
-            this.root.filteredChanges.set(this, this.filteredChanges);
-        }
-
-        if (!this.isFiltered) {
             this.root.allChanges.set(this, this.allChanges);
         }
 
-        this.forEachChild((changeTree, _) => {
-            changeTree.setRoot(root);
-        });
+        this.ensureRefId();
 
-        // this.allChanges.forEach((_, index) => {
-        //     const childRef = this.ref[$getByIndex](index);
-        //     if (childRef && childRef[$changes]) {
-        //         childRef[$changes].setRoot(root);
-        //     }
-        // });
+        if (metadata) {
+            metadata[-4]?.forEach((index) => {
+                const field = metadata[index as any as number];
+                const value = this.ref[field.name];
+                if (value) {
+                    value[$changes].setRoot(root);
+                }
+            });
+
+        } else if (this.ref[$childType] && typeof(this.ref[$childType]) !== "string") {
+            // MapSchema / ArraySchema, etc.
+            (this.ref as MapSchema).forEach((value, key) => {
+                value[$changes].setRoot(root);
+            });
+        }
+
     }
 
     setParent(
@@ -107,56 +121,71 @@ export class ChangeTree<T extends Ref=any> {
 
         root.add(this);
 
+        const metadata: Metadata = this.ref.constructor[Symbol.metadata];
+
         // skip if parent is already set
-        if (root === this.root) {
-            this.forEachChild((changeTree, atIndex) => {
-                changeTree.setParent(this.ref, root, atIndex);
+        if (root !== this.root) {
+            this.root = root;
+
+            if (root.types.hasFilters) {
+                this.checkIsFiltered(metadata, parent, parentIndex);
+
+                if (this.isFiltered || this.isPartiallyFiltered) {
+                    this.root.filteredChanges.set(this, this.filteredChanges);
+                    this.root.allFilteredChanges.set(this, this.filteredChanges);
+                }
+            }
+
+            if (!this.isFiltered) {
+                this.root.changes.set(this, this.changes);
+                this.root.allChanges.set(this, this.allChanges);
+            }
+
+            this.ensureRefId();
+        }
+
+        // assign same parent on child structures
+        if (metadata) {
+            metadata[-4]?.forEach((index) => {
+                const field = metadata[index as any as number];
+                const value = this.ref[field.name];
+                value?.[$changes].setParent(this.ref, root, index);
+
+                // console.log(this.ref.constructor.name, field.name, value);
+
+                // try { throw new Error(); } catch (e) {
+                //     console.log(e.stack);
+                // }
+
             });
-            return;
+
+        } else if (this.ref[$childType] && typeof(this.ref[$childType]) !== "string") {
+            // MapSchema / ArraySchema, etc.
+            (this.ref as MapSchema).forEach((value, key) => {
+                value[$changes].setParent(this.ref, root, this.indexes[key] ?? key);
+            });
         }
 
-        this.root = root;
-        this.checkIsFiltered(parent, parentIndex);
-
-        if (!this.isFiltered) {
-            this.root.changes.set(this, this.changes);
-            this.root.allChanges.set(this, this.allChanges);
-        }
-
-        if (this.isFiltered || this.isPartiallyFiltered) {
-            this.root.filteredChanges.set(this, this.filteredChanges);
-            this.root.allFilteredChanges.set(this, this.filteredChanges);
-        }
-
-        this.ensureRefId();
-
-        this.forEachChild((changeTree, atIndex) => {
-            changeTree.setParent(this.ref, root, atIndex);
-        });
     }
 
     forEachChild(callback: (change: ChangeTree, atIndex: number) => void) {
         //
         // assign same parent on child structures
         //
-        if (Metadata.isValidInstance(this.ref)) {
-            const metadata: Metadata = this.ref['constructor'][Symbol.metadata];
-
-            // FIXME: need to iterate over parent metadata instead.
-            for (const index in metadata) {
-                const value = this.ref[metadata[index as any as number].name];
-
-                if (value && value[$changes]) {
-                    callback(value[$changes], metadata[index as any as number].index);
+        const metadata: Metadata = this.ref.constructor[Symbol.metadata];
+        if (metadata) {
+            metadata[-4]?.forEach((index) => {
+                const field = metadata[index as any as number];
+                const value = this.ref[field.name];
+                if (value) {
+                    callback(value[$changes], index);
                 }
-            }
+            });
 
-        } else if (typeof (this.ref) === "object") {
+        } else if (this.ref[$childType] && typeof(this.ref[$childType]) !== "string") {
             // MapSchema / ArraySchema, etc.
             (this.ref as MapSchema).forEach((value, key) => {
-                if (Metadata.isValidInstance(value)) {
-                    callback(value[$changes], this.ref[$changes].indexes[key] ?? key);
-                }
+                callback(value[$changes], this.indexes[key] ?? key);
             });
         }
     }
@@ -167,7 +196,7 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
-        const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
+        const metadata = this.ref.constructor[Symbol.metadata] as Metadata;
 
         const isFiltered = this.isFiltered || (metadata?.[index]?.tag !== undefined);
         const changeSet = (isFiltered)
@@ -242,10 +271,7 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     indexedOperation(index: number, operation: OPERATION, allChangesIndex = index) {
-        const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
-        const isFiltered = this.isFiltered || (metadata?.[index].tag !== undefined);
-
-        if (isFiltered) {
+        if (this.filteredChanges !== undefined) {
             this.allFilteredChanges.set(allChangesIndex, OPERATION.ADD);
             this.filteredChanges.set(index, operation);
             this.root?.filteredChanges.set(this, this.filteredChanges);
@@ -259,7 +285,7 @@ export class ChangeTree<T extends Ref=any> {
 
     getType(index?: number) {
         if (Metadata.isValidInstance(this.ref)) {
-            const metadata = this.ref['constructor'][Symbol.metadata] as Metadata;
+            const metadata = this.ref.constructor[Symbol.metadata] as Metadata;
             return metadata[index].type;
 
         } else {
@@ -275,7 +301,7 @@ export class ChangeTree<T extends Ref=any> {
 
     getChange(index: number) {
         // TODO: optimize this. avoid checking against multiple instances
-        return this.changes.get(index) ?? this.filteredChanges.get(index);
+        return this.changes.get(index) ?? this.filteredChanges?.get(index);
     }
 
     //
@@ -298,9 +324,7 @@ export class ChangeTree<T extends Ref=any> {
             return;
         }
 
-        const metadata: Metadata = this.ref['constructor'][Symbol.metadata];
-        const isFiltered = this.isFiltered || (metadata?.[index].tag !== undefined);
-        const changeSet = (isFiltered)
+        const changeSet = (this.filteredChanges)
             ? this.filteredChanges
             : this.changes;
 
@@ -328,7 +352,7 @@ export class ChangeTree<T extends Ref=any> {
         //
         // FIXME: this is looking a bit ugly (and repeated from `.change()`)
         //
-        if (isFiltered) {
+        if (this.filteredChanges) {
             this.root?.filteredChanges.set(this, this.filteredChanges);
             this.allFilteredChanges.delete(allChangesIndex);
 
@@ -357,14 +381,14 @@ export class ChangeTree<T extends Ref=any> {
         this.ref[$onEncodeEnd]?.();
 
         this.changes.clear();
-        this.filteredChanges.clear();
+        this.filteredChanges?.clear();
 
         // reset operation index
         this.currentOperationIndex = 0;
 
         if (discardAll) {
             this.allChanges.clear();
-            this.allFilteredChanges.clear();
+            this.allFilteredChanges?.clear();
 
             // remove children references
             this.forEachChild((changeTree, _) =>
@@ -400,9 +424,14 @@ export class ChangeTree<T extends Ref=any> {
         return this.changes.size > 0;
     }
 
-    protected checkIsFiltered(parent: Ref, parentIndex: number) {
+    protected checkIsFiltered(metadata: Metadata, parent: Ref, parentIndex: number) {
         // Detect if current structure has "filters" declared
-        this.isPartiallyFiltered = (this.ref['constructor']?.[Symbol.metadata]?.[-2] !== undefined);
+        this.isPartiallyFiltered = metadata?.[-2] !== undefined;
+
+        if (this.isPartiallyFiltered) {
+            this.filteredChanges = this.filteredChanges || new Map<number, OPERATION>();
+            this.allFilteredChanges = this.allFilteredChanges || new Map<number, OPERATION>();
+        }
 
         if (parent) {
             if (!Metadata.isValidInstance(parent)) {
@@ -411,7 +440,7 @@ export class ChangeTree<T extends Ref=any> {
                 parentIndex = parentChangeTree.parentIndex;
             }
 
-            const parentMetadata = parent?.['constructor']?.[Symbol.metadata];
+            const parentMetadata = parent?.constructor?.[Symbol.metadata];
             this.isFiltered = (parent && parentMetadata?.[-2]?.includes(parentIndex));
 
             //
@@ -420,16 +449,21 @@ export class ChangeTree<T extends Ref=any> {
             //      swapping `changes` and `filteredChanges` is required here
             //      because "isFiltered" may not be imedialely available on `change()`
             //
-            if (this.isFiltered && this.changes.size > 0) {
-                // swap changes reference
-                const changes = this.changes;
-                this.changes = this.filteredChanges;
-                this.filteredChanges = changes;
+            if (this.isFiltered) {
+                this.filteredChanges = new Map<number, OPERATION>();
+                this.allFilteredChanges = new Map<number, OPERATION>();
 
-                // swap "all changes" reference
-                const allFilteredChanges = this.allFilteredChanges;
-                this.allFilteredChanges = this.allChanges;
-                this.allChanges = allFilteredChanges;
+                if (this.changes.size > 0) {
+                    // swap changes reference
+                    const changes = this.changes;
+                    this.changes = this.filteredChanges;
+                    this.filteredChanges = changes;
+
+                    // swap "all changes" reference
+                    const allFilteredChanges = this.allFilteredChanges;
+                    this.allFilteredChanges = this.allChanges;
+                    this.allChanges = allFilteredChanges;
+                }
             }
         }
     }

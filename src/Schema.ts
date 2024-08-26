@@ -16,7 +16,6 @@ import { getIndent } from './utils';
  * Schema encoder / decoder
  */
 export abstract class Schema {
-
     static [$encoder] = encodeSchemaOperation;
     static [$decoder] = decodeSchemaOperation;
 
@@ -81,13 +80,24 @@ export abstract class Schema {
 
     // allow inherited classes to have a constructor
     constructor(...args: any[]) {
-        Schema.initialize(this);
+        //
+        // inline
+        // Schema.initialize(this);
+        //
+
+        Object.defineProperty(this, $changes, {
+            value: new ChangeTree(this),
+            enumerable: false,
+            writable: true
+        });
+
+        Object.defineProperties(this, this.constructor[Symbol.metadata]?.[$descriptors] || {});
 
         //
         // Assign initial values
         //
         if (args[0]) {
-            this.assign(args[0]);
+            Object.assign(this, args[0]);
         }
     }
 
