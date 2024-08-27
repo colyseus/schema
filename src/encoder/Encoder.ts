@@ -60,7 +60,7 @@ export class Encoder<T extends Schema = any> {
         for (const [changeTree, changes] of changeTrees.entries()) {
             const ref = changeTree.ref;
 
-            const ctor = ref['constructor'];
+            const ctor = ref.constructor;
             const encoder = ctor[$encoder];
             const filter = ctor[$filter];
 
@@ -88,9 +88,7 @@ export class Encoder<T extends Schema = any> {
                 encode.number(buffer, changeTree.refId, it);
             }
 
-            const changesIterator = changes.entries();
-
-            for (const [fieldIndex, operation] of changesIterator) {
+            for (const [fieldIndex, operation] of changes.entries()) {
                 //
                 // first pass (encodeAll), identify "filtered" operations without encoding them
                 // they will be encoded per client, based on their view.
@@ -119,7 +117,14 @@ export class Encoder<T extends Schema = any> {
             }
 
             // if (shouldClearChanges) {
-            //     changeTree.endEncode();
+            //     // changeTree.endEncode();
+            //     changeTree.changes.clear();
+
+            //     // ArraySchema and MapSchema have a custom "encode end" method
+            //     changeTree.ref[$onEncodeEnd]?.();
+
+            //     // Not a new instance anymore
+            //     delete changeTree[$isNew];
             // }
         }
 

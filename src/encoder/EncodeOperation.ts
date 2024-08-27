@@ -1,5 +1,5 @@
 import { OPERATION } from "../encoding/spec";
-import { $changes } from "../types/symbols";
+import { $changes, $childType, $getByIndex } from "../types/symbols";
 import { getType } from "../types/registry";
 
 import * as encode from "../encoding/encode";
@@ -28,25 +28,15 @@ export type EncodeOperation<T extends Ref = any> = (
 export function encodeValue(
     encoder: Encoder,
     bytes: Buffer,
-    // ref: Ref,
     type: any,
     value: any,
-    // field: string | number,
     operation: OPERATION,
     it: Iterator,
 ) {
     if (typeof (type) === "string") {
-        //
-        // Primitive values
-        //
-        // assertType(value, type as string, ref as Schema, field);
-
         encode[type]?.(bytes, value, it);
 
     } else if (type[Symbol.metadata] !== undefined) {
-        // // TODO: move this to the `@type()` annotation
-        // assertInstanceType(value, type as typeof Schema, ref as Schema, field);
-
         //
         // Encode refId for this instance.
         // The actual instance is going to be encoded on next `changeTree` iteration.
@@ -59,16 +49,6 @@ export function encodeValue(
         }
 
     } else {
-        // //
-        // // Custom type (MapSchema, ArraySchema, etc)
-        // //
-        // const definition = getType(Object.keys(type)[0]);
-
-        // //
-        // // ensure a ArraySchema has been provided
-        // //
-        // assertInstanceType(ref[field], definition.constructor, ref as Schema, field);
-
         //
         // Encode refId for this instance.
         // The actual instance is going to be encoded on next `changeTree` iteration.
@@ -98,17 +78,15 @@ export const encodeSchemaOperation: EncodeOperation = function (
     }
 
     const ref = changeTree.ref;
-    const metadata: Metadata = ref['constructor'][Symbol.metadata];
+    const metadata: Metadata = ref.constructor[Symbol.metadata];
     const field = metadata[index];
 
     // TODO: inline this function call small performance gain
     encodeValue(
         encoder,
         bytes,
-        // ref,
         metadata[index].type,
         ref[field.name],
-        // index,
         operation,
         it
     );
@@ -147,7 +125,7 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     //
     // encode "alias" for dynamic fields (maps)
     //
-    if ((operation & OPERATION.ADD) == OPERATION.ADD) { // ADD or DELETE_AND_ADD
+    if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
         if (typeof(ref['set']) === "function") {
             //
             // MapSchema dynamic key
@@ -157,8 +135,8 @@ export const encodeKeyValueOperation: EncodeOperation = function (
         }
     }
 
-    const type = changeTree.getType(index);
-    const value = changeTree.getValue(index);
+    const type = ref[$childType];
+    const value = ref[$getByIndex](index);
 
     // try { throw new Error(); } catch (e) {
     //     // only print if not coming from Reflection.ts
@@ -177,10 +155,8 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     encodeValue(
         encoder,
         bytes,
-        // ref,
         type,
         value,
-        // index,
         operation,
         it
     );
@@ -250,10 +226,8 @@ export const encodeArray: EncodeOperation = function (
     encodeValue(
         encoder,
         bytes,
-        // ref,
         type,
         value,
-        // field,
         operation,
         it
     );
