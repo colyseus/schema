@@ -21,13 +21,28 @@ export class Root {
     }
 
     add(changeTree: ChangeTree) {
-        const refCount = this.refCount.get(changeTree) || 0;
-        this.refCount.set(changeTree, refCount + 1);
+        const previousRefCount = this.refCount.get(changeTree);
+
+        if (previousRefCount === 0) {
+            //
+            // When a ChangeTree is re-added, it means that it was previously removed.
+            // We need to re-add all changes to the `changes` map.
+            //
+            changeTree.allChanges.forEach((operation, index) => {
+                changeTree.changes.set(index, operation);
+            });
+        }
+
+        const refCount = (previousRefCount || 0) + 1;
+        this.refCount.set(changeTree, refCount);
+
+        return refCount;
     }
 
     remove(changeTree: ChangeTree) {
-        const refCount = this.refCount.get(changeTree);
-        if (refCount <= 1) {
+        const refCount = (this.refCount.get(changeTree)) - 1;
+
+        if (refCount <= 0) {
             this.allChanges.delete(changeTree);
             this.changes.delete(changeTree);
 
@@ -36,13 +51,15 @@ export class Root {
                 this.filteredChanges.delete(changeTree);
             }
 
-            this.refCount.delete(changeTree);
+            this.refCount.set(changeTree, 0);
 
         } else {
-            this.refCount.set(changeTree, refCount - 1);
+            this.refCount.set(changeTree, refCount);
         }
 
         changeTree.forEachChild((child, _) => this.remove(child));
+
+        return refCount;
     }
 
     clear() {

@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll } from "./Schema";
-import { MapSchema, type, Schema, ArraySchema, Reflection } from "../src";
+import { MapSchema, type, Schema, ArraySchema, Reflection, $changes } from "../src";
 
 describe("Type: MapSchema", () => {
 
@@ -256,15 +256,11 @@ describe("Type: MapSchema", () => {
         assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake");
         assert.strictEqual(decodedState.mapOfPlayers.get('two').name, "Katarina");
 
-        state.discardAllChanges();
-
         state.mapOfPlayers.delete('one');
         state.mapOfPlayers.set('one', new Player("Jake 2"));
 
         encoded = state.encode();
         decodedState.decode(encoded);
-
-        state.discardAllChanges();
 
         assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake 2");
         assert.strictEqual(decodedState.mapOfPlayers.get('two').name, "Katarina");
@@ -277,6 +273,71 @@ describe("Type: MapSchema", () => {
 
         assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake 2");
         assert.strictEqual(decodedState.mapOfPlayers.get('two').name, "Katarina 2");
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
+    it("should allow to re-add a removed item from previous patch", () => {
+        const state = new State();
+        state.mapOfPlayers = new MapSchema<Player>();
+        state.mapOfPlayers.set('one', new Player("Jake"));
+        state.mapOfPlayers.set('two', new Player("Katarina"));
+
+        const decodedState = new State();
+
+        decodedState.decode(state.encode());
+
+        const one = state.mapOfPlayers.get('one');
+        state.mapOfPlayers.delete('one');
+
+        decodedState.decode(state.encode());
+
+        state.mapOfPlayers.set('one', one);
+
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake");
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
+    it("should allow to nullify and re-assign with nested nested structures", () => {
+        class Tile extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+        class Player extends Schema {
+            @type("string") name: string;
+            @type(Tile) tile: Tile;
+        }
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+            @type({ map: Tile }) tiles = new MapSchema<Tile>();
+        }
+
+        const tiles = [
+            new Tile().assign({ x: 0, y: 0 }),
+            new Tile().assign({ x: 1, y: 1 }),
+            new Tile().assign({ x: 2, y: 2 }),
+        ];
+
+        const state = new State();
+        state.players.set('one', new Player().assign({ name: "Jake" }));
+        state.players.set('two', new Player().assign({ name: "Katarina" }));
+
+        state.tiles.set('one', tiles[0]);
+        state.tiles.set('two', tiles[1]);
+        state.tiles.set('three', tiles[2]);
+
+        const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(state.encode());
+
+        state.players.get('one').tile = tiles[0];
+        decodedState.decode(state.encode());
+
+        state.players.get('one').tile = null;
+        decodedState.decode(state.encode());
+
+        console.log(decodedState.toJSON());
 
         assertDeepStrictEqualEncodeAll(state);
     });

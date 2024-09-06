@@ -233,6 +233,81 @@ describe("Instance sharing", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
+    it("deleting a shared reference should not remove 'root' from it", async () => {
+        class Item extends Schema {
+            @type('number') x: number = 0;
+        }
+
+        class Player extends Schema {
+            @type(Item) item: Item | null = null;
+        }
+
+        class State extends Schema {
+            @type(Player) player: Player;
+            @type(Item) item: Item;
+        }
+
+        const state = new State();
+        const decodedState = new State();
+
+        const encoder = getEncoder(state);
+        const decoder = getDecoder(decodedState);
+
+        decodedState.decode(state.encode());
+
+        const item = new Item();
+        state.player = new Player();
+
+        state.item = item;
+        state.player.item = item;
+        state.player.item = null;
+
+        assert.ok(item[$changes].root, "item should have 'root' reference");
+
+        // randomly set and unset 'item' references
+        let i1 = setInterval(() => state.player.item = item, 1);
+        let i2 = setInterval(() => state.player.item = null, 2);
+        let i3 = setInterval(() => decodedState.decode(state.encode()), 3);
+
+        let i4 = setInterval(() => state.item = item, 4);
+        let i5 = setInterval(() => state.item = null, 5);
+
+        await new Promise<void>((resolve) => {
+            setTimeout(() => {
+                clearInterval(i1);
+                clearInterval(i2);
+                clearInterval(i3);
+
+                clearInterval(i4);
+                clearInterval(i5);
+                resolve();
+            }, 100);
+        });
+
+        // .... Clent spams the same thing multiple times
+        // (bug: Eventually, decoding warning: "trying to remove refId '55' with 0 refCount")
+
+        state.item = null;
+
+        // Client requests to move myA to myB
+        state.player.item = item;
+        assert.strictEqual(1, encoder.root.refCount.get(item[$changes]))
+
+        assert.ok(item[$changes].root, "item should have 'root' reference");
+
+        decodedState.decode(state.encode());
+
+        // Server patches item instance to change its value
+        item.x = 999;
+
+        decodedState.decode(state.encode());
+        assert.strictEqual(1, decoder.root.refCounts[item[$changes].refId]);
+
+        assert.strictEqual(999, decodedState.player.item.x);
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
     it("should allow having shared Schema class with no fields", () => {
         class Quest extends Schema { }
         class QuestOne extends Quest {

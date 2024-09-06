@@ -105,7 +105,14 @@ export function decodeValue(
                 value = decoder.createInstanceOfType(childType);
             }
 
-            $root.addRef(refId, value, (value !== previousValue));
+            $root.addRef(
+                refId,
+                value,
+                (
+                    value !== previousValue || // increment ref count if value has changed
+                    (operation === OPERATION.DELETE_AND_ADD && value === previousValue) // increment ref count if the same instance is being added again
+                )
+            );
         }
 
 

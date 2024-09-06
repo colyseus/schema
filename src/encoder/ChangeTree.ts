@@ -334,8 +334,6 @@ export class ChangeTree<T extends Ref=any> {
 
         // remove `root` reference
         if (previousValue && previousValue[$changes]) {
-            previousValue[$changes].root = undefined;
-
             //
             // FIXME: this.root is "undefined"
             //
@@ -346,7 +344,14 @@ export class ChangeTree<T extends Ref=any> {
             //
             // (the property descriptors should NOT be used at decoding time. only at encoding time.)
             //
-            this.root?.remove(previousValue[$changes]);
+            const refCount = this.root?.remove(previousValue[$changes]);
+
+            //
+            // Only remove "root" reference if it's the last reference
+            //
+            if (refCount <= 0) {
+                previousValue[$changes].root = undefined;
+            }
         }
 
         //
