@@ -234,8 +234,13 @@ describe("Instance sharing", () => {
     });
 
     it("deleting a shared reference should not remove 'root' from it", async () => {
+        class Metadata extends Schema {
+            @type('string') meta: string = 'none';
+        }
+
         class Item extends Schema {
             @type('number') x: number = 0;
+            @type(Metadata) metadata: Metadata// = new Metadata();
         }
 
         class Player extends Schema {
@@ -304,6 +309,54 @@ describe("Instance sharing", () => {
         assert.strictEqual(1, decoder.root.refCounts[item[$changes].refId]);
 
         assert.strictEqual(999, decodedState.player.item.x);
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
+    it("remove from 'all changes' only if reference count is 0", async () => {
+        class Metadata extends Schema {
+            @type('string') meta: string = 'none';
+        }
+
+        class Item extends Schema {
+            @type('number') x: number = 0;
+            @type(Metadata) metadata: Metadata = new Metadata();
+        }
+
+        class Player extends Schema {
+            @type(Item) item: Item | null = null;
+        }
+
+        class State extends Schema {
+            @type(Player) player: Player;
+            @type(Item) item: Item;
+        }
+
+        const state = new State();
+        const decodedState = new State();
+
+        const encoder = getEncoder(state);
+        decodedState.decode(state.encode());
+
+        const item = new Item();
+        state.player = new Player();
+
+        // randomly set and unset 'item' references
+        let i1 = setInterval(() => state.player.item = item, 1);
+        let i2 = setInterval(() => state.player.item = null, 2);
+
+        await new Promise<void>((resolve) => {
+            setTimeout(() => {
+                clearInterval(i1);
+                clearInterval(i2);
+
+                resolve();
+            }, 100);
+        });
+
+        state.player.item = item;
+
+        assert.deepStrictEqual([0, 1, 2, 3], Array.from(encoder.root.allChanges.keys()).map(ref => ref.refId), "must include all refId's");
 
         assertDeepStrictEqualEncodeAll(state);
     });

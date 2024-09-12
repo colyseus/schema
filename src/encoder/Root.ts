@@ -43,6 +43,11 @@ export class Root {
         const refCount = (this.refCount.get(changeTree)) - 1;
 
         if (refCount <= 0) {
+            //
+            // Only remove "root" reference if it's the last reference
+            //
+            changeTree.root = undefined;
+
             this.allChanges.delete(changeTree);
             this.changes.delete(changeTree);
 
