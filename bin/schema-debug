@@ -1,0 +1,93 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const schema = require('@colyseus/schema');
+
+const Reflection = schema.Reflection;
+const Decoder = schema.Decoder;
+
+if (!fs.existsSync(process.argv[2])) {
+    console.error("Error: File not found:", process.argv[2]);
+    console.log("");
+    console.log("Usage: schema-debug <schema-debug.txt>");
+    console.log("");
+    console.log("   From your server-side, you must use the SchemaSerializerDebug as serializer, in order to generate the schema-debug.txt file.");
+    console.log("");
+    console.log("   Example:");
+    console.log("");
+    console.log("       import { SchemaSerializerDebug } from '@colyseus/core';");
+    console.log("       // ...");
+    console.log("       onCreate() {");
+    console.log("           this.setState(new MyRoomState());");
+    console.log("           // Override serializer");
+    console.log("           this.serializer = new SchemaSerializerDebug();");
+    console.log("           this.serializer.reset(this.state);");
+    console.log("       // ...");
+    console.log("");
+    process.exit(1);
+}
+
+const contents = fs.readFileSync(process.argv[2], { encoding: "utf8" }).toString();
+
+let isCommentBlock = false;
+let lastComment = "";
+
+/**
+ * @type {Decoder}
+ */
+let decoder;
+
+/**
+ *
+ * @param line string
+ * @returns {Buffer}
+ */
+function getBuffer(line) {
+    const start = line.lastIndexOf(":");
+    const buffer = Buffer.from(new Uint8Array(line.substring(start + 1).split(",").map(n => Number(n))));
+    console.log(`(${buffer.byteLength}) ${Array.from(buffer).join(",")}`)
+    // console.log("");
+    // console.log("");
+    // console.log("> ", line);
+    // console.log("> substring:", line.substring(start + 1))
+    return buffer;
+}
+
+/**
+ * @param buffer {Buffer}
+ */
+function decode(buffer) {
+    try {
+        decoder.decode(buffer);
+    } catch (e) {
+        console.error(e);
+        console.log("NOT OK. Last log:\n\n")
+        console.log(lastComment);
+    }
+}
+
+contents.split("\n").forEach((line) => {
+    if (line.startsWith("#")) {
+        // reset last comment.
+        if (isCommentBlock === false) { lastComment = ""; }
+
+        isCommentBlock = true;
+        lastComment += line.substring(line.indexOf(":") + 1) + "\n";
+        return;
+    }
+
+    isCommentBlock = false;
+
+    if (line.startsWith("handshake:") && !decoder) {
+        const state = Reflection.decode(getBuffer(line));
+        decoder = new Decoder(state);
+
+    } else if (line.startsWith("state:")) {
+        decode(getBuffer(line));
+
+    } else if (line.startsWith("patch:")) {
+        decode(getBuffer(line));
+    }
+});
+
+console.log("OK:", decoder.state.toJSON());
