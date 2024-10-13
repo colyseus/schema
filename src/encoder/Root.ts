@@ -1,18 +1,21 @@
 import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
-import { ChangeTree } from "./ChangeTree";
+import { spliceOne } from "../types/utils";
+import { ChangeSet, ChangeTree } from "./ChangeTree";
 
 export class Root {
     protected nextUniqueId: number = 0;
-    refCount = new WeakMap<ChangeTree, number>();
+
+    refCount: {[id: number]: number} = {};
+    changeTrees: {[refId: number]: ChangeTree} = {};
 
     // all changes
-    allChanges = new Map<ChangeTree, Map<number, OPERATION>>();
-    allFilteredChanges = new Map<ChangeTree, Map<number, OPERATION>>();
+    allChanges: ChangeTree[] = [];
+    allFilteredChanges: ChangeTree[] = [];
 
     // pending changes to be encoded
-    changes = new Map<ChangeTree, Map<number, OPERATION>>();
-    filteredChanges = new Map<ChangeTree, Map<number, OPERATION>>();
+    changes: ChangeTree[] = [];
+    filteredChanges: ChangeTree[] = [];
 
     constructor(public types: TypeContext) { }
 
@@ -21,45 +24,47 @@ export class Root {
     }
 
     add(changeTree: ChangeTree) {
-        const previousRefCount = this.refCount.get(changeTree);
+        // FIXME: move implementation of `ensureRefId` to `Root` class
+        changeTree.ensureRefId();
 
+        this.changeTrees[changeTree.refId] = changeTree;
+
+        const previousRefCount = this.refCount[changeTree.refId];
         if (previousRefCount === 0) {
             //
             // When a ChangeTree is re-added, it means that it was previously removed.
             // We need to re-add all changes to the `changes` map.
             //
-            changeTree.allChanges.forEach((operation, index) => {
-                changeTree.changes.set(index, operation);
-            });
+            for (const index in changeTree.allChanges) {
+                changeTree.changes[index] = changeTree.allChanges[index];
+            }
         }
 
-        const refCount = (previousRefCount || 0) + 1;
-        this.refCount.set(changeTree, refCount);
-
-        return refCount;
+        return this.refCount[changeTree.refId] = (previousRefCount || 0) + 1;
     }
 
     remove(changeTree: ChangeTree) {
-        const refCount = (this.refCount.get(changeTree)) - 1;
+        const refCount = (this.refCount[changeTree.refId]) - 1;
 
         if (refCount <= 0) {
             //
             // Only remove "root" reference if it's the last reference
             //
             changeTree.root = undefined;
+            delete this.changeTrees[changeTree.refId];
 
-            this.allChanges.delete(changeTree);
-            this.changes.delete(changeTree);
+            this.markChangeAsUndefined("allChanges", changeTree);
+            this.markChangeAsUndefined("changes", changeTree);
 
             if (changeTree.isFiltered || changeTree.isPartiallyFiltered) {
-                this.allFilteredChanges.delete(changeTree);
-                this.filteredChanges.delete(changeTree);
+                this.markChangeAsUndefined("allFilteredChanges", changeTree);
+                this.markChangeAsUndefined("filteredChanges", changeTree);
             }
 
-            this.refCount.set(changeTree, 0);
+            this.refCount[changeTree.refId] = 0;
 
         } else {
-            this.refCount.set(changeTree, refCount);
+            this.refCount[changeTree.refId] = refCount;
         }
 
         changeTree.forEachChild((child, _) => this.remove(child));
@@ -67,7 +72,15 @@ export class Root {
         return refCount;
     }
 
+    markChangeAsUndefined(changeSetName: "allChanges" | "changes" | "filteredChanges" | "allFilteredChanges", changeTree: ChangeTree) {
+        const changeSet = this[changeSetName];
+        const index = changeSet.indexOf(changeTree);
+        if (index !== -1) {
+            changeSet[index] = undefined;
+        }
+    }
+
     clear() {
-        this.changes.clear();
+        this.changes.length = 0;
     }
 }

@@ -23,6 +23,7 @@ export type EncodeOperation<T extends Ref = any> = (
     it: Iterator,
     isEncodeAll: boolean,
     hasView: boolean,
+    metadata?: Metadata,
 ) => void;
 
 export function encodeValue(
@@ -68,6 +69,9 @@ export const encodeSchemaOperation: EncodeOperation = function (
     index: number,
     operation: OPERATION,
     it: Iterator,
+    _: any,
+    __: any,
+    metadata: Metadata,
 ) {
     // "compress" field index + operation
     bytes[it.offset++] = (index | operation) & 255;
@@ -78,7 +82,7 @@ export const encodeSchemaOperation: EncodeOperation = function (
     }
 
     const ref = changeTree.ref;
-    const metadata: Metadata = ref.constructor[Symbol.metadata];
+    // const metadata: Metadata = ref.constructor[Symbol.metadata];
     const field = metadata[index];
 
     // TODO: inline this function call small performance gain

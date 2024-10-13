@@ -68,21 +68,24 @@ export function utf8Write(view: BufferLike, str: string, it: Iterator) {
       view[it.offset++] = c;
     }
     else if (c < 0x800) {
-      view[it.offset++] = 0xc0 | (c >> 6);
-      view[it.offset++] = 0x80 | (c & 0x3f);
+      view[it.offset] = 0xc0 | (c >> 6);
+      view[it.offset + 1] = 0x80 | (c & 0x3f);
+      it.offset += 2;
     }
     else if (c < 0xd800 || c >= 0xe000) {
-      view[it.offset++] = 0xe0 | (c >> 12);
-      view[it.offset++] = 0x80 | (c >> 6 & 0x3f);
-      view[it.offset++] = 0x80 | (c & 0x3f);
+      view[it.offset] = 0xe0 | (c >> 12);
+      view[it.offset+1] = 0x80 | (c >> 6 & 0x3f);
+      view[it.offset+2] = 0x80 | (c & 0x3f);
+      it.offset += 3;
     }
     else {
       i++;
       c = 0x10000 + (((c & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
-      view[it.offset++] = 0xf0 | (c >> 18);
-      view[it.offset++] = 0x80 | (c >> 12 & 0x3f);
-      view[it.offset++] = 0x80 | (c >> 6 & 0x3f);
-      view[it.offset++] = 0x80 | (c & 0x3f);
+      view[it.offset] = 0xf0 | (c >> 18);
+      view[it.offset+1] = 0x80 | (c >> 12 & 0x3f);
+      view[it.offset+2] = 0x80 | (c >> 6 & 0x3f);
+      view[it.offset+3] = 0x80 | (c & 0x3f);
+      it.offset += 4;
     }
   }
 }

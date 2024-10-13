@@ -1,4 +1,4 @@
-import { ChangeTree, Ref } from "./ChangeTree";
+import { ChangeSet, ChangeTree, Ref } from "./ChangeTree";
 import { $changes } from "../types/symbols";
 import { DEFAULT_VIEW_TAG } from "../annotations";
 import { OPERATION } from "../encoding/spec";
@@ -25,7 +25,7 @@ export class StateView {
      * Manual "ADD" operations for changes per ChangeTree, specific to this view.
      * (This is used to force encoding a property, even if it was not changed)
      */
-    changes = new Map<ChangeTree, Map<number, OPERATION>>();
+    changes: {[refId: number]: ChangeSet} = {};
 
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
@@ -50,10 +50,10 @@ export class StateView {
         // TODO: when adding an item of a MapSchema, the changes may not
         // be set (only the parent's changes are set)
         //
-        let changes = this.changes.get(changeTree);
+        let changes = this.changes[changeTree.refId];
         if (changes === undefined) {
-            changes = new Map<number, OPERATION>();
-            this.changes.set(changeTree, changes)
+            changes = {};
+            this.changes[changeTree.refId] = changes;
         }
 
         // set tag
@@ -71,9 +71,9 @@ export class StateView {
             tags.add(tag);
 
             // Ref: add tagged properties
-            metadata?.[-3]?.[tag]?.forEach((index) => {
+            metadata?.["-3"]?.[tag]?.forEach((index) => {
                 if (changeTree.getChange(index) !== OPERATION.DELETE) {
-                    changes.set(index, OPERATION.ADD)
+                    changes[index] = OPERATION.ADD;
                 }
             });
 
@@ -83,7 +83,10 @@ export class StateView {
                 ? changeTree.allFilteredChanges
                 : changeTree.allChanges;
 
-            changeSet.forEach((op, index) => {
+            const changeSetKeys = Object.keys(changeSet);
+            for (let i = 0, numChanges = changeSetKeys.length; i < numChanges; i++) {
+                const index = Number(changeSetKeys[i]);
+                const op = changeSet[index];
                 const tagAtIndex = metadata?.[index].tag;
                 if (
                     (
@@ -93,9 +96,9 @@ export class StateView {
                     ) &&
                     op !== OPERATION.DELETE
                 ) {
-                    changes.set(index, op);
+                    changes[index] = op;
                 }
-            });
+            }
         }
 
         // Add children of this ChangeTree to this view
@@ -128,10 +131,10 @@ export class StateView {
         // add parent's tag properties
         if (changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
 
-            let changes = this.changes.get(changeTree);
+            let changes = this.changes[changeTree.refId];
             if (changes === undefined) {
-                changes = new Map<number, OPERATION>();
-                this.changes.set(changeTree, changes);
+                changes = {};
+                this.changes[changeTree.refId] = changes;
             }
 
             if (!this.tags) {
@@ -147,7 +150,7 @@ export class StateView {
             }
             tags.add(tag);
 
-            changes.set(parentIndex, OPERATION.ADD);
+            changes[parentIndex] = OPERATION.ADD;
         }
     }
 
@@ -163,10 +166,10 @@ export class StateView {
         const ref = changeTree.ref;
         const metadata: Metadata = ref.constructor[Symbol.metadata];
 
-        let changes = this.changes.get(changeTree);
+        let changes = this.changes[changeTree.refId];
         if (changes === undefined) {
-            changes = new Map<number, OPERATION>();
-            this.changes.set(changeTree, changes);
+            changes = {};
+            this.changes[changeTree.refId] = changes;
         }
 
         if (tag === DEFAULT_VIEW_TAG) {
@@ -174,25 +177,25 @@ export class StateView {
             const parent = changeTree.parent;
             if (!Metadata.isValidInstance(parent)) {
                 const parentChangeTree = parent[$changes];
-                let changes = this.changes.get(parentChangeTree);
+                let changes = this.changes[parentChangeTree.refId];
                 if (changes === undefined) {
-                    changes = new Map<number, OPERATION>();
-                    this.changes.set(parentChangeTree, changes)
+                    changes = {};
+                    this.changes[parentChangeTree.refId] = changes;
                 }
                 // DELETE / DELETE BY REF ID
-                changes.set(changeTree.parentIndex, OPERATION.DELETE);
+                changes[changeTree.parentIndex] = OPERATION.DELETE;
 
             } else {
                 // delete all "tagged" properties.
-                metadata[-2].forEach((index) =>
-                    changes.set(index, OPERATION.DELETE));
+                metadata["-2"].forEach((index) =>
+                    changes[index] = OPERATION.DELETE);
             }
 
 
         } else {
             // delete only tagged properties
-            metadata[-3][tag].forEach((index) =>
-                changes.set(index, OPERATION.DELETE));
+            metadata["-3"][tag].forEach((index) =>
+                changes[index] = OPERATION.DELETE);
         }
 
         // remove tag

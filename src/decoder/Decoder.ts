@@ -68,7 +68,7 @@ export class Decoder<T extends Schema = any> {
                 ref[$onDecodeEnd]?.()
                 ref = nextRef;
 
-                decoder = ref['constructor'][$decoder];
+                decoder = ref.constructor[$decoder];
 
                 continue;
             }

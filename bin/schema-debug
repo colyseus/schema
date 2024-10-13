@@ -18,10 +18,11 @@ if (!fs.existsSync(process.argv[2])) {
     console.log("       import { SchemaSerializerDebug } from '@colyseus/core';");
     console.log("       // ...");
     console.log("       onCreate() {");
-    console.log("           this.setState(new MyRoomState());");
+    console.log("           const state = new MyRoomState();");
+    console.log("           this.setState(state);");
     console.log("           // Override serializer");
-    console.log("           this.serializer = new SchemaSerializerDebug();");
-    console.log("           this.serializer.reset(this.state);");
+    console.log("           this.setSerializer(new SchemaSerializerDebug());");
+    console.log("           this['_serializer'].reset(state)");
     console.log("       // ...");
     console.log("");
     process.exit(1);

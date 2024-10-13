@@ -141,6 +141,8 @@ describe("Instance sharing", () => {
         const newRefCount = decoder.root.refs.size;
         assert.strictEqual(refCount - 4, newRefCount);
 
+        console.log(Schema.debugRefIds(state));
+
         assertDeepStrictEqualEncodeAll(state);
     });
 
@@ -296,7 +298,7 @@ describe("Instance sharing", () => {
 
         // Client requests to move myA to myB
         state.player.item = item;
-        assert.strictEqual(1, encoder.root.refCount.get(item[$changes]))
+        assert.strictEqual(1, encoder.root.refCount[item[$changes].refId]);
 
         assert.ok(item[$changes].root, "item should have 'root' reference");
 
@@ -356,7 +358,11 @@ describe("Instance sharing", () => {
 
         state.player.item = item;
 
-        assert.deepStrictEqual([0, 1, 2, 3], Array.from(encoder.root.allChanges.keys()).map(ref => ref.refId), "must include all refId's");
+        const refIds = encoder.root.allChanges
+            .filter(changeTree => changeTree !== undefined)
+            .map(changeTree => changeTree.refId);
+
+        assert.deepStrictEqual([0, 1, 2, 3], refIds, "must include all refId's");
 
         assertDeepStrictEqualEncodeAll(state);
     });

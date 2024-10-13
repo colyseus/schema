@@ -9,6 +9,23 @@ describe("ArraySchema Tests", () => {
         it("Symbol.species", () => {
             assert.strictEqual(ArraySchema[Symbol.species], ArraySchema);
         });
+
+        it("should allow to assign a regular array", () => {
+            class State extends Schema {
+                @type(['number']) cardIdsPool: number[];
+            }
+
+            const state = new State();
+            state.cardIdsPool = [1, 2, 3, 4, 5];
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode())
+
+            state.cardIdsPool = state.cardIdsPool.filter(id => id < 2);
+            decodedState.decode(state.encode())
+
+            assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+        })
     });
 
     describe("ArraySchema#shift()", () => {

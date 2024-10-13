@@ -110,8 +110,8 @@ describe("ChangeTree", () => {
         state.game = new Game(0, 1);
 
         const changes: ChangeTree = state.game[$changes];
-        assert.deepStrictEqual(Array.from(changes.changes.keys()), [0])
-        assert.deepStrictEqual(Array.from(changes.allChanges.keys()), [0])
+        assert.deepStrictEqual(Object.keys(changes.changes).map(k => Number(k)), [0]);
+        assert.deepStrictEqual(Object.keys(changes.allChanges).map(k => Number(k)), [0]);
     });
 
     it("should not instantiate 'filteredChanges'", () => {
@@ -130,8 +130,8 @@ describe("ChangeTree", () => {
         }
 
         const state = new MyState();
-        assert.ok(state[$changes].filteredChanges instanceof Map);
-        assert.ok(state[$changes].allFilteredChanges instanceof Map);
+        assert.ok(state[$changes].filteredChanges !== undefined);
+        assert.ok(state[$changes].allFilteredChanges !== undefined);
     })
 
     it("detached instance and filtered changes", () => {

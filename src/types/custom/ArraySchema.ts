@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $isNew } from "../symbols";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd } from "../symbols";
 import type { Schema } from "../../Schema";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
@@ -70,6 +70,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             get: (obj, prop) => {
                 if (
                     typeof (prop) !== "symbol" &&
+                    // FIXME: d8 accuses this as low performance
                     !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
                 ) {
                     return this.items[prop];
@@ -89,7 +90,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                             assertInstanceType(setValue, obj[$childType] as typeof Schema, obj, key);
 
                             if (obj.items[key as unknown as number] !== undefined) {
-                                if (setValue[$changes][$isNew]) {
+                                if (setValue[$changes].isNew) {
                                     this[$changes].indexedOperation(Number(key), OPERATION.MOVE_AND_ADD);
 
                                 } else {
@@ -99,7 +100,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                                         this[$changes].indexedOperation(Number(key), OPERATION.MOVE);
                                     }
                                 }
-                            } else if (setValue[$changes][$isNew]) {
+                            } else if (setValue[$changes].isNew) {
                                 this[$changes].indexedOperation(Number(key), OPERATION.ADD);
                             }
 
@@ -138,7 +139,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
         this[$changes] = new ChangeTree(proxy);
         this[$changes].indexes = {};
-        this.push.apply(this, items);
+
+        if (items.length > 0) {
+            this.push(...items);
+        }
 
         return proxy;
     }
@@ -160,16 +164,18 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     push(...values: V[]) {
         let length = this.tmpItems.length;
 
+        const changeTree = this[$changes];
+
         values.forEach((value, i) => {
-            // skip null values
             if (value === undefined || value === null) {
+                // skip null values
                 return;
 
             } else if (typeof (value) === "object" && this[$childType]) {
                 assertInstanceType(value as any, this[$childType] as typeof Schema, this, i);
+                // TODO: move value[$changes]?.setParent() to this block.
             }
 
-            const changeTree = this[$changes];
             changeTree.indexedOperation(length, OPERATION.ADD, this.items.length);
 
             this.items.push(value);
@@ -270,10 +276,12 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     clear() {
         // skip if already clear
-        if (this.items.length === 0) { return; }
+        if (this.items.length === 0) {
+            return;
+        }
 
         // discard previous operations.
-        const changeTree = this[$changes]
+        const changeTree = this[$changes];
 
         // discard children
         changeTree.forEachChild((changeTree, _) => {
@@ -285,9 +293,12 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             //
             // TODO: do not use [$changes] at decoding time.
             //
-            changeTree.root?.changes.delete(changeTree);
-            changeTree.root?.allChanges.delete(changeTree);
-            changeTree.root?.allFilteredChanges.delete(changeTree);
+            const root = changeTree.root;
+            if (root) {
+                root.markChangeAsUndefined("changes", changeTree);
+                root.markChangeAsUndefined("allChanges", changeTree);
+                root.markChangeAsUndefined("allFilteredChanges", changeTree);
+            }
         });
 
         changeTree.discard(true);
@@ -437,9 +448,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
         // new index
         if (changeTree.isFiltered) {
-            changeTree.filteredChanges.set(this.items.length, OPERATION.ADD);
+            changeTree.filteredChanges[this.items.length] = OPERATION.ADD;
         } else {
-            changeTree.allChanges.set(this.items.length, OPERATION.ADD);
+            changeTree.allChanges[this.items.length] = OPERATION.ADD;
         }
 
         // FIXME: should we use OPERATION.MOVE here instead?

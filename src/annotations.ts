@@ -319,8 +319,8 @@ export function type (
             //
             // detect index for this field, considering inheritance
             //
-            fieldIndex = metadata[-1] // current structure already has fields defined
-                ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
+            fieldIndex = metadata["-1"] // current structure already has fields defined
+                ?? (parentMetadata && parentMetadata["-1"]) // parent structure has fields defined
                 ?? -1; // no fields defined
             fieldIndex++;
         }
@@ -368,7 +368,7 @@ export function getPropertyDescriptor(
     return {
         get: function () { return this[fieldCached]; },
         set: function (this: Schema, value: any) {
-            const previousValue = this[fieldCached] || undefined;
+            const previousValue = this[fieldCached] ?? undefined;
 
             // skip if value is the same as cached.
             if (value === previousValue) { return; }

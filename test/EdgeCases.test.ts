@@ -164,9 +164,8 @@ describe("Edge cases", () => {
             }
 
             const encoded = state.encode();
-
-            // Should not throw
             decodedState.decode(encoded);
+
             state.arrayOfNum.clear();
             state.arrayOfNum.push(10);
 
@@ -174,6 +173,7 @@ describe("Edge cases", () => {
             state.mapOfNum.set("one", 10);
 
             decodedState.decode(state.encode());
+            console.log('decoded =>', decodedState.toJSON());
             assert.strictEqual(10, decodedState.arrayOfNum[0]);
 
             assertDeepStrictEqualEncodeAll(state);

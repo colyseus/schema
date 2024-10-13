@@ -27,13 +27,17 @@ export function dumpChanges(schema: Schema) {
         refs: []
     };
 
-    $root.changes.forEach((operations, changeTree) => {
+    // for (const refId in $root.changes) {
+    $root.changes.forEach(changeTree => {
+        const changes = changeTree.changes;
+
         dump.refs.push(`refId#${changeTree.refId}`);
-        operations.forEach((op, index) => {
+        for (const index in changes) {
+            const op = changes[index];
             const opName = OPERATION[op];
             if (!dump.ops[opName]) { dump.ops[opName] = 0; }
             dump.ops[OPERATION[op]]++;
-        });
+        }
     });
 
     return dump;

@@ -3,7 +3,7 @@ import { DEFAULT_VIEW_TAG, DefinitionType } from "./annotations";
 
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
-import { ChangeTree, Ref } from './encoder/ChangeTree';
+import { ChangeSet, ChangeTree, Ref } from './encoder/ChangeTree';
 import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $track } from './types/symbols';
 import { StateView } from './encoder/StateView';
 
@@ -18,6 +18,8 @@ import { getIndent } from './utils';
 export abstract class Schema {
     static [$encoder] = encodeSchemaOperation;
     static [$decoder] = decodeSchemaOperation;
+
+    // public [$changes]: ChangeTree;
 
     /**
      * Assign the property descriptors required to track changes on this instance.
@@ -84,14 +86,7 @@ export abstract class Schema {
         // inline
         // Schema.initialize(this);
         //
-
-        Object.defineProperty(this, $changes, {
-            value: new ChangeTree(this),
-            enumerable: false,
-            writable: true
-        });
-
-        Object.defineProperties(this, this.constructor[Symbol.metadata]?.[$descriptors] || {});
+        Schema.initialize(this);
 
         //
         // Assign initial values
@@ -211,24 +206,24 @@ export abstract class Schema {
 
         let output = `${instance.constructor.name} (${changeTree.refId}) -> .${changeSetName}:\n`;
 
-        function dumpChangeSet(changeSet: Map<number, OPERATION>) {
-            Array.from(changeSet)
-                .sort((a, b) => a[0] - b[0])
+        function dumpChangeSet(changeSet: ChangeSet) {
+            Object.entries(changeSet)
+                .sort((a, b) => Number(a[0]) - Number(b[0]))
                 .forEach(([index, operation]) =>
-                    output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(index, isEncodeAll))})\n`
+                    output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(Number(index), isEncodeAll))})\n`
                 );
         }
 
         dumpChangeSet(changeSet);
 
         // display filtered changes
-        if (!isEncodeAll && changeTree.filteredChanges?.size > 0) {
+        if (!isEncodeAll && Object.keys(changeTree.filteredChanges || {}).length > 0) {
             output += `${instance.constructor.name} (${changeTree.refId}) -> .filteredChanges:\n`;
             dumpChangeSet(changeTree.filteredChanges);
         }
 
         // display filtered changes
-        if (isEncodeAll && changeTree.allFilteredChanges?.size > 0) {
+        if (isEncodeAll && Object.keys(changeTree.allFilteredChanges || {}).length > 0) {
             output += `${instance.constructor.name} (${changeTree.refId}) -> .allFilteredChanges:\n`;
             dumpChangeSet(changeTree.allFilteredChanges);
         }
@@ -240,12 +235,15 @@ export abstract class Schema {
         let output = "";
 
         const rootChangeTree = ref[$changes];
+        const root = rootChangeTree.root;
         const changeTrees: Map<ChangeTree, ChangeTree[]> = new Map();
 
         let totalInstances = 0;
         let totalOperations = 0;
 
-        for (const [changeTree, changes] of (rootChangeTree.root[changeSetName].entries())) {
+        for (const [refId, changes] of Object.entries(root[changeSetName])) {
+            const changeTree = root.changeTrees[refId];
+
             let includeChangeTree = false;
             let parentChangeTrees: ChangeTree[] = [];
             let parentChangeTree = changeTree.parent?.[$changes];
@@ -266,7 +264,7 @@ export abstract class Schema {
 
             if (includeChangeTree) {
                 totalInstances += 1;
-                totalOperations += changes.size;
+                totalOperations += Object.keys(changes).length;
                 changeTrees.set(changeTree, parentChangeTrees.reverse());
             }
         }
@@ -292,12 +290,12 @@ export abstract class Schema {
             const indent = getIndent(level);
 
             const parentIndex = (level > 0) ? `(${changeTree.parentIndex}) ` : "";
-            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.refId}) - changes: ${changes.size}\n`;
+            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.refId}) - changes: ${Object.keys(changes).length}\n`;
 
-            for (const [index, operation] of changes) {
+            for (const index in changes) {
+                const operation = changes[index];
                 output += `${getIndent(level + 1)}${OPERATION[operation]}: ${index}\n`;
             }
-
         }
 
         return `${output}`;
