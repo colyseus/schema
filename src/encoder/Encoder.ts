@@ -230,7 +230,10 @@ export class Encoder<T extends Schema = any> {
         // this.debugChanges("filteredChanges");
 
         // encode visibility changes (add/remove for this view)
-        for (const [refId, changes] of Object.entries(view.changes)) {
+        const refIds = Object.keys(view.changes);
+        for (let i = 0, numRefIds = refIds.length; i < numRefIds; i++) {
+            const refId = refIds[i];
+            const changes = view.changes[refIds[i]];
             const changeTree = this.root.changeTrees[refId];
 
             if (
@@ -252,12 +255,12 @@ export class Encoder<T extends Schema = any> {
 
             const keys = Object.keys(changes);
             for (let i = 0, numChanges = keys.length; i < numChanges; i++) {
-                const index = Number(keys[i]);
-                const operation = changes[index];
+                const key = keys[i];
+                const operation = changes[key];
 
                 // isEncodeAll = false
                 // hasView = true
-                encoder(this, bytes, changeTree, Number(index), operation, it, false, true, metadata);
+                encoder(this, bytes, changeTree, Number(key), operation, it, false, true, metadata);
             }
         }
 

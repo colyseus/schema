@@ -294,7 +294,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             // TODO: do not use [$changes] at decoding time.
             //
             const root = changeTree.root;
-            if (root) {
+            if (root !== undefined) {
                 root.markChangeAsUndefined("changes", changeTree);
                 root.markChangeAsUndefined("allChanges", changeTree);
                 root.markChangeAsUndefined("allFilteredChanges", changeTree);

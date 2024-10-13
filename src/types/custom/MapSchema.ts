@@ -209,10 +209,12 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     protected [$onEncodeEnd]() {
         const changeTree = this[$changes];
+        const keys = Object.keys(changeTree.changes);
 
-        for (const index in changeTree.changes) {
-            const fieldIndex = Number(index);
-            const operation = changeTree.changes[index];
+        for (let i = 0, len = keys.length; i < len; i++) {
+            const key = keys[i];
+            const fieldIndex = Number(key);
+            const operation = changeTree.changes[key];
 
             if (operation === OPERATION.DELETE) {
                 const index = this[$getByIndex](fieldIndex) as string;

@@ -1,7 +1,5 @@
-import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
-import { spliceOne } from "../types/utils";
-import { ChangeSet, ChangeTree } from "./ChangeTree";
+import { ChangeTree } from "./ChangeTree";
 
 export class Root {
     protected nextUniqueId: number = 0;
