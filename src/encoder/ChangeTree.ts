@@ -50,12 +50,6 @@ export class ChangeTree<T extends Ref=any> {
     allFilteredChanges: ChangeSet;
     filteredChanges: ChangeSet;
 
-    // changes = new Map<number, OPERATION>();
-    // allChanges = new Map<number, OPERATION>();
-
-    // allFilteredChanges: Map<number, OPERATION>;
-    // filteredChanges: Map<number, OPERATION>;
-
     indexes: {[index: string]: any}; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
 
     isNew = true;
@@ -67,9 +61,6 @@ export class ChangeTree<T extends Ref=any> {
         // Does this structure have "filters" declared?
         //
         if (ref.constructor[Symbol.metadata]?.["-2"]) {
-            // this.allFilteredChanges = new Map<number, OPERATION>();
-            // this.filteredChanges = new Map<number, OPERATION>();
-
             this.allFilteredChanges = {};
             this.filteredChanges = {};
         }
@@ -91,8 +82,12 @@ export class ChangeTree<T extends Ref=any> {
             this.checkIsFiltered(metadata, this.parent, this.parentIndex);
 
             if (this.isFiltered || this.isPartiallyFiltered) {
-                this.root.allFilteredChanges[this.refId] = this;
-                this.root.filteredChanges[this.refId] = this;
+                if (this.root.allFilteredChanges.indexOf(this) === -1) {
+                    this.root.allFilteredChanges.push(this);
+                }
+                if (this.root.filteredChanges.indexOf(this) === -1) {
+                    this.root.filteredChanges.push(this);
+                }
             }
         }
 
@@ -100,7 +95,9 @@ export class ChangeTree<T extends Ref=any> {
             if (this.root.changes.indexOf(this) === -1) {
                 this.root.changes.push(this);
             }
-            this.root.allChanges.push(this);
+            if (this.root.allChanges.indexOf(this) === -1) {
+                this.root.allChanges.push(this);
+            }
         }
 
         if (metadata) {
@@ -141,8 +138,12 @@ export class ChangeTree<T extends Ref=any> {
                 this.checkIsFiltered(metadata, parent, parentIndex);
 
                 if (this.isFiltered || this.isPartiallyFiltered) {
-                    this.root.filteredChanges[this.refId] = this;
-                    this.root.allFilteredChanges[this.refId] = this;
+                    if (this.root.filteredChanges.indexOf(this) === -1) {
+                        this.root.filteredChanges.push(this);
+                    }
+                    if (this.root.allFilteredChanges.indexOf(this) === -1) {
+                        this.root.allFilteredChanges.push(this);
+                    }
                 }
             }
 
@@ -150,7 +151,9 @@ export class ChangeTree<T extends Ref=any> {
                 if (this.root.changes.indexOf(this) === -1) {
                     this.root.changes.push(this);
                 }
-                this.root.allChanges.push(this);
+                if (this.root.allChanges.indexOf(this) === -1) {
+                    this.root.allChanges.push(this);
+                }
             }
 
         } else {
@@ -234,20 +237,19 @@ export class ChangeTree<T extends Ref=any> {
             this.allFilteredChanges[index] = OPERATION.ADD;
 
             if (this.root) {
-                this.root.filteredChanges[this.refId] = this;
-                this.root.allFilteredChanges[this.refId] = this;
+                if (this.root.filteredChanges.indexOf(this) === -1) {
+                    this.root.filteredChanges.push(this);
+                }
+                if (this.root.allFilteredChanges.indexOf(this) === -1) {
+                    this.root.allFilteredChanges.push(this);
+                }
             }
 
         } else {
             this.allChanges[index] = OPERATION.ADD;
-
             if (this.root && this.root.changes.indexOf(this) === -1) {
                 this.root.changes.push(this);
             }
-
-            // if (this.root) {
-            //     this.root.changes[this.refId] = this.changes;
-            // }
         }
     }
 
@@ -381,7 +383,7 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         //
-        // FIXME: this is looking a bit ugly (and repeated from `.change()`)
+        // FIXME: this is looking a ugly and repeated
         //
         if (this.filteredChanges) {
             delete this.allFilteredChanges[allChangesIndex];
@@ -418,8 +420,6 @@ export class ChangeTree<T extends Ref=any> {
         //
         this.ref[$onEncodeEnd]?.();
 
-        // for (const index in this.changes) { delete this.changes[index]; }
-        // for (const index in this.filteredChanges) { delete this.filteredChanges[index]; }
         this.changes = {};
         this.filteredChanges = {};
 
@@ -427,8 +427,6 @@ export class ChangeTree<T extends Ref=any> {
         this.currentOperationIndex = 0;
 
         if (discardAll) {
-            // for (const index in this.allChanges) { delete this.allChanges[index]; }
-            // for (const index in this.allFilteredChanges) { delete this.allFilteredChanges[index]; }
             this.allChanges = {};
             this.allFilteredChanges = {};
 
@@ -476,37 +474,40 @@ export class ChangeTree<T extends Ref=any> {
             this.allFilteredChanges = this.allFilteredChanges || {};
         }
 
-        if (parent) {
-            if (!Metadata.isValidInstance(parent)) {
-                const parentChangeTree = parent[$changes];
-                parent = parentChangeTree.parent;
-                parentIndex = parentChangeTree.parentIndex;
-            }
+        // skip if parent is not set
+        if (!parent) {
+            return;
+        }
 
-            const parentMetadata = parent?.constructor?.[Symbol.metadata];
-            this.isFiltered = (parent && parentMetadata?.["-2"]?.includes(parentIndex));
+        if (!Metadata.isValidInstance(parent)) {
+            const parentChangeTree = parent[$changes];
+            parent = parentChangeTree.parent;
+            parentIndex = parentChangeTree.parentIndex;
+        }
 
-            //
-            // TODO: refactor this!
-            //
-            //      swapping `changes` and `filteredChanges` is required here
-            //      because "isFiltered" may not be imedialely available on `change()`
-            //
-            if (this.isFiltered) {
-                this.filteredChanges = {};
-                this.allFilteredChanges = {};
+        const parentMetadata = parent?.constructor?.[Symbol.metadata];
+        this.isFiltered = (parent && parentMetadata?.["-2"]?.includes(parentIndex));
 
-                if (Object.keys(this.changes).length > 0) {
-                    // swap changes reference
-                    const changes = this.changes;
-                    this.changes = this.filteredChanges;
-                    this.filteredChanges = changes;
+        //
+        // TODO: refactor this!
+        //
+        //      swapping `changes` and `filteredChanges` is required here
+        //      because "isFiltered" may not be imedialely available on `change()`
+        //
+        if (this.isFiltered) {
+            this.filteredChanges = {};
+            this.allFilteredChanges = {};
 
-                    // swap "all changes" reference
-                    const allFilteredChanges = this.allFilteredChanges;
-                    this.allFilteredChanges = this.allChanges;
-                    this.allChanges = allFilteredChanges;
-                }
+            if (Object.keys(this.changes).length > 0) {
+                // swap changes reference
+                const changes = this.changes;
+                this.changes = this.filteredChanges;
+                this.filteredChanges = changes;
+
+                // swap "all changes" reference
+                const allFilteredChanges = this.allFilteredChanges;
+                this.allFilteredChanges = this.allChanges;
+                this.allChanges = allFilteredChanges;
             }
         }
     }

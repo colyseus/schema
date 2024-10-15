@@ -83,10 +83,11 @@ export class StateView {
                 ? changeTree.allFilteredChanges
                 : changeTree.allChanges;
 
-            const changeSetKeys = Object.keys(changeSet);
-            for (let i = 0, numChanges = changeSetKeys.length; i < numChanges; i++) {
-                const index = Number(changeSetKeys[i]);
-                const op = changeSet[index];
+            const keys = Object.keys(changeSet);
+            for (let i = 0, len = keys.length; i < len; i++) {
+                const key = keys[i];
+                const index = Number(key);
+                const op = changeSet[key];
                 const tagAtIndex = metadata?.[index].tag;
                 if (
                     (

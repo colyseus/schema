@@ -736,6 +736,7 @@ describe("StateView", () => {
 
             // remove item from view
             client1.view.remove(state.items.at(3));
+
             encodeMultiple(encoder, state, [client1]);
 
             assert.strictEqual(client1.state.items.length, 0);
