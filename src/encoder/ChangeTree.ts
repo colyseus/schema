@@ -52,6 +52,9 @@ export class ChangeTree<T extends Ref=any> {
 
     indexes: {[index: string]: any}; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
 
+    /**
+     * Is this a new instance? Used on ArraySchema to determine OPERATION.MOVE_AND_ADD operation.
+     */
     isNew = true;
 
     constructor(ref: T) {
@@ -68,7 +71,7 @@ export class ChangeTree<T extends Ref=any> {
 
     setRoot(root: Root) {
         this.root = root;
-        this.root.add(this);
+        const isNewChangeTree = this.root.add(this);
 
         const metadata: Metadata = this.ref.constructor[Symbol.metadata];
 
@@ -82,11 +85,11 @@ export class ChangeTree<T extends Ref=any> {
             this.checkIsFiltered(metadata, this.parent, this.parentIndex);
 
             if (this.isFiltered || this.isPartiallyFiltered) {
-                if (this.root.allFilteredChanges.indexOf(this) === -1) {
-                    this.root.allFilteredChanges.push(this);
-                }
                 if (this.root.filteredChanges.indexOf(this) === -1) {
                     this.root.filteredChanges.push(this);
+                }
+                if (isNewChangeTree) {
+                    this.root.allFilteredChanges.push(this);
                 }
             }
         }
@@ -95,11 +98,12 @@ export class ChangeTree<T extends Ref=any> {
             if (this.root.changes.indexOf(this) === -1) {
                 this.root.changes.push(this);
             }
-            if (this.root.allChanges.indexOf(this) === -1) {
+            if (isNewChangeTree) {
                 this.root.allChanges.push(this);
             }
         }
 
+        // Recursively set root on child structures
         if (metadata) {
             metadata["-4"]?.forEach((index) => {
                 const field = metadata[index as any as number];
@@ -132,7 +136,7 @@ export class ChangeTree<T extends Ref=any> {
         // skip if parent is already set
         if (root !== this.root) {
             this.root = root;
-            root.add(this);
+            const isNewChangeTree = root.add(this);
 
             if (root.types.hasFilters) {
                 this.checkIsFiltered(metadata, parent, parentIndex);
@@ -141,7 +145,7 @@ export class ChangeTree<T extends Ref=any> {
                     if (this.root.filteredChanges.indexOf(this) === -1) {
                         this.root.filteredChanges.push(this);
                     }
-                    if (this.root.allFilteredChanges.indexOf(this) === -1) {
+                    if (isNewChangeTree) {
                         this.root.allFilteredChanges.push(this);
                     }
                 }
@@ -151,7 +155,7 @@ export class ChangeTree<T extends Ref=any> {
                 if (this.root.changes.indexOf(this) === -1) {
                     this.root.changes.push(this);
                 }
-                if (this.root.allChanges.indexOf(this) === -1) {
+                if (isNewChangeTree) {
                     this.root.allChanges.push(this);
                 }
             }
@@ -207,7 +211,7 @@ export class ChangeTree<T extends Ref=any> {
     operation(op: OPERATION) {
         this.changes[--this.currentOperationIndex] = op;
 
-        if (this.root && this.root.changes.indexOf(this) === -1) {
+        if (this.root?.changes.indexOf(this) === -1) {
             this.root.changes.push(this);
         }
     }
@@ -247,7 +251,7 @@ export class ChangeTree<T extends Ref=any> {
 
         } else {
             this.allChanges[index] = OPERATION.ADD;
-            if (this.root && this.root.changes.indexOf(this) === -1) {
+            if (this.root?.changes.indexOf(this) === -1) {
                 this.root.changes.push(this);
             }
         }
@@ -302,17 +306,19 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     indexedOperation(index: number, operation: OPERATION, allChangesIndex = index) {
-        if (this.filteredChanges !== undefined) {
+        // console.log("INDEXED OPERATION! => filteredChanges", this.filteredChanges);
+
+        if (this.filteredChanges) {
             this.allFilteredChanges[allChangesIndex] = OPERATION.ADD;
             this.filteredChanges[index] = operation;
-            if (this.root && this.root.filteredChanges.indexOf(this) === -1) {
+            if (this.root?.filteredChanges.indexOf(this) === -1) {
                 this.root.filteredChanges.push(this);
             }
 
         } else {
             this.allChanges[allChangesIndex] = OPERATION.ADD;
             this.changes[index] = operation;
-            if (this.root && this.root.changes.indexOf(this) === -1) {
+            if (this.root?.changes.indexOf(this) === -1) {
                 this.root.changes.push(this);
             }
         }
@@ -387,14 +393,14 @@ export class ChangeTree<T extends Ref=any> {
         //
         if (this.filteredChanges) {
             delete this.allFilteredChanges[allChangesIndex];
-            if (this.root && this.root.filteredChanges.indexOf(this) === -1) {
+            if (this.root?.filteredChanges.indexOf(this) === -1) {
                 this.root.filteredChanges.push(this);
             }
 
 
         } else {
             delete this.allChanges[allChangesIndex];
-            if (this.root && this.root.changes.indexOf(this) === -1) {
+            if (this.root?.changes.indexOf(this) === -1) {
                 this.root.changes.push(this);
             }
         }
@@ -421,7 +427,10 @@ export class ChangeTree<T extends Ref=any> {
         this.ref[$onEncodeEnd]?.();
 
         this.changes = {};
-        this.filteredChanges = {};
+
+        if (this.filteredChanges !== undefined) {
+            this.filteredChanges = {};
+        }
 
         // reset operation index
         this.currentOperationIndex = 0;
@@ -485,8 +494,8 @@ export class ChangeTree<T extends Ref=any> {
             parentIndex = parentChangeTree.parentIndex;
         }
 
-        const parentMetadata = parent?.constructor?.[Symbol.metadata];
-        this.isFiltered = (parent && parentMetadata?.["-2"]?.includes(parentIndex));
+        const parentMetadata = parent.constructor?.[Symbol.metadata];
+        this.isFiltered = parentMetadata?.["-2"]?.includes(parentIndex);
 
         //
         // TODO: refactor this!
@@ -508,6 +517,11 @@ export class ChangeTree<T extends Ref=any> {
                 const allFilteredChanges = this.allFilteredChanges;
                 this.allFilteredChanges = this.allChanges;
                 this.allChanges = allFilteredChanges;
+
+                // console.log("SWAP =>", {
+                //     "this.allFilteredChanges": this.allFilteredChanges,
+                //     "this.allChanges": this.allChanges
+                // })
             }
         }
     }

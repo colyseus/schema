@@ -1,4 +1,5 @@
 import { TypeContext } from "../types/TypeContext";
+import { spliceOne } from "../types/utils";
 import { ChangeTree } from "./ChangeTree";
 
 export class Root {
@@ -25,7 +26,8 @@ export class Root {
         // FIXME: move implementation of `ensureRefId` to `Root` class
         changeTree.ensureRefId();
 
-        this.changeTrees[changeTree.refId] = changeTree;
+        const isNewChangeTree = (this.changeTrees[changeTree.refId] === undefined);
+        if (isNewChangeTree) { this.changeTrees[changeTree.refId] = changeTree; }
 
         const previousRefCount = this.refCount[changeTree.refId];
         if (previousRefCount === 0) {
@@ -38,7 +40,9 @@ export class Root {
             }
         }
 
-        return this.refCount[changeTree.refId] = (previousRefCount || 0) + 1;
+        this.refCount[changeTree.refId] = (previousRefCount || 0) + 1;
+
+        return isNewChangeTree;
     }
 
     remove(changeTree: ChangeTree) {
@@ -74,7 +78,8 @@ export class Root {
         const changeSet = this[changeSetName];
         const index = changeSet.indexOf(changeTree);
         if (index !== -1) {
-            changeSet[index] = undefined;
+            spliceOne(changeSet, index);
+            // changeSet[index] = undefined;
         }
     }
 

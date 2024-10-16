@@ -141,8 +141,6 @@ describe("Instance sharing", () => {
         const newRefCount = decoder.root.refs.size;
         assert.strictEqual(refCount - 4, newRefCount);
 
-        console.log(Schema.debugRefIds(state));
-
         assertDeepStrictEqualEncodeAll(state);
     });
 

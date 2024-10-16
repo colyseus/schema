@@ -1,7 +1,7 @@
 import * as util from "util";
 import * as assert from "assert";
 import { nanoid } from "nanoid";
-import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection } from "../src";
+import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Encoder, $changes } from "../src";
 
 import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll } from "./Schema";
 
@@ -28,6 +28,8 @@ describe("Edge cases", () => {
     });
 
     it("should support more than 255 schema types", () => {
+        Encoder.BUFFER_SIZE = 32 * 1024;
+
         const maxSchemaTypes = 500;
 
         class Base extends Schema { }
@@ -168,12 +170,14 @@ describe("Edge cases", () => {
 
             state.arrayOfNum.clear();
             state.arrayOfNum.push(10);
+            console.log(".push() =>", state.arrayOfNum[$changes].changes);
 
             state.mapOfNum.clear();
             state.mapOfNum.set("one", 10);
 
+            console.log("\n\nLAST ENCODE:\n\n");
+
             decodedState.decode(state.encode());
-            console.log('decoded =>', decodedState.toJSON());
             assert.strictEqual(10, decodedState.arrayOfNum[0]);
 
             assertDeepStrictEqualEncodeAll(state);

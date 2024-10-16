@@ -11,7 +11,7 @@ import { getNextPowerOf2 } from "../utils";
 
 import type { StateView } from "./StateView";
 import type { Metadata } from "../Metadata";
-import type { ChangeSet } from "./ChangeTree";
+import type { ChangeSet, ChangeTree } from "./ChangeTree";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = 8 * 1024;// 8KB
@@ -60,9 +60,7 @@ export class Encoder<T extends Schema = any> {
 
         for (let i = 0, numChangeTrees = changeTrees.length; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
-            if (changeTree === undefined) {
-                continue;
-            }
+            if (changeTree === undefined) { continue; }
 
             const changeSet = changeTree[changeSetName];
             const ref = changeTree.ref;
@@ -75,7 +73,7 @@ export class Encoder<T extends Schema = any> {
             // try { throw new Error(); } catch (e) {
             //     // only print if not coming from Reflection.ts
             //     if (!e.stack.includes("src/Reflection.ts")) {
-            //         console.log("ChangeTree:", { ref: ref.constructor.name, });
+            //         console.log("ChangeTree:", { refId: changeTree.refId, ref: ref.constructor.name });
             //     }
             // }
 
@@ -100,6 +98,8 @@ export class Encoder<T extends Schema = any> {
             for (let j = 0, numChanges = changeSetKeys.length; j < numChanges; j++) {
                 const fieldIndex = Number(changeSetKeys[j]);
                 const operation = changeSet[fieldIndex];
+
+                // console.log("encode...", { refId: changeTree.refId, fieldIndex, operation });
 
                 //
                 // first pass (encodeAll), identify "filtered" operations without encoding them
@@ -176,7 +176,7 @@ export class Encoder<T extends Schema = any> {
     }
 
     encodeAll(it: Iterator = { offset: 0 }, buffer: Buffer = this.sharedBuffer) {
-        // console.log(`\nencodeAll(), this.root.allChanges (${this.root.allChanges.size})`);
+        // console.log(`\nencodeAll(), this.root.allChanges (${(Object.keys(this.root.allChanges).length)})`);
         // this.debugChanges("allChanges");
 
         return this.encode(it, undefined, buffer, "allChanges", true);
@@ -185,8 +185,10 @@ export class Encoder<T extends Schema = any> {
     encodeAllView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
 
-        // console.log(`\nencodeAllView(), this.root.allFilteredChanges (${this.root.allFilteredChanges.size})`);
+        // console.log(`\nencodeAllView(), this.root.allFilteredChanges (${(Object.keys(this.root.allFilteredChanges).length)})`);
         // this.debugChanges("allFilteredChanges");
+
+        // console.log("\n\nENCODE ALL FOR VIEW...\n\n")
 
         // try to encode "filtered" changes
         this.encode(it, view, bytes, "allFilteredChanges", true, viewOffset);
@@ -197,16 +199,13 @@ export class Encoder<T extends Schema = any> {
         ]);
     }
 
-    debugChanges(
-        field: "changes" | "allFilteredChanges" | "allChanges" | "filteredChanges" | { [refId: number]: ChangeSet }
-    ) {
+    debugChanges(field: "changes" | "allFilteredChanges" | "allChanges" | "filteredChanges") {
         const rootChangeSet = (typeof (field) === "string")
             ? this.root[field]
             : field;
 
-        for (const refId in rootChangeSet) {
-            const changeTree = this.root.changeTrees[refId];
-            const changeSet = rootChangeSet[refId];
+        rootChangeSet.forEach((changeTree) => {
+            const changeSet = changeTree[field];
 
             const metadata: Metadata = changeTree.ref.constructor[Symbol.metadata];
             console.log("->", { ref: changeTree.ref.constructor.name, refId: changeTree.refId, changes: Object.keys(changeSet).length });
@@ -214,11 +213,11 @@ export class Encoder<T extends Schema = any> {
                 const op = changeSet[index];
                 console.log("  ->", {
                     index,
-                    field: metadata?.[index],
+                    field: metadata?.[index].name,
                     op: OPERATION[op],
                 });
             }
-        }
+        });
     }
 
     encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
@@ -232,16 +231,17 @@ export class Encoder<T extends Schema = any> {
 
         // encode visibility changes (add/remove for this view)
         const refIds = Object.keys(view.changes);
+        // console.log("ENCODE VIEW:", refIds);
         for (let i = 0, numRefIds = refIds.length; i < numRefIds; i++) {
             const refId = refIds[i];
-            const changes = view.changes[refIds[i]];
+            const changes = view.changes[refId];
             const changeTree = this.root.changeTrees[refId];
 
             if (
                 changeTree === undefined ||
                 Object.keys(changes).length === 0 // FIXME: avoid having empty changes if no changes were made
             ) {
-                // console.log("changes.size === 0", changeTree.ref.constructor.name);
+                // console.log("changes.size === 0, skip", changeTree.ref.constructor.name);
                 continue;
             }
 
@@ -271,6 +271,8 @@ export class Encoder<T extends Schema = any> {
         //
         // clear "view" changes after encoding
         view.changes = {};
+
+        // console.log("FILTERED CHANGES:", this.root.filteredChanges);
 
         // try to encode "filtered" changes
         this.encode(it, view, bytes, "filteredChanges", false, viewOffset);
@@ -302,6 +304,8 @@ export class Encoder<T extends Schema = any> {
     }
 
     discardChanges() {
+        // console.log("DISCARD CHANGES!");
+
         // discard shared changes
         let length = this.root.changes.length;
         if (length > 0) {
