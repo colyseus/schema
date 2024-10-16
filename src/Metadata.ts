@@ -12,10 +12,10 @@ export type MetadataField = {
 };
 
 export type Metadata =
-    { ["-1"]: number; } & // number of fields
-    { ["-2"]: number[]; } & // all field indexes with "view" tag
-    { ["-3"]: {[tag: number]: number[]}; } & // field indexes by "view" tag
-    { ["-4"]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
+    { ["$_numFields"]: number; } & // number of fields
+    { ["$_viewFieldIndexes"]: number[]; } & // all field indexes with "view" tag
+    { ["$_fieldIndexesByViewTag"]: {[tag: number]: number[]}; } & // field indexes by "view" tag
+    { ["$_refTypeFieldIndexes"]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
     { [field: number]: MetadataField; } & // index => field name
     { [field: string]: number; } & // field name => field metadata
     { [$descriptors]: { [field: string]: PropertyDescriptor } }  // property descriptors
@@ -61,7 +61,7 @@ export const Metadata = {
         }
 
         // map -1 as last field index
-        Object.defineProperty(metadata, -1, {
+        Object.defineProperty(metadata, "$_numFields", {
             value: index,
             enumerable: false,
             configurable: true
@@ -76,14 +76,14 @@ export const Metadata = {
 
         // if child Ref/complex type, add to -4
         if (typeof (metadata[index].type) !== "string") {
-            if (metadata["-4"] === undefined) {
-                Object.defineProperty(metadata, -4, {
+            if (metadata["$_refTypeFieldIndexes"] === undefined) {
+                Object.defineProperty(metadata, "$_refTypeFieldIndexes", {
                     value: [],
                     enumerable: false,
                     configurable: true,
                 });
             }
-            metadata["-4"].push(index);
+            metadata["$_refTypeFieldIndexes"].push(index);
         }
     },
 
@@ -94,29 +94,29 @@ export const Metadata = {
         // add 'tag' to the field
         field.tag = tag;
 
-        if (!metadata["-2"]) {
+        if (!metadata["$_viewFieldIndexes"]) {
             // -2: all field indexes with "view" tag
-            Object.defineProperty(metadata, "-2", {
+            Object.defineProperty(metadata, "$_viewFieldIndexes", {
                 value: [],
                 enumerable: false,
                 configurable: true
             });
 
             // -3: field indexes by "view" tag
-            Object.defineProperty(metadata, "-3", {
+            Object.defineProperty(metadata, "$_fieldIndexesByViewTag", {
                 value: {},
                 enumerable: false,
                 configurable: true
             });
         }
 
-        metadata["-2"].push(index);
+        metadata["$_viewFieldIndexes"].push(index);
 
-        if (!metadata["-3"][tag]) {
-            metadata["-3"][tag] = [];
+        if (!metadata["$_fieldIndexesByViewTag"][tag]) {
+            metadata["$_fieldIndexesByViewTag"][tag] = [];
         }
 
-        metadata["-3"][tag].push(index);
+        metadata["$_fieldIndexesByViewTag"][tag].push(index);
     },
 
     setFields(target: any, fields: { [field: string]: DefinitionType }) {
@@ -154,7 +154,7 @@ export const Metadata = {
         //
         const metadata = {};
         klass[Symbol.metadata] = metadata;
-        Object.defineProperty(metadata, "-1", {
+        Object.defineProperty(metadata, "$_numFields", {
             value: 0,
             enumerable: false,
             configurable: true,
@@ -172,7 +172,7 @@ export const Metadata = {
                 // assign parent metadata to current
                 Object.assign(metadata, parentMetadata);
 
-                for (let i = 0; i <= parentMetadata["-1"]; i++) {
+                for (let i = 0; i <= parentMetadata["$_numFields"]; i++) {
                     const fieldName = parentMetadata[i].name;
                     Object.defineProperty(metadata, fieldName, {
                         value: parentMetadata[fieldName],
@@ -181,8 +181,8 @@ export const Metadata = {
                     });
                 }
 
-                Object.defineProperty(metadata, "-1", {
-                    value: parentMetadata["-1"],
+                Object.defineProperty(metadata, "$_numFields", {
+                    value: parentMetadata["$_numFields"],
                     enumerable: false,
                     configurable: true,
                     writable: true,
@@ -198,14 +198,14 @@ export const Metadata = {
     isValidInstance(klass: any) {
         return (
             klass.constructor[Symbol.metadata] &&
-            Object.prototype.hasOwnProperty.call(klass.constructor[Symbol.metadata], "-1") as boolean
+            Object.prototype.hasOwnProperty.call(klass.constructor[Symbol.metadata], "$_numFields") as boolean
         );
     },
 
     getFields(klass: any) {
         const metadata: Metadata = klass[Symbol.metadata];
         const fields = {};
-        for (let i = 0; i <= metadata["-1"]; i++) {
+        for (let i = 0; i <= metadata["$_numFields"]; i++) {
             fields[metadata[i].name] = metadata[i].type;
         }
         return fields;

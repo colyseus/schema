@@ -81,8 +81,8 @@ describe("Definition Tests", () => {
             assert.strictEqual("id", ExtendedProps[Symbol.metadata][1].name);
             assert.strictEqual("value", ExtendedProps[Symbol.metadata][2].name);
 
-            assert.strictEqual(0, Props[Symbol.metadata][-1]);
-            assert.strictEqual(2, ExtendedProps[Symbol.metadata][-1]);
+            assert.strictEqual(0, Props[Symbol.metadata]["$_numFields"]);
+            assert.strictEqual(2, ExtendedProps[Symbol.metadata]["$_numFields"]);
 
             const state = new State();
             const originalContext = getDecoder(state).context;

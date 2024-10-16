@@ -82,8 +82,8 @@ export function entity(constructor, context: ClassDecoratorContext) {
 //         // detect index for this field, considering inheritance
 //         //
 //         const parent = Object.getPrototypeOf(context.metadata);
-//         let fieldIndex: number = context.metadata[-1] // current structure already has fields defined
-//             ?? (parent && parent[-1]) // parent structure has fields defined
+//         let fieldIndex: number = context.metadata["$_numFields"] // current structure already has fields defined
+//             ?? (parent && parent["$_numFields"]) // parent structure has fields defined
 //             ?? -1; // no fields defined
 //         fieldIndex++;
 
@@ -237,8 +237,8 @@ export function view<T> (tag: number = DEFAULT_VIEW_TAG) {
         //     //
         //     metadata[fieldIndex] = {
         //         type: undefined,
-        //         index: (metadata[-1] // current structure already has fields defined
-        //             ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
+        //         index: (metadata["$_numFields"] // current structure already has fields defined
+        //             ?? (parentMetadata && parentMetadata["$_numFields"]) // parent structure has fields defined
         //             ?? -1) + 1 // no fields defined
         //     }
         // }
@@ -265,8 +265,8 @@ export function unreliable<T> (target: T, field: string) {
     //     //
     //     metadata[field] = {
     //         type: undefined,
-    //         index: (metadata[-1] // current structure already has fields defined
-    //             ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
+    //         index: (metadata["$_numFields"] // current structure already has fields defined
+    //             ?? (parentMetadata && parentMetadata["$_numFields"]) // parent structure has fields defined
     //             ?? -1) + 1 // no fields defined
     //     }
     // }
@@ -319,8 +319,8 @@ export function type (
             //
             // detect index for this field, considering inheritance
             //
-            fieldIndex = metadata["-1"] // current structure already has fields defined
-                ?? (parentMetadata && parentMetadata["-1"]) // parent structure has fields defined
+            fieldIndex = metadata["$_numFields"] // current structure already has fields defined
+                ?? (parentMetadata && parentMetadata["$_numFields"]) // parent structure has fields defined
                 ?? -1; // no fields defined
             fieldIndex++;
         }
@@ -454,8 +454,8 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
         //     //
         //     metadata[field] = {
         //         type: undefined,
-        //         index: (metadata[-1] // current structure already has fields defined
-        //             ?? (parentMetadata && parentMetadata[-1]) // parent structure has fields defined
+        //         index: (metadata["$_numFields"] // current structure already has fields defined
+        //             ?? (parentMetadata && parentMetadata["$_numFields"]) // parent structure has fields defined
         //             ?? -1) + 1 // no fields defined
         //     }
         // }

@@ -63,7 +63,7 @@ export class ChangeTree<T extends Ref=any> {
         //
         // Does this structure have "filters" declared?
         //
-        if (ref.constructor[Symbol.metadata]?.["-2"]) {
+        if (ref.constructor[Symbol.metadata]?.["$_viewFieldIndexes"]) {
             this.allFilteredChanges = {};
             this.filteredChanges = {};
         }
@@ -105,7 +105,7 @@ export class ChangeTree<T extends Ref=any> {
 
         // Recursively set root on child structures
         if (metadata) {
-            metadata["-4"]?.forEach((index) => {
+            metadata["$_refTypeFieldIndexes"]?.forEach((index) => {
                 const field = metadata[index as any as number];
                 const value = this.ref[field.name];
                 value?.[$changes].setRoot(root);
@@ -166,7 +166,7 @@ export class ChangeTree<T extends Ref=any> {
 
         // assign same parent on child structures
         if (metadata) {
-            metadata["-4"]?.forEach((index) => {
+            metadata["$_refTypeFieldIndexes"]?.forEach((index) => {
                 const field = metadata[index as any as number];
                 const value = this.ref[field.name];
                 value?.[$changes].setParent(this.ref, root, index);
@@ -192,7 +192,7 @@ export class ChangeTree<T extends Ref=any> {
         //
         const metadata: Metadata = this.ref.constructor[Symbol.metadata];
         if (metadata) {
-            metadata["-4"]?.forEach((index) => {
+            metadata["$_refTypeFieldIndexes"]?.forEach((index) => {
                 const field = metadata[index as any as number];
                 const value = this.ref[field.name];
                 if (value) {
@@ -476,7 +476,7 @@ export class ChangeTree<T extends Ref=any> {
 
     protected checkIsFiltered(metadata: Metadata, parent: Ref, parentIndex: number) {
         // Detect if current structure has "filters" declared
-        this.isPartiallyFiltered = metadata?.["-2"] !== undefined;
+        this.isPartiallyFiltered = metadata?.["$_viewFieldIndexes"] !== undefined;
 
         if (this.isPartiallyFiltered) {
             this.filteredChanges = this.filteredChanges || {};
@@ -495,7 +495,7 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         const parentMetadata = parent.constructor?.[Symbol.metadata];
-        this.isFiltered = parentMetadata?.["-2"]?.includes(parentIndex);
+        this.isFiltered = parentMetadata?.["$_viewFieldIndexes"]?.includes(parentIndex);
 
         //
         // TODO: refactor this!

@@ -91,7 +91,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         const index = (isReplace)
             ? changeTree.indexes[key]
-            : changeTree.indexes[-1] ?? 0;
+            : changeTree.indexes["$_numFields"] ?? 0;
 
         let operation: OPERATION = (isReplace)
             ? OPERATION.REPLACE
@@ -106,7 +106,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         if (!isReplace) {
             this.$indexes.set(index, key);
             changeTree.indexes[key] = index;
-            changeTree.indexes[-1] = index + 1;
+            changeTree.indexes["$_numFields"] = index + 1;
 
         } else if (
             !isRef &&

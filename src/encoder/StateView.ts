@@ -71,7 +71,7 @@ export class StateView {
             tags.add(tag);
 
             // Ref: add tagged properties
-            metadata?.["-3"]?.[tag]?.forEach((index) => {
+            metadata?.["$_fieldIndexesByViewTag"]?.[tag]?.forEach((index) => {
                 if (changeTree.getChange(index) !== OPERATION.DELETE) {
                     changes[index] = OPERATION.ADD;
                 }
@@ -188,14 +188,14 @@ export class StateView {
 
             } else {
                 // delete all "tagged" properties.
-                metadata["-2"].forEach((index) =>
+                metadata["$_viewFieldIndexes"].forEach((index) =>
                     changes[index] = OPERATION.DELETE);
             }
 
 
         } else {
             // delete only tagged properties
-            metadata["-3"][tag].forEach((index) =>
+            metadata["$_fieldIndexesByViewTag"][tag].forEach((index) =>
                 changes[index] = OPERATION.DELETE);
         }
 

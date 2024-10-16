@@ -76,7 +76,7 @@ export class TypeContext {
         const metadata: Metadata = (klass[Symbol.metadata] ??= {});
 
         // if any schema/field has filters, mark "context" as having filters.
-        if (metadata[-2]) {
+        if (metadata["$_viewFieldIndexes"]) {
             this.hasFilters = true;
         }
 
