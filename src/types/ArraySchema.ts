@@ -340,6 +340,15 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
             this.$deleteAt(indexes[i]);
         }
 
+        const shiftAmount = items.length - deleteCount;
+        if (shiftAmount > 0) {
+            for (let i = indexes.length - 1; i >= start + deleteCount; i--) {
+                const currentIndex = indexes[i];
+                const newIndex = currentIndex + shiftAmount;
+                this.setAt(newIndex, this.$items.get(currentIndex));
+            }
+        }
+
         for (let i = 0; i < items.length; i++) {
             this.setAt(start + i, items[i]);
         }
@@ -395,6 +404,7 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
      * @param thisArg An object to which the this keyword can refer in the callbackfn function.
      * If thisArg is omitted, undefined is used as the this value.
      */
+    // @ts-ignore
     every(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean {
         return Array.from(this.$items.values()).every(callbackfn, thisArg);
     }
