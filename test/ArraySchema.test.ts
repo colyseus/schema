@@ -520,6 +520,24 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Katarina Lyons");
     })
 
+    it("should correctly shift elements when inserting more items than removed", () => {
+        const state = new State();
+        const p1 = new Player("Jake");
+        const p2 = new Player("Snake");
+        const p3 = new Player("Cyberhawk");
+
+        state.arrayOfPlayers = new ArraySchema(p1, p2);
+        state.arrayOfPlayers.splice(1, 0, p3);
+
+        const decodedState = new State();
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
+        assert.strictEqual(decodedState.arrayOfPlayers[0].name, "Jake");
+        assert.strictEqual(decodedState.arrayOfPlayers[1].name, "Cyberhawk");
+        assert.strictEqual(decodedState.arrayOfPlayers[2].name, "Snake");
+    });
+
     it("should adjust the indexes of the elements after a splice", () => {
         const state = new State();
         const p1 = new Player("Jake")
