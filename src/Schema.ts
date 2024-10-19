@@ -199,7 +199,7 @@ export abstract class Schema {
      * @returns
      */
     static debugChanges(instance: Ref, isEncodeAll: boolean = false) {
-        const changeTree = instance[$changes];
+        const changeTree: ChangeTree = instance[$changes];
 
         const changeSet = (isEncodeAll) ? changeTree.allChanges : changeTree.changes;
         const changeSetName = (isEncodeAll) ? "allChanges" : "changes";
@@ -207,23 +207,33 @@ export abstract class Schema {
         let output = `${instance.constructor.name} (${changeTree.refId}) -> .${changeSetName}:\n`;
 
         function dumpChangeSet(changeSet: ChangeSet) {
-            Object.entries(changeSet)
-                .sort((a, b) => Number(a[0]) - Number(b[0]))
-                .forEach(([index, operation]) =>
+            changeSet.operations
+                .filter(op => op)
+                .forEach((index) => {
+                    const operation = changeTree.indexedOperations[index];
+                    console.log({ index, operation })
                     output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(Number(index), isEncodeAll))})\n`
-                );
+                });
         }
 
         dumpChangeSet(changeSet);
 
         // display filtered changes
-        if (!isEncodeAll && Object.keys(changeTree.filteredChanges || {}).length > 0) {
+        if (
+            !isEncodeAll &&
+            changeTree.filteredChanges &&
+            (changeTree.filteredChanges.operations).filter(op => op).length > 0
+        ) {
             output += `${instance.constructor.name} (${changeTree.refId}) -> .filteredChanges:\n`;
             dumpChangeSet(changeTree.filteredChanges);
         }
 
         // display filtered changes
-        if (isEncodeAll && Object.keys(changeTree.allFilteredChanges || {}).length > 0) {
+        if (
+            isEncodeAll &&
+            changeTree.allFilteredChanges &&
+            (changeTree.allFilteredChanges.operations).filter(op => op).length > 0
+        ) {
             output += `${instance.constructor.name} (${changeTree.refId}) -> .allFilteredChanges:\n`;
             dumpChangeSet(changeTree.allFilteredChanges);
         }
@@ -285,7 +295,7 @@ export abstract class Schema {
                 }
             });
 
-            const changes = changeTree.changes;
+            const changes = changeTree.indexedOperations;
             const level = parentChangeTrees.length;
             const indent = getIndent(level);
 

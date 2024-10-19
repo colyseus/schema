@@ -1,6 +1,6 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd } from "../symbols";
 import type { Schema } from "../../Schema";
-import { ChangeTree } from "../../encoder/ChangeTree";
+import { ChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
@@ -166,7 +166,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
         const changeTree = this[$changes];
 
-        values.forEach((value, i) => {
+        // values.forEach((value, i) => {
+
+        for (let i = 0, l = values.length; i < values.length; i++, length++) {
+            const value = values[i];
+
             if (value === undefined || value === null) {
                 // skip null values
                 return;
@@ -186,9 +190,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             // (to avoid encoding "refId" operations before parent's "ADD" operation)
             //
             value[$changes]?.setParent(this, changeTree.root, length);
+        }
 
-            length++;
-        });
+        //     length++;
+        // });
 
         return length;
     }
@@ -448,9 +453,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
         // new index
         if (changeTree.isFiltered) {
-            changeTree.filteredChanges[this.items.length] = OPERATION.ADD;
+            setOperationAtIndex(changeTree.filteredChanges, this.items.length);
+            // changeTree.filteredChanges[this.items.length] = OPERATION.ADD;
         } else {
-            changeTree.allChanges[this.items.length] = OPERATION.ADD;
+            setOperationAtIndex(changeTree.allChanges, this.items.length);
+            // changeTree.allChanges[this.items.length] = OPERATION.ADD;
         }
 
         // FIXME: should we use OPERATION.MOVE here instead?

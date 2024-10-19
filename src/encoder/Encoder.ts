@@ -11,7 +11,6 @@ import { getNextPowerOf2 } from "../utils";
 
 import type { StateView } from "./StateView";
 import type { Metadata } from "../Metadata";
-import type { ChangeSet, ChangeTree } from "./ChangeTree";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = 8 * 1024;// 8KB
@@ -55,14 +54,14 @@ export class Encoder<T extends Schema = any> {
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
-        const shouldClearChanges = !isEncodeAll && !hasView;
+        const shouldDiscardChanges = !isEncodeAll && !hasView;
         const changeTrees = this.root[changeSetName];
 
         for (let i = 0, numChangeTrees = changeTrees.length; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
             if (changeTree === undefined) { continue; }
 
-            const changeSet = changeTree[changeSetName];
+            const operations = changeTree[changeSetName];
             const ref = changeTree.ref;
 
             const ctor = ref.constructor;
@@ -94,12 +93,16 @@ export class Encoder<T extends Schema = any> {
                 encode.number(buffer, changeTree.refId, it);
             }
 
-            const changeSetKeys = Object.keys(changeSet);
-            for (let j = 0, numChanges = changeSetKeys.length; j < numChanges; j++) {
-                const fieldIndex = Number(changeSetKeys[j]);
-                const operation = changeSet[fieldIndex];
+            for (let j = 0, numChanges = operations.operations.length; j < numChanges; j++) {
+                const fieldIndex = operations.operations[j];
 
-                // console.log("encode...", { refId: changeTree.refId, fieldIndex, operation });
+                const operation = (fieldIndex < 0)
+                    ? Math.abs(fieldIndex) // "pure" operation without fieldIndex
+                    : (isEncodeAll)
+                        ? OPERATION.ADD
+                        : changeTree.indexedOperations[fieldIndex];
+
+                // console.log({ ref: changeTree.ref.constructor.name, fieldIndex, operation, op: OPERATION[operation] });
 
                 //
                 // first pass (encodeAll), identify "filtered" operations without encoding them
@@ -108,7 +111,7 @@ export class Encoder<T extends Schema = any> {
                 // TODO: how can we optimize filtering out "encode all" operations?
                 // TODO: avoid checking if no view tags were defined
                 //
-                if (filter && !filter(ref, fieldIndex, view)) {
+                if (fieldIndex === undefined || operation === undefined || (filter && !filter(ref, fieldIndex, view))) {
                     // console.log("ADD AS INVISIBLE:", fieldIndex, changeTree.ref.constructor.name)
                     // view?.invisible.add(changeTree);
                     continue;
@@ -125,15 +128,13 @@ export class Encoder<T extends Schema = any> {
                 //     }
                 // }
 
+                // console.log("encode...", { ref: changeTree.ref.constructor.name, refId: changeTree.refId, fieldIndex, operation });
+
                 encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView, metadata);
             }
 
-            if (shouldClearChanges) {
-                // changeTree.endEncode();
-                changeTree.changes = {};
-
-                // ArraySchema and MapSchema have a custom "encode end" method
-                changeTree.ref[$onEncodeEnd]?.();
+            if (shouldDiscardChanges) {
+                changeTree.discard();
 
                 // Not a new instance anymore
                 changeTree.isNew = false;
@@ -213,7 +214,7 @@ export class Encoder<T extends Schema = any> {
                 const op = changeSet[index];
                 console.log("  ->", {
                     index,
-                    field: metadata?.[index].name,
+                    field: metadata?.[index],
                     op: OPERATION[op],
                 });
             }

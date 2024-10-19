@@ -1042,7 +1042,7 @@ describe("Type: Schema", () => {
                 @type("number") xp: number;
             }
             class MyState extends Schema {
-                @type({map: Player}) players = new MapSchema<Player>();
+                @type({ map: Player }) players = new MapSchema<Player>();
                 @type("number") n = 100;
             }
 
@@ -1052,7 +1052,7 @@ describe("Type: Schema", () => {
 
             const decodedState1 = new MyState();
             decodedState1.decode(state.encodeAll());
-            assert.deepEqual(Array.from(decodedState1.players.keys()), ['one', 'two']);
+            assert.deepStrictEqual(Array.from(decodedState1.players.keys()), ['one', 'two']);
             assert.strictEqual(decodedState1.n, 100);
 
             state.players.delete('two');

@@ -1,11 +1,11 @@
-import { ChangeSet, ChangeTree, Ref } from "./ChangeTree";
+import { ChangeSet, ChangeTree, IndexedOperations, Ref } from "./ChangeTree";
 import { $changes } from "../types/symbols";
 import { DEFAULT_VIEW_TAG } from "../annotations";
 import { OPERATION } from "../encoding/spec";
 import { Metadata } from "../Metadata";
-import type { Schema } from "../Schema";
 
-export function createView(root: Schema) {
+export function createView() {
+    return new StateView();
 }
 
 export class StateView {
@@ -25,7 +25,7 @@ export class StateView {
      * Manual "ADD" operations for changes per ChangeTree, specific to this view.
      * (This is used to force encoding a property, even if it was not changed)
      */
-    changes: {[refId: number]: ChangeSet} = {};
+    changes: { [refId: number]: IndexedOperations } = {};
 
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
@@ -83,11 +83,11 @@ export class StateView {
                 ? changeTree.allFilteredChanges
                 : changeTree.allChanges;
 
-            const keys = Object.keys(changeSet);
-            for (let i = 0, len = keys.length; i < len; i++) {
-                const key = keys[i];
-                const index = Number(key);
-                const op = changeSet[key];
+            for (let i = 0, len = changeSet.operations.length; i < len; i++) {
+                const index = changeSet.operations[i];
+                if (index === undefined) { continue; } // skip "undefined" indexes
+
+                const op = changeTree.indexedOperations[index];
                 const tagAtIndex = metadata?.[index].tag;
                 if (
                     (

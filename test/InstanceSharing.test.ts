@@ -89,7 +89,10 @@ describe("Instance sharing", () => {
         const decodedState = new State();
         decodedState.decode(state.encodeAll());
 
+        const encoder = getEncoder(state);
         const decoder = getDecoder(decodedState);
+
+        assert.strictEqual(2, encoder.root.refCount[player[$changes].refId]);
 
         const refCount = decoder.root.refs.size;
         assert.strictEqual(5, refCount);
@@ -98,8 +101,10 @@ describe("Instance sharing", () => {
         state.player2 = undefined;
         decodedState.decode(state.encode());
 
-        const newRefCount = decoder.root.refs.size;
-        assert.strictEqual(refCount - 2, newRefCount);
+        assert.strictEqual(Object.keys(encoder.root.refCount).length, 5);
+        for (let refId in decoder.root.refCounts) {
+            assert.strictEqual(decoder.root.refCounts[refId], encoder.root.refCount[refId]);
+        }
 
         assertDeepStrictEqualEncodeAll(state);
     });

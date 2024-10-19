@@ -29,7 +29,7 @@ export function dumpChanges(schema: Schema) {
 
     // for (const refId in $root.changes) {
     $root.changes.forEach(changeTree => {
-        const changes = changeTree.changes;
+        const changes = changeTree.indexedOperations;
 
         dump.refs.push(`refId#${changeTree.refId}`);
         for (const index in changes) {

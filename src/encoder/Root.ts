@@ -1,3 +1,4 @@
+import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
 import { spliceOne } from "../types/utils";
 import { ChangeTree } from "./ChangeTree";
@@ -35,8 +36,10 @@ export class Root {
             // When a ChangeTree is re-added, it means that it was previously removed.
             // We need to re-add all changes to the `changes` map.
             //
-            for (const index in changeTree.allChanges) {
-                changeTree.changes[index] = changeTree.allChanges[index];
+            const ops = changeTree.allChanges.operations;
+            let len = ops.length;
+            while (len--) {
+                changeTree.indexedOperations[ops[len]] = OPERATION.ADD;
             }
         }
 

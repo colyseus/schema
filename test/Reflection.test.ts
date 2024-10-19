@@ -1,6 +1,6 @@
 import * as util from "util";
 import * as assert from "assert";
-import { Reflection, Schema, type, MapSchema, ArraySchema } from "../src";
+import { Reflection, Schema, type, MapSchema, ArraySchema, $changes } from "../src";
 import { createInstanceFromReflection, getEncoder } from "./Schema";
 
 /**

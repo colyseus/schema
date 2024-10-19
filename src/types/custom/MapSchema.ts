@@ -14,6 +14,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     protected $items: Map<K, V> = new Map<K, V>();
     protected $indexes: Map<number, K> = new Map<number, K>();
+
     protected [$changes]: ChangeTree;
 
     static [$encoder] = encodeKeyValueOperation;
@@ -209,12 +210,12 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     protected [$onEncodeEnd]() {
         const changeTree = this[$changes];
-        const keys = Object.keys(changeTree.changes);
+        const keys = Object.keys(changeTree.indexedOperations);
 
         for (let i = 0, len = keys.length; i < len; i++) {
             const key = keys[i];
             const fieldIndex = Number(key);
-            const operation = changeTree.changes[key];
+            const operation = changeTree.indexedOperations[key];
 
             if (operation === OPERATION.DELETE) {
                 const index = this[$getByIndex](fieldIndex) as string;

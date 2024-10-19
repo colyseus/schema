@@ -170,7 +170,7 @@ describe("Edge cases", () => {
 
             state.arrayOfNum.clear();
             state.arrayOfNum.push(10);
-            console.log(".push() =>", state.arrayOfNum[$changes].changes);
+            console.log(".push() =>", state.arrayOfNum[$changes].indexedOperations);
 
             state.mapOfNum.clear();
             state.mapOfNum.set("one", 10);

@@ -431,14 +431,14 @@ describe("ArraySchema Tests", () => {
             const state = new State();
             const decodedState = createInstanceFromReflection(state);
 
-            state.items.push(1)
-            state.items.push(2)
-            state.items.push(3)
-            state.items.push(4)
-            state.items.push(5)
-            state.items.pop()
-            state.items.pop()
-            state.items.push(9)
+            state.items.push(1);
+            state.items.push(2);
+            state.items.push(3);
+            state.items.push(4);
+            state.items.push(5);
+            state.items.pop();
+            state.items.pop();
+            state.items.push(9);
 
             decodedState.decode(state.encode());
 
@@ -555,19 +555,36 @@ describe("ArraySchema Tests", () => {
 
         const decoded = new State();
         decoded.decode(state.encode());
+        console.log("1st decode =>", decoded.toJSON());
 
         assert.strictEqual(decoded.numbers.length, 5);
 
         state.numbers.pop();
         state.numbers.pop();
 
+        // console.log('numbers ->', Schema.debugChanges(state.numbers));
+        console.log('->', {
+            changes: state.numbers[$changes].changes,
+            indexedOperations: state.numbers[$changes].indexedOperations,
+        });
+
         // push from 20 to 25.
         for (let i=20; i<25; i++) { state.numbers.push(i); }
+        // console.log('numbers ->', Schema.debugChanges(state.numbers));
+        console.log('->', {
+            changes: state.numbers[$changes].changes,
+            indexedOperations: state.numbers[$changes].indexedOperations,
+        });
 
         // remove latest ADD value
         state.numbers.pop();
+        console.log('->', {
+            changes: state.numbers[$changes].changes,
+            indexedOperations: state.numbers[$changes].indexedOperations,
+        });
 
         decoded.decode(state.encode());
+        console.log("2st decode =>", decoded.toJSON());
 
         assert.strictEqual(decoded.numbers.length, 7);
         assert.strictEqual(decoded.numbers[0], 10);
@@ -683,6 +700,7 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual("Jake", decodedState.arrayOfPlayers[0].name);
         assert.strictEqual(jake, decodedState.arrayOfPlayers[0]);
 
+        console.log("!! LAST ENCODE !!")
         assertDeepStrictEqualEncodeAll(state);
     });
 
@@ -697,9 +715,6 @@ describe("ArraySchema Tests", () => {
 
         state.arrayOfPlayers = new ArraySchema(p1, p2)
         state.arrayOfPlayers.splice(0, 2, p3, p4)
-
-        console.log(Schema.debugRefIds(state));
-        console.log(Schema.debugChanges(state.arrayOfPlayers));
 
         const decodedState = new State();
         decodedState.decode(state.encode());

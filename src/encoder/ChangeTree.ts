@@ -21,15 +21,43 @@ declare global {
     }
 }
 
-export interface ChangeSet {
-    [index: number]: OPERATION;
-};
-
 export type Ref = Schema
     | ArraySchema
     | MapSchema
     | CollectionSchema
     | SetSchema;
+
+export type ChangeSetName = "changes"
+    | "allChanges"
+    | "filteredChanges"
+    | "allFilteredChanges";
+
+export interface IndexedOperations {
+    [index: number]: OPERATION;
+}
+
+export interface ChangeSet {
+    // field index -> operation index
+    indexes: { [index: number]: number };
+    operations: OPERATION[]
+}
+
+export function setOperationAtIndex(changeSet: ChangeSet, index: number) {
+    const operationsIndex = changeSet.indexes[index];
+    if (operationsIndex === undefined) {
+        changeSet.indexes[index] = changeSet.operations.push(index) - 1;
+    } else {
+        changeSet.operations[operationsIndex] = index;
+    }
+}
+
+export function deleteOperationAtIndex(changeSet: ChangeSet, index: number) {
+    const operationsIndex = changeSet.indexes[index];
+    if (operationsIndex !== undefined) {
+        changeSet.operations[operationsIndex] = undefined;
+    }
+    delete changeSet.indexes[index];
+}
 
 export class ChangeTree<T extends Ref=any> {
     ref: T;
@@ -42,13 +70,19 @@ export class ChangeTree<T extends Ref=any> {
     isFiltered: boolean = false;
     isPartiallyFiltered: boolean = false;
 
-    currentOperationIndex: number = 0;
+    indexedOperations: IndexedOperations = {};
 
-    changes: ChangeSet = {};
-    allChanges: ChangeSet = {};
-
-    allFilteredChanges: ChangeSet;
+    //
+    // TODO:
+    //   try storing the index + operation per item.
+    //   example: 1024 & 1025 => ADD, 1026 => DELETE
+    //
+    // => https://chatgpt.com/share/67107d0c-bc20-8004-8583-83b17dd7c196
+    //
+    changes: ChangeSet = { indexes: {}, operations: [] };
+    allChanges: ChangeSet = { indexes: {}, operations: [] };
     filteredChanges: ChangeSet;
+    allFilteredChanges: ChangeSet;
 
     indexes: {[index: string]: any}; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
 
@@ -64,8 +98,8 @@ export class ChangeTree<T extends Ref=any> {
         // Does this structure have "filters" declared?
         //
         if (ref.constructor[Symbol.metadata]?.["$_viewFieldIndexes"]) {
-            this.allFilteredChanges = {};
-            this.filteredChanges = {};
+            this.allFilteredChanges = { indexes: {}, operations: [] };
+            this.filteredChanges = { indexes: {}, operations: [] };
         }
     }
 
@@ -209,7 +243,9 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     operation(op: OPERATION) {
-        this.changes[--this.currentOperationIndex] = op;
+        // operations without index use negative values to represent them
+        // this is checked during .encode() time.
+        this.changes.operations.push(-op);
 
         if (this.root?.changes.indexOf(this) === -1) {
             this.root.changes.push(this);
@@ -224,7 +260,7 @@ export class ChangeTree<T extends Ref=any> {
             ? this.filteredChanges
             : this.changes;
 
-        const previousOperation = changeSet[index];
+        const previousOperation = this.indexedOperations[index];
         if (!previousOperation || previousOperation === OPERATION.DELETE) {
             const op = (!previousOperation)
                 ? operation
@@ -234,11 +270,17 @@ export class ChangeTree<T extends Ref=any> {
             //
             // TODO: are DELETE operations being encoded as ADD here ??
             //
-            changeSet[index] = op;
+            this.indexedOperations[index] = op;
+        // } else if (previousOperation === OPERATION.ADD && operation === OPERATION.DELETE) {
+        //     deleteOperationAtIndex(changeSet, index);
+
+        // } else {
         }
 
+        setOperationAtIndex(changeSet, index);
+
         if (isFiltered) {
-            this.allFilteredChanges[index] = OPERATION.ADD;
+            setOperationAtIndex(this.allFilteredChanges, index);
 
             if (this.root) {
                 if (this.root.filteredChanges.indexOf(this) === -1) {
@@ -250,7 +292,8 @@ export class ChangeTree<T extends Ref=any> {
             }
 
         } else {
-            this.allChanges[index] = OPERATION.ADD;
+            setOperationAtIndex(this.allChanges, index);
+
             if (this.root?.changes.indexOf(this) === -1) {
                 this.root.changes.push(this);
             }
@@ -267,17 +310,16 @@ export class ChangeTree<T extends Ref=any> {
             ? this.filteredChanges
             : this.changes;
 
-        const changeSetEntries = Object.entries(changeSet);
-
-        // Clear the object
-        for (const key in changeSet) {
-            delete changeSet[key];
+        const newIndexedOperations = {};
+        const newIndexes = {};
+        for (const index in this.indexedOperations) {
+            newIndexedOperations[Number(index) + shiftIndex] = this.indexedOperations[index];
+            newIndexes[Number(index) + shiftIndex] = changeSet[index];
         }
+        this.indexedOperations = newIndexedOperations;
+        changeSet.indexes = newIndexes;
 
-        // Re-insert each entry with the shifted index
-        for (const [index, op] of changeSetEntries) {
-            changeSet[Number(index) + shiftIndex] = op;
-        }
+        changeSet.operations = changeSet.operations.map((index) => index + shiftIndex);
     }
 
     shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0) {
@@ -295,29 +337,46 @@ export class ChangeTree<T extends Ref=any> {
         }
     }
 
-    private _shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0, allChangeSet: ChangeSet) {
-        Object.entries(allChangeSet).forEach(([key, op]) => {
-            const index = Number(key);
-            if (index >= startIndex) {
-                delete allChangeSet[key];
-                allChangeSet[index + shiftIndex] = op;
+    private _shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0, changeSet: ChangeSet) {
+        const newIndexes = {};
+
+        for (const key in changeSet.indexes) {
+            const index = changeSet.indexes[key];
+            if (index > startIndex) {
+                newIndexes[Number(key) + shiftIndex] = index;
+            } else {
+                newIndexes[key] = index;
             }
-        });
+        }
+        changeSet.indexes = newIndexes;
+
+        for (let i = 0; i < changeSet.operations.length; i++) {
+            const index = changeSet.operations[i];
+            if (index > startIndex) {
+                changeSet.operations[i] = index + shiftIndex;
+            }
+        }
     }
 
-    indexedOperation(index: number, operation: OPERATION, allChangesIndex = index) {
-        // console.log("INDEXED OPERATION! => filteredChanges", this.filteredChanges);
+    indexedOperation(index: number, operation: OPERATION, allChangesIndex: number = index) {
+        this.indexedOperations[index] = operation;
+
+        if (allChangesIndex !== undefined) {
+            this.indexedOperations[allChangesIndex] = operation;
+        }
 
         if (this.filteredChanges) {
-            this.allFilteredChanges[allChangesIndex] = OPERATION.ADD;
-            this.filteredChanges[index] = operation;
+            setOperationAtIndex(this.allFilteredChanges, allChangesIndex);
+            setOperationAtIndex(this.filteredChanges, index);
+
             if (this.root?.filteredChanges.indexOf(this) === -1) {
                 this.root.filteredChanges.push(this);
             }
 
         } else {
-            this.allChanges[allChangesIndex] = OPERATION.ADD;
-            this.changes[index] = operation;
+            setOperationAtIndex(this.allChanges, allChangesIndex);
+            setOperationAtIndex(this.changes, index);
+
             if (this.root?.changes.indexOf(this) === -1) {
                 this.root.changes.push(this);
             }
@@ -341,8 +400,7 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     getChange(index: number) {
-        // TODO: optimize this. avoid checking against multiple instances
-        return this.changes[index] ?? this.filteredChanges?.[index];
+        return this.indexedOperations[index];
     }
 
     //
@@ -369,9 +427,16 @@ export class ChangeTree<T extends Ref=any> {
             ? this.filteredChanges
             : this.changes;
 
-        const previousValue = this.getValue(index);
+        // if (this.indexedOperations[index] === OPERATION.ADD) {
+        //     deleteOperationAtIndex(changeSet, index);
 
-        changeSet[index] = operation ?? OPERATION.DELETE;
+        // } else {
+            setOperationAtIndex(changeSet, index);
+        // }
+
+        this.indexedOperations[index] = operation ?? OPERATION.DELETE;
+
+        const previousValue = this.getValue(index);
 
         // remove `root` reference
         if (previousValue && previousValue[$changes]) {
@@ -392,14 +457,14 @@ export class ChangeTree<T extends Ref=any> {
         // FIXME: this is looking a ugly and repeated
         //
         if (this.filteredChanges) {
-            delete this.allFilteredChanges[allChangesIndex];
+            deleteOperationAtIndex(this.allFilteredChanges, allChangesIndex);
             if (this.root?.filteredChanges.indexOf(this) === -1) {
                 this.root.filteredChanges.push(this);
             }
 
 
         } else {
-            delete this.allChanges[allChangesIndex];
+            deleteOperationAtIndex(this.allChanges, allChangesIndex);
             if (this.root?.changes.indexOf(this) === -1) {
                 this.root.changes.push(this);
             }
@@ -407,9 +472,11 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     endEncode() {
-        // this.changes.clear();
-        // for (const index in this.changes) { delete this.changes[index]; }
-        this.changes = {};
+        this.indexedOperations = {};
+
+        // // clear changes
+        // this.changes.indexes = {};
+        // this.changes.operations.length = 0;
 
         // ArraySchema and MapSchema have a custom "encode end" method
         this.ref[$onEncodeEnd]?.();
@@ -426,18 +493,24 @@ export class ChangeTree<T extends Ref=any> {
         //
         this.ref[$onEncodeEnd]?.();
 
-        this.changes = {};
+        this.indexedOperations = {};
+
+        this.changes.indexes = {};
+        this.changes.operations.length = 0;
 
         if (this.filteredChanges !== undefined) {
-            this.filteredChanges = {};
+            this.filteredChanges.indexes = {};
+            this.filteredChanges.operations.length = 0;
         }
 
-        // reset operation index
-        this.currentOperationIndex = 0;
-
         if (discardAll) {
-            this.allChanges = {};
-            this.allFilteredChanges = {};
+            this.allChanges.indexes = {};
+            this.allChanges.operations.length = 0;
+
+            if (this.allFilteredChanges !== undefined) {
+                this.allFilteredChanges.indexes = {};
+                this.allFilteredChanges.operations.length = 0;
+            }
 
             // remove children references
             this.forEachChild((changeTree, _) =>
@@ -449,7 +522,7 @@ export class ChangeTree<T extends Ref=any> {
      * Recursively discard all changes from this, and child structures.
      */
     discardAll() {
-        const keys = Object.keys(this.changes);
+        const keys = Object.keys(this.indexedOperations);
         for (let i = 0, len = keys.length; i < len; i++) {
             const value = this.getValue(Number(keys[i]));
 
@@ -471,7 +544,7 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     get changed() {
-        return (Object.entries(this.changes).length > 0);
+        return (Object.entries(this.indexedOperations).length > 0);
     }
 
     protected checkIsFiltered(metadata: Metadata, parent: Ref, parentIndex: number) {
@@ -479,8 +552,8 @@ export class ChangeTree<T extends Ref=any> {
         this.isPartiallyFiltered = metadata?.["$_viewFieldIndexes"] !== undefined;
 
         if (this.isPartiallyFiltered) {
-            this.filteredChanges = this.filteredChanges || {};
-            this.allFilteredChanges = this.allFilteredChanges || {};
+            this.filteredChanges = this.filteredChanges || { indexes: {}, operations: [] };
+            this.allFilteredChanges = this.allFilteredChanges || { indexes: {}, operations: [] };
         }
 
         // skip if parent is not set
@@ -504,10 +577,10 @@ export class ChangeTree<T extends Ref=any> {
         //      because "isFiltered" may not be imedialely available on `change()`
         //
         if (this.isFiltered) {
-            this.filteredChanges = {};
-            this.allFilteredChanges = {};
+            this.filteredChanges = { indexes: {}, operations: [] };
+            this.allFilteredChanges = { indexes: {}, operations: [] };
 
-            if (Object.keys(this.changes).length > 0) {
+            if (this.changes.operations.length > 0) {
                 // swap changes reference
                 const changes = this.changes;
                 this.changes = this.filteredChanges;
