@@ -302,9 +302,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             //
             const root = changeTree.root;
             if (root !== undefined) {
-                root.markChangeAsUndefined("changes", changeTree);
-                root.markChangeAsUndefined("allChanges", changeTree);
-                root.markChangeAsUndefined("allFilteredChanges", changeTree);
+                root.removeChangeFromChangeSet("changes", changeTree);
+                root.removeChangeFromChangeSet("allChanges", changeTree);
+                root.removeChangeFromChangeSet("allFilteredChanges", changeTree);
             }
         });
 

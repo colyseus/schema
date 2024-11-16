@@ -182,7 +182,7 @@ export abstract class Schema {
         const contents = (jsonContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
 
         let output = "";
-        output += `${getIndent(level)}${ref.constructor.name} (${ref[$changes].refId})${contents}\n`;
+        output += `${getIndent(level)}${ref.constructor.name} (refId: ${ref[$changes].refId})${contents}\n`;
 
         changeTree.forEachChild((childChangeTree) =>
             output += this.debugRefIds(childChangeTree.ref, jsonContents, level + 1));

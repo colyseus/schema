@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getEncoder } from "./Schema";
-import { MapSchema, dumpChanges, ArraySchema } from "../src";
+import { MapSchema, dumpChanges, ArraySchema, Schema } from "../src";
 
 describe("Utils Test", () => {
 
@@ -19,6 +19,8 @@ describe("Utils Test", () => {
             dumpChanges(state);
 
             state.mapOfPlayers.set('one', new Player("One", 1, 1));
+
+            console.log(Schema.debugRefIds(state));
 
             let dump: any = dumpChanges(state);
             assert.strictEqual(

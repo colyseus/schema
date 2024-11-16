@@ -3,6 +3,7 @@ import * as assert from "assert";
 import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
 import { defineTypes } from "../src/annotations";
 import { createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
+import { $numFields } from "../src/types/symbols";
 
 describe("Definition Tests", () => {
 
@@ -81,8 +82,8 @@ describe("Definition Tests", () => {
             assert.strictEqual("id", ExtendedProps[Symbol.metadata][1].name);
             assert.strictEqual("value", ExtendedProps[Symbol.metadata][2].name);
 
-            assert.strictEqual(0, Props[Symbol.metadata]["$_numFields"]);
-            assert.strictEqual(2, ExtendedProps[Symbol.metadata]["$_numFields"]);
+            assert.strictEqual(0, Props[Symbol.metadata][$numFields]);
+            assert.strictEqual(2, ExtendedProps[Symbol.metadata][$numFields]);
 
             const state = new State();
             const originalContext = getDecoder(state).context;

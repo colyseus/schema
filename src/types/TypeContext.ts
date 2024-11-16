@@ -1,5 +1,6 @@
 import { Metadata } from "../Metadata";
 import { Schema } from "../Schema";
+import { $viewFieldIndexes } from "./symbols";
 
 export class TypeContext {
     types: { [id: number]: typeof Schema; } = {};
@@ -76,7 +77,7 @@ export class TypeContext {
         const metadata: Metadata = (klass[Symbol.metadata] ??= {});
 
         // if any schema/field has filters, mark "context" as having filters.
-        if (metadata["$_viewFieldIndexes"]) {
+        if (metadata[$viewFieldIndexes]) {
             this.hasFilters = true;
         }
 

@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex } from "../symbols";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $numFields } from "../symbols";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
@@ -92,7 +92,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         const index = (isReplace)
             ? changeTree.indexes[key]
-            : changeTree.indexes["$_numFields"] ?? 0;
+            : changeTree.indexes[$numFields] ?? 0;
 
         let operation: OPERATION = (isReplace)
             ? OPERATION.REPLACE
@@ -107,7 +107,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         if (!isReplace) {
             this.$indexes.set(index, key);
             changeTree.indexes[key] = index;
-            changeTree.indexes["$_numFields"] = index + 1;
+            changeTree.indexes[$numFields] = index + 1;
 
         } else if (
             !isRef &&

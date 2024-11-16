@@ -1,5 +1,5 @@
 import { ChangeSet, ChangeTree, IndexedOperations, Ref } from "./ChangeTree";
-import { $changes } from "../types/symbols";
+import { $changes, $fieldIndexesByViewTag, $viewFieldIndexes } from "../types/symbols";
 import { DEFAULT_VIEW_TAG } from "../annotations";
 import { OPERATION } from "../encoding/spec";
 import { Metadata } from "../Metadata";
@@ -71,7 +71,7 @@ export class StateView {
             tags.add(tag);
 
             // Ref: add tagged properties
-            metadata?.["$_fieldIndexesByViewTag"]?.[tag]?.forEach((index) => {
+            metadata?.[$fieldIndexesByViewTag]?.[tag]?.forEach((index) => {
                 if (changeTree.getChange(index) !== OPERATION.DELETE) {
                     changes[index] = OPERATION.ADD;
                 }
@@ -188,14 +188,14 @@ export class StateView {
 
             } else {
                 // delete all "tagged" properties.
-                metadata["$_viewFieldIndexes"].forEach((index) =>
+                metadata[$viewFieldIndexes].forEach((index) =>
                     changes[index] = OPERATION.DELETE);
             }
 
 
         } else {
             // delete only tagged properties
-            metadata["$_fieldIndexesByViewTag"][tag].forEach((index) =>
+            metadata[$fieldIndexesByViewTag][tag].forEach((index) =>
                 changes[index] = OPERATION.DELETE);
         }
 

@@ -7,8 +7,6 @@ export const $filter = Symbol("$filter");
 export const $getByIndex = Symbol("$getByIndex");
 export const $deleteByIndex = Symbol("$deleteByIndex");
 
-export const $descriptors = Symbol("$descriptors");
-
 /**
  * Used to hold ChangeTree instances whitin the structures
  */
@@ -30,3 +28,12 @@ export const $onEncodeEnd = Symbol('$onEncodeEnd');
  * When decoding, this method is called after the instance is fully decoded
  */
 export const $onDecodeEnd = Symbol("$onDecodeEnd");
+
+/**
+ * Metadata
+ */
+export const $descriptors = Symbol("$descriptors");
+export const $numFields = "$__numFields";
+export const $refTypeFieldIndexes = "$__refTypeFieldIndexes";
+export const $viewFieldIndexes = "$__viewFieldIndexes";
+export const $fieldIndexesByViewTag = "$__fieldIndexesByViewTag";

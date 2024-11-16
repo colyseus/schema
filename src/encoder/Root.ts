@@ -11,11 +11,11 @@ export class Root {
 
     // all changes
     allChanges: ChangeTree[] = [];
-    allFilteredChanges: ChangeTree[] = [];
+    allFilteredChanges: ChangeTree[] = [];// TODO: do not initialize it if filters are not used
 
     // pending changes to be encoded
     changes: ChangeTree[] = [];
-    filteredChanges: ChangeTree[] = [];
+    filteredChanges: ChangeTree[] = [];// TODO: do not initialize it if filters are not used
 
     constructor(public types: TypeContext) { }
 
@@ -59,12 +59,12 @@ export class Root {
             changeTree.root = undefined;
             delete this.changeTrees[changeTree.refId];
 
-            this.markChangeAsUndefined("allChanges", changeTree);
-            this.markChangeAsUndefined("changes", changeTree);
+            this.removeChangeFromChangeSet("allChanges", changeTree);
+            this.removeChangeFromChangeSet("changes", changeTree);
 
             if (changeTree.isFiltered || changeTree.isPartiallyFiltered) {
-                this.markChangeAsUndefined("allFilteredChanges", changeTree);
-                this.markChangeAsUndefined("filteredChanges", changeTree);
+                this.removeChangeFromChangeSet("allFilteredChanges", changeTree);
+                this.removeChangeFromChangeSet("filteredChanges", changeTree);
             }
 
             this.refCount[changeTree.refId] = 0;
@@ -78,7 +78,7 @@ export class Root {
         return refCount;
     }
 
-    markChangeAsUndefined(changeSetName: "allChanges" | "changes" | "filteredChanges" | "allFilteredChanges", changeTree: ChangeTree) {
+    removeChangeFromChangeSet(changeSetName: "allChanges" | "changes" | "filteredChanges" | "allFilteredChanges", changeTree: ChangeTree) {
         const changeSet = this[changeSetName];
         const index = changeSet.indexOf(changeTree);
         if (index !== -1) {

@@ -59,7 +59,9 @@ export class Encoder<T extends Schema = any> {
 
         for (let i = 0, numChangeTrees = changeTrees.length; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
-            if (changeTree === undefined) { continue; }
+
+            // // Root#removeChangeFromChangeSet() is now removing instead of setting to "undefined"
+            // if (changeTree === undefined) { continue; }
 
             const operations = changeTree[changeSetName];
             const ref = changeTree.ref;
@@ -97,12 +99,10 @@ export class Encoder<T extends Schema = any> {
                 const fieldIndex = operations.operations[j];
 
                 const operation = (fieldIndex < 0)
-                    ? Math.abs(fieldIndex) // "pure" operation without fieldIndex
+                    ? Math.abs(fieldIndex) // "pure" operation without fieldIndex (e.g. CLEAR, REVERSE, etc.)
                     : (isEncodeAll)
                         ? OPERATION.ADD
                         : changeTree.indexedOperations[fieldIndex];
-
-                // console.log("encode operation...", { ref: changeTree.ref.constructor.name, fieldIndex, operation, op: OPERATION[operation] });
 
                 //
                 // first pass (encodeAll), identify "filtered" operations without encoding them

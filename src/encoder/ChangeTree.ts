@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec";
 import { Schema } from "../Schema";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex } from "../types/symbols";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refTypeFieldIndexes, $viewFieldIndexes } from "../types/symbols";
 
 import type { MapSchema } from "../types/custom/MapSchema";
 import type { ArraySchema } from "../types/custom/ArraySchema";
@@ -40,6 +40,7 @@ export interface ChangeSet {
     // field index -> operation index
     indexes: { [index: number]: number };
     operations: OPERATION[]
+    queueRootIndex?: number; // index of ChangeTree structure in `root.changes` or `root.filteredChanges`
 }
 
 export function setOperationAtIndex(changeSet: ChangeSet, index: number) {
@@ -57,6 +58,17 @@ export function deleteOperationAtIndex(changeSet: ChangeSet, index: number) {
         changeSet.operations[operationsIndex] = undefined;
     }
     delete changeSet.indexes[index];
+}
+
+function enqueueChangeTree(
+    root: Root,
+    changeTree: ChangeTree,
+    changeSet: 'changes' | 'filteredChanges' | 'allFilteredChanges',
+    queueRootIndex = changeTree[changeSet].queueRootIndex
+) {
+    if (root && root[changeSet][queueRootIndex] !== changeTree) {
+        changeTree[changeSet].queueRootIndex = root[changeSet].push(changeTree) - 1;
+    }
 }
 
 export class ChangeTree<T extends Ref=any> {
@@ -97,7 +109,7 @@ export class ChangeTree<T extends Ref=any> {
         //
         // Does this structure have "filters" declared?
         //
-        if (ref.constructor[Symbol.metadata]?.["$_viewFieldIndexes"]) {
+        if (ref.constructor[Symbol.metadata]?.[$viewFieldIndexes]) {
             this.allFilteredChanges = { indexes: {}, operations: [] };
             this.filteredChanges = { indexes: {}, operations: [] };
         }
@@ -119,9 +131,7 @@ export class ChangeTree<T extends Ref=any> {
             this.checkIsFiltered(metadata, this.parent, this.parentIndex);
 
             if (this.isFiltered || this.isPartiallyFiltered) {
-                if (this.root.filteredChanges.indexOf(this) === -1) {
-                    this.root.filteredChanges.push(this);
-                }
+                enqueueChangeTree(root, this, 'filteredChanges');
                 if (isNewChangeTree) {
                     this.root.allFilteredChanges.push(this);
                 }
@@ -129,9 +139,7 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         if (!this.isFiltered) {
-            if (this.root.changes.indexOf(this) === -1) {
-                this.root.changes.push(this);
-            }
+            enqueueChangeTree(root, this, 'changes');
             if (isNewChangeTree) {
                 this.root.allChanges.push(this);
             }
@@ -139,7 +147,7 @@ export class ChangeTree<T extends Ref=any> {
 
         // Recursively set root on child structures
         if (metadata) {
-            metadata["$_refTypeFieldIndexes"]?.forEach((index) => {
+            metadata[$refTypeFieldIndexes]?.forEach((index) => {
                 const field = metadata[index as any as number];
                 const value = this.ref[field.name];
                 value?.[$changes].setRoot(root);
@@ -176,9 +184,7 @@ export class ChangeTree<T extends Ref=any> {
                 this.checkIsFiltered(metadata, parent, parentIndex);
 
                 if (this.isFiltered || this.isPartiallyFiltered) {
-                    if (this.root.filteredChanges.indexOf(this) === -1) {
-                        this.root.filteredChanges.push(this);
-                    }
+                    enqueueChangeTree(root, this, 'filteredChanges');
                     if (isNewChangeTree) {
                         this.root.allFilteredChanges.push(this);
                     }
@@ -186,9 +192,7 @@ export class ChangeTree<T extends Ref=any> {
             }
 
             if (!this.isFiltered) {
-                if (this.root.changes.indexOf(this) === -1) {
-                    this.root.changes.push(this);
-                }
+                enqueueChangeTree(root, this, 'changes');
                 if (isNewChangeTree) {
                     this.root.allChanges.push(this);
                 }
@@ -200,7 +204,7 @@ export class ChangeTree<T extends Ref=any> {
 
         // assign same parent on child structures
         if (metadata) {
-            metadata["$_refTypeFieldIndexes"]?.forEach((index) => {
+            metadata[$refTypeFieldIndexes]?.forEach((index) => {
                 const field = metadata[index as any as number];
                 const value = this.ref[field.name];
                 value?.[$changes].setParent(this.ref, root, index);
@@ -226,7 +230,7 @@ export class ChangeTree<T extends Ref=any> {
         //
         const metadata: Metadata = this.ref.constructor[Symbol.metadata];
         if (metadata) {
-            metadata["$_refTypeFieldIndexes"]?.forEach((index) => {
+            metadata[$refTypeFieldIndexes]?.forEach((index) => {
                 const field = metadata[index as any as number];
                 const value = this.ref[field.name];
                 if (value) {
@@ -247,9 +251,7 @@ export class ChangeTree<T extends Ref=any> {
         // this is checked during .encode() time.
         this.changes.operations.push(-op);
 
-        if (this.root?.changes.indexOf(this) === -1) {
-            this.root.changes.push(this);
-        }
+        enqueueChangeTree(this.root, this, 'changes');
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
@@ -279,20 +281,13 @@ export class ChangeTree<T extends Ref=any> {
             setOperationAtIndex(this.allFilteredChanges, index);
 
             if (this.root) {
-                if (this.root.filteredChanges.indexOf(this) === -1) {
-                    this.root.filteredChanges.push(this);
-                }
-                if (this.root.allFilteredChanges.indexOf(this) === -1) {
-                    this.root.allFilteredChanges.push(this);
-                }
+                enqueueChangeTree(this.root, this, 'filteredChanges');
+                enqueueChangeTree(this.root, this, 'allFilteredChanges');
             }
 
         } else {
             setOperationAtIndex(this.allChanges, index);
-
-            if (this.root?.changes.indexOf(this) === -1) {
-                this.root.changes.push(this);
-            }
+            enqueueChangeTree(this.root, this, 'changes');
         }
     }
 
@@ -360,18 +355,12 @@ export class ChangeTree<T extends Ref=any> {
         if (this.filteredChanges) {
             setOperationAtIndex(this.allFilteredChanges, allChangesIndex);
             setOperationAtIndex(this.filteredChanges, index);
-
-            if (this.root?.filteredChanges.indexOf(this) === -1) {
-                this.root.filteredChanges.push(this);
-            }
+            enqueueChangeTree(this.root, this, 'filteredChanges');
 
         } else {
             setOperationAtIndex(this.allChanges, allChangesIndex);
             setOperationAtIndex(this.changes, index);
-
-            if (this.root?.changes.indexOf(this) === -1) {
-                this.root.changes.push(this);
-            }
+            enqueueChangeTree(this.root, this, 'changes');
         }
     }
 
@@ -444,16 +433,11 @@ export class ChangeTree<T extends Ref=any> {
         //
         if (this.filteredChanges) {
             deleteOperationAtIndex(this.allFilteredChanges, allChangesIndex);
-            if (this.root?.filteredChanges.indexOf(this) === -1) {
-                this.root.filteredChanges.push(this);
-            }
-
+            enqueueChangeTree(this.root, this, 'filteredChanges');
 
         } else {
             deleteOperationAtIndex(this.allChanges, allChangesIndex);
-            if (this.root?.changes.indexOf(this) === -1) {
-                this.root.changes.push(this);
-            }
+            enqueueChangeTree(this.root, this, 'changes');
         }
     }
 
@@ -483,10 +467,12 @@ export class ChangeTree<T extends Ref=any> {
 
         this.changes.indexes = {};
         this.changes.operations.length = 0;
+        this.changes.queueRootIndex = undefined;
 
         if (this.filteredChanges !== undefined) {
             this.filteredChanges.indexes = {};
             this.filteredChanges.operations.length = 0;
+            this.filteredChanges.queueRootIndex = undefined;
         }
 
         if (discardAll) {
@@ -535,7 +521,7 @@ export class ChangeTree<T extends Ref=any> {
 
     protected checkIsFiltered(metadata: Metadata, parent: Ref, parentIndex: number) {
         // Detect if current structure has "filters" declared
-        this.isPartiallyFiltered = metadata?.["$_viewFieldIndexes"] !== undefined;
+        this.isPartiallyFiltered = metadata?.[$viewFieldIndexes] !== undefined;
 
         if (this.isPartiallyFiltered) {
             this.filteredChanges = this.filteredChanges || { indexes: {}, operations: [] };
@@ -554,7 +540,7 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         const parentMetadata = parent.constructor?.[Symbol.metadata];
-        this.isFiltered = parentMetadata?.["$_viewFieldIndexes"]?.includes(parentIndex);
+        this.isFiltered = parentMetadata?.[$viewFieldIndexes]?.includes(parentIndex);
 
         //
         // TODO: refactor this!
