@@ -296,6 +296,8 @@ describe("Type: MapSchema", () => {
 
         decodedState.decode(state.encode());
 
+        const decoder = getDecoder(decodedState);
+        assert.strictEqual(decoder.root.refIds.get(decodedState.mapOfPlayers.get('one')), one[$changes].refId);
         assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake");
         assertDeepStrictEqualEncodeAll(state);
     });

@@ -220,6 +220,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         this[$changes].delete(index, undefined, this.items.length - 1);
 
         // this.tmpItems[index] = undefined;
+        // this.tmpItems.pop();
+
         this.deletedIndexes[index] = true;
 
         return this.items.pop();
@@ -353,6 +355,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
         changeTree.delete(index);
         changeTree.shiftAllChangeIndexes(-1, index);
+
+        // this.deletedIndexes[index] = true;
 
         return this.items.shift();
     }

@@ -432,13 +432,28 @@ describe("ArraySchema Tests", () => {
             const decodedState = createInstanceFromReflection(state);
 
             state.items.push(1);
+            // console.log('push(1)', state.items[$changes].indexedOperations, state.items[$changes].changes);
+
             state.items.push(2);
+            // console.log('push(2)', state.items[$changes].indexedOperations, state.items[$changes].changes);
+
             state.items.push(3);
+            // console.log('push(3)', state.items[$changes].indexedOperations, state.items[$changes].changes);
+
             state.items.push(4);
+            // console.log('push(4)', state.items[$changes].indexedOperations, state.items[$changes].changes);
+
             state.items.push(5);
+            // console.log('push(5)', state.items[$changes].indexedOperations, state.items[$changes].changes);
+
             state.items.pop();
+            // console.log('pop()', state.items[$changes].indexedOperations, state.items[$changes].changes);
+
             state.items.pop();
+            // console.log('pop()', state.items[$changes].indexedOperations, state.items[$changes].changes);
+
             state.items.push(9);
+            // console.log('push(9)', state.items[$changes].indexedOperations, state.items[$changes].changes);
 
             decodedState.decode(state.encode());
 
@@ -551,7 +566,9 @@ describe("ArraySchema Tests", () => {
         const state = new State();
 
         // push from 10 to 15.
-        for (let i=10; i<15; i++) { state.numbers.push(i); }
+        for (let i = 10; i < 15; i++) {
+            state.numbers.push(i);
+        }
 
         const decoded = new State();
         decoded.decode(state.encode());
@@ -563,22 +580,25 @@ describe("ArraySchema Tests", () => {
         state.numbers.pop();
 
         // console.log('numbers ->', Schema.debugChanges(state.numbers));
-        console.log('->', {
+        console.log('pop() + pop() ->', {
             changes: state.numbers[$changes].changes,
             indexedOperations: state.numbers[$changes].indexedOperations,
         });
 
         // push from 20 to 25.
-        for (let i=20; i<25; i++) { state.numbers.push(i); }
+        for (let i = 20; i < 25; i++) {
+            state.numbers.push(i);
+        }
+
         // console.log('numbers ->', Schema.debugChanges(state.numbers));
-        console.log('->', {
+        console.log('push() push() push() push() push() ->', {
             changes: state.numbers[$changes].changes,
             indexedOperations: state.numbers[$changes].indexedOperations,
         });
 
         // remove latest ADD value
         state.numbers.pop();
-        console.log('->', {
+        console.log('pop() ->', {
             changes: state.numbers[$changes].changes,
             indexedOperations: state.numbers[$changes].indexedOperations,
         });

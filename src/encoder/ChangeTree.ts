@@ -271,10 +271,6 @@ export class ChangeTree<T extends Ref=any> {
             // TODO: are DELETE operations being encoded as ADD here ??
             //
             this.indexedOperations[index] = op;
-        // } else if (previousOperation === OPERATION.ADD && operation === OPERATION.DELETE) {
-        //     deleteOperationAtIndex(changeSet, index);
-
-        // } else {
         }
 
         setOperationAtIndex(changeSet, index);
@@ -361,10 +357,6 @@ export class ChangeTree<T extends Ref=any> {
     indexedOperation(index: number, operation: OPERATION, allChangesIndex: number = index) {
         this.indexedOperations[index] = operation;
 
-        if (allChangesIndex !== undefined) {
-            this.indexedOperations[allChangesIndex] = operation;
-        }
-
         if (this.filteredChanges) {
             setOperationAtIndex(this.allFilteredChanges, allChangesIndex);
             setOperationAtIndex(this.filteredChanges, index);
@@ -427,14 +419,8 @@ export class ChangeTree<T extends Ref=any> {
             ? this.filteredChanges
             : this.changes;
 
-        // if (this.indexedOperations[index] === OPERATION.ADD) {
-        //     deleteOperationAtIndex(changeSet, index);
-
-        // } else {
-            setOperationAtIndex(changeSet, index);
-        // }
-
         this.indexedOperations[index] = operation ?? OPERATION.DELETE;
+        setOperationAtIndex(changeSet, index);
 
         const previousValue = this.getValue(index);
 

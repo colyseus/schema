@@ -1,10 +1,46 @@
 import * as assert from "assert";
 
 import { ChangeTree } from "../src/encoder/ChangeTree";
-import { Schema, type, view, MapSchema, ArraySchema, $changes } from "../src";
+import { Schema, type, view, MapSchema, ArraySchema, $changes, OPERATION } from "../src";
 import { getEncoder } from "./Schema";
 
 describe("ChangeTree", () => {
+    describe("changeset internals", () => {
+        class State extends Schema {
+            @type("string") str: string;
+            @type("number") num: number;
+            @type({ map: "number" }) map = new MapSchema<number>();
+            @type([ "number" ]) array = new ArraySchema<number>();
+        }
+
+        it("change() should add operation to changeset", () => {
+            const state = new State();
+
+            const changeTree = new ChangeTree(state);
+            changeTree.change(0, OPERATION.ADD);
+
+            assert.deepStrictEqual(changeTree.indexedOperations, { '0': OPERATION.ADD });
+            assert.deepStrictEqual(changeTree.changes.indexes, { '0': 0 });
+            assert.deepStrictEqual(changeTree.changes.operations, [0]);
+            assert.deepStrictEqual(changeTree.allChanges.indexes, { '0': 0 });
+            assert.deepStrictEqual(changeTree.allChanges.operations, [0]);
+
+            changeTree.change(1, OPERATION.ADD);
+            assert.deepStrictEqual(changeTree.indexedOperations, { '0': OPERATION.ADD, '1': OPERATION.ADD });
+            assert.deepStrictEqual(changeTree.changes.indexes, { '0': 0, '1': 1 });
+            assert.deepStrictEqual(changeTree.changes.operations, [0, 1]);
+            assert.deepStrictEqual(changeTree.allChanges.indexes, { '0': 0, '1': 1  });
+            assert.deepStrictEqual(changeTree.allChanges.operations, [0, 1]);
+
+            changeTree.delete(0, OPERATION.DELETE);
+            assert.deepStrictEqual(changeTree.indexedOperations, { '0': OPERATION.DELETE, '1': OPERATION.ADD });
+            assert.deepStrictEqual(changeTree.changes.indexes, { '0': 0, '1': 1 });
+            assert.deepStrictEqual(changeTree.changes.operations, [0, 1]);
+            assert.deepStrictEqual(changeTree.allChanges.indexes, { '1': 1  });
+            assert.deepStrictEqual(changeTree.allChanges.operations, [undefined, 1]);
+        });
+    });
+
     it("instances should share parent/root references", () => {
         class Skill extends Schema {
             @type("number") damage: number;

@@ -1,7 +1,7 @@
 import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
 import { spliceOne } from "../types/utils";
-import { ChangeTree } from "./ChangeTree";
+import { ChangeTree, setOperationAtIndex } from "./ChangeTree";
 
 export class Root {
     protected nextUniqueId: number = 0;
@@ -40,6 +40,7 @@ export class Root {
             let len = ops.length;
             while (len--) {
                 changeTree.indexedOperations[ops[len]] = OPERATION.ADD;
+                setOperationAtIndex(changeTree.changes, len);
             }
         }
 
