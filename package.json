@@ -2,7 +2,6 @@
   "name": "@colyseus/schema",
   "version": "3.0.0-alpha.35",
   "description": "Binary state serializer with delta encoding for games",
-  "type": "module",
   "bin": {
     "schema-codegen": "./bin/schema-codegen",
     "schema-debug": "./bin/schema-debug"
