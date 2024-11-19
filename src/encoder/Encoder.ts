@@ -330,6 +330,11 @@ export class Encoder<T extends Schema = any> {
         const baseTypeId = this.context.getTypeId(baseType);
         const targetTypeId = this.context.getTypeId(targetType);
 
+        if (targetTypeId === undefined) {
+            console.warn(`@colyseus/schema WARNING: Class "${targetType.name}" is not registered on TypeRegistry - Please either tag the class with @entity or define a @type() field.`);
+            return;
+        }
+
         if (baseTypeId !== targetTypeId) {
             bytes[it.offset++] = TYPE_ID & 255;
             encode.number(bytes, targetTypeId, it);

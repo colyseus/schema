@@ -1,8 +1,8 @@
 import * as assert from "assert";
-import { type } from "../src/annotations";
-import { ArraySchema, MapSchema, Reflection } from "../src";
+import { entity, type } from "../src/annotations";
+import { ArraySchema, Encoder, MapSchema, Reflection } from "../src";
 import { Schema } from "../src/Schema";
-import { getEncoder } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
 
 class Entity extends Schema {
     @type("number") x: number;
@@ -29,7 +29,7 @@ class State extends Schema {
     @type({ map: Entity }) mapOfEntities = new MapSchema<Entity>();
 }
 
-describe("Polymorphism", () => {
+describe("Inheritance Test", () => {
     function createEntity() {
         const entity = new Entity();
         entity.x = 1;
@@ -81,6 +81,8 @@ describe("Polymorphism", () => {
         decodedState.decode(state.encode());
         assert.ok(decodedState.entityHolder.entity instanceof Enemy);
         assert.ok(decodedState.entityHolder.entity instanceof Entity);
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should encode the correct class inside an array", () => {
@@ -100,6 +102,7 @@ describe("Polymorphism", () => {
 
         assert.ok(decodedState.arrayOfEntities[3] instanceof Entity);
         assert.ok(decodedState.arrayOfEntities[3] instanceof Player);
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should encode the correct class inside a map", () => {
@@ -118,6 +121,7 @@ describe("Polymorphism", () => {
         decodedState.decode(state.encode());
         assert.ok(decodedState.mapOfEntities.get('player-2') instanceof Entity);
         assert.ok(decodedState.mapOfEntities.get('player-2') instanceof Player);
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("should allow generics", () => {
@@ -141,5 +145,56 @@ describe("Polymorphism", () => {
 
         assert.strictEqual("default", decodedState.roomConfig.default);
         assert.strictEqual(20, decodedState.roomConfig.specific);
+        assertDeepStrictEqualEncodeAll(state);
     });
+
+    it("should allow final structure without new fields", () => {
+        class BaseType extends Schema {}
+
+        class Entity extends BaseType {
+            @type("string") id: string;
+        }
+
+        class WalkingEntity extends Entity {
+            @type("number") speed: number;
+        }
+
+        class IntermediaryNoFields extends WalkingEntity {
+            @type("number") level: number;
+        }
+
+        class AttackingEntity extends IntermediaryNoFields {
+            @type("number") damage: number;
+        }
+
+        @entity
+        class NoMoreFields extends AttackingEntity {}
+
+        class State extends Schema {
+            @type(Entity) entity1: Entity;
+            @type(Entity) entity2: Entity;
+            @type(Entity) entity3: Entity;
+            @type(Entity) entity4: Entity;
+            @type([Entity]) entities: ArraySchema<Entity> = new ArraySchema<Entity>();
+        }
+
+        const state = new State();
+        state.entity1 = new NoMoreFields().assign({ id: "1" });
+        state.entity2 = new AttackingEntity().assign({ id: "2", speed: 10, damage: 5 });
+        state.entity3 = new WalkingEntity().assign({ id: "3", speed: 20 });
+        state.entity4 = new IntermediaryNoFields().assign({ id: "3", speed: 20, level: 10 });
+
+        state.entities.push(new IntermediaryNoFields().assign({ id: "4", speed: 20, level: 10 }));
+        state.entities.push(new Entity().assign({ id: "4" }));
+        state.entities.push(new WalkingEntity().assign({ id: "5", speed: 30 }));
+        state.entities.push(new NoMoreFields().assign({ id: "5", speed: 30, damage: 30 }));
+        state.entities.push(new AttackingEntity().assign({ id: "6", speed: 40, damage: 10 }));
+
+        const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(state.encode());
+
+        assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
 });

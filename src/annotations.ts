@@ -45,12 +45,8 @@ export interface TypeOptions {
 
 export const DEFAULT_VIEW_TAG = -1;
 
-export function entity(constructor, context: ClassDecoratorContext) {
-    if (!constructor._definition) {
-        // for inheritance support
-        TypeContext.register(constructor);
-    }
-
+export function entity(constructor) {
+    TypeContext.register(constructor);
     return constructor;
 }
 
