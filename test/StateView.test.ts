@@ -421,10 +421,6 @@ describe("StateView", () => {
             const client1 = createClientWithView(state);
             const client2 = createClientWithView(state);
 
-            console.log(Schema.debugRefIds(state));
-            console.log('allChanges =>', getEncoder(state).root.allChanges.map((change) => change.refId));
-            console.log('allFilteredChanges =>',getEncoder(state).root.allFilteredChanges.map((change) => change.refId));
-
             const encoded0 = encodeMultiple(encoder, state, [client1, client2]);
             assert.strictEqual(0, Array.from(encoded0[0]).length);
             assert.strictEqual(0, Array.from(encoded0[1]).length);

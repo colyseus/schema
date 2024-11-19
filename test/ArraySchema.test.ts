@@ -572,39 +572,21 @@ describe("ArraySchema Tests", () => {
 
         const decoded = new State();
         decoded.decode(state.encode());
-        console.log("1st decode =>", decoded.toJSON());
 
         assert.strictEqual(decoded.numbers.length, 5);
 
         state.numbers.pop();
         state.numbers.pop();
 
-        // console.log('numbers ->', Schema.debugChanges(state.numbers));
-        console.log('pop() + pop() ->', {
-            changes: state.numbers[$changes].changes,
-            indexedOperations: state.numbers[$changes].indexedOperations,
-        });
-
         // push from 20 to 25.
         for (let i = 20; i < 25; i++) {
             state.numbers.push(i);
         }
 
-        // console.log('numbers ->', Schema.debugChanges(state.numbers));
-        console.log('push() push() push() push() push() ->', {
-            changes: state.numbers[$changes].changes,
-            indexedOperations: state.numbers[$changes].indexedOperations,
-        });
-
         // remove latest ADD value
         state.numbers.pop();
-        console.log('pop() ->', {
-            changes: state.numbers[$changes].changes,
-            indexedOperations: state.numbers[$changes].indexedOperations,
-        });
 
         decoded.decode(state.encode());
-        console.log("2st decode =>", decoded.toJSON());
 
         assert.strictEqual(decoded.numbers.length, 7);
         assert.strictEqual(decoded.numbers[0], 10);
@@ -702,7 +684,6 @@ describe("ArraySchema Tests", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
-        console.log("---------------")
         assert.strictEqual(decodedState.arrayOfPlayers.length, 3);
 
         const jake = decodedState.arrayOfPlayers[0];
@@ -712,15 +693,11 @@ describe("ArraySchema Tests", () => {
         assert.deepStrictEqual(['Snake', 'Cyberhawk'], removedItems.map((player) => player.name));
 
         decodedState.decode(state.encode());
-        console.log("---------------")
-
-        console.log("FINAL =>", decodedState.arrayOfPlayers.toJSON());
 
         assert.strictEqual(decodedState.arrayOfPlayers.length, 1);
         assert.strictEqual("Jake", decodedState.arrayOfPlayers[0].name);
         assert.strictEqual(jake, decodedState.arrayOfPlayers[0]);
 
-        console.log("!! LAST ENCODE !!")
         assertDeepStrictEqualEncodeAll(state);
     });
 
