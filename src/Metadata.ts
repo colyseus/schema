@@ -1,6 +1,8 @@
 import { getPropertyDescriptor, type DefinitionType } from "./annotations";
+import { Schema } from "./Schema";
 import { getType } from "./types/registry";
-import { $descriptors, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $viewFieldIndexes } from "./types/symbols";
+import { $decoder, $descriptors, $encoder, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $viewFieldIndexes } from "./types/symbols";
+import { TypeContext } from "./types/TypeContext";
 
 export type MetadataField = {
     type: DefinitionType,
@@ -120,9 +122,29 @@ export const Metadata = {
     },
 
     setFields(target: any, fields: { [field: string]: DefinitionType }) {
-        const metadata = (target.prototype.constructor[Symbol.metadata] ??= {});
+        // for inheritance support
+        const constructor = target.prototype.constructor;
+        TypeContext.register(constructor);
 
-        let index = 0;
+        const parentClass = Object.getPrototypeOf(constructor);
+        const parentMetadata = parentClass && parentClass[Symbol.metadata];
+        const metadata = Metadata.initialize(constructor, parentMetadata);
+
+        // Use Schema's methods if not defined in the class
+        if (!constructor[$track]) { constructor[$track] = Schema[$track]; }
+        if (!constructor[$encoder]) { constructor[$encoder] = Schema[$encoder]; }
+        if (!constructor[$decoder]) { constructor[$decoder] = Schema[$decoder]; }
+        if (!constructor.prototype.toJSON) { constructor.prototype.toJSON = Schema.prototype.toJSON; }
+
+        //
+        // detect index for this field, considering inheritance
+        //
+        let fieldIndex = metadata[$numFields] // current structure already has fields defined
+            ?? (parentMetadata && parentMetadata[$numFields]) // parent structure has fields defined
+            ?? -1; // no fields defined
+
+        fieldIndex++;
+
         for (const field in fields) {
             const type = fields[field];
 
@@ -133,14 +155,16 @@ export const Metadata = {
 
             Metadata.addField(
                 metadata,
-                index,
+                fieldIndex,
                 field,
                 type,
-                getPropertyDescriptor(`_${field}`, index, type, complexTypeKlass)
+                getPropertyDescriptor(`_${field}`, fieldIndex, type, complexTypeKlass)
             );
 
-            index++;
+            fieldIndex++;
         }
+
+        return target;
     },
 
     isDeprecated(metadata: any, field: string) {
