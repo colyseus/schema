@@ -29,16 +29,15 @@ describe("Performance", () => {
             for (let i = 0; i < totalItems; i++) {
                 state.arrayOfPlayers.push(new Player("Player " + i, getRandomNumber(), getRandomNumber()));
             }
-        }, `inserting ${totalItems} items to array`, 1500); // 1200, TODO: improve this!
+        }, `inserting ${totalItems} items to array`, 100);
 
-        assertExecutionTime(() => state.encode(), `encoding ${totalItems} array entries`, 250); // 190
+        assertExecutionTime(() => state.encode(), `encoding ${totalItems} array entries`, 100);
 
         const player: Player = state.arrayOfPlayers[Math.round(totalItems / 2)];
         player.x = getRandomNumber();
         player.y = getRandomNumber();
 
-        // TODO: improve this value
-        assertExecutionTime(() => state.encode(), "encoding a single array item change", 60); // 5
+        assertExecutionTime(() => state.encode(), "encoding a single array item change", 10);
     });
 
     it("MapSchema", function () {
