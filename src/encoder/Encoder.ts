@@ -340,4 +340,11 @@ export class Encoder<T extends Schema = any> {
             encode.number(bytes, targetTypeId, it);
         }
     }
+
+    get hasChanges() {
+        return (
+            this.root.changes.length > 0 ||
+            this.root.filteredChanges.length > 0
+        );
+    }
 }
