@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import { Schema, type, Reflection } from "../src";
+import { getEncoder } from "./Schema";
 
 describe("Community cases", () => {
 
@@ -17,9 +18,9 @@ describe("Community cases", () => {
 
         const state = new Test();
         const encoded = state.encodeAll();
-        const handshake = Reflection.encode(state);
+        const handshake = Reflection.encode(getEncoder(state).context);
 
-        const decodedState = Reflection.decode<Test>(handshake);
+        const decodedState = Reflection.decode<Test>(handshake).state;
         assert.strictEqual(decodedState.sub, undefined);
 
         decodedState.decode(encoded);

@@ -2,6 +2,7 @@ import * as assert from "assert";
 import { Reflection, type, Schema, MapSchema, ArraySchema } from "../src";
 import { deprecated } from "../src/annotations";
 import "./Schema";
+import { getEncoder } from "./Schema";
 
 describe("backwards/forwards compatibility", () => {
 
@@ -66,7 +67,7 @@ describe("backwards/forwards compatibility", () => {
 
     it("should allow reflection", () => {
         const state = new StateV2();
-        const reflectionBytes = Reflection.encode(state);
+        const reflectionBytes = Reflection.encode(getEncoder(state).context);
 
         const reflected = Reflection.decode(reflectionBytes);
     });

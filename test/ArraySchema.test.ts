@@ -875,7 +875,7 @@ describe("ArraySchema Tests", () => {
         assert.ok("length" in state.arrayOfPlayers === true);
 
         // decoded
-        const decodedState = Reflection.decode<State>(Reflection.encode(state));
+        const decodedState = createInstanceFromReflection(state);
         decodedState.decode(state.encode());
         assert.ok(0 in decodedState.arrayOfPlayers === true);
         assert.ok(2 in decodedState.arrayOfPlayers === true);

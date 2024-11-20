@@ -64,7 +64,7 @@ describe("Inheritance Test", () => {
         assert.ok(decodedState.entityHolder.entity instanceof Player);
         assert.ok(decodedState.entityHolder.entity instanceof Entity);
 
-        const decodedReflectedState = Reflection.decode<State>(Reflection.encode(state));
+        const decodedReflectedState = createInstanceFromReflection(state);
         decodedReflectedState.decode(state.encodeAll());
         assert.strictEqual(decodedReflectedState.entityHolder.entity.x, 100);
         assert.strictEqual(decodedReflectedState.entityHolder.entity.y, 200);

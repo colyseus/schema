@@ -1,6 +1,6 @@
 import * as util from "util";
 import * as assert from "assert";
-import { Reflection, Schema, type, MapSchema, ArraySchema, $changes } from "../src";
+import { Reflection, Schema, type, MapSchema, ArraySchema, $changes, TypeContext } from "../src";
 import { createInstanceFromReflection, getEncoder } from "./Schema";
 
 /**
@@ -34,7 +34,7 @@ describe("Reflection", () => {
         const state = new EmptyState();
 
         const reflected = new Reflection();
-        reflected.decode(Reflection.encode(state));
+        reflected.decode(Reflection.encode(getEncoder(state).context));
         assert.strictEqual(reflected.types.length, 1);
     });
 
@@ -42,7 +42,7 @@ describe("Reflection", () => {
         const state = new State();
 
         const reflected = new Reflection();
-        reflected.decode(Reflection.encode(state));
+        reflected.decode(Reflection.encode(getEncoder(state).context));
 
         assert.deepStrictEqual(
             reflected.toJSON(),
@@ -73,7 +73,7 @@ describe("Reflection", () => {
 
     it("reflected fields must initialize as undefined", () => {
         const state = new State();
-        const stateReflected = Reflection.decode(Reflection.encode(state)) as State;
+        const stateReflected = createInstanceFromReflection(state);
 
         assert.strictEqual(stateReflected.arrayOfPlayers, undefined);
         assert.strictEqual(stateReflected.mapOfPlayers, undefined);
@@ -84,7 +84,7 @@ describe("Reflection", () => {
 
     it("should decode schema and be able to use it", () => {
         const state = new State();
-        const stateReflected = Reflection.decode(Reflection.encode(state)) as State;
+        const stateReflected = createInstanceFromReflection(state);
 
         state.fieldString = "Hello world!";
         state.fieldNumber = 10;
@@ -134,7 +134,7 @@ describe("Reflection", () => {
         }
 
         const reflected = new Reflection();
-        const encoded = Reflection.encode(new MyState());
+        const encoded = Reflection.encode(new TypeContext(MyState));
         reflected.decode(encoded)
 
         assert.deepStrictEqual(reflected.toJSON(), {
@@ -173,7 +173,7 @@ describe("Reflection", () => {
         }
 
         const state = new MyState();
-        const decodedState = Reflection.decode<MyState>(Reflection.encode(state));
+        const decodedState = createInstanceFromReflection(state);
 
         state.mapOfStrings.set('one', "one");
         state.mapOfStrings.set('two', "two");
@@ -189,7 +189,7 @@ describe("Reflection", () => {
         }
 
         const state = new MyState();
-        const decodedState = Reflection.decode(Reflection.encode(state)) as MyState;
+        const decodedState = createInstanceFromReflection(state);
 
         state.arrayOfStrings.push("one")
         state.arrayOfStrings.push("two");
@@ -213,10 +213,10 @@ describe("Reflection", () => {
         state.board = new ArraySchema(0, 0, 0, 0, 0, 0, 0, 0, 0);
         state.players.set('one', 1);
 
-        const decodedState = Reflection.decode<MyState>(Reflection.encode(state));
+        const decodedState = createInstanceFromReflection(state);
         decodedState.decode(state.encodeAll());
 
-        const decodedState2 = Reflection.decode<MyState>(Reflection.encode(state));
+        const decodedState2 = createInstanceFromReflection(state);
         decodedState2.decode(state.encodeAll());
 
         assert.strictEqual(JSON.stringify(decodedState), '{"currentTurn":"one","players":{"one":1},"board":[0,0,0,0,0,0,0,0,0]}');
@@ -237,7 +237,7 @@ describe("Reflection", () => {
         state.components.set("one", new MyComponent());
         state.components.set("two", new MyComponent());
 
-        const decodedState = Reflection.decode(Reflection.encode(state));
+        const decodedState = createInstanceFromReflection(state);
         assert.doesNotThrow(() => decodedState.decode(state.encode()));
     });
 

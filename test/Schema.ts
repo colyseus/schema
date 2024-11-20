@@ -45,7 +45,9 @@ export function getEncoder(state: Schema) {
 
 export function createInstanceFromReflection<T extends Schema>(state: T, encoder?: Encoder<T>) {
     encoder ??= getEncoder(state);
-    return Reflection.decode<T>(Reflection.encode(state, encoder.context))
+    const decoder = Reflection.decode<T>(Reflection.encode(encoder.context));
+    decoder.state['_decoder'] = decoder;
+    return decoder.state;
 }
 
 Schema.prototype.encode = function(it: Iterator) {

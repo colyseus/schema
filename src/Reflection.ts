@@ -25,11 +25,16 @@ export class ReflectionType extends Schema {
 export class Reflection extends Schema {
     @type([ ReflectionType ]) types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
 
-    static encode(instance: Schema, context?: TypeContext, it: Iterator = { offset: 0 }) {
-        context ??= new TypeContext(instance.constructor as typeof Schema);
-
+    /**
+     * Encodes the TypeContext of an Encoder into a buffer.
+     *
+     * @param context TypeContext instance
+     * @param it
+     * @returns
+     */
+    static encode(context: TypeContext, it: Iterator = { offset: 0 }) {
         const reflection = new Reflection();
-        const encoder = new Encoder(reflection);
+        const reflectionEncoder = new Encoder(reflection);
 
         const buildType = (currentType: ReflectionType, metadata: Metadata) => {
             for (const fieldIndex in metadata) {
@@ -98,11 +103,18 @@ export class Reflection extends Schema {
             buildType(type, klass[Symbol.metadata]);
         }
 
-        const buf = encoder.encodeAll(it);
+        const buf = reflectionEncoder.encodeAll(it);
         return Buffer.from(buf, 0, it.offset);
     }
 
-    static decode<T extends Schema = Schema>(bytes: Buffer, it?: Iterator): T {
+    /**
+     * Decodes the TypeContext from a buffer into a Decoder instance.
+     *
+     * @param bytes Reflection.encode() output
+     * @param it
+     * @returns Decoder instance
+     */
+    static decode<T extends Schema = Schema>(bytes: Buffer, it?: Iterator): Decoder<T> {
         const reflection = new Reflection();
 
         const reflectionDecoder = new Decoder(reflection);
@@ -160,7 +172,8 @@ export class Reflection extends Schema {
             });
         });
 
-        // @ts-ignore
-        return new (typeContext.get(0))();
+        const state: T = new (typeContext.get(0) as unknown as any)();
+
+        return new Decoder<T>(state, typeContext);
     }
 }

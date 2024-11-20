@@ -3,7 +3,7 @@ import * as assert from "assert";
 import { nanoid } from "nanoid";
 import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Encoder, $changes } from "../src";
 
-import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll } from "./Schema";
+import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection } from "./Schema";
 
 describe("Edge cases", () => {
     it("Schema should support up to 64 fields", () => {
@@ -17,7 +17,7 @@ describe("Edge cases", () => {
         const state = new State();
         for (let i = 0; i < maxFields; i++) { state[`field_${i}`] = "value " + i; }
 
-        const decodedState = Reflection.decode(Reflection.encode(state));
+        const decodedState = createInstanceFromReflection(state);
         decodedState.decode(state.encode());
 
         for (let i = 0; i < maxFields; i++) {
@@ -53,7 +53,7 @@ describe("Edge cases", () => {
             state.children.push(child);
         }
 
-        const decodedState = Reflection.decode<State>(Reflection.encode(state));
+        const decodedState = createInstanceFromReflection(state);
         decodedState.decode(state.encode());
 
         for (let i = 0; i < maxSchemaTypes; i++) {
