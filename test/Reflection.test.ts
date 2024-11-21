@@ -157,8 +157,6 @@ describe("Reflection", () => {
                     id: 2,
                     extendsId: 1,
                     fields: [
-                        { name: 'x', type: 'number' },
-                        { name: 'y', type: 'number' },
                         { name: 'name', type: 'string' }
                     ]
                 }

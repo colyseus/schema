@@ -6,6 +6,7 @@ import { Iterator } from "./encoding/decode";
 import { Encoder } from "./encoder/Encoder";
 import { Decoder } from "./decoder/Decoder";
 import { Schema } from "./Schema";
+import { $numFields } from "./types/symbols";
 
 /**
  * Reflection
@@ -127,24 +128,17 @@ export class Reflection extends Schema {
             const parentClass: typeof Schema = typeContext.get(reflectionType.extendsId) ?? Schema;
             const schema: typeof Schema = class _ extends parentClass {};
 
-            const parentMetadata = parentClass[Symbol.metadata];
-
             // register for inheritance support
             TypeContext.register(schema);
 
-            // for inheritance support
-            Metadata.initialize(schema, parentMetadata);
+            // // for inheritance support
+            // Metadata.initialize(schema);
 
             typeContext.add(schema, reflectionType.id);
         }, {});
 
-        // 2nd pass, set fields
-        reflection.types.forEach((reflectionType) => {
-            const schemaType = typeContext.get(reflectionType.id);
-            const metadata = schemaType[Symbol.metadata];
-
-            const parentFieldIndex = 0;
-
+        // define fields
+        const addFields = (metadata: Metadata, reflectionType: ReflectionType, parentFieldIndex: number) => {
             reflectionType.fields.forEach((field, i) => {
                 const fieldIndex = parentFieldIndex + i;
 
@@ -169,6 +163,31 @@ export class Reflection extends Schema {
                 } else {
                     Metadata.addField(metadata, fieldIndex, field.name, field.type as PrimitiveType);
                 }
+            });
+        };
+
+        // 2nd pass, set fields
+        reflection.types.forEach((reflectionType) => {
+            const schema = typeContext.get(reflectionType.id);
+
+            // for inheritance support
+            const metadata = Metadata.initialize(schema);
+
+            const inheritedTypes: ReflectionType[] = [];
+
+            let parentType: ReflectionType = reflectionType;
+            do {
+                inheritedTypes.push(parentType);
+                parentType = reflection.types.find((t) => t.id === parentType.extendsId);
+            } while (parentType);
+
+            let parentFieldIndex = 0;
+
+            inheritedTypes.reverse().forEach((reflectionType) => {
+                // add fields from all inherited classes
+                // TODO: refactor this to avoid adding fields from parent classes
+                addFields(metadata, reflectionType, parentFieldIndex);
+                parentFieldIndex += reflectionType.fields.length;
             });
         });
 

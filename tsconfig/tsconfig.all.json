@@ -7,9 +7,7 @@
         "useDefineForClassFields": false,
         "noImplicitAny": false,
         "inlineSources": true,
-        "sourceMap": true,
-        "experimentalDecorators": true,
-        "useDefineForClassFields": false,
+        "sourceMap": true
     },
     "include": [
       "../src/**/*.ts"

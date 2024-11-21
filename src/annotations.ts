@@ -286,15 +286,15 @@ export function type (
         TypeContext.register(constructor);
 
         const parentClass = Object.getPrototypeOf(constructor);
-        const parentMetadata = parentClass && parentClass[Symbol.metadata];
-        const metadata = Metadata.initialize(constructor, parentMetadata);
+        const parentMetadata =  parentClass[Symbol.metadata];
+        const metadata = Metadata.initialize(constructor);
 
         let fieldIndex: number = metadata[field];
 
         /**
          * skip if descriptor already exists for this field (`@deprecated()`)
          */
-        if (metadata[fieldIndex]) {
+        if (metadata[fieldIndex] !== undefined) {
             if (metadata[fieldIndex].deprecated) {
                 // do not create accessors for deprecated properties.
                 return;

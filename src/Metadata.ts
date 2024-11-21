@@ -41,7 +41,11 @@ export const Metadata = {
         );
 
         // create "descriptors" map
-        metadata[$descriptors] ??= {};
+        Object.defineProperty(metadata, $descriptors, {
+            value: metadata[$descriptors] || {},
+            enumerable: false,
+            configurable: true,
+        });
 
         if (descriptor) {
             // for encoder
@@ -128,7 +132,7 @@ export const Metadata = {
 
         const parentClass = Object.getPrototypeOf(constructor);
         const parentMetadata = parentClass && parentClass[Symbol.metadata];
-        const metadata = Metadata.initialize(constructor, parentMetadata);
+        const metadata = Metadata.initialize(constructor);
 
         // Use Schema's methods if not defined in the class
         if (!constructor[$track]) { constructor[$track] = Schema[$track]; }
@@ -185,28 +189,71 @@ export const Metadata = {
         });
     },
 
-    initialize(constructor: any, parentMetadata?: Metadata) {
+    initialize(constructor: any) {
+        const parentClass = Object.getPrototypeOf(constructor);
+        const parentMetadata: Metadata = parentClass[Symbol.metadata];
+
         let metadata: Metadata = constructor[Symbol.metadata] ?? Object.create(null);
 
         // make sure inherited classes have their own metadata object.
-        if (constructor[Symbol.metadata] === parentMetadata) {
+        if (parentClass !== Schema && metadata === parentMetadata) {
             metadata = Object.create(null);
 
             if (parentMetadata) {
+                //
                 // assign parent metadata to current
-                Object.assign(metadata, parentMetadata);
+                //
+                Object.setPrototypeOf(metadata, parentMetadata);
 
-                for (let i = 0; i <= parentMetadata[$numFields]; i++) {
-                    const fieldName = parentMetadata[i].name;
-                    Object.defineProperty(metadata, fieldName, {
-                        value: parentMetadata[fieldName],
+                // Object.keys(parentMetadata).forEach((fieldIndex) => {
+                //     const index = Number(fieldIndex);
+                //     const field = parentMetadata[index];
+                //     metadata[index] = field;
+
+                //     // Object.defineProperty(metadata, field.name, {
+                //     //     value: index,
+                //     //     enumerable: false,
+                //     //     configurable: true,
+                //     // });
+                // });
+
+                // $numFields
+                Object.defineProperty(metadata, $numFields, {
+                    value: parentMetadata[$numFields],
+                    enumerable: false,
+                    configurable: true,
+                    writable: true,
+                });
+
+                // $viewFieldIndexes / $fieldIndexesByViewTag
+                if (parentMetadata[$viewFieldIndexes] !== undefined) {
+                    Object.defineProperty(metadata, $viewFieldIndexes, {
+                        value: [...parentMetadata[$viewFieldIndexes]],
                         enumerable: false,
                         configurable: true,
+                        writable: true,
+                    });
+                    Object.defineProperty(metadata, $fieldIndexesByViewTag, {
+                        value: { ...parentMetadata[$fieldIndexesByViewTag] },
+                        enumerable: false,
+                        configurable: true,
+                        writable: true,
                     });
                 }
 
-                Object.defineProperty(metadata, $numFields, {
-                    value: parentMetadata[$numFields],
+                // $refTypeFieldIndexes
+                if (parentMetadata[$refTypeFieldIndexes] !== undefined) {
+                    Object.defineProperty(metadata, $refTypeFieldIndexes, {
+                        value: [...parentMetadata[$refTypeFieldIndexes]],
+                        enumerable: false,
+                        configurable: true,
+                        writable: true,
+                    });
+                }
+
+                // $descriptors
+                Object.defineProperty(metadata, $descriptors, {
+                    value: { ...parentMetadata[$descriptors] },
                     enumerable: false,
                     configurable: true,
                     writable: true,

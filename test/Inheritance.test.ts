@@ -1,8 +1,9 @@
 import * as assert from "assert";
 import { entity, type } from "../src/annotations";
-import { ArraySchema, Encoder, MapSchema, Reflection } from "../src";
+import { $changes, ArraySchema, Encoder, MapSchema, Reflection } from "../src";
 import { Schema } from "../src/Schema";
 import { assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
+import { $descriptors } from "../src/types/symbols";
 
 class Entity extends Schema {
     @type("number") x: number;
@@ -195,6 +196,37 @@ describe("Inheritance Test", () => {
 
         assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
         assertDeepStrictEqualEncodeAll(state);
+    });
+
+    it("property descriptors should not be shared between classes", () => {
+        class BaseEntity extends Schema {
+            @type("string") id: string;
+        }
+        class Entity extends BaseEntity {
+            @type("string") name: string;
+        }
+        class EntityWithDescription extends BaseEntity {
+            @type("string") description: string;
+        }
+        @entity
+        class UnrelatedEntity extends BaseEntity {
+            name: string;
+            description: string;
+        }
+        class State extends Schema {
+            @type([BaseEntity]) entities = new Array<BaseEntity>();
+        }
+
+        const state = new State();
+        state.entities.push(new BaseEntity().assign({ id: "1" }));
+        state.entities.push(new Entity().assign({ id: "2", name: "Jake" }));
+        state.entities.push(new EntityWithDescription().assign({ id: "3", description: "Jake" }));
+        state.entities.push(new UnrelatedEntity().assign({ id: "4", name: "Jake", description: "Jake" }));
+
+        const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(state.encode());
+
+        assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
     });
 
 });
