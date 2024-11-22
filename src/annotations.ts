@@ -9,6 +9,7 @@ import { OPERATION } from "./encoding/spec";
 import { TypeContext } from "./types/TypeContext";
 import { assertInstanceType, assertType } from "./encoding/assert";
 import type { Ref } from "./encoder/ChangeTree";
+import type { DefinedSchemaType } from "./types/HelperTypes";
 
 /**
  * Data types
@@ -30,12 +31,12 @@ export type PrimitiveType =
     typeof Schema |
     object;
 
-export type DefinitionType = PrimitiveType
-    | PrimitiveType[]
-    | { array: PrimitiveType }
-    | { map: PrimitiveType }
-    | { collection: PrimitiveType }
-    | { set: PrimitiveType };
+export type DefinitionType<T extends PrimitiveType = PrimitiveType> = T
+    | T[]
+    | { array: T }
+    | { map: T }
+    | { collection: T }
+    | { set: T };
 
 export type Definition = { [field: string]: DefinitionType };
 
@@ -479,11 +480,26 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
 
 export function defineTypes(
     target: typeof Schema,
-    fields: { [property: string]: DefinitionType },
+    fields: Definition,
     options?: TypeOptions
 ) {
     for (let field in fields) {
         type(fields[field], options)(target.prototype, field);
     }
     return target;
+}
+
+export function schema<T extends Definition>(fields: T, name?: string, inherits: typeof Schema = Schema) {
+    const klass = Metadata.setFields(class extends inherits { }, fields) as DefinedSchemaType<T> & {
+        extends: <T2 extends Definition>(fields: T2, name?: string) => ReturnType<typeof schema<T & T2>>;
+    };
+
+    if (name) {
+        Object.defineProperty(klass, "name", { value: name });
+    }
+
+    // @ts-ignore
+    klass.extends = (fields, name) => schema(fields, name, klass);
+
+    return klass;
 }

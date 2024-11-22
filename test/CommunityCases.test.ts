@@ -18,7 +18,7 @@ describe("Community cases", () => {
 
         const state = new Test();
         const encoded = state.encodeAll();
-        const handshake = Reflection.encode(getEncoder(state).context);
+        const handshake = Reflection.encode(getEncoder(state));
 
         const decodedState = Reflection.decode<Test>(handshake).state;
         assert.strictEqual(decodedState.sub, undefined);

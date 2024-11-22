@@ -1,9 +1,9 @@
 import * as assert from "assert";
 
 import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
-import { defineTypes } from "../src/annotations";
+import { schema, defineTypes } from "../src/annotations";
 import { createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
-import { $numFields } from "../src/types/symbols";
+import { $changes, $numFields } from "../src/types/symbols";
 
 describe("Definition Tests", () => {
 
@@ -123,6 +123,83 @@ describe("Definition Tests", () => {
             decodedState.decode(state.encode());
             assert.strictEqual((decodedState as any).name, "hello world!");
         });
+    });
+
+    describe("define type via 'schema' method", () => {
+
+        it("inheritance / instanceof should work", () => {
+            const Entity = schema({
+                x: "number",
+                y: "number",
+            }, 'Entity');
+
+            const WalkableEntity = Entity.extends({
+                speed: "number"
+            }, 'WalkableEntity');
+
+            const Player = WalkableEntity.extends({
+                age: "number",
+                name: "string",
+            }, 'Player');
+
+            const player = new Player();
+            player.x = 10;
+            player.y = 20;
+            player.speed = 100;
+            player.age = 30;
+            player.name = "Jake Badlands";
+
+            assert.ok(player instanceof Entity);
+            assert.ok(player instanceof WalkableEntity);
+            assert.ok(player instanceof Player);
+
+            const decodedPlayer = createInstanceFromReflection(player);
+            decodedPlayer.decode(player.encode());
+
+            assert.deepStrictEqual(player.toJSON(), decodedPlayer.toJSON());
+        });
+
+        it("maps and arrays should be able to share base class", () => {
+            const Entity = schema({
+                x: "number",
+                y: "number",
+            }, 'Entity');
+
+            const WalkableEntity = Entity.extends({
+                speed: "number"
+            }, 'WalkableEntity');
+
+            const NPC = WalkableEntity.extends({
+                hp: "number"
+            }, 'NPC');
+
+            const Player = WalkableEntity.extends({
+                age: "number",
+                name: "string",
+            }, 'Player');
+
+            const State = schema({
+                mapOfEntities: { map: Entity },
+                arrayOfEntities: [Entity]
+            }, 'State');
+
+            const state = new State();
+            // state.mapOfEntities.set('entity', new Entity());
+            // state.mapOfEntities.set('walkable', new WalkableEntity());
+            // state.mapOfEntities.set('player', new Player());
+            // state.mapOfEntities.set('npc', new NPC());
+
+            // state.arrayOfEntities.push(new Entity());
+            // state.arrayOfEntities.push(new WalkableEntity());
+            // state.arrayOfEntities.push(new Player());
+            // state.arrayOfEntities.push(new NPC());
+
+            const decodedPlayer = createInstanceFromReflection(state);
+            decodedPlayer.decode(state.encode());
+
+            assert.deepStrictEqual(state.toJSON(), decodedPlayer.toJSON());
+        });
+
     });
 
 });

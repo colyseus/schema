@@ -24,18 +24,26 @@ export class ReflectionType extends Schema {
 }
 
 export class Reflection extends Schema {
-    @type([ ReflectionType ]) types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
+    @type([ReflectionType]) types: ArraySchema<ReflectionType> = new ArraySchema<ReflectionType>();
+    @type("number") rootType: number;
 
     /**
      * Encodes the TypeContext of an Encoder into a buffer.
      *
-     * @param context TypeContext instance
+     * @param encoder Encoder instance
      * @param it
      * @returns
      */
-    static encode(context: TypeContext, it: Iterator = { offset: 0 }) {
+    static encode(encoder: Encoder, it: Iterator = { offset: 0 }) {
+        const context = encoder.context;
+
         const reflection = new Reflection();
         const reflectionEncoder = new Encoder(reflection);
+
+        // rootType is usually the first schema passed to the Encoder
+        // (unless it inherits from another schema)
+        const rootType = context.schemas.get(encoder.state.constructor);
+        if (rootType > 0) { reflection.rootType = rootType; }
 
         const buildType = (currentType: ReflectionType, metadata: Metadata) => {
             for (const fieldIndex in metadata) {
@@ -191,7 +199,7 @@ export class Reflection extends Schema {
             });
         });
 
-        const state: T = new (typeContext.get(0) as unknown as any)();
+        const state: T = new (typeContext.get(reflection.rootType || 0) as unknown as any)();
 
         return new Decoder<T>(state, typeContext);
     }

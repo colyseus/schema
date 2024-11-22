@@ -34,7 +34,7 @@ describe("Reflection", () => {
         const state = new EmptyState();
 
         const reflected = new Reflection();
-        reflected.decode(Reflection.encode(getEncoder(state).context));
+        reflected.decode(Reflection.encode(getEncoder(state)));
         assert.strictEqual(reflected.types.length, 1);
     });
 
@@ -42,7 +42,7 @@ describe("Reflection", () => {
         const state = new State();
 
         const reflected = new Reflection();
-        reflected.decode(Reflection.encode(getEncoder(state).context));
+        reflected.decode(Reflection.encode(getEncoder(state)));
 
         assert.deepStrictEqual(
             reflected.toJSON(),
@@ -134,7 +134,7 @@ describe("Reflection", () => {
         }
 
         const reflected = new Reflection();
-        const encoded = Reflection.encode(new TypeContext(MyState));
+        const encoded = Reflection.encode(getEncoder(new MyState()));
         reflected.decode(encoded)
 
         assert.deepStrictEqual(reflected.toJSON(), {

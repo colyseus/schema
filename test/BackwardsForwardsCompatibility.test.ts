@@ -67,7 +67,7 @@ describe("backwards/forwards compatibility", () => {
 
     it("should allow reflection", () => {
         const state = new StateV2();
-        const reflectionBytes = Reflection.encode(getEncoder(state).context);
+        const reflectionBytes = Reflection.encode(getEncoder(state));
 
         const reflected = Reflection.decode(reflectionBytes);
     });

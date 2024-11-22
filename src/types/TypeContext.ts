@@ -53,7 +53,7 @@ export class TypeContext {
         // Workaround to allow using an empty Schema (with no `@type()` fields)
         //
         if (schema[Symbol.metadata] === undefined) {
-            Metadata.init(schema);
+            Metadata.initialize(schema);
         }
 
         this.schemas.set(schema, typeid);
@@ -73,6 +73,16 @@ export class TypeContext {
         TypeContext.inheritedTypes.get(klass)?.forEach((child) => {
             this.discoverTypes(child, parentIndex, parentFieldViewTag);
         });
+
+        // add parent classes
+        let parent: any = klass;
+        while (
+            (parent = Object.getPrototypeOf(parent)) &&
+            parent !== Schema && // stop at root (Schema)
+            parent !== Function.prototype // stop at root (non-Schema)
+        ) {
+            this.discoverTypes(parent);
+        }
 
         const metadata: Metadata = (klass[Symbol.metadata] ??= {});
 

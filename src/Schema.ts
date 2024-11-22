@@ -1,7 +1,7 @@
 import { OPERATION } from './encoding/spec';
-import { DEFAULT_VIEW_TAG, DefinitionType } from "./annotations";
+import { DEFAULT_VIEW_TAG, schema, type Definition, type DefinitionType } from "./annotations";
 
-import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
+import { DefinedSchemaType, NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
 import { ChangeSet, ChangeTree, Ref } from './encoder/ChangeTree';
 import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $track } from './types/symbols';
@@ -15,7 +15,7 @@ import { getIndent } from './utils';
 /**
  * Schema encoder / decoder
  */
-export abstract class Schema {
+export class Schema {
     static [$encoder] = encodeSchemaOperation;
     static [$decoder] = decodeSchemaOperation;
 
@@ -147,7 +147,6 @@ export abstract class Schema {
 
     toJSON () {
         const obj: unknown = {};
-
         const metadata = this.constructor[Symbol.metadata];
         for (const index in metadata) {
             const field = metadata[index];

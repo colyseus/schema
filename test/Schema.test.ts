@@ -1111,6 +1111,30 @@ describe("Type: Schema", () => {
     });
 
     describe("Inheritance", () => {
+        it("should support inherited root type", () => {
+            class BaseState extends Schema {
+                @type("string") str: string;
+                @type("number") num: number;
+            }
+
+            class State extends BaseState {
+                @type("boolean") bool: boolean;
+            }
+
+            const state = new State();
+            state.str = "Hello world";
+            state.num = 100;
+            state.bool = true;
+
+            assert.deepStrictEqual(state.toJSON(), { str: 'Hello world', num: 100, bool: true });
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual(decodedState.toJSON(), { str: 'Hello world', num: 100, bool: true });
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
         it("using direct Schema -> Schema reference", () => {
             class Action extends Schema {
                 @type("boolean") active: boolean;

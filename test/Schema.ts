@@ -45,7 +45,7 @@ export function getEncoder(state: Schema) {
 
 export function createInstanceFromReflection<T extends Schema>(state: T, encoder?: Encoder<T>) {
     encoder ??= getEncoder(state);
-    const decoder = Reflection.decode<T>(Reflection.encode(encoder.context));
+    const decoder = Reflection.decode<T>(Reflection.encode(encoder));
     decoder.state['_decoder'] = decoder;
     return decoder.state;
 }

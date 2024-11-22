@@ -205,18 +205,6 @@ export const Metadata = {
                 //
                 Object.setPrototypeOf(metadata, parentMetadata);
 
-                // Object.keys(parentMetadata).forEach((fieldIndex) => {
-                //     const index = Number(fieldIndex);
-                //     const field = parentMetadata[index];
-                //     metadata[index] = field;
-
-                //     // Object.defineProperty(metadata, field.name, {
-                //     //     value: index,
-                //     //     enumerable: false,
-                //     //     configurable: true,
-                //     // });
-                // });
-
                 // $numFields
                 Object.defineProperty(metadata, $numFields, {
                     value: parentMetadata[$numFields],

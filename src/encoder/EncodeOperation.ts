@@ -79,7 +79,6 @@ export const encodeSchemaOperation: EncodeOperation = function (
     }
 
     const ref = changeTree.ref;
-    // const metadata: Metadata = ref.constructor[Symbol.metadata];
     const field = metadata[index];
 
     // TODO: inline this function call small performance gain
