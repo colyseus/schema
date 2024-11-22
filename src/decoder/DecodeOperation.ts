@@ -327,6 +327,10 @@ export const decodeArray: DecodeOperation = function (
         (ref as ArraySchema).clear();
         return;
 
+    } else if (operation === OPERATION.REVERSE) {
+        (ref as ArraySchema).reverse();
+        return;
+
     } else if (operation === OPERATION.DELETE_BY_REFID) {
         // TODO: refactor here, try to follow same flow as below
         const refId = decode.number(bytes, it);

@@ -200,7 +200,10 @@ export const encodeArray: EncodeOperation = function (
     bytes[it.offset++] = operation & 255;
 
     // custom operations
-    if (operation === OPERATION.CLEAR) {
+    if (
+        operation === OPERATION.CLEAR ||
+        operation === OPERATION.REVERSE
+    ) {
         return;
     }
 

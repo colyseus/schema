@@ -1750,8 +1750,21 @@ describe("ArraySchema Tests", () => {
         });
 
         it("#reverse()", () => {
-            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
-            assert.deepStrictEqual([5, 4, 3, 2, 1], arr.reverse().toJSON());
+            class State extends Schema {
+                @type(["number"]) numbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.numbers =  new ArraySchema<number>(1, 2, 3, 4, 5);
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            state.numbers.reverse();
+            assert.deepStrictEqual([5, 4, 3, 2, 1], state.numbers.toJSON());
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([5, 4, 3, 2, 1], decodedState.numbers.toJSON());
         });
 
         it("#flat", () => {
