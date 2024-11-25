@@ -159,7 +159,20 @@ describe("Definition Tests", () => {
             assert.deepStrictEqual(player.toJSON(), decodedPlayer.toJSON());
         });
 
+        it("should define default values", () => {
+            const State = schema({
+                number: { type: "number", default: 10  },
+                str: { type: "string", default: "Hello world"  },
+            });
+
+            const state = new State();
+            assert.strictEqual(state.number, 10);
+            assert.strictEqual(state.str, "Hello world");
+        });
+
         it("maps and arrays should be able to share base class", () => {
+            const Random = schema({});
+
             const Entity = schema({
                 x: "number",
                 y: "number",
@@ -179,20 +192,33 @@ describe("Definition Tests", () => {
             }, 'Player');
 
             const State = schema({
-                mapOfEntities: { map: Entity },
-                arrayOfEntities: [Entity]
+                str: "string",
+                num: "number",
+                number: { type: "number", default: 10  },
+                mapOfEntities: { map: Entity, default: new MapSchema() },
+                arrayOfEntities: { array: Entity, default: [] },
+                entity: Entity,
             }, 'State');
 
             const state = new State();
-            // state.mapOfEntities.set('entity', new Entity());
-            // state.mapOfEntities.set('walkable', new WalkableEntity());
-            // state.mapOfEntities.set('player', new Player());
-            // state.mapOfEntities.set('npc', new NPC());
+            state.str = "Hello world";
+            state.num = 100;
 
-            // state.arrayOfEntities.push(new Entity());
-            // state.arrayOfEntities.push(new WalkableEntity());
-            // state.arrayOfEntities.push(new Player());
-            // state.arrayOfEntities.push(new NPC());
+            assert.strictEqual(state.number, 10);
+
+            state.mapOfEntities.set('entity', new Entity().assign({ x: 10, y: 20 }));
+            state.mapOfEntities.set('walkable', new WalkableEntity().assign({ x: 10, y: 20, speed: 100 }));
+            state.mapOfEntities.set('player', new Player().assign({ x: 10, y: 20, speed: 100, age: 30, name: "Jake Badlands" }));
+            state.mapOfEntities.set('npc', new NPC().assign({ x: 10, y: 20, speed: 100, hp: 100 }));
+
+            state.arrayOfEntities.push(new Entity().assign({ x: 10, y: 20 }));
+            state.arrayOfEntities.push(new WalkableEntity().assign({ x: 10, y: 20, speed: 100 }));
+            state.arrayOfEntities.push(new Player().assign({ x: 10, y: 20, speed: 100, age: 30, name: "Jake Badlands" }));
+            state.arrayOfEntities.push(new NPC().assign({ x: 10, y: 20, speed: 100, hp: 100 }));
+
+            state.entity = new Entity().assign({ x: 10, y: 20 });
+            state.entity = new WalkableEntity().assign({ x: 10, y: 20, speed: 100 });
+            state.entity = new NPC().assign({ x: 10, y: 20, speed: 100, hp: 100 });
 
             const decodedPlayer = createInstanceFromReflection(state);
             decodedPlayer.decode(state.encode());

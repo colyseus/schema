@@ -9,13 +9,11 @@ import { OPERATION } from "./encoding/spec";
 import { TypeContext } from "./types/TypeContext";
 import { assertInstanceType, assertType } from "./encoding/assert";
 import type { Ref } from "./encoder/ChangeTree";
-import type { DefinedSchemaType } from "./types/HelperTypes";
+import type { DefinedSchemaType, InferValueType } from "./types/HelperTypes";
+import type { CollectionSchema } from "./types/custom/CollectionSchema";
+import type { SetSchema } from "./types/custom/SetSchema";
 
-/**
- * Data types
- */
-export type PrimitiveType =
-    "string" |
+export type RawPrimitiveType = "string" |
     "number" |
     "boolean" |
     "int8" |
@@ -27,16 +25,18 @@ export type PrimitiveType =
     "int64" |
     "uint64" |
     "float32" |
-    "float64" |
-    typeof Schema |
-    object;
+    "float64";
 
+export type PrimitiveType = RawPrimitiveType | typeof Schema | object;
+
+// TODO: infer "default" value type correctly.
 export type DefinitionType<T extends PrimitiveType = PrimitiveType> = T
     | T[]
-    | { array: T }
-    | { map: T }
-    | { collection: T }
-    | { set: T };
+    | { type: T, default?: InferValueType<T> }
+    | { array: T, default?: ArraySchema<InferValueType<T>> }
+    | { map: T, default?: MapSchema<InferValueType<T>> }
+    | { collection: T, default?: CollectionSchema<InferValueType<T>> }
+    | { set: T, default?: SetSchema<InferValueType<T>> };
 
 export type Definition = { [field: string]: DefinitionType };
 
@@ -489,16 +489,38 @@ export function defineTypes(
     return target;
 }
 
-export function schema<T extends Definition>(fields: T, name?: string, inherits: typeof Schema = Schema) {
-    const klass = Metadata.setFields(class extends inherits { }, fields) as DefinedSchemaType<T> & {
-        extends: <T2 extends Definition>(fields: T2, name?: string) => ReturnType<typeof schema<T & T2>>;
-    };
+interface SchemaWithExtends<T extends Definition, P extends typeof Schema> extends DefinedSchemaType<T, P> {
+    extends: <T2 extends Definition>(
+        fields: T2,
+        name?: string
+    ) => SchemaWithExtends<T & T2, typeof this>;
+}
+
+export function schema<T extends Definition, P extends typeof Schema = typeof Schema>(
+    fields: T,
+    name?: string,
+    inherits: P = Schema as P
+): SchemaWithExtends<T, P> {
+    const defaultValues: any = {};
+
+    for (let fieldName in fields) {
+        const field = fields[fieldName] as DefinitionType;
+        if (typeof (field) === "object" && field['default'] !== undefined) {
+            defaultValues[fieldName] = field['default'];
+        }
+    }
+
+    const klass = Metadata.setFields(class extends inherits {
+        constructor (...args: any[]) {
+            args[0] = Object.assign({}, defaultValues, args[0]);
+            super(...args);
+        }
+    }, fields) as SchemaWithExtends<T, P>;
 
     if (name) {
         Object.defineProperty(klass, "name", { value: name });
     }
 
-    // @ts-ignore
     klass.extends = (fields, name) => schema(fields, name, klass);
 
     return klass;

@@ -4,8 +4,8 @@ import { Ref } from "../../encoder/ChangeTree";
 import { Decoder } from "../Decoder";
 import { DataChange } from "../DecodeOperation";
 import { OPERATION } from "../../encoding/spec";
-import { DefinitionType } from "../../annotations";
 import { Schema } from "../../Schema";
+import type { DefinitionType } from "../../annotations";
 import type { CollectionSchema } from "../../types/custom/CollectionSchema";
 
 //

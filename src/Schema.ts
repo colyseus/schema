@@ -1,7 +1,7 @@
 import { OPERATION } from './encoding/spec';
-import { DEFAULT_VIEW_TAG, schema, type Definition, type DefinitionType } from "./annotations";
+import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations";
 
-import { DefinedSchemaType, NonFunctionPropNames, ToJSON } from './types/HelperTypes';
+import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
 import { ChangeSet, ChangeTree, Ref } from './encoder/ChangeTree';
 import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $track } from './types/symbols';

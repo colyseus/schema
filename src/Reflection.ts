@@ -165,7 +165,7 @@ export class Reflection extends Schema {
                         Metadata.addField(metadata, fieldIndex, field.name, refType);
 
                     } else {
-                        Metadata.addField(metadata, fieldIndex, field.name, { [fieldType]: refType } as DefinitionType);
+                        Metadata.addField(metadata, fieldIndex, field.name, { [fieldType]: refType });
                     }
 
                 } else {

@@ -1,4 +1,4 @@
-import { getPropertyDescriptor, type DefinitionType } from "./annotations";
+import { Definition, DefinitionType, getPropertyDescriptor } from "./annotations";
 import { Schema } from "./Schema";
 import { getType } from "./types/registry";
 import { $decoder, $descriptors, $encoder, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $viewFieldIndexes } from "./types/symbols";
@@ -22,6 +22,14 @@ export type Metadata =
     { [field: string]: number; } & // field name => field metadata
     { [$descriptors]: { [field: string]: PropertyDescriptor } }  // property descriptors
 
+export function getNormalizedType(type: DefinitionType): DefinitionType  {
+    return (Array.isArray(type))
+        ? { array: type[0] }
+        : (typeof(type['type']) !== "undefined")
+            ? type['type']
+            : type;
+}
+
 export const Metadata = {
 
     addField(metadata: any, index: number, name: string, type: DefinitionType, descriptor?: PropertyDescriptor) {
@@ -32,9 +40,7 @@ export const Metadata = {
         metadata[index] = Object.assign(
             metadata[index] || {}, // avoid overwriting previous field metadata (@owned / @deprecated)
             {
-                type: (Array.isArray(type))
-                    ? { array: type[0] }
-                    : type,
+                type: getNormalizedType(type),
                 index,
                 name,
             }
@@ -151,18 +157,23 @@ export const Metadata = {
 
         for (const field in fields) {
             const type = fields[field];
+            const normalizedType = getNormalizedType(type);
 
             // FIXME: this code is duplicated from @type() annotation
             const complexTypeKlass = (Array.isArray(type))
                 ? getType("array")
                 : (typeof(Object.keys(type)[0]) === "string") && getType(Object.keys(type)[0]);
 
+            const childType = (complexTypeKlass)
+                ? Object.values(type)[0]
+                : normalizedType;
+
             Metadata.addField(
                 metadata,
                 fieldIndex,
                 field,
                 type,
-                getPropertyDescriptor(`_${field}`, fieldIndex, type, complexTypeKlass)
+                getPropertyDescriptor(`_${field}`, fieldIndex, childType, complexTypeKlass)
             );
 
             fieldIndex++;
