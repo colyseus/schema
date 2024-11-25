@@ -2,7 +2,7 @@ import * as assert from "assert";
 
 import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
 import { schema, defineTypes } from "../src/annotations";
-import { createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
 import { $changes, $numFields } from "../src/types/symbols";
 
 describe("Definition Tests", () => {
@@ -224,6 +224,7 @@ describe("Definition Tests", () => {
             decodedPlayer.decode(state.encode());
 
             assert.deepStrictEqual(state.toJSON(), decodedPlayer.toJSON());
+            assertDeepStrictEqualEncodeAll(state);
         });
 
     });
