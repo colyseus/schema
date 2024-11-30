@@ -2,7 +2,7 @@ import * as assert from "assert";
 
 import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
 import { schema, defineTypes } from "../src/annotations";
-import { assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getDecoder, getEncoder } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
 import { $changes, $numFields } from "../src/types/symbols";
 
 describe("Definition Tests", () => {
@@ -171,8 +171,6 @@ describe("Definition Tests", () => {
         });
 
         it("maps and arrays should be able to share base class", () => {
-            const Random = schema({});
-
             const Entity = schema({
                 x: "number",
                 y: "number",
@@ -226,6 +224,34 @@ describe("Definition Tests", () => {
             assert.deepStrictEqual(state.toJSON(), decodedPlayer.toJSON());
             assertDeepStrictEqualEncodeAll(state);
         });
+
+        it("should allow to define 'view' tags", () => {
+            const Entity = schema({
+                x: "number",
+                y: "number",
+            }, 'Entity');
+
+            const State = schema({
+                entities: { map: Entity, view: true, default: new MapSchema() },
+            });
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            state.entities.set('one', new Entity().assign({ x: 10, y: 20 }));
+            state.entities.set('two', new Entity().assign({ x: 30, y: 40 }));
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            client1.view.add(state.entities.get("one"));
+            client2.view.add(state.entities.get("two"));
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), { entities: { one: { x: 10, y: 20 } } });
+            assert.deepStrictEqual(client2.state.toJSON(), { entities: { two: { x: 30, y: 40 } } });
+        })
 
     });
 

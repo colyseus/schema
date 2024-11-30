@@ -32,11 +32,11 @@ export type PrimitiveType = RawPrimitiveType | typeof Schema | object;
 // TODO: infer "default" value type correctly.
 export type DefinitionType<T extends PrimitiveType = PrimitiveType> = T
     | T[]
-    | { type: T, default?: InferValueType<T> }
-    | { array: T, default?: ArraySchema<InferValueType<T>> }
-    | { map: T, default?: MapSchema<InferValueType<T>> }
-    | { collection: T, default?: CollectionSchema<InferValueType<T>> }
-    | { set: T, default?: SetSchema<InferValueType<T>> };
+    | { type: T, default?: InferValueType<T>, view?: boolean | number }
+    | { array: T, default?: ArraySchema<InferValueType<T>>, view?: boolean | number }
+    | { map: T, default?: MapSchema<InferValueType<T>>, view?: boolean | number }
+    | { collection: T, default?: CollectionSchema<InferValueType<T>>, view?: boolean | number }
+    | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number };
 
 export type Definition = { [field: string]: DefinitionType };
 
@@ -502,11 +502,19 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
     inherits: P = Schema as P
 ): SchemaWithExtends<T, P> {
     const defaultValues: any = {};
+    const viewTagFields: any = {};
 
     for (let fieldName in fields) {
         const field = fields[fieldName] as DefinitionType;
-        if (typeof (field) === "object" && field['default'] !== undefined) {
-            defaultValues[fieldName] = field['default'];
+        if (typeof (field) === "object") {
+            if (field['default'] !== undefined) {
+                defaultValues[fieldName] = field['default'];
+            }
+            if (field['view'] !== undefined) {
+                viewTagFields[fieldName] = (typeof (field['view']) === "boolean")
+                    ? DEFAULT_VIEW_TAG
+                    : field['view'];
+            }
         }
     }
 
@@ -516,6 +524,10 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
             super(...args);
         }
     }, fields) as SchemaWithExtends<T, P>;
+
+    for (let fieldName in viewTagFields) {
+        view(viewTagFields[fieldName])(klass.prototype, fieldName);
+    }
 
     if (name) {
         Object.defineProperty(klass, "name", { value: name });
