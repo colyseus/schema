@@ -489,7 +489,7 @@ export function defineTypes(
     return target;
 }
 
-interface SchemaWithExtends<T extends Definition, P extends typeof Schema> extends DefinedSchemaType<T, P> {
+export interface SchemaWithExtends<T extends Definition, P extends typeof Schema> extends DefinedSchemaType<T, P> {
     extends: <T2 extends Definition>(
         fields: T2,
         name?: string

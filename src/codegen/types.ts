@@ -39,6 +39,7 @@ export class Context {
     }
 
     addStructure(structure: IStructure) {
+        if (structure.context === this) { return; } // skip if already added.
         structure.context = this;
 
         if (structure instanceof Class) {

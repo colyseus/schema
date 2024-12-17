@@ -148,6 +148,49 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     defineProperty(property, typeArgument);
                 }
 
+            } else if (
+                node.getText() === "setFields" &&
+                (
+                    node.parent.kind === ts.SyntaxKind.CallExpression ||
+                    node.parent.kind === ts.SyntaxKind.PropertyAccessExpression
+                )
+            ) {
+                /**
+                 * Metadata.setFields(klassName, { ... })
+                 */
+                const callExpression = (node.parent.kind === ts.SyntaxKind.PropertyAccessExpression)
+                    ? node.parent.parent as ts.CallExpression
+                    : node.parent as ts.CallExpression;
+
+                if (callExpression.kind !== ts.SyntaxKind.CallExpression) {
+                    break;
+                }
+
+                const classNameNode = callExpression.arguments[0];
+                const className = ts.isClassExpression(classNameNode)
+                    ? classNameNode.name?.escapedText.toString()
+                    : classNameNode.getText();
+
+                // skip if no className is provided
+                if (!className) { break; }
+
+                if (currentStructure.name !== className) {
+                    currentStructure = new Class();
+                }
+                context.addStructure(currentStructure);
+                (currentStructure as Class).extends = "Schema"; // force extends to Schema
+                currentStructure.name = className;
+
+                const types = callExpression.arguments[1] as any;
+                for (let i = 0; i < types.properties.length; i++) {
+                    const prop = types.properties[i];
+
+                    const property = currentProperty || new Property();
+                    property.name = prop.name.escapedText;
+
+                    currentStructure.addProperty(property);
+                    defineProperty(property, prop.initializer);
+                }
 
             } else if (
                 node.getText() === "defineTypes" &&
@@ -189,6 +232,70 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             }
 
             currentProperty = undefined;
+
+            break;
+
+        case ts.SyntaxKind.CallExpression:
+            /**
+             * Defining schema via `schema.schema({ ... })`
+             * - schema.schema({})
+             * - schema({})
+             * - ClassName.extends({})
+             */
+            if (
+                (
+                    (
+                        (node as ts.CallExpression).expression?.getText() === "schema.schema" ||
+                        (node as ts.CallExpression).expression?.getText() === "schema"
+                    ) ||
+                    (
+                        (node as ts.CallExpression).expression?.getText().indexOf(".extends") !== -1
+                    )
+                ) &&
+                (node as ts.CallExpression).arguments[0].kind === ts.SyntaxKind.ObjectLiteralExpression
+            ) {
+                const callExpression = node as ts.CallExpression;
+
+                let className = callExpression.arguments[1]?.getText();
+
+                if (!className && callExpression.parent.kind === ts.SyntaxKind.VariableDeclaration) {
+                    className = (callExpression.parent as ts.VariableDeclaration).name?.getText();
+                }
+
+                // skip if no className is provided
+                if (!className) { break; }
+
+                if (currentStructure.name !== className) {
+                    currentStructure = new Class();
+                    context.addStructure(currentStructure);
+                }
+
+                if ((node as ts.CallExpression).expression?.getText().indexOf(".extends") !== -1) {
+                    // if it's using `.extends({})`
+                    const extendsClass = (node as any).expression?.expression?.escapedText;
+
+                    // skip if no extendsClass is provided
+                    if (!extendsClass) { break; }
+                    (currentStructure as Class).extends = extendsClass;
+
+                } else {
+                    // if it's using `schema({})`
+                    (currentStructure as Class).extends = "Schema"; // force extends to Schema
+                }
+
+                currentStructure.name = className;
+
+                const types = callExpression.arguments[0] as any;
+                for (let i = 0; i < types.properties.length; i++) {
+                    const prop = types.properties[i];
+
+                    const property = currentProperty || new Property();
+                    property.name = prop.name.escapedText;
+
+                    currentStructure.addProperty(property);
+                    defineProperty(property, prop.initializer);
+                }
+            }
 
             break;
 

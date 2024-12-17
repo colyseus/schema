@@ -41,7 +41,7 @@ export {
 
 // Annotations, Metadata and TypeContext
 export { Metadata } from "./Metadata";
-export { type, deprecated, defineTypes, view, } from "./annotations";
+export { type, deprecated, defineTypes, view, schema, type SchemaWithExtends, } from "./annotations";
 export { TypeContext } from "./types/TypeContext";
 
 // Annotation types
