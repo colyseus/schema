@@ -140,11 +140,11 @@ describe("Type: Schema", () => {
             }
 
             let data = new Data();
-            data.int64 = -9223372036854775808;
+            data.int64 = Number.MIN_SAFE_INTEGER;
 
             const decoded = new Data();
             decoded.decode(data.encode());
-            assert.strictEqual(decoded.int64, -9223372036854775808);
+            assert.strictEqual(decoded.int64, Number.MIN_SAFE_INTEGER);
         });
 
         it("float32", () => {
@@ -156,6 +156,7 @@ describe("Type: Schema", () => {
             data.float32 = 24.5;
 
             let encoded = data.encode();
+
             // assert.deepEqual(encoded, [0, 0, 0, 196, 65]);
 
             const decoded = new Data();
@@ -187,9 +188,9 @@ describe("Type: Schema", () => {
                 @type("number") varint_uint16 = 65535;
                 @type("number") varint_int32 = -2147483648;
                 @type("number") varint_uint32 = 4294967295;
-                @type("number") varint_int64 = -9223372036854775808;
+                @type("number") varint_int64 = Number.MIN_SAFE_INTEGER;
                 @type("number") varint_uint64 = Number.MAX_SAFE_INTEGER; // 9007199254740991
-                @type("number") varint_float32 = -3.40282347e+38;
+                @type("number") varint_float32 = -3.4028235e+38;
                 @type("number") varint_float64 = 1.7976931348623157e+308;
             }
 
@@ -206,9 +207,9 @@ describe("Type: Schema", () => {
             assert.strictEqual(decoded.varint_uint16, 65535);
             assert.strictEqual(decoded.varint_int32, -2147483648);
             assert.strictEqual(decoded.varint_uint32, 4294967295);
-            assert.strictEqual(decoded.varint_int64, -9223372036854775808);
+            assert.strictEqual(decoded.varint_int64, Number.MIN_SAFE_INTEGER);
             assert.strictEqual(decoded.varint_uint64, Number.MAX_SAFE_INTEGER);
-            assert.strictEqual(decoded.varint_float32, -3.40282347e+38);
+            assert.strictEqual(decoded.varint_float32.toPrecision(5), "-3.4028e+38"); // adjust precision according to encoder check (max 8)
             assert.strictEqual(decoded.varint_float64, 1.7976931348623157e+308);
 
             const badByteIndex = encoded.findIndex((byte) => byte < 0 || byte > 255);

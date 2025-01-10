@@ -215,12 +215,12 @@ export function number(bytes: BufferLike, value: number, it: Iterator) {
     return number(bytes, (value > 0) ? Number.MAX_SAFE_INTEGER : -Number.MAX_SAFE_INTEGER, it);
 
   } else if (value !== (value|0)) {
-    if (Math.abs(value) < 3.4028235e+38) { // range check
+    if (Math.abs(value) <= 3.4028235e+38) { // range check
         _float32[0] = value;
-        if (Math.abs(_float32[0] - v) < 1e-4) { // precision check; adjust 1e-n (n = precision) to in-/decrease acceptable precision loss
+        if (Math.abs(Math.abs(_float32[0]) - Math.abs(value)) < 1e-4) { // precision check; adjust 1e-n (n = precision) to in-/decrease acceptable precision loss
             // now we know value is in range for f32 and has acceptable precision for f32
             bytes[it.offset++] = 0xca;
-            writeFloat32(bytes, value);
+            writeFloat32(bytes, value, it);
             return 5;
         }
     }
