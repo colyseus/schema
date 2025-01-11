@@ -15,6 +15,15 @@ const typeMaps = {
     "uint64": "number",
     "float32": "number",
     "float64": "number",
+    "cstring": "string",
+    "bigInt64": "bigint",
+    "bigUint64": "bigint",
+    "varUint": "number",
+    "varInt": "number",
+    "varBigUint": "bigint",
+    "varBigInt": "bigint",
+    "varFloat32": "number",
+    "varFloat64": "number",
 }
 
 const distinct = (value, index, self) => self.indexOf(value) === index;

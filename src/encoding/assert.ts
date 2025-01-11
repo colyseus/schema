@@ -23,11 +23,22 @@ export function assertType(value: any, type: string, klass: Schema, field: strin
         case "uint64":
         case "float32":
         case "float64":
+        case "varUint":
+        case "varInt":
+        case "varFloat32":
+        case "varFloat64":
             typeofTarget = "number";
             if (isNaN(value)) {
                 console.log(`trying to encode "NaN" in ${klass.constructor.name}#${field}`);
             }
             break;
+        case "bigInt64":
+        case "bigUint64":
+        case "varBigUint":
+        case "varBigInt":
+            typeofTarget = "bigint";
+            break;
+        case "cstring":
         case "string":
             typeofTarget = "string";
             allowNull = true;

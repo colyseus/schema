@@ -179,6 +179,74 @@ describe("Type: Schema", () => {
             assert.strictEqual(decoded.float64, 24.5);
         });
 
+        it("cstring", () => {
+            class Data extends Schema {
+                @type("cstring") string: string;
+            }
+
+            let data = new Data();
+            data.string = "test12345";
+
+            let encoded = data.encode();
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+            assert.strictEqual(decoded.string, "test12345");
+        });
+
+        it("bigints", () => {
+            class Data extends Schema {
+                @type("bigUint64") u64: bigint;
+                @type("bigInt64") i64: bigint;
+            }
+
+            const buint = BigInt(Number.MAX_SAFE_INTEGER) + 10000n;
+            const bint = BigInt(Number.MIN_SAFE_INTEGER) - 10000n;
+
+            let data = new Data();
+            data.u64 = buint;
+            data.i64 = bint;
+
+            let encoded = data.encode();
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+
+            assert.strictEqual(decoded.u64, buint);
+            assert.strictEqual(decoded.i64, bint);
+        });
+
+        it("leb128", () => {
+            class Data extends Schema {
+                @type("varUint") vu: number;
+                @type("varInt") vi: number;
+                @type("varBigUint") vbu: bigint;
+                @type("varBigInt") vbi: bigint;
+                @type("varFloat32") vf32: number;
+                @type("varFloat64") vf64: number;
+            }
+
+            let data = new Data();
+            data.vu = 2 ** 30;
+            data.vi = -(2 ** 30);
+            data.vbu = 0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFFn; // 128 bit
+            data.vbi = -0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFFn;
+            data.vf32 = -5.3235;
+            data.vf64 = 1.7976931348623157e+308;
+
+            let encoded = data.encode();
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+
+            assert.strictEqual(decoded.vu, 2 ** 30);
+            assert.strictEqual(decoded.vi, -(2 ** 30));
+            assert.strictEqual(decoded.vbu, 0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFFn);
+            assert.strictEqual(decoded.vbi, -0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFFn);
+            assert.strictEqual(decoded.vf32.toPrecision(5), "-5.3235");
+            assert.strictEqual(decoded.vf64, 1.7976931348623157e+308);
+        });
+
         it("varint", () => {
             class Data extends Schema {
                 @type("number") varint_minus1 = -1;

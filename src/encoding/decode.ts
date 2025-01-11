@@ -23,6 +23,22 @@
 
 import { SWITCH_TO_STRUCTURE } from "./spec";
 import type { BufferLike } from "./encode";
+import { TextDecoder } from "util";
+
+// force little endian to facilitate decoding on multiple implementations
+const _isLittleEndian = true;  // new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
+const _convoBuffer = new ArrayBuffer(8);
+const _uint8 = new Uint8Array(_convoBuffer);
+const _uint16 = new Uint16Array(_convoBuffer);
+const _uint32 = new Uint32Array(_convoBuffer);
+const _uint64 = new BigUint64Array(_convoBuffer);
+const _int8 = new Int8Array(_convoBuffer);
+const _int16 = new Int16Array(_convoBuffer);
+const _int32 = new Int32Array(_convoBuffer);
+const _int64 = new BigInt64Array(_convoBuffer);
+const _float32 = new Float32Array(_convoBuffer);
+const _float64 = new Float64Array(_convoBuffer);
+const _decoder = new TextDecoder();
 
 /**
  * msgpack implementation highly based on notepack.io
@@ -76,36 +92,39 @@ export function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
   return string;
 }
 
-export function int8 (bytes: BufferLike, it: Iterator) {
-    return uint8(bytes, it) << 24 >> 24;
+export function int8(bytes: BufferLike, it: Iterator) {
+  return uint8(bytes, it) << 24 >> 24;
 };
 
-export function uint8 (bytes: BufferLike, it: Iterator) {
-    return bytes[it.offset++];
+export function uint8(bytes: BufferLike, it: Iterator) {
+  return bytes[it.offset++];
 };
 
-export function int16 (bytes: BufferLike, it: Iterator) {
-    return uint16(bytes, it) << 16 >> 16;
+export function int16(bytes: BufferLike, it: Iterator) {
+  return uint16(bytes, it) << 16 >> 16;
 };
 
-export function uint16 (bytes: BufferLike, it: Iterator) {
-    return bytes[it.offset++] | bytes[it.offset++] << 8;
+export function uint16(bytes: BufferLike, it: Iterator) {
+  return bytes[it.offset++] | bytes[it.offset++] << 8;
 };
 
-export function int32 (bytes: BufferLike, it: Iterator) {
-    return bytes[it.offset++] | bytes[it.offset++] << 8 | bytes[it.offset++] << 16 | bytes[it.offset++] << 24;
+export function int32(bytes: BufferLike, it: Iterator) {
+  return bytes[it.offset++] | bytes[it.offset++] << 8 | bytes[it.offset++] << 16 | bytes[it.offset++] << 24;
 };
 
-export function uint32 (bytes: BufferLike, it: Iterator) {
-    return int32(bytes, it) >>> 0;
+export function uint32(bytes: BufferLike, it: Iterator) {
+  return int32(bytes, it) >>> 0;
 };
 
 export function float32(bytes: BufferLike, it: Iterator) {
-  return readFloat32(bytes, it);
+  _int32[0] = int32(bytes, it);
+  return _float32[0];
 }
 
 export function float64(bytes: BufferLike, it: Iterator) {
-  return readFloat64(bytes, it);
+  _int32[_isLittleEndian ? 0 : 1] = int32(bytes, it);
+  _int32[_isLittleEndian ? 1 : 0] = int32(bytes, it);
+  return _float64[0];
 }
 
 export function int64(bytes: BufferLike, it: Iterator) {
@@ -120,28 +139,65 @@ export function uint64(bytes: BufferLike, it: Iterator) {
   return high + low;
 };
 
-// force little endian to facilitate decoding on multiple implementations
-const _isLittleEndian = true;  // new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
-const _int32 = new Int32Array(2);
-const _float32 = new Float32Array(_int32.buffer);
-const _float64 = new Float64Array(_int32.buffer);
+export function bigInt64(bytes: BufferLike, it: Iterator) {
+  _int32[0] = int32(bytes, it);
+  _int32[1] = int32(bytes, it);
+  return _int64[0];
+}
 
-export function readFloat32 (bytes: BufferLike, it: Iterator) {
-    _int32[0] = int32(bytes, it);
-    return _float32[0];
+export function bigUint64(bytes: BufferLike, it: Iterator) {
+  _int32[0] = int32(bytes, it);
+  _int32[1] = int32(bytes, it);
+  return _uint64[0];
+}
+
+export function varUint(bytes: BufferLike, it: Iterator): number {
+  let value = 0, shift = 0;
+  while(bytes[it.offset] & 0x80) { // check continuation indicator bit
+    value |= (bytes[it.offset++] & 0x7f) << shift; // read 7 bits
+    shift += 7; // next 7 bits
+  }
+  value |= (bytes[it.offset++] & 0x7f) << shift; // read remaining bits
+  return value;
+}
+
+export function varInt(bytes: BufferLike, it: Iterator): number {
+  const value = varUint(bytes, it);
+  return (0 - (value & 1)) ^ (value >>> 1); // zig zag decoding
+}
+
+export function varBigUint(bytes: BufferLike, it: Iterator): bigint {
+  let value = 0n, shift = 0n;
+  while(bytes[it.offset] & 0x80) { // check continuation indicator bit
+    value |= BigInt((bytes[it.offset++] & 0x7f)) << shift; // read 7 bits
+    shift += 7n; // next 7 bits
+  }
+  value |= BigInt((bytes[it.offset++] & 0x7f)) << shift; // read remaining bits
+  return value;
+}
+
+export function varBigInt(bytes: BufferLike, it: Iterator): bigint {
+  const value = varBigUint(bytes, it);
+  return (0n - (value & 1n)) ^ (value >> 1n); // zig zag decoding
+}
+
+export function varFloat32(bytes: BufferLike, it: Iterator) {
+  _uint16[0] = varUint(bytes, it);
+  _uint16[1] = varUint(bytes, it);
+  return _float32[0];
+}
+
+export function varFloat64(bytes: BufferLike, it: Iterator) {
+  _uint32[0] = varUint(bytes, it);
+  _uint32[1] = varUint(bytes, it);
+  return _float64[0];
+}
+
+export function boolean(bytes: BufferLike, it: Iterator) {
+  return uint8(bytes, it) > 0;
 };
 
-export function readFloat64 (bytes: BufferLike, it: Iterator) {
-    _int32[_isLittleEndian ? 0 : 1] = int32(bytes, it);
-    _int32[_isLittleEndian ? 1 : 0] = int32(bytes, it);
-    return _float64[0];
-};
-
-export function boolean (bytes: BufferLike, it: Iterator) {
-    return uint8(bytes, it) > 0;
-};
-
-export function string (bytes: BufferLike, it: Iterator) {
+export function string(bytes: BufferLike, it: Iterator) {
   const prefix = bytes[it.offset++];
   let length: number;
 
@@ -162,6 +218,15 @@ export function string (bytes: BufferLike, it: Iterator) {
   return utf8Read(bytes, it, length);
 }
 
+export function cstring(bytes: BufferLike, it: Iterator) {
+  // should short circuit if buffer length can't be determined for some reason so we don't just infinitely loop
+  const len = (bytes as Buffer | ArrayBuffer).byteLength ?? (bytes as number[]).length;
+  if (len === undefined) throw TypeError("Unable to determine length of 'BufferLike' " + bytes.toString());
+  let start = it.offset;
+  while (it.offset < len && bytes[it.offset++] !== 0x00) { }; // nop, fast search for terminator
+  return _decoder.decode(new Uint8Array((bytes as Buffer | Uint8Array)?.subarray?.(start, it.offset - 1) ?? bytes.slice(start, it.offset - 1))); // ignore terminator
+}
+
 export function stringCheck(bytes: BufferLike, it: Iterator) {
   const prefix = bytes[it.offset];
   return (
@@ -176,7 +241,7 @@ export function stringCheck(bytes: BufferLike, it: Iterator) {
   );
 }
 
-export function number (bytes: BufferLike, it: Iterator) {
+export function number(bytes: BufferLike, it: Iterator) {
   const prefix = bytes[it.offset++];
 
   if (prefix < 0x80) {
@@ -185,11 +250,11 @@ export function number (bytes: BufferLike, it: Iterator) {
 
   } else if (prefix === 0xca) {
     // float 32
-    return readFloat32(bytes, it);
+    return float32(bytes, it);
 
   } else if (prefix === 0xcb) {
     // float 64
-    return readFloat64(bytes, it);
+    return float64(bytes, it);
 
   } else if (prefix === 0xcc) {
     // uint 8
@@ -229,7 +294,7 @@ export function number (bytes: BufferLike, it: Iterator) {
   }
 };
 
-export function numberCheck (bytes: BufferLike, it: Iterator) {
+export function numberCheck(bytes: BufferLike, it: Iterator) {
   const prefix = bytes[it.offset];
   // positive fixint - 0x00 - 0x7f
   // float 32        - 0xca
@@ -248,7 +313,7 @@ export function numberCheck (bytes: BufferLike, it: Iterator) {
   );
 }
 
-export function arrayCheck (bytes: BufferLike, it: Iterator) {
+export function arrayCheck(bytes: BufferLike, it: Iterator) {
   return bytes[it.offset] < 0xa0;
 
   // const prefix = bytes[it.offset] ;
@@ -269,9 +334,9 @@ export function arrayCheck (bytes: BufferLike, it: Iterator) {
 
 export function switchStructureCheck(bytes: BufferLike, it: Iterator) {
   return (
-      // previous byte should be `SWITCH_TO_STRUCTURE`
-      bytes[it.offset - 1] === SWITCH_TO_STRUCTURE &&
-      // next byte should be a number
-      (bytes[it.offset] < 0x80 || (bytes[it.offset] >= 0xca && bytes[it.offset] <= 0xd3))
+    // previous byte should be `SWITCH_TO_STRUCTURE`
+    bytes[it.offset - 1] === SWITCH_TO_STRUCTURE &&
+    // next byte should be a number
+    (bytes[it.offset] < 0x80 || (bytes[it.offset] >= 0xca && bytes[it.offset] <= 0xd3))
   );
 }

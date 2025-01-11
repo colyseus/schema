@@ -27,6 +27,15 @@ export type InferValueType<T extends DefinitionType> =
     : T extends "float32" ? number
     : T extends "float64" ? number
     : T extends "boolean" ? boolean
+    : T extends "cstring" ? string
+    : T extends "bigInt64" ? bigint
+    : T extends "bigUint64" ? bigint
+    : T extends "varUint" ? number
+    : T extends "varInt" ? number
+    : T extends "varBigUint" ? bigint
+    : T extends "varBigInt" ? bigint
+    : T extends "varFloat32" ? number
+    : T extends "varFloat64" ? number
 
     : T extends { type: infer ChildType extends Constructor } ? InstanceType<ChildType>
     : T extends { type: infer ChildType extends PrimitiveType } ? ChildType

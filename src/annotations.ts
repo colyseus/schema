@@ -25,7 +25,16 @@ export type RawPrimitiveType = "string" |
     "int64" |
     "uint64" |
     "float32" |
-    "float64";
+    "float64" |
+    "cstring" |
+    "bigInt64" |
+    "bigUint64" |
+    "varUint" |
+    "varInt" |
+    "varBigUint" |
+    "varBigInt" |
+    "varFloat32" |
+    "varFloat64";
 
 export type PrimitiveType = RawPrimitiveType | typeof Schema | object;
 
