@@ -37,7 +37,7 @@ try { textEncoder = new TextEncoder(); } catch (e) { }
 
 const hasBufferByteLength = (typeof Buffer !== 'undefined' && Buffer.byteLength);
 
-export const utf8Length = (hasBufferByteLength)
+export const utf8Length: (str: string, _?: any) => number = (hasBufferByteLength)
     ? Buffer.byteLength // node
     : function (str: string, _?: any) {
         var c = 0, length = 0;
