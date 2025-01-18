@@ -163,7 +163,7 @@ view.add(player);
 
 ## Encoder
 
-There are 3 majour features of the `Encoder` class:
+There are 3 major features of the `Encoder` class:
 
 - Encoding the full state
 - Encoding the state changes
@@ -233,6 +233,18 @@ const view2Encoded = this.encoder.encodeView(view2, sharedOffset, it);
 encoder.discardChanges();
 ```
 
+## Decoder
+
+The `Decoder` class is used to decode the binary data received from the server.
+
+```typescript
+import { Decoder } from "@colyseus/schema";
+
+const state = new MyState();
+const decoder = new Decoder(state);
+decoder.decode(encodedBytes);
+```
+
 ### Backwards/forwards compability
 
 Backwards/fowards compatibility is possible by declaring new fields at the
@@ -283,10 +295,14 @@ schema-codegen ./schemas/State.ts --output ./haxe-project/ --haxe
 | Updating x/y of 50 entities after initial state | 342 | 684 |
 | Updating x/y of 100 entities after initial state | 668 | 1529 |
 
+## Decoder implementation in other languages
 
-## Decoder implementations
+Each Colyseus SDK has its own decoder implementation of the `@colyseus/schema` protocol:
 
-Decoders for each target language are located at [`/decoders/`](decoders). They have no third party dependencies.
+- [C#](https://github.com/colyseus/colyseus-unity-sdk)
+- [Haxe](https://github.com/colyseus/colyseus-haxe)
+- [Lua](https://github.com/colyseus/colyseus-defold)
+- [C++](https://github.com/colyseus/colyseus-cocos2d-x) _(Not up-to-date)_
 
 ## Why
 
