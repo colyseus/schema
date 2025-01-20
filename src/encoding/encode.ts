@@ -44,7 +44,7 @@ const _int32 = new Int32Array(_convoBuffer);
 const _int64 = new BigInt64Array(_convoBuffer);
 const _float32 = new Float32Array(_convoBuffer);
 const _float64 = new Float64Array(_convoBuffer);
-const _encoder = new TextEncoder();
+const _encoder = typeof TextEncoder === "function" ? new TextEncoder() : undefined;
 
 const hasBufferByteLength = (typeof Buffer !== 'undefined' && Buffer.byteLength);
 
@@ -276,6 +276,7 @@ export function string(bytes: BufferLike, value: string, it: Iterator) {
 }
 
 export function cstring(bytes: BufferLike, value: string = "", it: Iterator) {
+  if(!_encoder) throw "Encoder Error: globalThis.TextEncoder is not available on this platform, apply a polyfill or use the 'string' primitive encoding instead";
   value ??= "";
   value += "\x00";
   if(bytes instanceof Uint8Array) {
