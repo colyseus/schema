@@ -38,7 +38,7 @@ const _int32 = new Int32Array(_convoBuffer);
 const _int64 = new BigInt64Array(_convoBuffer);
 const _float32 = new Float32Array(_convoBuffer);
 const _float64 = new Float64Array(_convoBuffer);
-const _decoder = new TextDecoder();
+const _decoder = typeof TextDecoder === "function" ? new TextDecoder() : undefined;
 
 /**
  * msgpack implementation highly based on notepack.io
@@ -219,6 +219,7 @@ export function string(bytes: BufferLike, it: Iterator) {
 }
 
 export function cstring(bytes: BufferLike, it: Iterator) {
+  if(!_decoder) throw "Decoder (type 'cstring') Error: globalThis.TextDecoder is not available on this platform, apply a polyfill or use the 'string' primitive encoding instead!";
   // should short circuit if buffer length can't be determined for some reason so we don't just infinitely loop
   const len = (bytes as Buffer | ArrayBuffer).byteLength ?? (bytes as number[]).length;
   if (len === undefined) throw TypeError("Unable to determine length of 'BufferLike' " + bytes.toString());
