@@ -289,13 +289,11 @@ export function cstring(bytes: BufferLike, value: string = "", it: Iterator) {
 }
 
 export function number(bytes: BufferLike, value: number, it: Iterator) {
-  if (isNaN(value)) {
-    return number(bytes, 0, it);
-
-  } else if (!isFinite(value)) {
-    return number(bytes, (value > 0) ? Number.MAX_SAFE_INTEGER : -Number.MAX_SAFE_INTEGER, it);
-
-  } else if (value !== (value|0)) {
+  if (isNaN(value) || !isFinite(value) {
+    bytes[it.offset++] = 0xcb;
+    float64(bytes, value, it);
+    return 9;
+  } else if (value !== (value | 0)) {
     if (Math.abs(value) <= 3.4028235e+38) { // range check
         _float32[0] = value;
         if (Math.abs(Math.abs(_float32[0]) - Math.abs(value)) < 1e-4) { // precision check; adjust 1e-n (n = precision) to in-/decrease acceptable precision loss
