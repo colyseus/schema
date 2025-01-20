@@ -276,7 +276,7 @@ export function string(bytes: BufferLike, value: string, it: Iterator) {
 }
 
 export function cstring(bytes: BufferLike, value: string = "", it: Iterator) {
-  if(!_encoder) throw "Encoder Error: globalThis.TextEncoder is not available on this platform, apply a polyfill or use the 'string' primitive encoding instead";
+  if(!_encoder) throw "Encoder (type 'cstring') Error: globalThis.TextEncoder is not available on this platform, apply a polyfill or use the 'string' primitive encoding instead";
   value ??= "";
   value += "\x00";
   if(bytes instanceof Uint8Array) {
