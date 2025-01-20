@@ -28,6 +28,10 @@ export function assertType(value: any, type: string, klass: Schema, field: strin
                 console.log(`trying to encode "NaN" in ${klass.constructor.name}#${field}`);
             }
             break;
+        case "bigint64":
+        case "biguint64":
+            typeofTarget = "bigint";
+            break;
         case "string":
             typeofTarget = "string";
             allowNull = true;

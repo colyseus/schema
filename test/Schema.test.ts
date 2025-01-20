@@ -147,6 +147,7 @@ describe("Type: Schema", () => {
             assert.strictEqual(decoded.int64, -9223372036854775808);
         });
 
+
         it("float32", () => {
             class Data extends Schema {
                 @type("float32") float32;
@@ -287,6 +288,28 @@ describe("Type: Schema", () => {
             const decoded = new Data();
             decoded.decode(data.encode());
             assert.strictEqual(decoded.longstring, longstring);
+        });
+
+        it("bigints", () => {
+            class Data extends Schema {
+                @type("biguint64") u64: bigint;
+                @type("bigint64") i64: bigint;
+            }
+
+            const buint = BigInt(Number.MAX_SAFE_INTEGER) + 10000n;
+            const bint = BigInt(Number.MIN_SAFE_INTEGER) - 10000n;
+
+            let data = new Data();
+            data.u64 = buint;
+            data.i64 = bint;
+
+            let encoded = data.encode();
+
+            const decoded = new Data();
+            decoded.decode(encoded);
+
+            assert.strictEqual(decoded.u64, buint);
+            assert.strictEqual(decoded.i64, bint);
         });
 
         it("manual change tracking", () => {

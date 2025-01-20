@@ -35,6 +35,14 @@ let textEncoder: TextEncoder;
 // @ts-ignore
 try { textEncoder = new TextEncoder(); } catch (e) { }
 
+// force little endian to facilitate decoding on multiple implementations
+const _isLittleEndian = true;  // new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
+const _convoBuffer = new ArrayBuffer(8);
+const _int32 = new Int32Array(_convoBuffer);
+const _float32 = new Float32Array(_convoBuffer);
+const _float64 = new Float64Array(_convoBuffer);
+const _int64 = new BigInt64Array(_convoBuffer);
+
 const hasBufferByteLength = (typeof Buffer !== 'undefined' && Buffer.byteLength);
 
 export const utf8Length: (str: string, _?: any) => number = (hasBufferByteLength)
@@ -140,30 +148,28 @@ export function uint64(bytes: BufferLike, value: number, it: Iterator) {
   uint32(bytes, high, it);
 };
 
+export function bigint64(bytes: BufferLike, value: bigint, it: Iterator) {
+    _int64[0] = BigInt.asIntN(64, value);
+    int32(bytes, _int32[0], it);
+    int32(bytes, _int32[1], it);
+}
+
+export function biguint64(bytes: BufferLike, value: bigint, it: Iterator) {
+    _int64[0] = BigInt.asIntN(64, value);
+    int32(bytes, _int32[0], it);
+    int32(bytes, _int32[1], it);
+}
+
 export function float32(bytes: BufferLike, value: number, it: Iterator) {
-  writeFloat32(bytes, value, it);
+  _float32[0] = value;
+  int32(bytes, _int32[0], it);
 }
 
 export function float64(bytes: BufferLike, value: number, it: Iterator) {
-  writeFloat64(bytes, value, it);
-}
-
-// force little endian to facilitate decoding on multiple implementations
-const _isLittleEndian = true;  // new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
-const _int32 = new Int32Array(2);
-const _float32 = new Float32Array(_int32.buffer);
-const _float64 = new Float64Array(_int32.buffer);
-
-export function writeFloat32(bytes: BufferLike, value: number, it: Iterator) {
-  _float32[0] = value;
-  int32(bytes, _int32[0], it);
-};
-
-export function writeFloat64(bytes: BufferLike, value: number, it: Iterator) {
   _float64[0] = value;
   int32(bytes, _int32[_isLittleEndian ? 0 : 1], it);
   int32(bytes, _int32[_isLittleEndian ? 1 : 0], it);
-};
+}
 
 export function boolean(bytes: BufferLike, value: number, it: Iterator) {
   bytes[it.offset++] = value ? 1 : 0; // uint8
@@ -215,17 +221,19 @@ export function number(bytes: BufferLike, value: number, it: Iterator) {
     return number(bytes, (value > 0) ? Number.MAX_SAFE_INTEGER : -Number.MAX_SAFE_INTEGER, it);
 
   } else if (value !== (value|0)) {
+    if (Math.abs(value) <= 3.4028235e+38) { // range check
+        _float32[0] = value;
+        if (Math.abs(Math.abs(_float32[0]) - Math.abs(value)) < 1e-4) { // precision check; adjust 1e-n (n = precision) to in-/decrease acceptable precision loss
+            // now we know value is in range for f32 and has acceptable precision for f32
+            bytes[it.offset++] = 0xca;
+            float32(bytes, value, it);
+            return 5;
+        }
+    }
+
     bytes[it.offset++] = 0xcb;
-    writeFloat64(bytes, value, it);
+    float64(bytes, value, it);
     return 9;
-
-    // TODO: encode float 32?
-    // is it possible to differentiate between float32 / float64 here?
-
-    // // float 32
-    // bytes.push(0xca);
-    // writeFloat32(bytes, value);
-    // return 5;
   }
 
   if (value >= 0) {

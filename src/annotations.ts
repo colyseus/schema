@@ -25,7 +25,9 @@ export type RawPrimitiveType = "string" |
     "int64" |
     "uint64" |
     "float32" |
-    "float64";
+    "float64" |
+    "bigint64" |
+    "biguint64";
 
 export type PrimitiveType = RawPrimitiveType | typeof Schema | object;
 

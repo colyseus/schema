@@ -31,6 +31,21 @@ import type { BufferLike } from "./encode";
 
 export interface Iterator { offset: number; }
 
+// force little endian to facilitate decoding on multiple implementations
+const _isLittleEndian = true;  // new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
+const _convoBuffer = new ArrayBuffer(8);
+
+const _int32 = new Int32Array(_convoBuffer);
+const _float32 = new Float32Array(_convoBuffer);
+const _float64 = new Float64Array(_convoBuffer);
+const _uint8 = new Uint8Array(_convoBuffer);
+const _uint16 = new Uint16Array(_convoBuffer);
+const _uint32 = new Uint32Array(_convoBuffer);
+const _uint64 = new BigUint64Array(_convoBuffer);
+const _int8 = new Int8Array(_convoBuffer);
+const _int16 = new Int16Array(_convoBuffer);
+const _int64 = new BigInt64Array(_convoBuffer);
+
 export function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
   var string = '', chr = 0;
   for (var i = it.offset, end = it.offset + length; i < end; i++) {
@@ -100,13 +115,16 @@ export function uint32 (bytes: BufferLike, it: Iterator) {
     return int32(bytes, it) >>> 0;
 };
 
-export function float32(bytes: BufferLike, it: Iterator) {
-  return readFloat32(bytes, it);
-}
+export function float32 (bytes: BufferLike, it: Iterator) {
+    _int32[0] = int32(bytes, it);
+    return _float32[0];
+};
 
-export function float64(bytes: BufferLike, it: Iterator) {
-  return readFloat64(bytes, it);
-}
+export function float64 (bytes: BufferLike, it: Iterator) {
+    _int32[_isLittleEndian ? 0 : 1] = int32(bytes, it);
+    _int32[_isLittleEndian ? 1 : 0] = int32(bytes, it);
+    return _float64[0];
+};
 
 export function int64(bytes: BufferLike, it: Iterator) {
   const low = uint32(bytes, it);
@@ -115,27 +133,22 @@ export function int64(bytes: BufferLike, it: Iterator) {
 };
 
 export function uint64(bytes: BufferLike, it: Iterator) {
-  const low = uint32(bytes, it);
-  const high = uint32(bytes, it) * Math.pow(2, 32);
-  return high + low;
+    const low = uint32(bytes, it);
+    const high = uint32(bytes, it) * Math.pow(2, 32);
+    return high + low;
 };
 
-// force little endian to facilitate decoding on multiple implementations
-const _isLittleEndian = true;  // new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
-const _int32 = new Int32Array(2);
-const _float32 = new Float32Array(_int32.buffer);
-const _float64 = new Float64Array(_int32.buffer);
-
-export function readFloat32 (bytes: BufferLike, it: Iterator) {
+export function bigint64(bytes: BufferLike, it: Iterator) {
     _int32[0] = int32(bytes, it);
-    return _float32[0];
-};
+    _int32[1] = int32(bytes, it);
+    return _int64[0];
+}
 
-export function readFloat64 (bytes: BufferLike, it: Iterator) {
-    _int32[_isLittleEndian ? 0 : 1] = int32(bytes, it);
-    _int32[_isLittleEndian ? 1 : 0] = int32(bytes, it);
-    return _float64[0];
-};
+export function biguint64(bytes: BufferLike, it: Iterator) {
+    _int32[0] = int32(bytes, it);
+    _int32[1] = int32(bytes, it);
+    return _uint64[0];
+}
 
 export function boolean (bytes: BufferLike, it: Iterator) {
     return uint8(bytes, it) > 0;
@@ -185,11 +198,11 @@ export function number (bytes: BufferLike, it: Iterator) {
 
   } else if (prefix === 0xca) {
     // float 32
-    return readFloat32(bytes, it);
+    return float32(bytes, it);
 
   } else if (prefix === 0xcb) {
     // float 64
-    return readFloat64(bytes, it);
+    return float64(bytes, it);
 
   } else if (prefix === 0xcc) {
     // uint 8

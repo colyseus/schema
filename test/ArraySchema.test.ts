@@ -1392,7 +1392,7 @@ describe("ArraySchema Tests", () => {
     it("should allow ArraySchema of repeated primitive values", () => {
         class State extends Schema {
             @type(["string"]) strings = new ArraySchema<string>();
-            @type(["number"]) floats = new ArraySchema<number>();
+            @type(["float64"]) floats = new ArraySchema<number>();
             @type(["number"]) numbers = new ArraySchema<number>();
         };
 
