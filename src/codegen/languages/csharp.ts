@@ -59,16 +59,9 @@ function generateClass(klass: Class, namespace: string) {
     return `${getCommentHeader()}
 
 using Colyseus.Schema;
-using Action = System.Action;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
 ${indent}public partial class ${klass.name} : ${klass.extends} {
 ${klass.properties.map((prop) => generateProperty(prop, indent)).join("\n\n")}
-
-${indent}\t/*
-${indent}\t * Support for individual property change callbacks below...
-${indent}\t */
-
-${generateAllFieldCallbacks(klass, indent)}
 ${indent}}
 ${namespace ? "}" : ""}
 `;
@@ -145,45 +138,6 @@ ${struct.properties.map(prop => `\t${indent}public ${getType(prop)} ${prop.name}
 ${indent}}
 ${namespace ? "}" : ""}
 `;
-}
-
-function generateAllFieldCallbacks(klass: Class, indent: string) {
-    //
-    // TODO: improve me. It would be great to generate less boilerplate in favor
-    // of a single implementation on C# Schema class itself.
-    //
-    const eventNames: string[] = [];
-    return `${klass.properties
-        .filter(prop => !prop.deprecated) // generate only for properties that haven't been deprecated.
-        .map(prop => {
-        const eventName = `__${prop.name}Change`;
-        eventNames.push(eventName);
-
-        const defaultNull = (prop.childType)
-            ? "null"
-            : `default(${getType(prop)})`;
-
-        return `\t${indent}protected event PropertyChangeHandler<${getType(prop)}> ${eventName};
-\t${indent}public Action On${capitalize(prop.name)}Change(PropertyChangeHandler<${getType(prop)}> __handler, bool __immediate = true) {
-\t${indent}\tif (__callbacks == null) { __callbacks = new SchemaCallbacks(); }
-\t${indent}\t__callbacks.AddPropertyCallback(nameof(this.${prop.name}));
-\t${indent}\t${eventName} += __handler;
-\t${indent}\tif (__immediate && this.${prop.name} != ${defaultNull}) { __handler(this.${prop.name}, ${defaultNull}); }
-\t${indent}\treturn () => {
-\t${indent}\t\t__callbacks.RemovePropertyCallback(nameof(${prop.name}));
-\t${indent}\t\t${eventName} -= __handler;
-\t${indent}\t};
-\t${indent}}`;
-    }).join("\n\n")}
-
-\t${indent}protected override void TriggerFieldChange(DataChange change) {
-\t${indent}\tswitch (change.Field) {
-${klass.properties.filter(prop => !prop.deprecated).map((prop, i) => {
-    return `\t${indent}\t\tcase nameof(${prop.name}): ${eventNames[i]}?.Invoke((${getType(prop)}) change.Value, (${getType(prop)}) change.PreviousValue); break;`;
-}).join("\n")}
-\t${indent}\t\tdefault: break;
-\t\t${indent}}
-\t${indent}}`;
 }
 
 function getChildType(prop: Property) {
