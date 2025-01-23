@@ -1,4 +1,4 @@
-import { Schema, type, Reflection } from "../src";
+import { Schema, type, Reflection, Encoder } from "../src";
 
 class Entity extends Schema {
   @type("number") x: number;
@@ -22,6 +22,8 @@ class InheritedTypes extends Schema {
 }
 
 const state = new InheritedTypes();
+const encoder = new Encoder(state);
+
 state.entity = new Entity();
 state.entity.x = 500;
 state.entity.y = 800;
@@ -40,10 +42,10 @@ state.bot.power = 200;
 state.any = new Bot();
 (state.any as Bot).power = 100;
 
-const bytes = Array.from(Uint8Array.from(Buffer.from( state.encode() )));
+const bytes = Array.from(Uint8Array.from(Buffer.from( encoder.encode() )));
 console.log("InheritedTypes =>");
 console.log(`{ ${bytes.join(", ")} }`);
 
-const handshakeBytes = Array.from(Uint8Array.from(Buffer.from( Reflection.encode(state) )));
+const handshakeBytes = Array.from(Uint8Array.from(Buffer.from( Reflection.encode(encoder) )));
 console.log("Handshake bytes =>", );
 console.log(`{ ${handshakeBytes.join(", ")} }`);

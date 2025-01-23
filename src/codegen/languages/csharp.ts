@@ -112,7 +112,7 @@ function generateProperty(prop: Property, indent: string = "") {
             typeArgs += `, "${prop.childType}"`;
         }
 
-        initializer = `new ${langType}()`;
+        initializer = `null`;
 
     } else {
         langType = getType(prop);
