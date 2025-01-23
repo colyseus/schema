@@ -1,8 +1,8 @@
-import { Schema } from "../Schema";
-import { CollectionSchema } from "../types/custom/CollectionSchema";
-import { MapSchema } from "../types/custom/MapSchema";
-import { SetSchema } from "../types/custom/SetSchema";
-import { ArraySchema } from "../types/custom/ArraySchema";
+import type { Schema } from "../Schema";
+import type { CollectionSchema } from "../types/custom/CollectionSchema";
+import type { MapSchema } from "../types/custom/MapSchema";
+import type { SetSchema } from "../types/custom/SetSchema";
+import type { ArraySchema } from "../types/custom/ArraySchema";
 import type { Ref } from "../encoder/ChangeTree";
 
 export class EncodeSchemaError extends Error {}
@@ -38,6 +38,10 @@ export function assertType(value: any, type: string, klass: Schema, field: strin
             break;
         case "boolean":
             // boolean is always encoded as true/false based on truthiness
+            return;
+        default:
+            // skip assertion for custom types
+            // TODO: allow custom types to define their own assertions
             return;
     }
 
