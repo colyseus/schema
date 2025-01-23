@@ -27,10 +27,8 @@ export { dumpChanges } from "./utils";
 
 // Encoder / Decoder
 export { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType } from "./types/symbols";
-export type { Iterator } from "./encoding/decode";
-import * as encode from "./encoding/encode";
-import * as decode from "./encoding/decode";
-export { encode, decode };
+export { encode } from "./encoding/encode";
+export { decode, type Iterator } from "./encoding/decode";
 
 // Reflection
 export {

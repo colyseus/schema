@@ -2,7 +2,7 @@ import { TypeContext } from "../types/TypeContext";
 import { $changes, $childType, $decoder, $onDecodeEnd } from "../types/symbols";
 import { Schema } from "../Schema";
 
-import * as decode from "../encoding/decode";
+import { decode } from "../encoding/decode";
 import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import type { Ref } from "../encoder/ChangeTree";
 import type { Iterator } from "../encoding/decode";
@@ -82,9 +82,9 @@ export class Decoder<T extends Schema = any> {
                 // keep skipping next bytes until reaches a known structure
                 // by local decoder.
                 //
-                const nextIterator: decode.Iterator = { offset: it.offset };
+                const nextIterator: Iterator = { offset: it.offset };
                 while (it.offset < totalBytes) {
-                    if (decode.switchStructureCheck(bytes, it)) {
+                    if (bytes[it.offset] === SWITCH_TO_STRUCTURE) {
                         nextIterator.offset = it.offset + 1;
                         if ($root.refs.has(decode.number(bytes, nextIterator))) {
                             break;

@@ -1,11 +1,11 @@
 import { DefinitionType, type } from "../annotations";
-import * as encode from "../encoding/encode";
-import * as decode from "../encoding/decode";
+import { BufferLike, encode } from "../encoding/encode";
+import { decode, Iterator } from "../encoding/decode";
 
 export interface TypeDefinition {
     constructor?: any,
-    encode?: (bytes: encode.BufferLike, value: any, it: decode.Iterator) => any;
-    decode?: (bytes: encode.BufferLike, it: decode.Iterator) => any;
+    encode?: (bytes: BufferLike, value: any, it: Iterator) => any;
+    decode?: (bytes: BufferLike, it: Iterator) => any;
 }
 
 const registeredTypes: {[identifier: string] : TypeDefinition} = {};

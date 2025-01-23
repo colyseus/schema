@@ -45,7 +45,7 @@ const _int64 = new BigInt64Array(_convoBuffer);
 
 const hasBufferByteLength = (typeof Buffer !== 'undefined' && Buffer.byteLength);
 
-export const utf8Length: (str: string, _?: any) => number = (hasBufferByteLength)
+const utf8Length: (str: string, _?: any) => number = (hasBufferByteLength)
     ? Buffer.byteLength // node
     : function (str: string, _?: any) {
         var c = 0, length = 0;
@@ -68,7 +68,7 @@ export const utf8Length: (str: string, _?: any) => number = (hasBufferByteLength
         return length;
     }
 
-export function utf8Write(view: BufferLike, str: string, it: Iterator) {
+function utf8Write(view: BufferLike, str: string, it: Iterator) {
   var c = 0;
   for (var i = 0, l = str.length; i < l; i++) {
     c = str.charCodeAt(i);
@@ -98,32 +98,32 @@ export function utf8Write(view: BufferLike, str: string, it: Iterator) {
   }
 }
 
-export function int8(bytes: BufferLike, value: number, it: Iterator) {
+function int8(bytes: BufferLike, value: number, it: Iterator) {
     bytes[it.offset++] = value & 255;
 };
 
-export function uint8(bytes: BufferLike, value: number, it: Iterator) {
+function uint8(bytes: BufferLike, value: number, it: Iterator) {
     bytes[it.offset++] = value & 255;
 };
 
-export function int16(bytes: BufferLike, value: number, it: Iterator) {
-    bytes[it.offset++] = value & 255;
-    bytes[it.offset++] = (value >> 8) & 255;
-};
-
-export function uint16(bytes: BufferLike, value: number, it: Iterator) {
+function int16(bytes: BufferLike, value: number, it: Iterator) {
     bytes[it.offset++] = value & 255;
     bytes[it.offset++] = (value >> 8) & 255;
 };
 
-export function int32(bytes: BufferLike, value: number, it: Iterator) {
+function uint16(bytes: BufferLike, value: number, it: Iterator) {
+    bytes[it.offset++] = value & 255;
+    bytes[it.offset++] = (value >> 8) & 255;
+};
+
+function int32(bytes: BufferLike, value: number, it: Iterator) {
   bytes[it.offset++] = value & 255;
   bytes[it.offset++] = (value >> 8) & 255;
   bytes[it.offset++] = (value >> 16) & 255;
   bytes[it.offset++] = (value >> 24) & 255;
 };
 
-export function uint32(bytes: BufferLike, value: number, it: Iterator) {
+function uint32(bytes: BufferLike, value: number, it: Iterator) {
   const b4 = value >> 24;
   const b3 = value >> 16;
   const b2 = value >> 8;
@@ -134,48 +134,48 @@ export function uint32(bytes: BufferLike, value: number, it: Iterator) {
   bytes[it.offset++] = b4 & 255;
 };
 
-export function int64(bytes: BufferLike, value: number, it: Iterator) {
+function int64(bytes: BufferLike, value: number, it: Iterator) {
   const high = Math.floor(value / Math.pow(2, 32));
   const low = value >>> 0;
   uint32(bytes, low, it);
   uint32(bytes, high, it);
 };
 
-export function uint64(bytes: BufferLike, value: number, it: Iterator) {
+function uint64(bytes: BufferLike, value: number, it: Iterator) {
   const high = (value / Math.pow(2, 32)) >> 0;
   const low = value >>> 0;
   uint32(bytes, low, it);
   uint32(bytes, high, it);
 };
 
-export function bigint64(bytes: BufferLike, value: bigint, it: Iterator) {
+function bigint64(bytes: BufferLike, value: bigint, it: Iterator) {
     _int64[0] = BigInt.asIntN(64, value);
     int32(bytes, _int32[0], it);
     int32(bytes, _int32[1], it);
 }
 
-export function biguint64(bytes: BufferLike, value: bigint, it: Iterator) {
+function biguint64(bytes: BufferLike, value: bigint, it: Iterator) {
     _int64[0] = BigInt.asIntN(64, value);
     int32(bytes, _int32[0], it);
     int32(bytes, _int32[1], it);
 }
 
-export function float32(bytes: BufferLike, value: number, it: Iterator) {
+function float32(bytes: BufferLike, value: number, it: Iterator) {
   _float32[0] = value;
   int32(bytes, _int32[0], it);
 }
 
-export function float64(bytes: BufferLike, value: number, it: Iterator) {
+function float64(bytes: BufferLike, value: number, it: Iterator) {
   _float64[0] = value;
   int32(bytes, _int32[_isLittleEndian ? 0 : 1], it);
   int32(bytes, _int32[_isLittleEndian ? 1 : 0], it);
 }
 
-export function boolean(bytes: BufferLike, value: number, it: Iterator) {
+function boolean(bytes: BufferLike, value: number, it: Iterator) {
   bytes[it.offset++] = value ? 1 : 0; // uint8
 };
 
-export function string(bytes: BufferLike, value: string, it: Iterator) {
+function string(bytes: BufferLike, value: string, it: Iterator) {
   // encode `null` strings as empty.
   if (!value) { value = ""; }
 
@@ -213,7 +213,7 @@ export function string(bytes: BufferLike, value: string, it: Iterator) {
   return size + length;
 }
 
-export function number(bytes: BufferLike, value: number, it: Iterator) {
+function number(bytes: BufferLike, value: number, it: Iterator) {
   if (isNaN(value)) {
     return number(bytes, 0, it);
 
@@ -303,4 +303,24 @@ export function number(bytes: BufferLike, value: number, it: Iterator) {
     int64(bytes, value, it);
     return 9;
   }
+}
+
+export const encode = {
+    int8,
+    uint8,
+    int16,
+    uint16,
+    int32,
+    uint32,
+    int64,
+    uint64,
+    bigint64,
+    biguint64,
+    float32,
+    float64,
+    boolean,
+    string,
+    number,
+    utf8Write,
+    utf8Length,
 }

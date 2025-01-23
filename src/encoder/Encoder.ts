@@ -2,7 +2,7 @@ import type { Schema } from "../Schema";
 import { TypeContext } from "../types/TypeContext";
 import { $changes, $encoder, $filter, $onEncodeEnd } from "../types/symbols";
 
-import * as encode from "../encoding/encode";
+import { encode } from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
 
 import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';

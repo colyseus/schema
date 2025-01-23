@@ -1,7 +1,7 @@
 import { OPERATION } from "../encoding/spec";
 import { $changes, $childType, $getByIndex } from "../types/symbols";
 
-import * as encode from "../encoding/encode";
+import { encode } from "../encoding/encode";
 
 import type { ChangeTree, Ref } from "./ChangeTree";
 import type { Encoder } from "./Encoder";

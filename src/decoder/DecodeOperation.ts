@@ -3,7 +3,7 @@ import { Metadata } from "../Metadata";
 import { Schema } from "../Schema";
 import type { Ref } from "../encoder/ChangeTree";
 import type { Decoder } from "./Decoder";
-import * as decode from "../encoding/decode";
+import { Iterator, decode } from "../encoding/decode";
 import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
 
 import type { MapSchema } from "../types/custom/MapSchema";
@@ -28,7 +28,7 @@ export const DEFINITION_MISMATCH = -1;
 export type DecodeOperation<T extends Schema = any> = (
     decoder: Decoder<T>,
     bytes: Buffer,
-    it: decode.Iterator,
+    it: Iterator,
     ref: Ref,
     allChanges: DataChange[],
 ) => number | void;
@@ -40,7 +40,7 @@ export function decodeValue(
     index: number,
     type: any,
     bytes: Buffer,
-    it: decode.Iterator,
+    it: Iterator,
     allChanges: DataChange[],
 ) {
     const $root = decoder.root;
@@ -176,7 +176,7 @@ export function decodeValue(
 export const decodeSchemaOperation: DecodeOperation = function (
     decoder: Decoder<any>,
     bytes: Buffer,
-    it: decode.Iterator,
+    it: Iterator,
     ref: Ref,
     allChanges: DataChange[],
 ) {
@@ -225,7 +225,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
 export const decodeKeyValueOperation: DecodeOperation = function (
     decoder: Decoder<any>,
     bytes: Buffer,
-    it: decode.Iterator,
+    it: Iterator,
     ref: Ref,
     allChanges: DataChange[]
 ) {
@@ -309,7 +309,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
 export const decodeArray: DecodeOperation = function (
     decoder: Decoder<any>,
     bytes: Buffer,
-    it: decode.Iterator,
+    it: Iterator,
     ref: ArraySchema,
     allChanges: DataChange[]
 ) {
