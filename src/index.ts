@@ -14,8 +14,8 @@ export { CollectionSchema };
 import { SetSchema } from "./types/custom/SetSchema";
 export { SetSchema };
 
-import { registerType } from "./types/registry";
-export { registerType };
+import { registerType, defineCustomTypes } from "./types/registry";
+export { registerType, defineCustomTypes };
 
 registerType("map", { constructor: MapSchema });
 registerType("array", { constructor: ArraySchema });
