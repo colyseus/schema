@@ -222,6 +222,20 @@ function number (bytes: BufferLike, it: Iterator) {
   }
 };
 
+export function stringCheck(bytes: BufferLike, it: Iterator) {
+  const prefix = bytes[it.offset];
+  return (
+    // fixstr
+    (prefix < 0xc0 && prefix > 0xa0) ||
+    // str 8
+    prefix === 0xd9 ||
+    // str 16
+    prefix === 0xda ||
+    // str 32
+    prefix === 0xdb
+  );
+}
+
 export const decode = {
     utf8Read,
     int8,
@@ -239,4 +253,5 @@ export const decode = {
     boolean,
     string,
     number,
-}
+    stringCheck,
+};
