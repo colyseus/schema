@@ -43,7 +43,10 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
         }
     });
 
-// TOOD: inheritance
+    // Inheritance support
+    const inherits = (klass.extends !== "Schema")
+        ? `, ${klass.extends}`
+        : "";
 
     return `${getCommentHeader().replace(/\/\//mg, "--")}
 
@@ -59,7 +62,7 @@ ${allRefs.
 local ${klass.name} = schema.define({
 ${klass.properties.map(prop => generatePropertyDeclaration(prop)).join(",\n")},
     ["_fields_by_index"] = { ${klass.properties.map(prop => `"${prop.name}"`).join(", ")} },
-})
+}${inherits})
 
 return ${klass.name}
 `;
