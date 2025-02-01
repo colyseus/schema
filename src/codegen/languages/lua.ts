@@ -59,6 +59,8 @@ ${allRefs.
     map(childType => `local ${childType} = require '${(namespace ? `${namespace}.` : '')}${childType}'`).
     join("\n")}
 
+---@class ${klass.name}: ${klass.extends}
+${klass.properties.map(prop => `---@field ${prop.name} ${getLUATypeAnnotation(prop)}`).join("\n")}
 local ${klass.name} = schema.define({
 ${klass.properties.map(prop => generatePropertyDeclaration(prop)).join(",\n")},
     ["_fields_by_index"] = { ${klass.properties.map(prop => `"${prop.name}"`).join(", ")} },
@@ -66,18 +68,6 @@ ${klass.properties.map(prop => generatePropertyDeclaration(prop)).join(",\n")},
 
 return ${klass.name}
 `;
-
-    // ["on_change"] = function(changes)
-    //     -- on change logic here
-    // end,
-
-    // ["on_add"] = function()
-    //     -- on add logic here
-    //  end,
-
-    // ["on_remove"] = function()
-    //     -- on remove logic here
-    // end,
 }
 
 function generatePropertyDeclaration(prop: Property) {
@@ -111,18 +101,17 @@ function generatePropertyDeclaration(prop: Property) {
     return `    ["${prop.name}"] = ${typeArgs}`;
 }
 
-// function generatePropertyInitializer(prop: Property) {
-//     let initializer = "";
+function getLUATypeAnnotation(prop: Property) {
+    if (prop.type === "ref") {
+        return prop.childType;
 
-//     if(prop.type === "ref") {
-//         initializer = `new ${prop.childType}()`;
+    } else if (prop.type === "array") {
+        return "ArraySchema";
 
-//     } else if(prop.type === "array") {
-//         initializer = `new schema.ArraySchema()`;
+    } else if (prop.type === "map") {
+        return "MapSchema";
 
-//     } else if(prop.type === "map") {
-//         initializer = `new schema.MapSchema()`;
-//     }
-
-//     return `this.${prop.name} = ${initializer}`;
-// }
+    } else {
+        return typeMaps[prop.type];
+    }
+}
