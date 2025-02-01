@@ -81,6 +81,7 @@ export class ReferenceTracker {
     clearRefs() {
         this.refs.clear();
         this.deletedRefs.clear();
+        this.callbacks = {};
         this.refCounts = {};
     }
 
