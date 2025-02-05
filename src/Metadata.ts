@@ -1,4 +1,4 @@
-import { Definition, DefinitionType, getPropertyDescriptor } from "./annotations";
+import { DefinitionType, getPropertyDescriptor } from "./annotations";
 import { Schema } from "./Schema";
 import { getType } from "./types/registry";
 import { $decoder, $descriptors, $encoder, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $viewFieldIndexes } from "./types/symbols";

@@ -87,7 +87,7 @@ export class StateView {
                 const index = changeSet.operations[i];
                 if (index === undefined) { continue; } // skip "undefined" indexes
 
-                const op = changeTree.indexedOperations[index];
+                const op = changeTree.indexedOperations[index] ?? OPERATION.ADD;
                 const tagAtIndex = metadata?.[index].tag;
                 if (
                     (
@@ -105,7 +105,11 @@ export class StateView {
         // Add children of this ChangeTree to this view
         changeTree.forEachChild((change, index) => {
             // Do not ADD children that don't have the same tag
-            if (metadata && metadata[index].tag !== tag) {
+            if (
+                metadata &&
+                metadata[index].tag !== undefined &&
+                metadata[index].tag !== tag
+            ) {
                 return;
             }
             this.add(change.ref, tag, false);

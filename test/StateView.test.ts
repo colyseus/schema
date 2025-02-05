@@ -538,35 +538,29 @@ describe("StateView", () => {
 
             class Entity extends Schema {
                 @type("string") id: string = nanoid(9);
-                // @type([Component]) components = new ArraySchema<Component>();
-                @type(Component) component;
+                @type([Component]) components = new ArraySchema<Component>();
             }
 
             class MyRoomState extends Schema {
                 @view() @type({ map: Entity }) entities = new Map<string, Entity>();
             }
 
+            function createEntity() {
+                const entity = new Entity();
+                entity.components.push(new Component().assign({ name: "Health", value: 100 }));
+                return entity;
+            }
+
             const state = new MyRoomState();
             const encoder = getEncoder(state);
 
-            const entity = new Entity();
+            const entity = createEntity();
             state.entities.set(entity.id, entity);
 
-            console.log("root changes refIds:", entity[$changes].root.changes.map(c => c.refId));
-            console.log("root allChanges refIds:", entity[$changes].root.allChanges.map(c => c.refId));
-
-            console.log("WILL ASSIGN COMPONENT!");
-            entity.component = new Component();
-
-            console.log("root changes refIds:", entity[$changes].root.changes.map(c => c.refId));
-            console.log("root allChanges refIds:", entity[$changes].root.allChanges.map(c => c.refId));
-
-            console.log(Schema.debugChangesDeep(state));
-
-            // for (let i = 0; i < 1; i++) {
-            //     const entity = new Entity();
-            //     state.entities.set(entity.id, entity);
-            //   }
+            for (let i = 0; i < 1; i++) {
+                const entity = createEntity();
+                state.entities.set(entity.id, entity);
+              }
 
             const client1 = createClientWithView(state);
             const client2 = createClientWithView(state);
@@ -574,6 +568,17 @@ describe("StateView", () => {
             assert.doesNotThrow(() => {
                 encodeMultiple(encoder, state, [client1, client2]);
             });
+
+            client1.view.add(state.entities.get(entity.id));
+
+            assert.doesNotThrow(() => {
+                encodeMultiple(encoder, state, [client1, client2]);
+            });
+
+            assert.strictEqual(1, client1.state.entities.size);
+            assert.deepStrictEqual(entity.toJSON(), client1.state.entities.get(entity.id).toJSON());
+
+            assert.strictEqual(undefined, client2.state.entities);
         });
     });
 
@@ -869,8 +874,14 @@ describe("StateView", () => {
             state.entities.set("1", entity);
 
             entity.component = new Component();
-
             assert.strictEqual(true, entity.component[$changes].isFiltered);
+            assert.strictEqual(encoder.context.debug(), `TypeContext ->
+	Schema types: 3
+	hasFilters: true
+	parentFiltered:
+		1-0-0: MyRoomState[entities] -> Entity
+		2-1-1: Entity[components] -> Component
+		2-1-2: Entity[component] -> Component`);
         });
     });
 

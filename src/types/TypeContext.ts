@@ -29,6 +29,11 @@ export class TypeContext {
 
     constructor(rootClass?: typeof Schema) {
         if (rootClass) {
+            //
+            // TODO:
+            //      cache "discoverTypes" results for each rootClass
+            //      to avoid re-discovering types for each new context/room
+            //
             this.discoverTypes(rootClass);
         }
     }
@@ -41,7 +46,7 @@ export class TypeContext {
         return this.types[typeid];
     }
 
-    add(schema: typeof Schema, typeid: number = this.schemas.size) {
+    add(schema: typeof Schema, typeid = this.schemas.size) {
         // skip if already registered
         if (this.schemas.has(schema)) {
             return false;
@@ -64,14 +69,17 @@ export class TypeContext {
         return this.schemas.get(klass);
     }
 
-    private discoverTypes(klass: typeof Schema, parentIndex?: number, parentFieldViewTag?: number) {
-        if (!this.add(klass)) {
-            return;
+    private discoverTypes(klass: typeof Schema, parentType?: typeof Schema, parentIndex?: number, parentHasViewTag?: boolean) {
+        if (parentHasViewTag) {
+            this.registerFilteredByParent(klass, parentType, parentIndex);
         }
+
+        // skip if already registered
+        if (!this.add(klass)) { return; }
 
         // add classes inherited from this base class
         TypeContext.inheritedTypes.get(klass)?.forEach((child) => {
-            this.discoverTypes(child, parentIndex, parentFieldViewTag);
+            this.discoverTypes(child, klass, parentIndex, parentHasViewTag);
         });
 
         // add parent classes
@@ -91,15 +99,11 @@ export class TypeContext {
             this.hasFilters = true;
         }
 
-        if (parentFieldViewTag !== undefined) {
-            this.parentFiltered[`${this.schemas.get(klass)}-${parentIndex}`] = true;
-        }
-
         for (const fieldIndex in metadata) {
             const index = fieldIndex as any as number;
 
             const fieldType = metadata[index].type;
-            const viewTag = metadata[index].tag;
+            const fieldHasViewTag = (metadata[index].tag !== undefined);
 
             if (typeof (fieldType) === "string") {
                 continue;
@@ -113,10 +117,10 @@ export class TypeContext {
                     continue;
                 }
 
-                this.discoverTypes(type as typeof Schema, index, viewTag);
+                this.discoverTypes(type as typeof Schema, klass, index, parentHasViewTag || fieldHasViewTag);
 
             } else if (typeof (fieldType) === "function") {
-                this.discoverTypes(fieldType as typeof Schema, viewTag);
+                this.discoverTypes(fieldType as typeof Schema, klass, index, parentHasViewTag || fieldHasViewTag);
 
             } else {
                 const type = Object.values(fieldType)[0];
@@ -126,8 +130,46 @@ export class TypeContext {
                     continue;
                 }
 
-                this.discoverTypes(type as typeof Schema, index, viewTag);
+                this.discoverTypes(type as typeof Schema, klass, index, parentHasViewTag || fieldHasViewTag);
             }
         }
     }
+
+    /**
+     * Keep track of which classes have filters applied.
+     * Format: `${typeid}-${parentTypeid}-${parentIndex}`
+     */
+    private registerFilteredByParent(schema: typeof Schema, parentType?: typeof Schema, parentIndex?: number) {
+        const typeid = this.schemas.get(schema) ?? this.schemas.size;
+
+        let key = `${typeid}`;
+        if (parentType) { key += `-${this.schemas.get(parentType)}`; }
+
+        key += `-${parentIndex}`;
+        this.parentFiltered[key] = true;
+    }
+
+    debug() {
+        let parentFiltered = "";
+
+        for (const key in this.parentFiltered) {
+            const keys: number[] = key.split("-").map(Number);
+            const fieldIndex = keys.pop();
+
+            parentFiltered += `\n\t\t`;
+            parentFiltered += `${key}: ${keys.reverse().map((id, i) => {
+                const klass = this.types[id];
+                const metadata: Metadata = klass[Symbol.metadata];
+                let txt = klass.name;
+                if (i === 0) { txt += `[${metadata[fieldIndex].name}]`; }
+                return `${txt}`;
+            }).join(" -> ")}`;
+        }
+
+        return `TypeContext ->\n` +
+            `\tSchema types: ${this.schemas.size}\n` +
+            `\thasFilters: ${this.hasFilters}\n` +
+            `\tparentFiltered:${parentFiltered}`;
+    }
+
 }

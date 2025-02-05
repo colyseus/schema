@@ -507,6 +507,11 @@ export class ChangeTree<T extends Ref=any> {
         // skip if parent is not set
         if (!parent) { return; }
 
+        // ArraySchema | MapSchema - get the child type
+        const ref = Metadata.isValidInstance(this.ref)
+            ? this.ref
+            : new this.ref[$childType];
+
         if (!Metadata.isValidInstance(parent)) {
             const parentChangeTree = parent[$changes];
             parent = parentChangeTree.parent;
@@ -514,8 +519,15 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         const parentConstructor = parent.constructor as typeof Schema;
-        const parentMetadata = parentConstructor?.[Symbol.metadata];
-        this.isFiltered = parentMetadata?.[$viewFieldIndexes]?.includes(parentIndex) || this.root.types.parentFiltered[`${this.root.types.schemas.get(parentConstructor)}-${parentIndex}`];
+
+        let key = `${this.root.types.getTypeId(ref.constructor as typeof Schema)}`;
+        if (parentConstructor) { key += `-${this.root.types.schemas.get(parentConstructor)}`; }
+        key += `-${parentIndex}`;
+
+        this.isFiltered = this.root.types.parentFiltered[key];
+
+        // const parentMetadata = parentConstructor?.[Symbol.metadata];
+        // this.isFiltered = parentMetadata?.[$viewFieldIndexes]?.includes(parentIndex) || this.root.types.parentFiltered[key];
 
         //
         // TODO: refactor this!
