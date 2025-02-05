@@ -247,7 +247,7 @@ export class Schema {
         const root = rootChangeTree.root;
         const changeTrees: Map<ChangeTree, ChangeTree[]> = new Map();
 
-        let totalInstances = 0;
+        const instanceRefIds = [];
         let totalOperations = 0;
 
         for (const [refId, changes] of Object.entries(root[changeSetName])) {
@@ -272,7 +272,7 @@ export class Schema {
             }
 
             if (includeChangeTree) {
-                totalInstances += 1;
+                instanceRefIds.push(changeTree.refId);
                 totalOperations += Object.keys(changes).length;
                 changeTrees.set(changeTree, parentChangeTrees.reverse());
             }
@@ -280,7 +280,7 @@ export class Schema {
 
         output += "---\n"
         output += `root refId: ${rootChangeTree.refId}\n`;
-        output += `Total instances: ${totalInstances}\n`;
+        output += `Total instances: ${instanceRefIds.length} (refIds: ${instanceRefIds.join(", ")})\n`;
         output += `Total changes: ${totalOperations}\n`;
         output += "---\n"
 

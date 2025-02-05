@@ -2,6 +2,7 @@ import * as assert from "assert";
 import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION } from "../src";
 import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView } from "./Schema";
 import { getDecoderStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
+import { nanoid } from "nanoid";
 
 describe("StateView", () => {
 
@@ -529,6 +530,51 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client1, client2, client3, client4])
         });
 
+        it("should allow later add of whole structure", () => {
+            class Component extends Schema {
+                @type("string") name: string;
+                @type("number") value: number;
+            }
+
+            class Entity extends Schema {
+                @type("string") id: string = nanoid(9);
+                // @type([Component]) components = new ArraySchema<Component>();
+                @type(Component) component;
+            }
+
+            class MyRoomState extends Schema {
+                @view() @type({ map: Entity }) entities = new Map<string, Entity>();
+            }
+
+            const state = new MyRoomState();
+            const encoder = getEncoder(state);
+
+            const entity = new Entity();
+            state.entities.set(entity.id, entity);
+
+            console.log("root changes refIds:", entity[$changes].root.changes.map(c => c.refId));
+            console.log("root allChanges refIds:", entity[$changes].root.allChanges.map(c => c.refId));
+
+            console.log("WILL ASSIGN COMPONENT!");
+            entity.component = new Component();
+
+            console.log("root changes refIds:", entity[$changes].root.changes.map(c => c.refId));
+            console.log("root allChanges refIds:", entity[$changes].root.allChanges.map(c => c.refId));
+
+            console.log(Schema.debugChangesDeep(state));
+
+            // for (let i = 0; i < 1; i++) {
+            //     const entity = new Entity();
+            //     state.entities.set(entity.id, entity);
+            //   }
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            assert.doesNotThrow(() => {
+                encodeMultiple(encoder, state, [client1, client2]);
+            });
+        });
     });
 
     describe("ArraySchema", () => {
@@ -792,10 +838,39 @@ describe("StateView", () => {
         });
     });
 
-    describe("Nested instances", () => {
-        xit("should sync nested instances", () => {
-            class State extends Schema {
-            }
+    describe("checkIsFiltered", () => {
+        /**
+         * prepare a schema with a filtered property
+         */
+        class Component extends Schema {
+            @type("string") name: string;
+            @type("number") value: number;
+        }
+
+        class Entity extends Schema {
+            @type("string") id: string = nanoid(9);
+            @type([Component]) components;
+            @type(Component) component;
+        }
+
+        class MyRoomState extends Schema {
+            @view() @type({ map: Entity }) entities = new Map<string, Entity>();
+            @type(Component) component;
+        }
+
+        it("2nd level of @view() should be identified as 'filtered'", () => {
+            const state = new MyRoomState();
+            const encoder = getEncoder(state);
+
+            assert.strictEqual(false, state[$changes].isFiltered);
+            assert.strictEqual(true, state[$changes].filteredChanges !== undefined);
+
+            const entity = new Entity();
+            state.entities.set("1", entity);
+
+            entity.component = new Component();
+
+            assert.strictEqual(true, entity.component[$changes].isFiltered);
         });
     });
 

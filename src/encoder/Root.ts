@@ -62,7 +62,7 @@ export class Root {
             this.removeChangeFromChangeSet("allChanges", changeTree);
             this.removeChangeFromChangeSet("changes", changeTree);
 
-            if (changeTree.isFiltered || changeTree.isPartiallyFiltered) {
+            if (changeTree.filteredChanges) {
                 this.removeChangeFromChangeSet("allFilteredChanges", changeTree);
                 this.removeChangeFromChangeSet("filteredChanges", changeTree);
             }

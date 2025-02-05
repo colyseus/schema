@@ -11,6 +11,8 @@ import { Root } from "./Root";
 import { Metadata } from "../Metadata";
 import type { EncodeOperation } from "./EncodeOperation";
 import type { DecodeOperation } from "../decoder/DecodeOperation";
+import { TypeContext } from "../types/TypeContext";
+import { ReferenceTracker } from "../decoder/ReferenceTracker";
 
 declare global {
     interface Object {
@@ -79,8 +81,10 @@ export class ChangeTree<T extends Ref=any> {
     parent?: Ref;
     parentIndex?: number;
 
+    /**
+     * Whether this structure is parent of a filtered structure.
+     */
     isFiltered: boolean = false;
-    isPartiallyFiltered: boolean = false;
 
     indexedOperations: IndexedOperations = {};
 
@@ -109,7 +113,8 @@ export class ChangeTree<T extends Ref=any> {
         //
         // Does this structure have "filters" declared?
         //
-        if (ref.constructor[Symbol.metadata]?.[$viewFieldIndexes]) {
+        const metadata = ref.constructor[Symbol.metadata];
+        if (metadata?.[$viewFieldIndexes]) {
             this.allFilteredChanges = { indexes: {}, operations: [] };
             this.filteredChanges = { indexes: {}, operations: [] };
         }
@@ -117,35 +122,10 @@ export class ChangeTree<T extends Ref=any> {
 
     setRoot(root: Root) {
         this.root = root;
-        const isNewChangeTree = this.root.add(this);
-
-        const metadata: Metadata = this.ref.constructor[Symbol.metadata];
-
-        if (this.root.types.hasFilters) {
-            //
-            // At Schema initialization, the "root" structure might not be available
-            // yet, as it only does once the "Encoder" has been set up.
-            //
-            // So the "parent" may be already set without a "root".
-            //
-            this.checkIsFiltered(metadata, this.parent, this.parentIndex);
-
-            if (this.isFiltered || this.isPartiallyFiltered) {
-                enqueueChangeTree(root, this, 'filteredChanges');
-                if (isNewChangeTree) {
-                    this.root.allFilteredChanges.push(this);
-                }
-            }
-        }
-
-        if (!this.isFiltered) {
-            enqueueChangeTree(root, this, 'changes');
-            if (isNewChangeTree) {
-                this.root.allChanges.push(this);
-            }
-        }
+        this.checkIsFiltered(this.parent, this.parentIndex);
 
         // Recursively set root on child structures
+        const metadata: Metadata = this.ref.constructor[Symbol.metadata];
         if (metadata) {
             metadata[$refTypeFieldIndexes]?.forEach((index) => {
                 const field = metadata[index as any as number];
@@ -173,46 +153,22 @@ export class ChangeTree<T extends Ref=any> {
         // avoid setting parents with empty `root`
         if (!root) { return; }
 
-        const metadata: Metadata = this.ref.constructor[Symbol.metadata];
-
         // skip if parent is already set
         if (root !== this.root) {
             this.root = root;
-            const isNewChangeTree = root.add(this);
-
-            if (root.types.hasFilters) {
-                this.checkIsFiltered(metadata, parent, parentIndex);
-
-                if (this.isFiltered || this.isPartiallyFiltered) {
-                    enqueueChangeTree(root, this, 'filteredChanges');
-                    if (isNewChangeTree) {
-                        this.root.allFilteredChanges.push(this);
-                    }
-                }
-            }
-
-            if (!this.isFiltered) {
-                enqueueChangeTree(root, this, 'changes');
-                if (isNewChangeTree) {
-                    this.root.allChanges.push(this);
-                }
-            }
+            this.checkIsFiltered(parent, parentIndex);
 
         } else {
             root.add(this);
         }
 
         // assign same parent on child structures
+        const metadata: Metadata = this.ref.constructor[Symbol.metadata];
         if (metadata) {
             metadata[$refTypeFieldIndexes]?.forEach((index) => {
                 const field = metadata[index as any as number];
                 const value = this.ref[field.name];
                 value?.[$changes].setParent(this.ref, root, index);
-
-                // try { throw new Error(); } catch (e) {
-                //     console.log(e.stack);
-                // }
-
             });
 
         } else if (this.ref[$childType] && typeof(this.ref[$childType]) !== "string") {
@@ -319,7 +275,7 @@ export class ChangeTree<T extends Ref=any> {
         //
         // - ArraySchema#splice()
         //
-        if (this.isFiltered || this.isPartiallyFiltered) {
+        if (this.filteredChanges !== undefined) {
             this._shiftAllChangeIndexes(shiftIndex, startIndex, this.allFilteredChanges);
             this._shiftAllChangeIndexes(shiftIndex, startIndex, this.allChanges);
 
@@ -352,7 +308,7 @@ export class ChangeTree<T extends Ref=any> {
     indexedOperation(index: number, operation: OPERATION, allChangesIndex: number = index) {
         this.indexedOperations[index] = operation;
 
-        if (this.filteredChanges) {
+        if (this.filteredChanges !== undefined) {
             setOperationAtIndex(this.allFilteredChanges, allChangesIndex);
             setOperationAtIndex(this.filteredChanges, index);
             enqueueChangeTree(this.root, this, 'filteredChanges');
@@ -404,7 +360,7 @@ export class ChangeTree<T extends Ref=any> {
             return;
         }
 
-        const changeSet = (this.filteredChanges)
+        const changeSet = (this.filteredChanges !== undefined)
             ? this.filteredChanges
             : this.changes;
 
@@ -423,7 +379,7 @@ export class ChangeTree<T extends Ref=any> {
             // - This is due to using the concrete Schema class at decoding time.
             // - "Reflected" structures do not have this problem.
             //
-            // (the property descriptors should NOT be used at decoding time. only at encoding time.)
+            // (The property descriptors should NOT be used at decoding time. only at encoding time.)
             //
             this.root?.remove(previousValue[$changes]);
         }
@@ -431,7 +387,7 @@ export class ChangeTree<T extends Ref=any> {
         //
         // FIXME: this is looking a ugly and repeated
         //
-        if (this.filteredChanges) {
+        if (this.filteredChanges !== undefined) {
             deleteOperationAtIndex(this.allFilteredChanges, allChangesIndex);
             enqueueChangeTree(this.root, this, 'filteredChanges');
 
@@ -519,19 +475,37 @@ export class ChangeTree<T extends Ref=any> {
         return (Object.entries(this.indexedOperations).length > 0);
     }
 
-    protected checkIsFiltered(metadata: Metadata, parent: Ref, parentIndex: number) {
-        // Detect if current structure has "filters" declared
-        this.isPartiallyFiltered = metadata?.[$viewFieldIndexes] !== undefined;
+    protected checkIsFiltered(parent: Ref, parentIndex: number) {
+        const isNewChangeTree = this.root.add(this);
 
-        if (this.isPartiallyFiltered) {
-            this.filteredChanges = this.filteredChanges || { indexes: {}, operations: [] };
-            this.allFilteredChanges = this.allFilteredChanges || { indexes: {}, operations: [] };
+        if (this.root.types.hasFilters) {
+            //
+            // At Schema initialization, the "root" structure might not be available
+            // yet, as it only does once the "Encoder" has been set up.
+            //
+            // So the "parent" may be already set without a "root".
+            //
+            this._checkFilteredByParent(parent, parentIndex);
+
+            if (this.filteredChanges !== undefined) {
+                enqueueChangeTree(this.root, this, 'filteredChanges');
+                if (isNewChangeTree) {
+                    this.root.allFilteredChanges.push(this);
+                }
+            }
         }
 
+        if (!this.isFiltered) {
+            enqueueChangeTree(this.root, this, 'changes');
+            if (isNewChangeTree) {
+                this.root.allChanges.push(this);
+            }
+        }
+    }
+
+    protected _checkFilteredByParent(parent: Ref, parentIndex: number) {
         // skip if parent is not set
-        if (!parent) {
-            return;
-        }
+        if (!parent) { return; }
 
         if (!Metadata.isValidInstance(parent)) {
             const parentChangeTree = parent[$changes];
@@ -539,14 +513,16 @@ export class ChangeTree<T extends Ref=any> {
             parentIndex = parentChangeTree.parentIndex;
         }
 
-        const parentMetadata = parent.constructor?.[Symbol.metadata];
-        this.isFiltered = parentMetadata?.[$viewFieldIndexes]?.includes(parentIndex);
+        const parentConstructor = parent.constructor as typeof Schema;
+        const parentMetadata = parentConstructor?.[Symbol.metadata];
+        this.isFiltered = parentMetadata?.[$viewFieldIndexes]?.includes(parentIndex) || this.root.types.parentFiltered[`${this.root.types.schemas.get(parentConstructor)}-${parentIndex}`];
 
         //
         // TODO: refactor this!
         //
         //      swapping `changes` and `filteredChanges` is required here
         //      because "isFiltered" may not be imedialely available on `change()`
+        //      (this happens when instance is detached from root or parent)
         //
         if (this.isFiltered) {
             this.filteredChanges = { indexes: {}, operations: [] };
@@ -562,11 +538,6 @@ export class ChangeTree<T extends Ref=any> {
                 const allFilteredChanges = this.allFilteredChanges;
                 this.allFilteredChanges = this.allChanges;
                 this.allChanges = allFilteredChanges;
-
-                // console.log("SWAP =>", {
-                //     "this.allFilteredChanges": this.allFilteredChanges,
-                //     "this.allChanges": this.allChanges
-                // })
             }
         }
     }

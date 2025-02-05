@@ -79,7 +79,7 @@ export class StateView {
 
         } else {
             const isInvisible = this.invisible.has(changeTree);
-            const changeSet = (changeTree.isFiltered || changeTree.isPartiallyFiltered)
+            const changeSet = (changeTree.filteredChanges !== undefined)
                 ? changeTree.allFilteredChanges
                 : changeTree.allChanges;
 
@@ -119,8 +119,8 @@ export class StateView {
         this.items.add(changeTree);
 
         // add parent's parent
-        const parentChangeTree = changeTree.parent?.[$changes];
-        if (parentChangeTree && (parentChangeTree.isFiltered || parentChangeTree.isPartiallyFiltered)) {
+        const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
+        if (parentChangeTree && (parentChangeTree.filteredChanges !== undefined)) {
             this.addParent(parentChangeTree, changeTree.parentIndex, tag);
         }
 
