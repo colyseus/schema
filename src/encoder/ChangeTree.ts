@@ -508,9 +508,9 @@ export class ChangeTree<T extends Ref=any> {
         if (!parent) { return; }
 
         // ArraySchema | MapSchema - get the child type
-        const ref = Metadata.isValidInstance(this.ref)
-            ? this.ref
-            : new this.ref[$childType];
+        const refType = Metadata.isValidInstance(this.ref)
+            ? this.ref.constructor
+            : this.ref[$childType];
 
         if (!Metadata.isValidInstance(parent)) {
             const parentChangeTree = parent[$changes];
@@ -520,7 +520,7 @@ export class ChangeTree<T extends Ref=any> {
 
         const parentConstructor = parent.constructor as typeof Schema;
 
-        let key = `${this.root.types.getTypeId(ref.constructor as typeof Schema)}`;
+        let key = `${this.root.types.getTypeId(refType as typeof Schema)}`;
         if (parentConstructor) { key += `-${this.root.types.schemas.get(parentConstructor)}`; }
         key += `-${parentIndex}`;
 
