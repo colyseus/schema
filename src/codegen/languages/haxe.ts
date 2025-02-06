@@ -106,6 +106,9 @@ function generateProperty(prop: Property) {
         initializer = typeInitializer[prop.type];
     }
 
+    // TODO: remove initializer. The callbacks at the Haxe decoder side have a
+    // "FIXME" comment about this on Decoder.hx
+
     return `\t@:type(${typeArgs})\n\tpublic var ${prop.name}: ${langType} = ${initializer};\n`
     // return `\t@:type(${typeArgs})\n\tpublic var ${prop.name}: ${langType};\n`
 }
