@@ -106,6 +106,6 @@ function generateProperty(prop: Property) {
         initializer = typeInitializer[prop.type];
     }
 
-    // return `\t@:type(${typeArgs})\n\tpublic var ${prop.name}: ${langType} = ${initializer};\n`
-    return `\t@:type(${typeArgs})\n\tpublic var ${prop.name}: ${langType};\n`
+    return `\t@:type(${typeArgs})\n\tpublic var ${prop.name}: ${langType} = ${initializer};\n`
+    // return `\t@:type(${typeArgs})\n\tpublic var ${prop.name}: ${langType};\n`
 }
