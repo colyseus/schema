@@ -50,7 +50,7 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
 
     return `${getCommentHeader().replace(/\/\//mg, "--")}
 
-local schema = require 'colyseus.serialization.schema.schema'
+local schema = require 'colyseus.serializer.schema.schema'
 ${allRefs.
     filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
     map(ref => ref.childType).
