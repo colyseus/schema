@@ -852,9 +852,17 @@ describe("StateView", () => {
             @type("number") value: number;
         }
 
+        class ListComponent extends Component {
+            @type(["string"]) list = new ArraySchema<string>();
+        }
+
+        class TagComponent extends Component {
+            @type("string") tag: string;
+        }
+
         class Entity extends Schema {
             @type("string") id: string = nanoid(9);
-            @type([Component]) components;
+            @type([Component]) components = new ArraySchema<Component>();
             @type(Component) component;
         }
 
@@ -863,7 +871,7 @@ describe("StateView", () => {
             @type(Component) component;
         }
 
-        it("2nd level of @view() should be identified as 'filtered'", () => {
+        it.only("2nd level of @view() should be identified as 'filtered'", () => {
             const state = new MyRoomState();
             const encoder = getEncoder(state);
 
@@ -873,16 +881,28 @@ describe("StateView", () => {
             const entity = new Entity();
             state.entities.set("1", entity);
 
+            entity.components.push(new Component());
+            assert.strictEqual(entity.components[0][$changes].isFiltered, true);
+
+            entity.components.push(new TagComponent());
+            assert.strictEqual(entity.components[1][$changes].isFiltered, true);
+
+            entity.components.push(new ListComponent().assign({list: new ArraySchema("one", "two")}));
+            assert.strictEqual(entity.components[2][$changes].isFiltered, true);
+
             entity.component = new Component();
             assert.strictEqual(true, entity.component[$changes].isFiltered);
             assert.strictEqual(encoder.context.debug(), `TypeContext ->
-	Schema types: 3
+	Schema types: 5
 	hasFilters: true
 	parentFiltered:
 		1-0-0: MyRoomState[entities] -> Entity
 		2-1-1: Entity[components] -> Component
+		3-1-1: Entity[components] -> ListComponent
+		4-1-1: Entity[components] -> TagComponent
 		2-1-2: Entity[component] -> Component`);
         });
+
     });
 
 });

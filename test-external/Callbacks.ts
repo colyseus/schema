@@ -31,6 +31,7 @@ let bytes = Array.from(Uint8Array.from(Buffer.from(encoder.encode())));
 
 console.log("(initial) Callbacks =>");
 console.log(`{ ${bytes.join(", ")} }`);
+console.log("-> ", Schema.debugRefIds(state));
 
 state.container.playersMap.set("one", new Player().assign({
     position: new Vec3(),
@@ -54,6 +55,7 @@ bytes = Array.from(Uint8Array.from(Buffer.from( encoder.encode() )));
 
 console.log("(1st encode) Callbacks =>");
 console.log(`{ ${bytes.join(", ")} }`);
+console.log("-> ", Schema.debugRefIds(state));
 
 // ... delete 2 items (from player "one")
 state.container.playersMap.get("one")!.items.delete("item-1");
@@ -77,6 +79,7 @@ state.container.playersMap.set("three", new Player().assign({
 bytes = Array.from(Uint8Array.from(Buffer.from( encoder.encode() )));
 console.log("(2nd encode - remove 1 player; remove 2 items; add new player) Callbacks =>");
 console.log(`{ ${bytes.join(", ")} }`);
+console.log("-> ", Schema.debugRefIds(state));
 
 state.container = new Container();
 state.container.playersMap.set("last", new Player().assign({
@@ -89,3 +92,4 @@ state.container.playersMap.set("last", new Player().assign({
 bytes = Array.from(Uint8Array.from(Buffer.from( encoder.encode() )));
 console.log("(new container) Callbacks =>");
 console.log(`{ ${bytes.join(", ")} }`);
+console.log("-> ", Schema.debugRefIds(state));

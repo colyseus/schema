@@ -79,7 +79,7 @@ export class TypeContext {
 
         // add classes inherited from this base class
         TypeContext.inheritedTypes.get(klass)?.forEach((child) => {
-            this.discoverTypes(child, klass, parentIndex, parentHasViewTag);
+            this.discoverTypes(child, parentType, parentIndex, parentHasViewTag);
         });
 
         // add parent classes
