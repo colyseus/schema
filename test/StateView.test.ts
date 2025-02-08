@@ -875,6 +875,8 @@ describe("StateView", () => {
             const state = new MyRoomState();
             const encoder = getEncoder(state);
 
+            const contextDebug = encoder.context.debug();
+
             assert.strictEqual(false, state[$changes].isFiltered);
             assert.strictEqual(true, state[$changes].filteredChanges !== undefined);
 
@@ -892,7 +894,12 @@ describe("StateView", () => {
 
             entity.component = new Component();
             assert.strictEqual(true, entity.component[$changes].isFiltered);
-            assert.strictEqual(encoder.context.debug(), `TypeContext ->
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(contextDebug, `TypeContext ->
 	Schema types: 5
 	hasFilters: true
 	parentFiltered:
@@ -901,6 +908,8 @@ describe("StateView", () => {
 		3-1-1: Entity[components] -> ListComponent
 		4-1-1: Entity[components] -> TagComponent
 		2-1-2: Entity[component] -> Component`);
+
+
         });
 
     });
