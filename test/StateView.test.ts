@@ -871,7 +871,7 @@ describe("StateView", () => {
             @type(Component) component;
         }
 
-        it.only("2nd level of @view() should be identified as 'filtered'", () => {
+        it("2nd level of @view() should be identified as 'filtered'", () => {
             const state = new MyRoomState();
             const encoder = getEncoder(state);
 

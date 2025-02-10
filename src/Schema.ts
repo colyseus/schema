@@ -174,17 +174,24 @@ export class Schema {
         this[metadata[index].name] = undefined;
     }
 
-    static debugRefIds(instance: Ref, jsonContents: boolean = true, level: number = 0) {
+    /**
+     * Inspect the `refId` of all Schema instances in the tree. Optionally display the contents of the instance.
+     *
+     * @param instance Schema instance
+     * @param showContents display JSON contents of the instance
+     * @returns
+     */
+    static debugRefIds(instance: Ref, showContents: boolean = false, level: number = 0) {
         const ref = instance;
         const changeTree = ref[$changes];
 
-        const contents = (jsonContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
+        const contents = (showContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
 
         let output = "";
         output += `${getIndent(level)}${ref.constructor.name} (refId: ${ref[$changes].refId})${contents}\n`;
 
         changeTree.forEachChild((childChangeTree) =>
-            output += this.debugRefIds(childChangeTree.ref, jsonContents, level + 1));
+            output += this.debugRefIds(childChangeTree.ref, showContents, level + 1));
 
         return output;
     }
