@@ -1,4 +1,4 @@
-import { Schema, type, ArraySchema, MapSchema } from "../src";
+import { Schema, type, ArraySchema, MapSchema, Encoder } from "../src";
 
 class Position extends Schema {
     @type("number") x: number;
@@ -17,6 +17,7 @@ class State extends Schema {
 }
 
 const state = new State();
+const encoder = new Encoder(state);
 
 const player1 = new Player().assign({
     position: new Position().assign({ x: 10, y: 10 })
@@ -25,12 +26,14 @@ const player1 = new Player().assign({
 state.player1 = player1;
 state.player2 = player1;
 
-console.log(`InstanceSharingTypes => { ${state.encodeAll().join(", ")} }`);
+console.log(`InstanceSharingTypes => { ${encoder.encodeAll().join(", ")} }`);
+encoder.discardChanges();
 
 state.player1 = undefined;
 state.player2 = undefined;
 
-console.log(`InstanceSharingTypes => { ${state.encode().join(", ")} }`);
+console.log(`InstanceSharingTypes => { ${encoder.encode().join(", ")} }`);
+encoder.discardChanges();
 
 const player2 = new Player().assign({
      position: new Position().assign({ x: 10, y: 10 })
@@ -44,19 +47,25 @@ const player3 = new Player().assign({
 });
 state.arrayOfPlayers.push(player3);
 
-console.log(`InstanceSharingTypes => { ${state.encode().join(", ")} }`);
+console.log(`InstanceSharingTypes => { ${encoder.encode().join(", ")} }`);
+encoder.discardChanges();
 
 state.arrayOfPlayers.pop();
 state.arrayOfPlayers.pop();
 state.arrayOfPlayers.pop();
 
-console.log(`InstanceSharingTypes => { ${state.encode().join(", ")} }`);
+console.log(`InstanceSharingTypes => { ${encoder.encode().join(", ")} }`);
+encoder.discardChanges();
 
 // replace ArraySchema
 state.arrayOfPlayers = new ArraySchema<Player>();
 state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 10, y: 20 }) }));
 
-console.log(`InstanceSharingTypes => { ${state.encode().join(", ")} }`);
+console.log(`InstanceSharingTypes => { ${encoder.encode().join(", ")} }`);
+encoder.discardChanges();
+
+console.log(Schema.debugRefIds(state))
 
 state.arrayOfPlayers.clear();
-console.log(`InstanceSharingTypes => { ${state.encode().join(", ")} }`);
+console.log(`InstanceSharingTypes => { ${encoder.encode().join(", ")} }`);
+encoder.discardChanges();
