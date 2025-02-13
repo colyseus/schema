@@ -350,24 +350,33 @@ describe("ArraySchema Tests", () => {
                 ]
             }));
 
-            const decodedState = createInstanceFromReflection(state);
-            decodedState.decode(state.encode());
-
-            state.numericModifiers.push(...state.races[0].numericModifiers);
-            decodedState.decode(state.encode());
-            console.log(decodedState.numericModifiers.toJSON());
-
-            state.numericModifiers.forEach((mod, i) => {
-                console.log({i, mod});
-                if (i % 2 === 0) {
+            function removeByRace(race: Race) {
+                race.numericModifiers.forEach(mod => {
                     const index = state.numericModifiers.indexOf(mod);
                     if (index !== -1) {
                         state.numericModifiers.splice(index, 1);
                     }
-                }
-            });
+                })
+            }
 
+            function addByRace(race: Race) {
+                state.numericModifiers.push(...race.numericModifiers);
+            }
+
+            const decodedState = createInstanceFromReflection(state);
             decodedState.decode(state.encode());
+
+            addByRace(state.races[0]);
+            decodedState.decode(state.encode());
+            console.log(decodedState.numericModifiers.toJSON());
+
+            removeByRace(state.races[0]);
+            addByRace(state.races[1]);
+
+            removeByRace(state.races[1]);
+            addByRace(state.races[0]);
+            decodedState.decode(state.encode());
+
             console.log(decodedState.numericModifiers.toJSON());
 
         });
