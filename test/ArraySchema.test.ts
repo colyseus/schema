@@ -309,6 +309,70 @@ describe("ArraySchema Tests", () => {
         });
     });
 
+    describe("complex combination of mutations", () => {
+        it.only("adding and removing shared items", () => {
+            class Modifier extends Schema {
+                @type("string") key: string;
+                @type("number") value: number;
+            }
+
+            class NumericModifier extends Modifier {
+                @type("string") operator: string;
+                @type("number") priority: number;
+            }
+
+            class Race extends Schema {
+                @type([NumericModifier]) numericModifiers = new ArraySchema<NumericModifier>();
+            }
+
+            class MyState extends Schema {
+                @type([NumericModifier]) numericModifiers = new ArraySchema<NumericModifier>();
+                @type([Race]) races = new ArraySchema<Race>();
+            }
+
+            const state = new MyState();
+
+            state.races.push(new Race().assign({
+                numericModifiers: [
+                    new NumericModifier().assign({ key: "attr1", value: 10, operator: "+", priority: 0 }),
+                    new NumericModifier().assign({ key: "attr2", value: 5, operator: "+", priority: 1 }),
+                    new NumericModifier().assign({ key: "attr3", value: 7, operator: "+", priority: 2 }),
+                    new NumericModifier().assign({ key: "attr4", value: 2, operator: "-", priority: 2 }),
+                ]
+            }));
+
+            state.races.push(new Race().assign({
+                numericModifiers: [
+                    new NumericModifier().assign({ key: "attr1", value: 5, operator: "+", priority: 0 }),
+                    new NumericModifier().assign({ key: "attr2", value: 10, operator: "-", priority: 1 }),
+                    new NumericModifier().assign({ key: "attr3", value: 3, operator: "-", priority: 2 }),
+                    new NumericModifier().assign({ key: "attr4", value: 1, operator: "+", priority: 2 }),
+                ]
+            }));
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            state.numericModifiers.push(...state.races[0].numericModifiers);
+            decodedState.decode(state.encode());
+            console.log(decodedState.numericModifiers.toJSON());
+
+            state.numericModifiers.forEach((mod, i) => {
+                console.log({i, mod});
+                if (i % 2 === 0) {
+                    const index = state.numericModifiers.indexOf(mod);
+                    if (index !== -1) {
+                        state.numericModifiers.splice(index, 1);
+                    }
+                }
+            });
+
+            decodedState.decode(state.encode());
+            console.log(decodedState.numericModifiers.toJSON());
+
+        });
+    });
+
     describe("ArraySchema#unshift()", () => {
         it("only unshift", () => {
             class State extends Schema {
