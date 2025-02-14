@@ -1009,6 +1009,33 @@ describe("Type: Schema", () => {
             decoded.decode(state.encode());
             assert.deepEqual({one: "hello"}, decoded.map.toJSON());
         });
+
+        it("should support high number of refId", () => {
+            class Entity extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+            }
+
+            class MyState extends Schema {
+                @type({map: Entity}) entities = new MapSchema<Entity>();
+            }
+
+            const state = new MyState();
+
+            const encoder = getEncoder(state);
+            encoder.root['nextUniqueId'] = Number.MAX_SAFE_INTEGER - 1;
+
+            state.entities.set('one', new Entity().assign({ x: 1, y: 1 }));
+            state.entities.set('two', new Entity().assign({ x: 2, y: 2 }));
+            state.entities.set('three', new Entity().assign({ x: 3, y: 3 }));
+            state.entities.set('four', new Entity().assign({ x: 4, y: 4 }));
+            state.entities.set('five', new Entity().assign({ x: 5, y: 5 }));
+
+            const decodedState = new MyState();
+            decodedState.decode(state.encode());
+
+            console.log(decodedState.toJSON());
+        });
     })
 
     describe("encoder: encodeAll", () => {
