@@ -1,4 +1,4 @@
-import { type, PrimitiveType, DefinitionType } from "./annotations";
+import { type, PrimitiveType } from "./annotations";
 import { TypeContext } from "./types/TypeContext";
 import { Metadata } from "./Metadata";
 import { ArraySchema } from "./types/custom/ArraySchema";
@@ -6,7 +6,6 @@ import { Iterator } from "./encoding/decode";
 import { Encoder } from "./encoder/Encoder";
 import { Decoder } from "./decoder/Decoder";
 import { Schema } from "./Schema";
-import { $numFields } from "./types/symbols";
 
 /**
  * Reflection
