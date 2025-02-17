@@ -59,8 +59,15 @@ function generateClass(klass: Class, namespace: string) {
     return `${getCommentHeader()}
 
 using Colyseus.Schema;
+#if UNITY_5_3_OR_NEWER
+using UnityEngine.Scripting;
+#endif
 ${namespace ? `\nnamespace ${namespace} {` : ""}
 ${indent}public partial class ${klass.name} : ${klass.extends} {
+#if UNITY_5_3_OR_NEWER
+[Preserve]
+#endif
+public ${klass.name}() { }
 ${klass.properties.map((prop) => generateProperty(prop, indent)).join("\n\n")}
 ${indent}}
 ${namespace ? "}" : ""}
