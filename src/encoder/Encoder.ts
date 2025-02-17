@@ -7,13 +7,12 @@ import type { Iterator } from "../encoding/decode";
 
 import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Root } from "./Root";
-import { getNextPowerOf2 } from "../utils";
 
 import type { StateView } from "./StateView";
 import type { Metadata } from "../Metadata";
 
 export class Encoder<T extends Schema = any> {
-    static BUFFER_SIZE = Buffer.poolSize ?? 8 * 1024; // 8KB
+    static BUFFER_SIZE = (typeof(Buffer) !== "undefined") && Buffer.poolSize || 8 * 1024; // 8KB
     sharedBuffer = Buffer.allocUnsafe(Encoder.BUFFER_SIZE);
 
     context: TypeContext;
@@ -119,7 +118,7 @@ export class Encoder<T extends Schema = any> {
             // we can assume that n + 1 poolSize will suffice given that we are likely done with encoding at this point
             // multiples of poolSize are faster to allocate than arbitrary sizes
             // if we are on an older platform that doesn't implement pooling use 8kb as poolSize (that's the default for node)
-            const newSize = Math.ceil(it.offset / (Buffer.poolSize ?? 8 * 1024)) * (Buffer.poolSize ?? 8 * 1024);            
+            const newSize = Math.ceil(it.offset / (Buffer.poolSize ?? 8 * 1024)) * (Buffer.poolSize ?? 8 * 1024);
 
             console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
 
