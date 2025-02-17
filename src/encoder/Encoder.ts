@@ -13,8 +13,8 @@ import type { StateView } from "./StateView";
 import type { Metadata } from "../Metadata";
 
 export class Encoder<T extends Schema = any> {
-    static BUFFER_SIZE = 8 * 1024;// 8KB
-    sharedBuffer = Buffer.allocUnsafeSlow(Encoder.BUFFER_SIZE);
+    static BUFFER_SIZE = Buffer.poolSize ?? 8 * 1024; // 8KB
+    sharedBuffer = Buffer.allocUnsafe(Encoder.BUFFER_SIZE);
 
     context: TypeContext;
     state: T;
@@ -116,7 +116,11 @@ export class Encoder<T extends Schema = any> {
         }
 
         if (it.offset > buffer.byteLength) {
-            const newSize = getNextPowerOf2(buffer.byteLength * 2);
+            // we can assume that n + 1 poolSize will suffice given that we are likely done with encoding at this point
+            // multiples of poolSize are faster to allocate than arbitrary sizes
+            // if we are on an older platform that doesn't implement pooling use 8kb as poolSize (that's the default for node)
+            const newSize = Math.ceil(it.offset / (Buffer.poolSize ?? 8 * 1024)) * (Buffer.poolSize ?? 8 * 1024);            
+
             console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
 
     import { Encoder } from "@colyseus/schema";
@@ -125,8 +129,9 @@ export class Encoder<T extends Schema = any> {
 
             //
             // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
+            // -> No we probably can't unless we catch the need for resize before encoding which is likely more computationally expensive than resizing on demand
             //
-            buffer = Buffer.alloc(newSize);
+            buffer = Buffer.alloc(newSize, buffer); // fill with buffer here to memcpy previous encoding steps beyond the initialOffset
 
             // assign resized buffer to local sharedBuffer
             if (buffer === this.sharedBuffer) {
