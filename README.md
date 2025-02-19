@@ -9,13 +9,14 @@
 
 # Features
 
-- Flexible Schema Definition
-- Optimized Data Encoding
-- Automatic State Synchronization
-- Client-side Change Detection
-- Per-client portions of the state
-- Type Safety
-- *...decoders available for multiple languages (C#, Lua, Haxe)*
+- **Incremental State Synchronization**: Send only the properties that have changed.
+- **Trigger Callbacks at Decoding**: [Bring your own](https://docs.colyseus.io/state/callbacks/custom) callback system at decoding, or use the built-in one.
+- **Instance Reference Tracking**: Share references of the same instance across the state.
+- **State Views**: Filter properties that should be sent only to specific clients.
+- **Reflection**: Encode/Decode schema definitions.
+- **Schema Generation**: Generate client-side schema files for strictly typed languages.
+- **Type Safety**: Strictly typed schema definitions.
+- **Multiple Language Support**: Decoders available for multiple languages ([C#](https://github.com/colyseus/colyseus-unity-sdk/tree/master/Assets/Colyseus/Runtime/Colyseus/Serializer/Schema), [Lua](https://github.com/colyseus/colyseus-defold/tree/master/colyseus/serializer/schema), [Haxe](https://github.com/colyseus/colyseus-haxe/tree/master/src/io/colyseus/serializer/schema)).
 
 ## Schema definition
 
