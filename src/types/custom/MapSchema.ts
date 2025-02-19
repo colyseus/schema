@@ -9,11 +9,11 @@ import type { StateView } from "../../encoder/StateView";
 import type { Schema } from "../../Schema";
 import { assertInstanceType } from "../../encoding/assert";
 
-export class MapSchema<V=any> implements Map<string, V>, Collection<string, V, [string, V]> {
+export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]> {
     protected childType: new () => V;
 
-    protected $items: Map<string, V> = new Map<string, V>();
-    protected $indexes: Map<number, string> = new Map<number, string>();
+    protected $items: Map<K, V> = new Map<K, V>();
+    protected $indexes: Map<number, K> = new Map<number, K>();
 
     protected [$changes]: ChangeTree;
 
@@ -41,7 +41,7 @@ export class MapSchema<V=any> implements Map<string, V>, Collection<string, V, [
         return type['map'] !== undefined;
     }
 
-    constructor (initialValues?: Map<string, V> | Record<string, V>) {
+    constructor (initialValues?: Map<K, V> | Record<K, V>) {
         this[$changes] = new ChangeTree(this);
         this[$changes].indexes = {};
 
@@ -68,12 +68,12 @@ export class MapSchema<V=any> implements Map<string, V>, Collection<string, V, [
     }
 
     /** Iterator */
-    [Symbol.iterator](): IterableIterator<[string, V]> { return this.$items[Symbol.iterator](); }
+    [Symbol.iterator](): IterableIterator<[K, V]> { return this.$items[Symbol.iterator](); }
     get [Symbol.toStringTag]() { return this.$items[Symbol.toStringTag] }
 
     static get [Symbol.species]() { return MapSchema; }
 
-    set(key: string, value: V) {
+    set(key: K, value: V) {
         if (value === undefined || value === null) {
             throw new Error(`MapSchema#set('${key}', ${value}): trying to set ${value} value on '${key}'.`);
 
@@ -83,7 +83,7 @@ export class MapSchema<V=any> implements Map<string, V>, Collection<string, V, [
 
         // Force "key" as string
         // See: https://github.com/colyseus/colyseus/issues/561#issuecomment-1646733468
-        key = key.toString() as string;
+        key = key.toString() as K;
 
         const changeTree = this[$changes];
 
@@ -138,11 +138,11 @@ export class MapSchema<V=any> implements Map<string, V>, Collection<string, V, [
         return this;
     }
 
-    get(key: string): V | undefined {
+    get(key: K): V | undefined {
         return this.$items.get(key);
     }
 
-    delete(key: string) {
+    delete(key: K) {
         const index = this[$changes].indexes[key];
 
         this[$changes].delete(index);
@@ -166,11 +166,11 @@ export class MapSchema<V=any> implements Map<string, V>, Collection<string, V, [
         changeTree.operation(OPERATION.CLEAR);
     }
 
-    has (key: string) {
+    has (key: K) {
         return this.$items.has(key);
     }
 
-    forEach(callbackfn: (value: V, key: string, map: Map<string, V>) => void) {
+    forEach(callbackfn: (value: V, key: K, map: Map<K, V>) => void) {
         this.$items.forEach(callbackfn);
     }
 
@@ -190,7 +190,7 @@ export class MapSchema<V=any> implements Map<string, V>, Collection<string, V, [
         return this.$items.size;
     }
 
-    protected setIndex(index: number, key: string) {
+    protected setIndex(index: number, key: K) {
         this.$indexes.set(index, key);
     }
 
