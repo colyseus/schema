@@ -79,12 +79,15 @@ type CollectionCallback<K, V> = {
      */
     onRemove(callback: (item: V, index: K) => void): () => void;
 
-    // /**
-    //  * Trigger callback when an item has been removed to the collection.
-    //  *
-    //  * @param callback
-    //  */
-    // onChange(callback: (item: V, index: K) => void): void;
+    /**
+     * Trigger callback when the value on a key has changed.
+     *
+     * THIS METHOD IS NOT RECURSIVE!
+     * If you want to listen to changes on individual items, you need to attach callbacks to the them directly inside the `onAdd` callback.
+     *
+     * @param callback
+     */
+    onChange(callback: (item: V, index: K) => void): void;
 };
 
 type OnInstanceAvailableCallback = (callback: (ref: Ref, existing: boolean) => void) => void;
@@ -190,7 +193,12 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 }
 
                 // trigger onChange
-                if (change.value !== change.previousValue) {
+                if (
+                    change.value !== change.previousValue &&
+                    // FIXME: see "should not encode item if added and removed at the same patch" test case.
+                    // some "ADD" + "DELETE" operations on same patch are being encoded as "DELETE"
+                    (change.value !== undefined || change.previousValue !== undefined)
+                ) {
                     const replaceCallbacks = $callbacks[OPERATION.REPLACE];
                     for (let i = replaceCallbacks?.length - 1; i >= 0; i--) {
                         replaceCallbacks[i](change.value, change.dynamicIndex ?? change.field);
@@ -339,6 +347,10 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 return $root.addCallback($root.refIds.get(ref), OPERATION.DELETE, callback);
             };
 
+            const onChange = function (ref: Ref, callback: (value: any, key: any) => void) {
+                return $root.addCallback($root.refIds.get(ref), OPERATION.REPLACE, callback);
+            };
+
             return new Proxy({
                 onAdd: function(callback: (value, key) => void, immediate: boolean = true) {
                     //
@@ -375,6 +387,21 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                         return onRemove(context.instance, callback);
                     }
                 },
+                onChange: function(callback: (value, key) => void) {
+                    if (context.onInstanceAvailable) {
+                        // collection instance not received yet
+                        let detachCallback = () => {};
+
+                        context.onInstanceAvailable((ref: Ref) => {
+                            detachCallback = onChange(ref, callback)
+                        });
+
+                        return () => detachCallback();
+
+                    } else if (context.instance) {
+                        return onChange(context.instance, callback);
+                    }
+                },
             }, {
                 get(target, prop: string) {
                     if (!target[prop]) {
@@ -390,7 +417,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
     }
 
     function $<T>(instance: T): CallbackProxy<T> {
-        return getProxy(undefined, { instance }) as CallbackProxy<T>;
+        return getProxy(undefined, { instance }) as unknown as CallbackProxy<T>;
     }
 
     return $;

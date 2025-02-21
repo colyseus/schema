@@ -75,7 +75,7 @@ export function decodeValue(
             // });
         }
 
-        value = null;
+        value = undefined;
     }
 
     if (operation === OPERATION.DELETE) {

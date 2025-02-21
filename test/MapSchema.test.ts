@@ -372,7 +372,7 @@ describe("Type: MapSchema", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
-    it("should not encode item if added and removed at the same patch", () => {
+    it("should not encode item if added and removed at the same patch (Schema child)", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>();
         state.mapOfPlayers.set('one', new Player("Jake", 10, 10));
@@ -383,9 +383,10 @@ describe("Type: MapSchema", () => {
 
         let onRemoveCalls = 0;
         let onAddCalls = 0;
-
-        $(decodedState).mapOfPlayers.onRemove(() => onRemoveCalls++);
-        $(decodedState).mapOfPlayers.onAdd(() => onAddCalls++);
+        let onChangeCalls = 0;
+        $(decodedState).mapOfPlayers.onRemove((value, key) => onRemoveCalls++);
+        $(decodedState).mapOfPlayers.onAdd((_, key) => onAddCalls++);
+        $(decodedState).mapOfPlayers.onChange((_, key) => onChangeCalls++);
 
         decodedState.decode(state.encode());
 
@@ -396,9 +397,9 @@ describe("Type: MapSchema", () => {
         const patchBytes = state.encode();
 
         //
-        // TODO: improve me! `DELETE` operation should not be encoded here.
-        // this test conflicts with encodeAll() + encode() for other structures, where DELETE operation is necessary.
-        // // assert.deepStrictEqual([ 4, 1, 0, 1, 11, 193 ], patchBytes);
+        // TODO / FIXME: There's an additional 2 bytes for the "remove" operation here, even though no "add" was made.
+        // (the "ADD" + "DELETE" operations on same patch are being encoded as "DELETE")
+        // // assert.deepStrictEqual([ 255, 2, 129, 11, 255, 1 ], Array.from(patchBytes));
         //
 
         decodedState.decode(patchBytes);
@@ -408,8 +409,56 @@ describe("Type: MapSchema", () => {
         state.mapOfPlayers.delete('one');
 
         decodedState.decode(state.encode());
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
 
         assert.strictEqual(1, onRemoveCalls);
+        assert.strictEqual(1, onAddCalls);
+        assert.strictEqual(2, onChangeCalls);
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
+    it("should not encode item if added and removed at the same patch (primitive child)", () => {
+        class MyState extends Schema {
+            @type({ map: "string" }) mapOfStrings = new MapSchema<string>();
+        }
+        const state = new MyState();
+        state.mapOfStrings.set('one', "one");
+
+        const decodedState = new MyState();
+        const $ = getCallbacks(decodedState);
+
+        let onRemoveCalls = 0;
+        let onAddCalls = 0;
+        let onChangeCalls = 0;
+        $(decodedState).mapOfStrings.onRemove(() => onRemoveCalls++);
+        $(decodedState).mapOfStrings.onAdd(() => onAddCalls++);
+        $(decodedState).mapOfStrings.onChange(() => onChangeCalls++);
+
+        decodedState.decode(state.encode());
+
+        state.mapOfStrings.set('two', "two");
+        state.mapOfStrings.delete('two');
+
+        const patchBytes = state.encode();
+
+        //
+        // TODO / FIXME: There's an additional 2 bytes for the "remove" operation here, even though no "add" was made.
+        // (the "ADD" + "DELETE" operations on same patch are being encoded as "DELETE")
+        // // assert.deepStrictEqual([ 255, 2, 129, 11, 255, 1 ], Array.from(patchBytes));
+        //
+
+        decodedState.decode(patchBytes);
+        assert.strictEqual(0, onRemoveCalls);
+
+        state.mapOfStrings.delete('one');
+
+        decodedState.decode(state.encode());
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+
+        assert.strictEqual(1, onRemoveCalls);
+        assert.strictEqual(1, onAddCalls);
+        assert.strictEqual(2, onChangeCalls);
 
         assertDeepStrictEqualEncodeAll(state);
     });
