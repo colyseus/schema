@@ -114,17 +114,19 @@ describe("ArraySchema Tests", () => {
         const $ = getCallbacks(decodedState);
 
         let onAddCount = 0;
-        $(decodedState).items.onAdd(() => onAddCount++);
-
         let onRemoveCount = 0;
+        let onChangeCount = 0;
         let removedItem: Item;
-        $(decodedState).items.onRemove((item, index) => {
+        $(decodedState).items.onAdd(() => onAddCount++);
+        $(decodedState).items.onChange(() => onChangeCount++);
+        $(decodedState).items.onRemove((item) => {
             removedItem = item;
             onRemoveCount++;
         });
 
         decodedState.decode(state.encodeAll());
         assert.strictEqual(5, onAddCount);
+        assert.strictEqual(5, onChangeCount);
 
         // state.items.shift();
         state.items.splice(0, 1);
@@ -132,6 +134,7 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encode());
 
         assert.strictEqual(1, onRemoveCount);
+        assert.strictEqual(6, onChangeCount);
         assert.deepStrictEqual(["B", "C", "D", "E"], decodedState.items.map(it => it.name))
         assert.strictEqual("A", removedItem.name);
 
@@ -1238,6 +1241,43 @@ describe("ArraySchema Tests", () => {
         decodedState.player.items.forEach((item, index) => {
             assert.strictEqual(item.name, `Item ${expectedB[index]}`);
         })
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
+    xit("TODO: fix 'Decode warning: trying to remove refId that doesn't exist'", () => {
+        class Item extends Schema {
+            @type("string") name: string;
+            constructor(name) {
+                super();
+                this.name = name;
+            }
+        }
+        class Player extends Schema {
+            @type([Item]) items = new ArraySchema<Item>();
+        }
+        class State extends Schema {
+            @type(Player) player = new Player();
+        }
+
+        const state = new State();
+        const decodedState = new State();
+        state.player.items.push(new Item("Item 1"));
+        state.player.items.push(new Item("Item 2"));
+        decodedState.decode(state.encodeAll());
+
+        decodedState.decode(state.encode());
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+
+        // Remove Item 1
+        state.player.items.splice(0, 1);
+        decodedState.decode(state.encode());
+
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+        state.player.items.splice(0, 1);
+        decodedState.decode(state.encode());
+
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
 
         assertDeepStrictEqualEncodeAll(state);
     });
