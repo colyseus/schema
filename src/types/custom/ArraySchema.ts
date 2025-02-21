@@ -496,17 +496,18 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         return this.items.lastIndexOf(searchElement, fromIndex);
     }
 
-    /**
-     * Determines whether all the members of an array satisfy the specified test.
-     * @param callbackfn A function that accepts up to three arguments. The every method calls
-     * the callbackfn function for each element in the array until the callbackfn returns a value
-     * which is coercible to the Boolean value false, or until the end of the array.
-     * @param thisArg An object to which the this keyword can refer in the callbackfn function.
-     * If thisArg is omitted, undefined is used as the this value.
-     */
+    // /**
+    //  * Determines whether all the members of an array satisfy the specified test.
+    //  * @param callbackfn A function that accepts up to three arguments. The every method calls
+    //  * the callbackfn function for each element in the array until the callbackfn returns a value
+    //  * which is coercible to the Boolean value false, or until the end of the array.
+    //  * @param thisArg An object to which the this keyword can refer in the callbackfn function.
+    //  * If thisArg is omitted, undefined is used as the this value.
+    //  */
     every<S extends V>(predicate: (value: V, index: number, array: V[]) => value is S, thisArg?: any): this is S[];
-    every(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean {
-        return this.items.every(callbackfn, thisArg);
+    every(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean;
+    every(predicate: any, thisArg?: any): any {
+        return this.items.every(predicate, thisArg);
     }
 
     /**
