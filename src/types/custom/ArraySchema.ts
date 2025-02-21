@@ -722,6 +722,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     //
     with(index: number, value: V): ArraySchema<V> {
         const copy = this.items.slice();
+        // Allow negative indexing from the end
+        if (index < 0) index += this.length;
         copy[index] = value;
         return new ArraySchema(...copy);
     }
