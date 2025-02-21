@@ -57,6 +57,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         );
     }
 
+    static from<T>(iterable: Iterable<T> | ArrayLike<T>) {
+        return new ArraySchema<T>(...Array.from(iterable));
+    }
+
     constructor (...items: V[]) {
 
         Object.defineProperty(this, $childType, {

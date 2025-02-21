@@ -1842,12 +1842,26 @@ describe("ArraySchema Tests", () => {
         });
 
         it("#with()", () => {
-			const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
-			assert.deepStrictEqual([1, 6, 3, 4, 5], arr.with(1, 6).toJSON());
+            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
+            assert.deepStrictEqual([1, 6, 3, 4, 5], arr.with(1, 6).toJSON());
             assert.deepStrictEqual([1, 2, 3, 4, 7], arr.with(-1, 7).toJSON());
             assert.deepStrictEqual([1, 2, 3, 8, 5], arr.with(-2, 8).toJSON());
-		});
-    })
+        });
+
+        it(".from()", () => {
+            const numbers = [1,2,3,4,5];
+            assert.deepStrictEqual(numbers, ArraySchema.from(numbers).toJSON());
+
+            const strings = ["one", "two", "three"];
+            assert.deepStrictEqual(strings, ArraySchema.from(strings).toJSON());
+
+            const map = new Map();
+            map.set("one", 1);
+            map.set("two", 2);
+
+            assert.deepStrictEqual(Array.from(map.values()), ArraySchema.from(map.values()).toJSON());
+        });
+    });
 
     describe("ArraySchema <-> Array type interchangability", () => {
         it("should allow assigning array to an ArraySchema", () => {
