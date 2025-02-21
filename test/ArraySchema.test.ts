@@ -1840,6 +1840,13 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(undefined, arr.at(5));
             assert.strictEqual(undefined, arr.at(-6));
         });
+
+        it("#with()", () => {
+			const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
+			assert.deepStrictEqual([1, 6, 3, 4, 5], arr.with(1, 6).toJSON());
+            assert.deepStrictEqual([1, 2, 3, 4, 7], arr.with(-1, 7).toJSON());
+            assert.deepStrictEqual([1, 2, 3, 8, 5], arr.with(-2, 8).toJSON());
+		});
     })
 
     describe("ArraySchema <-> Array type interchangability", () => {
