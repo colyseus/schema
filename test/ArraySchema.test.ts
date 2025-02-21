@@ -1731,6 +1731,45 @@ describe("ArraySchema Tests", () => {
             });
         });
 
+        it("clear should trigger onRemove + onChange", () => {
+            const state = new State();
+            state.points.push(
+                new Point().assign({ x: 0, y: 0 }),
+                new Point().assign({ x: 1, y: 1 }),
+                new Point().assign({ x: 2, y: 2 }),
+            );
+
+            const decodedState = new State();
+            const $ = getCallbacks(decodedState);
+
+            let onAddCallCount = 0;
+            let onRemoveCallCount = 0;
+            let onChangeCallCount = 0;
+
+            $(decodedState).points.onAdd(() => { onAddCallCount++; });
+            $(decodedState).points.onRemove(() => { onRemoveCallCount++; });
+            $(decodedState).points.onChange(() => { onChangeCallCount++; });
+
+            let encoded = state.encodeAll();
+            decodedState.decode(encoded);
+            assert.strictEqual(3, decodedState.points.length);
+            assert.strictEqual(3, onAddCallCount);
+            assert.strictEqual(0, onRemoveCallCount);
+            assert.strictEqual(3, onChangeCallCount);
+
+            state.points.clear();
+
+            encoded = state.encode();
+            decodedState.decode(encoded);
+            assert.strictEqual(0, decodedState.points.length);
+
+            assert.strictEqual(3, onAddCallCount);
+            assert.strictEqual(3, onRemoveCallCount);
+            assert.strictEqual(6, onChangeCallCount);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
         xit("should trigger onAdd callback only once after clearing and adding one item", () => {
             const state = new State();
             const decodedState = new State();

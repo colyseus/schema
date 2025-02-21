@@ -132,14 +132,12 @@ export class Decoder<T extends Schema = any> {
     }
 
     removeChildRefs(ref: Collection, allChanges: DataChange[]) {
-        const changeTree = ref[$changes];
-
         const needRemoveRef = typeof (ref[$childType]) !== "string";
-        const refId = changeTree.refId;
+        const refId = this.root.refIds.get(ref as Ref);
 
         ref.forEach((value: any, key: any) => {
             allChanges.push({
-                ref: value,
+                ref: ref as Ref,
                 refId,
                 op: OPERATION.DELETE,
                 field: key,
