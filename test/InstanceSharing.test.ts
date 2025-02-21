@@ -460,4 +460,48 @@ describe("Instance sharing", () => {
 
     });
 
+    xit("replacing collection of items while keeping a reference to an item", () => {
+        class Song extends Schema {
+            @type("string") url: string;
+        }
+
+        class Player extends Schema {
+            @type([Song]) queue = new ArraySchema<Song>();
+        }
+
+        class State extends Schema {
+            @type(Song) playing: Song = new Song();
+            @type([Song]) queue = new ArraySchema<Song>();
+            @type({ map: Player }) buckets = new MapSchema<Player>();
+        }
+
+        const sessionId = "";
+
+        const state = new State();
+        const decodedState = new State();
+
+        console.log(">> encode()")
+        decodedState.decode(state.encode());
+
+        state.buckets.set(sessionId, new Player());
+
+        console.log(">> encode()")
+        decodedState.decode(state.encode());
+        console.log(Schema.debugRefIds(state));
+
+        const newSong = new Song().assign({ url: "song2" });
+        state.buckets.get(sessionId).queue.push(newSong);
+
+        state.queue = new ArraySchema<Song>();
+        state.queue.push(newSong);
+
+        state.playing = state.buckets.get(sessionId).queue.shift();
+        state.queue = new ArraySchema<Song>();
+
+        console.log(">> encode()")
+        console.log(Schema.debugRefIds(state));
+        decodedState.decode(state.encode());
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+    });
+
 });
