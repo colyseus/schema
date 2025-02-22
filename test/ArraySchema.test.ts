@@ -1770,6 +1770,36 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
+        it("clear should trigger callbacks properly", () => {
+            const state = new State();
+            const decodedState = new State();
+
+            decodedState.decode(state.encodeAll());
+            const $ = getCallbacks(decodedState);
+
+            let onAddCallCount = 0;
+            let onRemoveCallCount = 0;
+            let onChangeCallCount = 0;
+            $(decodedState).points.onAdd(() => { onAddCallCount++; });
+            $(decodedState).points.onRemove(() => { onRemoveCallCount++; });
+            $(decodedState).points.onChange(() => { onChangeCallCount++; });
+
+            state.points.push(new Point().assign({ x: 0, y: 0 }));
+            state.points.push(new Point().assign({ x: 1, y: 1 }));
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(2, onAddCallCount);
+            assert.strictEqual(0, onRemoveCallCount);
+            assert.strictEqual(2, onChangeCallCount);
+
+            state.points.clear();
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(2, onAddCallCount);
+            assert.strictEqual(2, onRemoveCallCount);
+            assert.strictEqual(4, onChangeCallCount);
+        });
+
         xit("should trigger onAdd callback only once after clearing and adding one item", () => {
             const state = new State();
             const decodedState = new State();
