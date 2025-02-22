@@ -107,8 +107,6 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
     let currentOnAddCallback: Function | undefined;
 
     decoder.triggerChanges = function (allChanges: DataChange[]) {
-        // console.log("ALL CHANGES =>", allChanges);
-
         const uniqueRefIds = new Set<number>();
 
         for (let i = 0, l = allChanges.length; i < l; i++) {
@@ -292,9 +290,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                         const instance = context.instance?.[prop];
                         const onInstanceAvailable: OnInstanceAvailableCallback = (
                             (callback: (ref: Ref, existing: boolean) => void) => {
-                                console.log("onInstanceAvailable!!");
                                 const unbind = $(context.instance).listen(prop, (value, _) => {
-                                    console.log("prop changed!", prop);
                                     callback(value, false);
 
                                     // FIXME: by "unbinding" the callback here,
@@ -349,12 +345,10 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
             };
 
             const onRemove = function (ref: Ref, callback: (value: any, key: any) => void) {
-                console.log("REGISTER ON REMOVE ON", $root.refIds.get(ref));
                 return $root.addCallback($root.refIds.get(ref), OPERATION.DELETE, callback);
             };
 
             const onChange = function (ref: Ref, callback: (value: any, key: any) => void) {
-                console.log("REGISTER ON CHANGE ON", $root.refIds.get(ref));
                 return $root.addCallback($root.refIds.get(ref), OPERATION.REPLACE, callback);
             };
 
