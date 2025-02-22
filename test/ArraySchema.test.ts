@@ -1245,43 +1245,6 @@ describe("ArraySchema Tests", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
-    xit("TODO: fix 'Decode warning: trying to remove refId that doesn't exist'", () => {
-        class Item extends Schema {
-            @type("string") name: string;
-            constructor(name) {
-                super();
-                this.name = name;
-            }
-        }
-        class Player extends Schema {
-            @type([Item]) items = new ArraySchema<Item>();
-        }
-        class State extends Schema {
-            @type(Player) player = new Player();
-        }
-
-        const state = new State();
-        const decodedState = new State();
-        state.player.items.push(new Item("Item 1"));
-        state.player.items.push(new Item("Item 2"));
-        decodedState.decode(state.encodeAll());
-
-        decodedState.decode(state.encode());
-        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
-
-        // Remove Item 1
-        state.player.items.splice(0, 1);
-        decodedState.decode(state.encode());
-
-        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
-        state.player.items.splice(0, 1);
-        decodedState.decode(state.encode());
-
-        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
-
-        assertDeepStrictEqualEncodeAll(state);
-    });
-
     it("should allow to transfer object between ArraySchema", () => {
         class Item extends Schema {
             @type("uint8") id: number;
@@ -1975,6 +1938,42 @@ describe("ArraySchema Tests", () => {
             const copy = arr.slice(0).sort((a, b) => a - b);
             assert.strictEqual(50, copy[0]);
             assert.strictEqual(100, copy[1]);
+        });
+
+        it("fix 'Decode warning: trying to remove refId that doesn't exist'", () => {
+            /**
+             * This test was triggering "Decode warning: trying to remove refId that doesn't exist"
+             * when removing items from an ArraySchema.
+             *
+             * The issue was caused by ArraySchema using `tmpItems` during `$getByIndex`.
+             * TODO: need to avoid using `tmpItems` during decoding.
+             */
+            class Item extends Schema {
+                @type("string") name: string;
+            }
+            class Player extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+            class State extends Schema {
+                @type(Player) player = new Player();
+            }
+
+            const state = new State();
+            const decodedState = new State();
+            state.player.items.push(new Item().assign({ name: "Item 1" }));
+            state.player.items.push(new Item().assign({ name: "Item 2" }));
+            decodedState.decode(state.encodeAll());
+
+            decodedState.decode(state.encode());
+
+            state.player.items.splice(0, 1);
+            decodedState.decode(state.encode());
+
+            state.player.items.splice(0, 1);
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 

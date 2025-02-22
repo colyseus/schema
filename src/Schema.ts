@@ -19,8 +19,6 @@ export class Schema {
     static [$encoder] = encodeSchemaOperation;
     static [$decoder] = decodeSchemaOperation;
 
-    // public [$changes]: ChangeTree;
-
     /**
      * Assign the property descriptors required to track changes on this instance.
      * @param instance
@@ -177,18 +175,18 @@ export class Schema {
     /**
      * Inspect the `refId` of all Schema instances in the tree. Optionally display the contents of the instance.
      *
-     * @param instance Schema instance
+     * @param ref Schema instance
      * @param showContents display JSON contents of the instance
      * @returns
      */
-    static debugRefIds(instance: Ref, showContents: boolean = false, level: number = 0) {
-        const ref = instance;
-        const changeTree = ref[$changes];
-
+    static debugRefIds(ref: Ref, showContents: boolean = false, level: number = 0) {
         const contents = (showContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
 
+        const changeTree: ChangeTree = ref[$changes];
+        const refId = changeTree.refId;
+
         let output = "";
-        output += `${getIndent(level)}${ref.constructor.name} (refId: ${ref[$changes].refId})${contents}\n`;
+        output += `${getIndent(level)}${ref.constructor.name} (refId: ${refId})${contents}\n`;
 
         changeTree.forEachChild((childChangeTree) =>
             output += this.debugRefIds(childChangeTree.ref, showContents, level + 1));

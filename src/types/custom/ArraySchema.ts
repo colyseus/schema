@@ -38,7 +38,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
      */
     static [$filter] (ref: ArraySchema, index: number, view: StateView) {
-        // console.log("ArraSchema[$filter] VIEW??", !view)
         return (
             !view ||
             typeof (ref[$childType]) === "string" ||
@@ -767,6 +766,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     protected [$deleteByIndex](index: number) {
         this.items[index] = undefined;
+        this.tmpItems[index] = undefined; // TODO: do not try to get "tmpItems" at decoding time.
     }
 
     protected [$onEncodeEnd]() {
@@ -776,6 +776,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
     protected [$onDecodeEnd]() {
         this.items = this.items.filter((item) => item !== undefined);
+        this.tmpItems = this.items.slice(); // TODO: do no use "tmpItems" at decoding time.
     }
 
     toArray() {

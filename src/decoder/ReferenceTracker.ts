@@ -56,7 +56,7 @@ export class ReferenceTracker {
 
         if (refCount === undefined) {
             try {
-                throw new DecodingWarning("trying to remove refId that doesn't exist");
+                throw new DecodingWarning("trying to remove refId that doesn't exist: " + refId);
             } catch (e) {
                 console.warn(e);
             }
