@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION } from "../src";
-import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView } from "./Schema";
+import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple } from "./Schema";
 import { getDecoderStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 import { nanoid } from "nanoid";
 
@@ -840,6 +840,73 @@ describe("StateView", () => {
             assert.strictEqual(1, onRemoveCalls);
 
             assertEncodeAllMultiple(encoder, state, [client1, client2])
+        });
+
+        it("replacing collection of items while keeping a reference to an item", () => {
+            class Song extends Schema {
+                @type("string") url: string;
+            }
+
+            class Player extends Schema {
+                @type([Song]) queue = new ArraySchema<Song>();
+            }
+
+            class State extends Schema {
+                @type(Song) playing: Song = new Song();
+                @view() @type([Song]) queue = new ArraySchema<Song>();
+                @type({ map: Player }) buckets = new MapSchema<Player>();
+            }
+
+            const sessionId = "session1";
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1]);
+
+            state.buckets.set(sessionId, new Player());
+
+            encodeMultiple(encoder, state, [client1]);
+            console.log(Schema.debugRefIds(state));
+
+            const newSong = new Song().assign({ url: "song2" });
+            state.buckets.get(sessionId).queue.push(newSong);
+
+            state.queue = new ArraySchema<Song>();
+            state.queue.push(newSong);
+
+            state.playing = state.buckets.get(sessionId).queue.shift();
+            state.queue = new ArraySchema<Song>();
+
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.doesNotThrow(() =>
+                encodeAllMultiple(encoder, state, [client1]));
+        });
+
+        it("setting a non-view field to undefined should not interfere on encoding", () => {
+            class Song extends Schema {
+                @type("string") url: string;
+            }
+
+            class State extends Schema {
+                @type(Song) playing: Song = new Song();
+                @view() @type([Song]) queue = new ArraySchema<Song>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1]);
+
+            state.playing = undefined;
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.doesNotThrow(() =>
+                encodeAllMultiple(encoder, state, [client1]));
         });
     });
 

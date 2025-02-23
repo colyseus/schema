@@ -1,7 +1,7 @@
 import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
 import { spliceOne } from "../types/utils";
-import { ChangeTree, setOperationAtIndex } from "./ChangeTree";
+import { ChangeTree, enqueueChangeTree, setOperationAtIndex } from "./ChangeTree";
 
 export class Root {
     protected nextUniqueId: number = 0;
@@ -71,6 +71,23 @@ export class Root {
 
         } else {
             this.refCount[changeTree.refId] = refCount;
+
+            //
+            // When losing a reference to an instance, it is best to move the
+            // ChangeTree to the end of the encoding queue.
+            //
+            // This way, at decoding time, the instance that contains the
+            // ChangeTree will be available before the ChangeTree itself. If the
+            // containing instance is not available, the Decoder will throw
+            // "refId not found" error.
+            //
+            if (changeTree.filteredChanges !== undefined) {
+                this.removeChangeFromChangeSet("filteredChanges", changeTree);
+                enqueueChangeTree(this, changeTree, "filteredChanges");
+            } else {
+                this.removeChangeFromChangeSet("changes", changeTree);
+                enqueueChangeTree(this, changeTree, "changes");
+            }
         }
 
         changeTree.forEachChild((child, _) => this.remove(child));
@@ -80,9 +97,8 @@ export class Root {
 
     removeChangeFromChangeSet(changeSetName: "allChanges" | "changes" | "filteredChanges" | "allFilteredChanges", changeTree: ChangeTree) {
         const changeSet = this[changeSetName];
-        const index = changeSet.indexOf(changeTree);
-        if (index !== -1) {
-            spliceOne(changeSet, index);
+        if (spliceOne(changeSet, changeSet.indexOf(changeTree))) {
+            changeTree[changeSetName].queueRootIndex = -1;
             // changeSet[index] = undefined;
         }
     }

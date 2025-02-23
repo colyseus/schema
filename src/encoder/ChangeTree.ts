@@ -62,7 +62,7 @@ export function deleteOperationAtIndex(changeSet: ChangeSet, index: number) {
     delete changeSet.indexes[index];
 }
 
-function enqueueChangeTree(
+export function enqueueChangeTree(
     root: Root,
     changeTree: ChangeTree,
     changeSet: 'changes' | 'filteredChanges' | 'allFilteredChanges',
@@ -384,6 +384,8 @@ export class ChangeTree<T extends Ref=any> {
             this.root?.remove(previousValue[$changes]);
         }
 
+        deleteOperationAtIndex(this.allChanges, allChangesIndex);
+
         //
         // FIXME: this is looking a ugly and repeated
         //
@@ -392,7 +394,6 @@ export class ChangeTree<T extends Ref=any> {
             enqueueChangeTree(this.root, this, 'filteredChanges');
 
         } else {
-            deleteOperationAtIndex(this.allChanges, allChangesIndex);
             enqueueChangeTree(this.root, this, 'changes');
         }
     }

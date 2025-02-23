@@ -134,7 +134,7 @@ export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, 
     return encodedViews;
 }
 
-export function assertEncodeAllMultiple<T extends Schema>(encoder: Encoder<T>, state: T, referenceClients: Array<{ state: Schema, view: StateView }>) {
+export function encodeAllMultiple<T extends Schema>(encoder: Encoder<T>, state: T, referenceClients: Array<{ state: Schema, view: StateView }>) {
     const clients = referenceClients.map((client) => createClientWithView(state, client.view));
 
     const it = { offset: 0 };
@@ -156,6 +156,12 @@ export function assertEncodeAllMultiple<T extends Schema>(encoder: Encoder<T>, s
 
         return encoded;
     });
+
+    return { clients, encodedViews };
+}
+
+export function assertEncodeAllMultiple<T extends Schema>(encoder: Encoder<T>, state: T, referenceClients: Array<{ state: Schema, view: StateView }>) {
+    const { clients, encodedViews } = encodeAllMultiple(encoder, state, referenceClients);
 
     referenceClients.forEach((referenceClient, i) => {
         assert.deepStrictEqual(referenceClient.state.toJSON(), clients[i].state.toJSON(), `client${i + 1} state mismatch`);
