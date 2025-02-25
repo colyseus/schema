@@ -59,20 +59,6 @@ export function decodeValue(
         //
         if (operation !== OPERATION.DELETE_AND_ADD) {
             ref[$deleteByIndex](index);
-
-            // //
-            // // FIXME: is this in the correct place?
-            // //      (This is sounding like a workaround just for ArraySchema, see
-            // //       "should splice and move" test on ArraySchema.test.ts)
-            // //
-            // allChanges.push({
-            //     ref,
-            //     refId: decoder.currentRefId,
-            //     op: OPERATION.DELETE,
-            //     field: index as unknown as string,
-            //     value: undefined,
-            //     previousValue,
-            // });
         }
 
         value = undefined;

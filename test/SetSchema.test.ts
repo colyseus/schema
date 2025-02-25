@@ -1,7 +1,8 @@
 import * as assert from "assert";
 
-import { Schema, type, SetSchema } from "../src";
+import { Schema, type, SetSchema, MapSchema } from "../src";
 import "./Schema";
+import { assertDeepStrictEqualEncodeAll } from "./Schema";
 
 describe("Type: SetSchema", () => {
 

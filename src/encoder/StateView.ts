@@ -25,7 +25,8 @@ export class StateView {
      * Manual "ADD" operations for changes per ChangeTree, specific to this view.
      * (This is used to force encoding a property, even if it was not changed)
      */
-    changes: { [refId: number]: IndexedOperations } = {};
+    // TODO: use map here!? may fix encode ordering issue
+    changes = new Map<number, IndexedOperations>();
 
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
@@ -43,17 +44,17 @@ export class StateView {
         // - if it was invisible to this view
         // - if it were previously filtered out
         if (checkIncludeParent && changeTree.parent) {
-            this.addParent(changeTree.parent[$changes], changeTree.parentIndex, tag);
+            this.addParentOf(changeTree, tag);
         }
 
         //
         // TODO: when adding an item of a MapSchema, the changes may not
         // be set (only the parent's changes are set)
         //
-        let changes = this.changes[changeTree.refId];
+        let changes = this.changes.get(changeTree.refId);
         if (changes === undefined) {
             changes = {};
-            this.changes[changeTree.refId] = changes;
+            this.changes.set(changeTree.refId, changes);
         }
 
         // set tag
@@ -118,28 +119,34 @@ export class StateView {
         return this;
     }
 
-    protected addParent(changeTree: ChangeTree, parentIndex: number, tag: number) {
+    protected addParentOf(childChangeTree: ChangeTree, tag: number) {
+        const changeTree = childChangeTree.parent[$changes];
+        const parentIndex = childChangeTree.parentIndex;
+
         // view must have all "changeTree" parent tree
         this.items.add(changeTree);
 
         // add parent's parent
         const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
         if (parentChangeTree && (parentChangeTree.filteredChanges !== undefined)) {
-            this.addParent(parentChangeTree, changeTree.parentIndex, tag);
+            this.addParentOf(changeTree, tag);
         }
 
-        // parent is already available, no need to add it!
-        if (!this.invisible.has(changeTree)) {
+        if (
+            // parent is already available, no need to add it!
+            !this.invisible.has(changeTree) &&
+            // item is being replaced, no need to add parent
+            changeTree.indexedOperations[parentIndex] !== OPERATION.DELETE_AND_ADD
+        ) {
             return;
         }
 
         // add parent's tag properties
         if (changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
-
-            let changes = this.changes[changeTree.refId];
+            let changes = this.changes.get(changeTree.refId);
             if (changes === undefined) {
                 changes = {};
-                this.changes[changeTree.refId] = changes;
+                this.changes.set(changeTree.refId, changes);
             }
 
             if (!this.tags) {
@@ -171,10 +178,10 @@ export class StateView {
         const ref = changeTree.ref;
         const metadata: Metadata = ref.constructor[Symbol.metadata];
 
-        let changes = this.changes[changeTree.refId];
+        let changes = this.changes.get(changeTree.refId);
         if (changes === undefined) {
             changes = {};
-            this.changes[changeTree.refId] = changes;
+            this.changes.set(changeTree.refId, changes);
         }
 
         if (tag === DEFAULT_VIEW_TAG) {
@@ -182,10 +189,10 @@ export class StateView {
             const parent = changeTree.parent;
             if (!Metadata.isValidInstance(parent)) {
                 const parentChangeTree = parent[$changes];
-                let changes = this.changes[parentChangeTree.refId];
+                let changes = this.changes.get(parentChangeTree.refId);
                 if (changes === undefined) {
                     changes = {};
-                    this.changes[parentChangeTree.refId] = changes;
+                    this.changes.set(parentChangeTree.refId, changes);
                 }
                 // DELETE / DELETE BY REF ID
                 changes[changeTree.parentIndex] = OPERATION.DELETE;

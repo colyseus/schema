@@ -2,7 +2,8 @@ import * as assert from "assert";
 
 import { ChangeTree } from "../src/encoder/ChangeTree";
 import { Schema, type, view, MapSchema, ArraySchema, $changes, OPERATION } from "../src";
-import { getEncoder } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, getDecoder, getEncoder } from "./Schema";
+import { nanoid } from "nanoid";
 
 describe("ChangeTree", () => {
     describe("changeset internals", () => {
@@ -188,6 +189,107 @@ describe("ChangeTree", () => {
         }
 
         assert.strictEqual(-1, Array.from(encoder.root.allFilteredChanges.values()).findIndex((value) => value === undefined))
+    });
+
+    describe("replacing instance should detach previous reference", () => {
+        it("using Schema: replace should be DELETE_AND_ADD operation", () => {
+            class Entity extends Schema {
+                @type("string") id: string = nanoid(9);
+            }
+            class State extends Schema {
+                @type(Entity) entity: Entity;
+            }
+
+            const state = new State();
+            const decodedState = new State();
+
+            const encoder = getEncoder(state);
+            const decoder = getDecoder(decodedState);
+
+            const entity1 = new Entity();
+            state.entity = entity1;
+            decodedState.decode(state.encode());
+
+            const entity2 = new Entity();
+            state.entity = entity2;
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(1, encoder.root.refCount[entity2[$changes].refId]);
+            assert.strictEqual(0, encoder.root.refCount[entity1[$changes].refId]);
+
+            assert.strictEqual(1, decoder.root.refCounts[entity2[$changes].refId]);
+            assert.strictEqual(undefined, decoder.root.refCounts[entity1[$changes].refId]);
+
+            assertDeepStrictEqualEncodeAll(state);
+        })
+
+        it("using MapSchema: replace should be DELETE_AND_ADD operation", () => {
+            class Entity extends Schema {
+                @type("string") id: string = nanoid(9);
+            }
+            class State extends Schema {
+                @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const decodedState = new State();
+            const decoder = getDecoder(decodedState);
+
+            const entity1 = new Entity();
+            state.entities.set("one", entity1);
+            decodedState.decode(state.encode());
+
+            const entity2 = new Entity();
+            state.entities.set("one", entity2);
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(1, encoder.root.refCount[entity2[$changes].refId]);
+            assert.strictEqual(0, encoder.root.refCount[entity1[$changes].refId]);
+
+            assert.strictEqual(1, decoder.root.refCounts[entity2[$changes].refId]);
+            assert.strictEqual(undefined, decoder.root.refCounts[entity1[$changes].refId]);
+
+            assertDeepStrictEqualEncodeAll(state);
+
+        });
+
+        xit("using ArraySchema: replace should be DELETE_AND_ADD operation", () => {
+            //
+            // TODO: this test is not passing!
+            //
+
+            class Entity extends Schema {
+                @type("string") id: string = nanoid(9);
+            }
+            class State extends Schema {
+                @type([Entity]) entities = new ArraySchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const decodedState = new State();
+            const decoder = getDecoder(decodedState);
+
+            const entity1 = new Entity();
+            state.entities.push(entity1);
+            decodedState.decode(state.encode());
+
+            const entity2 = new Entity();
+            state.entities[0] = entity2;
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(1, encoder.root.refCount[entity2[$changes].refId]);
+            assert.strictEqual(0, encoder.root.refCount[entity1[$changes].refId]);
+
+            assert.strictEqual(1, decoder.root.refCounts[entity2[$changes].refId]);
+            assert.strictEqual(undefined, decoder.root.refCounts[entity1[$changes].refId]);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
     });
 
 });

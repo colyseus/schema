@@ -92,7 +92,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                         if (setValue[$changes]) {
                             assertInstanceType(setValue, obj[$childType] as typeof Schema, obj, key);
 
-                            if (obj.items[key as unknown as number] !== undefined) {
+                            const previousValue = obj.items[key as unknown as number];
+                            if (previousValue !== undefined) {
                                 if (setValue[$changes].isNew) {
                                     this[$changes].indexedOperation(Number(key), OPERATION.MOVE_AND_ADD);
 
@@ -103,9 +104,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                                         this[$changes].indexedOperation(Number(key), OPERATION.MOVE);
                                     }
                                 }
+
+                                // remove root reference from previous value
+                                previousValue[$changes].root?.remove(previousValue[$changes]);
+
                             } else if (setValue[$changes].isNew) {
                                 this[$changes].indexedOperation(Number(key), OPERATION.ADD);
                             }
+
+                            setValue[$changes].setParent(this, obj[$changes].root, key);
 
                         } else {
                             obj.$changeAt(Number(key), setValue);

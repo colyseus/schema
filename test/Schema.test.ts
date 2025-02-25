@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
-import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder } from "../src";
+import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema } from "../src";
 
 describe("Type: Schema", () => {
 
@@ -349,6 +349,34 @@ describe("Type: Schema", () => {
             const decoder = new Decoder(createInstanceFromReflection(state));
             decoder.decode(encoder.encodeAll());
             assert.deepStrictEqual(decoder.state.toJSON(), encoder.state.toJSON());
+        });
+
+        xit("should support TypeScript enums", () => {
+            enum Item { SWORD, SHIELD, BOW, POTION }
+
+            class Player extends Schema {
+                @type({ set: Item }) items = new SetSchema<Item>();
+            }
+
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>()
+            }
+
+            const state = new State();
+            state.players.set("alice", new Player().assign({ items: new SetSchema<Item>([Item.SWORD, Item.SHIELD]) }));
+            state.players.set("bob", new Player().assign({ items: new SetSchema<Item>([Item.BOW, Item.POTION]) }));
+
+            const decoded = new State();
+            decoded.decode(state.encodeAll());
+            decoded.decode(state.encode());
+
+            assert.strictEqual(2, decoded.players.size);
+            state.players.delete("bob")
+
+            decoded.decode(state.encode());
+
+            assert.strictEqual(1, decoded.players.size);
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 

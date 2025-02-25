@@ -157,7 +157,6 @@ export const Metadata = {
 
         for (const field in fields) {
             const type = fields[field];
-            const normalizedType = getNormalizedType(type);
 
             // FIXME: this code is duplicated from @type() annotation
             const complexTypeKlass = (Array.isArray(type))
@@ -166,7 +165,7 @@ export const Metadata = {
 
             const childType = (complexTypeKlass)
                 ? Object.values(type)[0]
-                : normalizedType;
+                : getNormalizedType(type);
 
             Metadata.addField(
                 metadata,

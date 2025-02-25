@@ -100,6 +100,7 @@ export class Root {
         if (spliceOne(changeSet, changeSet.indexOf(changeTree))) {
             changeTree[changeSetName].queueRootIndex = -1;
             // changeSet[index] = undefined;
+            return true;
         }
     }
 

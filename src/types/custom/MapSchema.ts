@@ -86,41 +86,38 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         key = key.toString() as K;
 
         const changeTree = this[$changes];
-
-        // get "index" for this value.
-        const isReplace = typeof(changeTree.indexes[key]) !== "undefined";
-
-        const index = (isReplace)
-            ? changeTree.indexes[key]
-            : changeTree.indexes[$numFields] ?? 0;
-
-        let operation: OPERATION = (isReplace)
-            ? OPERATION.REPLACE
-            : OPERATION.ADD;
-
         const isRef = (value[$changes]) !== undefined;
 
-        //
-        // (encoding)
-        // set a unique id to relate directly with this key/value.
-        //
-        if (!isReplace) {
+        let index: number;
+        let operation: OPERATION;
+
+        // IS REPLACE?
+        if (typeof(changeTree.indexes[key]) !== "undefined") {
+            index = changeTree.indexes[key];
+            operation = OPERATION.REPLACE;
+
+            const previousValue = this.$items.get(key);
+            if (previousValue === value) {
+                // if value is the same, avoid re-encoding it.
+                return;
+
+            } else if (isRef) {
+                // if is schema, force ADD operation if value differ from previous one.
+                operation = OPERATION.DELETE_AND_ADD;
+
+                // remove reference from previous value
+                if (previousValue !== undefined) {
+                    previousValue[$changes].root?.remove(previousValue[$changes]);
+                }
+            }
+
+        } else {
+            index = changeTree.indexes[$numFields] ?? 0;
+            operation = OPERATION.ADD;
+
             this.$indexes.set(index, key);
             changeTree.indexes[key] = index;
             changeTree.indexes[$numFields] = index + 1;
-
-        } else if (
-            !isRef &&
-            this.$items.get(key) === value
-        ) {
-            // if value is the same, avoid re-encoding it.
-            return;
-
-        } else if (
-            isRef && // if is schema, force ADD operation if value differ from previous one.
-            this.$items.get(key) !== value
-        ) {
-            operation = OPERATION.ADD;
         }
 
         this.$items.set(key, value);

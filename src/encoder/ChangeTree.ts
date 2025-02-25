@@ -11,8 +11,6 @@ import { Root } from "./Root";
 import { Metadata } from "../Metadata";
 import type { EncodeOperation } from "./EncodeOperation";
 import type { DecodeOperation } from "../decoder/DecodeOperation";
-import { TypeContext } from "../types/TypeContext";
-import { ReferenceTracker } from "../decoder/ReferenceTracker";
 
 declare global {
     interface Object {

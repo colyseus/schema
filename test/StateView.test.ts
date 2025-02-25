@@ -30,7 +30,7 @@ describe("StateView", () => {
         assertEncodeAllMultiple(encoder, state, [client1, client2])
     });
 
-    it("should allow adding detached instances to the view", () => {
+    it("should allow adding detached instances to the view (not immediately attached)", () => {
         class Item extends Schema {
             @type("number") amount: number;
         }
@@ -58,6 +58,40 @@ describe("StateView", () => {
         assert.strictEqual(client1.state.items.length, 5);
 
         assertEncodeAllMultiple(encoder, state, [client1])
+    });
+
+    it("shouldn't allow to add detached instance to view", () => {
+        class Entity extends Schema {
+            @type("string") id: string = nanoid(9);
+        }
+        class State extends Schema {
+            @view() @type({ map: Entity }) entities = new MapSchema<Entity>();
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+
+        const client1 = createClientWithView(state);
+        const client2 = createClientWithView(state);
+
+        encodeMultiple(encoder, state, [client1, client2]);
+
+        const entity1 = new Entity().assign({ id: "one" });
+        state.entities.set("one", entity1);
+
+        client1.view.add(entity1);
+        encodeMultiple(encoder, state, [client1, client2]);
+
+        const entity2 = new Entity().assign({id: "two"});
+        state.entities.set("one", entity2);
+
+        client1.view.add(entity2);
+
+        client2.view.add(entity2);
+        client2.view.add(entity1); // adding detached instance, should ignore and not throw an error
+
+        encodeMultiple(encoder, state, [client1, client2]);
+        assertEncodeAllMultiple(encoder, state, [client1, client2])
     });
 
     describe("tagged properties", () => {
@@ -877,6 +911,11 @@ describe("StateView", () => {
             state.queue = new ArraySchema<Song>();
             state.queue.push(newSong);
 
+            client1.view.add(state.queue);
+            client1.view.add(newSong);
+
+            encodeMultiple(encoder, state, [client1]);
+
             state.playing = state.buckets.get(sessionId).queue.shift();
             state.queue = new ArraySchema<Song>();
 
@@ -885,6 +924,74 @@ describe("StateView", () => {
             assert.doesNotThrow(() =>
                 encodeAllMultiple(encoder, state, [client1]));
         });
+
+        xit("nested with MapSchema", () => {
+            // TODO: couldn't reproduce original issue reported by @Indalamar
+            class Component extends Schema {
+                @type('string') name: string;
+            }
+            class Spell extends Schema {
+                @type('number') id: number;
+                @type('string') name: string;
+                @type(['number']) relation = new ArraySchema<number>();
+                constructor() {
+                    super();
+                    this.relation.push(1, 2, 3);
+                }
+            }
+            class SpellBook extends Component {
+                @type({ map: Spell }) spells: Map<string, Spell>;
+                constructor() {
+                    super();
+                    this.name = "SpellBook";
+                    this.spells = new MapSchema<Spell>();
+                    this.spells.set("one", new Spell().assign({ id: 1, name: "Fireball", }));
+                    this.spells.set("two", new Spell().assign({ id: 2, name: "Iceball", }));
+                    this.spells.set("three", new Spell().assign({ id: 3, name: "Thunderball", }));
+                }
+            }
+            class Entity extends Schema {
+                @type("string") id: string = nanoid(9);
+                @type([Component]) components: Component[];
+                constructor() {
+                    super();
+                    this.components = new ArraySchema<Component>()
+                    this.components.push(new SpellBook());
+                }
+            }
+            class State extends Schema {
+                @view() @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            const entity1 = new Entity();
+            entity1.components.push(new Component().assign({ name: "health" }));
+            state.entities.set("one", entity1);
+
+            client1.view.add(entity1);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            const entity2 = new Entity();
+            entity2.components.push(new Component().assign({ name: "health" }));
+            state.entities.set("one", entity2);
+
+            client2.view.add(entity2);
+            client2.view.add(entity1);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            console.log(client1.state.toJSON());
+            console.log(client2.state.toJSON());
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
+        })
 
         it("setting a non-view field to undefined should not interfere on encoding", () => {
             class Song extends Schema {

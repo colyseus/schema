@@ -1,6 +1,6 @@
 import type { Schema } from "../Schema";
 import { TypeContext } from "../types/TypeContext";
-import { $changes, $encoder, $filter, $onEncodeEnd } from "../types/symbols";
+import { $changes, $encoder, $filter } from "../types/symbols";
 
 import { encode } from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
@@ -58,14 +58,6 @@ export class Encoder<T extends Schema = any> {
         for (let i = 0, numChangeTrees = changeTrees.length; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
 
-            const operations = changeTree[changeSetName];
-            const ref = changeTree.ref;
-
-            const ctor = ref.constructor;
-            const encoder = ctor[$encoder];
-            const filter = ctor[$filter];
-            const metadata = ctor[Symbol.metadata];
-
             if (hasView) {
                 if (!view.items.has(changeTree)) {
                     view.invisible.add(changeTree);
@@ -76,6 +68,18 @@ export class Encoder<T extends Schema = any> {
                 }
             }
 
+            const operations = changeTree[changeSetName];
+            const ref = changeTree.ref;
+
+            // TODO: avoid iterating over change tree if no changes were made
+            const numChanges = operations.operations.length;
+            if (numChanges === 0) { continue; }
+
+            const ctor = ref.constructor;
+            const encoder = ctor[$encoder];
+            const filter = ctor[$filter];
+            const metadata = ctor[Symbol.metadata];
+
             // skip root `refId` if it's the first change tree
             // (unless it "hasView", which will need to revisit the root)
             if (hasView || it.offset > initialOffset || changeTree !== rootChangeTree) {
@@ -83,7 +87,7 @@ export class Encoder<T extends Schema = any> {
                 encode.number(buffer, changeTree.refId, it);
             }
 
-            for (let j = 0, numChanges = operations.operations.length; j < numChanges; j++) {
+            for (let j = 0; j < numChanges; j++) {
                 const fieldIndex = operations.operations[j];
 
                 const operation = (fieldIndex < 0)
@@ -199,17 +203,18 @@ export class Encoder<T extends Schema = any> {
         const viewOffset = it.offset;
 
         // encode visibility changes (add/remove for this view)
-        const refIds = Object.keys(view.changes);
-
-        for (let i = 0, numRefIds = refIds.length; i < numRefIds; i++) {
-            const refId = refIds[i];
-            const changes = view.changes[refId];
+        for (const [refId, changes] of view.changes) {
             const changeTree = this.root.changeTrees[refId];
 
-            if (
-                changeTree === undefined ||
-                Object.keys(changes).length === 0 // FIXME: avoid having empty changes if no changes were made
-            ) {
+            if (changeTree === undefined) {
+                // detached instance, remove from view and skip.
+                view.changes.delete(refId);
+                continue;
+            }
+
+            const keys = Object.keys(changes);
+            if (keys.length === 0) {
+                // FIXME: avoid having empty changes if no changes were made
                 // console.log("changes.size === 0, skip", changeTree.ref.constructor.name);
                 continue;
             }
@@ -223,7 +228,6 @@ export class Encoder<T extends Schema = any> {
             bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
             encode.number(bytes, changeTree.refId, it);
 
-            const keys = Object.keys(changes);
             for (let i = 0, numChanges = keys.length; i < numChanges; i++) {
                 const key = keys[i];
                 const operation = changes[key];
@@ -239,7 +243,7 @@ export class Encoder<T extends Schema = any> {
         // (to allow re-using StateView's for multiple clients)
         //
         // clear "view" changes after encoding
-        view.changes = {};
+        view.changes.clear();
 
         // try to encode "filtered" changes
         this.encode(it, view, bytes, "filteredChanges", false, viewOffset);
@@ -248,26 +252,6 @@ export class Encoder<T extends Schema = any> {
             bytes.subarray(0, sharedOffset),
             bytes.subarray(viewOffset, it.offset)
         ]);
-    }
-
-    onEndEncode(changeTrees = this.root.changes) {
-        // changeTrees.forEach(function(changeTree) {
-        //     changeTree.endEncode();
-        // });
-
-
-        // for (const refId in changeTrees) {
-        //     const changeTree = this.root.changeTrees[refId];
-        //     changeTree.endEncode();
-
-        //     // changeTree.changes.clear();
-
-        //     // // ArraySchema and MapSchema have a custom "encode end" method
-        //     // changeTree.ref[$onEncodeEnd]?.();
-
-        //     // // Not a new instance anymore
-        //     // delete changeTree[$isNew];
-        // }
     }
 
     discardChanges() {

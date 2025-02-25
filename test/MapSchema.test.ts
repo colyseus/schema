@@ -2,6 +2,7 @@ import * as assert from "assert";
 
 import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll } from "./Schema";
 import { MapSchema, type, Schema, ArraySchema, Reflection, $changes } from "../src";
+import { nanoid } from "nanoid";
 
 describe("Type: MapSchema", () => {
 
@@ -724,6 +725,24 @@ describe("Type: MapSchema", () => {
 
         assert.doesNotThrow(() => map = new MapSchema<number>(previousMap.toJSON()));
         assert.deepStrictEqual(map.toJSON(), previousMap.toJSON());
+    });
+
+    xit("move instance between keys in the same patch", () => {
+        //
+        // TODO: test $onEncodeEnd of MapSchema. Is $onEncodeEnd of MapSchema even necessary?
+        //
+        const state = new State();
+        const decodedState = new State();
+
+        state.mapOfPlayers = new MapSchema();
+        state.mapOfPlayers.set("one", new Player().assign({ name: "Jake", x: 0, y: 0 }))
+        decodedState.decode(state.encode());
+
+        state.mapOfPlayers.set("two", state.mapOfPlayers.get("one"));
+        state.mapOfPlayers.delete("one");
+        decodedState.decode(state.encode());
+
+        assertDeepStrictEqualEncodeAll(state);
     });
 
 });

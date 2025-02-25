@@ -400,14 +400,14 @@ export function getPropertyDescriptor(
 
                 //
                 // Replacing existing "ref", remove it from root.
-                // TODO: if there are other references to this instance, we should not remove it from root.
                 //
                 if (previousValue !== undefined && previousValue[$changes]) {
                     changeTree.root?.remove(previousValue[$changes]);
-                }
+                    this.constructor[$track](changeTree, fieldIndex, OPERATION.DELETE_AND_ADD);
 
-                // flag the change for encoding.
-                this.constructor[$track](changeTree, fieldIndex, OPERATION.ADD);
+                } else {
+                    this.constructor[$track](changeTree, fieldIndex, OPERATION.ADD);
+                }
 
                 //
                 // call setParent() recursively for this and its child
