@@ -394,6 +394,8 @@ export class ChangeTree<T extends Ref=any> {
         } else {
             enqueueChangeTree(this.root, this, 'changes');
         }
+
+        return previousValue;
     }
 
     endEncode() {

@@ -123,22 +123,18 @@ export class StateView {
         const changeTree = childChangeTree.parent[$changes];
         const parentIndex = childChangeTree.parentIndex;
 
-        // view must have all "changeTree" parent tree
-        this.items.add(changeTree);
+        if (!this.items.has(changeTree)) {
+            // view must have all "changeTree" parent tree
+            this.items.add(changeTree);
 
-        // add parent's parent
-        const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
-        if (parentChangeTree && (parentChangeTree.filteredChanges !== undefined)) {
-            this.addParentOf(changeTree, tag);
-        }
+            // add parent's parent
+            const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
+            if (parentChangeTree && (parentChangeTree.filteredChanges !== undefined)) {
+                this.addParentOf(changeTree, tag);
+            }
 
-        if (
             // parent is already available, no need to add it!
-            !this.invisible.has(changeTree) &&
-            // item is being replaced, no need to add parent
-            changeTree.indexedOperations[parentIndex] !== OPERATION.DELETE_AND_ADD
-        ) {
-            return;
+            if (!this.invisible.has(changeTree)) { return; }
         }
 
         // add parent's tag properties
@@ -228,5 +224,14 @@ export class StateView {
         }
 
         return this;
+    }
+
+    has(obj: Ref) {
+        return this.items.has(obj[$changes]);
+    }
+
+    hasTag(ob: Ref, tag: number = DEFAULT_VIEW_TAG) {
+        const tags = this.tags?.get(ob[$changes]);
+        return tags?.has(tag) ?? false;
     }
 }

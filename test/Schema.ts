@@ -120,11 +120,13 @@ export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, 
     const it = { offset: 0 };
 
     // perform shared encode
+    // console.log("\n\n\n\n>> SHARED ENCODE!");
     encoder.encode(it);
 
     const sharedOffset = it.offset;
     const encodedViews = clients.map((client, i) => {
         // encode each view
+        // console.log(">> ENCODE VIEW!", i + 1);
         const encoded = encoder.encodeView(client.view, sharedOffset, it);
         client.state.decode(encoded);
         return encoded;

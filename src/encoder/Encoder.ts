@@ -1,6 +1,6 @@
 import type { Schema } from "../Schema";
 import { TypeContext } from "../types/TypeContext";
-import { $changes, $encoder, $filter } from "../types/symbols";
+import { $changes, $encoder, $filter, $getByIndex } from "../types/symbols";
 
 import { encode } from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
@@ -10,6 +10,7 @@ import { Root } from "./Root";
 
 import type { StateView } from "./StateView";
 import type { Metadata } from "../Metadata";
+import type { ChangeTree } from "./ChangeTree";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = (typeof(Buffer) !== "undefined") && Buffer.poolSize || 8 * 1024; // 8KB
@@ -204,7 +205,7 @@ export class Encoder<T extends Schema = any> {
 
         // encode visibility changes (add/remove for this view)
         for (const [refId, changes] of view.changes) {
-            const changeTree = this.root.changeTrees[refId];
+            const changeTree: ChangeTree = this.root.changeTrees[refId];
 
             if (changeTree === undefined) {
                 // detached instance, remove from view and skip.
@@ -229,12 +230,14 @@ export class Encoder<T extends Schema = any> {
             encode.number(bytes, changeTree.refId, it);
 
             for (let i = 0, numChanges = keys.length; i < numChanges; i++) {
-                const key = keys[i];
-                const operation = changes[key];
+                const index = Number(keys[i]);
+                // workaround when using view.add() on item that has been deleted from state (see test "adding to view item that has been removed from state")
+                const value = changeTree.ref[$getByIndex](index);
+                const operation = (value !== undefined && changes[index]) || OPERATION.DELETE;
 
                 // isEncodeAll = false
                 // hasView = true
-                encoder(this, bytes, changeTree, Number(key), operation, it, false, true, metadata);
+                encoder(this, bytes, changeTree, index, operation, it, false, true, metadata);
             }
         }
 

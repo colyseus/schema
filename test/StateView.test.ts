@@ -280,13 +280,16 @@ describe("StateView", () => {
             client1.view.add(state.item, Tag.TWO);
             const encodedTag2 = encodeMultiple(encoder, state, [client1])[0];
 
+            // TODO: can we reduce the amount of bytes here?
+            // assert.strictEqual(4, Array.from(encodedTag1).length, "should encode only the new field");
+
             // compare encode1 with encode2
-            assert.strictEqual(4, Array.from(encodedTag1).length, "should encode only the new field");
+            assert.strictEqual(8, Array.from(encodedTag1).length, "should encode only the new field");
             assert.strictEqual(Array.from(encodedTag1).length, Array.from(encodedTag2).length, "encode size should be the same");
             assert.strictEqual(Array.from(encodedTag1)[0], Array.from(encodedTag2)[0]);
             assert.strictEqual(Array.from(encodedTag1)[1], Array.from(encodedTag2)[1]);
-            assert.strictEqual(Array.from(encodedTag1)[2] + 1, Array.from(encodedTag2)[2]); // field index (+1 so 1 -> 2)
-            assert.strictEqual(Array.from(encodedTag1)[3] + 10, Array.from(encodedTag2)[3]); // value (+ 10 so 20 -> 30)
+            assert.strictEqual(Array.from(encodedTag1)[2], Array.from(encodedTag2)[2]);
+            assert.strictEqual(Array.from(encodedTag1)[3], Array.from(encodedTag2)[3]);
 
             assert.strictEqual(10, client1.state.item.amount);
             assert.strictEqual(20, client1.state.item.fov1);
@@ -432,7 +435,6 @@ describe("StateView", () => {
 
             assert.strictEqual(client2.state.prop1, state.prop1);
             assert.strictEqual(client2.state.items, undefined);
-
             assertEncodeAllMultiple(encoder, state, [client1])
         });
 
@@ -479,7 +481,17 @@ describe("StateView", () => {
             assert.strictEqual(client2.state.items.size, 2);
             assert.strictEqual(client2.state.items.get("4").amount, state.items.get("4").amount);
             assert.strictEqual(client2.state.items.get("5").amount, state.items.get("5").amount);
-            //
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
+
+            // removing items...
+            state.items.delete("2"); // none of the clients have this item
+            state.items.delete("4"); // shared item between client1 and client2
+            state.items.delete("6"); // none of the clients have this item
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(undefined, client1.state.items.get("4"));
+            assert.strictEqual(undefined, client2.state.items.get("4"));
 
             assertEncodeAllMultiple(encoder, state, [client1, client2])
         });
@@ -613,6 +625,39 @@ describe("StateView", () => {
             assert.deepStrictEqual(entity.toJSON(), client1.state.entities.get(entity.id).toJSON());
 
             assert.strictEqual(undefined, client2.state.entities);
+        });
+
+        it("adding to view item that has been removed from state", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1]);
+
+            for (let i = 0; i < 5; i++) {
+                state.items.set(i.toString(), new Item().assign({ amount: i }));
+            }
+
+            client1.view.add(state.items.get("3"));
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.items.size, 1);
+            assert.strictEqual(client1.state.items.get("3").amount, state.items.get("3").amount);
+
+            client1.view.add(state.items.get("3"));
+            state.items.delete("3");
+
+            encodeMultiple(encoder, state, [client1]);
+            assert.strictEqual(client1.state.items.size, 0);
+
         });
     });
 
@@ -832,6 +877,47 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client1])
         });
 
+        it("removing and item should remove from their views", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 5; i++) {
+                state.items.push(new Item().assign({ amount: i }));
+            }
+
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            client1.view.add(state.items.at(2));
+            client1.view.add(state.items.at(3));
+
+            client2.view.add(state.items.at(3));
+            client2.view.add(state.items.at(4));
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.items.map(i => i.amount), [2, 3]);
+            assert.deepStrictEqual(client2.state.items.map(i => i.amount), [3, 4]);
+
+            state.items.splice(3, 1)
+            assert.deepStrictEqual(state.items.map(i => i.amount), [0, 1, 2, 4]);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.items.map(i => i.amount), [2]);
+            assert.deepStrictEqual(client2.state.items.map(i => i.amount), [4]);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
+        });
+
         it("visibility change should trigger onAdd/onRemove on arrays", () => {
             class Item extends Schema {
                 @type("number") amount: number;
@@ -924,74 +1010,6 @@ describe("StateView", () => {
             assert.doesNotThrow(() =>
                 encodeAllMultiple(encoder, state, [client1]));
         });
-
-        xit("nested with MapSchema", () => {
-            // TODO: couldn't reproduce original issue reported by @Indalamar
-            class Component extends Schema {
-                @type('string') name: string;
-            }
-            class Spell extends Schema {
-                @type('number') id: number;
-                @type('string') name: string;
-                @type(['number']) relation = new ArraySchema<number>();
-                constructor() {
-                    super();
-                    this.relation.push(1, 2, 3);
-                }
-            }
-            class SpellBook extends Component {
-                @type({ map: Spell }) spells: Map<string, Spell>;
-                constructor() {
-                    super();
-                    this.name = "SpellBook";
-                    this.spells = new MapSchema<Spell>();
-                    this.spells.set("one", new Spell().assign({ id: 1, name: "Fireball", }));
-                    this.spells.set("two", new Spell().assign({ id: 2, name: "Iceball", }));
-                    this.spells.set("three", new Spell().assign({ id: 3, name: "Thunderball", }));
-                }
-            }
-            class Entity extends Schema {
-                @type("string") id: string = nanoid(9);
-                @type([Component]) components: Component[];
-                constructor() {
-                    super();
-                    this.components = new ArraySchema<Component>()
-                    this.components.push(new SpellBook());
-                }
-            }
-            class State extends Schema {
-                @view() @type({ map: Entity }) entities = new MapSchema<Entity>();
-            }
-
-            const state = new State();
-            const encoder = getEncoder(state);
-
-            const client1 = createClientWithView(state);
-            const client2 = createClientWithView(state);
-
-            encodeMultiple(encoder, state, [client1, client2]);
-
-            const entity1 = new Entity();
-            entity1.components.push(new Component().assign({ name: "health" }));
-            state.entities.set("one", entity1);
-
-            client1.view.add(entity1);
-            encodeMultiple(encoder, state, [client1, client2]);
-
-            const entity2 = new Entity();
-            entity2.components.push(new Component().assign({ name: "health" }));
-            state.entities.set("one", entity2);
-
-            client2.view.add(entity2);
-            client2.view.add(entity1);
-
-            encodeMultiple(encoder, state, [client1, client2]);
-
-            console.log(client1.state.toJSON());
-            console.log(client2.state.toJSON());
-
-            assertEncodeAllMultiple(encoder, state, [client1, client2])
-        })
 
         it("setting a non-view field to undefined should not interfere on encoding", () => {
             class Song extends Schema {

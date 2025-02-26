@@ -14,6 +14,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     protected $items: Map<K, V> = new Map<K, V>();
     protected $indexes: Map<number, K> = new Map<number, K>();
+    protected deletedItems: { [field: string]: V } = {};
 
     protected [$changes]: ChangeTree;
 
@@ -31,9 +32,9 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      */
     static [$filter] (ref: MapSchema, index: number, view: StateView) {
         return (
-            !view  ||
+            !view ||
             typeof (ref[$childType]) === "string" ||
-            view.items.has(ref[$getByIndex](index)[$changes])
+            view.items.has((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
         );
     }
 
@@ -142,7 +143,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     delete(key: K) {
         const index = this[$changes].indexes[key];
 
-        this[$changes].delete(index);
+        this.deletedItems[index] = this[$changes].delete(index);;
 
         return this.$items.delete(key);
     }
@@ -206,19 +207,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     protected [$onEncodeEnd]() {
-        const changeTree = this[$changes];
-        const keys = Object.keys(changeTree.indexedOperations);
-
-        for (let i = 0, len = keys.length; i < len; i++) {
-            const key = keys[i];
-            const fieldIndex = Number(key);
-            const operation = changeTree.indexedOperations[key];
-
-            if (operation === OPERATION.DELETE) {
-                const index = this[$getByIndex](fieldIndex) as string;
-                delete changeTree.indexes[index];
-            }
-        }
+        this.deletedItems = {};
     }
 
     toJSON() {
