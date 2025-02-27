@@ -25,7 +25,6 @@ export class StateView {
      * Manual "ADD" operations for changes per ChangeTree, specific to this view.
      * (This is used to force encoding a property, even if it was not changed)
      */
-    // TODO: use map here!? may fix encode ordering issue
     changes = new Map<number, IndexedOperations>();
 
     // TODO: allow to set multiple tags at once
