@@ -17,7 +17,7 @@ import type { CollectionSchema } from "../../types/custom/CollectionSchema";
 // - Avoid closures by allowing to pass a context. (https://github.com/colyseus/schema/issues/155#issuecomment-1804694081)
 //
 
-export type GetCallbackProxy = (<T extends Schema>(instance: T) => CallbackProxy<T>);
+export type SchemaCallbackProxy<RoomState> = (<T extends Schema>(instance: T) => CallbackProxy<T>);
 
 export type CallbackProxy<T> = unknown extends T // is "any"?
     ? SchemaCallback<T> & CollectionCallback<any, any>
@@ -99,7 +99,7 @@ type CallContext = {
 }
 
 
-export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>): GetCallbackProxy {
+export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>): SchemaCallbackProxy<T> {
     const $root = decoder.root;
     const callbacks = $root.callbacks;
 

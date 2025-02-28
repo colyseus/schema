@@ -45,11 +45,11 @@ export { TypeContext } from "./types/TypeContext";
 // Annotation types
 export type { DefinitionType, PrimitiveType, Definition, } from "./annotations";
 
-export { getDecoderStateCallbacks, CallbackProxy, SchemaCallback, CollectionCallback } from "./decoder/strategy/StateCallbacks";
+export { getDecoderStateCallbacks, CallbackProxy, SchemaCallback, CollectionCallback, SchemaCallbackProxy } from "./decoder/strategy/StateCallbacks";
 export { getRawChangesCallback } from "./decoder/strategy/RawChanges";
 
 export { Encoder } from "./encoder/Encoder";
-export { encodeSchemaOperation, encodeArray as encodeKeyValueOperation } from "./encoder/EncodeOperation";
+export { encodeSchemaOperation, encodeArray, encodeKeyValueOperation } from "./encoder/EncodeOperation";
 export { ChangeTree, Ref } from "./encoder/ChangeTree";
 export { StateView } from "./encoder/StateView";
 

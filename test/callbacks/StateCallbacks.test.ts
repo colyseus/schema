@@ -2,8 +2,27 @@ import * as assert from "assert";
 
 import { Schema, type, ArraySchema, MapSchema, getDecoderStateCallbacks, decodeSchemaOperation, Decoder } from "../../src";
 import { createInstanceFromReflection, getCallbacks, getDecoder } from "../Schema";
+import { SchemaCallbackProxy } from "../../src/decoder/strategy/StateCallbacks";
 
 describe("StateCallbacks", () => {
+
+    it("TypeScript type inference", () => {
+        class Item extends Schema {
+            @type("number") amount: number;
+        }
+        class State extends Schema {
+            @type([Item]) items = new ArraySchema<Item>();
+            @type('int64') actionType: number;
+        }
+        const state = new State();
+        const decodedState = createInstanceFromReflection(state);
+        const decoder = getDecoder(decodedState);
+
+        const $ = getDecoderStateCallbacks(decoder);
+        const ref$: SchemaCallbackProxy<State> = $;
+
+        assert.strictEqual($, ref$);
+    });
 
     it("should trigger changes in order they've been originally made", () => {
         class State extends Schema {
