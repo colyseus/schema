@@ -18,6 +18,7 @@ import type { CollectionSchema } from "../../types/custom/CollectionSchema";
 //
 
 export type SchemaCallbackProxy<RoomState> = (<T extends Schema>(instance: T) => CallbackProxy<T>);
+export type GetCallbackProxy = SchemaCallbackProxy<any>; // workaround for compatibility for < colyseus.js0.16.6. Remove me on next major release.
 
 export type CallbackProxy<T> = unknown extends T // is "any"?
     ? SchemaCallback<T> & CollectionCallback<any, any>
