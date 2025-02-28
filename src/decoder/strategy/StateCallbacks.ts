@@ -20,12 +20,12 @@ import type { CollectionSchema } from "../../types/custom/CollectionSchema";
 export type GetCallbackProxy = (<T extends Schema>(instance: T) => CallbackProxy<T>);
 
 export type CallbackProxy<T> = unknown extends T // is "any"?
-    ? InstanceCallback<T> & CollectionCallback<any, any>
+    ? SchemaCallback<T> & CollectionCallback<any, any>
     : T extends Collection<infer K, infer V, infer _>
         ? CollectionCallback<K, V>
-        : InstanceCallback<T>;
+        : SchemaCallback<T>;
 
-type InstanceCallback<T> = {
+export type SchemaCallback<T> = {
     /**
      * Trigger callback when value of a property changes.
      *
@@ -61,7 +61,7 @@ type InstanceCallback<T> = {
     [K in NonFunctionNonPrimitivePropNames<T>]: CallbackProxy<T[K]>;
 }
 
-type CollectionCallback<K, V> = {
+export type CollectionCallback<K, V> = {
     /**
      * Trigger callback when an item has been added to the collection.
      *

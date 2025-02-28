@@ -45,7 +45,7 @@ export { TypeContext } from "./types/TypeContext";
 // Annotation types
 export type { DefinitionType, PrimitiveType, Definition, } from "./annotations";
 
-export { getDecoderStateCallbacks, CallbackProxy, GetCallbackProxy } from "./decoder/strategy/StateCallbacks";
+export { getDecoderStateCallbacks, CallbackProxy, SchemaCallback, CollectionCallback } from "./decoder/strategy/StateCallbacks";
 export { getRawChangesCallback } from "./decoder/strategy/RawChanges";
 
 export { Encoder } from "./encoder/Encoder";
