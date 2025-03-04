@@ -30,6 +30,13 @@ export function getNormalizedType(type: DefinitionType): DefinitionType  {
             : type;
 }
 
+// TODO: see test: "should support TypeScript enums"
+function isTSEnum(_enum: any) {
+    const keys = Object.keys(_enum);
+    const numericFields = keys.filter(k => /\d+/.test(k));
+    return (numericFields.length === (keys.length / 2) && _enum[_enum[numericFields[0]]] == numericFields[0]);
+}
+
 export const Metadata = {
 
     addField(metadata: any, index: number, name: string, type: DefinitionType, descriptor?: PropertyDescriptor) {

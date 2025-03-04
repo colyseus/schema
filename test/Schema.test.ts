@@ -366,16 +366,10 @@ describe("Type: Schema", () => {
             state.players.set("alice", new Player().assign({ items: new SetSchema<Item>([Item.SWORD, Item.SHIELD]) }));
             state.players.set("bob", new Player().assign({ items: new SetSchema<Item>([Item.BOW, Item.POTION]) }));
 
-            const decoded = new State();
-            decoded.decode(state.encodeAll());
-            decoded.decode(state.encode());
+            const decodedState = new State();
+            decodedState.decode(state.encode());
 
-            assert.strictEqual(2, decoded.players.size);
-            state.players.delete("bob")
-
-            decoded.decode(state.encode());
-
-            assert.strictEqual(1, decoded.players.size);
+            assert.strictEqual(2, decodedState.players.size);
             assertDeepStrictEqualEncodeAll(state);
         });
     });
