@@ -131,7 +131,7 @@ export const Metadata = {
         metadata[$fieldIndexesByViewTag][tag].push(index);
     },
 
-    setFields(target: any, fields: { [field: string]: DefinitionType }) {
+    setFields<T extends { new (...args: any[]): InstanceType<T> } = any>(target: T, fields: { [field in keyof InstanceType<T>]?: DefinitionType }) {
         // for inheritance support
         const constructor = target.prototype.constructor;
         TypeContext.register(constructor);

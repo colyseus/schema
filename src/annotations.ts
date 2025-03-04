@@ -520,7 +520,7 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
         }
     }
 
-    const klass = Metadata.setFields(class extends inherits {
+    const klass = Metadata.setFields<any>(class extends inherits {
         constructor (...args: any[]) {
             args[0] = Object.assign({}, defaultValues, args[0]);
             super(...args);

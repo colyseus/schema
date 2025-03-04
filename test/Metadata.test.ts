@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll } from "./Schema";
-import { ArraySchema, Schema, type, Reflection, $changes, Metadata, SetSchema } from "../src";
+import { ArraySchema, Schema, type, Reflection, $changes, Metadata, SetSchema, MapSchema } from "../src";
 import { $numFields } from "../src/types/symbols";
 
 describe("Metadata Tests", () => {
@@ -70,5 +70,54 @@ describe("Metadata Tests", () => {
         assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
     });
 
+    it("should support nested external classes", () => {
+        class Body {
+            name: string;
+            position: Vec2;
+            rotation: Vec2;
+        }
+        class Vec2 {
+            x: number;
+            y: number;
+        }
+        Metadata.setFields(Body, {
+            name: "string",
+            position: Vec2,
+            rotation: Vec2,
+        });
+        Metadata.setFields(Vec2, {
+            x: "number",
+            y: "number",
+        });
+
+        class State extends Schema {
+            @type({ map: Body }) bodies = new MapSchema<Body>();
+        }
+
+        const state = new State();
+
+        const body = new Body();
+        Schema.initialize(body);
+
+        body.name = "testing";
+        body.position = new Vec2();
+        Schema.initialize(body.position);
+
+        body.position.x = 10;
+        body.position.y = 20;
+
+        body.rotation = new Vec2();
+        Schema.initialize(body.rotation);
+
+        body.rotation.x = 10;
+        body.rotation.y = 20;
+
+        state.bodies.set('one', body);
+
+        const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(state.encode());
+
+        assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+    });
 
 });
