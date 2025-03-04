@@ -73,18 +73,6 @@ export function decodeValue(
         const refId = decode.number(bytes, it);
         value = $root.refs.get(refId);
 
-        if (previousValue) {
-            const previousRefId = $root.refIds.get(previousValue);
-            if (
-                previousRefId &&
-                refId !== previousRefId &&
-                // FIXME: we may need to check for REPLACE operation as well
-                ((operation & OPERATION.DELETE) === OPERATION.DELETE)
-            ) {
-                $root.removeRef(previousRefId);
-            }
-        }
-
         if ((operation & OPERATION.ADD) === OPERATION.ADD) {
             const childType = decoder.getInstanceType(bytes, it, type);
             if (!value) {
@@ -100,7 +88,6 @@ export function decodeValue(
                 )
             );
         }
-
 
     } else if (typeof(type) === "string") {
         //
@@ -123,8 +110,6 @@ export function decodeValue(
             let previousRefId = $root.refIds.get(previousValue);
 
             if (previousRefId !== undefined && refId !== previousRefId) {
-                $root.removeRef(previousRefId);
-
                 //
                 // enqueue onRemove if structure has been replaced.
                 //
@@ -153,7 +138,10 @@ export function decodeValue(
             }
         }
 
-        $root.addRef(refId, value, (valueRef !== previousValue));
+        $root.addRef(refId, value, (
+            valueRef !== previousValue ||
+            (operation === OPERATION.DELETE_AND_ADD && valueRef === previousValue)
+        ));
     }
 
     return { value, previousValue };

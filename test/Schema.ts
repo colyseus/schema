@@ -33,9 +33,23 @@ export function assertDeepStrictEqualEncodeAll(state: Schema) {
     freshDecode.decode(encodeAll);
     assert.deepStrictEqual(freshDecode.toJSON(), state.toJSON());
 
+    assertRefIdCounts(state, freshDecode);
+
     // // perform a regular encode right full decode
     // freshDecode.decode(state.encode());
     // assert.deepStrictEqual(freshDecode.toJSON(), state.toJSON());
+}
+
+export function assertRefIdCounts(source: Schema, target: Schema) {
+    // assert ref counts
+    const encoder = getEncoder(source);
+    const decoder = getDecoder(target);
+
+    for (const refId in encoder.root.refCount) {
+        const encoderRefCount = encoder.root.refCount[refId];
+        const decoderRefCount = decoder.root.refCounts[refId] ?? 0;
+        assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for ${refId}`);
+    }
 }
 
 export function getEncoder(state: Schema) {

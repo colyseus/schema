@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { Schema, type, ArraySchema, MapSchema, Reflection } from "../src";
 import { $changes } from "../src/types/symbols";
-import { assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getCallbacks, getDecoder, getEncoder } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, assertRefIdCounts, createInstanceFromReflection, getCallbacks, getDecoder, getEncoder } from "./Schema";
 
 describe("Instance sharing", () => {
     class Position extends Schema {
@@ -71,6 +71,8 @@ describe("Instance sharing", () => {
 
         }, decodedState.toJSON());
 
+        assertRefIdCounts(state, decodedState);
+
         assert.strictEqual(5, decoder.root.refs.size, "Player and Position structures should remain.");
         assertDeepStrictEqualEncodeAll(state);
     });
@@ -105,6 +107,7 @@ describe("Instance sharing", () => {
         for (let refId in decoder.root.refCounts) {
             assert.strictEqual(decoder.root.refCounts[refId], encoder.root.refCount[refId]);
         }
+        assertRefIdCounts(state, decodedState);
 
         assertDeepStrictEqualEncodeAll(state);
     });
@@ -454,6 +457,7 @@ describe("Instance sharing", () => {
 
             decodedState.decode(state.encode());
             assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+            assertRefIdCounts(state, decodedState);
 
             assertDeepStrictEqualEncodeAll(state);
         });
