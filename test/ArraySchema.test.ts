@@ -5,6 +5,27 @@ import { ArraySchema, Schema, type, Reflection, $changes } from "../src";
 
 describe("ArraySchema Tests", () => {
 
+    it("replacing ArraySchema reference should remove previous decoder reference", () => {
+        class Player extends Schema {
+            @type("string") name: string;
+        }
+        class State extends Schema {
+            @type([Player]) players = new ArraySchema<Player>();
+        }
+        const state = new State();
+
+        const decodedState = createInstanceFromReflection(state);
+        const referenceTracker = getDecoder(decodedState).root;
+
+        decodedState.decode(state.encode());
+        const playersRefId = state.players[$changes].refId;
+        assert.ok(referenceTracker.refs.has(playersRefId));
+
+        state.players = new ArraySchema();
+        decodedState.decode(state.encode());
+        assert.ok(!referenceTracker.refs.has(playersRefId));
+    });
+
     describe("Internals", () => {
         it("Symbol.species", () => {
             assert.strictEqual(ArraySchema[Symbol.species], ArraySchema);
@@ -1952,7 +1973,6 @@ describe("ArraySchema Tests", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
-
     });
 
     describe("Edge cases", () => {
