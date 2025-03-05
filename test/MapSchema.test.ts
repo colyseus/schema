@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll } from "./Schema";
-import { MapSchema, type, Schema, ArraySchema, Reflection, $changes } from "../src";
+import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
+import { MapSchema, type, Schema, ArraySchema, Reflection, $changes, SetSchema, entity } from "../src";
 import { nanoid } from "nanoid";
 
 describe("Type: MapSchema", () => {
@@ -725,6 +725,40 @@ describe("Type: MapSchema", () => {
 
         assert.doesNotThrow(() => map = new MapSchema<number>(previousMap.toJSON()));
         assert.deepStrictEqual(map.toJSON(), previousMap.toJSON());
+    });
+
+    it("should trigger warning: 'trying to remove refId with 0 refCount'", () => {
+        enum Synergy { NORMAL = "NORMAL", GRASS = "GRASS", FIRE = "FIRE", WATER = "WATER", ELECTRIC = "ELECTRIC", FIGHTING = "FIGHTING", }
+        class Pokemon extends Schema {
+            @type("string") name: string;
+            @type({ set: "string" }) types = new SetSchema<Synergy>();
+        }
+        @entity
+        class Pikachu extends Pokemon {
+            name = "Pikachu";
+            types = new SetSchema<Synergy>([Synergy.ELECTRIC]);
+        }
+        class Player extends Schema {
+            @type({ map: Pokemon }) board = new MapSchema<Pokemon>();
+        }
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+        }
+
+        const state = new State();
+        const decodedState = createInstanceFromReflection(state);
+
+        const player = new Player();
+		state.players.set("one", player);
+		player.board.set("1", new Pikachu());
+
+        decodedState.decode(state.encode());
+
+        player.board.delete("1");
+        decodedState.decode(state.encode());
+
+        assertRefIdCounts(state, decodedState);
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     xit("move instance between keys in the same patch", () => {

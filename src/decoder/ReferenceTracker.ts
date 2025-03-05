@@ -103,7 +103,7 @@ export class ReferenceTracker {
                 for (const index in metadata) {
                     const field = metadata[index as any as number].name;
                     const childRefId = typeof(ref[field]) === "object" && this.refIds.get(ref[field]);
-                    if (childRefId) {
+                    if (childRefId && !this.deletedRefs.has(childRefId)) {
                         this.removeRef(childRefId);
                     }
                 }
@@ -111,7 +111,12 @@ export class ReferenceTracker {
             } else {
                 if (typeof (Object.values(ref[$childType])[0]) === "function") {
                     Array.from((ref as MapSchema).values())
-                        .forEach((child) => this.removeRef(this.refIds.get(child)));
+                        .forEach((child) => {
+                            const childRefId = this.refIds.get(child);
+                            if (!this.deletedRefs.has(childRefId)) {
+                                this.removeRef(childRefId);
+                            }
+                        });
                 }
             }
 
