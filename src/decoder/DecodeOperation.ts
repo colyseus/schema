@@ -119,7 +119,6 @@ export function decodeValue(
                     const [key, value] = iter.value;
 
                     // if value is a schema, remove its reference
-                    // FIXME: not sure if this is necessary, add more tests to confirm
                     if (typeof(value) === "object") {
                         previousRefId = $root.refIds.get(value);
                         $root.removeRef(previousRefId);
