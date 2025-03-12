@@ -531,10 +531,8 @@ export class ChangeTree<T extends Ref=any> {
         key += `-${parentIndex}`;
 
         this.isFiltered = parent[$changes].isFiltered // in case parent is already filtered
-            || this.root.types.parentFiltered[key];
-
-        // const parentMetadata = parentConstructor?.[Symbol.metadata];
-        // this.isFiltered = parentMetadata?.[$viewFieldIndexes]?.includes(parentIndex) || this.root.types.parentFiltered[key];
+            || this.root.types.parentFiltered[key]
+            || parentConstructor?.[Symbol.metadata]?.[$viewFieldIndexes]?.includes(parentIndex);
 
         //
         // TODO: refactor this!

@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION } from "../src";
+import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION, SetSchema } from "../src";
 import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple } from "./Schema";
 import { getDecoderStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 import { nanoid } from "nanoid";
@@ -662,6 +662,31 @@ describe("StateView", () => {
     });
 
     describe("ArraySchema", () => {
+        it("should support filtering out entire array of primitive types", () => {
+            class State extends Schema {
+                @view() @type(["string"]) items = new ArraySchema<string>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            for (let i = 0; i < 3; i++) {
+                state.items.push(i.toString());
+            }
+
+            client2.view.add(state.items);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.items, undefined);
+            assert.deepStrictEqual(client2.state.items.toArray(), ["0", "1", "2"]);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2])
+        })
+
         it("should allow both filtered and unfiltered arrays", () => {
             class Item extends Schema {
                 @type("number") amount: number;
