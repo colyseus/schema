@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex } from "../symbols";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd } from "../symbols";
 import { ChangeTree } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
@@ -10,8 +10,10 @@ import type { StateView } from "../../encoder/StateView";
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
 export class CollectionSchema<V=any> implements Collection<K, V>{
+
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
+    protected deletedItems: { [field: string]: V } = {};
 
     protected $refId: number = 0;
 
@@ -31,7 +33,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
         return (
             !view ||
             typeof (ref[$childType]) === "string" ||
-            view.items.has(ref[$getByIndex](index)[$changes])
+            view.items.has((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
         );
     }
 
@@ -101,7 +103,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
             return false;
         }
 
-        this[$changes].delete(index);
+        this.deletedItems[index] = this[$changes].delete(index);
         this.$indexes.delete(index);
 
         return this.$items.delete(index);
@@ -160,6 +162,10 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
         const key = this.$indexes.get(index);
         this.$items.delete(key);
         this.$indexes.delete(index);
+    }
+
+    protected [$onEncodeEnd]() {
+        this.deletedItems = {};
     }
 
     toArray() {

@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION, SetSchema } from "../src";
+import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION, SetSchema, CollectionSchema } from "../src";
 import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple } from "./Schema";
 import { getDecoderStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 import { nanoid } from "nanoid";
@@ -1057,6 +1057,59 @@ describe("StateView", () => {
 
             assert.doesNotThrow(() =>
                 encodeAllMultiple(encoder, state, [client1]));
+        });
+    });
+
+    describe("Deep and nested structures", () => {
+        it("@view() on SetSchema with CollectionSchema as child", () => {
+            class PointState extends Schema {
+                @type("number") x: number = 0
+                @type("number") y: number = 0
+            }
+            class OrbState extends PointState {
+                @type("string") id = Math.random().toString(36).substring(7);
+                @type("uint8") score: number = 1
+                @type("uint32") color: number = 0xff0000
+                @type("uint8") statusEffect: number;
+            }
+            class Zone extends Schema {
+                @type({ collection: OrbState }) orbs = new CollectionSchema<OrbState>()
+            }
+            class Player extends Schema {
+                @view() @type({ set: Zone }) loadedZones: SetSchema<Zone> = new SetSchema<Zone>()
+            }
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1]);
+
+            const player = new Player();
+            state.players.set("one", player);
+
+            const zones: Zone[] = [];
+            for (let i = 0; i < 3; i++) {
+                const zone = new Zone();
+                zone.orbs.add(new OrbState());
+                zone.orbs.add(new OrbState());
+                player.loadedZones.add(zone);
+                zones.push(zone);
+            }
+
+            client1.view.add(zones[0]);
+            encodeMultiple(encoder, state, [client1]);
+            assertEncodeAllMultiple(encoder, state, [client1])
+
+            assert.strictEqual(2, client1.state.players.get('one').loadedZones.toArray()[0].orbs.size);
+
+            player.loadedZones.delete(zones[0]);
+            encodeMultiple(encoder, state, [client1]);
+
+            assertEncodeAllMultiple(encoder, state, [client1])
         });
     });
 

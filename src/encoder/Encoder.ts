@@ -64,7 +64,7 @@ export class Encoder<T extends Schema = any> {
                     view.invisible.add(changeTree);
                     continue; // skip this change tree
 
-                } else if (view.invisible.has(changeTree)) {
+                } else {
                     view.invisible.delete(changeTree); // remove from invisible list
                 }
             }

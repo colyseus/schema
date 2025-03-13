@@ -143,7 +143,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     delete(key: K) {
         const index = this[$changes].indexes[key];
 
-        this.deletedItems[index] = this[$changes].delete(index);;
+        this.deletedItems[index] = this[$changes].delete(index);
 
         return this.$items.delete(key);
     }
