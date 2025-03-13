@@ -90,6 +90,7 @@ export class StateView {
                 const op = changeTree.indexedOperations[index] ?? OPERATION.ADD;
                 const tagAtIndex = metadata?.[index].tag;
                 if (
+                    !changeTree.isNew && // new structures will be added as part of .encode() call, no need to force it to .encodeView()
                     (
                         isInvisible || // if "invisible", include all
                         tagAtIndex === undefined || // "all change" with no tag
@@ -132,8 +133,8 @@ export class StateView {
                 this.addParentOf(changeTree, tag);
             }
 
-            // parent is already available, no need to add it!
-            if (!this.invisible.has(changeTree)) { return; }
+            // // parent is already available, no need to add it!
+            // if (!this.invisible.has(changeTree)) { return; }
         }
 
         // add parent's tag properties
