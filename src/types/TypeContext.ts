@@ -14,6 +14,7 @@ export class TypeContext {
      * Keeps track of which classes extends which. (parent -> children)
      */
     static inheritedTypes = new Map<typeof Schema, Set<typeof Schema>>();
+    static cachedContexts = new Map<typeof Schema, TypeContext>();
 
     static register(target: typeof Schema) {
         const parent = Object.getPrototypeOf(target);
@@ -27,13 +28,17 @@ export class TypeContext {
         }
     }
 
+    static cache (rootClass: typeof Schema) {
+        let context = TypeContext.cachedContexts.get(rootClass);
+        if (!context) {
+            context = new TypeContext(rootClass);
+            TypeContext.cachedContexts.set(rootClass, context);
+        }
+        return context;
+    }
+
     constructor(rootClass?: typeof Schema) {
         if (rootClass) {
-            //
-            // TODO:
-            //      cache "discoverTypes" results for each rootClass
-            //      to avoid re-discovering types for each new context/room
-            //
             this.discoverTypes(rootClass);
         }
     }

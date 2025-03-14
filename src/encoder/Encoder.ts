@@ -23,10 +23,12 @@ export class Encoder<T extends Schema = any> {
 
     constructor(state: T) {
         //
-        // TODO: cache and restore "Context" based on root schema
-        // (to avoid creating a new context for every new room)
+        // Use .cache() here to avoid re-creating a new context for every new room instance.
         //
-        this.context = new TypeContext(state.constructor as typeof Schema);
+        // We may need to make this optional in case of dynamically created
+        // schemas - which would lead to memory leaks
+        //
+        this.context = TypeContext.cache(state.constructor as typeof Schema);
         this.root = new Root(this.context);
 
         this.setState(state);
