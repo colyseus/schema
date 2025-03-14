@@ -1,6 +1,6 @@
 import * as util from "util";
 import * as assert from "assert";
-import { Reflection, Schema, type, MapSchema, ArraySchema, $changes, TypeContext } from "../src";
+import { Reflection, Schema, type, MapSchema, ArraySchema, $changes, TypeContext, Decoder, entity } from "../src";
 import { createInstanceFromReflection, getEncoder } from "./Schema";
 
 /**
@@ -264,5 +264,62 @@ describe("Reflection", () => {
         assert.deepStrictEqual(state.toJSON(), reflected2.toJSON());
         assert.deepStrictEqual(state.toJSON(), reflected3.toJSON());
         assert.deepStrictEqual(state.toJSON(), reflected4.toJSON());
+    });
+
+    it("order of decoded types must follow inheritance order", () => {
+        class Vector2D extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+        class Health extends Schema {
+            @type("number") max: number;
+            @type("number") current: number;
+        }
+        class Entity extends Schema {
+            @type("string") uuid: string;
+            @type(Vector2D) position = new Vector2D();
+        }
+        class DynamicEntity extends Entity {
+            @type(Health) health = new Health();
+        }
+        class Player extends DynamicEntity {
+            @type("string") name: string;
+        }
+
+        @entity class SlimeEntity extends DynamicEntity { }
+
+        abstract class EntitiesMap<T extends Entity = Entity> extends Schema {
+            @type({ map: Entity }) entities = new MapSchema<T>();
+        }
+
+        class StaticEntitiesMap extends EntitiesMap {}
+        class DynamicEntitiesMap<T extends DynamicEntity = DynamicEntity> extends EntitiesMap<T> {}
+        class PlayerMap extends DynamicEntitiesMap<Player> {}
+
+        class State extends Schema {
+            @type(StaticEntitiesMap) staticEntities = new StaticEntitiesMap();
+            @type(DynamicEntitiesMap) dynamicEntities = new DynamicEntitiesMap();
+            @type(PlayerMap) players = new PlayerMap();
+        }
+
+        const state = new State();
+        const encoded = Reflection.encode(getEncoder(state));
+
+        const reflected = new Reflection();
+        const decoder = new Decoder(reflected);
+        decoder.decode(encoded);
+
+        const types = reflected.types.toArray();
+        assert.strictEqual(11, types.length)
+
+        const addedTypeIds = new Set<number>();
+
+        types.forEach((type) => {
+            addedTypeIds.add(type.id);
+
+            if (type.extendsId !== undefined) {
+                assert.ok(addedTypeIds.has(type.extendsId), "Base type must be added before its children");
+            }
+        });
     });
 });

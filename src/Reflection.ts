@@ -44,61 +44,31 @@ export class Reflection extends Schema {
         const rootType = context.schemas.get(encoder.state.constructor);
         if (rootType > 0) { reflection.rootType = rootType; }
 
-        const buildType = (currentType: ReflectionType, metadata: Metadata) => {
-            for (const fieldIndex in metadata) {
-                const index = Number(fieldIndex);
-                const fieldName = metadata[index].name;
+        const includedTypeIds = new Set<number>();
+        const pendingReflectionTypes: { [typeid: number]: ReflectionType[] } = {};
 
-                // skip fields from parent classes
-                if (!Object.prototype.hasOwnProperty.call(metadata, fieldName)) {
-                    continue;
+        // add type to reflection in a way that respects inheritance
+        // (parent types should be added before their children)
+        const addType = (type: ReflectionType) => {
+            if (type.extendsId === undefined || includedTypeIds.has(type.extendsId)) {
+                includedTypeIds.add(type.id);
+
+                reflection.types.push(type);
+
+                const deps = pendingReflectionTypes[type.id];
+                if (deps !== undefined) {
+                    delete pendingReflectionTypes[type.id];
+                    deps.forEach((childType) => addType(childType));
                 }
-
-                const field = new ReflectionField();
-                field.name = fieldName;
-
-                let fieldType: string;
-
-                const type = metadata[index].type;
-
-                if (typeof (type) === "string") {
-                    fieldType = type;
-
-                } else {
-                    let childTypeSchema: typeof Schema;
-
-                    //
-                    // TODO: refactor below.
-                    //
-                    if (Schema.is(type)) {
-                        fieldType = "ref";
-                        childTypeSchema = type as typeof Schema;
-
-                    } else {
-                        fieldType = Object.keys(type)[0];
-
-                        if (typeof(type[fieldType]) === "string") {
-                            fieldType += ":" + type[fieldType]; // array:string
-
-                        } else {
-                            childTypeSchema = type[fieldType];
-                        }
-                    }
-
-                    field.referencedType = (childTypeSchema)
-                        ? context.getTypeId(childTypeSchema)
-                        : -1;
+            } else {
+                if (pendingReflectionTypes[type.extendsId] === undefined) {
+                    pendingReflectionTypes[type.extendsId] = [];
                 }
-
-                field.type = fieldType;
-                currentType.fields.push(field);
+                pendingReflectionTypes[type.extendsId].push(type);
             }
+        };
 
-            reflection.types.push(currentType);
-        }
-
-        for (let typeid in context.types) {
-            const klass = context.types[typeid];
+        context.schemas.forEach((typeid, klass) => {
             const type = new ReflectionType();
             type.id = Number(typeid);
 
@@ -108,7 +78,70 @@ export class Reflection extends Schema {
                 type.extendsId = context.schemas.get(inheritFrom);
             }
 
-            buildType(type, klass[Symbol.metadata]);
+            const metadata = klass[Symbol.metadata];
+
+            //
+            // FIXME: this is a workaround for inherited types without additional fields
+            // if metadata is the same reference as the parent class - it means the class has no own metadata
+            //
+            if (metadata !== inheritFrom[Symbol.metadata]) {
+                for (const fieldIndex in metadata) {
+                    const index = Number(fieldIndex);
+                    const fieldName = metadata[index].name;
+
+                    // skip fields from parent classes
+                    if (!Object.prototype.hasOwnProperty.call(metadata, fieldName)) {
+                        continue;
+                    }
+
+                    const reflectionField = new ReflectionField();
+                    reflectionField.name = fieldName;
+
+                    let fieldType: string;
+
+                    const field = metadata[index];
+
+                    if (typeof (field.type) === "string") {
+                        fieldType = field.type;
+
+                    } else {
+                        let childTypeSchema: typeof Schema;
+
+                        //
+                        // TODO: refactor below.
+                        //
+                        if (Schema.is(field.type)) {
+                            fieldType = "ref";
+                            childTypeSchema = field.type as typeof Schema;
+
+                        } else {
+                            fieldType = Object.keys(field.type)[0];
+
+                            if (typeof (field.type[fieldType]) === "string") {
+                                fieldType += ":" + field.type[fieldType]; // array:string
+
+                            } else {
+                                childTypeSchema = field.type[fieldType];
+                            }
+                        }
+
+                        reflectionField.referencedType = (childTypeSchema)
+                            ? context.getTypeId(childTypeSchema)
+                            : -1;
+                    }
+
+                    reflectionField.type = fieldType;
+                    type.fields.push(reflectionField);
+                }
+            }
+
+            addType(type);
+        });
+
+        // in case there are types that were not added due to inheritance
+        for (const typeid in pendingReflectionTypes) {
+            pendingReflectionTypes[typeid].forEach((type) =>
+                reflection.types.push(type))
         }
 
         const buf = reflectionEncoder.encodeAll(it);
