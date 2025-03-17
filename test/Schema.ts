@@ -79,19 +79,22 @@ Schema.prototype.encodeAll = function() {
     return getEncoder(this).encodeAll();
 }
 
-export interface ClientWithState<T> {
+export interface ClientWithState<T extends Schema> {
     state: T;
     view: StateView;
+    decoder: Decoder<T>;
     $: SchemaCallbackProxy<T>;
     needFullEncode: boolean;
 }
 
 export function createClientWithView<T extends Schema>(from: T, stateView: StateView = new StateView(), encoder?: Encoder): ClientWithState<T> {
     const state = createInstanceFromReflection(from, encoder);
+    const decoder = getDecoder(state);
     return {
         state,
         view: stateView,
-        $: getDecoderStateCallbacks(getDecoder(state)),
+        decoder,
+        $: getDecoderStateCallbacks(decoder),
         needFullEncode: true,
     };
 }

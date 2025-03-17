@@ -98,7 +98,7 @@ export class ReferenceTracker {
             //
             // Ensure child schema instances have their references removed as well.
             //
-            if (Metadata.isValidInstance(ref)) {
+            if (ref.constructor[Symbol.metadata] !== undefined) {
                 const metadata: Metadata = ref.constructor[Symbol.metadata];
                 for (const index in metadata) {
                     const field = metadata[index as any as number].name;
@@ -109,7 +109,7 @@ export class ReferenceTracker {
                 }
 
             } else {
-                if (typeof (Object.values(ref[$childType])[0]) === "function") {
+                if (typeof (ref[$childType]) === "function") {
                     Array.from((ref as MapSchema).values())
                         .forEach((child) => {
                             const childRefId = this.refIds.get(child);

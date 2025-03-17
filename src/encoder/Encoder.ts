@@ -211,6 +211,7 @@ export class Encoder<T extends Schema = any> {
 
             if (changeTree === undefined) {
                 // detached instance, remove from view and skip.
+                // console.log("detached instance, remove from view and skip.", refId);
                 view.changes.delete(refId);
                 continue;
             }
@@ -218,7 +219,7 @@ export class Encoder<T extends Schema = any> {
             const keys = Object.keys(changes);
             if (keys.length === 0) {
                 // FIXME: avoid having empty changes if no changes were made
-                // console.log("changes.size === 0, skip", changeTree.ref.constructor.name);
+                // console.log("changes.size === 0, skip", refId, changeTree.ref.constructor.name);
                 continue;
             }
 

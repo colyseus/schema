@@ -29,7 +29,7 @@ export class StateView {
 
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
-        if (!obj[$changes]) {
+        if (!obj?.[$changes]) {
             console.warn("StateView#add(), invalid object:", obj);
             return this;
         }
@@ -163,7 +163,7 @@ export class StateView {
     }
 
     remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG) {
-        const changeTree = obj[$changes];
+        const changeTree: ChangeTree = obj[$changes];
         if (!changeTree) {
             console.warn("StateView#remove(), invalid object:", obj);
             return this;
@@ -172,7 +172,7 @@ export class StateView {
         this.items.delete(changeTree);
 
         const ref = changeTree.ref;
-        const metadata: Metadata = ref.constructor[Symbol.metadata];
+        const metadata: Metadata = ref.constructor[Symbol.metadata]; // ArraySchema/MapSchema do not have metadata
 
         let changes = this.changes.get(changeTree.refId);
         if (changes === undefined) {
@@ -195,14 +195,14 @@ export class StateView {
 
             } else {
                 // delete all "tagged" properties.
-                metadata[$viewFieldIndexes].forEach((index) =>
+                metadata?.[$viewFieldIndexes].forEach((index) =>
                     changes[index] = OPERATION.DELETE);
             }
 
 
         } else {
             // delete only tagged properties
-            metadata[$fieldIndexesByViewTag][tag].forEach((index) =>
+            metadata?.[$fieldIndexesByViewTag][tag].forEach((index) =>
                 changes[index] = OPERATION.DELETE);
         }
 
