@@ -323,6 +323,39 @@ describe("Type: MapSchema", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
+    it("removing item with children should remove children as well", () => {
+        class Item extends Schema {
+            @type("string") name: string;
+        }
+        class Entity extends Schema {
+            @type("string") name: string;
+            @type([Item]) items = new ArraySchema<Item>();
+        }
+        class State extends Schema {
+            @type({map: Entity}) entities = new MapSchema<Entity>();
+        }
+
+        const state = new State();
+        for (let i = 0; i < 5; i++) {
+            state.entities.set("e" + i, new Entity().assign({
+                name: "Entity " + i,
+                items: [
+                    new Item().assign({ name: "Item A" }),
+                    new Item().assign({ name: "Item B" }),
+                ]
+            }));
+        }
+
+        const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(state.encode());
+
+        assertRefIdCounts(state, decodedState);
+
+        state.entities.delete("e3");
+        decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
+    });
+
     it("should allow map of primitive types", () => {
         class Player extends Schema {
             @type({ map: "number" }) mapOfNumbers = new MapSchema<number>();
