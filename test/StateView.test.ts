@@ -30,7 +30,38 @@ describe("StateView", () => {
         assertEncodeAllMultiple(encoder, state, [client1, client2])
     });
 
-    it("should allow adding detached instances to the view (not immediately attached)", () => {
+    it("should not be required to add parent structure", () => {
+        /**
+         * TODO/FIXME: this test is asserting to throw an error, but it should
+         * actually work instead.
+         */
+
+        class Item extends Schema {
+            @type("number") amount: number;
+        }
+
+        class State extends Schema {
+            @type("string") prop1 = "Hello world";
+            @view() @type([Item]) items = new ArraySchema<Item>();
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+
+        const client1 = createClientWithView(state);
+
+        const item = new Item().assign({ amount: 0 });
+        assert.throws(() => {
+            client1.view.add(item);
+        }, /Make sure to assign the "Item" instance to the state before calling view.add/);
+
+        // state.items.push(item);
+        // encodeMultiple(encoder, state, [client1]);
+        // assert.strictEqual(client1.state.items.length, 1);
+        // assertEncodeAllMultiple(encoder, state, [client1])
+    });
+
+    xit("should allow adding detached instances to the view (not immediately attached)", () => {
         class Item extends Schema {
             @type("number") amount: number;
         }

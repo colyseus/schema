@@ -42,14 +42,30 @@ export class StateView {
 
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
-        if (!obj?.[$changes]) {
+        const changeTree: ChangeTree = obj?.[$changes];
+
+        if (!changeTree) {
             console.warn("StateView#add(), invalid object:", obj);
             return this;
+
+        } else if (
+            !changeTree.parent &&
+            changeTree.refId !== 0 // allow root object
+        ) {
+            /**
+             * TODO: can we avoid this?
+             *
+             * When the "parent" structure has the @view() tag, it is currently
+             * not possible to identify it has to be added to the view as well
+             * (this.addParentOf() is not called).
+             */
+            throw new Error(
+                `Cannot add a detached instance to the StateView. Make sure to assign the "${changeTree.ref.constructor.name}" instance to the state before calling view.add()`
+            );
         }
 
         // FIXME: ArraySchema/MapSchema do not have metadata
         const metadata: Metadata = obj.constructor[Symbol.metadata];
-        const changeTree: ChangeTree = obj[$changes];
         this.visible.add(changeTree);
 
         // add to iterable list (only the explicitly added items)
