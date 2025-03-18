@@ -3,16 +3,23 @@ import { $changes, $fieldIndexesByViewTag, $viewFieldIndexes } from "../types/sy
 import { DEFAULT_VIEW_TAG } from "../annotations";
 import { OPERATION } from "../encoding/spec";
 import { Metadata } from "../Metadata";
+import { spliceOne } from "../types/utils";
 
-export function createView() {
-    return new StateView();
+export function createView(iterable: boolean = false) {
+    return new StateView(iterable);
 }
 
 export class StateView {
     /**
+     * Iterable list of items that are visible to this view
+     * (Available only if constructed with `iterable: true`)
+     */
+    items: Ref[];
+
+    /**
      * List of ChangeTree's that are visible to this view
      */
-    items: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
+    visible: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
 
     /**
      * List of ChangeTree's that are invisible to this view
@@ -27,6 +34,12 @@ export class StateView {
      */
     changes = new Map<number, IndexedOperations>();
 
+    constructor(public iterable: boolean = false) {
+        if (iterable) {
+            this.items = [];
+        }
+    }
+
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
         if (!obj?.[$changes]) {
@@ -37,7 +50,12 @@ export class StateView {
         // FIXME: ArraySchema/MapSchema do not have metadata
         const metadata: Metadata = obj.constructor[Symbol.metadata];
         const changeTree: ChangeTree = obj[$changes];
-        this.items.add(changeTree);
+        this.visible.add(changeTree);
+
+        // add to iterable list (only the explicitly added items)
+        if (this.iterable && checkIncludeParent) {
+            this.items.push(obj);
+        }
 
         // add parent ChangeTree's
         // - if it was invisible to this view
@@ -123,9 +141,9 @@ export class StateView {
         const changeTree = childChangeTree.parent[$changes];
         const parentIndex = childChangeTree.parentIndex;
 
-        if (!this.items.has(changeTree)) {
+        if (!this.visible.has(changeTree)) {
             // view must have all "changeTree" parent tree
-            this.items.add(changeTree);
+            this.visible.add(changeTree);
 
             // add parent's parent
             const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
@@ -162,14 +180,24 @@ export class StateView {
         }
     }
 
-    remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG) {
+    remove(obj: Ref, tag?: number): this; // hide _isClear parameter from public API
+    remove(obj: Ref, tag?: number, _isClear?: boolean): this;
+    remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG, _isClear: boolean = false): this {
         const changeTree: ChangeTree = obj[$changes];
         if (!changeTree) {
             console.warn("StateView#remove(), invalid object:", obj);
             return this;
         }
 
-        this.items.delete(changeTree);
+        this.visible.delete(changeTree);
+
+        // remove from iterable list
+        if (
+            this.iterable &&
+            !_isClear // no need to remove during clear(), as it will be cleared entirely
+        ) {
+            spliceOne(this.items, this.items.indexOf(obj));
+        }
 
         const ref = changeTree.ref;
         const metadata: Metadata = ref.constructor[Symbol.metadata]; // ArraySchema/MapSchema do not have metadata
@@ -227,11 +255,24 @@ export class StateView {
     }
 
     has(obj: Ref) {
-        return this.items.has(obj[$changes]);
+        return this.visible.has(obj[$changes]);
     }
 
     hasTag(ob: Ref, tag: number = DEFAULT_VIEW_TAG) {
         const tags = this.tags?.get(ob[$changes]);
         return tags?.has(tag) ?? false;
+    }
+
+    clear() {
+        if (!this.iterable) {
+            throw new Error("StateView#clear() is only available for iterable StateView's. Use StateView(iterable: true) constructor.");
+        }
+
+        for (let i = 0, l = this.items.length; i < l; i++) {
+            this.remove(this.items[i], DEFAULT_VIEW_TAG, true);
+        }
+
+        // clear items array
+        this.items.length = 0;
     }
 }

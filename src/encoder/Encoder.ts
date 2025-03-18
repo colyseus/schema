@@ -62,7 +62,7 @@ export class Encoder<T extends Schema = any> {
             const changeTree = changeTrees[i];
 
             if (hasView) {
-                if (!view.items.has(changeTree)) {
+                if (!view.visible.has(changeTree)) {
                     view.invisible.add(changeTree);
                     continue; // skip this change tree
 

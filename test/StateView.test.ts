@@ -773,6 +773,94 @@ describe("StateView", () => {
 
             assert.strictEqual(1, client2.state.entities.size);
             assert.strictEqual(3, client2.state.entities.get("two").components.length);
+        });
+
+        it("should allow to .clear() the view", () => {
+            class Component extends Schema {
+                @type("string") name: string;
+                @type("number") value: number;
+            }
+
+            class ListComponent extends Component {
+                @type(["string"]) list = new ArraySchema<string>();
+            }
+
+            class TagComponent extends Component {
+                @type("string") tag: string;
+            }
+
+            class Entity extends Schema {
+                @type("string") id: string = nanoid(9);
+                @type([Component]) components = new ArraySchema<Component>();
+            }
+
+            class MyRoomState extends Schema {
+                @view() @type({ map: Entity }) entities = new Map<string, Entity>();
+            }
+
+            const state = new MyRoomState();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state, new StateView(true));
+            const client2 = createClientWithView(state, new StateView(true));
+
+            state.entities.set("one", new Entity().assign({
+                id: "one",
+                components: [
+                    new Component().assign({ name: "Health", value: 100 }),
+                    new ListComponent().assign({ name: "List", value: 200, list: ["one", "two"] }),
+                    new TagComponent().assign({ name: "Tag", value: 300, tag: "tag" }),
+                ]
+            }));
+
+            state.entities.set("two", new Entity().assign({
+                id: "two",
+                components: [
+                    new Component().assign({ name: "Health", value: 100 }),
+                    new ListComponent().assign({ name: "List", value: 200, list: ["one", "two"] }),
+                    new TagComponent().assign({ name: "Tag", value: 300, tag: "tag" }),
+                ]
+            }));
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // add entities for the first time
+            client1.view.add(state.entities.get("one"));
+            client2.view.add(state.entities.get("two"));
+
+            assert.strictEqual(1, client1.view.items.length);
+            assert.strictEqual(1, client2.view.items.length);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(1, client1.state.entities.size);
+            assert.strictEqual(3, client1.state.entities.get("one").components.length);
+
+            assert.strictEqual(1, client2.state.entities.size);
+            assert.strictEqual(3, client2.state.entities.get("two").components.length);
+
+            client1.view.clear();
+            client2.view.clear();
+
+            assert.strictEqual(0, client1.view.items.length);
+            assert.strictEqual(0, client2.view.items.length);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(0, client1.state.entities.size);
+            assert.strictEqual(0, client2.state.entities.size);
+
+            // re-add entities!
+            client1.view.add(state.entities.get("one"));
+            client2.view.add(state.entities.get("two"));
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(1, client1.state.entities.size);
+            assert.strictEqual(3, client1.state.entities.get("one").components.length);
+
+            assert.strictEqual(1, client2.state.entities.size);
+            assert.strictEqual(3, client2.state.entities.get("two").components.length);
 
         });
     });

@@ -42,7 +42,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             !view ||
             typeof (ref[$childType]) === "string" ||
             // view.items.has(ref[$getByIndex](index)[$changes])
-            view.items.has(ref['tmpItems'][index]?.[$changes])
+            view.visible.has(ref['tmpItems'][index]?.[$changes])
         );
     }
 
