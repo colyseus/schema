@@ -159,6 +159,14 @@ describe("ArraySchema Tests", () => {
         assert.deepStrictEqual(["B", "C", "D", "E"], decodedState.items.map(it => it.name))
         assert.strictEqual("A", removedItem.name);
 
+        state.items.splice(2, 1, new Item().assign({ name: "F" }));
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(2, onRemoveCount);
+        assert.strictEqual("D", removedItem.name);
+        assert.strictEqual(7, onChangeCount);
+        assert.deepStrictEqual(["B", "C", "F", "E"], decodedState.items.map(it => it.name))
+
         assertDeepStrictEqualEncodeAll(state);
     });
 
