@@ -54,8 +54,6 @@ export class Encoder<T extends Schema = any> {
     ): Buffer {
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
-
-        const shouldDiscardChanges = !isEncodeAll && !hasView;
         const changeTrees = this.root[changeSetName];
 
         for (let i = 0, numChangeTrees = changeTrees.length; i < numChangeTrees; i++) {
@@ -114,11 +112,6 @@ export class Encoder<T extends Schema = any> {
 
                 encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView, metadata);
             }
-
-            // if (shouldDiscardChanges) {
-            //     changeTree.discard();
-            //     changeTree.isNew = false; // Not a new instance anymore
-            // }
         }
 
         if (it.offset > buffer.byteLength) {
@@ -147,19 +140,6 @@ export class Encoder<T extends Schema = any> {
             return this.encode({ offset: initialOffset }, view, buffer, changeSetName, isEncodeAll);
 
         } else {
-            //
-            // only clear changes after making sure buffer resize is not required.
-            //
-            if (shouldDiscardChanges) {
-                //
-                // TODO: avoid iterating over change trees twice.
-                //
-                for (let i = 0, numChangeTrees = changeTrees.length; i < numChangeTrees; i++) {
-                    const changeTree = changeTrees[i];
-                    changeTree.discard();
-                    changeTree.isNew = false; // Not a new instance anymore
-                }
-            }
 
             return buffer.subarray(0, it.offset);
         }
@@ -265,7 +245,7 @@ export class Encoder<T extends Schema = any> {
         let length = this.root.changes.length;
         if (length > 0) {
             while (length--) {
-                this.root.changes[length]?.endEncode();
+                this.root.changes[length]?.endEncode('changes');
             }
             this.root.changes.length = 0;
         }
@@ -274,7 +254,7 @@ export class Encoder<T extends Schema = any> {
         length = this.root.filteredChanges.length;
         if (length > 0) {
             while (length--) {
-                this.root.filteredChanges[length]?.endEncode();
+                this.root.filteredChanges[length]?.endEncode('filteredChanges');
             }
             this.root.filteredChanges.length = 0;
         }

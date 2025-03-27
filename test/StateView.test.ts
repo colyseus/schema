@@ -432,6 +432,46 @@ describe("StateView", () => {
 
             assertEncodeAllMultiple(encoder, state, [client1, client2])
         });
+
+        it("having parent @view() container: should include tagged fields", () => {
+            class Player extends Schema {
+                @type("number") pub: number;
+                @view() @type("number") priv: number;
+                @view(1) @type("number") tagged: number;
+            }
+
+            class State extends Schema {
+                @view() @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            function addPlayer(i: number) {
+                const player = new Player().assign({
+                    pub: i,
+                    priv: i * 2,
+                    tagged: i * 3
+                });
+                state.players.set(i.toString(), player);
+                return player;
+            }
+
+            const player1 = addPlayer(1);
+
+            const client = createClientWithView(state);
+            client.view.add(player1, 1);
+
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual({ pub: 1, priv: 2, tagged: 3 }, client.state.players.get("1").toJSON());
+
+            assertEncodeAllMultiple(encoder, state, [client])
+
+            // re-use view from client1
+            const client2 = createClientWithView(state, client.view);
+            encodeMultiple(encoder, state, [client2]);
+            assert.deepStrictEqual({ pub: 1, priv: 2, tagged: 3 }, client2.state.players.get("1").toJSON());
+        });
     });
 
     describe("MapSchema", () => {
@@ -688,6 +728,84 @@ describe("StateView", () => {
 
             encodeMultiple(encoder, state, [client1]);
             assert.strictEqual(client1.state.items.size, 2);
+        });
+
+        it("mutating a view() property on child item (primitive)", () => {
+            class Item extends Schema {
+                @type("number") pub: number = 100;
+                @view() @type("number") priv: number = 1;
+            }
+
+            class State extends Schema {
+                @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const items: Item[] = [];
+
+            for (let i = 0; i < 3; i++) {
+                const item = new Item();
+                items.push(item);
+                state.items.set(i.toString(), item);
+            }
+
+            const client = createClientWithView(state);
+            client.view.add(state.items.get("1"));
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(100, client.state.items.get("1").pub);
+            assert.strictEqual(1, client.state.items.get("1").priv);
+
+            items[1].pub++;
+            items[1].priv++;
+
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(101, client.state.items.get("1").pub);
+            assert.strictEqual(2, client.state.items.get("1").priv);
+        });
+
+        it("mutating a view() property on child item (Schema child)", () => {
+            class Prop extends Schema {
+                @type("string") name: string;
+                @type("number") value: number;
+            }
+            class Item extends Schema {
+                @type("number") pub: number = 100;
+                @view() @type(Prop) priv: Prop = new Prop().assign({ name: "test", value: 1 });
+            }
+
+            class State extends Schema {
+                @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const items: Item[] = [];
+
+            for (let i = 0; i < 3; i++) {
+                const item = new Item();
+                items.push(item);
+                state.items.set(i.toString(), item);
+            }
+
+            const client = createClientWithView(state);
+            client.view.add(state.items.get("1"));
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(100, client.state.items.get("1").pub);
+            assert.strictEqual(1, client.state.items.get("1").priv.value);
+
+            items[1].pub++;
+            items[1].priv.value++;
+
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(101, client.state.items.get("1").pub);
+            assert.strictEqual(2, client.state.items.get("1").priv.value);
         });
 
         it("adding to view item that has been removed from state", () => {

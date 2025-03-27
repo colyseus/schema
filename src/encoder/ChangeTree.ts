@@ -43,6 +43,10 @@ export interface ChangeSet {
     queueRootIndex?: number; // index of ChangeTree structure in `root.changes` or `root.filteredChanges`
 }
 
+function createChangeSet(): ChangeSet {
+    return { indexes: {}, operations: [] };
+}
+
 export function setOperationAtIndex(changeSet: ChangeSet, index: number) {
     const operationsIndex = changeSet.indexes[index];
     if (operationsIndex === undefined) {
@@ -66,7 +70,11 @@ export function enqueueChangeTree(
     changeSet: 'changes' | 'filteredChanges' | 'allFilteredChanges',
     queueRootIndex = changeTree[changeSet].queueRootIndex
 ) {
-    if (root && root[changeSet][queueRootIndex] !== changeTree) {
+    if (!root) {
+        // skip
+        return;
+
+    } else if (root[changeSet][queueRootIndex] !== changeTree) {
         changeTree[changeSet].queueRootIndex = root[changeSet].push(changeTree) - 1;
     }
 }
@@ -398,12 +406,13 @@ export class ChangeTree<T extends Ref=any> {
         return previousValue;
     }
 
-    endEncode() {
+    endEncode(changeSetName: ChangeSetName) {
         this.indexedOperations = {};
 
-        // // clear changes
-        // this.changes.indexes = {};
-        // this.changes.operations.length = 0;
+        // clear changeset
+        this[changeSetName].indexes = {};
+        this[changeSetName].operations.length = 0;
+        this[changeSetName].queueRootIndex = undefined;
 
         // ArraySchema and MapSchema have a custom "encode end" method
         this.ref[$onEncodeEnd]?.();
@@ -535,26 +544,24 @@ export class ChangeTree<T extends Ref=any> {
             || parentConstructor?.[Symbol.metadata]?.[$viewFieldIndexes]?.includes(parentIndex);
 
         //
-        // TODO: refactor this!
-        //
-        //      swapping `changes` and `filteredChanges` is required here
-        //      because "isFiltered" may not be imedialely available on `change()`
-        //      (this happens when instance is detached from root or parent)
+        // "isFiltered" may not be imedialely available during `change()` due to the instance not being attached to the root yet.
+        // when it's available, we need to enqueue the "changes" changeset into the "filteredChanges" changeset.
         //
         if (this.isFiltered) {
-            this.filteredChanges = { indexes: {}, operations: [] };
-            this.allFilteredChanges = { indexes: {}, operations: [] };
+            if (!this.filteredChanges) {
+                this.filteredChanges = createChangeSet();
+                this.allFilteredChanges = createChangeSet();
+            }
 
             if (this.changes.operations.length > 0) {
-                // swap changes reference
-                const changes = this.changes;
-                this.changes = this.filteredChanges;
-                this.filteredChanges = changes;
+                this.changes.operations.forEach((index) =>
+                    setOperationAtIndex(this.filteredChanges, index));
 
-                // swap "all changes" reference
-                const allFilteredChanges = this.allFilteredChanges;
-                this.allFilteredChanges = this.allChanges;
-                this.allChanges = allFilteredChanges;
+                this.allChanges.operations.forEach((index) =>
+                    setOperationAtIndex(this.allFilteredChanges, index));
+
+                this.changes = createChangeSet();
+                this.allChanges = createChangeSet();
             }
         }
     }
