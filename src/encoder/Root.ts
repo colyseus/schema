@@ -97,11 +97,18 @@ export class Root {
 
     removeChangeFromChangeSet(changeSetName: "allChanges" | "changes" | "filteredChanges" | "allFilteredChanges", changeTree: ChangeTree) {
         const changeSet = this[changeSetName];
-        if (spliceOne(changeSet, changeSet.indexOf(changeTree))) {
+        const changeSetIndex = changeSet.indexOf(changeTree);
+
+        if (changeSetIndex !== -1) {
             changeTree[changeSetName].queueRootIndex = -1;
-            // changeSet[index] = undefined;
+            changeSet[changeSetIndex] = undefined;
             return true;
         }
+
+        // if (spliceOne(changeSet, changeSet.indexOf(changeTree))) {
+        //     changeTree[changeSetName].queueRootIndex = -1;
+        //     return true;
+        // }
     }
 
     clear() {

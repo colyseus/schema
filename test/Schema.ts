@@ -130,6 +130,7 @@ export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, 
 
         // decode full state if needed
         if (client.needFullEncode) {
+            // console.log("> encodeAllForView()");
             encodeAllForView(encoder, client);
         }
     });
@@ -143,7 +144,7 @@ export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, 
     const sharedOffset = it.offset;
     const encodedViews = clients.map((client, i) => {
         // encode each view
-        // console.log(">> ENCODE VIEW!", i + 1);
+        // console.log(">> encodeView()", i + 1);
         const encoded = encoder.encodeView(client.view, sharedOffset, it);
         client.state.decode(encoded);
         return encoded;

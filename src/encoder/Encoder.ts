@@ -58,6 +58,7 @@ export class Encoder<T extends Schema = any> {
 
         for (let i = 0, numChangeTrees = changeTrees.length; i < numChangeTrees; i++) {
             const changeTree = changeTrees[i];
+            if (!changeTree) { continue; }
 
             if (hasView) {
                 if (!view.visible.has(changeTree)) {

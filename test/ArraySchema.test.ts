@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll } from "./Schema";
-import { ArraySchema, Schema, type, Reflection, $changes } from "../src";
+import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
+import { ArraySchema, Schema, type, Reflection, $changes, MapSchema } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -92,6 +92,45 @@ describe("ArraySchema Tests", () => {
             state.turns.clear();
             decodedState.decode(state.encode());
             assert.strictEqual(0, state.turns.length);
+        });
+
+        it("mutate previous instance + shift", () => {
+            /**
+             * This test shows that flagging the `changeSet` item as `undefined`
+             * is important at `encoder.root.removeChangeFromChangeSet()`
+             *
+             * By flagging the `changeSet` as `undefined`, it is required to
+             * check if the ChangeTree is `undefined` at encoding time.  (see `if (!changeTree) { continue; }` at Encoder#encode() method)
+             */
+
+            class Entity extends Schema {
+                @type("number") i: number;
+            }
+            class MyState extends Schema {
+                @type([Entity]) entities;
+            }
+
+            const state = new MyState();
+            state.entities = [];
+
+            for (let i = 0; i < 5; i++) {
+                state.entities.push(new Entity().assign({ i }));
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode())
+
+            for (let i = 0; i < 2; i++) {
+                for (let j = 0; j < 2; j++) {
+                    state.entities.forEach((entity) => entity.i++);
+                    const entity = state.entities.shift();
+                }
+
+                decodedState.decode(state.encode());
+            }
+
+            assertDeepStrictEqualEncodeAll(state);
+            assertRefIdCounts(state, decodedState);
         });
     });
 
