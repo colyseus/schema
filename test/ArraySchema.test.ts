@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
-import { ArraySchema, Schema, type, Reflection, $changes, MapSchema } from "../src";
+import { ArraySchema, Schema, type, Reflection, $changes, MapSchema, ChangeTree } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -393,6 +393,31 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
             assert.deepStrictEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        xit("consecutive unshift calls should not break 'encodeAll'", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1);
+            state.arrayOfNumbers.push(2);
+            state.arrayOfNumbers.push(3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.arrayOfNumbers.unshift(0);
+            state.arrayOfNumbers.unshift(-1);
+            assert.strictEqual(-1, state.arrayOfNumbers[0]);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([-1, 0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("push and unshift", () => {
