@@ -94,6 +94,53 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(0, state.turns.length);
         });
 
+        it("consecutive shift calls should not break 'encodeAll'", () => {
+            class Entity extends Schema {
+                @type("number") i: number;
+            }
+            class MyState extends Schema {
+                @type([Entity]) entities;
+            }
+
+            const state = new MyState();
+            state.entities = [];
+
+            for (let i = 0; i < 5; i++) {
+                state.entities.push(new Entity().assign({ i }));
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode())
+
+            const entitiesChangeTree: ChangeTree = state.entities[$changes];
+            assert.deepStrictEqual({ '0': 0, '1': 1, '2': 2, '3': 3, '4': 4 }, entitiesChangeTree.allChanges.indexes);
+
+            state.entities.shift();
+            assert.deepStrictEqual({ '0': 1, '1': 2, '2': 3, '3': 4 }, entitiesChangeTree.allChanges.indexes);
+
+            state.entities.shift();
+            assert.deepStrictEqual({ '0': 2, '1': 3, '2': 4 }, entitiesChangeTree.allChanges.indexes);
+
+            state.entities.shift();
+            assert.deepStrictEqual({ '0': 3, '1': 4 }, entitiesChangeTree.allChanges.indexes);
+
+            state.entities.shift();
+            assert.deepStrictEqual({ '0': 4 }, entitiesChangeTree.allChanges.indexes);
+
+            assertDeepStrictEqualEncodeAll(state);
+
+            decodedState.decode(state.encode())
+            assertRefIdCounts(state, decodedState);
+
+            state.entities.shift();
+
+            decodedState.decode(state.encode())
+            assertRefIdCounts(state, decodedState);
+
+            // encode all
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
         it("mutate previous instance + shift", () => {
             /**
              * This test shows that flagging the `changeSet` item as `undefined`
@@ -123,14 +170,16 @@ describe("ArraySchema Tests", () => {
             for (let i = 0; i < 2; i++) {
                 for (let j = 0; j < 2; j++) {
                     state.entities.forEach((entity) => entity.i++);
-                    const entity = state.entities.shift();
+                    state.entities.shift();
                 }
-
                 decodedState.decode(state.encode());
             }
 
             assertDeepStrictEqualEncodeAll(state);
             assertRefIdCounts(state, decodedState);
+
+            state.entities.shift();
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
@@ -369,6 +418,8 @@ describe("ArraySchema Tests", () => {
             console.log("--- 5 ---")
 
             assert.strictEqual(0, state.turns.length);
+
+            assertDeepStrictEqualEncodeAll(state);
         });
     });
 
@@ -439,6 +490,8 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
             assert.deepStrictEqual([0, 1, 2, 3, 4], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("push, unshift, pop", () => {
@@ -460,6 +513,8 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
             assert.deepStrictEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("push, pop, unshift", () => {
@@ -481,6 +536,8 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
             assert.deepStrictEqual([0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
         });
 
         it("push, shift, unshift", () => {

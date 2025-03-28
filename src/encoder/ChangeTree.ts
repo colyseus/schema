@@ -267,7 +267,7 @@ export class ChangeTree<T extends Ref=any> {
         const newIndexes = {};
         for (const index in this.indexedOperations) {
             newIndexedOperations[Number(index) + shiftIndex] = this.indexedOperations[index];
-            newIndexes[Number(index) + shiftIndex] = changeSet[index];
+            newIndexes[Number(index) + shiftIndex] = changeSet.indexes[index];
         }
         this.indexedOperations = newIndexedOperations;
         changeSet.indexes = newIndexes;
@@ -372,6 +372,7 @@ export class ChangeTree<T extends Ref=any> {
 
         this.indexedOperations[index] = operation ?? OPERATION.DELETE;
         setOperationAtIndex(changeSet, index);
+        deleteOperationAtIndex(this.allChanges, allChangesIndex);
 
         const previousValue = this.getValue(index);
 
@@ -389,8 +390,6 @@ export class ChangeTree<T extends Ref=any> {
             //
             this.root?.remove(previousValue[$changes]);
         }
-
-        deleteOperationAtIndex(this.allChanges, allChangesIndex);
 
         //
         // FIXME: this is looking a ugly and repeated

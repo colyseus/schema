@@ -360,11 +360,13 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         if (this.items.length === 0) { return undefined; }
 
         // const index = Number(Object.keys(changeTree.indexes)[0]);
-        const index = this.tmpItems.findIndex((item, i) => item === this.items[0]);
         const changeTree = this[$changes];
 
-        changeTree.delete(index);
-        changeTree.shiftAllChangeIndexes(-1, index);
+        const index = this.tmpItems.findIndex(item => item === this.items[0]);
+        const allChangesIndex = this.items.findIndex(item => item === this.items[0]);
+
+        changeTree.delete(index, OPERATION.DELETE, allChangesIndex);
+        changeTree.shiftAllChangeIndexes(-1, allChangesIndex);
 
         // this.deletedIndexes[index] = true;
 
