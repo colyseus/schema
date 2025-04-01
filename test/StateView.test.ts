@@ -1467,34 +1467,35 @@ describe("StateView", () => {
     });
 
     describe("checkIsFiltered", () => {
-        /**
-         * prepare a schema with a filtered property
-         */
-        class Component extends Schema {
-            @type("string") name: string;
-            @type("number") value: number;
-        }
-
-        class ListComponent extends Component {
-            @type(["string"]) list = new ArraySchema<string>();
-        }
-
-        class TagComponent extends Component {
-            @type("string") tag: string;
-        }
-
-        class Entity extends Schema {
-            @type("string") id: string = nanoid(9);
-            @type([Component]) components = new ArraySchema<Component>();
-            @type(Component) component;
-        }
-
-        class MyRoomState extends Schema {
-            @view() @type({ map: Entity }) entities = new Map<string, Entity>();
-            @type(Component) component;
-        }
-
         it("2nd level of @view() should be identified as 'filtered'", () => {
+            /**
+             * prepare a schema with a filtered property
+             */
+            class Component extends Schema {
+                @type("string") name: string;
+                @type("number") value: number;
+            }
+
+            class ListComponent extends Component {
+                @type(["string"]) list = new ArraySchema<string>();
+            }
+
+            class TagComponent extends Component {
+                @type("string") tag: string;
+            }
+
+            class Entity extends Schema {
+                @type("string") id: string = nanoid(9);
+                @type([Component]) components = new ArraySchema<Component>();
+                @type(Component) component;
+            }
+
+            class MyRoomState extends Schema {
+                @view() @type({ map: Entity }) entities = new Map<string, Entity>();
+                @type(Component) component;
+            }
+
+
             const state = new MyRoomState();
             const encoder = getEncoder(state);
 

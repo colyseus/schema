@@ -1,6 +1,6 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd } from "../symbols";
 import type { Schema } from "../../Schema";
-import { ChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
+import { ChangeTree, debugChangeSet, deleteOperationAtIndex, enqueueChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
@@ -229,9 +229,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
         this[$changes].delete(index, undefined, this.items.length - 1);
 
-        // this.tmpItems[index] = undefined;
-        // this.tmpItems.pop();
-
         this.deletedIndexes[index] = true;
 
         return this.items.pop();
@@ -412,38 +409,63 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      */
     splice(
         start: number,
-        deleteCount: number = this.items.length - start,
+        deleteCount?: number,
         ...insertItems: V[]
     ): V[] {
         const changeTree = this[$changes];
 
+        const itemsLength = this.items.length;
         const tmpItemsLength = this.tmpItems.length;
         const insertCount = insertItems.length;
 
         // build up-to-date list of indexes, excluding removed values.
         const indexes: number[] = [];
         for (let i = 0; i < tmpItemsLength; i++) {
-            // if (this.tmpItems[i] !== undefined) {
             if (this.deletedIndexes[i] !== true) {
                 indexes.push(i);
             }
         }
 
-        // delete operations at correct index
-        for (let i = start; i < start + deleteCount; i++) {
-            const index = indexes[i];
-            changeTree.delete(index);
-            // this.tmpItems[index] = undefined;
-            this.deletedIndexes[index] = true;
+        if (itemsLength > start) {
+            // if deleteCount is not provided, delete all items from start to end
+            if (deleteCount === undefined) {
+                deleteCount = itemsLength - start;
+            }
+
+            //
+            // delete operations at correct index
+            //
+            for (let i = start; i < start + deleteCount; i++) {
+                const index = indexes[i];
+                changeTree.delete(index, OPERATION.DELETE);
+                this.deletedIndexes[index] = true;
+            }
+
+        } else {
+            // not enough items to delete
+            deleteCount = 0;
         }
 
-        // force insert operations
-        for (let i = 0; i < insertCount; i++) {
-            const addIndex = indexes[start] + i;
-            changeTree.indexedOperation(addIndex, OPERATION.ADD);
+        // insert operations
+        if (insertCount > 0) {
+            if (insertCount > deleteCount) {
+                console.error("Inserting more elements than deleting during ArraySchema#splice()");
+                throw new Error("ArraySchema#splice(): insertCount must be equal or lower than deleteCount.");
+            }
 
-            // set value's parent/root
-            insertItems[i][$changes]?.setParent(this, changeTree.root, addIndex);
+            for (let i = 0; i < insertCount; i++) {
+                const addIndex = (indexes[start] ?? itemsLength) + i;
+
+                changeTree.indexedOperation(
+                    addIndex,
+                    (this.deletedIndexes[addIndex])
+                        ? OPERATION.DELETE_AND_ADD
+                        : OPERATION.ADD
+                );
+
+                // set value's parent/root
+                insertItems[i][$changes]?.setParent(this, changeTree.root, addIndex);
+            }
         }
 
         //
@@ -452,6 +474,17 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         //
         if (deleteCount > insertCount) {
             changeTree.shiftAllChangeIndexes(-(deleteCount - insertCount), indexes[start + insertCount]);
+            // debugChangeSet("AFTER SHIFT indexes", changeTree.allChanges);
+        }
+
+        //
+        // FIXME: this code block is duplicated on ChangeTree
+        //
+        if (changeTree.filteredChanges !== undefined) {
+            enqueueChangeTree(changeTree.root, changeTree, 'filteredChanges');
+
+        } else {
+            enqueueChangeTree(changeTree.root, changeTree, 'changes');
         }
 
         return this.items.splice(start, deleteCount, ...insertItems);
@@ -767,10 +800,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             : this.deletedIndexes[index]
                 ? this.items[index]
                 : this.tmpItems[index] || this.items[index];
-
-        // return (isEncodeAll)
-        //     ? this.items[index]
-        //     : this.tmpItems[index] ?? this.items[index];
     }
 
     protected [$deleteByIndex](index: number) {

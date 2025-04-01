@@ -217,6 +217,8 @@ export const encodeArray: EncodeOperation = function (
     const type = changeTree.getType(field);
     const value = changeTree.getValue(field, isEncodeAll);
 
+    // console.log({ type, field, value });
+
     // console.log("encodeArray -> ", {
     //     ref: changeTree.ref.constructor.name,
     //     field,

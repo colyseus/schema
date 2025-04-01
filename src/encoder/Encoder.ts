@@ -10,7 +10,7 @@ import { Root } from "./Root";
 
 import type { StateView } from "./StateView";
 import type { Metadata } from "../Metadata";
-import type { ChangeTree } from "./ChangeTree";
+import type { ChangeSetName, ChangeTree } from "./ChangeTree";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = (typeof(Buffer) !== "undefined") && Buffer.poolSize || 8 * 1024; // 8KB
@@ -48,7 +48,7 @@ export class Encoder<T extends Schema = any> {
         it: Iterator = { offset: 0 },
         view?: StateView,
         buffer = this.sharedBuffer,
-        changeSetName: "changes" | "allChanges" | "filteredChanges" | "allFilteredChanges" = "changes",
+        changeSetName: ChangeSetName = "changes",
         isEncodeAll = changeSetName === "allChanges",
         initialOffset = it.offset // cache current offset in case we need to resize the buffer
     ): Buffer {
@@ -70,11 +70,11 @@ export class Encoder<T extends Schema = any> {
                 }
             }
 
-            const operations = changeTree[changeSetName];
+            const changeSet = changeTree[changeSetName];
             const ref = changeTree.ref;
 
             // TODO: avoid iterating over change tree if no changes were made
-            const numChanges = operations.operations.length;
+            const numChanges = changeSet.operations.length;
             if (numChanges === 0) { continue; }
 
             const ctor = ref.constructor;
@@ -90,7 +90,7 @@ export class Encoder<T extends Schema = any> {
             }
 
             for (let j = 0; j < numChanges; j++) {
-                const fieldIndex = operations.operations[j];
+                const fieldIndex = changeSet.operations[j];
 
                 const operation = (fieldIndex < 0)
                     ? Math.abs(fieldIndex) // "pure" operation without fieldIndex (e.g. CLEAR, REVERSE, etc.)

@@ -1,3 +1,5 @@
+import * as util from "util";
+
 import { OPERATION } from "../encoding/spec";
 import { Schema } from "../Schema";
 import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refTypeFieldIndexes, $viewFieldIndexes } from "../types/symbols";
@@ -39,7 +41,7 @@ export interface IndexedOperations {
 export interface ChangeSet {
     // field index -> operation index
     indexes: { [index: number]: number };
-    operations: OPERATION[]
+    operations: number[];
     queueRootIndex?: number; // index of ChangeTree structure in `root.changes` or `root.filteredChanges`
 }
 
@@ -56,12 +58,41 @@ export function setOperationAtIndex(changeSet: ChangeSet, index: number) {
     }
 }
 
-export function deleteOperationAtIndex(changeSet: ChangeSet, index: number) {
-    const operationsIndex = changeSet.indexes[index];
-    if (operationsIndex !== undefined) {
-        changeSet.operations[operationsIndex] = undefined;
+export function deleteOperationAtIndex(changeSet: ChangeSet, index: number | string) {
+    let operationsIndex = changeSet.indexes[index];
+    if (operationsIndex === undefined) {
+        //
+        // if index is not found, we need to find the last operation
+        // FIXME: this is not very efficient
+        //
+        // > See "should allow consecutive splices (same place)" tests
+        //
+        operationsIndex = Object.values(changeSet.indexes).at(-1);
+        index = Object.entries(changeSet.indexes).find(([_, value]) => value === operationsIndex)?.[0];
     }
+    changeSet.operations[operationsIndex] = undefined;
     delete changeSet.indexes[index];
+}
+
+export function debugChangeSet(label: string, changeSet: ChangeSet) {
+    let indexes: string[] = [];
+    let operations: string[] = [];
+
+    for (const index in changeSet.indexes) {
+        indexes.push(`\t${util.inspect(index, { colors: true })} => [${util.inspect(changeSet.indexes[index], { colors: true })}]`);
+    }
+
+    for (let i = 0; i < changeSet.operations.length; i++) {
+        const index = changeSet.operations[i];
+        if (index !== undefined) {
+            operations.push(`\t[${util.inspect(i, { colors: true })}] => ${util.inspect(index, { colors: true })}`);
+        }
+    }
+
+    console.log(`${label} =>\nindexes (${Object.keys(changeSet.indexes).length}) {`);
+    console.log(indexes.join("\n"), "\n}");
+    console.log(`operations (${changeSet.operations.filter(op => op !== undefined).length}) {`);
+    console.log(operations.join("\n"), "\n}");
 }
 
 export function enqueueChangeTree(
@@ -292,15 +323,24 @@ export class ChangeTree<T extends Ref=any> {
 
     private _shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0, changeSet: ChangeSet) {
         const newIndexes = {};
-
+        let newKey = 0;
         for (const key in changeSet.indexes) {
-            const index = changeSet.indexes[key];
-            if (index > startIndex) {
-                newIndexes[Number(key) + shiftIndex] = index;
-            } else {
-                newIndexes[key] = index;
-            }
+            newIndexes[newKey++] = changeSet.indexes[key];
         }
+
+        // const newIndexes = {};
+        // let newKey = 0;
+        // for (const key in changeSet.indexes) {
+        //     const index = changeSet.indexes[key];
+        //     newIndexes[newKey++] = changeSet.indexes[key];
+        //     console.log("...shiftAllChangeIndexes", { index: key, targetIndex: index, startIndex, shiftIndex });
+        //     if (index > startIndex) {
+        //         newIndexes[Number(key) + shiftIndex] = index;
+        //     } else {
+        //         newIndexes[Number(key)] = index;
+        //     }
+        // }
+
         changeSet.indexes = newIndexes;
 
         for (let i = 0; i < changeSet.operations.length; i++) {

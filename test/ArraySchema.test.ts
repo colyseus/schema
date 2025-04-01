@@ -141,6 +141,51 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
+        it("shift + repopulate should not trigger refId not found", () => {
+            class Entity extends Schema {
+                @type("number") i: number;
+            }
+            class MyState extends Schema {
+                @type([Entity]) entities;
+            }
+
+            const state = new MyState();
+            state.entities = [];
+
+            const populate = (count: number = 100) => {
+                for (let i = 0; i < count; i++) {
+                    const entity = new Entity();
+                    entity.i = i;
+                    state.entities.push(new Entity().assign({ i }));
+                }
+            }
+
+            populate();
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode())
+
+            for (let i = 0; i < 1000; i++) {
+                state.entities.forEach((entity) => entity.i++);
+                state.entities.shift();
+
+                // encode every other iteration
+                if (i % 20 === 0) {
+                    decodedState.decode(state.encode())
+                }
+
+                if (state.entities.length === 0) {
+                    populate();
+                }
+            }
+
+            decodedState.decode(state.encode())
+            assertRefIdCounts(state, decodedState);
+
+            // encode all
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
         it("mutate previous instance + shift", () => {
             /**
              * This test shows that flagging the `changeSet` item as `undefined`
@@ -615,6 +660,298 @@ describe("ArraySchema Tests", () => {
         });
     });
 
+    describe("ArraySchema#splice()", () => {
+        it("splicing invalid index should be no-op", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 10; i++) {
+                state.items.push(new Item().assign({ i }));
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            state.items.splice(0, 1);
+            state.items.splice(9, 1); // index 9 doesn't exist
+
+            assertDeepStrictEqualEncodeAll(state);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("should allow to replace a single item", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 10; i++) {
+                state.items.push(new Item().assign({ i }));
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            state.items.splice(0, 1, new Item().assign({ i: 10 }));
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        xit("TODO: should allow to replace 1 item and add another", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 10; i++) {
+                state.items.push(new Item().assign({ i }));
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            state.items.splice(0, 1, new Item().assign({ i: 10 }), new Item().assign({ i: 10 }));
+            decodedState.decode(state.encode());
+
+            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("should allow consecutive splices (same place, 3 items)", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 3; i++) {
+                state.items.push(new Item().assign({ i }));
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            state.items.splice(0, 1);
+            state.items.splice(0, 1);
+            state.items.splice(0, 1);
+            assertDeepStrictEqualEncodeAll(state);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("should allow consecutive splices (same place, 10 items)", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 10; i++) {
+                state.items.push(new Item().assign({ i }));
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            state.items.splice(0, 1);
+            state.items.splice(0, 1);
+            state.items.splice(0, 1);
+            state.items.splice(0, 1);
+            state.items.splice(0, 1);
+            state.items.splice(0, 1);
+            state.items.splice(0, 1);
+            state.items.splice(0, 1);
+            assertDeepStrictEqualEncodeAll(state);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("should allow consecutive splices (last 2)", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 5; i++) {
+                state.items.push(new Item().assign({ i }));
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            state.items.splice(4, 1);
+            state.items.splice(3, 1);
+
+            assertDeepStrictEqualEncodeAll(state);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("should allow deleteCount to exceed actual length", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 10; i++) {
+                state.items.push(new Item().assign({ i }));
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            state.items.splice(5, 15);
+
+            assertDeepStrictEqualEncodeAll(state);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("should allow consecutive splices (forwards)", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 10; i++) {
+                state.items.push(new Item().assign({ i }));
+            }
+
+            const itemsChangeTree = state.items[$changes];
+            const checkItemsSameAsOperations = () => {
+                assert.strictEqual(state.items.length, itemsChangeTree.allChanges.operations.filter((op) => op !== undefined).length);
+                for (let i = 0; i < itemsChangeTree.allChanges.operations.length; i++) {
+                    const fieldIndex = itemsChangeTree.allChanges.operations[i];
+                    if (fieldIndex !== undefined) {
+                        const value = itemsChangeTree.getValue(fieldIndex, true);
+                        assert.ok(value);
+                    }
+                };
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+            checkItemsSameAsOperations();
+
+            state.items.splice(0, 1);
+            checkItemsSameAsOperations();
+
+            state.items.splice(1, 1);
+            checkItemsSameAsOperations();
+
+            state.items.splice(2, 1);
+            checkItemsSameAsOperations();
+
+            state.items.splice(3, 1);
+            checkItemsSameAsOperations();
+
+            state.items.splice(4, 1);
+            checkItemsSameAsOperations();
+
+            assertDeepStrictEqualEncodeAll(state);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("should allow consecutive splices (backwards)", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 3; i++) {
+                state.items.push(new Item().assign({ i }));
+            }
+
+            const itemsChangeTree = state.items[$changes];
+            const checkItemsSameAsOperations = () => {
+                assert.strictEqual(state.items.length, itemsChangeTree.allChanges.operations.filter((op) => op !== undefined).length);
+                for (let i = 0; i < itemsChangeTree.allChanges.operations.length; i++) {
+                    const fieldIndex = itemsChangeTree.allChanges.operations[i];
+                    if (fieldIndex !== undefined) {
+                        const value = itemsChangeTree.getValue(fieldIndex, true);
+                        console.log("check...", { fieldIndex, value: value?.toJSON() });
+                        assert.ok(value);
+                    }
+                };
+            }
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+            checkItemsSameAsOperations();
+
+            state.items.splice(4, 1);
+            checkItemsSameAsOperations();
+
+            state.items.splice(3, 1);
+            checkItemsSameAsOperations();
+
+            state.items.splice(2, 1);
+            checkItemsSameAsOperations();
+
+            state.items.splice(1, 1);
+            checkItemsSameAsOperations();
+
+            state.items.splice(0, 1);
+            checkItemsSameAsOperations();
+
+            assertDeepStrictEqualEncodeAll(state);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+    });
+
     it("push, splice, push", () => {
         class State extends Schema {
             @type(["number"]) cards = new ArraySchema<number>();
@@ -846,7 +1183,7 @@ describe("ArraySchema Tests", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
-    it("should allow to insert elements with splice", () => {
+    it("should allow to replace elements with splice", () => {
         const state = new State();
         const p1 = new Player("Jake")
         const p2 = new Player("Snake")

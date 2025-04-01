@@ -372,6 +372,16 @@ describe("Type: Schema", () => {
             assert.strictEqual(2, decodedState.players.size);
             assertDeepStrictEqualEncodeAll(state);
         });
+
+        it("number should be able to encode Date.now()", () => {
+            class State extends Schema {
+                @type("number") timestamp: number = Date.now();
+            }
+            const state = new State();
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+            assert.strictEqual(state.timestamp, decodedState.timestamp);
+        })
     });
 
     describe("detecting changes", () => {
