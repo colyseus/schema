@@ -224,43 +224,32 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client1])
         });
 
-        it("adding PlayerState to view should NOT expose room-level @view() properties", () => {
-            class SecretMessage extends Schema {
-                @type("string") content: string;
-            }
-
+        it("adding a property to view should NOT expose all root-level @view() properties", () => {
             class Player extends Schema {
-                @view()
-                @type("string")
-                role: string;
+                @view() @type("string") role: string;
             }
 
-            class RoomState extends Schema {
+            class State extends Schema {
                 @type(Player) player = new Player();
-
-                @view()
-                @type([SecretMessage])
-                secretChat = new ArraySchema<SecretMessage>();
+                @view() @type("string") privateInfo: string = "I'm private";
             }
 
-            const state = new RoomState();
+            const state = new State();
             state.player.role = "Wizzard";
-            state.secretChat.push(
-                Object.assign(new SecretMessage(), {
-                    content: "should not be visible",
-                })
-            );
 
             const encoder = getEncoder(state);
             const client = createClientWithView(state);
 
-            client.view.add(state.player);
+            //
+            // TODO: should we have a clearer API to skip adding the parent structure?
+            // See: https://github.com/colyseus/schema/pull/194#issuecomment-2776391297
+            //
+            client.view.add(state.player, -1, false);
 
             encodeMultiple(encoder, state, [client]);
 
             assert.strictEqual(client.state.player.role, "Wizzard");
-
-            assert.strictEqual((client.state as any).secretChat, undefined);
+            assert.strictEqual(client.state.privateInfo, undefined);
         });
 
         it("view.add(TAG) should re-encode a discarded change", () => {
@@ -522,6 +511,7 @@ describe("StateView", () => {
             class State extends Schema {
                 @type("string") prop1 = "Hello world";
                 @view() @type({ map: Item }) items = new MapSchema<Item>();
+                @view(1) @type("string") secret = "Secret info";
             }
 
             const state = new State();
@@ -542,9 +532,11 @@ describe("StateView", () => {
             assert.strictEqual(client1.state.prop1, state.prop1);
             assert.strictEqual(client1.state.items.size, 1);
             assert.strictEqual(client1.state.items.get("3").amount, state.items.get("3").amount);
+            assert.strictEqual(client1.state.secret, undefined);
 
             assert.strictEqual(client2.state.prop1, state.prop1);
             assert.strictEqual(client2.state.items, undefined);
+            assert.strictEqual(client2.state.secret, undefined);
             assertEncodeAllMultiple(encoder, state, [client1])
         });
 
