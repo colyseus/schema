@@ -224,6 +224,45 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client1])
         });
 
+        it("adding PlayerState to view should NOT expose room-level @view() properties", () => {
+            class SecretMessage extends Schema {
+                @type("string") content: string;
+            }
+
+            class Player extends Schema {
+                @view()
+                @type("string")
+                role: string;
+            }
+
+            class RoomState extends Schema {
+                @type(Player) player = new Player();
+
+                @view()
+                @type([SecretMessage])
+                secretChat = new ArraySchema<SecretMessage>();
+            }
+
+            const state = new RoomState();
+            state.player.role = "Wizzard";
+            state.secretChat.push(
+                Object.assign(new SecretMessage(), {
+                    content: "should not be visible",
+                })
+            );
+
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+
+            client.view.add(state.player);
+
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.player.role, "Wizzard");
+
+            assert.strictEqual((client.state as any).secretChat, undefined);
+        });
+
         it("view.add(TAG) should re-encode a discarded change", () => {
             const FOV_TAG = 1;
 
