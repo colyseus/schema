@@ -1831,6 +1831,45 @@ describe("ArraySchema Tests", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
+    it("should allow to swap items between two ArraySchema", () => {
+        class Item extends Schema {
+            @type("string") name: string;
+        }
+        class State extends Schema {
+            @type([Item]) items1 = new ArraySchema<Item>();
+            @type([Item]) items2 = new ArraySchema<Item>();
+        }
+
+        const state = new State();
+        const decodedState = new State();
+
+        state.items1.push(new Item().assign({ name: "Item 1" }));
+        state.items1.push(new Item().assign({ name: "Item 2" }));
+
+        decodedState.decode(state.encode());
+        assert.strictEqual(2, decodedState.items1.length);
+
+        const decodedItem1 = decodedState.items1[0];
+        state.items2.push(state.items1.shift());
+
+        const swapOperation = state.encode();
+        console.log("(can we have less bytes here?)", Array.from(swapOperation));
+        // TODO: encode length should be less than 10 bytes
+        // assert.ok(swapOperation.byteLength < 10);
+        decodedState.decode(swapOperation);
+
+        const movedItem1 = decodedState.items2[0];
+
+        assert.strictEqual(1, decodedState.items1.length);
+        assert.strictEqual(1, decodedState.items2.length);
+
+        assert.strictEqual(decodedItem1, movedItem1, "should hold the same Item reference.");
+
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
     it("should splice an ArraySchema of primitive values", () => {
         class Player extends Schema {
             @type(["string"]) itemIds = new ArraySchema<string>();
