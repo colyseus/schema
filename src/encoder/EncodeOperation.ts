@@ -210,7 +210,7 @@ export const encodeArray: EncodeOperation = function (
     encode.number(bytes, refOrIndex, it);
 
     // Do not encode value for DELETE operations
-    if (operation === OPERATION.DELETE) {
+    if (operation === OPERATION.DELETE || operation === OPERATION.DELETE_BY_REFID) {
         return;
     }
 

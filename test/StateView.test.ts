@@ -1,7 +1,6 @@
 import * as assert from "assert";
 import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION, SetSchema, CollectionSchema } from "../src";
 import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple } from "./Schema";
-import { getDecoderStateCallbacks } from "../src/decoder/strategy/StateCallbacks";
 import { nanoid } from "nanoid";
 
 describe("StateView", () => {
@@ -1488,6 +1487,103 @@ describe("StateView", () => {
             assert.strictEqual(2, client.state.entities[0].items.length);
 
             assertEncodeAllMultiple(encoder, state, [client])
+        });
+
+        it("nested arrays of a filtered entity", () => {
+            class Component extends Schema {
+                @type("string") name: string;
+                @type("number") value: number;
+            }
+            class QuestCondition extends Schema {
+                @type('number') level: number = null;
+                @type('string') quest: string = null;
+            }
+            class QuestReward extends Schema {
+                @type('number') amount: number;
+            }
+            class QuestRequirement extends Schema {
+                @type('number') progress: number = 0;
+            }
+            class Quest extends Schema {
+                @type('string') name: string;
+                @type([QuestRequirement]) requirements = new ArraySchema<QuestRequirement>();
+                @type([QuestReward]) rewards = new ArraySchema<QuestReward>();
+                @type([QuestCondition]) conditions = new ArraySchema<QuestCondition>();
+            }
+            class QuestBook extends Component {
+                @type([Quest]) finished: Quest[] = new ArraySchema<Quest>();
+                @type([Quest]) ongoing: Quest[] = new ArraySchema<Quest>();
+            }
+            class Entity extends Schema {
+                @type("string") id: string = nanoid(9);
+                @type([Component]) components = new ArraySchema<Component>();
+            }
+
+            class MyRoomState extends Schema {
+                @view() @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new MyRoomState();
+            const encoder = getEncoder(state);
+
+            const questBook = new QuestBook().assign({
+                finished: [],
+                ongoing: [
+                    new Quest().assign({
+                        name: "Quest1",
+                        requirements: [new QuestRequirement().assign({ progress: 0 })],
+                        rewards: [new QuestReward().assign({ amount: 300 })],
+                        conditions: [new QuestCondition().assign({ level: 3, quest: "Quest1" })]
+                    }),
+                    new Quest().assign({
+                        name: "Quest2",
+                        requirements: [new QuestRequirement().assign({ progress: 0 })],
+                        rewards: [new QuestReward().assign({ amount: 400 })],
+                        conditions: [new QuestCondition().assign({ level: 4, quest: "Quest2" })]
+                    }),
+                    new Quest().assign({
+                        name: "Quest3",
+                        requirements: [new QuestRequirement().assign({ progress: 0 })],
+                        rewards: [new QuestReward().assign({ amount: 400 })],
+                        conditions: [new QuestCondition().assign({ level: 4, quest: "Quest3" })]
+                    })
+                ]
+            });
+
+            state.entities.set("one", new Entity().assign({
+                id: "one",
+                components: [questBook]
+            }));
+
+            state.entities.set("two", new Entity().assign({
+                id: "two",
+                components: []
+            }));
+
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            // add entities for the first time
+            client.view.add(state.entities.get("one"));
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(1, client.state.entities.size);
+
+            assert.deepStrictEqual(state.entities.get("one").toJSON(), client.state.entities.get("one").toJSON());
+
+            // 1st remove ongoing + add to finished
+            const ongoing1 = questBook.ongoing.shift();
+            questBook.finished.push(ongoing1);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual(state.entities.get("one").toJSON(), client.state.entities.get("one").toJSON());
+
+            // 2st remove ongoing + add to finished
+            const ongoing2 = questBook.ongoing.shift();
+            questBook.finished.push(ongoing2);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual(state.entities.get("one").toJSON(), client.state.entities.get("one").toJSON());
+
+            assertEncodeAllMultiple(encoder, state, [client]);
         });
     });
 

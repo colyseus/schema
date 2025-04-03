@@ -326,10 +326,15 @@ export const decodeArray: DecodeOperation = function (
         const refId = decode.number(bytes, it);
         const itemByRefId = decoder.root.refs.get(refId);
 
-        // use existing index, or push new value
-        index = (itemByRefId)
-            ? ref.findIndex((value) => value === itemByRefId)
-            : ref.length;
+        // if item already exists, use existing index
+        if (itemByRefId) {
+            index = ref.findIndex((value) => value === itemByRefId);
+        }
+
+        // fallback to use last index
+        if (index === -1 || index === undefined) {
+            index = ref.length;
+        }
 
     } else {
         index = decode.number(bytes, it);
