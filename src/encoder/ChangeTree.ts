@@ -571,7 +571,7 @@ export class ChangeTree<T extends Ref=any> {
         }
         key += `-${parentIndex}`;
 
-        const fieldHasViewTag = parentConstructor?.[Symbol.metadata]?.[$viewFieldIndexes]?.includes(parentIndex);
+        const fieldHasViewTag = Metadata.hasViewTagAtIndex(parentConstructor?.[Symbol.metadata], parentIndex);
 
         this.isFiltered = parent[$changes].isFiltered // in case parent is already filtered
             || this.root.types.parentFiltered[key]

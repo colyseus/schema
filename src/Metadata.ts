@@ -285,5 +285,9 @@ export const Metadata = {
             fields[metadata[i].name] = metadata[i].type;
         }
         return fields;
+    },
+
+    hasViewTagAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$viewFieldIndexes]?.includes(index);
     }
 }
