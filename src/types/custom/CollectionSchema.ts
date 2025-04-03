@@ -33,7 +33,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
         return (
             !view ||
             typeof (ref[$childType]) === "string" ||
-            view.visible.has((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
+            view.isChangeTreeVisible((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
         );
     }
 

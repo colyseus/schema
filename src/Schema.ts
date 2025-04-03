@@ -69,7 +69,7 @@ export class Schema {
 
         } else if (tag === DEFAULT_VIEW_TAG) {
             // view pass: default tag
-            return view.visible.has(ref[$changes]);
+            return view.isChangeTreeVisible(ref[$changes]);
 
         } else {
             // view pass: custom tag

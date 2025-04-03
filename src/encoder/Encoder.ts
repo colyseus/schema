@@ -61,13 +61,12 @@ export class Encoder<T extends Schema = any> {
             if (!changeTree) { continue; }
 
             if (hasView) {
-                if (!view.visible.has(changeTree)) {
+                if (!view.isChangeTreeVisible(changeTree)) {
+                    // console.log("MARK AS INVISIBLE:", { ref: changeTree.ref.constructor.name, refId: changeTree.refId, raw: changeTree.ref.toJSON() });
                     view.invisible.add(changeTree);
                     continue; // skip this change tree
-
-                } else {
-                    view.invisible.delete(changeTree); // remove from invisible list
                 }
+                view.invisible.delete(changeTree); // remove from invisible list
             }
 
             const changeSet = changeTree[changeSetName];

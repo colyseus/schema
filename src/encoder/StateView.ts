@@ -291,4 +291,28 @@ export class StateView {
         // clear items array
         this.items.length = 0;
     }
+
+    isChangeTreeVisible(changeTree: ChangeTree) {
+        let isVisible = this.visible.has(changeTree);
+
+        //
+        // TODO: avoid checking for parent visibility, most of the time it's not needed
+        // See test case: 'should not be required to manually call view.add() items to child arrays without @view() tag'
+        //
+        if (!isVisible && changeTree.isVisibilitySharedWithParent){
+
+            // console.log("CHECK AGAINST PARENT...", {
+            //     ref: changeTree.ref.constructor.name,
+            //     refId: changeTree.refId,
+            //     parent: changeTree.parent.constructor.name,
+            // });
+
+            if (this.visible.has(changeTree.parent[$changes])) {
+                this.visible.add(changeTree);
+                isVisible = true;
+            }
+        }
+
+        return isVisible;
+    }
 }

@@ -122,6 +122,7 @@ export class ChangeTree<T extends Ref=any> {
      * Whether this structure is parent of a filtered structure.
      */
     isFiltered: boolean = false;
+    isVisibilitySharedWithParent?: boolean; // See test case: 'should not be required to manually call view.add() items to child arrays without @view() tag'
 
     indexedOperations: IndexedOperations = {};
 
@@ -327,20 +328,6 @@ export class ChangeTree<T extends Ref=any> {
         for (const key in changeSet.indexes) {
             newIndexes[newKey++] = changeSet.indexes[key];
         }
-
-        // const newIndexes = {};
-        // let newKey = 0;
-        // for (const key in changeSet.indexes) {
-        //     const index = changeSet.indexes[key];
-        //     newIndexes[newKey++] = changeSet.indexes[key];
-        //     console.log("...shiftAllChangeIndexes", { index: key, targetIndex: index, startIndex, shiftIndex });
-        //     if (index > startIndex) {
-        //         newIndexes[Number(key) + shiftIndex] = index;
-        //     } else {
-        //         newIndexes[Number(key)] = index;
-        //     }
-        // }
-
         changeSet.indexes = newIndexes;
 
         for (let i = 0; i < changeSet.operations.length; i++) {
@@ -564,10 +551,16 @@ export class ChangeTree<T extends Ref=any> {
             ? this.ref.constructor
             :  this.ref[$childType];
 
-        if (!Metadata.isValidInstance(parent)) {
-            const parentChangeTree = parent[$changes];
+        let parentChangeTree: ChangeTree;
+
+        let parentIsCollection = !Metadata.isValidInstance(parent);
+        if (parentIsCollection) {
+            parentChangeTree = parent[$changes];
             parent = parentChangeTree.parent;
             parentIndex = parentChangeTree.parentIndex;
+
+        } else {
+            parentChangeTree = parent[$changes]
         }
 
         const parentConstructor = parent.constructor as typeof Schema;
@@ -578,15 +571,25 @@ export class ChangeTree<T extends Ref=any> {
         }
         key += `-${parentIndex}`;
 
+        const fieldHasViewTag = parentConstructor?.[Symbol.metadata]?.[$viewFieldIndexes]?.includes(parentIndex);
+
         this.isFiltered = parent[$changes].isFiltered // in case parent is already filtered
             || this.root.types.parentFiltered[key]
-            || parentConstructor?.[Symbol.metadata]?.[$viewFieldIndexes]?.includes(parentIndex);
+            || fieldHasViewTag;
 
         //
         // "isFiltered" may not be imedialely available during `change()` due to the instance not being attached to the root yet.
         // when it's available, we need to enqueue the "changes" changeset into the "filteredChanges" changeset.
         //
         if (this.isFiltered) {
+
+            this.isVisibilitySharedWithParent = (
+                parentChangeTree.isFiltered &&
+                typeof (refType) !== "string" &&
+                !fieldHasViewTag &&
+                parentIsCollection
+            );
+
             if (!this.filteredChanges) {
                 this.filteredChanges = createChangeSet();
                 this.allFilteredChanges = createChangeSet();

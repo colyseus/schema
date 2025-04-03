@@ -34,7 +34,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         return (
             !view ||
             typeof (ref[$childType]) === "string" ||
-            view.visible.has((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
+            view.isChangeTreeVisible((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
         );
     }
 

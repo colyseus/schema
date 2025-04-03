@@ -1411,6 +1411,53 @@ describe("StateView", () => {
             assert.doesNotThrow(() =>
                 encodeAllMultiple(encoder, state, [client1]));
         });
+
+        it("should not be required to manually call view.add() items to child arrays without @view() tag", () => {
+            class Item extends Schema {
+                @type("string") name: string;
+            }
+            class Entity extends Schema {
+                @type(["string"]) strings: string[];
+                @type([Item]) items: Item[];
+            }
+
+            class State extends Schema {
+                @view() @type([Entity]) entities = new ArraySchema<Entity>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 5; i++) {
+                state.entities.push(new Entity().assign({
+                    strings: ["one"],
+                    items: [new Item().assign({ name: "one" })]
+                }));
+            }
+
+            const encoder = getEncoder(state);
+
+            const client = createClientWithView(state);
+            client.view.add(state.entities.at(3));
+
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.entities.length, 1);
+            assert.strictEqual(1, client.state.entities[0].strings.length);
+            assert.strictEqual(1, client.state.entities[0].items.length);
+            assert.strictEqual("one", client.state.entities[0].strings[0]);
+            assert.strictEqual("one", client.state.entities[0].items[0].name);
+
+            assert.ok(client.view.isChangeTreeVisible(state.entities.at(3).items[$changes]))
+            assert.ok(client.view.isChangeTreeVisible(state.entities.at(3).strings[$changes]))
+
+            state.entities.at(3).strings.push("two");
+            state.entities.at(3).items.push(new Item().assign({ name: "two" }));
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(2, client.state.entities[0].strings.length);
+            assert.strictEqual(2, client.state.entities[0].items.length);
+
+            assertEncodeAllMultiple(encoder, state, [client])
+        });
     });
 
     describe("Deep and nested structures", () => {
