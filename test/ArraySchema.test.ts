@@ -228,6 +228,71 @@ describe("ArraySchema Tests", () => {
         });
     });
 
+    it("should allow mutating primitive value by index", () => {
+        class State extends Schema {
+            @type(['number']) primativeArr = new ArraySchema<Number>()
+        }
+
+        const state = new State();
+        const decodedState = createInstanceFromReflection(state);
+
+        state.primativeArr.push(1);
+        state.primativeArr.push(2);
+        state.primativeArr.push(3);
+
+        decodedState.decode(state.encode());
+        assert.strictEqual(3, decodedState.primativeArr.length);
+
+        state.primativeArr[0] = -1
+        decodedState.decode(state.encode());
+        assert.strictEqual(3, decodedState.primativeArr.length);
+
+        state.primativeArr[1] = -2
+        decodedState.decode(state.encode());
+        assert.strictEqual(3, decodedState.primativeArr.length);
+
+        state.primativeArr[2] = -3
+        decodedState.decode(state.encode());
+        assert.strictEqual(3, decodedState.primativeArr.length);
+
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+        assertRefIdCounts(state, decodedState);
+    });
+
+    it("should allow mutating Schema value by index", () => {
+        class Item extends Schema {
+            @type('number') i: number;
+        }
+        class State extends Schema {
+            @type([Item]) schemaArr = new ArraySchema<Item>()
+        }
+
+        const state = new State();
+        const decodedState = createInstanceFromReflection(state);
+
+        state.schemaArr.push(new Item().assign({ i: 1 }));
+        state.schemaArr.push(new Item().assign({ i: 2 }));
+        state.schemaArr.push(new Item().assign({ i: 3 }));
+
+        decodedState.decode(state.encode());
+        assert.strictEqual(3, decodedState.schemaArr.length);
+
+        state.schemaArr[0] = new Item({ i: -1 });
+        decodedState.decode(state.encode());
+        assert.strictEqual(3, decodedState.schemaArr.length);
+
+        state.schemaArr[1] = new Item({ i: -2 })
+        decodedState.decode(state.encode());
+        assert.strictEqual(3, decodedState.schemaArr.length);
+
+        state.schemaArr[2] = new Item({ i: -3 })
+        decodedState.decode(state.encode());
+        assert.strictEqual(3, decodedState.schemaArr.length);
+
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+        assertRefIdCounts(state, decodedState);
+    });
+
     it("should not crash when pushing an undefined value", () => {
         class Block extends Schema {
             @type("number") num: number;
@@ -2009,23 +2074,6 @@ describe("ArraySchema Tests", () => {
             @type([Card]) cards = new ArraySchema<Card>();
         }
 
-        function shuffle(array) {
-            let currentIndex = array.length;
-
-            // While there remain elements to shuffle...
-            while (currentIndex != 0) {
-
-                // Pick a remaining element...
-                let randomIndex = Math.floor(Math.random() * currentIndex);
-                currentIndex--;
-
-                // console.log(`[array[${currentIndex}], array[${randomIndex}]] = [array[${randomIndex}], array[${currentIndex}]];`);
-
-                // And swap it with the current element.
-                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
-            }
-        }
-
         it("should push and move entries", () => {
             const state = new MyState();
             state.cards.push(new Card().assign({ id: 2 }));
@@ -2038,11 +2086,13 @@ describe("ArraySchema Tests", () => {
 
             state.cards.push(new Card().assign({ id: 6 }));
 
-            [state.cards[4], state.cards[3]] = [state.cards[3], state.cards[4]];
-            [state.cards[3], state.cards[2]] = [state.cards[2], state.cards[3]];
-            [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
-            [state.cards[1], state.cards[1]] = [state.cards[1], state.cards[1]];
-            [state.cards[0], state.cards[0]] = [state.cards[0], state.cards[0]];
+            state.cards.move(() => {
+                [state.cards[4], state.cards[3]] = [state.cards[3], state.cards[4]];
+                [state.cards[3], state.cards[2]] = [state.cards[2], state.cards[3]];
+                [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
+                [state.cards[1], state.cards[1]] = [state.cards[1], state.cards[1]];
+                [state.cards[0], state.cards[0]] = [state.cards[0], state.cards[0]];
+            });
 
             decodedState.decode(state.encode());
 
@@ -2076,7 +2126,7 @@ describe("ArraySchema Tests", () => {
             decodedState.decode(state.encode());
 
             state.cards.pop();
-            shuffle(state.cards);
+            state.cards.shuffle();
 
             decodedState.decode(state.encode());
             assert.deepStrictEqual(
@@ -2122,9 +2172,9 @@ describe("ArraySchema Tests", () => {
             });
 
             // swap refId 5 <=> 2
-            console.log("WILL SWAP!");
-            [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
-            console.log("SWAPPED.");
+            state.cards.move(() => {
+                [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
+            });
 
             console.log(Schema.debugChangesDeep(state));
 
@@ -2171,10 +2221,7 @@ describe("ArraySchema Tests", () => {
             decodedState.decode(state.encode());
 
             state.cards.splice(2, 1);
-
-            [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
-            [state.cards[1], state.cards[0]] = [state.cards[0], state.cards[1]];
-            [state.cards[0], state.cards[0]] = [state.cards[0], state.cards[0]];
+            state.cards.shuffle();
 
             decodedState.decode(state.encode());
 

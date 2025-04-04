@@ -28,6 +28,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     static [$encoder] = encodeArray;
     static [$decoder] = decodeArray;
 
+    protected isMovingItems = false;
+
     /**
      * Determine if a property must be filtered.
      * - If returns false, the property is NOT going to be encoded.
@@ -60,7 +62,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     }
 
     constructor (...items: V[]) {
-
         Object.defineProperty(this, $childType, {
             value: undefined,
             enumerable: false,
@@ -92,33 +93,42 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                             assertInstanceType(setValue, obj[$childType] as typeof Schema, obj, key);
 
                             const previousValue = obj.items[key as unknown as number];
-                            if (previousValue !== undefined) {
-                                if (setValue[$changes].isNew) {
-                                    this[$changes].indexedOperation(Number(key), OPERATION.MOVE_AND_ADD);
 
-                                } else {
-                                    if ((obj[$changes].getChange(Number(key)) & OPERATION.DELETE) === OPERATION.DELETE) {
-                                        this[$changes].indexedOperation(Number(key), OPERATION.DELETE_AND_MOVE);
+                            if (!obj.isMovingItems) {
+                                obj.$changeAt(Number(key), setValue);
+
+                            } else {
+                                if (previousValue !== undefined) {
+                                    if (setValue[$changes].isNew) {
+                                        obj[$changes].indexedOperation(Number(key), OPERATION.MOVE_AND_ADD);
+
                                     } else {
-                                        this[$changes].indexedOperation(Number(key), OPERATION.MOVE);
+                                        if ((obj[$changes].getChange(Number(key)) & OPERATION.DELETE) === OPERATION.DELETE) {
+                                            obj[$changes].indexedOperation(Number(key), OPERATION.DELETE_AND_MOVE);
+
+                                        } else {
+                                            obj[$changes].indexedOperation(Number(key), OPERATION.MOVE);
+                                        }
                                     }
+
+                                } else if (setValue[$changes].isNew) {
+                                    obj[$changes].indexedOperation(Number(key), OPERATION.ADD);
                                 }
 
-                                // remove root reference from previous value
-                                previousValue[$changes].root?.remove(previousValue[$changes]);
-
-                            } else if (setValue[$changes].isNew) {
-                                this[$changes].indexedOperation(Number(key), OPERATION.ADD);
+                                setValue[$changes].setParent(this, obj[$changes].root, key);
                             }
 
-                            setValue[$changes].setParent(this, obj[$changes].root, key);
+                            if (previousValue !== undefined) {
+                                // remove root reference from previous value
+                                previousValue[$changes].root?.remove(previousValue[$changes]);
+                            }
 
                         } else {
                             obj.$changeAt(Number(key), setValue);
                         }
 
-                        this.items[key as unknown as number] = setValue;
-                        this.tmpItems[key as unknown as number] = setValue;
+                        obj.items[key as unknown as number] = setValue;
+                        obj.tmpItems[key as unknown as number] = setValue;
                     }
 
                     return true;
@@ -251,9 +261,13 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             return;
         }
 
-        const changeTree = this[$changes];
-        const operation = changeTree.indexes?.[index]?.op ?? OPERATION.ADD;
+        const operation = (this.items[index] !== undefined)
+            ? typeof(value) === "object"
+                ? OPERATION.DELETE_AND_ADD // schema child
+                : OPERATION.REPLACE // primitive
+            : OPERATION.ADD;
 
+        const changeTree = this[$changes];
         changeTree.change(index, operation);
 
         //
@@ -390,6 +404,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
      * ```
      */
     sort(compareFn: (a: V, b: V) => number = DEFAULT_SORT): this {
+        this.isMovingItems = true;
+
         const changeTree = this[$changes];
         const sortedItems = this.items.sort(compareFn);
 
@@ -397,6 +413,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         sortedItems.forEach((_, i) => changeTree.change(i, OPERATION.REPLACE));
 
         this.tmpItems.sort(compareFn);
+
+        this.isMovingItems = false;
         return this;
     }
 
@@ -784,6 +802,39 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     toSpliced(start: unknown, deleteCount?: unknown, ...items?: unknown[]): V[] {
         // @ts-ignore
         return this.items.toSpliced.apply(copy, arguments);
+    }
+
+    shuffle() {
+        return this.move((_) => {
+            let currentIndex = this.items.length;
+            while (currentIndex != 0) {
+                let randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [this[currentIndex], this[randomIndex]] = [this[randomIndex], this[currentIndex]];
+            }
+        });
+    }
+
+    /**
+     * Allows to move items around in the array.
+     *
+     * Example:
+     *     state.cards.move((cards) => {
+     *         [cards[4], cards[3]] = [cards[3], cards[4]];
+     *         [cards[3], cards[2]] = [cards[2], cards[3]];
+     *         [cards[2], cards[0]] = [cards[0], cards[2]];
+     *         [cards[1], cards[1]] = [cards[1], cards[1]];
+     *         [cards[0], cards[0]] = [cards[0], cards[0]];
+     *     })
+     *
+     * @param cb
+     * @returns
+     */
+    move(cb: (arr: this) => void) {
+        this.isMovingItems = true;
+        cb(this);
+        this.isMovingItems = false;
+        return this;
     }
 
     protected [$getByIndex](index: number, isEncodeAll: boolean = false) {

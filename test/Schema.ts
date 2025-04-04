@@ -48,7 +48,8 @@ export function assertRefIdCounts(source: Schema, target: Schema) {
     for (const refId in encoder.root.refCount) {
         const encoderRefCount = encoder.root.refCount[refId];
         const decoderRefCount = decoder.root.refCounts[refId] ?? 0;
-        assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for refId: ${refId}`);
+        assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for refId: ${refId} (encoder count: ${encoderRefCount}, decoder count: ${decoderRefCount})
+\nREF IDS:\n${Schema.debugRefIds(source)}`);
     }
 }
 
