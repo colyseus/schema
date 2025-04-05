@@ -1,5 +1,3 @@
-import * as util from "util";
-
 import { OPERATION } from "../encoding/spec";
 import { Schema } from "../Schema";
 import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refTypeFieldIndexes, $viewFieldIndexes } from "../types/symbols";
@@ -79,13 +77,13 @@ export function debugChangeSet(label: string, changeSet: ChangeSet) {
     let operations: string[] = [];
 
     for (const index in changeSet.indexes) {
-        indexes.push(`\t${util.inspect(index, { colors: true })} => [${util.inspect(changeSet.indexes[index], { colors: true })}]`);
+        indexes.push(`\t${index} => [${changeSet.indexes[index]}]`);
     }
 
     for (let i = 0; i < changeSet.operations.length; i++) {
         const index = changeSet.operations[i];
         if (index !== undefined) {
-            operations.push(`\t[${util.inspect(i, { colors: true })}] => ${util.inspect(index, { colors: true })}`);
+            operations.push(`\t[${i}] => ${index}`);
         }
     }
 
