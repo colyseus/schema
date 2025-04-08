@@ -29,6 +29,9 @@ export function dumpChanges(schema: Schema) {
 
     // for (const refId in $root.changes) {
     $root.changes.forEach(changeTree => {
+        // skip if ChangeTree is undefined
+        if (changeTree === undefined)  { return; }
+
         const changes = changeTree.indexedOperations;
 
         dump.refs.push(`refId#${changeTree.refId}`);
