@@ -41,7 +41,7 @@ jobs:
 
     - name: Release
       if: steps.check.outputs.changed == 'true'
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.check.outputs.version }}
         prerelease: false
