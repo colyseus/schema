@@ -2383,6 +2383,60 @@ describe("ArraySchema Tests", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
+
+        it("should allow clear + push", () => {
+            class Player extends Schema {
+                @type(["string"]) public hand = new ArraySchema<string>();
+                @type(["string"]) public deck = new ArraySchema<string>();
+            }
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+            const state = new State();
+            const decodedState = createInstanceFromReflection(state);
+
+            function createPlayer() {
+                const player = new Player();
+                for (let i = 0; i < 10; i++) {
+                    player.deck.push(`card${i}`);
+                }
+                player.hand.push(player.deck.pop());
+                player.hand.push(player.deck.pop());
+                player.hand.push(player.deck.pop());
+                return player;
+            }
+
+            const player1 = createPlayer();
+            const player2 = createPlayer();
+
+            state.players.set("one", player1);
+            state.players.set("two", player2);
+
+            decodedState.decode(state.encode());
+            assert.strictEqual(decodedState.players.size, 2);
+            assert.strictEqual(decodedState.players.get("one").hand.length, 3);
+            assert.strictEqual(decodedState.players.get("one").deck.length, 7);
+            assert.strictEqual(decodedState.players.get("two").hand.length, 3);
+            assert.strictEqual(decodedState.players.get("two").deck.length, 7);
+
+            player1.hand.clear();
+            player1.hand.push("card1");
+            player1.hand.push("card2");
+
+            player2.hand.clear();
+            player2.hand.push("card1");
+            player2.hand.push("card2");
+
+            decodedState.decode(state.encode());
+            assert.strictEqual(decodedState.players.size, 2);
+            assert.strictEqual(decodedState.players.get("one").hand.length, 2);
+            assert.strictEqual(decodedState.players.get("one").deck.length, 7);
+            assert.strictEqual(decodedState.players.get("two").hand.length, 2);
+            assert.strictEqual(decodedState.players.get("two").deck.length, 7);
+            assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
     })
 
     describe("array methods", () => {

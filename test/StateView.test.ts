@@ -1585,6 +1585,73 @@ describe("StateView", () => {
 
             assertEncodeAllMultiple(encoder, state, [client]);
         });
+
+        it("should allow clear and push on filtered array", () => {
+            class Player extends Schema {
+                @view() @type(["string"]) public hand = new ArraySchema<string>();
+                @view() @type(["string"]) public deck = new ArraySchema<string>();
+            }
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            function createPlayer() {
+                const player = new Player();
+                for (let i = 0; i < 10; i++) {
+                    player.deck.push(`card${i}`);
+                }
+                player.hand.push(player.deck.pop());
+                player.hand.push(player.deck.pop());
+                player.hand.push(player.deck.pop());
+                return player;
+            }
+
+            const player1 = createPlayer();
+            const player2 = createPlayer();
+
+            state.players.set("one", player1);
+            state.players.set("two", player2);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.strictEqual(client1.state.players.size, 2);
+            assert.strictEqual(client1.state.players.get("one").hand, undefined);
+            assert.strictEqual(client2.state.players.size, 2);
+            assert.strictEqual(client2.state.players.get("two").hand, undefined);
+
+            client1.view.add(player1);
+            client2.view.add(player2);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.strictEqual(client1.state.players.size, 2);
+            assert.strictEqual(client1.state.players.get("one").hand.length, 3);
+            assert.strictEqual(client1.state.players.get("one").deck.length, 7);
+            assert.strictEqual(client2.state.players.size, 2);
+            assert.strictEqual(client2.state.players.get("two").hand.length, 3);
+            assert.strictEqual(client2.state.players.get("two").deck.length, 7);
+
+            player1.hand.clear();
+            player1.hand.push("card1");
+            player1.hand.push("card2");
+
+            player2.hand.clear();
+            player2.hand.push("card1");
+            player2.hand.push("card2");
+
+            console.log(Schema.debugRefIds(state));
+
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.strictEqual(client1.state.players.get("one").hand.length, 2);
+            assert.strictEqual(client1.state.players.get("one").deck.length, 7);
+            assert.strictEqual(client2.state.players.get("two").hand.length, 2);
+            assert.strictEqual(client2.state.players.get("two").deck.length, 7);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
     });
 
     describe("Deep and nested structures", () => {

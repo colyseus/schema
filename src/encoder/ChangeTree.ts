@@ -241,9 +241,14 @@ export class ChangeTree<T extends Ref=any> {
     operation(op: OPERATION) {
         // operations without index use negative values to represent them
         // this is checked during .encode() time.
-        this.changes.operations.push(-op);
+        if (this.filteredChanges !== undefined) {
+            this.filteredChanges.operations.push(-op);
+            enqueueChangeTree(this.root, this, 'filteredChanges');
 
-        enqueueChangeTree(this.root, this, 'changes');
+        } else {
+            this.changes.operations.push(-op);
+            enqueueChangeTree(this.root, this, 'changes');
+        }
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
