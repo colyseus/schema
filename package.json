@@ -3,8 +3,8 @@
   "version": "3.0.33",
   "description": "Binary state serializer with delta encoding for games",
   "bin": {
-    "schema-codegen": "./bin/schema-codegen",
-    "schema-debug": "./bin/schema-debug"
+    "schema-codegen": "bin/schema-codegen",
+    "schema-debug": "bin/schema-debug"
   },
   "scripts": {
     "build": "tsc && rollup -c rollup.config.mjs",
