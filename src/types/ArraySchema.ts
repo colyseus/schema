@@ -395,6 +395,8 @@ export class ArraySchema<V = any> implements Array<V>, SchemaDecoderCallbacks {
      * @param thisArg An object to which the this keyword can refer in the callbackfn function.
      * If thisArg is omitted, undefined is used as the this value.
      */
+    every<S extends V>(predicate: (value: V, index: number, array: V[]) => value is S, thisArg?: any): this is S[];
+    every(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean;
     every(callbackfn: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean {
         return Array.from(this.$items.values()).every(callbackfn, thisArg);
     }

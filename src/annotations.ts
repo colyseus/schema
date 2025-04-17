@@ -319,7 +319,7 @@ export function type (
                         );
                     }
 
-                } else if (this[fieldCached]) {
+                } else if (this[fieldCached] !== undefined) {
                     //
                     // Setting a field to `null` or `undefined` will delete it.
                     //

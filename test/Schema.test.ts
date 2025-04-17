@@ -936,6 +936,23 @@ describe("Schema Usage", () => {
             decoded.decode(state.encode());
             assert.deepEqual({one: "hello"}, decoded.map.toJSON());
         });
+
+        it("should allow to pass 'undefined' to a Schema property", () => {
+            class MyState extends Schema {
+                @type("string") email: string;
+                constructor() {
+                    super();
+                    this.email = "";
+                }
+            }
+            const state = new MyState();
+            state.email = undefined;
+
+            const decodedState = new MyState();
+            decodedState.decode(state.encode());
+            assert.strictEqual(decodedState.email, undefined);
+            assert.strictEqual(state.email, undefined);
+        });
     })
 
     describe("encodeAll", () => {
