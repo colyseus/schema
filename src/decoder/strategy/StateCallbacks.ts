@@ -185,7 +185,10 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                         }
                     }
 
-                } else if ((change.op & OPERATION.ADD) === OPERATION.ADD && change.previousValue === undefined) {
+                } else if (
+                    (change.op & OPERATION.ADD) === OPERATION.ADD &&
+                    change.previousValue !== change.value
+                ) {
                     // triger onAdd
                     const addCallbacks = $callbacks[OPERATION.ADD];
                     for (let i = addCallbacks?.length - 1; i >= 0; i--) {

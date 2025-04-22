@@ -256,7 +256,7 @@ describe("StateCallbacks", () => {
     });
 
     describe("ArraySchema", () => {
-        xit("consecutive shift + unshift should trigger onAdd at 0 index", () => {
+        it("consecutive shift + unshift should trigger onAdd at 0 index", () => {
             class Card extends Schema {
                 @type("string") suit: string;
                 @type("number") num: number;

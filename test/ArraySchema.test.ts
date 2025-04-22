@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
-import { ArraySchema, Schema, type, Reflection, $changes, MapSchema, ChangeTree } from "../src";
+import { ArraySchema, Schema, type, Reflection, $changes, MapSchema, ChangeTree, schema } from "../src";
 
 describe("ArraySchema Tests", () => {
 
