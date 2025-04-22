@@ -227,7 +227,7 @@ export class StateView {
         if (tag === DEFAULT_VIEW_TAG) {
             // parent is collection (Map/Array)
             const parent = changeTree.parent;
-            if (!Metadata.isValidInstance(parent)) {
+            if (!Metadata.isValidInstance(parent) && changeTree.isFiltered) {
                 const parentChangeTree = parent[$changes];
                 let changes = this.changes.get(parentChangeTree.refId);
                 if (changes === undefined) {
@@ -239,10 +239,9 @@ export class StateView {
 
             } else {
                 // delete all "tagged" properties.
-                metadata?.[$viewFieldIndexes].forEach((index) =>
+                metadata?.[$viewFieldIndexes]?.forEach((index) =>
                     changes[index] = OPERATION.DELETE);
             }
-
 
         } else {
             // delete only tagged properties

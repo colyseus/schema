@@ -1042,6 +1042,54 @@ describe("StateView", () => {
             assert.strictEqual(3, client2.state.entities.get("two").components.length);
 
         });
+
+        it("view.remove() should only remove tagged field and not the whole structure", () => {
+            class Card extends Schema {
+                @view() @type("string") cardId: string;
+                @type("string") zone: string;
+                @type("number") index: number;
+            }
+            class State extends Schema {
+                @type({ map: Card }) cards = new MapSchema();
+            }
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+
+            const card1 = new Card().assign({ cardId: "card1", zone: "zone1", index: 0 });
+            const card2 = new Card().assign({ cardId: "card2", zone: "zone2", index: 0 })
+            const card3 = new Card().assign({ cardId: "card3", zone: "zone3", index: 0 });
+            state.cards.set("1", card1);
+            state.cards.set("2", card2);
+            state.cards.set("3", card3);
+
+            client1.view.add(card1);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(3, client1.state.cards.size);
+            assert.strictEqual("card1", client1.state.cards.get("1").cardId);
+            assert.strictEqual(undefined, client1.state.cards.get("2").cardId);
+            assert.strictEqual(undefined, client1.state.cards.get("3").cardId);
+
+            // remove from view
+            client1.view.remove(card1);
+            encodeMultiple(encoder, state, [client1]);
+
+            // mutate removed item
+            card1.zone = "zone2";
+            card1.index = 1;
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(undefined, client1.state.cards.get("1").cardId);
+            assert.strictEqual("zone2", client1.state.cards.get("1").zone);
+            assert.strictEqual(1, client1.state.cards.get("1").index);
+
+            assert.strictEqual(undefined, client1.state.cards.get("2").cardId);
+            assert.strictEqual(undefined, client1.state.cards.get("3").cardId);
+
+            assertEncodeAllMultiple(encoder, state, [client1]);
+        });
     });
 
     describe("ArraySchema", () => {
