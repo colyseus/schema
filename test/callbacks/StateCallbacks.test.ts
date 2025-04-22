@@ -255,4 +255,43 @@ describe("StateCallbacks", () => {
         assert.strictEqual(4, onPropertyListen);
     });
 
+    describe("ArraySchema", () => {
+        xit("consecutive shift + unshift should trigger onAdd at 0 index", () => {
+            class Card extends Schema {
+                @type("string") suit: string;
+                @type("number") num: number;
+            }
+            class State extends Schema {
+                @type([Card]) deck = new ArraySchema<Card>();
+                @type([Card]) discardPile = new ArraySchema<Card>();
+            }
+
+            const state = new State();
+            const decodedState = createInstanceFromReflection(state);
+
+            // create a deck of cards
+            for (let i = 0; i < 13; i++) {
+                state.deck.push(new Card().assign({ suit: "hearts", num: i }));
+            }
+
+            decodedState.decode(state.encode());
+
+            let onChange: number[] = [];
+            let onAdd: number[] = [];
+
+            const $ = getCallbacks(decodedState);
+            $(decodedState).discardPile.onChange((item, index) => onChange.push(index));
+            $(decodedState).discardPile.onAdd((item, index) => onAdd.push(index));
+
+            for (let i=0; i<3; i++) {
+                state.discardPile.unshift(state.deck.shift());
+                decodedState.decode(state.encode());
+            }
+
+            assert.deepStrictEqual(onChange, [0, 0, 0]);
+            assert.deepStrictEqual(onAdd, [0, 0, 0]);
+        });
+
+    })
+
 });
