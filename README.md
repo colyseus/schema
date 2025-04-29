@@ -246,9 +246,9 @@ const decoder = new Decoder(state);
 decoder.decode(encodedBytes);
 ```
 
-### Backwards/forwards compability
+### Backwards/forwards compatibility
 
-Backwards/fowards compatibility is possible by declaring new fields at the
+Backwards/forwards compatibility is possible by declaring new fields at the
 end of existing structures, and earlier declarations to not be removed, but
 be marked `@deprecated()` when needed.
 
@@ -307,10 +307,10 @@ Each Colyseus SDK has its own decoder implementation of the `@colyseus/schema` p
 
 ## Why
 
-Initial thoghts/assumptions, for Colyseus:
+Initial thoughts/assumptions, for Colyseus:
 - little to no bottleneck for detecting state changes.
-- have a schema definition on both server and client
-- better experience on staticaly-typed languages (C#, C++)
+- have a schema definition on both the server and the client
+- better experience on statically-typed languages (C#, C++)
 - mutations should be cheap.
 
 Practical Colyseus issues this should solve:
