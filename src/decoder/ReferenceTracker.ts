@@ -149,8 +149,8 @@ export class ReferenceTracker {
     }
 
     removeCallback(refId: number, field: string | number, callback: Function) {
-        const index = this.callbacks?.[refId]?.[field]?.indexOf(callback);
-        if (index !== -1) {
+        const index: number | undefined = this.callbacks?.[refId]?.[field]?.indexOf(callback);
+        if (index !== undefined && index !== -1) {
             spliceOne(this.callbacks[refId][field], index);
         }
     }
