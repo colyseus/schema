@@ -1,9 +1,9 @@
 import * as util from "util";
 import * as assert from "assert";
 import { nanoid } from "nanoid";
-import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Encoder, $changes } from "../src";
+import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Encoder, $changes, entity } from "../src";
 
-import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection } from "./Schema";
+import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
 
 describe("Edge cases", () => {
     it("Schema should support up to 64 fields", () => {
@@ -321,6 +321,66 @@ describe("Edge cases", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
+    it("replacing initial 'slot' should not throw decoding error", () => {
+        class Entity extends Schema {
+            @type("string") id = Math.random().toString();
+        }
+
+        @entity class EmptySlot extends Entity { }
+
+        class ItemIcon extends Entity {
+            @type("string") src = "";
+        }
+
+        class ItemAppearance extends Entity {
+            @type(ItemIcon) image = new ItemIcon();
+        }
+
+        class Equipment extends Entity {
+            @type(Entity) slot: EmptySlot | ItemAppearance = new EmptySlot();
+        }
+
+        class Player extends Entity {
+            @type(Equipment) gear = new Equipment()
+            @type([ItemAppearance]) backpack = new ArraySchema<ItemAppearance>();
+        }
+
+        class World extends Schema {
+            @type([Entity]) entities = new ArraySchema<Entity>()
+        }
+
+        class MyRoomState extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>()
+            @type(World) world = new World()
+        }
+
+        function populateBackpack(player: Player) {
+            for (let i = 0; i < 4; i++) {
+                const item = new ItemAppearance()
+                item.image.src = "https://fastly.picsum.photos/id/537/200/200.jpg"
+                player.backpack.push(item)
+            }
+            player.gear.slot = player.backpack.at(0)
+        }
+
+        const state = new MyRoomState();
+        const encoder = getEncoder(state);
+
+        const player1 = new Player();
+        state.players.set("player1", player1);
+
+        state.world.entities.push(player1);
+        const decodedState1 = createInstanceFromReflection(state);
+        decodedState1.decode(state.encodeAll());
+
+        assertDeepStrictEqualEncodeAll(state, false);
+
+        populateBackpack(player1);
+        decodedState1.decode(state.encode());
+
+        assertDeepStrictEqualEncodeAll(state, false);
+    });
+
     describe("concurrency", () => {
         it("MapSchema should support concurrent actions", (done) => {
             class Entity extends Schema {
@@ -425,4 +485,5 @@ describe("Edge cases", () => {
 
         });
     });
+
 });

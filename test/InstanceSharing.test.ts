@@ -85,13 +85,13 @@ describe("Instance sharing", () => {
         });
 
         const state = new State();
+        const encoder = getEncoder(state);
         state.player1 = player;
         state.player2 = player;
 
         const decodedState = new State();
         decodedState.decode(state.encodeAll());
 
-        const encoder = getEncoder(state);
         const decoder = getDecoder(decodedState);
 
         assert.strictEqual(2, encoder.root.refCount[player[$changes].refId]);
@@ -114,6 +114,7 @@ describe("Instance sharing", () => {
 
     it("sharing items inside ArraySchema", () => {
         const state = new State();
+        const encoder = getEncoder(state);
 
         const player1 = new Player().assign({
             position: new Position().assign({
@@ -133,6 +134,7 @@ describe("Instance sharing", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
 
         const decoder = getDecoder(decodedState);
 
@@ -145,6 +147,7 @@ describe("Instance sharing", () => {
         state.arrayOfPlayers.pop();
 
         decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
 
         const newRefCount = decoder.root.refs.size;
         assert.strictEqual(refCount - 4, newRefCount);
@@ -154,6 +157,7 @@ describe("Instance sharing", () => {
 
     it("clearing ArraySchema", () => {
         const state = new State();
+        const encoder = getEncoder(state);
 
         const player1 = new Player().assign({
             position: new Position().assign({
@@ -186,6 +190,50 @@ describe("Instance sharing", () => {
         const newRefCount = decoder.root.refs.size;
         assert.strictEqual(refCount - 4, newRefCount);
 
+        assertRefIdCounts(state, decodedState);
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
+    it("adding late reference to Root should keep correct reference counting", () => {
+        /**
+         * This test only starts tracking references after the first .encode() call.
+         */
+        const state = new State();
+
+        const player1 = new Player().assign({
+            position: new Position().assign({
+                x: 10, y: 10
+            })
+        });
+        state.arrayOfPlayers.push(player1);
+        state.arrayOfPlayers.push(player1);
+        state.arrayOfPlayers.push(player1);
+
+        const player2 = new Player().assign({
+            position: new Position().assign({
+                x: 10, y: 10
+            })
+        });
+        state.arrayOfPlayers.push(player2);
+
+        const decodedState = new State();
+        // const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
+
+        const decoder = getDecoder(decodedState);
+
+        const refCount = decoder.root.refs.size;
+        assert.strictEqual(7, refCount);
+
+        state.arrayOfPlayers.clear();
+
+        decodedState.decode(state.encode());
+
+        const newRefCount = decoder.root.refs.size;
+        assert.strictEqual(refCount - 4, newRefCount);
+
+        assertRefIdCounts(state, decodedState);
         assertDeepStrictEqualEncodeAll(state);
     });
 
@@ -207,6 +255,7 @@ describe("Instance sharing", () => {
 
         state.arrayOfNumbers = [4, 5, 6];
         decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
 
         assert.strictEqual(firstCount, getRefCount(), "should've dropped reference to previous ArraySchema");
 
@@ -230,6 +279,7 @@ describe("Instance sharing", () => {
         state.arrayOfPlayers.push(new Player().assign({ position: new Position().assign({ x: 20, y: 30 }) }));
 
         decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
 
         assert.strictEqual(numRefs, decoder.root.refs.size, "should've dropped reference to previous ArraySchema");
         assert.strictEqual(
@@ -309,6 +359,7 @@ describe("Instance sharing", () => {
         assert.ok(item[$changes].root, "item should have 'root' reference");
 
         decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
 
         // Server patches item instance to change its value
         item.x = 999;
@@ -364,6 +415,9 @@ describe("Instance sharing", () => {
 
         state.player.item = item;
 
+        decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
+
         const refIds = encoder.root.allChanges
             .filter(changeTree => changeTree !== undefined)
             .map(changeTree => changeTree.refId);
@@ -388,6 +442,7 @@ describe("Instance sharing", () => {
 
         const decodedState = new State();
         decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
 
         assert.strictEqual("one", (decodedState.quests.get('one') as QuestOne).name);
 
@@ -422,6 +477,7 @@ describe("Instance sharing", () => {
         $(decodedState).player2.listen('mp', () => numMpChangeTriggered++);
 
         decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
 
         assert.strictEqual(decodedState.player1.hp, 100);
         assert.strictEqual(decodedState.player2.hp, 100);
@@ -499,7 +555,106 @@ describe("Instance sharing", () => {
         state.queue = new ArraySchema<Song>();
 
         decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
+
         assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
     });
+
+    it("decoder: should increment refId count of deep shared instances", () => {
+        class Position extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+        class Player extends Schema {
+            @type(Position) position = new Position();
+        }
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+            @type([Player]) activePlayers = new ArraySchema<Player>();
+            @type(Player) activePlayer: Player;
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+        const decodedState = new State();
+
+        state.players.set("one", new Player().assign({ position: new Position().assign({ x: 10, y: 20 }) }));
+        state.players.set("two", new Player().assign({ position: new Position().assign({ x: 30, y: 40 }) }));
+        decodedState.decode(state.encodeAll());
+
+        // create +2 references to the same instance
+        const activePlayer = state.players.get("one");
+        state.activePlayers.push(activePlayer);
+        state.activePlayer = activePlayer;
+
+        decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
+
+        // assert refCount of activePlayer
+        const activePlayerRefId = activePlayer[$changes].refId;
+        assert.strictEqual(3, encoder.root.refCount[activePlayerRefId]);
+
+        // delete 2 references
+        state.activePlayers.pop();
+        state.activePlayer = undefined;
+        decodedState.decode(state.encode());
+
+        // assert refCount of activePlayer again
+        assert.strictEqual(1, encoder.root.refCount[activePlayerRefId]);
+
+        assertDeepStrictEqualEncodeAll(state);
+    })
+
+    it("ArraySchema.clear() should update instance ref count", () => {
+        class Position extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+        class Player extends Schema {
+            @type("string") name: string;
+            @type(Position) position = new Position();
+        }
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+            @type([Player]) activePlayers = new ArraySchema<Player>();
+            @type(Player) activePlayer: Player;
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+        const decodedState = new State();
+
+        state.players.set("one", new Player().assign({ position: new Position().assign({ x: 10, y: 20 }) }));
+        state.players.set("two", new Player().assign({ position: new Position().assign({ x: 30, y: 40 }) }));
+        decodedState.decode(state.encodeAll());
+
+        // create +2 references to the same instance
+        const activePlayer = state.players.get("one");
+        state.activePlayers.push(activePlayer);
+        state.activePlayer = activePlayer;
+
+        decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
+
+        // assert refCount of activePlayer
+        const activePlayerRefId = activePlayer[$changes].refId;
+        assert.strictEqual(3, encoder.root.refCount[activePlayerRefId]);
+
+        // delete 2 references
+        state.activePlayers.clear();
+        state.activePlayer = undefined;
+
+        // update active player and its children
+        activePlayer.name = "new name";
+        activePlayer.position.x = 100;
+        activePlayer.position.y = 100;
+
+        decodedState.decode(state.encode());
+
+        // assert refCount of activePlayer again
+        assert.strictEqual(1, encoder.root.refCount[activePlayerRefId]);
+
+        assertDeepStrictEqualEncodeAll(state);
+    })
 
 });

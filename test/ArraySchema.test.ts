@@ -186,6 +186,82 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
+        it("2: shift + repopulate should not trigger refId not found", () => {
+            const Entity = schema({
+                i: "number"
+            });
+            const MyState = schema({
+                entities: [Entity]
+            });
+
+            const state = new MyState();
+            state.entities = [];
+
+            const populate = (count: number) => {
+                for (let i = 0; i < count; i++) {
+                    const ent = new Entity();
+                    ent.i = i;
+                    state.entities.push(ent);
+                }
+            }
+            populate(100);
+
+            // Define the sequence of lengths and their corresponding encode actions
+            const encodeActions = [
+                { length: 100, action: "FULL!" },
+                { length: 95, action: "PATCH!" },
+                { length: 89, action: "PATCH!" },
+                { length: 83, action: "FULL!" },
+                { length: 83, action: "PATCH!" },
+                { length: 77, action: "PATCH!" },
+                { length: 71, action: "PATCH!" },
+                { length: 66, action: "FULL!" },
+                { length: 65, action: "PATCH!" },
+                { length: 59, action: "PATCH!" },
+                { length: 53, action: "PATCH!" },
+                { length: 46, action: "PATCH!" },
+                { length: 46, action: "FULL!" },
+                { length: 41, action: "PATCH!" },
+                { length: 35, action: "PATCH!" }
+            ];
+
+            let actionIndex = 0;
+            let newClient = createInstanceFromReflection(state); // Initial client
+            newClient.decode(state.encodeAll()); // Initial FULL! decode
+
+            for (let i = 0; i < 100; i++) {
+                state.entities.forEach((entity) => entity.i++);
+                state.entities.shift();
+
+                // Check if the current length matches the next action in the sequence
+                if (actionIndex < encodeActions.length && state.entities.length === encodeActions[actionIndex].length) {
+                    if (encodeActions[actionIndex].action === "FULL!") {
+                        newClient = createInstanceFromReflection(state); // New client for FULL!
+                        newClient.decode(state.encodeAll());
+                    } else if (encodeActions[actionIndex].action === "PATCH!") {
+                        newClient.decode(state.encode()); // Use existing client for PATCH!
+                    }
+                    actionIndex++;
+                }
+
+                if (state.entities.length === 0) {
+                    populate(100);
+                    // After repopulating, check if the new length matches an action
+                    if (actionIndex < encodeActions.length && state.entities.length === encodeActions[actionIndex].length) {
+                        if (encodeActions[actionIndex].action === "FULL!") {
+                            newClient = createInstanceFromReflection(state); // New client for FULL!
+                            newClient.decode(state.encodeAll());
+                        } else if (encodeActions[actionIndex].action === "PATCH!") {
+                            newClient.decode(state.encode()); // Use existing client for PATCH!
+                        }
+                        actionIndex++;
+                    }
+                }
+            }
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
         it("mutate previous instance + shift", () => {
             /**
              * This test shows that flagging the `changeSet` item as `undefined`

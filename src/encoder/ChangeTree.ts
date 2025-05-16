@@ -160,22 +160,36 @@ export class ChangeTree<T extends Ref=any> {
         this.root = root;
         this.checkIsFiltered(this.parent, this.parentIndex);
 
+        //
+        // TODO: refactor and possibly unify .setRoot() and .setParent()
+        //
+
         // Recursively set root on child structures
         const metadata: Metadata = this.ref.constructor[Symbol.metadata];
         if (metadata) {
             metadata[$refTypeFieldIndexes]?.forEach((index) => {
                 const field = metadata[index as any as number];
-                const value = this.ref[field.name];
-                value?.[$changes].setRoot(root);
+                const changeTree: ChangeTree = this.ref[field.name]?.[$changes];
+                if (changeTree) {
+                    if (changeTree.root !== root) {
+                        changeTree.setRoot(root);
+                    } else {
+                        root.add(changeTree); // increment refCount
+                    }
+                }
             });
 
         } else if (this.ref[$childType] && typeof(this.ref[$childType]) !== "string") {
             // MapSchema / ArraySchema, etc.
             (this.ref as MapSchema).forEach((value, key) => {
-                value[$changes].setRoot(root);
+                const changeTree: ChangeTree = value[$changes];
+                if (changeTree.root !== root) {
+                    changeTree.setRoot(root);
+                } else {
+                    root.add(changeTree); // increment refCount
+                }
             });
         }
-
     }
 
     setParent(
@@ -203,14 +217,19 @@ export class ChangeTree<T extends Ref=any> {
         if (metadata) {
             metadata[$refTypeFieldIndexes]?.forEach((index) => {
                 const field = metadata[index as any as number];
-                const value = this.ref[field.name];
-                value?.[$changes].setParent(this.ref, root, index);
+                const changeTree: ChangeTree = this.ref[field.name]?.[$changes];
+                if (changeTree && changeTree.root !== root) {
+                    changeTree.setParent(this.ref, root, index);
+                }
             });
 
         } else if (this.ref[$childType] && typeof(this.ref[$childType]) !== "string") {
             // MapSchema / ArraySchema, etc.
             (this.ref as MapSchema).forEach((value, key) => {
-                value[$changes].setParent(this.ref, root, this.indexes[key] ?? key);
+                const changeTree: ChangeTree = value[$changes];
+                if (changeTree.root !== root) {
+                    changeTree.setParent(this.ref, root, this.indexes[key] ?? key);
+                }
             });
         }
 
@@ -478,15 +497,12 @@ export class ChangeTree<T extends Ref=any> {
                 this.allFilteredChanges.indexes = {};
                 this.allFilteredChanges.operations.length = 0;
             }
-
-            // remove children references
-            this.forEachChild((changeTree, _) =>
-                this.root?.remove(changeTree));
         }
     }
 
     /**
      * Recursively discard all changes from this, and child structures.
+     * (Used in tests only)
      */
     discardAll() {
         const keys = Object.keys(this.indexedOperations);

@@ -155,6 +155,11 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         changeTree.discard(true);
         changeTree.indexes = {};
 
+        // remove children references
+        changeTree.forEachChild((childChangeTree, _) => {
+            changeTree.root?.remove(childChangeTree);
+        });
+
         // clear previous indexes
         this.$indexes.clear();
 

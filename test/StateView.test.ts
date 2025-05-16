@@ -1090,6 +1090,38 @@ describe("StateView", () => {
 
             assertEncodeAllMultiple(encoder, state, [client1]);
         });
+
+        it("should support late add and late remove of items from view", () => {
+            class Item extends Schema {
+                @type('number') i: number;
+            }
+            class State extends Schema {
+                @view() @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const item1 = new Item().assign({ i: 1 });
+            const item2 = new Item().assign({ i: 2 });
+            const item3 = new Item().assign({ i: 3 });
+            state.items.set("1", item1);
+            state.items.set("2", item2);
+            state.items.set("3", item3);
+
+            encoder.discardChanges();
+            encodeMultiple(encoder, state, []);
+
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.items, undefined);
+
+            client.view.add(item1);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.items.get("1").toJSON(), item1.toJSON());
+        });
     });
 
     describe("ArraySchema", () => {

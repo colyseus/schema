@@ -69,6 +69,8 @@ export class Root {
 
             this.refCount[changeTree.refId] = 0;
 
+            changeTree.forEachChild((child, _) => this.remove(child));
+
         } else {
             this.refCount[changeTree.refId] = refCount;
 
@@ -89,8 +91,6 @@ export class Root {
                 enqueueChangeTree(this, changeTree, "changes");
             }
         }
-
-        changeTree.forEachChild((child, _) => this.remove(child));
 
         return refCount;
     }

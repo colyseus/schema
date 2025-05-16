@@ -2,7 +2,7 @@ import * as assert from "assert";
 
 import { ChangeTree } from "../src/encoder/ChangeTree";
 import { Schema, type, view, MapSchema, ArraySchema, $changes, OPERATION } from "../src";
-import { assertDeepStrictEqualEncodeAll, getDecoder, getEncoder } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, assertRefIdCounts, getDecoder, getEncoder } from "./Schema";
 import { nanoid } from "nanoid";
 
 describe("ChangeTree", () => {
@@ -255,11 +255,7 @@ describe("ChangeTree", () => {
 
         });
 
-        xit("using ArraySchema: replace should be DELETE_AND_ADD operation", () => {
-            //
-            // TODO: this test is not passing!
-            //
-
+        it("using ArraySchema: replace should be DELETE_AND_ADD operation", () => {
             class Entity extends Schema {
                 @type("string") id: string = nanoid(9);
             }
@@ -280,6 +276,7 @@ describe("ChangeTree", () => {
             const entity2 = new Entity();
             state.entities[0] = entity2;
             decodedState.decode(state.encode());
+            assertRefIdCounts(state, decodedState);
 
             assert.strictEqual(1, encoder.root.refCount[entity2[$changes].refId]);
             assert.strictEqual(0, encoder.root.refCount[entity1[$changes].refId]);

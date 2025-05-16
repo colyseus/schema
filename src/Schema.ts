@@ -158,6 +158,10 @@ export class Schema {
         return obj as ToJSON<typeof this>;
     }
 
+    /**
+     * Used in tests only
+     * @internal
+     */
     discardAllChanges() {
         this[$changes].discardAll();
     }
@@ -185,8 +189,12 @@ export class Schema {
         const changeTree: ChangeTree = ref[$changes];
         const refId = changeTree.refId;
 
-        let output = "";
-        output += `${getIndent(level)}${ref.constructor.name} (refId: ${refId})${contents}\n`;
+        // log reference count if > 1
+        const refCount = (changeTree.root?.refCount?.[refId] > 1)
+            ? ` [×${changeTree.root.refCount[refId]}]`
+            : '';
+
+        let output = `${getIndent(level)}${ref.constructor.name} (refId: ${refId})${refCount}${contents}\n`;
 
         changeTree.forEachChild((childChangeTree) =>
             output += this.debugRefIds(childChangeTree.ref, showContents, level + 1));

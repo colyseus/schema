@@ -185,9 +185,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
         const changeTree = this[$changes];
 
-        // values.forEach((value, i) => {
-
-        for (let i = 0, l = values.length; i < values.length; i++, length++) {
+        for (let i = 0, l = values.length; i < l; i++, length++) {
             const value = values[i];
 
             if (value === undefined || value === null) {
@@ -210,9 +208,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             //
             value[$changes]?.setParent(this, changeTree.root, length);
         }
-
-        //     length++;
-        // });
 
         return length;
     }
@@ -310,22 +305,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         // discard previous operations.
         const changeTree = this[$changes];
 
-        // discard children
-        changeTree.forEachChild((changeTree, _) => {
-            changeTree.discard(true);
-
-            //
-            // TODO: add tests with instance sharing + .clear()
-            // FIXME: this.root? is required because it is being called at decoding time.
-            //
-            // TODO: do not use [$changes] at decoding time.
-            //
-            const root = changeTree.root;
-            if (root !== undefined) {
-                root.removeChangeFromChangeSet("changes", changeTree);
-                root.removeChangeFromChangeSet("allChanges", changeTree);
-                root.removeChangeFromChangeSet("allFilteredChanges", changeTree);
-            }
+        // remove children references
+        changeTree.forEachChild((childChangeTree, _) => {
+            changeTree.root?.remove(childChangeTree);
         });
 
         changeTree.discard(true);

@@ -449,6 +449,7 @@ describe("Type: MapSchema", () => {
         assert.strictEqual(1, onAddCalls);
         assert.strictEqual(2, onChangeCalls);
 
+        assertRefIdCounts(state, decodedState);
         assertDeepStrictEqualEncodeAll(state);
     });
 
@@ -494,6 +495,7 @@ describe("Type: MapSchema", () => {
         assert.strictEqual(1, onAddCalls);
         assert.strictEqual(2, onChangeCalls);
 
+        assertRefIdCounts(state, decodedState);
         assertDeepStrictEqualEncodeAll(state);
     });
 
@@ -529,14 +531,14 @@ describe("Type: MapSchema", () => {
         }
 
         const state = new State();
-        const decodeState = new State()
+        const decodedState = new State()
 
         const p1 = new Player().assign({ id: "76355" });
         state.players.set(p1.id, p1);
         p1.name = "Player One!";
         p1.age = 100;
         p1.next = p1.id;//1->1;
-        decodeState.decode(state.encode());
+        decodedState.decode(state.encode());
 
         const p2 = new Player().assign({ id: "8848" });
         state.players.set(p2.id, p2);
@@ -544,7 +546,7 @@ describe("Type: MapSchema", () => {
         p2.age = 200;
         p1.next = p2.id;//1->2;
         p2.next = p1.id;//2->1;
-        decodeState.decode(state.encode());
+        decodedState.decode(state.encode());
 
         const p3 = new Player().assign({ id: "8658" });
         state.players.set(p3.id, p3);
@@ -553,11 +555,12 @@ describe("Type: MapSchema", () => {
         p1.next = p2.id;//1->2;
         p2.next = p3.id;//2->3
         p3.next = p1.id;//3->1
-        decodeState.decode(state.encode());
+        decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
 
-        assert.strictEqual(decodeState.players.get('76355').next,'8848');//1->2
-        assert.strictEqual(decodeState.players.get('8848').next,'8658');//2->3
-        assert.strictEqual(decodeState.players.get('8658').next,'76355')//3->1
+        assert.strictEqual(decodedState.players.get('76355').next,'8848');//1->2
+        assert.strictEqual(decodedState.players.get('8848').next,'8658');//2->3
+        assert.strictEqual(decodedState.players.get('8658').next,'76355')//3->1
 
         assertDeepStrictEqualEncodeAll(state);
     });
@@ -645,6 +648,8 @@ describe("Type: MapSchema", () => {
         assert.strictEqual(false, decodedState2.entities.has("item1"), "'item1' should've been deleted.");
         assert.strictEqual(false, decodedState2.entities.has("item2"), "'item2' should've been deleted.");
 
+        assertRefIdCounts(state, decodedState);
+
         assertDeepStrictEqualEncodeAll(state);
     });
 
@@ -694,6 +699,7 @@ describe("Type: MapSchema", () => {
         state.entities.set("item3", previousWeapon);
 
         decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
 
         assert.deepStrictEqual({
             entities: {
@@ -727,6 +733,7 @@ describe("Type: MapSchema", () => {
 
         state.numbers = new MapSchema({ four: 1, five: 2, six: 3 });
         decodedState.decode(state.encode());
+        assertRefIdCounts(state, decodedState);
 
         assert.strictEqual(3, onRemoveCalls);
 

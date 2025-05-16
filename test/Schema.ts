@@ -27,13 +27,17 @@ export function getDecoder<T extends Schema>(state: T) {
 /**
  * This assertion simulates a new client joining the room, and receiving the initial state.
  */
-export function assertDeepStrictEqualEncodeAll(state: Schema) {
+export function assertDeepStrictEqualEncodeAll(state: Schema, assetRefIds: boolean = true) {
     const freshDecode = createInstanceFromReflection(state);
     const encodeAll = state.encodeAll();
     freshDecode.decode(encodeAll);
     assert.deepStrictEqual(freshDecode.toJSON(), state.toJSON());
 
-    assertRefIdCounts(state, freshDecode);
+    // assert ref counts
+    if (assetRefIds) {
+        assertRefIdCounts(state, freshDecode);
+    }
+
 
     // // perform a regular encode right full decode
     // freshDecode.decode(state.encode());
@@ -46,10 +50,11 @@ export function assertRefIdCounts(source: Schema, target: Schema) {
     const decoder = getDecoder(target);
 
     for (const refId in encoder.root.refCount) {
+        const ref = encoder.root.changeTrees[refId]?.ref;
         const encoderRefCount = encoder.root.refCount[refId];
         const decoderRefCount = decoder.root.refCounts[refId] ?? 0;
-        assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for refId: ${refId} (encoder count: ${encoderRefCount}, decoder count: ${decoderRefCount})
-\nREF IDS:\n${Schema.debugRefIds(source)}`);
+        assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for '${ref?.constructor.name}' (refId: ${refId}) => (Encoder count: ${encoderRefCount}, Decoder count: ${decoderRefCount})
+\n${Schema.debugRefIds(source)}`);
     }
 }
 
