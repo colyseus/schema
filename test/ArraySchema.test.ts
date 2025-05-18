@@ -302,6 +302,55 @@ describe("ArraySchema Tests", () => {
             state.entities.shift();
             assertDeepStrictEqualEncodeAll(state);
         });
+
+        xit("encodeAll() + with enqueued encode() shifts", () => {
+            class Entity extends Schema {
+                @type("number") thing: number;
+            }
+            class State extends Schema {
+                @type([Entity]) entities: Entity[];
+            }
+
+            const state = new State();
+            state.entities = [];
+
+            const repopulateEntitiesArray = (count) => {
+                for (let i = 0; i < count; i++) {
+                    const ent = new Entity();
+                    ent.thing = i;
+                    state.entities.push(ent);
+                }
+            };
+            repopulateEntitiesArray(35);
+
+            function mutateAllAndShift(count: number = 6) {
+                for (let i = 0; i < count; i++) {
+                    state.entities.forEach((entity) => entity.thing++);
+                    state.entities.shift();
+                }
+            }
+
+            const decoded1 = createInstanceFromReflection(state);
+            decoded1.decode(state.encodeAll());
+            mutateAllAndShift(6);
+            decoded1.decode(state.encode());
+            mutateAllAndShift(6);
+            decoded1.decode(state.encode());
+
+            mutateAllAndShift(9);
+
+            const decoded2 = createInstanceFromReflection(state);
+            console.log("\n\n\n\nDECODE FULL!");
+            decoded2.decode(state.encodeAll());
+            console.log("FULL REFS:", getDecoder(decoded2).root.refs.size, '=>', Array.from(getDecoder(decoded2).root.refs.keys()));
+            mutateAllAndShift(3);
+            decoded2.decode(state.encode());
+            console.log("PATCH REFS:", getDecoder(decoded2).root.refs.size, '=>', Array.from(getDecoder(decoded2).root.refs.keys()));
+            mutateAllAndShift(6);
+            decoded2.decode(state.encode());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
     });
 
     it("should allow mutating primitive value by index", () => {
