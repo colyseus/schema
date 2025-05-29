@@ -237,6 +237,11 @@ export class StateView {
                 // DELETE / DELETE BY REF ID
                 changes[changeTree.parentIndex] = OPERATION.DELETE;
 
+                // Remove child schema from visible set
+                changeTree.forEachChild((childChangeTree) => {
+                    this.visible.delete(childChangeTree);
+                });
+
             } else {
                 // delete all "tagged" properties.
                 metadata?.[$viewFieldIndexes]?.forEach((index) =>
