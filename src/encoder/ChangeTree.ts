@@ -63,7 +63,7 @@ export function deleteOperationAtIndex(changeSet: ChangeSet, index: number | str
         // if index is not found, we need to find the last operation
         // FIXME: this is not very efficient
         //
-        // > See "should allow consecutive splices (same place)" tests
+        // > See "should allow consecutive splices (same place" tests
         //
         operationsIndex = Object.values(changeSet.indexes).at(-1);
         index = Object.entries(changeSet.indexes).find(([_, value]) => value === operationsIndex)?.[0];

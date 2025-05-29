@@ -11,6 +11,8 @@ import { Root } from "./Root";
 import type { StateView } from "./StateView";
 import type { Metadata } from "../Metadata";
 import type { ChangeSetName, ChangeTree } from "./ChangeTree";
+import { encodeArray, encodeValue } from "./EncodeOperation";
+import { ArraySchema } from "../types/custom/ArraySchema";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = (typeof(Buffer) !== "undefined") && Buffer.poolSize || 8 * 1024; // 8KB
@@ -87,6 +89,25 @@ export class Encoder<T extends Schema = any> {
                 buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
                 encode.number(buffer, changeTree.refId, it);
             }
+
+            // // TODO: if encodeAll and "encodeArray()", fill indexes that are
+            // // going to be deleted with empty values
+            // if (isEncodeAll && encoder === encodeArray && changeTree.changes.operations.length > 0) {
+            //     console.log("DELETED INDEXES:", (changeTree.ref as ArraySchema)['deletedIndexes']);
+            //     for (let j = 0; j < changeTree.changes.operations.length; j++) {
+            //         const fieldIndex = changeTree.changes.operations[j];
+            //         if (changeTree.indexedOperations[fieldIndex] === OPERATION.DELETE) {
+            //             console.log("operations[j] => ", changeTree.changes.operations[j], `(${changeTree.changes.indexes[j]}, ${changeTree.indexedOperations[changeTree.changes.operations[j]]})`);
+
+            //             const type = changeTree.getType(fieldIndex);
+            //             const value = changeTree.getValue(fieldIndex);
+
+            //             buffer[it.offset++] = OPERATION.ADD & 255;
+            //             encode.number(buffer, fieldIndex, it);
+            //             encodeValue(this, buffer, type, value, OPERATION.ADD, it);
+            //         }
+            //     }
+            // }
 
             for (let j = 0; j < numChanges; j++) {
                 const fieldIndex = changeSet.operations[j];

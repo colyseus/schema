@@ -337,10 +337,11 @@ describe("ArraySchema Tests", () => {
             mutateAllAndShift(6);
             decoded1.decode(state.encode());
 
+            // 9 shift operations are going to be encoded
             mutateAllAndShift(9);
 
             const decoded2 = createInstanceFromReflection(state);
-            console.log("\n\n\n\nDECODE FULL!");
+            console.log("\n\n\n\n=============\nDECODE FULL!");
             decoded2.decode(state.encodeAll());
             console.log("FULL REFS:", getDecoder(decoded2).root.refs.size, '=>', Array.from(getDecoder(decoded2).root.refs.keys()));
             mutateAllAndShift(3);
@@ -691,7 +692,7 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("consecutive unshift calls should not break 'encodeAll'", () => {
+        xit("consecutive unshift calls should not break 'encodeAll' (primitive child)", () => {
             class State extends Schema {
                 @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
             }
@@ -710,6 +711,32 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
             assert.deepStrictEqual([-1, 0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        xit("consecutive unshift calls should not break 'encodeAll' (schema child)", () => {
+            class Item extends Schema {
+                @type("string") name: string;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            state.items.push(new Item().assign({ name: "A" }));
+            state.items.push(new Item().assign({ name: "B" }));
+            state.items.push(new Item().assign({ name: "C" }));
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.items.unshift(new Item().assign({ name: "D" }));
+            state.items.unshift(new Item().assign({ name: "E" }));
+            assert.strictEqual("E", state.items[0].name);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([ 'E', 'D', 'A', 'B', 'C' ], decodedState.items.map(item => item.name));
 
             assertDeepStrictEqualEncodeAll(state);
         });
@@ -2271,9 +2298,6 @@ describe("ArraySchema Tests", () => {
         });
 
         it("should splice and move", () => {
-            //
-            // TODO: this test conflicts with ChangeTree.test.ts: "using ArraySchema: replace should be DELETE_AND_ADD operation"
-            //
             const state = new MyState();
             const encoder = getEncoder(state);
 
@@ -2299,32 +2323,24 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(1, encoder.root.refCount[state.cards[3][$changes].refId]);
 
             const removedCard = state.cards.splice(2, 1)[0];
-            console.log("removedCard, refId =>", removedCard[$changes].refId);
-            state.cards.forEach((card, i) => {
-                console.log(`state.cards[${i}] =>`, card[$changes].refId, card.toJSON());
-            });
+            assert.strictEqual(removedCard[$changes].refId, 4);
 
-            // swap refId 5 <=> 2
+            //
+            // NOTE: when not using .move()
+            // this test conflicts with ChangeTree.test.ts: "using ArraySchema: replace should be DELETE_AND_ADD operation"
+            //
             state.cards.move(() => {
+                // swap refId 5 <=> 2
                 [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
             });
-
-            console.log(Schema.debugChangesDeep(state));
 
             assert.strictEqual(1, encoder.root.refCount[state.cards[0][$changes].refId]);
             assert.strictEqual(1, encoder.root.refCount[state.cards[1][$changes].refId]);
             assert.strictEqual(1, encoder.root.refCount[state.cards[2][$changes].refId]);
 
             const encoded = state.encode();
-            console.log({ encoded: Array.from(encoded) });
-            // assert.strictEqual(8, encoded.length);
-
             decodedState.decode(encoded);
-
-            // assert.deepStrictEqual(onAddIds, [2, 3, 4, 5]);
-            // assert.deepStrictEqual(onRemoveIds, [4]);
-
-            console.log(Schema.debugRefIds(state));
+            assertRefIdCounts(state, decodedState);
 
             assert.deepStrictEqual(decoder.root.refCounts, {
                 0: 1,
@@ -2487,7 +2503,7 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(4, onChangeCallCount);
         });
 
-        xit("should trigger onAdd callback only once after clearing and adding one item", () => {
+        it("should trigger onAdd callback only once after clearing and adding one item", () => {
             const state = new State();
             const decodedState = new State();
             const $ = getCallbacks(decodedState);
@@ -2499,12 +2515,18 @@ describe("ArraySchema Tests", () => {
             state.points.push(new Point().assign({ x: 3, y: 3 }));
 
             let onAddCallCount = 0;
+            let onRemoveCallCount = 0;
             $(decodedState).points.onAdd((point, key) => {
                 onAddCallCount++;
                 console.log(point.toJSON(), key);
             });
+            $(decodedState).points.onRemove((point, key) => {
+                onRemoveCallCount++;
+            });
 
             decodedState.decode(state.encodeAll());
+            assert.strictEqual(0, onRemoveCallCount);
+
             decodedState.decode(state.encode());
 
             assert.deepStrictEqual([
@@ -2512,7 +2534,9 @@ describe("ArraySchema Tests", () => {
                 { x: 3, y: 3 }
             ], decodedState.points.toJSON());
 
-            assert.strictEqual(2, onAddCallCount);
+            assert.strictEqual(4, onAddCallCount);
+            assert.strictEqual(2, onRemoveCallCount);
+            assertRefIdCounts(state, decodedState);
 
             assertDeepStrictEqualEncodeAll(state);
         });
