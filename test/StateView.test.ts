@@ -1123,7 +1123,7 @@ describe("StateView", () => {
             assert.deepStrictEqual(client.state.items.get("1").toJSON(), item1.toJSON());
         });
 
-        it("view.remove() should remove nested items", () => {
+        it("view.remove() should remove nested items (1 level)", () => {
             class Coordinates extends Schema {
                 @type("number") x: number;
                 @type("number") y: number;
@@ -1151,6 +1151,41 @@ describe("StateView", () => {
             encodeMultiple(encoder, state, [client1]);
 
             diamond.position.x++;
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.doesNotThrow(() =>
+                encodeAllMultiple(encoder, state, [client1]));
+        });
+
+        it("view.remove() should remove nested items (2 levels)", () => {
+            class Tag extends Schema {
+                @type("string") name: string;
+            }
+            class Coordinates extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+                @type(Tag) tag: Tag;
+            }
+            class Diamond extends Schema {
+                @type(Coordinates) position: Coordinates;
+            }
+            class State extends Schema {
+                @view() @type({ map: Diamond }) diamonds = new MapSchema<Diamond>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const diamond = new Diamond().assign({
+                position: new Coordinates().assign({ x: 10, y: 20, tag: new Tag().assign({ name: "tag1" }) })
+            });
+            state.diamonds.set("one", diamond);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(diamond);
+            encodeMultiple(encoder, state, [client1]);
+
+            client1.view.remove(diamond);
             encodeMultiple(encoder, state, [client1]);
 
             assert.doesNotThrow(() =>

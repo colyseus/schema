@@ -238,9 +238,7 @@ export class StateView {
                 changes[changeTree.parentIndex] = OPERATION.DELETE;
 
                 // Remove child schema from visible set
-                changeTree.forEachChild((childChangeTree) => {
-                    this.visible.delete(childChangeTree);
-                });
+                this._recursiveDeleteVisibleChangeTree(changeTree);
 
             } else {
                 // delete all "tagged" properties.
@@ -318,5 +316,12 @@ export class StateView {
         }
 
         return isVisible;
+    }
+
+    protected _recursiveDeleteVisibleChangeTree(changeTree: ChangeTree) {
+        changeTree.forEachChild((childChangeTree) => {
+            this.visible.delete(childChangeTree);
+            this._recursiveDeleteVisibleChangeTree(childChangeTree);
+        });
     }
 }
