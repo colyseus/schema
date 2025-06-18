@@ -9,6 +9,8 @@ import { StateView } from './encoder/StateView';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation';
 import { decodeSchemaOperation } from './decoder/DecodeOperation';
+
+import type { Decoder } from './decoder/Decoder';
 import type { Metadata } from './Metadata';
 import { getIndent } from './utils';
 
@@ -183,23 +185,28 @@ export class Schema {
      * @param showContents display JSON contents of the instance
      * @returns
      */
-    static debugRefIds(ref: Ref, showContents: boolean = false, level: number = 0) {
+    static debugRefIds(ref: Ref, showContents: boolean = false, level: number = 0, decoder?: Decoder) {
         const contents = (showContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
-
         const changeTree: ChangeTree = ref[$changes];
-        const refId = changeTree.refId;
 
-        // log reference count if > 1
-        const refCount = (changeTree.root?.refCount?.[refId] > 1)
-            ? ` [×${changeTree.root.refCount[refId]}]`
+        const refId = (decoder) ? decoder.root.refIds.get(ref) : changeTree.refId;
+        const root = (decoder) ? decoder.root : changeTree.root;
+
+         // log reference count if > 1
+        const refCount = (root?.refCount?.[refId] > 1)
+            ? ` [×${root.refCount[refId]}]`
             : '';
 
         let output = `${getIndent(level)}${ref.constructor.name} (refId: ${refId})${refCount}${contents}\n`;
 
         changeTree.forEachChild((childChangeTree) =>
-            output += this.debugRefIds(childChangeTree.ref, showContents, level + 1));
+            output += this.debugRefIds(childChangeTree.ref, showContents, level + 1, decoder));
 
         return output;
+    }
+
+    static debugRefIdsDecoder(decoder: Decoder) {
+        return this.debugRefIds(decoder.state, false, 0, decoder);
     }
 
     /**

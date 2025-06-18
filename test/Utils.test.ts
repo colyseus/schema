@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player, getEncoder } from "./Schema";
+import { State, Player, getEncoder, createInstanceFromReflection, getDecoder } from "./Schema";
 import { MapSchema, dumpChanges, ArraySchema, Schema } from "../src";
 
 describe("Utils Test", () => {
@@ -66,6 +66,25 @@ describe("Utils Test", () => {
                 JSON.stringify(dump),
                 '{"ops":{"DELETE":1},"refs":["refId#1"]}',
             );
+        });
+
+    });
+
+    describe("debugRefIds", () => {
+
+        it("should be able to debug Decoder refIds", () => {
+            const state = new State();
+            state.arrayOfPlayers = new ArraySchema<Player>();
+            state.arrayOfPlayers.push(new Player("One", 1, 1));
+            state.arrayOfPlayers.push(new Player("Two", 2, 2));
+
+            const decoded = createInstanceFromReflection(state);
+            decoded.decode(state.encode());
+
+            const extractRefIds = (debugRefIds: string) =>
+                Array.from(debugRefIds.matchAll(/\(refId: ([0-9]+)\)/g)).map(entry => entry[0]);
+
+            assert.deepStrictEqual(extractRefIds(Schema.debugRefIds(state)), extractRefIds(Schema.debugRefIdsDecoder(getDecoder(decoded))))
         });
 
     });

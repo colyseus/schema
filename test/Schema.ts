@@ -52,7 +52,7 @@ export function assertRefIdCounts(source: Schema, target: Schema) {
     for (const refId in encoder.root.refCount) {
         const ref = encoder.root.changeTrees[refId]?.ref;
         const encoderRefCount = encoder.root.refCount[refId];
-        const decoderRefCount = decoder.root.refCounts[refId] ?? 0;
+        const decoderRefCount = decoder.root.refCount[refId] ?? 0;
         assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for '${ref?.constructor.name}' (refId: ${refId}) => (Encoder count: ${encoderRefCount}, Decoder count: ${decoderRefCount})
 \n${Schema.debugRefIds(source)}`);
     }

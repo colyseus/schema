@@ -381,7 +381,42 @@ describe("Type: Schema", () => {
             const decodedState = createInstanceFromReflection(state);
             decodedState.decode(state.encode());
             assert.strictEqual(state.timestamp, decodedState.timestamp);
-        })
+        });
+
+        it("xxxxxx", () => {
+            class Player extends Schema {
+                @type("number") health: number = 100;
+            }
+
+            class GameState extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+                @type("number") round: number = 1;
+            }
+
+            function generateId() {
+                return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            }
+
+            const state = new GameState();
+            const encoder = getEncoder(state);
+
+            function simulateJoin(id = generateId()) {
+                const player = new Player();
+                state.players.set(id, player);
+
+                const decoded = createInstanceFromReflection(state);
+                decoded.decode(state.encodeAll());
+
+                decoded.decode(state.encode());
+                state.players.delete(id);
+            }
+
+            for (let i = 0; i < 3; i++) {
+                simulateJoin();
+            }
+
+        });
+
     });
 
     describe("detecting changes", () => {

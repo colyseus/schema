@@ -58,16 +58,23 @@ export class Decoder<T extends Schema = any> {
             if (bytes[it.offset] == SWITCH_TO_STRUCTURE) {
                 it.offset++;
 
-                this.currentRefId = decode.number(bytes, it);
-                const nextRef = $root.refs.get(this.currentRefId) as Schema;
+                const nextRefId = decode.number(bytes, it);
+                const nextRef = $root.refs.get(nextRefId);
 
                 //
                 // Trying to access a reference that haven't been decoded yet.
                 //
-                if (!nextRef) { throw new Error(`"refId" not found: ${this.currentRefId}`); }
+                if (!nextRef) {
+                    console.error(`"refId" not found: ${nextRefId}`, { previousRef: this, previousRefId: this.currentRefId });
+                    console.warn("Please report this to the developers. All refIds =>");
+                    console.warn(Schema.debugRefIdsDecoder(this));
+                    this.skipCurrentStructure(bytes, it, totalBytes);
+                }
                 ref[$onDecodeEnd]?.()
-                ref = nextRef;
 
+                this.currentRefId = nextRefId;
+
+                ref = nextRef;
                 decoder = ref.constructor[$decoder];
 
                 continue;
@@ -77,22 +84,7 @@ export class Decoder<T extends Schema = any> {
 
             if (result === DEFINITION_MISMATCH) {
                 console.warn("@colyseus/schema: definition mismatch");
-
-                //
-                // keep skipping next bytes until reaches a known structure
-                // by local decoder.
-                //
-                const nextIterator: Iterator = { offset: it.offset };
-                while (it.offset < totalBytes) {
-                    if (bytes[it.offset] === SWITCH_TO_STRUCTURE) {
-                        nextIterator.offset = it.offset + 1;
-                        if ($root.refs.has(decode.number(bytes, nextIterator))) {
-                            break;
-                        }
-                    }
-
-                    it.offset++;
-                }
+                this.skipCurrentStructure(bytes, it, totalBytes);
                 continue;
             }
         }
@@ -107,6 +99,23 @@ export class Decoder<T extends Schema = any> {
         $root.garbageCollectDeletedRefs();
 
         return allChanges;
+    }
+
+    skipCurrentStructure(bytes: Buffer, it: Iterator, totalBytes: number) {
+        //
+        // keep skipping next bytes until reaches a known structure
+        // by local decoder.
+        //
+        const nextIterator: Iterator = { offset: it.offset };
+        while (it.offset < totalBytes) {
+            if (bytes[it.offset] === SWITCH_TO_STRUCTURE) {
+                nextIterator.offset = it.offset + 1;
+                if (this.root.refs.has(decode.number(bytes, nextIterator))) {
+                    break;
+                }
+            }
+            it.offset++;
+        }
     }
 
     getInstanceType(bytes: Buffer, it: Iterator, defaultType: typeof Schema): typeof Schema {

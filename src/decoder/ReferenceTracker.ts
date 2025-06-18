@@ -26,7 +26,7 @@ export class ReferenceTracker {
     public refs = new Map<number, Ref>();
     public refIds = new WeakMap<Ref, number>();
 
-    public refCounts: { [refId: number]: number; } = {};
+    public refCount: { [refId: number]: number; } = {};
     public deletedRefs = new Set<number>();
 
     public callbacks: { [refId: number]: SchemaCallbacks } = {};
@@ -42,7 +42,7 @@ export class ReferenceTracker {
         this.refIds.set(ref, refId);
 
         if (incrementCount) {
-            this.refCounts[refId] = (this.refCounts[refId] || 0) + 1;
+            this.refCount[refId] = (this.refCount[refId] || 0) + 1;
         }
 
         if (this.deletedRefs.has(refId)) {
@@ -52,7 +52,7 @@ export class ReferenceTracker {
 
     // for decoding
     removeRef(refId: number) {
-        const refCount = this.refCounts[refId];
+        const refCount = this.refCount[refId];
 
         if (refCount === undefined) {
             try {
@@ -73,7 +73,7 @@ export class ReferenceTracker {
             return;
         }
 
-        if ((this.refCounts[refId] = refCount - 1) <= 0) {
+        if ((this.refCount[refId] = refCount - 1) <= 0) {
             this.deletedRefs.add(refId);
         }
     }
@@ -82,7 +82,7 @@ export class ReferenceTracker {
         this.refs.clear();
         this.deletedRefs.clear();
         this.callbacks = {};
-        this.refCounts = {};
+        this.refCount = {};
     }
 
     // for decoding
@@ -91,7 +91,7 @@ export class ReferenceTracker {
             //
             // Skip active references.
             //
-            if (this.refCounts[refId] > 0) { return; }
+            if (this.refCount[refId] > 0) { return; }
 
             const ref = this.refs.get(refId);
 
@@ -121,7 +121,7 @@ export class ReferenceTracker {
             }
 
             this.refs.delete(refId); // remove ref
-            delete this.refCounts[refId]; // remove ref count
+            delete this.refCount[refId]; // remove ref count
             delete this.callbacks[refId]; // remove callbacks
         });
 
