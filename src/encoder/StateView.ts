@@ -233,7 +233,15 @@ export class StateView {
                 if (changes === undefined) {
                     changes = {};
                     this.changes.set(parentChangeTree.refId, changes);
+
+                } else if (changes[changeTree.parentIndex] === OPERATION.ADD) {
+                    //
+                    // SAME PATCH ADD + REMOVE:
+                    // The 'changes' of deleted structure should be ignored.
+                    //
+                    this.changes.delete(changeTree.refId);
                 }
+
                 // DELETE / DELETE BY REF ID
                 changes[changeTree.parentIndex] = OPERATION.DELETE;
 

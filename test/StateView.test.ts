@@ -1192,6 +1192,38 @@ describe("StateView", () => {
                 encodeAllMultiple(encoder, state, [client1]));
         });
 
+        it("removing and re-adding multiple times", () => {
+            // Thanks @jcrowson for providing this scenario
+
+            class NPCState extends Schema {
+                @view() @type('number') x: number = 0;
+                @view() @type('number') y: number = 0;
+            }
+
+            class State extends Schema {
+                @view() @type({ map: NPCState }) npcs = new MapSchema<NPCState>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const ids = ['0', '1', '2', '3'];
+            ids.forEach(id => state.npcs.set(id, new NPCState().assign({ x: 1, y: 1 })));
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state.npcs.get('0'));
+            client1.view.add(state.npcs.get('1'));
+            client1.view.add(state.npcs.get('2'));
+
+            encodeMultiple(encoder, state, [client1]);
+
+            client1.view.add(state.npcs.get('3'));
+            client1.view.remove(state.npcs.get('3'));
+            encodeMultiple(encoder, state, [client1]);
+
+            assertEncodeAllMultiple(encoder, state, [client1]);
+        })
+
     });
 
     describe("ArraySchema", () => {
