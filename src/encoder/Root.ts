@@ -83,19 +83,24 @@ export class Root {
             // containing instance is not available, the Decoder will throw
             // "refId not found" error.
             //
-            if (changeTree.filteredChanges !== undefined) {
-                this.removeChangeFromChangeSet("filteredChanges", changeTree);
-                enqueueChangeTree(this, changeTree, "filteredChanges");
-            } else {
-                this.removeChangeFromChangeSet("changes", changeTree);
-                enqueueChangeTree(this, changeTree, "changes");
-            }
+            this.moveToEnd(changeTree);
+            changeTree.forEachChild((child, _) => this.moveToEnd(child));
         }
 
         return refCount;
     }
 
-    removeChangeFromChangeSet(changeSetName: "allChanges" | "changes" | "filteredChanges" | "allFilteredChanges", changeTree: ChangeTree) {
+    protected moveToEnd(changeTree: ChangeTree) {
+        if (changeTree.filteredChanges !== undefined) {
+            this.removeChangeFromChangeSet("filteredChanges", changeTree);
+            enqueueChangeTree(this, changeTree, "filteredChanges");
+        } else {
+            this.removeChangeFromChangeSet("changes", changeTree);
+            enqueueChangeTree(this, changeTree, "changes");
+        }
+    }
+
+    protected removeChangeFromChangeSet(changeSetName: "allChanges" | "changes" | "filteredChanges" | "allFilteredChanges", changeTree: ChangeTree) {
         const changeSet = this[changeSetName];
         const changeSetIndex = changeSet.indexOf(changeTree);
 

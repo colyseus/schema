@@ -235,7 +235,7 @@ export class ChangeTree<T extends Ref=any> {
 
     }
 
-    forEachChild(callback: (change: ChangeTree, atIndex: number) => void) {
+    forEachChild(callback: (change: ChangeTree, at: any) => void) {
         //
         // assign same parent on child structures
         //
@@ -251,9 +251,8 @@ export class ChangeTree<T extends Ref=any> {
 
         } else if (this.ref[$childType] && typeof(this.ref[$childType]) !== "string") {
             // MapSchema / ArraySchema, etc.
-            (this.ref as MapSchema).forEach((value, key) => {
-                callback(value[$changes], this.indexes[key] ?? key);
-            });
+            (this.ref as MapSchema).forEach((value, key) =>
+                callback(value[$changes], key));
         }
     }
 

@@ -185,7 +185,7 @@ export class Schema {
      * @param showContents display JSON contents of the instance
      * @returns
      */
-    static debugRefIds(ref: Ref, showContents: boolean = false, level: number = 0, decoder?: Decoder) {
+    static debugRefIds(ref: Ref, showContents: boolean = false, level: number = 0, decoder?: Decoder, keyPrefix: string = "") {
         const contents = (showContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
         const changeTree: ChangeTree = ref[$changes];
 
@@ -197,10 +197,12 @@ export class Schema {
             ? ` [×${root.refCount[refId]}]`
             : '';
 
-        let output = `${getIndent(level)}${ref.constructor.name} (refId: ${refId})${refCount}${contents}\n`;
+        let output = `${getIndent(level)}${keyPrefix}${ref.constructor.name} (refId: ${refId})${refCount}${contents}\n`;
 
-        changeTree.forEachChild((childChangeTree) =>
-            output += this.debugRefIds(childChangeTree.ref, showContents, level + 1, decoder));
+        changeTree.forEachChild((childChangeTree, key) => {
+            const keyPrefix = (ref['forEach'] !== undefined && key !== undefined) ? `["${key}"]: ` : "";
+            output += this.debugRefIds(childChangeTree.ref, showContents, level + 1, decoder, keyPrefix);
+        });
 
         return output;
     }

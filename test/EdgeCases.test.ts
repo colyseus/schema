@@ -486,4 +486,53 @@ describe("Edge cases", () => {
         });
     });
 
+    it("should not throw 'refId not found' error when swapping and mutating shared Inventory items", () => {
+        class Item extends Schema {
+            @type("string") name: string;
+        }
+
+        class Inventory extends Schema {
+            @type({ map: Item }) items = new MapSchema<Item>();
+        }
+
+        class GameState extends Schema {
+            @type({ map: Inventory }) inventories = new MapSchema<Inventory>();
+        }
+
+        const state = new GameState();
+        const decodedState = createInstanceFromReflection(state);
+
+        // Create inventories
+        const playerInv = new Inventory();
+        const shopInv = new Inventory();
+        const storageInv = new Inventory();
+
+        state.inventories.set("player1", playerInv);
+        state.inventories.set("shop1", shopInv);
+        state.inventories.set("storage1", storageInv);
+
+        // Place items in inventories
+        playerInv.items.set("sword", new Item().assign({ name: "Sword", }));
+        shopInv.items.set("ring", new Item().assign({ name: "Potion", }));
+        storageInv.items.set("potion", new Item().assign({ name: "Ring", }));
+
+        // Initial decode
+        decodedState.decode(state.encode());
+        assertDeepStrictEqualEncodeAll(state, false);
+
+        // Phase 2: Replace inventories with new instances of different types, preserving shared items
+        const newStorageInv = new Inventory();
+
+        state.inventories.get("storage1").items.forEach((item, itemKey) =>
+            newStorageInv.items.set(itemKey, item));
+
+        // Replace inventories
+        state.inventories.set("storage1", newStorageInv);
+        state.inventories.set("player1", newStorageInv);
+        state.inventories.set("storage1", storageInv);
+
+        decodedState.decode(state.encode());
+        assertDeepStrictEqualEncodeAll(state, false);
+    });
+
 });

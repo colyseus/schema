@@ -819,4 +819,48 @@ describe("Type: MapSchema", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
+    it("should display map keys in debugRefIds output", () => {
+        class Item extends Schema {
+            @type("string") name: string;
+        }
+
+        class Inventory extends Schema {
+            @type({ map: Item }) items = new MapSchema<Item>();
+        }
+
+        class Player extends Schema {
+            @type("string") name: string;
+            @type(Inventory) inventory = new Inventory();
+        }
+
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+        }
+
+        const state = new State();
+
+        // Add some test data
+        const player1 = new Player().assign({ name: "Player1" });
+        player1.inventory.items.set("sword", new Item().assign({ name: "Sword" }));
+        player1.inventory.items.set("shield", new Item().assign({ name: "Shield" }));
+
+        const player2 = new Player().assign({ name: "Player2" });
+        player2.inventory.items.set("bow", new Item().assign({ name: "Bow" }));
+
+        state.players.set("player1", player1);
+        state.players.set("player2", player2);
+
+                const debugOutput = Schema.debugRefIds(state);
+
+        console.log("Debug output:");
+        console.log(debugOutput);
+
+        // Verify that map keys are displayed
+        assert(debugOutput.includes('["player1"]: Player'), "Should display player1 key");
+        assert(debugOutput.includes('["player2"]: Player'), "Should display player2 key");
+        assert(debugOutput.includes('["sword"]: Item'), "Should display sword key");
+        assert(debugOutput.includes('["shield"]: Item'), "Should display shield key");
+        assert(debugOutput.includes('["bow"]: Item'), "Should display bow key");
+    });
+
 });
