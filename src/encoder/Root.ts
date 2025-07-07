@@ -1,6 +1,5 @@
 import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
-import { spliceOne } from "../types/utils";
 import { ChangeTree, enqueueChangeTree, setOperationAtIndex } from "./ChangeTree";
 
 export class Root {

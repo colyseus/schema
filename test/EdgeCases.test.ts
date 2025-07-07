@@ -3,7 +3,7 @@ import * as assert from "assert";
 import { nanoid } from "nanoid";
 import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Encoder, $changes, entity } from "../src";
 
-import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
+import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, encodeAndAssertEquals } from "./Schema";
 
 describe("Edge cases", () => {
     it("Schema should support up to 64 fields", () => {
@@ -517,7 +517,7 @@ describe("Edge cases", () => {
         storageInv.items.set("potion", new Item().assign({ name: "Ring", }));
 
         // Initial decode
-        decodedState.decode(state.encode());
+        encodeAndAssertEquals(state, decodedState);
         assertDeepStrictEqualEncodeAll(state, false);
 
         // Phase 2: Replace inventories with new instances of different types, preserving shared items
@@ -531,8 +531,59 @@ describe("Edge cases", () => {
         state.inventories.set("player1", newStorageInv);
         state.inventories.set("storage1", storageInv);
 
-        decodedState.decode(state.encode());
+        encodeAndAssertEquals(state, decodedState);
         assertDeepStrictEqualEncodeAll(state, false);
     });
+
+    it.only("should synchronize properly when adding and removing references of shared items in different inventories", () => {
+        class Item extends Schema {
+            @type("string") name: string;
+        }
+
+        class Inventory extends Schema {
+            @type({ map: Item }) items = new MapSchema<Item>();
+        }
+
+        class GameState extends Schema {
+            @type({ map: Inventory }) inventories = new MapSchema<Inventory>();
+        }
+
+        const state = new GameState();
+        const decodedState = createInstanceFromReflection(state);
+
+        // Create inventories
+        const playerInv = new Inventory();
+        const shopInv = new Inventory();
+        const storageInv = new Inventory();
+
+        state.inventories.set("player1", playerInv);
+        state.inventories.set("shop1", shopInv);
+        state.inventories.set("storage1", storageInv);
+
+        // Place items in inventories
+        playerInv.items.set("sword", new Item().assign({ name: "Sword", }));
+        shopInv.items.set("ring", new Item().assign({ name: "Potion", }));
+        storageInv.items.set("potion", new Item().assign({ name: "Ring", }));
+
+        // Initial decode
+        decodedState.decode(state.encode());
+        assertDeepStrictEqualEncodeAll(state, false);
+
+        // Phase 2: Replace inventories with new instances of different types, preserving shared items
+        const newStorageInv = new Inventory();
+
+        state.inventories.get("storage1").items.forEach((item, itemKey) =>
+            newStorageInv.items.set(itemKey, item));
+
+        // Swap inventories again
+        state.inventories.set("player1", newStorageInv);
+
+        // THIS OPERATION IS CLEARING "Ring" REFERENCE, EVEN THOUGH IT'S STILL IN THE "newStorageInv"
+        state.inventories.set("storage1", shopInv);
+
+        encodeAndAssertEquals(state, decodedState);
+        assertDeepStrictEqualEncodeAll(state, false);
+    });
+
 
 });

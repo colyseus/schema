@@ -24,6 +24,12 @@ export function getDecoder<T extends Schema>(state: T) {
     return state['_decoder'] as Decoder<T>;
 }
 
+export function encodeAndAssertEquals(state: Schema, decodedState: Schema) {
+    const encoded = state.encode();
+    decodedState.decode(encoded);
+    assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+}
+
 /**
  * This assertion simulates a new client joining the room, and receiving the initial state.
  */
@@ -37,7 +43,6 @@ export function assertDeepStrictEqualEncodeAll(state: Schema, assetRefIds: boole
     if (assetRefIds) {
         assertRefIdCounts(state, freshDecode);
     }
-
 
     // // perform a regular encode right full decode
     // freshDecode.decode(state.encode());
