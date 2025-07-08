@@ -23,8 +23,10 @@ export class Root {
     }
 
     add(changeTree: ChangeTree) {
-        // FIXME: move implementation of `ensureRefId` to `Root` class
-        changeTree.ensureRefId();
+        // Assign unique `refId` to changeTree if it doesn't have one yet.
+        if (changeTree.refId === undefined) {
+            changeTree.refId = this.getNextUniqueId();
+        }
 
         const isNewChangeTree = (this.changeTrees[changeTree.refId] === undefined);
         if (isNewChangeTree) { this.changeTrees[changeTree.refId] = changeTree; }
@@ -45,13 +47,28 @@ export class Root {
 
         this.refCount[changeTree.refId] = (previousRefCount || 0) + 1;
 
+        // Recursively set root on child structures
+        changeTree.forEachChild((child, _) => {
+            child.setRoot(this);
+            // if (child.root !== this) {
+            //     child.setRoot(this);
+            // // } else {
+            // //     this.add(child); // increment refCount
+            // }
+            // this.add(child); // increment refCount
+        });
+
+        // changeTree.forEachChild((child, _) => this.add(child));
+
         return isNewChangeTree;
     }
 
     remove(changeTree: ChangeTree) {
         const refCount = (this.refCount[changeTree.refId]) - 1;
+        console.log("REMOVE", changeTree.refId, refCount);
 
         if (refCount <= 0) {
+
             //
             // Only remove "root" reference if it's the last reference
             //
@@ -69,6 +86,11 @@ export class Root {
             this.refCount[changeTree.refId] = 0;
 
             changeTree.forEachChild((child, _) => this.remove(child));
+            // changeTree.forEachChild((child, _) => {
+            //     if (child.removeParent(changeTree.ref)) {
+            //         this.remove(child);
+            //     }
+            // });
 
         } else {
             this.refCount[changeTree.refId] = refCount;

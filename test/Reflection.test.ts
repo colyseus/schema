@@ -29,12 +29,15 @@ export class State extends Schema {
 
 describe("Reflection", () => {
 
-    it("should allow to encode and decode empty structures", () => {
+    it.only("should allow to encode and decode empty structures", () => {
         class EmptyState extends Schema {}
         const state = new EmptyState();
 
         const reflected = new Reflection();
-        reflected.decode(Reflection.encode(getEncoder(state)));
+        const encoded = Reflection.encode(getEncoder(state));
+        console.log(Array.from(encoded));
+
+        reflected.decode(encoded);
         assert.strictEqual(reflected.types.length, 1);
     });
 

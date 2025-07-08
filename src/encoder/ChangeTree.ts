@@ -108,13 +108,18 @@ export function enqueueChangeTree(
     }
 }
 
+export interface ParentChain {
+    ref: Ref;
+    index: number;
+    next?: ParentChain;
+}
+
 export class ChangeTree<T extends Ref=any> {
     ref: T;
     refId: number;
 
     root?: Root;
-    parent?: Ref;
-    parentIndex?: number;
+    parentChain?: ParentChain; // Linked list for tracking parents
 
     /**
      * Whether this structure is parent of a filtered structure.
@@ -158,38 +163,21 @@ export class ChangeTree<T extends Ref=any> {
 
     setRoot(root: Root) {
         this.root = root;
-        this.checkIsFiltered(this.parent, this.parentIndex);
 
-        //
-        // TODO: refactor and possibly unify .setRoot() and .setParent()
-        //
+        this.checkIsFiltered(
+            this.parent,
+            this.parentIndex,
+            this.root.add(this) // this recursively set root on child structures
+        );
 
-        // Recursively set root on child structures
-        const metadata: Metadata = this.ref.constructor[Symbol.metadata];
-        if (metadata) {
-            metadata[$refTypeFieldIndexes]?.forEach((index) => {
-                const field = metadata[index as any as number];
-                const changeTree: ChangeTree = this.ref[field.name]?.[$changes];
-                if (changeTree) {
-                    if (changeTree.root !== root) {
-                        changeTree.setRoot(root);
-                    } else {
-                        root.add(changeTree); // increment refCount
-                    }
-                }
-            });
-
-        } else if (this.ref[$childType] && typeof(this.ref[$childType]) !== "string") {
-            // MapSchema / ArraySchema, etc.
-            (this.ref as MapSchema).forEach((value, key) => {
-                const changeTree: ChangeTree = value[$changes];
-                if (changeTree.root !== root) {
-                    changeTree.setRoot(root);
-                } else {
-                    root.add(changeTree); // increment refCount
-                }
-            });
-        }
+        // // Recursively set root on child structures
+        // this.forEachChild((child, _) => {
+        //     if (child.root !== root) {
+        //         child.setRoot(root);
+        //     } else {
+        //         root.add(child); // increment refCount
+        //     }
+        // });
     }
 
     setParent(
@@ -197,42 +185,26 @@ export class ChangeTree<T extends Ref=any> {
         root?: Root,
         parentIndex?: number,
     ) {
-        this.parent = parent;
-        this.parentIndex = parentIndex;
+        this.addParent(parent, parentIndex);
 
         // avoid setting parents with empty `root`
         if (!root) { return; }
 
+        const isNewChangeTree = root.add(this);
+
         // skip if parent is already set
         if (root !== this.root) {
             this.root = root;
-            this.checkIsFiltered(parent, parentIndex);
-
-        } else {
-            root.add(this);
+            this.checkIsFiltered(parent, parentIndex, isNewChangeTree);
         }
 
         // assign same parent on child structures
-        const metadata: Metadata = this.ref.constructor[Symbol.metadata];
-        if (metadata) {
-            metadata[$refTypeFieldIndexes]?.forEach((index) => {
-                const field = metadata[index as any as number];
-                const changeTree: ChangeTree = this.ref[field.name]?.[$changes];
-                if (changeTree && changeTree.root !== root) {
-                    changeTree.setParent(this.ref, root, index);
-                }
-            });
-
-        } else if (this.ref[$childType] && typeof(this.ref[$childType]) !== "string") {
-            // MapSchema / ArraySchema, etc.
-            (this.ref as MapSchema).forEach((value, key) => {
-                const changeTree: ChangeTree = value[$changes];
-                if (changeTree.root !== root) {
-                    changeTree.setParent(this.ref, root, this.indexes[key] ?? key);
-                }
-            });
-        }
-
+        this.forEachChild((child, index) => {
+            if (child.root === root) {
+                return;
+            }
+            child.setParent(this.ref, root, index);
+        });
     }
 
     forEachChild(callback: (change: ChangeTree, at: any) => void) {
@@ -516,22 +488,11 @@ export class ChangeTree<T extends Ref=any> {
         this.discard();
     }
 
-    ensureRefId() {
-        // skip if refId is already set.
-        if (this.refId !== undefined) {
-            return;
-        }
-
-        this.refId = this.root.getNextUniqueId();
-    }
-
     get changed() {
         return (Object.entries(this.indexedOperations).length > 0);
     }
 
-    protected checkIsFiltered(parent: Ref, parentIndex: number) {
-        const isNewChangeTree = this.root.add(this);
-
+    protected checkIsFiltered(parent: Ref, parentIndex: number, isNewChangeTree: boolean) {
         if (this.root.types.hasFilters) {
             //
             // At Schema initialization, the "root" structure might not be available
@@ -624,6 +585,93 @@ export class ChangeTree<T extends Ref=any> {
                 this.allChanges = createChangeSet();
             }
         }
+    }
+
+    /**
+     * Get the immediate parent
+     */
+    get parent(): Ref | undefined {
+        return this.parentChain?.ref;
+    }
+
+    /**
+     * Get the immediate parent index
+     */
+    get parentIndex(): number | undefined {
+        return this.parentChain?.index;
+    }
+
+    /**
+     * Add a parent to the chain
+     */
+    addParent(parent: Ref, index: number) {
+        // Check if this parent already exists in the chain
+        if (this.hasParent((p, i) => p === parent && i === index)) {
+            return;
+        }
+
+        this.parentChain = {
+            ref: parent,
+            index,
+            next: this.parentChain
+        };
+    }
+
+    /**
+     * Remove a parent from the chain
+     * @param parent - The parent to remove
+     * @returns true if no parents are left, false otherwise
+     */
+    removeParent(parent: Ref): boolean {
+        let current = this.parentChain;
+        let previous = null;
+        while (current) {
+            if (current.ref === parent) {
+                if (previous) {
+                    previous.next = current.next;
+                } else {
+                    this.parentChain = current.next;
+                }
+                return this.parentChain === undefined;
+            }
+            previous = current;
+            current = current.next;
+        }
+        return this.parentChain === undefined;
+    }
+
+    /**
+     * Find a specific parent in the chain
+     */
+    findParent(predicate: (parent: Ref, index: number) => boolean): ParentChain | undefined {
+        let current = this.parentChain;
+        while (current) {
+            if (predicate(current.ref, current.index)) {
+                return current;
+            }
+            current = current.next;
+        }
+        return undefined;
+    }
+
+    /**
+     * Check if this ChangeTree has a specific parent
+     */
+    hasParent(predicate: (parent: Ref, index: number) => boolean): boolean {
+        return this.findParent(predicate) !== undefined;
+    }
+
+    /**
+     * Get all parents as an array (for debugging/testing)
+     */
+    getAllParents(): Array<{ref: Ref, index: number}> {
+        const parents: Array<{ref: Ref, index: number}> = [];
+        let current = this.parentChain;
+        while (current) {
+            parents.push({ref: current.ref, index: current.index});
+            current = current.next;
+        }
+        return parents;
     }
 
 }

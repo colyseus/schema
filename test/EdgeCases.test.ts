@@ -581,6 +581,8 @@ describe("Edge cases", () => {
         // THIS OPERATION IS CLEARING "Ring" REFERENCE, EVEN THOUGH IT'S STILL IN THE "newStorageInv"
         state.inventories.set("storage1", shopInv);
 
+        console.log(Schema.debugRefIds(state));
+
         encodeAndAssertEquals(state, decodedState);
         assertDeepStrictEqualEncodeAll(state, false);
     });
