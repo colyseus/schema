@@ -29,7 +29,7 @@ export class State extends Schema {
 
 describe("Reflection", () => {
 
-    it.only("should allow to encode and decode empty structures", () => {
+    it("should allow to encode and decode empty structures", () => {
         class EmptyState extends Schema {}
         const state = new EmptyState();
 

@@ -535,7 +535,7 @@ describe("Edge cases", () => {
         assertDeepStrictEqualEncodeAll(state, false);
     });
 
-    it.only("should synchronize properly when adding and removing references of shared items in different inventories", () => {
+    it("should synchronize properly when adding and removing references of shared items in different inventories", () => {
         class Item extends Schema {
             @type("string") name: string;
         }
@@ -582,6 +582,7 @@ describe("Edge cases", () => {
         state.inventories.set("storage1", shopInv);
 
         console.log(Schema.debugRefIds(state));
+        console.log("allChanges encode order:", state[$changes].root.allChanges.filter(c => c).map(c => c.refId));
 
         encodeAndAssertEquals(state, decodedState);
         assertDeepStrictEqualEncodeAll(state, false);

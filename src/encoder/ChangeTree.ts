@@ -164,20 +164,20 @@ export class ChangeTree<T extends Ref=any> {
     setRoot(root: Root) {
         this.root = root;
 
-        this.checkIsFiltered(
-            this.parent,
-            this.parentIndex,
-            this.root.add(this) // this recursively set root on child structures
-        );
+        const isNewChangeTree = this.root.add(this);
 
-        // // Recursively set root on child structures
-        // this.forEachChild((child, _) => {
-        //     if (child.root !== root) {
-        //         child.setRoot(root);
-        //     } else {
-        //         root.add(child); // increment refCount
-        //     }
-        // });
+        this.checkIsFiltered(this.parent, this.parentIndex, isNewChangeTree);
+
+        // Recursively set root on child structures
+        if (isNewChangeTree) {
+            this.forEachChild((child, _) => {
+                if (child.root !== root) {
+                    child.setRoot(root);
+                } else {
+                    root.add(child); // increment refCount
+                }
+            });
+        }
     }
 
     setParent(
@@ -199,12 +199,14 @@ export class ChangeTree<T extends Ref=any> {
         }
 
         // assign same parent on child structures
-        this.forEachChild((child, index) => {
-            if (child.root === root) {
-                return;
-            }
-            child.setParent(this.ref, root, index);
-        });
+        if (isNewChangeTree) {
+            this.forEachChild((child, index) => {
+                if (child.root === root) {
+                    return;
+                }
+                child.setParent(this.ref, root, index);
+            });
+        }
     }
 
     forEachChild(callback: (change: ChangeTree, at: any) => void) {

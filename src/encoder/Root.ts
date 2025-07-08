@@ -47,19 +47,6 @@ export class Root {
 
         this.refCount[changeTree.refId] = (previousRefCount || 0) + 1;
 
-        // Recursively set root on child structures
-        changeTree.forEachChild((child, _) => {
-            child.setRoot(this);
-            // if (child.root !== this) {
-            //     child.setRoot(this);
-            // // } else {
-            // //     this.add(child); // increment refCount
-            // }
-            // this.add(child); // increment refCount
-        });
-
-        // changeTree.forEachChild((child, _) => this.add(child));
-
         return isNewChangeTree;
     }
 
@@ -85,12 +72,12 @@ export class Root {
 
             this.refCount[changeTree.refId] = 0;
 
-            changeTree.forEachChild((child, _) => this.remove(child));
-            // changeTree.forEachChild((child, _) => {
-            //     if (child.removeParent(changeTree.ref)) {
-            //         this.remove(child);
-            //     }
-            // });
+            // changeTree.forEachChild((child, _) => this.remove(child));
+            changeTree.forEachChild((child, _) => {
+                if (child.removeParent(changeTree.ref)) {
+                    this.remove(child);
+                }
+            });
 
         } else {
             this.refCount[changeTree.refId] = refCount;
@@ -112,6 +99,7 @@ export class Root {
     }
 
     protected moveToEnd(changeTree: ChangeTree) {
+        console.log("MOVE TO END", changeTree.refId);
         if (changeTree.filteredChanges !== undefined) {
             this.removeChangeFromChangeSet("filteredChanges", changeTree);
             enqueueChangeTree(this, changeTree, "filteredChanges");
