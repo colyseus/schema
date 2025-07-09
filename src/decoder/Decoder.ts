@@ -132,12 +132,6 @@ export class Decoder<T extends Schema = any> {
     }
 
     createInstanceOfType (type: typeof Schema): Schema {
-        // let instance: Schema = new (type as any)();
-
-        // // assign root on $changes
-        // instance[$changes].root = this.root[$changes].root;
-
-        // return instance;
         return new (type as any)();
     }
 

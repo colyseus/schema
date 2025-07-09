@@ -1,6 +1,6 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd } from "../symbols";
 import type { Schema } from "../../Schema";
-import { ChangeTree, debugChangeSet, deleteOperationAtIndex, enqueueChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
+import { ChangeTree, enqueueChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";

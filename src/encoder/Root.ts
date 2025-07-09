@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
-import { ChangeTree, enqueueChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName } from "./ChangeTree";
+import { ChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName } from "./ChangeTree";
 
 export class Root {
     protected nextUniqueId: number = 0;
@@ -47,14 +47,11 @@ export class Root {
 
         this.refCount[changeTree.refId] = (previousRefCount || 0) + 1;
 
-        console.log("ADD", changeTree.refId, { refCount: this.refCount[changeTree.refId] });
-
         return isNewChangeTree;
     }
 
     remove(changeTree: ChangeTree) {
         const refCount = (this.refCount[changeTree.refId]) - 1;
-        console.log("REMOVE", changeTree.refId, { refCount });
 
         if (refCount <= 0) {
 
@@ -83,7 +80,8 @@ export class Root {
                         this.remove(child);
 
                     } else if (child.parentChain) {
-                        this.moveToEnd(child);
+                        // re-assigning a child of the same root, move it to the end
+                        this.moveToEndOfChanges(child);
                     }
                 }
             });
@@ -100,16 +98,14 @@ export class Root {
             // containing instance is not available, the Decoder will throw
             // "refId not found" error.
             //
-            this.moveToEnd(changeTree);
-            changeTree.forEachChild((child, _) => this.moveToEnd(child));
+            this.moveToEndOfChanges(changeTree);
+            changeTree.forEachChild((child, _) => this.moveToEndOfChanges(child));
         }
 
         return refCount;
     }
 
-    protected moveToEnd(changeTree: ChangeTree) {
-        console.log("MOVE TO END", changeTree.refId);
-
+    moveToEndOfChanges(changeTree: ChangeTree) {
         if (changeTree.filteredChanges) {
             this.moveToEndOfChangeTreeList("filteredChanges", changeTree);
             this.moveToEndOfChangeTreeList("allFilteredChanges", changeTree);
@@ -119,7 +115,7 @@ export class Root {
         }
     }
 
-    protected moveToEndOfChangeTreeList(changeSetName: ChangeSetName, changeTree: ChangeTree): void {
+    moveToEndOfChangeTreeList(changeSetName: ChangeSetName, changeTree: ChangeTree): void {
         const changeSet = this[changeSetName];
         const node = changeTree[changeSetName].queueRootNode;
         if (!node || node === changeSet.tail) return;

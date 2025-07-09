@@ -531,9 +531,6 @@ describe("Edge cases", () => {
         state.inventories.set("player1", newStorageInv);
         state.inventories.set("storage1", storageInv);
 
-        console.log(Schema.debugRefIds(state));
-        console.log("allChanges encode order:", Schema.debugRefIdEncodeOrder(state));
-
         encodeAndAssertEquals(state, decodedState);
         assertDeepStrictEqualEncodeAll(state, false);
     });
@@ -583,9 +580,6 @@ describe("Edge cases", () => {
 
         // This operation makes "Ring" reference on `allChanges` to appear before its parent, resulting in a "refId not found" error.
         state.inventories.set("storage1", shopInv);
-
-        console.log(Schema.debugRefIds(state));
-        console.log("allChanges encode order:", Schema.debugRefIdEncodeOrder(state));
 
         encodeAndAssertEquals(state, decodedState);
         assertDeepStrictEqualEncodeAll(state, false);

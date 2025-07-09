@@ -239,6 +239,11 @@ export class ChangeTree<T extends Ref=any> {
         if (isNewChangeTree) {
             this.forEachChild((child, index) => {
                 if (child.root === root) {
+                    //
+                    // re-assigning a child of the same root, move it to the end
+                    // of the changes queue so encoding order is preserved
+                    //
+                    root.moveToEndOfChanges(child);
                     return;
                 }
                 child.setParent(this.ref, root, index);
@@ -386,19 +391,16 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     getType(index?: number) {
-        if (Metadata.isValidInstance(this.ref)) {
-            const metadata = this.ref.constructor[Symbol.metadata] as Metadata;
-            return metadata[index].type;
-
-        } else {
+        return (
             //
             // Get the child type from parent structure.
             // - ["string"] => "string"
             // - { map: "string" } => "string"
             // - { set: "string" } => "string"
             //
-            return this.ref[$childType];
-        }
+            this.ref[$childType] || // ArraySchema | MapSchema | SetSchema | CollectionSchema
+            this.ref.constructor[Symbol.metadata][index].type // Schema
+        );
     }
 
     getChange(index: number) {
@@ -675,7 +677,6 @@ export class ChangeTree<T extends Ref=any> {
                 } else {
                     this.parentChain = current.next;
                 }
-                // return this.parentChain === undefined;
                 return true;
             }
             previous = current;
