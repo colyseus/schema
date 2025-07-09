@@ -207,6 +207,18 @@ export class Schema {
         return output;
     }
 
+    static debugRefIdEncodeOrder(ref: Ref) {
+        let encodeOrder: number[] = [];
+        let current = ref[$changes].root.allChanges.next;
+        while (current) {
+            if (current.changeTree) {
+                encodeOrder.push(current.changeTree.refId);
+            }
+            current = current.next;
+        }
+        return encodeOrder;
+    }
+
     static debugRefIdsDecoder(decoder: Decoder) {
         return this.debugRefIds(decoder.state, false, 0, decoder);
     }

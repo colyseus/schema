@@ -531,6 +531,9 @@ describe("Edge cases", () => {
         state.inventories.set("player1", newStorageInv);
         state.inventories.set("storage1", storageInv);
 
+        console.log(Schema.debugRefIds(state));
+        console.log("allChanges encode order:", Schema.debugRefIdEncodeOrder(state));
+
         encodeAndAssertEquals(state, decodedState);
         assertDeepStrictEqualEncodeAll(state, false);
     });
@@ -578,19 +581,11 @@ describe("Edge cases", () => {
         // Swap inventories again
         state.inventories.set("player1", newStorageInv);
 
-        // THIS OPERATION IS CLEARING "Ring" REFERENCE, EVEN THOUGH IT'S STILL IN THE "newStorageInv"
+        // This operation makes "Ring" reference on `allChanges` to appear before its parent, resulting in a "refId not found" error.
         state.inventories.set("storage1", shopInv);
 
         console.log(Schema.debugRefIds(state));
-        let encodeOrder: number[] = [];
-        let current = state[$changes].root.allChanges.next;
-        while (current) {
-            if (current.changeTree) {
-                encodeOrder.push(current.changeTree.refId);
-            }
-            current = current.next;
-        }
-        console.log("allChanges encode order:", encodeOrder);
+        console.log("allChanges encode order:", Schema.debugRefIdEncodeOrder(state));
 
         encodeAndAssertEquals(state, decodedState);
         assertDeepStrictEqualEncodeAll(state, false);

@@ -525,7 +525,7 @@ describe("Instance sharing", () => {
 
     });
 
-    it.only("replacing collection of items while keeping a reference to an item", () => {
+    it("replacing collection of items while keeping a reference to an item", () => {
         class Song extends Schema {
             @type("string") url: string;
         }
@@ -553,11 +553,24 @@ describe("Instance sharing", () => {
         const newSong = new Song().assign({ url: "song2" });
         state.buckets.get(sessionId).queue.push(newSong);
 
+        console.log("refCount after adding to player queue:", getEncoder(state).root.refCount[newSong[$changes].refId]);
+        console.log("-----");
+
         state.queue = new ArraySchema<Song>();
         state.queue.push(newSong);
 
+        console.log("refCount after adding to state queue:", getEncoder(state).root.refCount[newSong[$changes].refId]);
+        console.log("-----");
+
         state.playing = state.buckets.get(sessionId).queue.shift();
+        console.log("refCount after shift to playing:", getEncoder(state).root.refCount[newSong[$changes].refId]);
+        console.log("-----");
+
         state.queue = new ArraySchema<Song>();
+
+        console.log("refCount after replacing state queue:", getEncoder(state).root.refCount[newSong[$changes].refId]);
+        console.log("Song parents:", newSong[$changes].getAllParents());
+        console.log("-----");
 
         decodedState.decode(state.encode());
 

@@ -83,54 +83,6 @@ export function addToChangeTreeList(list: ChangeTreeList, changeTree: ChangeTree
     return node;
 }
 
-export function removeFromChangeTreeList(list: ChangeTreeList, node: ChangeTreeNode): boolean {
-    if (!node) return false;
-
-    if (node.prev) {
-        node.prev.next = node.next;
-    } else {
-        list.next = node.next;
-    }
-
-    if (node.next) {
-        node.next.prev = node.prev;
-    } else {
-        list.tail = node.prev;
-    }
-
-    list.length--;
-    return true;
-}
-
-export function moveToEndOfChangeTreeList(list: ChangeTreeList, node: ChangeTreeNode): void {
-    if (!node || node === list.tail) return;
-
-    // Remove from current position
-    if (node.prev) {
-        node.prev.next = node.next;
-    } else {
-        list.next = node.next;
-    }
-
-    if (node.next) {
-        node.next.prev = node.prev;
-    } else {
-        list.tail = node.prev;
-    }
-
-    // Add to end
-    node.prev = list.tail;
-    node.next = undefined;
-
-    if (list.tail) {
-        list.tail.next = node;
-    } else {
-        list.next = node;
-    }
-
-    list.tail = node;
-}
-
 export function setOperationAtIndex(changeSet: ChangeSet, index: number) {
     const operationsIndex = changeSet.indexes[index];
     if (operationsIndex === undefined) {
@@ -707,7 +659,7 @@ export class ChangeTree<T extends Ref=any> {
     /**
      * Remove a parent from the chain
      * @param parent - The parent to remove
-     * @returns true if no parents are left, false otherwise
+     * @returns true if parent was removed
      */
     removeParent(parent: Ref): boolean {
         let current = this.parentChain;
@@ -723,7 +675,8 @@ export class ChangeTree<T extends Ref=any> {
                 } else {
                     this.parentChain = current.next;
                 }
-                return this.parentChain === undefined;
+                // return this.parentChain === undefined;
+                return true;
             }
             previous = current;
             current = current.next;

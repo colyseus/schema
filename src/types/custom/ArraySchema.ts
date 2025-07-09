@@ -156,8 +156,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
             }
         });
 
-        this[$changes] = new ChangeTree(proxy);
-        this[$changes].indexes = {};
+        Object.defineProperty(this, $changes, {
+            value: new ChangeTree(proxy),
+            enumerable: false,
+            writable: true,
+        });
 
         if (items.length > 0) {
             this.push(...items);
@@ -351,7 +354,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     shift(): V | undefined {
         if (this.items.length === 0) { return undefined; }
 
-        // const index = Number(Object.keys(changeTree.indexes)[0]);
         const changeTree = this[$changes];
 
         const index = this.tmpItems.findIndex(item => item === this.items[0]);

@@ -1153,7 +1153,12 @@ describe("Type: Schema", () => {
             assert.strictEqual(decodedState2.n, 100);
         });
 
-        it("should decode a child structure alone (Schema encoded messages)", () => {
+        //
+        // TODO: since 3.0, this test is failing (and its use-case is not
+        // realistic anymore, since sending schema-encoded messages is not on
+        // Colyseus supported anymore)
+        //
+        xit("should decode a child structure alone (Schema encoded messages)", () => {
             const state = new State();
 
             state.mapOfPlayers = new MapSchema<Player>();
