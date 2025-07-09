@@ -418,9 +418,14 @@ describe("Instance sharing", () => {
         decodedState.decode(state.encode());
         assertRefIdCounts(state, decodedState);
 
-        const refIds = encoder.root.allChanges
-            .filter(changeTree => changeTree !== undefined)
-            .map(changeTree => changeTree.refId);
+        let refIds: number[] = [];
+        let current = encoder.root.allChanges.next;
+        while (current) {
+            if (current.changeTree !== undefined) {
+                refIds.push(current.changeTree.refId);
+            }
+            current = current.next;
+        }
 
         assert.deepStrictEqual([0, 1, 2, 3], refIds, "must include all refId's");
 
@@ -520,7 +525,7 @@ describe("Instance sharing", () => {
 
     });
 
-    it("replacing collection of items while keeping a reference to an item", () => {
+    it.only("replacing collection of items while keeping a reference to an item", () => {
         class Song extends Schema {
             @type("string") url: string;
         }
@@ -535,7 +540,7 @@ describe("Instance sharing", () => {
             @type({ map: Player }) buckets = new MapSchema<Player>();
         }
 
-        const sessionId = "";
+        const sessionId = "sessionId";
 
         const state = new State();
         const decodedState = new State();
@@ -555,9 +560,13 @@ describe("Instance sharing", () => {
         state.queue = new ArraySchema<Song>();
 
         decodedState.decode(state.encode());
+
+        console.log(Schema.debugRefIds(state, true));
+
         assertRefIdCounts(state, decodedState);
 
         assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("decoder: should increment refId count of deep shared instances", () => {

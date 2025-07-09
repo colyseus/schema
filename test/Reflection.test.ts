@@ -34,7 +34,9 @@ describe("Reflection", () => {
         const state = new EmptyState();
 
         const reflected = new Reflection();
-        const encoded = Reflection.encode(getEncoder(state));
+        const encoder = getEncoder(state);
+
+        const encoded = Reflection.encode(encoder);
         console.log(Array.from(encoded));
 
         reflected.decode(encoded);

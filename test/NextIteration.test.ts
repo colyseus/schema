@@ -1,6 +1,7 @@
 import * as assert from "assert";
 
 import { Schema, type, MapSchema, ArraySchema } from "../src";
+import "./Schema";
 
 describe("Next Iteration", () => {
 

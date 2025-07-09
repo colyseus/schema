@@ -265,15 +265,17 @@ export class Schema {
     static debugChangesDeep(ref: Ref, changeSetName: "changes" | "allChanges" | "allFilteredChanges" | "filteredChanges" = "changes") {
         let output = "";
 
-        const rootChangeTree = ref[$changes];
+        const rootChangeTree: ChangeTree = ref[$changes];
         const root = rootChangeTree.root;
         const changeTrees: Map<ChangeTree, ChangeTree[]> = new Map();
 
         const instanceRefIds = [];
         let totalOperations = 0;
 
+        // TODO: FIXME: this method is not working as expected
         for (const [refId, changes] of Object.entries(root[changeSetName])) {
             const changeTree = root.changeTrees[refId];
+            if (!changeTree) { continue; }
 
             let includeChangeTree = false;
             let parentChangeTrees: ChangeTree[] = [];

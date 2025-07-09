@@ -348,11 +348,19 @@ describe("Type: MapSchema", () => {
 
         const decodedState = createInstanceFromReflection(state);
         decodedState.decode(state.encode());
-
         assertRefIdCounts(state, decodedState);
 
+        console.log(Schema.debugRefIds(state));
+
         state.entities.delete("e3");
+
+        console.log(Schema.debugRefIds(state));
+
         decodedState.decode(state.encode());
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+
+        assertDeepStrictEqualEncodeAll(state);
+
         assertRefIdCounts(state, decodedState);
     });
 

@@ -188,7 +188,17 @@ describe("ChangeTree", () => {
             state.items.push(new Item().assign({ amount: i }));
         }
 
-        assert.strictEqual(-1, Array.from(encoder.root.allFilteredChanges.values()).findIndex((value) => value === undefined))
+        // Check that no undefined values exist in the linked list
+        let current = encoder.root.allFilteredChanges.next;
+        let foundUndefined = false;
+        while (current) {
+            if (current.changeTree === undefined) {
+                foundUndefined = true;
+                break;
+            }
+            current = current.next;
+        }
+        assert.strictEqual(false, foundUndefined);
     });
 
     describe("replacing instance should detach previous reference", () => {

@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
-import { ChangeTree, enqueueChangeTree, setOperationAtIndex } from "./ChangeTree";
+import { ChangeTree, enqueueChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, moveToEndOfChangeTreeList } from "./ChangeTree";
 
 export class Root {
     protected nextUniqueId: number = 0;
@@ -9,12 +9,12 @@ export class Root {
     changeTrees: {[refId: number]: ChangeTree} = {};
 
     // all changes
-    allChanges: ChangeTree[] = [];
-    allFilteredChanges: ChangeTree[] = [];// TODO: do not initialize it if filters are not used
+    allChanges: ChangeTreeList = createChangeTreeList();
+    allFilteredChanges: ChangeTreeList = createChangeTreeList();// TODO: do not initialize it if filters are not used
 
     // pending changes to be encoded
-    changes: ChangeTree[] = [];
-    filteredChanges: ChangeTree[] = [];// TODO: do not initialize it if filters are not used
+    changes: ChangeTreeList = createChangeTreeList();
+    filteredChanges: ChangeTreeList = createChangeTreeList();// TODO: do not initialize it if filters are not used
 
     constructor(public types: TypeContext) { }
 
@@ -101,31 +101,57 @@ export class Root {
     protected moveToEnd(changeTree: ChangeTree) {
         console.log("MOVE TO END", changeTree.refId);
         if (changeTree.filteredChanges !== undefined) {
-            this.removeChangeFromChangeSet("filteredChanges", changeTree);
-            enqueueChangeTree(this, changeTree, "filteredChanges");
+            // Find the node and move it to end
+            let current = this.filteredChanges.next;
+            while (current) {
+                if (current.changeTree === changeTree) {
+                    moveToEndOfChangeTreeList(this.filteredChanges, current);
+                    break;
+                }
+                current = current.next;
+            }
         } else {
-            this.removeChangeFromChangeSet("changes", changeTree);
-            enqueueChangeTree(this, changeTree, "changes");
+            // Find the node and move it to end
+            let current = this.changes.next;
+            while (current) {
+                if (current.changeTree === changeTree) {
+                    moveToEndOfChangeTreeList(this.changes, current);
+                    break;
+                }
+                current = current.next;
+            }
         }
     }
 
     protected removeChangeFromChangeSet(changeSetName: "allChanges" | "changes" | "filteredChanges" | "allFilteredChanges", changeTree: ChangeTree) {
         const changeSet = this[changeSetName];
-        const changeSetIndex = changeSet.indexOf(changeTree);
+        const node = changeTree[changeSetName].queueRootNode;
 
-        if (changeSetIndex !== -1) {
-            changeTree[changeSetName].queueRootIndex = -1;
-            changeSet[changeSetIndex] = undefined;
+        if (node && node.changeTree === changeTree) {
+            // Remove the node from the linked list
+            if (node.prev) {
+                node.prev.next = node.next;
+            } else {
+                changeSet.next = node.next;
+            }
+
+            if (node.next) {
+                node.next.prev = node.prev;
+            } else {
+                changeSet.tail = node.prev;
+            }
+
+            changeSet.length--;
+
+            // Clear ChangeTree reference
+            changeTree[changeSetName].queueRootNode = undefined;
             return true;
         }
 
-        // if (spliceOne(changeSet, changeSet.indexOf(changeTree))) {
-        //     changeTree[changeSetName].queueRootIndex = -1;
-        //     return true;
-        // }
+        return false;
     }
 
     clear() {
-        this.changes.length = 0;
+        this.changes = createChangeTreeList();
     }
 }

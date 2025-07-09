@@ -28,9 +28,14 @@ export function dumpChanges(schema: Schema) {
     };
 
     // for (const refId in $root.changes) {
-    $root.changes.forEach(changeTree => {
+    let current = $root.changes.next;
+    while (current) {
+        const changeTree = current.changeTree;
         // skip if ChangeTree is undefined
-        if (changeTree === undefined)  { return; }
+        if (changeTree === undefined)  {
+            current = current.next;
+            continue;
+        }
 
         const changes = changeTree.indexedOperations;
 
@@ -41,7 +46,8 @@ export function dumpChanges(schema: Schema) {
             if (!dump.ops[opName]) { dump.ops[opName] = 0; }
             dump.ops[OPERATION[op]]++;
         }
-    });
+        current = current.next;
+    }
 
     return dump;
 }

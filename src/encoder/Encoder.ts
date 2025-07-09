@@ -10,7 +10,8 @@ import { Root } from "./Root";
 
 import type { StateView } from "./StateView";
 import type { Metadata } from "../Metadata";
-import type { ChangeSetName, ChangeTree } from "./ChangeTree";
+import type { ChangeSetName, ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree";
+import { createChangeTreeList } from "./ChangeTree";
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = (typeof(Buffer) !== "undefined") && Buffer.poolSize || 8 * 1024; // 8KB
@@ -54,11 +55,11 @@ export class Encoder<T extends Schema = any> {
     ): Buffer {
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
-        const changeTrees = this.root[changeSetName];
 
-        for (let i = 0, numChangeTrees = changeTrees.length; i < numChangeTrees; i++) {
-            const changeTree = changeTrees[i];
-            if (!changeTree) { continue; }
+        let current: ChangeTreeList | ChangeTreeNode = this.root[changeSetName];
+
+        while (current = current.next) {
+            const changeTree = current.changeTree;
 
             if (hasView) {
                 if (!view.isChangeTreeVisible(changeTree)) {
@@ -112,7 +113,7 @@ export class Encoder<T extends Schema = any> {
 
                 encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView, metadata);
             }
-        }
+        };
 
         if (it.offset > buffer.byteLength) {
             // we can assume that n + 1 poolSize will suffice given that we are likely done with encoding at this point
@@ -166,7 +167,9 @@ export class Encoder<T extends Schema = any> {
             ? this.root[field]
             : field;
 
-        rootChangeSet.forEach((changeTree) => {
+        let current = rootChangeSet.next;
+        while (current) {
+            const changeTree = current.changeTree;
             const changeSet = changeTree[field];
 
             const metadata: Metadata = changeTree.ref.constructor[Symbol.metadata];
@@ -179,7 +182,8 @@ export class Encoder<T extends Schema = any> {
                     op: OPERATION[op],
                 });
             }
-        });
+            current = current.next;
+        }
     }
 
     encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
@@ -242,22 +246,20 @@ export class Encoder<T extends Schema = any> {
 
     discardChanges() {
         // discard shared changes
-        let length = this.root.changes.length;
-        if (length > 0) {
-            while (length--) {
-                this.root.changes[length]?.endEncode('changes');
-            }
-            this.root.changes.length = 0;
+        let current = this.root.changes.next;
+        while (current) {
+            current.changeTree.endEncode('changes');
+            current = current.next;
         }
+        this.root.changes = createChangeTreeList();
 
         // discard filtered changes
-        length = this.root.filteredChanges.length;
-        if (length > 0) {
-            while (length--) {
-                this.root.filteredChanges[length]?.endEncode('filteredChanges');
-            }
-            this.root.filteredChanges.length = 0;
+        current = this.root.filteredChanges.next;
+        while (current) {
+            current.changeTree.endEncode('filteredChanges');
+            current = current.next;
         }
+        this.root.filteredChanges = createChangeTreeList();
     }
 
     tryEncodeTypeId (bytes: Buffer, baseType: typeof Schema, targetType: typeof Schema, it: Iterator) {

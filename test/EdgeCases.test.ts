@@ -582,7 +582,15 @@ describe("Edge cases", () => {
         state.inventories.set("storage1", shopInv);
 
         console.log(Schema.debugRefIds(state));
-        console.log("allChanges encode order:", state[$changes].root.allChanges.filter(c => c).map(c => c.refId));
+        let encodeOrder: number[] = [];
+        let current = state[$changes].root.allChanges.next;
+        while (current) {
+            if (current.changeTree) {
+                encodeOrder.push(current.changeTree.refId);
+            }
+            current = current.next;
+        }
+        console.log("allChanges encode order:", encodeOrder);
 
         encodeAndAssertEquals(state, decodedState);
         assertDeepStrictEqualEncodeAll(state, false);
