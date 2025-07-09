@@ -303,7 +303,7 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("encodeAll() + with enqueued encode() shifts", () => {
+        it("encodeAll() + with enqueued encode() shifts", () => {
             class Entity extends Schema {
                 @type("number") thing: number;
             }
@@ -347,7 +347,7 @@ describe("ArraySchema Tests", () => {
             decoded2.decode(state.encode());
             console.log("PATCH REFS:", getDecoder(decoded2).root.refs.size, '=>', Array.from(getDecoder(decoded2).root.refs.keys()));
             mutateAllAndShift(6);
-            decoded2.decode(state.encode());
+            decoded2.decode(state.encode()); // TODO: this is triggering "refId not found"
 
             assertDeepStrictEqualEncodeAll(state);
         });

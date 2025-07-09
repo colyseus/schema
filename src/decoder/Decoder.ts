@@ -58,6 +58,8 @@ export class Decoder<T extends Schema = any> {
             if (bytes[it.offset] == SWITCH_TO_STRUCTURE) {
                 it.offset++;
 
+                ref[$onDecodeEnd]?.()
+
                 const nextRefId = decode.number(bytes, it);
                 const nextRef = $root.refs.get(nextRefId);
 
@@ -65,18 +67,17 @@ export class Decoder<T extends Schema = any> {
                 // Trying to access a reference that haven't been decoded yet.
                 //
                 if (!nextRef) {
-                    throw new Error(`"refId" not found: ${nextRefId}`);
+                    // throw new Error(`"refId" not found: ${nextRefId}`);
                     console.error(`"refId" not found: ${nextRefId}`, { previousRef: ref, previousRefId: this.currentRefId });
                     console.warn("Please report this to the developers. All refIds =>");
                     console.warn(Schema.debugRefIdsDecoder(this));
                     this.skipCurrentStructure(bytes, it, totalBytes);
+
+                } else {
+                    ref = nextRef;
+                    decoder = ref.constructor[$decoder];
+                    this.currentRefId = nextRefId;
                 }
-                ref[$onDecodeEnd]?.()
-
-                this.currentRefId = nextRefId;
-
-                ref = nextRef;
-                decoder = ref.constructor[$decoder];
 
                 continue;
             }
