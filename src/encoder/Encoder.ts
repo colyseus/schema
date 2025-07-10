@@ -113,7 +113,7 @@ export class Encoder<T extends Schema = any> {
 
                 encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView, metadata);
             }
-        };
+        }
 
         if (it.offset > buffer.byteLength) {
             // we can assume that n + 1 poolSize will suffice given that we are likely done with encoding at this point
