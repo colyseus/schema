@@ -154,6 +154,7 @@ export interface ParentChain {
 export class ChangeTree<T extends Ref=any> {
     ref: T;
     refId: number;
+    metadata: Metadata;
 
     root?: Root;
     parentChain?: ParentChain; // Linked list for tracking parents
@@ -187,12 +188,12 @@ export class ChangeTree<T extends Ref=any> {
 
     constructor(ref: T) {
         this.ref = ref;
+        this.metadata = ref.constructor[Symbol.metadata];
 
         //
         // Does this structure have "filters" declared?
         //
-        const metadata = ref.constructor[Symbol.metadata];
-        if (metadata?.[$viewFieldIndexes]) {
+        if (this.metadata?.[$viewFieldIndexes]) {
             this.allFilteredChanges = { indexes: {}, operations: [] };
             this.filteredChanges = { indexes: {}, operations: [] };
         }
@@ -267,9 +268,8 @@ export class ChangeTree<T extends Ref=any> {
             }
 
         } else {
-            const metadata: Metadata = this.ref.constructor[Symbol.metadata];
-            for (const index of metadata?.[$refTypeFieldIndexes] ?? []) {
-                const field = metadata[index as any as number];
+            for (const index of this.metadata?.[$refTypeFieldIndexes] ?? []) {
+                const field = this.metadata[index as any as number];
                 const value = this.ref[field.name];
                 if (!value) { continue; }
                 callback(value[$changes], index);
@@ -291,9 +291,7 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
-        const metadata = this.ref.constructor[Symbol.metadata] as Metadata;
-
-        const isFiltered = this.isFiltered || (metadata?.[index]?.tag !== undefined);
+        const isFiltered = this.isFiltered || (this.metadata?.[index]?.tag !== undefined);
         const changeSet = (isFiltered)
             ? this.filteredChanges
             : this.changes;
@@ -404,7 +402,7 @@ export class ChangeTree<T extends Ref=any> {
             // - { set: "string" } => "string"
             //
             this.ref[$childType] || // ArraySchema | MapSchema | SetSchema | CollectionSchema
-            this.ref.constructor[Symbol.metadata][index].type // Schema
+            this.metadata[index].type // Schema
         );
     }
 
@@ -565,7 +563,7 @@ export class ChangeTree<T extends Ref=any> {
         //
         const refType = Metadata.isValidInstance(this.ref)
             ? this.ref.constructor
-            :  this.ref[$childType];
+            : this.ref[$childType];
 
         let parentChangeTree: ChangeTree;
 
