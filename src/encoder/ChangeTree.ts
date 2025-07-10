@@ -237,6 +237,9 @@ export class ChangeTree<T extends Ref=any> {
 
         // assign same parent on child structures
         if (isNewChangeTree) {
+            //
+            // assign same parent on child structures
+            //
             this.forEachChild((child, index) => {
                 if (child.root === root) {
                     //
@@ -255,20 +258,22 @@ export class ChangeTree<T extends Ref=any> {
         //
         // assign same parent on child structures
         //
-        const metadata: Metadata = this.ref.constructor[Symbol.metadata];
-        if (metadata) {
-            metadata[$refTypeFieldIndexes]?.forEach((index) => {
+        if (this.ref[$childType]) {
+            if (typeof(this.ref[$childType]) !== "string") {
+                // MapSchema / ArraySchema, etc.
+                for (const [key, value] of (this.ref as MapSchema).entries()) {
+                    callback(value[$changes], key);
+                };
+            }
+
+        } else {
+            const metadata: Metadata = this.ref.constructor[Symbol.metadata];
+            for (const index of metadata?.[$refTypeFieldIndexes] ?? []) {
                 const field = metadata[index as any as number];
                 const value = this.ref[field.name];
-                if (value) {
-                    callback(value[$changes], index);
-                }
-            });
-
-        } else if (this.ref[$childType] && typeof(this.ref[$childType]) !== "string") {
-            // MapSchema / ArraySchema, etc.
-            (this.ref as MapSchema).forEach((value, key) =>
-                callback(value[$changes], key));
+                if (!value) { continue; }
+                callback(value[$changes], index);
+            }
         }
     }
 
@@ -470,9 +475,7 @@ export class ChangeTree<T extends Ref=any> {
         this.indexedOperations = {};
 
         // clear changeset
-        this[changeSetName].indexes = {};
-        this[changeSetName].operations.length = 0;
-        this[changeSetName].queueRootNode = undefined;
+        this[changeSetName] = createChangeSet();
 
         // ArraySchema and MapSchema have a custom "encode end" method
         this.ref[$onEncodeEnd]?.();
@@ -490,24 +493,17 @@ export class ChangeTree<T extends Ref=any> {
         this.ref[$onEncodeEnd]?.();
 
         this.indexedOperations = {};
-
-        this.changes.indexes = {};
-        this.changes.operations.length = 0;
-        this.changes.queueRootNode = undefined;
+        this.changes = createChangeSet();
 
         if (this.filteredChanges !== undefined) {
-            this.filteredChanges.indexes = {};
-            this.filteredChanges.operations.length = 0;
-            this.filteredChanges.queueRootNode = undefined;
+            this.filteredChanges = createChangeSet();
         }
 
         if (discardAll) {
-            this.allChanges.indexes = {};
-            this.allChanges.operations.length = 0;
+            this.allChanges = createChangeSet();
 
             if (this.allFilteredChanges !== undefined) {
-                this.allFilteredChanges.indexes = {};
-                this.allFilteredChanges.operations.length = 0;
+                this.allFilteredChanges = createChangeSet();
             }
         }
     }

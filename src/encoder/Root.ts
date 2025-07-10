@@ -173,8 +173,4 @@ export class Root {
 
         return false;
     }
-
-    clear() {
-        this.changes = createChangeTreeList();
-    }
 }
