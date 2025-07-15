@@ -637,11 +637,19 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     /**
+     * Get the immediate parent index
+     */
+    get parentCount(): number | undefined {
+        return this.parentChain?.index;
+    }
+
+    /**
      * Add a parent to the chain
      */
     addParent(parent: Ref, index: number) {
         // Check if this parent already exists in the chain
-        if (this.hasParent((p, i) => p === parent && i === index)) {
+        if (this.hasParent((p, i) => p[$changes] === parent[$changes])) {
+        // if (this.hasParent((p, i) => p[$changes] === parent[$changes] && i === index)) {
             return;
         }
 
@@ -657,7 +665,7 @@ export class ChangeTree<T extends Ref=any> {
      * @param parent - The parent to remove
      * @returns true if parent was removed
      */
-    removeParent(parent: Ref): boolean {
+    removeParent(parent: Ref = this.parent): boolean {
         let current = this.parentChain;
         let previous = null;
         while (current) {

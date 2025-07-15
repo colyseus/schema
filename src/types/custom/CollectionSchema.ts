@@ -118,7 +118,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {
-            changeTree.root?.remove(childChangeTree);
+            changeTree.root?.remove(childChangeTree, this);
         });
 
         // clear previous indexes

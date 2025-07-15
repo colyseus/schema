@@ -66,6 +66,7 @@
     "@types/rimraf": "^2.0.3",
     "@types/sinon": "^7.0.3",
     "benchmark": "^2.1.4",
+    "core-js": "^3.44.0",
     "flatbuffers": "^1.10.2",
     "fossil-delta": "^1.0.2",
     "glob": "^7.1.5",

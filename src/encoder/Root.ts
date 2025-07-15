@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
-import { ChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName } from "./ChangeTree";
+import { ChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName, Ref } from "./ChangeTree";
 
 export class Root {
     protected nextUniqueId: number = 0;
@@ -47,13 +47,28 @@ export class Root {
 
         this.refCount[changeTree.refId] = (previousRefCount || 0) + 1;
 
+        // console.log("ADD", { refId: changeTree.refId, refCount: this.refCount[changeTree.refId] });
+
         return isNewChangeTree;
     }
 
-    remove(changeTree: ChangeTree) {
+    remove(changeTree: ChangeTree, parent?: Ref) {
         const refCount = (this.refCount[changeTree.refId]) - 1;
+        // console.log("REMOVE", { refId: changeTree.refId, refCount });
 
         if (refCount <= 0) {
+
+            // // TODO: check if parent is still attached - do not remove if it is (??)
+            // if (parent) {
+            //     changeTree.removeParent(parent);
+            // } else {
+            //     changeTree.removeParent();
+            // }
+
+            // if (changeTree.parentChain !== undefined) {
+            //     console.log("STILL HAS PARENTS, DO NOT REMOVE");
+            //     return refCount;
+            // }
 
             //
             // Only remove "root" reference if it's the last reference
@@ -77,7 +92,7 @@ export class Root {
                         child.parentChain === undefined || // no parent, remove it
                         (child.parentChain && this.refCount[child.refId] > 1) // parent is still in use, but has more than one reference, remove it
                     )) {
-                        this.remove(child);
+                        this.remove(child, changeTree.ref);
 
                     } else if (child.parentChain) {
                         // re-assigning a child of the same root, move it to the end

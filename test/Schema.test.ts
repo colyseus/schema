@@ -1,3 +1,11 @@
+//
+// TODO:
+//
+// 'core-js' should be supported out-of-the-box.
+// See: https://github.com/endel/core-js-symbol-metadata-issue
+//
+// import "core-js";
+
 import * as assert from "assert";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
 import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema } from "../src";

@@ -86,7 +86,7 @@ describe("Utils Test", () => {
             const extractRefIds = (debugRefIds: string) =>
                 Array.from(debugRefIds.matchAll(/\(refId: ([0-9]+)\)/g)).map(entry => entry[0]);
 
-            assert.deepStrictEqual(extractRefIds(Schema.debugRefIds(state)), extractRefIds(Schema.debugRefIdsDecoder(getDecoder(decoded))))
+            assert.deepStrictEqual(extractRefIds(Schema.debugRefIds(state)), extractRefIds(Schema.debugRefIdsFromDecoder(getDecoder(decoded))))
 
             assertDeepStrictEqualEncodeAll(state);
         });

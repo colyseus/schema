@@ -43,13 +43,14 @@ export class StateView {
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
         const changeTree: ChangeTree = obj?.[$changes];
+        const parentChangeTree = changeTree.parent;
 
         if (!changeTree) {
             console.warn("StateView#add(), invalid object:", obj);
-            return this;
+            return false;
 
         } else if (
-            !changeTree.parent &&
+            !parentChangeTree &&
             changeTree.refId !== 0 // allow root object
         ) {
             /**
@@ -76,19 +77,37 @@ export class StateView {
         // add parent ChangeTree's
         // - if it was invisible to this view
         // - if it were previously filtered out
-        if (checkIncludeParent && changeTree.parent) {
+        if (checkIncludeParent && parentChangeTree) {
             this.addParentOf(changeTree, tag);
         }
 
-        //
-        // TODO: when adding an item of a MapSchema, the changes may not
-        // be set (only the parent's changes are set)
-        //
         let changes = this.changes.get(changeTree.refId);
         if (changes === undefined) {
             changes = {};
+            // FIXME / OPTIMIZE: do not add if no changes are needed
             this.changes.set(changeTree.refId, changes);
         }
+
+        let isChildAdded = false;
+
+        //
+        // Add children of this ChangeTree first.
+        // If successful, we must link the current ChangeTree to the child.
+        //
+        changeTree.forEachChild((change, index) => {
+            // Do not ADD children that don't have the same tag
+            if (
+                metadata &&
+                metadata[index].tag !== undefined &&
+                metadata[index].tag !== tag
+            ) {
+                return;
+            }
+
+            if (this.add(change.ref, tag, false)) {
+                isChildAdded = true;
+            }
+        });
 
         // set tag
         if (tag !== DEFAULT_VIEW_TAG) {
@@ -111,11 +130,13 @@ export class StateView {
                 }
             });
 
-        } else {
-            const isInvisible = this.invisible.has(changeTree);
+        } else if (!changeTree.isNew || isChildAdded) {
+            // new structures will be added as part of .encode() call, no need to force it to .encodeView()
             const changeSet = (changeTree.filteredChanges !== undefined)
                 ? changeTree.allFilteredChanges
                 : changeTree.allChanges;
+
+            const isInvisible = this.invisible.has(changeTree);
 
             for (let i = 0, len = changeSet.operations.length; i < len; i++) {
                 const index = changeSet.operations[i];
@@ -124,33 +145,20 @@ export class StateView {
                 const op = changeTree.indexedOperations[index] ?? OPERATION.ADD;
                 const tagAtIndex = metadata?.[index].tag;
                 if (
-                    !changeTree.isNew && // new structures will be added as part of .encode() call, no need to force it to .encodeView()
+                    op !== OPERATION.DELETE &&
                     (
                         isInvisible || // if "invisible", include all
                         tagAtIndex === undefined || // "all change" with no tag
                         tagAtIndex === tag // tagged property
-                    ) &&
-                    op !== OPERATION.DELETE
+                    )
                 ) {
                     changes[index] = op;
+                    isChildAdded = true; // FIXME: assign only once
                 }
             }
         }
 
-        // Add children of this ChangeTree to this view
-        changeTree.forEachChild((change, index) => {
-            // Do not ADD children that don't have the same tag
-            if (
-                metadata &&
-                metadata[index].tag !== undefined &&
-                metadata[index].tag !== tag
-            ) {
-                return;
-            }
-            this.add(change.ref, tag, false);
-        });
-
-        return this;
+        return isChildAdded;
     }
 
     protected addParentOf(childChangeTree: ChangeTree, tag: number) {

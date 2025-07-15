@@ -67,10 +67,10 @@ export class Decoder<T extends Schema = any> {
                 // Trying to access a reference that haven't been decoded yet.
                 //
                 if (!nextRef) {
-                    // throw new Error(`"refId" not found: ${nextRefId}`);
+                    throw new Error(`"refId" not found: ${nextRefId}`);
                     console.error(`"refId" not found: ${nextRefId}`, { previousRef: ref, previousRefId: this.currentRefId });
                     console.warn("Please report this to the developers. All refIds =>");
-                    console.warn(Schema.debugRefIdsDecoder(this));
+                    console.warn(Schema.debugRefIdsFromDecoder(this));
                     this.skipCurrentStructure(bytes, it, totalBytes);
 
                 } else {

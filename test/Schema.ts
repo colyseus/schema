@@ -134,6 +134,8 @@ export function encodeAllForView<T extends Schema>(encoder: Encoder<T>, client: 
 }
 
 export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, clients: Array<ClientWithState<T>>) {
+    // console.log("---- ENCODE MULTIPLE ----");
+
     // check if "encode all" is needed for each client.
     clients.map((client, i) => {
         // construct state if needed

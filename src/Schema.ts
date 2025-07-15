@@ -3,7 +3,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations";
 
 import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
-import { ChangeSet, ChangeTree, Ref } from './encoder/ChangeTree';
+import { ChangeSet, ChangeSetName, ChangeTree, Ref } from './encoder/ChangeTree';
 import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $track } from './types/symbols';
 import { StateView } from './encoder/StateView';
 
@@ -207,9 +207,9 @@ export class Schema {
         return output;
     }
 
-    static debugRefIdEncodeOrder(ref: Ref) {
+    static debugRefIdEncodingOrder(ref: Ref, changeSet: ChangeSetName = 'allChanges') {
         let encodeOrder: number[] = [];
-        let current = ref[$changes].root.allChanges.next;
+        let current = ref[$changes].root[changeSet].next;
         while (current) {
             if (current.changeTree) {
                 encodeOrder.push(current.changeTree.refId);
@@ -219,7 +219,7 @@ export class Schema {
         return encodeOrder;
     }
 
-    static debugRefIdsDecoder(decoder: Decoder) {
+    static debugRefIdsFromDecoder(decoder: Decoder) {
         return this.debugRefIds(decoder.state, false, 0, decoder);
     }
 
