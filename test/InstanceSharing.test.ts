@@ -359,14 +359,12 @@ describe("Instance sharing", () => {
 
         // Client requests to move item to player.item
         state.player.item = item;
-        // TODO: fix refId count
-        // assert.strictEqual(1, encoder.root.refCount[item[$changes].refId]);
+        assert.strictEqual(1, encoder.root.refCount[item[$changes].refId]);
 
         assert.ok(item[$changes].root, "item should have 'root' reference");
 
         decodedState.decode(state.encode());
-        // TODO: fix refId count
-        // assertRefIdCounts(state, decodedState);
+        assertRefIdCounts(state, decodedState);
 
         // Server patches item instance to change its value
         item.x = 999;
@@ -376,7 +374,7 @@ describe("Instance sharing", () => {
 
         assert.strictEqual(999, decodedState.player.item.x);
 
-        assertDeepStrictEqualEncodeAll(state, false);
+        assertDeepStrictEqualEncodeAll(state);
     });
 
     it("remove from 'all changes' only if reference count is 0", async () => {
