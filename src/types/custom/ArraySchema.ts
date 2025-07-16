@@ -120,7 +120,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
                             if (previousValue !== undefined) {
                                 // remove root reference from previous value
-                                previousValue[$changes].root?.remove(previousValue[$changes], obj);
+                                previousValue[$changes].root?.remove(previousValue[$changes]);
                             }
 
                         } else {
@@ -310,7 +310,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {
-            changeTree.root?.remove(childChangeTree, this);
+            changeTree.root?.remove(childChangeTree);
         });
 
         changeTree.discard(true);

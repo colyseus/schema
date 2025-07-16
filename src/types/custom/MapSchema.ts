@@ -114,7 +114,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
                 // remove reference from previous value
                 if (previousValue !== undefined) {
-                    previousValue[$changes].root?.remove(previousValue[$changes], this);
+                    previousValue[$changes].root?.remove(previousValue[$changes]);
                 }
             }
 
@@ -163,7 +163,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {
-            changeTree.root?.remove(childChangeTree, this);
+            changeTree.root?.remove(childChangeTree);
         });
 
         // clear previous indexes

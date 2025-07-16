@@ -52,7 +52,7 @@ export class Root {
         return isNewChangeTree;
     }
 
-    remove(changeTree: ChangeTree, parent?: Ref) {
+    remove(changeTree: ChangeTree) {
         const refCount = (this.refCount[changeTree.refId]) - 1;
         // console.log("REMOVE", { refId: changeTree.refId, refCount });
 
@@ -79,7 +79,7 @@ export class Root {
                         child.parentChain === undefined || // no parent, remove it
                         (child.parentChain && this.refCount[child.refId] > 1) // parent is still in use, but has more than one reference, remove it
                     )) {
-                        this.remove(child, changeTree.ref);
+                        this.remove(child);
 
                     } else if (child.parentChain) {
                         // re-assigning a child of the same root, move it to the end
