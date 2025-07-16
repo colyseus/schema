@@ -151,7 +151,7 @@ export interface ParentChain {
     next?: ParentChain;
 }
 
-export class ChangeTree<T extends Ref=any> {
+export class ChangeTree<T extends Ref = any> {
     ref: T;
     refId: number;
     metadata: Metadata;
@@ -179,7 +179,7 @@ export class ChangeTree<T extends Ref=any> {
     filteredChanges: ChangeSet;
     allFilteredChanges: ChangeSet;
 
-    indexes: {[index: string]: any}; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
+    indexes: { [index: string]: any }; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
 
     /**
      * Is this a new instance? Used on ArraySchema to determine OPERATION.MOVE_AND_ADD operation.
@@ -247,6 +247,7 @@ export class ChangeTree<T extends Ref=any> {
                     // re-assigning a child of the same root, move it to the end
                     // of the changes queue so encoding order is preserved
                     //
+                    root.add(child);
                     root.moveToEndOfChanges(child);
                     return;
                 }
@@ -260,7 +261,7 @@ export class ChangeTree<T extends Ref=any> {
         // assign same parent on child structures
         //
         if (this.ref[$childType]) {
-            if (typeof(this.ref[$childType]) !== "string") {
+            if (typeof (this.ref[$childType]) !== "string") {
                 // MapSchema / ArraySchema, etc.
                 for (const [key, value] of (this.ref as MapSchema).entries()) {
                     callback(value[$changes], key);
@@ -637,19 +638,11 @@ export class ChangeTree<T extends Ref=any> {
     }
 
     /**
-     * Get the immediate parent index
-     */
-    get parentCount(): number | undefined {
-        return this.parentChain?.index;
-    }
-
-    /**
      * Add a parent to the chain
      */
     addParent(parent: Ref, index: number) {
         // Check if this parent already exists in the chain
-        if (this.hasParent((p, i) => p[$changes] === parent[$changes])) {
-        // if (this.hasParent((p, i) => p[$changes] === parent[$changes] && i === index)) {
+        if (this.hasParent((p, i) => p[$changes] === parent[$changes] && i === index)) {
             return;
         }
 
@@ -711,11 +704,11 @@ export class ChangeTree<T extends Ref=any> {
     /**
      * Get all parents as an array (for debugging/testing)
      */
-    getAllParents(): Array<{ref: Ref, index: number}> {
-        const parents: Array<{ref: Ref, index: number}> = [];
+    getAllParents(): Array<{ ref: Ref, index: number }> {
+        const parents: Array<{ ref: Ref, index: number }> = [];
         let current = this.parentChain;
         while (current) {
-            parents.push({ref: current.ref, index: current.index});
+            parents.push({ ref: current.ref, index: current.index });
             current = current.next;
         }
         return parents;

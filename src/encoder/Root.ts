@@ -57,19 +57,6 @@ export class Root {
         // console.log("REMOVE", { refId: changeTree.refId, refCount });
 
         if (refCount <= 0) {
-
-            // // TODO: check if parent is still attached - do not remove if it is (??)
-            // if (parent) {
-            //     changeTree.removeParent(parent);
-            // } else {
-            //     changeTree.removeParent();
-            // }
-
-            // if (changeTree.parentChain !== undefined) {
-            //     console.log("STILL HAS PARENTS, DO NOT REMOVE");
-            //     return refCount;
-            // }
-
             //
             // Only remove "root" reference if it's the last reference
             //

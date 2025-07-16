@@ -745,8 +745,6 @@ describe("Instance sharing", () => {
         playerInv.items.delete("shared");
         shopInv.items.set("shared2", sharedItem);
 
-        console.log("REFID:", sharedItem[$changes].refId);
-
         decodedState.decode(state.encode());
 
         // Phase 5: Create new shared item and replace existing one
@@ -768,11 +766,6 @@ describe("Instance sharing", () => {
 
         decodedState.decode(state.encode());
         assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
-
-        console.log("state =>", util.inspect(state.toJSON(), { depth: null }));
-
-        console.log("refIds =>", Schema.debugRefIds(state));
-        console.log("allChanges =>", Schema.debugRefIdEncodingOrder(state, "allChanges"));
 
         assertDeepStrictEqualEncodeAll(state, false);
     });
