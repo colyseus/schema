@@ -871,4 +871,54 @@ describe("Type: MapSchema", () => {
         assert(debugOutput.includes('["bow"]: Item'), "Should display bow key");
     });
 
+    it("sharing parent container and clearing it should not trigger refId not found", () => {
+        class Dps extends Schema {
+            @type("number") value: number;
+        }
+
+        class Simulation extends Schema {
+            @type({ map: Dps }) children = new MapSchema<Dps>();
+        }
+
+        class State extends Schema {
+            @type({ map: Simulation }) simulations = new MapSchema<Simulation>();
+        }
+
+        const state = new State();
+        const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(state.encode());
+
+        // Create multiple simulations
+        const sim1 = new Simulation();
+
+        // Create multiple children with different values
+        const child1 = new Dps().assign({ value: 100 });
+        const child2 = new Dps().assign({ value: 200 });
+        const child3 = new Dps().assign({ value: 300 });
+
+        // Add multiple references to children across different simulations
+        sim1.children.set("primary", child1);
+        sim1.children.set("secondary", child2);
+        sim1.children.set("shared", child3); // shared between simulations
+
+        // Add simulations to state with multiple references
+        state.simulations.set("sim1", sim1);
+        state.simulations.set("sim1_copy", sim1); // sim1 referenced again
+
+        decodedState.decode(state.encode());
+        assertDeepStrictEqualEncodeAll(state);
+
+        console.log("Ref IDS => ", Schema.debugRefIds(state));
+
+        // Now clear everything to trigger the encodeAll issue
+        state.simulations.clear();
+
+        console.log("Ref IDS => ", Schema.debugRefIds(state));
+
+        console.log("All changes =>", Schema.debugRefIdEncodingOrder(state), "allChanges");
+
+        decodedState.decode(state.encode());
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
 });

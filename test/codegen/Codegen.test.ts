@@ -110,4 +110,18 @@ describe("schema-codegen", () => {
             assert.strictEqual(3, outputFiles.length);
         });
     });
+
+    describe("invalid/error", () => {
+        it("should not throw error", async () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Invalid.ts"));
+            generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
+
+            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts"));
+            outputFiles.map((file) => {
+                console.log(fs.readFileSync(file).toString());
+            })
+        });
+    });
+
+
 });

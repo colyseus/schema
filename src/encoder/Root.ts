@@ -54,7 +54,6 @@ export class Root {
 
     remove(changeTree: ChangeTree) {
         const refCount = (this.refCount[changeTree.refId]) - 1;
-        // console.log("REMOVE", { refId: changeTree.refId, refCount });
 
         if (refCount <= 0) {
             //

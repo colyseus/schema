@@ -642,7 +642,9 @@ export class ChangeTree<T extends Ref = any> {
      */
     addParent(parent: Ref, index: number) {
         // Check if this parent already exists in the chain
-        if (this.hasParent((p, i) => p[$changes] === parent[$changes] && i === index)) {
+        if (this.hasParent((p, _) => p[$changes] === parent[$changes])) {
+        // if (this.hasParent((p, i) => p[$changes] === parent[$changes] && i === index)) {
+            this.parentChain.index = index;
             return;
         }
 
