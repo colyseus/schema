@@ -2193,4 +2193,53 @@ describe("StateView", () => {
 
     });
 
+    describe("StateView.remove()", () => {
+        it("should handle undefined changeTree.parent when filtered item loses parent reference", () => {
+            class Item extends Schema {
+                @view() @type("string") secret: string;
+                @type("number") value: number;
+            }
+
+            class State extends Schema {
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+
+            // Create items and add them to state
+            const item1 = new Item().assign({ secret: "secret1", value: 1 });
+            const item2 = new Item().assign({ secret: "secret2", value: 2 });
+
+            state.items.push(item1);
+            state.items.push(item2);
+
+            // Add specific items to view (not the parent array)
+            client1.view.add(item1);
+            client1.view.add(item2);
+
+            encodeMultiple(encoder, state, [client1]);
+
+            // Simulate a scenario where the parent array gets replaced entirely
+            // This should leave the items' changeTree.parent references undefined
+            const newItems = new ArraySchema<Item>();
+            state.items = newItems;
+
+            // Try to remove items from view while their parent references are broken
+            // This should trigger the undefined changeTree.parent issue
+            client1.view.remove(item1);
+            client1.view.remove(item2);
+
+            // This encode should trigger the issue where changeTree.parent is undefined
+            // but the code tries to access it in the remove method
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.items.length, 0);
+
+            assertEncodeAllMultiple(encoder, state, [client1]);
+        });
+    });
+
 });
