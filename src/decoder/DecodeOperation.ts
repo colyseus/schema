@@ -234,7 +234,6 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         dynamicIndex = ref['getIndex'](index);
     }
 
-
     const { value, previousValue } = decodeValue(
         decoder,
         operation,

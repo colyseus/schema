@@ -14,7 +14,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     protected $items: Map<K, V> = new Map<K, V>();
     protected $indexes: Map<number, K> = new Map<number, K>();
-    protected deletedItems: { [field: string]: V } = {};
+    protected deletedItems: { [index: string]: V } = {};
 
     protected [$changes]: ChangeTree;
 
@@ -218,6 +218,14 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     protected [$onEncodeEnd]() {
+        const changeTree = this[$changes];
+
+        // cleanup changeTree.indexes of deleted keys
+        for (const indexStr in this.deletedItems) {
+            const key = this.$indexes.get(parseInt(indexStr));
+            delete changeTree.indexes[key];
+        }
+
         this.deletedItems = {};
     }
 

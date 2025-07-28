@@ -921,4 +921,59 @@ describe("Type: MapSchema", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
+    it("allow removing and re-adding primitive value at same key", () => {
+        class State extends Schema {
+            @type({ map: "number" }) status = new MapSchema<number>();
+        }
+
+        const state = new State();
+        const decodedState = createInstanceFromReflection(state);
+
+        state.status.set("aegis", 1);
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(1, decodedState.status.get("aegis"));
+
+        state.status.delete("aegis");
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(undefined, decodedState.status.get("aegis"));
+
+        state.status.set("aegis", 3);
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(3, decodedState.status.get("aegis"));
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
+    it("allow removing and re-adding schema value at same key", () => {
+        class Child extends Schema {
+            @type("number") value: number;
+        }
+        class State extends Schema {
+            @type({ map: Child }) status = new MapSchema<Child>();
+        }
+
+        const state = new State();
+        const decodedState = createInstanceFromReflection(state);
+
+        state.status.set("aegis", new Child().assign({ value: 1 }));
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(1, decodedState.status.get("aegis").value);
+
+        state.status.delete("aegis");
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(undefined, decodedState.status.get("aegis"));
+
+        state.status.set("aegis", new Child().assign({ value: 3 }));
+        decodedState.decode(state.encode());
+
+        assert.strictEqual(3, decodedState.status.get("aegis").value);
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
 });
