@@ -499,24 +499,34 @@ export interface SchemaWithExtends<T extends Definition, P extends typeof Schema
 }
 
 export function schema<T extends Definition, P extends typeof Schema = typeof Schema>(
-    fields: T,
+    fieldsAndMethods: T,
     name?: string,
     inherits: P = Schema as P
 ): SchemaWithExtends<T, P> {
+    const fields: any = {};
+    const methods: any = {};
+
     const defaultValues: any = {};
     const viewTagFields: any = {};
 
-    for (let fieldName in fields) {
-        const field = fields[fieldName] as DefinitionType;
-        if (typeof (field) === "object") {
-            if (field['default'] !== undefined) {
-                defaultValues[fieldName] = field['default'];
+    for (let fieldName in fieldsAndMethods) {
+        const value = fieldsAndMethods[fieldName] as DefinitionType;
+        if (typeof (value) === "object") {
+            if (value['default'] !== undefined) {
+                defaultValues[fieldName] = value['default'];
             }
-            if (field['view'] !== undefined) {
-                viewTagFields[fieldName] = (typeof (field['view']) === "boolean")
+            if (value['view'] !== undefined) {
+                viewTagFields[fieldName] = (typeof (value['view']) === "boolean")
                     ? DEFAULT_VIEW_TAG
-                    : field['view'];
+                    : value['view'];
             }
+            fields[fieldName] = value;
+
+        } else if (typeof (value) === "function") {
+            methods[fieldName] = value;
+
+        } else {
+            fields[fieldName] = value;
         }
     }
 
@@ -529,6 +539,10 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
 
     for (let fieldName in viewTagFields) {
         view(viewTagFields[fieldName])(klass.prototype, fieldName);
+    }
+
+    for (let methodName in methods) {
+        klass.prototype[methodName] = methods[methodName];
     }
 
     if (name) {

@@ -253,6 +253,26 @@ describe("Definition Tests", () => {
             assert.deepStrictEqual(client2.state.toJSON(), { entities: { two: { x: 30, y: 40 } } });
         })
 
+        it("should allow to define methods", () => {
+            const State = schema({
+                x: "number",
+
+                methodName() {
+                    return 100;
+                }
+            });
+
+            const state = new State();
+            assert.strictEqual(100, state.methodName());
+
+            state.x = 10;
+
+            const decodedState = createInstanceFromReflection(state);
+
+            decodedState.decode(state.encodeAll());
+            assert.strictEqual(decodedState.x, 10);
+        });
+
     });
 
 });
