@@ -1449,6 +1449,72 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client2]);
         });
 
+        it(".clear() and isVisibilitySharedWithParent", () => {
+            class CardState extends Schema {
+                @type('string') suit: string;
+                @type('string') rank: string;
+            }
+
+            class PlayerState extends Schema {
+                @type('string') sessionId: string;
+                @type('number') chips: number;
+                @view() @type({ map: CardState }) holeCards = new MapSchema<CardState>();
+            }
+
+            class PokerRoomState extends Schema {
+                @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
+            }
+
+            const state = new PokerRoomState();
+            const encoder = getEncoder(state);
+
+            const client = createClientWithView(state);
+
+            // Create a player with hole cards
+            const player = new PlayerState();
+            player.sessionId = "player1";
+            player.chips = 1000;
+
+            const card1 = new CardState();
+            card1.suit = "hearts";
+            card1.rank = "A";
+
+            const card2 = new CardState();
+            card2.suit = "spades";
+            card2.rank = "K";
+
+            player.holeCards.set("card1", card1);
+            player.holeCards.set("card2", card2);
+
+            state.players.set("player1", player);
+
+            // Initial encode
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.size, 1);
+            assert.strictEqual(client.state.players.get("player1").holeCards, undefined);
+
+            // Add player to view to make holeCards visible
+            client.view.add(player);
+
+            // Add individual cards to view to simulate the user's setup
+            client.view.add(card1);
+            client.view.add(card2);
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("player1").holeCards.size, 2);
+            assert.strictEqual(client.state.players.get("player1").holeCards.get("card1").suit, "hearts");
+            assert.strictEqual(client.state.players.get("player1").holeCards.get("card1").rank, "A");
+
+            // This should reproduce the error: clear() with isVisibilitySharedWithParent
+            // The error occurs because clear() empties tmpItems but the filter function
+            // still tries to access tmpItems[index]?.[`$changes`] which becomes undefined
+            player.holeCards.clear();
+
+            // Try to encode after clear() - this should trigger the error
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("player1").holeCards.size, 0);
+        });
+
     });
 
     describe("ArraySchema", () => {
@@ -1804,7 +1870,6 @@ describe("StateView", () => {
             state.buckets.set(sessionId, new Player());
 
             encodeMultiple(encoder, state, [client1]);
-            console.log(Schema.debugRefIds(state));
 
             const newSong = new Song().assign({ url: "song2" });
             state.buckets.get(sessionId).queue.push(newSong);
@@ -2049,8 +2114,6 @@ describe("StateView", () => {
             player2.hand.push("card1");
             player2.hand.push("card2");
 
-            console.log(Schema.debugRefIds(state));
-
             encodeMultiple(encoder, state, [client1, client2]);
             assert.strictEqual(client1.state.players.get("one").hand.length, 2);
             assert.strictEqual(client1.state.players.get("one").deck.length, 7);
@@ -2059,6 +2122,72 @@ describe("StateView", () => {
 
             assertEncodeAllMultiple(encoder, state, [client1, client2]);
         });
+
+        it(".clear() and isVisibilitySharedWithParent", () => {
+            class CardState extends Schema {
+                @type('string') suit: string;
+                @type('string') rank: string;
+            }
+
+            class PlayerState extends Schema {
+                @type('string') sessionId: string;
+                @type('number') chips: number;
+                @view() @type([CardState]) holeCards = new ArraySchema<CardState>();
+            }
+
+            class PokerRoomState extends Schema {
+                @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
+            }
+
+            const state = new PokerRoomState();
+            const encoder = getEncoder(state);
+
+            const client = createClientWithView(state);
+
+            // Create a player with hole cards
+            const player = new PlayerState();
+            player.sessionId = "player1";
+            player.chips = 1000;
+
+            const card1 = new CardState();
+            card1.suit = "hearts";
+            card1.rank = "A";
+
+            const card2 = new CardState();
+            card2.suit = "spades";
+            card2.rank = "K";
+
+            player.holeCards.push(card1);
+            player.holeCards.push(card2);
+
+            state.players.set("player1", player);
+
+            // Initial encode
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.size, 1);
+            assert.strictEqual(client.state.players.get("player1").holeCards, undefined);
+
+            // Add player to view to make holeCards visible
+            client.view.add(player);
+
+            // Add individual cards to view to simulate the user's setup
+            client.view.add(card1);
+            client.view.add(card2);
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("player1").holeCards.length, 2);
+            assert.strictEqual(client.state.players.get("player1").holeCards[0].suit, "hearts");
+            assert.strictEqual(client.state.players.get("player1").holeCards[0].rank, "A");
+
+            // This should reproduce the error: clear() with isVisibilitySharedWithParent
+            // The error occurs because clear() empties tmpItems but the filter function
+            // still tries to access tmpItems[index]?.[`$changes`] which becomes undefined
+            player.holeCards.clear();
+
+            // Try to encode after clear() - this should trigger the error
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("player1").holeCards.length, 0);
+        })
     });
 
     describe("Deep and nested structures", () => {

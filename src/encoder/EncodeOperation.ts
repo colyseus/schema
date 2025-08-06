@@ -107,11 +107,6 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     // encode operation
     bytes[it.offset++] = operation & 255;
 
-    // custom operations
-    if (operation === OPERATION.CLEAR) {
-        return;
-    }
-
     // encode index
     encode.number(bytes, index, it);
 
@@ -197,14 +192,6 @@ export const encodeArray: EncodeOperation = function (
 
     // encode operation
     bytes[it.offset++] = operation & 255;
-
-    // custom operations
-    if (
-        operation === OPERATION.CLEAR ||
-        operation === OPERATION.REVERSE
-    ) {
-        return;
-    }
 
     // encode index
     encode.number(bytes, refOrIndex, it);

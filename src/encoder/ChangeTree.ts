@@ -264,7 +264,7 @@ export class ChangeTree<T extends Ref = any> {
             if (typeof (this.ref[$childType]) !== "string") {
                 // MapSchema / ArraySchema, etc.
                 for (const [key, value] of (this.ref as MapSchema).entries()) {
-                    callback(value[$changes], key);
+                    callback(value[$changes], this.indexes?.[key] ?? key);
                 };
             }
 

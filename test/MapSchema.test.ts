@@ -858,7 +858,7 @@ describe("Type: MapSchema", () => {
         state.players.set("player1", player1);
         state.players.set("player2", player2);
 
-                const debugOutput = Schema.debugRefIds(state);
+        const debugOutput = Schema.debugRefIds(state);
 
         console.log("Debug output:");
         console.log(debugOutput);

@@ -92,11 +92,16 @@ export class Encoder<T extends Schema = any> {
             for (let j = 0; j < numChanges; j++) {
                 const fieldIndex = changeSet.operations[j];
 
-                const operation = (fieldIndex < 0)
-                    ? Math.abs(fieldIndex) // "pure" operation without fieldIndex (e.g. CLEAR, REVERSE, etc.)
-                    : (isEncodeAll)
-                        ? OPERATION.ADD
-                        : changeTree.indexedOperations[fieldIndex];
+                if (fieldIndex < 0) {
+                    // "pure" operation without fieldIndex (e.g. CLEAR, REVERSE, etc.)
+                    // encode and continue early - no need to reach $filter check
+                    buffer[it.offset++] = Math.abs(fieldIndex) & 255;
+                    continue;
+                }
+
+                const operation = (isEncodeAll)
+                    ? OPERATION.ADD
+                    : changeTree.indexedOperations[fieldIndex];
 
                 //
                 // first pass (encodeAll), identify "filtered" operations without encoding them

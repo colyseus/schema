@@ -199,7 +199,12 @@ export class Schema {
 
         let output = `${getIndent(level)}${keyPrefix}${ref.constructor.name} (refId: ${refId})${refCount}${contents}\n`;
 
-        changeTree.forEachChild((childChangeTree, key) => {
+        changeTree.forEachChild((childChangeTree, indexOrKey) => {
+            let key = indexOrKey;
+            if (typeof indexOrKey === 'number' && ref['$indexes']) {
+                // MapSchema
+                key = ref['$indexes'].get(indexOrKey) ?? indexOrKey;
+            }
             const keyPrefix = (ref['forEach'] !== undefined && key !== undefined) ? `["${key}"]: ` : "";
             output += this.debugRefIds(childChangeTree.ref, showContents, level + 1, decoder, keyPrefix);
         });
