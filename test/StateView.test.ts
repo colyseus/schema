@@ -1513,6 +1513,8 @@ describe("StateView", () => {
             // Try to encode after clear() - this should trigger the error
             encodeMultiple(encoder, state, [client]);
             assert.strictEqual(client.state.players.get("player1").holeCards.size, 0);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
         });
 
     });
@@ -2187,7 +2189,228 @@ describe("StateView", () => {
             // Try to encode after clear() - this should trigger the error
             encodeMultiple(encoder, state, [client]);
             assert.strictEqual(client.state.players.get("player1").holeCards.length, 0);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
         })
+
+        it("clear() + view.remove()", () => {
+            class CardState extends Schema {
+                @type('string') suit: string;
+                @type('string') rank: string;
+            }
+
+            class PlayerState extends Schema {
+                @type('string') sessionId: string;
+                @type('number') chips: number;
+                @view() @type([CardState]) holeCards = new ArraySchema<CardState>();
+            }
+
+            class PokerRoomState extends Schema {
+                @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
+            }
+
+            const state = new PokerRoomState();
+            const encoder = getEncoder(state);
+
+            const client = createClientWithView(state);
+
+            // Create a player with hole cards
+            const player = new PlayerState();
+            player.sessionId = "player1";
+            player.chips = 1000;
+
+            const card1 = new CardState().assign({
+                suit: "hearts",
+                rank: "A"
+            });
+
+            const card2 = new CardState().assign({
+                suit: "spades",
+                rank: "K"
+            });
+
+            player.holeCards.push(card1);
+            player.holeCards.push(card2);
+
+            state.players.set("player1", player);
+
+            // Create a second player with hole cards
+            const player2 = new PlayerState();
+            player2.sessionId = "player2";
+            player2.chips = 1500;
+
+            const card3 = new CardState().assign({
+                suit: "diamonds",
+                rank: "Q"
+            });
+
+            const card4 = new CardState().assign({
+                suit: "clubs",
+                rank: "J"
+            });
+
+            player2.holeCards.push(card3);
+            player2.holeCards.push(card4);
+
+            state.players.set("player2", player2);
+
+            // Initial encode
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.size, 2);
+            assert.strictEqual(client.state.players.get("player1").holeCards, undefined);
+
+            // Add player to view to make holeCards visible
+            client.view.add(player);
+
+            // Add individual cards to view to simulate the user's setup
+            client.view.add(card1);
+            client.view.add(card2);
+
+            // Add player2 to view to make holeCards visible
+            client.view.add(player2);
+
+            // Add individual cards for player2 to view
+            client.view.add(card3);
+            client.view.add(card4);
+
+            encodeMultiple(encoder, state, [client]);
+
+            // remove a player from the view + clear the holeCards + remove all cards
+            state.players.delete("player2");
+            state.players.forEach(player => {
+                player.holeCards.forEach(card => {
+                    client.view.remove(card)
+                })
+                player.holeCards.clear();
+            });
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(undefined, client.state.players.get("player2"));
+            assert.strictEqual(client.state.players.get("player1").holeCards.length, 0);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("clear() + view.remove() + add new items", () => {
+            class CardState extends Schema {
+                @type('string') suit: string;
+                @type('string') rank: string;
+            }
+
+            class PlayerState extends Schema {
+                @type('string') sessionId: string;
+                @type('number') chips: number;
+                @view() @type([CardState]) holeCards = new ArraySchema<CardState>();
+            }
+
+            class PokerRoomState extends Schema {
+                @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
+            }
+
+            const state = new PokerRoomState();
+            const encoder = getEncoder(state);
+
+            const client = createClientWithView(state);
+
+            // Create a player with hole cards
+            const player = new PlayerState();
+            player.sessionId = "player1";
+            player.chips = 1000;
+
+            const card1 = new CardState().assign({
+                suit: "hearts",
+                rank: "A"
+            });
+
+            const card2 = new CardState().assign({
+                suit: "spades",
+                rank: "K"
+            });
+
+            player.holeCards.push(card1);
+            player.holeCards.push(card2);
+
+            state.players.set("player1", player);
+
+            // Create a second player with hole cards
+            const player2 = new PlayerState();
+            player2.sessionId = "player2";
+            player2.chips = 1500;
+
+            const card3 = new CardState().assign({
+                suit: "diamonds",
+                rank: "Q"
+            });
+
+            const card4 = new CardState().assign({
+                suit: "clubs",
+                rank: "J"
+            });
+
+            player2.holeCards.push(card3);
+            player2.holeCards.push(card4);
+
+            state.players.set("player2", player2);
+
+            // Initial encode
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.size, 2);
+            assert.strictEqual(client.state.players.get("player1").holeCards, undefined);
+
+            // Add player to view to make holeCards visible
+            client.view.add(player);
+
+            // Add individual cards to view to simulate the user's setup
+            client.view.add(card1);
+            client.view.add(card2);
+
+            // Add player2 to view to make holeCards visible
+            client.view.add(player2);
+
+            // Add individual cards for player2 to view
+            client.view.add(card3);
+            client.view.add(card4);
+
+            encodeMultiple(encoder, state, [client]);
+
+            // remove a player from the view + clear the holeCards + remove all cards
+            state.players.delete("player2");
+            state.players.forEach(player => {
+                player.holeCards.forEach(card => {
+                    client.view.remove(card)
+                })
+                player.holeCards.clear();
+            });
+
+            // add new card to player1
+            const card5 = new CardState().assign({
+                suit: "hearts",
+                rank: "2"
+            });
+
+            // add new card to player1
+            const card6 = new CardState().assign({
+                suit: "hearts",
+                rank: "3"
+            });
+
+            player.holeCards.push(card5);
+            player.holeCards.push(card6);
+
+            client.view.add(card5);
+            client.view.add(card6);
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(undefined, client.state.players.get("player2"));
+            assert.strictEqual(client.state.players.get("player1").holeCards.length, 2);
+            assert.strictEqual(client.state.players.get("player1").holeCards[0].suit, "hearts");
+            assert.strictEqual(client.state.players.get("player1").holeCards[0].rank, "2");
+            assert.strictEqual(client.state.players.get("player1").holeCards[1].suit, "hearts");
+            assert.strictEqual(client.state.players.get("player1").holeCards[1].rank, "3");
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
     });
 
     describe("Deep and nested structures", () => {

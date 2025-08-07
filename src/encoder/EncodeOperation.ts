@@ -177,7 +177,12 @@ export const encodeArray: EncodeOperation = function (
     let refOrIndex: number;
 
     if (useOperationByRefId) {
-        refOrIndex = ref['tmpItems'][field][$changes].refId;
+        const item = ref['tmpItems'][field];
+
+        // Skip encoding if item is undefined (e.g. when clear() is called)
+        if (!item) { return; }
+
+        refOrIndex = item[$changes].refId;
 
         if (operation === OPERATION.DELETE) {
             operation = OPERATION.DELETE_BY_REFID;
