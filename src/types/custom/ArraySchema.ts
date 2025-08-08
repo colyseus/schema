@@ -362,7 +362,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         changeTree.delete(index, OPERATION.DELETE, allChangesIndex);
         changeTree.shiftAllChangeIndexes(-1, allChangesIndex);
 
-        // this.deletedIndexes[index] = true;
+        this.deletedIndexes[index] = true;
 
         return this.items.shift();
     }

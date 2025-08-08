@@ -249,7 +249,6 @@ export class Schema {
                 .filter(op => op)
                 .forEach((index) => {
                     const operation = changeTree.indexedOperations[index];
-                    console.log({ index, operation })
                     output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(Number(index), isEncodeAll))})\n`
                 });
         }

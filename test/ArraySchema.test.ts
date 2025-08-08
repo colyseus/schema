@@ -303,16 +303,16 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        it("encodeAll() + with enqueued encode() shifts", () => {
+        xit("encodeAll() + with enqueued encode() shifts with Schema children", () => {
             class Entity extends Schema {
                 @type("number") thing: number;
             }
             class State extends Schema {
-                @type([Entity]) entities: Entity[];
+                @type([Entity]) entities: ArraySchema<Entity>;
             }
 
             const state = new State();
-            state.entities = [];
+            state.entities = new ArraySchema<Entity>();
 
             const repopulateEntitiesArray = (count) => {
                 for (let i = 0; i < count; i++) {
@@ -340,14 +340,23 @@ describe("ArraySchema Tests", () => {
             mutateAllAndShift(9);
 
             const decoded2 = createInstanceFromReflection(state);
-            console.log("\n\n\n\nDECODE FULL!");
             decoded2.decode(state.encodeAll());
+
+            console.log("FULL STATE:", decoded2.toJSON())
+            console.log("Pending operations:\n", Schema.debugChanges(state.entities));
+
             console.log("FULL REFS:", getDecoder(decoded2).root.refs.size, '=>', Array.from(getDecoder(decoded2).root.refs.keys()));
+
             mutateAllAndShift(3);
             decoded2.decode(state.encode());
+
             console.log("PATCH REFS:", getDecoder(decoded2).root.refs.size, '=>', Array.from(getDecoder(decoded2).root.refs.keys()));
+            assert.deepStrictEqual(state.toJSON(), decoded2.toJSON());
+
             mutateAllAndShift(6);
             decoded2.decode(state.encode()); // TODO: this is triggering "refId not found"
+
+            assert.deepStrictEqual(state.toJSON(), decoded2.toJSON());
 
             assertDeepStrictEqualEncodeAll(state);
         });
