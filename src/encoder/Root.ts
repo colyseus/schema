@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
-import { ChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName, Ref } from "./ChangeTree";
+import { ChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName, type ChangeTreeNode } from "./ChangeTree";
 
 export class Root {
     protected nextUniqueId: number = 0;
@@ -47,13 +47,15 @@ export class Root {
 
         this.refCount[changeTree.refId] = (previousRefCount || 0) + 1;
 
-        // console.log("ADD", { refId: changeTree.refId, refCount: this.refCount[changeTree.refId] });
+        // console.log("ADD", { refId: changeTree.refId, ref: changeTree.ref.constructor.name, refCount: this.refCount[changeTree.refId], isNewChangeTree });
 
         return isNewChangeTree;
     }
 
     remove(changeTree: ChangeTree) {
         const refCount = (this.refCount[changeTree.refId]) - 1;
+
+        // console.log("REMOVE", { refId: changeTree.refId, ref: changeTree.ref.constructor.name, refCount, needRemove: refCount <= 0 });
 
         if (refCount <= 0) {
             //
@@ -147,7 +149,36 @@ export class Root {
         changeSet.tail = node;
     }
 
-    protected removeChangeFromChangeSet(changeSetName: ChangeSetName, changeTree: ChangeTree) {
+    public enqueueChangeTree(
+        changeTree: ChangeTree,
+        changeSet: 'changes' | 'filteredChanges' | 'allFilteredChanges' | 'allChanges',
+        queueRootNode = changeTree[changeSet].queueRootNode
+    ) {
+        // skip
+        if (queueRootNode) { return; }
+
+        // Add to linked list if not already present
+        changeTree[changeSet].queueRootNode = this.addToChangeTreeList(this[changeSet], changeTree);
+    }
+
+    protected addToChangeTreeList(list: ChangeTreeList, changeTree: ChangeTree): ChangeTreeNode {
+        const node: ChangeTreeNode = { changeTree, next: undefined, prev: undefined };
+
+        if (!list.next) {
+            list.next = node;
+            list.tail = node;
+        } else {
+            node.prev = list.tail;
+            list.tail!.next = node;
+            list.tail = node;
+        }
+
+        list.length++;
+
+        return node;
+    }
+
+    public removeChangeFromChangeSet(changeSetName: ChangeSetName, changeTree: ChangeTree) {
         const changeSet = this[changeSetName];
         const node = changeTree[changeSetName].queueRootNode;
 

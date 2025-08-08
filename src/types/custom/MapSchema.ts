@@ -118,6 +118,10 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
                 }
             }
 
+            if (this.deletedItems[index]) {
+                delete this.deletedItems[index];
+            }
+
         } else {
             index = changeTree.indexes[$numFields] ?? 0;
             operation = OPERATION.ADD;

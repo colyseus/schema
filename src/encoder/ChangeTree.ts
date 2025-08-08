@@ -57,30 +57,13 @@ export interface ChangeSet {
     queueRootNode?: ChangeTreeNode; // direct reference to ChangeTreeNode in the linked list
 }
 
-function createChangeSet(): ChangeSet {
-    return { indexes: {}, operations: [] };
+function createChangeSet(queueRootNode?: ChangeTreeNode): ChangeSet {
+    return { indexes: {}, operations: [], queueRootNode };
 }
 
 // Linked list helper functions
 export function createChangeTreeList(): ChangeTreeList {
     return { next: undefined, tail: undefined, length: 0 };
-}
-
-export function addToChangeTreeList(list: ChangeTreeList, changeTree: ChangeTree): ChangeTreeNode {
-    const node: ChangeTreeNode = { changeTree, next: undefined, prev: undefined };
-
-    if (!list.next) {
-        list.next = node;
-        list.tail = node;
-    } else {
-        node.prev = list.tail;
-        list.tail!.next = node;
-        list.tail = node;
-    }
-
-    list.length++;
-
-    return node;
 }
 
 export function setOperationAtIndex(changeSet: ChangeSet, index: number) {
@@ -127,22 +110,6 @@ export function debugChangeSet(label: string, changeSet: ChangeSet) {
     console.log(indexes.join("\n"), "\n}");
     console.log(`operations (${changeSet.operations.filter(op => op !== undefined).length}) {`);
     console.log(operations.join("\n"), "\n}");
-}
-
-export function enqueueChangeTree(
-    root: Root,
-    changeTree: ChangeTree,
-    changeSet: 'changes' | 'filteredChanges' | 'allFilteredChanges' | 'allChanges',
-    queueRootNode = changeTree[changeSet].queueRootNode
-) {
-    // skip
-    if (!root) { return; }
-
-    if (queueRootNode) {
-    } else {
-        // Add to linked list if not already present
-        changeTree[changeSet].queueRootNode = addToChangeTreeList(root[changeSet], changeTree);
-    }
 }
 
 export interface ParentChain {
@@ -283,11 +250,11 @@ export class ChangeTree<T extends Ref = any> {
         // this is checked during .encode() time.
         if (this.filteredChanges !== undefined) {
             this.filteredChanges.operations.push(-op);
-            enqueueChangeTree(this.root, this, 'filteredChanges');
+            this.root?.enqueueChangeTree(this, 'filteredChanges');
 
         } else {
             this.changes.operations.push(-op);
-            enqueueChangeTree(this.root, this, 'changes');
+            this.root?.enqueueChangeTree(this, 'changes');
         }
     }
 
@@ -316,13 +283,13 @@ export class ChangeTree<T extends Ref = any> {
             setOperationAtIndex(this.allFilteredChanges, index);
 
             if (this.root) {
-                enqueueChangeTree(this.root, this, 'filteredChanges');
-                enqueueChangeTree(this.root, this, 'allFilteredChanges');
+                this.root.enqueueChangeTree(this, 'filteredChanges');
+                this.root.enqueueChangeTree(this, 'allFilteredChanges');
             }
 
         } else {
             setOperationAtIndex(this.allChanges, index);
-            enqueueChangeTree(this.root, this, 'changes');
+            this.root?.enqueueChangeTree(this, 'changes');
         }
     }
 
@@ -385,12 +352,12 @@ export class ChangeTree<T extends Ref = any> {
         if (this.filteredChanges !== undefined) {
             setOperationAtIndex(this.allFilteredChanges, allChangesIndex);
             setOperationAtIndex(this.filteredChanges, index);
-            enqueueChangeTree(this.root, this, 'filteredChanges');
+            this.root?.enqueueChangeTree(this, 'filteredChanges');
 
         } else {
             setOperationAtIndex(this.allChanges, allChangesIndex);
             setOperationAtIndex(this.changes, index);
-            enqueueChangeTree(this.root, this, 'changes');
+            this.root?.enqueueChangeTree(this, 'changes');
         }
     }
 
@@ -461,10 +428,10 @@ export class ChangeTree<T extends Ref = any> {
         //
         if (this.filteredChanges !== undefined) {
             deleteOperationAtIndex(this.allFilteredChanges, allChangesIndex);
-            enqueueChangeTree(this.root, this, 'filteredChanges');
+            this.root?.enqueueChangeTree(this, 'filteredChanges');
 
         } else {
-            enqueueChangeTree(this.root, this, 'changes');
+            this.root?.enqueueChangeTree(this, 'changes');
         }
 
         return previousValue;
@@ -499,10 +466,11 @@ export class ChangeTree<T extends Ref = any> {
         }
 
         if (discardAll) {
-            this.allChanges = createChangeSet();
+            // preserve queueRootNode references
+            this.allChanges = createChangeSet(this.allChanges.queueRootNode);
 
             if (this.allFilteredChanges !== undefined) {
-                this.allFilteredChanges = createChangeSet();
+                this.allFilteredChanges = createChangeSet(this.allFilteredChanges.queueRootNode);
             }
         }
     }
@@ -539,17 +507,19 @@ export class ChangeTree<T extends Ref = any> {
             this._checkFilteredByParent(parent, parentIndex);
 
             if (this.filteredChanges !== undefined) {
-                enqueueChangeTree(this.root, this, 'filteredChanges');
+                this.root?.enqueueChangeTree(this, 'filteredChanges');
+
                 if (isNewChangeTree) {
-                    enqueueChangeTree(this.root, this, 'allFilteredChanges');
+                    this.root?.enqueueChangeTree(this, 'allFilteredChanges');
                 }
             }
         }
 
         if (!this.isFiltered) {
-            enqueueChangeTree(this.root, this, 'changes');
+            this.root?.enqueueChangeTree(this, 'changes');
+
             if (isNewChangeTree) {
-                enqueueChangeTree(this.root, this, 'allChanges');
+                this.root?.enqueueChangeTree(this, 'allChanges');
             }
         }
     }

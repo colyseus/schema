@@ -1,7 +1,8 @@
 import * as assert from "assert";
+import * as util from "util";
 
 import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
-import { MapSchema, type, Schema, ArraySchema, Reflection, $changes, SetSchema, entity } from "../src";
+import { MapSchema, type, Schema, ArraySchema, Reflection, $changes, SetSchema, entity, $getByIndex, Encoder } from "../src";
 import { nanoid } from "nanoid";
 
 describe("Type: MapSchema", () => {

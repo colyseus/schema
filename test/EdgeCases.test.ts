@@ -585,5 +585,148 @@ describe("Edge cases", () => {
         assertDeepStrictEqualEncodeAll(state, false);
     });
 
+    it("MapSchema: .delete() and trying to access [$changes] during encodeAll()", async () => {
+        class Item extends Schema {
+            @type("number") value: number;
+        }
+
+        class State extends Schema {
+            @type({ map: Item }) status = new MapSchema<Item>();
+        }
+
+        const state = new State();
+
+        // Step 1: Add items to establish entries in allChanges
+        const item1 = new Item().assign({ value: 1 });
+        const item2 = new Item().assign({ value: 2 });
+
+        const operations = [
+            // // Original operations on parent MapSchema
+            // () => state.status.clear(),
+
+            () => state.status.set("key1", item1),
+            () => state.status.set("key2", item2),
+
+            () => {
+                if (state.status.has("key1")) {
+                    state.status.delete("key1")
+                }
+            },
+            () => {
+                if (state.status.has("key2")) {
+                    state.status.delete("key2")
+                }
+            },
+
+        ];
+
+        const intervals: any[] = [];
+
+        for (let i = 0; i < 100; i++) {
+            intervals.push(setInterval(() => {
+                for (let i = 0; i < 10; i++) {
+                    const opIndex = Math.floor(Math.random() * operations.length);
+                    // opIndex = (opIndex + 1) % operations.length;
+                    operations[opIndex]();
+                    try {
+                        state.encodeAll();
+
+                    } catch (e) {
+                        console.log("ERROR => ", e);
+                        console.log("REF IDS => ", Schema.debugRefIds(state));
+                        console.log("ALL CHANGES => ", (Schema.debugRefIdEncodingOrder(state)).join(", "));
+                        throw e;
+                    }
+                }
+            }, 1))
+        }
+
+        intervals.push(setInterval(() => state.encode(), 50))
+
+        await new Promise(resolve => setTimeout(() => {
+            intervals.forEach(interval => clearInterval(interval));
+            resolve(true);
+        }, 1000));
+
+        state.status.clear();
+
+        assert.deepStrictEqual([0, 1], Schema.debugRefIdEncodingOrder(state, 'allChanges'));
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
+    it("MapSchema: .clear() should remove items from allChanges", async () => {
+        class NestedItem extends Schema {
+            @type("number") nestedValue: number;
+        }
+
+        class Item extends Schema {
+            @type("number") value: number;
+            @type({ map: NestedItem }) nestedMap = new MapSchema<NestedItem>();
+        }
+
+        class State extends Schema {
+            @type({ map: Item }) status = new MapSchema<Item>();
+        }
+
+        const state = new State();
+
+        // Step 1: Add items to establish entries in allChanges
+        const item1 = new Item().assign({ value: 1 });
+        const item2 = new Item().assign({ value: 2 });
+
+        const operations = [
+            () => state.status.set("key1", item1),
+            () => state.status.set("key2", item2),
+
+            () => {
+                if (state.status.has("key1")) {
+                    state.status.delete("key1")
+                }
+            },
+
+            () => {
+                if (state.status.has("key2")) {
+                    state.status.delete("key2")
+                }
+            },
+
+            () => item1.nestedMap.clear(),
+            () => item2.nestedMap.clear(),
+        ];
+
+        const intervals: any[] = [];
+
+        let opIndex = 0;
+        for (let i = 0; i < 100; i++) {
+            intervals.push(setInterval(() => {
+                for (let i = 0; i < 10; i++) {
+                    opIndex = Math.floor(Math.random() * operations.length);
+                    // opIndex = (opIndex + 1) % operations.length;
+                    operations[opIndex]();
+                }
+            }, 1))
+        }
+
+        intervals.push(setInterval(() => state.encode(), 50))
+
+        await new Promise(resolve => setTimeout(() => {
+            intervals.forEach(interval => clearInterval(interval));
+            resolve(true);
+        }, 100));
+
+        console.log("refIds =>", Schema.debugRefIds(state));
+
+        // re-run all operations
+        for (let i = 0; i < operations.length; i++) {
+            operations[i]();
+        }
+
+        state.status.clear();
+
+        assert.deepStrictEqual([0, 1], Schema.debugRefIdEncodingOrder(state, 'allChanges'));
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
 
 });

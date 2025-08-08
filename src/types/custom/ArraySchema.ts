@@ -1,6 +1,6 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd } from "../symbols";
 import type { Schema } from "../../Schema";
-import { ChangeTree, enqueueChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
+import { ChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
@@ -482,10 +482,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         // FIXME: this code block is duplicated on ChangeTree
         //
         if (changeTree.filteredChanges !== undefined) {
-            enqueueChangeTree(changeTree.root, changeTree, 'filteredChanges');
+            changeTree.root?.enqueueChangeTree(changeTree, 'filteredChanges');
 
         } else {
-            enqueueChangeTree(changeTree.root, changeTree, 'changes');
+            changeTree.root?.enqueueChangeTree(changeTree, 'changes');
         }
 
         return this.items.splice(start, deleteCount, ...insertItems);
