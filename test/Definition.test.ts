@@ -253,6 +253,47 @@ describe("Definition Tests", () => {
             assert.deepStrictEqual(client2.state.toJSON(), { entities: { two: { x: 30, y: 40 } } });
         })
 
+        it("default values should be a new instance", () => {
+            const Entity = schema({
+                x: "number",
+                y: "number",
+            });
+
+            const State = schema({
+                entity1: Entity,
+                entity2: { type: Entity },
+                map: { map: Entity },
+                array1: [Entity],
+                array2: { array: Entity },
+                default: { type: Entity, default: new Entity() },
+                default_undefined: { type: Entity, default: undefined },
+                default_null: { type: Entity, default: null },
+            });
+
+            const state = new State();
+            assert.ok(state.entity1 instanceof Entity);
+            assert.ok(state.entity2 instanceof Entity);
+
+            assert.ok(state.map instanceof MapSchema);
+            assert.strictEqual(state.map.size, 0);
+
+            assert.ok(state.array1 instanceof ArraySchema);
+            assert.strictEqual(state.array1.length, 0);
+
+            assert.ok(state.array2 instanceof ArraySchema);
+            assert.strictEqual(state.array2.length, 0);
+
+            const state2 = new State();
+            assert.ok(state.entity1 !== state2.entity1);
+            assert.ok(state.entity2 !== state2.entity2);
+            assert.ok(state.map !== state2.map);
+            assert.ok(state.array1 !== state2.array1);
+            assert.ok(state.array2 !== state2.array2);
+            assert.ok(state.default !== state2.default);
+            assert.ok(state.default_undefined === undefined);
+            assert.ok(state.default_null === null);
+        })
+
         it("should allow to define methods", () => {
             const State = schema({
                 x: "number",

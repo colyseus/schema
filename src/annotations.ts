@@ -10,8 +10,8 @@ import { TypeContext } from "./types/TypeContext";
 import { assertInstanceType, assertType } from "./encoding/assert";
 import type { Ref } from "./encoder/ChangeTree";
 import type { DefinedSchemaType, InferValueType } from "./types/HelperTypes";
-import type { CollectionSchema } from "./types/custom/CollectionSchema";
-import type { SetSchema } from "./types/custom/SetSchema";
+import { CollectionSchema } from "./types/custom/CollectionSchema";
+import { SetSchema } from "./types/custom/SetSchema";
 
 export type RawPrimitiveType = "string" |
     "number" |
@@ -512,9 +512,6 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
     for (let fieldName in fieldsAndMethods) {
         const value = fieldsAndMethods[fieldName] as DefinitionType;
         if (typeof (value) === "object") {
-            if (value['default'] !== undefined) {
-                defaultValues[fieldName] = value['default'];
-            }
             if (value['view'] !== undefined) {
                 viewTagFields[fieldName] = (typeof (value['view']) === "boolean")
                     ? DEFAULT_VIEW_TAG
@@ -522,17 +519,65 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
             }
             fields[fieldName] = value;
 
+            // If no explicit default provided, handle automatic instantiation for collection types
+            if (!Object.prototype.hasOwnProperty.call(value, 'default')) {
+                if (Array.isArray(value) || value['array'] !== undefined) {
+                    // Collection: Array → new ArraySchema()
+                    defaultValues[fieldName] = new ArraySchema();
+
+                } else if (value['map'] !== undefined) {
+                    // Collection: Map → new MapSchema()
+                    defaultValues[fieldName] = new MapSchema();
+
+                } else if (value['collection'] !== undefined) {
+                    // Collection: Collection → new CollectionSchema()
+                    defaultValues[fieldName] = new CollectionSchema();
+
+                } else if (value['set'] !== undefined) {
+                    // Collection: Set → new SetSchema()
+                    defaultValues[fieldName] = new SetSchema();
+
+                } else if (value['type'] !== undefined && Schema.is(value['type'])) {
+                    // Direct Schema type: Type → new Type()
+                    defaultValues[fieldName] = new value['type']();
+                }
+            } else {
+                defaultValues[fieldName] = value['default'];
+            }
+
+
         } else if (typeof (value) === "function") {
-            methods[fieldName] = value;
+            if (Schema.is(value)) {
+                // Direct Schema type: Type → new Type()
+                defaultValues[fieldName] = new value();
+                fields[fieldName] = value;
+            } else {
+                methods[fieldName] = value;
+            }
 
         } else {
             fields[fieldName] = value;
         }
     }
 
+    const getDefaultValues = () => {
+        const defaults: any = {};
+        for (const fieldName in defaultValues) {
+            const defaultValue = defaultValues[fieldName];
+            // If the default value has a clone method, use it to get a fresh instance
+            if (defaultValue && typeof defaultValue.clone === 'function') {
+                defaults[fieldName] = defaultValue.clone();
+            } else {
+                // Otherwise, use the value as-is (for primitives and non-cloneable objects)
+                defaults[fieldName] = defaultValue;
+            }
+        }
+        return defaults;
+    };
+
     const klass = Metadata.setFields<any>(class extends inherits {
         constructor (...args: any[]) {
-            args[0] = Object.assign({}, defaultValues, args[0]);
+            args[0] = Object.assign({}, getDefaultValues(), args[0]);
             super(...args);
         }
     }, fields) as SchemaWithExtends<T, P>;
