@@ -8,7 +8,8 @@ export interface TypeDefinition {
     decode?: (bytes: BufferLike, it: Iterator) => any;
 }
 
-const registeredTypes: {[identifier: string] : TypeDefinition} = {};
+export const registeredTypes: {[identifier: string] : TypeDefinition} = {};
+
 const identifiers = new Map<any, string>();
 
 export function registerType(identifier: string, definition: TypeDefinition) {

@@ -8,7 +8,8 @@
 
 import * as assert from "assert";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
-import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema } from "../src";
+import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema, schema } from "../src";
+import { getNormalizedType } from "../src/Metadata";
 
 describe("Type: Schema", () => {
 
@@ -359,28 +360,6 @@ describe("Type: Schema", () => {
             assert.deepStrictEqual(decoder.state.toJSON(), encoder.state.toJSON());
         });
 
-        xit("should support TypeScript enums", () => {
-            enum Item { SWORD, SHIELD, BOW, POTION }
-
-            class Player extends Schema {
-                @type({ set: Item }) items = new SetSchema<Item>();
-            }
-
-            class State extends Schema {
-                @type({ map: Player }) players = new MapSchema<Player>()
-            }
-
-            const state = new State();
-            state.players.set("alice", new Player().assign({ items: new SetSchema<Item>([Item.SWORD, Item.SHIELD]) }));
-            state.players.set("bob", new Player().assign({ items: new SetSchema<Item>([Item.BOW, Item.POTION]) }));
-
-            const decodedState = new State();
-            decodedState.decode(state.encode());
-
-            assert.strictEqual(2, decodedState.players.size);
-            assertDeepStrictEqualEncodeAll(state);
-        });
-
         it("number should be able to encode Date.now()", () => {
             class State extends Schema {
                 @type("number") timestamp: number = Date.now();
@@ -422,6 +401,124 @@ describe("Type: Schema", () => {
             for (let i = 0; i < 3; i++) {
                 simulateJoin();
             }
+
+        });
+
+        describe("enums", () => {
+            it("number enum", () => {
+                enum GameState { STARTED, IN_PROGRESS, FINISHED }
+                assert.strictEqual(getNormalizedType(GameState), "number");
+
+                class State extends Schema {
+                    @type(GameState) gameState: GameState = GameState.STARTED;
+                }
+
+                const state = new State();
+                const decodedState = new State();
+                decodedState.decode(state.encode());
+
+                assert.strictEqual(GameState.STARTED, decodedState.gameState);
+                assertDeepStrictEqualEncodeAll(state);
+            });
+
+            it("string enum", () => {
+                enum GameState {
+                    STARTED = "STARTED",
+                    IN_PROGRESS = "IN_PROGRESS",
+                    FINISHED = "FINISHED"
+                }
+                class State extends Schema {
+                    @type(GameState) gameState: GameState = GameState.STARTED;
+                }
+
+                const state = new State();
+                const decodedState = new State();
+                decodedState.decode(state.encode());
+
+                assert.strictEqual(GameState.STARTED, decodedState.gameState);
+                assertDeepStrictEqualEncodeAll(state);
+            });
+
+            it("enums inside collections", () => {
+                enum Item { SWORD, SHIELD, BOW, POTION }
+
+                class State extends Schema {
+                    @type({ map: Item }) items = new MapSchema<Item>();
+                }
+
+                const state = new State();
+                state.items.set("sword", Item.SWORD);
+                state.items.set("shield", Item.SHIELD);
+                state.items.set("bow", Item.BOW);
+                state.items.set("potion", Item.POTION);
+
+                const decodedState = new State();
+                decodedState.decode(state.encode());
+
+                assert.strictEqual(Item.SWORD, decodedState.items.get("sword"));
+                assert.strictEqual(Item.SHIELD, decodedState.items.get("shield"));
+                assert.strictEqual(Item.BOW, decodedState.items.get("bow"));
+                assert.strictEqual(Item.POTION, decodedState.items.get("potion"));
+
+                assertDeepStrictEqualEncodeAll(state);
+            });
+
+            it("enum with default value", () => {
+                enum Item { SWORD, SHIELD, BOW, POTION }
+                const State = schema({
+                    item: { type: Item, default: Item.SWORD }
+                });
+
+                const state = new State();
+
+                if (state.item !== Item.SWORD) {
+                    assert.fail();
+                }
+
+                assert.strictEqual(state.item, Item.SWORD);
+                assertDeepStrictEqualEncodeAll(state);
+            });
+
+            it("array and map of enums", () => {
+                enum Item { SWORD, SHIELD, BOW, POTION }
+                const State = schema({
+                    itemsArray: { type: [Item], default: [Item.SWORD] },
+                    itemsMap: { type: { map: Item }, default: new MapSchema<Item>({ "sword": Item.SWORD }) }
+                });
+
+                const state = new State();
+                if (state.itemsArray[0] !== Item.SWORD) {
+                    assert.fail();
+                }
+
+                if (state.itemsMap.get("sword") !== Item.SWORD) {
+                    assert.fail();
+                }
+
+                assert.strictEqual(state.itemsArray[0], Item.SWORD);
+                assert.strictEqual(state.itemsMap.get("sword"), Item.SWORD);
+                assertDeepStrictEqualEncodeAll(state);
+
+                class State2 extends Schema {
+                    @type([Item]) itemsArray = new ArraySchema<Item>();
+                    @type({ map: Item }) itemsMap = new MapSchema<Item>();
+                }
+
+                const state2 = new State2();
+                state2.itemsArray.push(Item.SWORD);
+                state2.itemsMap.set("sword", Item.SWORD);
+
+                if (state2.itemsArray[0] !== Item.SWORD) {
+                    assert.fail();
+                }
+
+                if (state2.itemsMap.get("sword") !== Item.SWORD) {
+                    assert.fail();
+                }
+
+                assert.strictEqual(state2.itemsArray[0], Item.SWORD);
+                assertDeepStrictEqualEncodeAll(state2);
+            });
 
         });
 

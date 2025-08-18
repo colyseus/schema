@@ -1,6 +1,6 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations";
 import { Schema } from "./Schema";
-import { getType } from "./types/registry";
+import { getType, registeredTypes } from "./types/registry";
 import { $decoder, $descriptors, $encoder, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $viewFieldIndexes } from "./types/symbols";
 import { TypeContext } from "./types/TypeContext";
 
@@ -23,18 +23,48 @@ export type Metadata =
     { [$descriptors]: { [field: string]: PropertyDescriptor } }  // property descriptors
 
 export function getNormalizedType(type: DefinitionType): DefinitionType  {
-    return (Array.isArray(type))
-        ? { array: type[0] }
-        : (typeof(type['type']) !== "undefined")
-            ? type['type']
-            : type;
+    if (Array.isArray(type)) {
+        return { array: getNormalizedType(type[0]) };
+
+    } else if (typeof (type['type']) !== "undefined") {
+        return type['type'];
+
+    } else if (isTSEnum(type)) {
+        // Detect TS Enum type (either string or number)
+        return Object.keys(type).every(key => typeof type[key] === "string")
+            ? "string"
+            : "number";
+
+    } else if (typeof type === "object" && type !== null) {
+        // Handle collection types
+        const collectionType = Object.keys(type).find(k => registeredTypes[k] !== undefined);
+        if (collectionType) {
+            type[collectionType] = getNormalizedType(type[collectionType]);
+            return type;
+        }
+    }
+    return type;
 }
 
-// TODO: see test: "should support TypeScript enums"
 function isTSEnum(_enum: any) {
+    if (typeof _enum === 'function' && _enum[Symbol.metadata]) {
+        return false;
+    }
+
     const keys = Object.keys(_enum);
     const numericFields = keys.filter(k => /\d+/.test(k));
-    return (numericFields.length === (keys.length / 2) && _enum[_enum[numericFields[0]]] == numericFields[0]);
+
+    // Check for number enum (has numeric keys and reverse mapping)
+    if (numericFields.length > 0 && numericFields.length === (keys.length / 2) && _enum[_enum[numericFields[0]]] == numericFields[0]) {
+        return true;
+    }
+
+    // Check for string enum (all values are strings and keys match values)
+    if (keys.length > 0 && keys.every(key => typeof _enum[key] === 'string' && _enum[key] === key)) {
+        return true;
+    }
+
+    return false;
 }
 
 export const Metadata = {
@@ -163,16 +193,14 @@ export const Metadata = {
         fieldIndex++;
 
         for (const field in fields) {
-            const type = fields[field];
+            const type = getNormalizedType(fields[field]);
 
             // FIXME: this code is duplicated from @type() annotation
-            const complexTypeKlass = (Array.isArray(type))
-                ? getType("array")
-                : (typeof(Object.keys(type)[0]) === "string") && getType(Object.keys(type)[0]);
+            const complexTypeKlass = typeof(Object.keys(type)[0]) === "string" && getType(Object.keys(type)[0]);
 
             const childType = (complexTypeKlass)
                 ? Object.values(type)[0]
-                : getNormalizedType(type);
+                : type;
 
             Metadata.addField(
                 metadata,

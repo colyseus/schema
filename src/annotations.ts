@@ -2,7 +2,7 @@ import "./symbol.shim";
 import { Schema } from './Schema';
 import { ArraySchema } from './types/custom/ArraySchema';
 import { MapSchema } from './types/custom/MapSchema';
-import { Metadata } from "./Metadata";
+import { getNormalizedType, Metadata } from "./Metadata";
 import { $changes, $childType, $descriptors, $numFields, $track } from "./types/symbols";
 import { TypeDefinition, getType } from "./types/registry";
 import { OPERATION } from "./encoding/spec";
@@ -285,6 +285,9 @@ export function type (
             throw new Error(`${constructor.name}: @type() reference provided for "${field}" is undefined. Make sure you don't have any circular dependencies.`);
         }
 
+        // Normalize type (enum/collection/etc)
+        type = getNormalizedType(type);
+
         // for inheritance support
         TypeContext.register(constructor);
 
@@ -339,9 +342,7 @@ export function type (
             );
 
         } else {
-            const complexTypeKlass = (Array.isArray(type))
-                ? getType("array")
-                : (typeof(Object.keys(type)[0]) === "string") && getType(Object.keys(type)[0]);
+            const complexTypeKlass = typeof(Object.keys(type)[0]) === "string" && getType(Object.keys(type)[0]);
 
             const childType = (complexTypeKlass)
                 ? Object.values(type)[0]
@@ -517,10 +518,12 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
                     ? DEFAULT_VIEW_TAG
                     : value['view'];
             }
-            fields[fieldName] = value;
+
+            fields[fieldName] = getNormalizedType(value);
 
             // If no explicit default provided, handle automatic instantiation for collection types
             if (!Object.prototype.hasOwnProperty.call(value, 'default')) {
+                // TODO: remove Array.isArray() check. Use ['array'] !== undefined only.
                 if (Array.isArray(value) || value['array'] !== undefined) {
                     // Collection: Array → new ArraySchema()
                     defaultValues[fieldName] = new ArraySchema();
@@ -550,13 +553,13 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
             if (Schema.is(value)) {
                 // Direct Schema type: Type → new Type()
                 defaultValues[fieldName] = new value();
-                fields[fieldName] = value;
+                fields[fieldName] = getNormalizedType(value);
             } else {
                 methods[fieldName] = value;
             }
 
         } else {
-            fields[fieldName] = value;
+            fields[fieldName] = getNormalizedType(value);
         }
     }
 

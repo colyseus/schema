@@ -28,25 +28,34 @@ export type InferValueType<T extends DefinitionType> =
     : T extends "float64" ? number
     : T extends "boolean" ? boolean
 
+    // Handle { type: ... } patterns
     : T extends { type: infer ChildType extends Constructor } ? InstanceType<ChildType>
-    : T extends { type: infer ChildType extends PrimitiveType } ? ChildType
+    : T extends { type: Array<infer ChildType> } ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType][] : ChildType[]) // TS ENUM
+    : T extends { type: { map: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType]> : MapSchema<ChildType>) // TS ENUM
+    : T extends { type: { set: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? SetSchema<ChildType[keyof ChildType]> : SetSchema<ChildType>) // TS ENUM
+    : T extends { type: { collection: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? CollectionSchema<ChildType[keyof ChildType]> : CollectionSchema<ChildType>) // TS ENUM
+    : T extends { type: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType] : ChildType) // TS ENUM
 
+    // Handle direct array patterns
     : T extends Array<infer ChildType extends Constructor> ? InstanceType<ChildType>[]
-    : T extends Array<infer ChildType extends RawPrimitiveType> ? ChildType[]
+    : T extends Array<infer ChildType> ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType][] : ChildType[]) // TS ENUM
 
+    // Handle collection object patterns
     : T extends { array: infer ChildType extends Constructor } ? InstanceType<ChildType>[]
-    : T extends { array: infer ChildType extends PrimitiveType } ? ChildType[]
+    : T extends { array: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType][] : ChildType[]) // TS ENUM
 
     : T extends { map: infer ChildType extends Constructor } ? MapSchema<InstanceType<ChildType>>
-    : T extends { map: infer ChildType extends PrimitiveType } ? MapSchema<ChildType>
+    : T extends { map: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType]> : MapSchema<ChildType>) // TS ENUM
 
     : T extends { set: infer ChildType extends Constructor } ? SetSchema<InstanceType<ChildType>>
-    : T extends { set: infer ChildType extends PrimitiveType } ? SetSchema<ChildType>
+    : T extends { set: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? SetSchema<ChildType[keyof ChildType]> : SetSchema<ChildType>) // TS ENUM
 
     : T extends { collection: infer ChildType extends Constructor } ? CollectionSchema<InstanceType<ChildType>>
-    : T extends { collection: infer ChildType extends PrimitiveType } ? CollectionSchema<ChildType>
+    : T extends { collection: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? CollectionSchema<ChildType[keyof ChildType]> : CollectionSchema<ChildType>) // TS ENUM
 
+    // Handle direct types
     : T extends Constructor ? InstanceType<T>
+    : T extends Record<string | number, string | number> ? T[keyof T] // TS ENUM
     : T extends PrimitiveType ? T
 
     : never;

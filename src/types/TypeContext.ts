@@ -114,17 +114,7 @@ export class TypeContext {
                 continue;
             }
 
-            if (Array.isArray(fieldType)) {
-                const type = fieldType[0];
-
-                // skip primitive types
-                if (type === "string") {
-                    continue;
-                }
-
-                this.discoverTypes(type as typeof Schema, klass, index, parentHasViewTag || fieldHasViewTag);
-
-            } else if (typeof (fieldType) === "function") {
+            if (typeof (fieldType) === "function") {
                 this.discoverTypes(fieldType as typeof Schema, klass, index, parentHasViewTag || fieldHasViewTag);
 
             } else {
