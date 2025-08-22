@@ -686,7 +686,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     };
 
     /** Iterator */
-    [Symbol.iterator](): IterableIterator<V> {
+    [Symbol.iterator](): ArrayIterator<V> {
         return this.items[Symbol.iterator]();
     }
 
@@ -702,17 +702,17 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     /**
      * Returns an iterable of key, value pairs for every entry in the array
      */
-    entries(): IterableIterator<[number, V]> { return this.items.entries(); }
+    entries(): ArrayIterator<[number, V]> { return this.items.entries(); }
 
     /**
      * Returns an iterable of keys in the array
      */
-    keys(): IterableIterator<number> { return this.items.keys(); }
+    keys(): ArrayIterator<number> { return this.items.keys(); }
 
     /**
      * Returns an iterable of values in the array
      */
-    values(): IterableIterator<V> { return this.items.values(); }
+    values(): ArrayIterator<V> { return this.items.values(); }
 
     /**
      * Determines whether an array includes a certain element, returning true or false as appropriate.
