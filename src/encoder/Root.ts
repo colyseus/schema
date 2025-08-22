@@ -78,7 +78,7 @@ export class Root {
                 if (child.removeParent(changeTree.ref)) {
                     if ((
                         child.parentChain === undefined || // no parent, remove it
-                        (child.parentChain && this.refCount[child.refId] > 1) // parent is still in use, but has more than one reference, remove it
+                        (child.parentChain && this.refCount[child.refId] > 0) // parent is still in use, but has more than one reference, remove it
                     )) {
                         this.remove(child);
 
