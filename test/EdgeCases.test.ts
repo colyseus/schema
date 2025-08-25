@@ -729,4 +729,26 @@ describe("Edge cases", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
+    it("consecutive .clear() should not impact number of items in enqueued change list", () => {
+        class Item extends Schema {
+            @type("number") value: number;
+        }
+        class State extends Schema {
+            @type([Item]) arr = new ArraySchema<Item>();
+            @type({ map: Item }) map = new MapSchema<Item>();
+        }
+        const state = new State();
+        const encoder = getEncoder(state);
+
+        assert.deepStrictEqual([0, 1, 2], Schema.debugRefIdEncodingOrder(state, 'changes'));
+
+        state.arr.push(new Item().assign({ value: 1 }));
+        state.map.set("key1", new Item().assign({ value: 2 }));
+
+        state.arr.clear();
+        state.map.clear();
+
+        assert.deepStrictEqual([0, 1, 2], Schema.debugRefIdEncodingOrder(state, 'changes'));
+    });
+
 });

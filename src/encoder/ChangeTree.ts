@@ -459,10 +459,10 @@ export class ChangeTree<T extends Ref = any> {
         this.ref[$onEncodeEnd]?.();
 
         this.indexedOperations = {};
-        this.changes = createChangeSet();
+        this.changes = createChangeSet(this.changes.queueRootNode);
 
         if (this.filteredChanges !== undefined) {
-            this.filteredChanges = createChangeSet();
+            this.filteredChanges = createChangeSet(this.filteredChanges.queueRootNode);
         }
 
         if (discardAll) {
