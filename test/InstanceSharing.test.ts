@@ -587,7 +587,7 @@ describe("Instance sharing", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
-    it("decoder: should increment refId count of deep shared instances", () => {
+    it.only("decoder: should increment refId count of deep shared instances", () => {
         class Position extends Schema {
             @type("number") x: number;
             @type("number") y: number;
@@ -621,6 +621,13 @@ describe("Instance sharing", () => {
         const activePlayerRefId = activePlayer[$changes].refId;
         assert.strictEqual(3, encoder.root.refCount[activePlayerRefId]);
 
+        console.log("----------------------------------------")
+        console.log(Schema.debugRefIds(state))
+        console.log("----------------------------------------")
+        console.log("allChanges =>", Schema.debugRefIdEncodingOrder(state, "allChanges"))
+        console.log("----------------------------------------")
+        assertDeepStrictEqualEncodeAll(state);
+
         // delete 2 references
         state.activePlayers.pop();
         state.activePlayer = undefined;
@@ -628,6 +635,12 @@ describe("Instance sharing", () => {
 
         // assert refCount of activePlayer again
         assert.strictEqual(1, encoder.root.refCount[activePlayerRefId]);
+
+        console.log("----------------------------------------")
+        console.log(Schema.debugRefIds(state))
+        console.log("----------------------------------------")
+        console.log("allChanges =>", Schema.debugRefIdEncodingOrder(state, "allChanges"))
+        console.log("----------------------------------------")
 
         assertDeepStrictEqualEncodeAll(state);
     })

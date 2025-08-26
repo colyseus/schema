@@ -211,11 +211,11 @@ export class ChangeTree<T extends Ref = any> {
             this.forEachChild((child, index) => {
                 if (child.root === root) {
                     //
-                    // re-assigning a child of the same root, move it to the end
-                    // of the changes queue so encoding order is preserved
+                    // re-assigning a child of the same root, move it next to parent
+                    // so encoding order is preserved
                     //
                     root.add(child);
-                    root.moveToEndOfChanges(child);
+                    root.moveNextToParent(child);
                     return;
                 }
                 child.setParent(this.ref, root, index);

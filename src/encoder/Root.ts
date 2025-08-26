@@ -1,6 +1,7 @@
 import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
 import { ChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName, type ChangeTreeNode } from "./ChangeTree";
+import { $changes } from "../types/symbols";
 
 export class Root {
     protected nextUniqueId: number = 0;
@@ -83,8 +84,8 @@ export class Root {
                         this.remove(child);
 
                     } else if (child.parentChain) {
-                        // re-assigning a child of the same root, move it to the end
-                        this.moveToEndOfChanges(child);
+                        // re-assigning a child of the same root, move it next to parent
+                        this.recursivelyMoveNextToParent(child);
                     }
                 }
             });
@@ -94,36 +95,47 @@ export class Root {
 
             //
             // When losing a reference to an instance, it is best to move the
-            // ChangeTree to the end of the encoding queue.
+            // ChangeTree next to its parent in the encoding queue.
             //
             // This way, at decoding time, the instance that contains the
             // ChangeTree will be available before the ChangeTree itself. If the
             // containing instance is not available, the Decoder will throw
             // "refId not found" error.
             //
-            this.moveToEndOfChanges(changeTree);
-            changeTree.forEachChild((child, _) => this.moveToEndOfChanges(child));
+            this.recursivelyMoveNextToParent(changeTree);
         }
 
         return refCount;
     }
 
-    moveToEndOfChanges(changeTree: ChangeTree) {
+    recursivelyMoveNextToParent(changeTree: ChangeTree) {
+        this.moveNextToParent(changeTree);
+        changeTree.forEachChild((child, _) => this.recursivelyMoveNextToParent(child));
+    }
+
+    moveNextToParent(changeTree: ChangeTree) {
         if (changeTree.filteredChanges) {
-            this.moveToEndOfChangeTreeList("filteredChanges", changeTree);
-            this.moveToEndOfChangeTreeList("allFilteredChanges", changeTree);
+            this.moveNextToParentInChangeTreeList("filteredChanges", changeTree);
+            this.moveNextToParentInChangeTreeList("allFilteredChanges", changeTree);
         } else {
-            this.moveToEndOfChangeTreeList("changes", changeTree);
-            this.moveToEndOfChangeTreeList("allChanges", changeTree);
+            this.moveNextToParentInChangeTreeList("changes", changeTree);
+            this.moveNextToParentInChangeTreeList("allChanges", changeTree);
         }
     }
 
-    moveToEndOfChangeTreeList(changeSetName: ChangeSetName, changeTree: ChangeTree): void {
+    moveNextToParentInChangeTreeList(changeSetName: ChangeSetName, changeTree: ChangeTree): void {
         const changeSet = this[changeSetName];
         const node = changeTree[changeSetName].queueRootNode;
-        if (!node || node === changeSet.tail) return;
+        if (!node) return;
 
-        // Remove from current position
+        // Find the parent in the linked list
+        const parent = changeTree.parent;
+        if (!parent || !parent[$changes]) return;
+
+        const parentNode = parent[$changes][changeSetName]?.queueRootNode;
+        if (!parentNode || parentNode === node) return;
+
+        // Remove node from current position
         if (node.prev) {
             node.prev.next = node.next;
         } else {
@@ -136,18 +148,88 @@ export class Root {
             changeSet.tail = node.prev;
         }
 
-        // Add to end
-        node.prev = changeSet.tail;
-        node.next = undefined;
+        // Insert node right after parent
+        node.prev = parentNode;
+        node.next = parentNode.next;
 
-        if (changeSet.tail) {
-            changeSet.tail.next = node;
+        if (parentNode.next) {
+            parentNode.next.prev = node;
         } else {
-            changeSet.next = node;
+            changeSet.tail = node;
         }
 
-        changeSet.tail = node;
+        parentNode.next = node;
     }
+
+    // moveSubtreeToEndOfChangeTreeList(changeSetName: ChangeSetName, changeTree: ChangeTree): void {
+    //     // Find the contiguous range of nodes that belong to this subtree
+    //     const subtreeRange = this.findSubtreeRange(changeTree, changeSetName);
+    //     if (!subtreeRange) return;
+
+    //     const changeSet = this[changeSetName];
+    //     const { firstNode, lastNode } = subtreeRange;
+
+    //     // If the last node is already at the tail, no need to move
+    //     if (lastNode === changeSet.tail) return;
+
+    //     // Remove the entire subtree range from current position
+    //     if (firstNode.prev) {
+    //         firstNode.prev.next = lastNode.next;
+    //     } else {
+    //         changeSet.next = lastNode.next;
+    //     }
+
+    //     if (lastNode.next) {
+    //         lastNode.next.prev = firstNode.prev;
+    //     } else {
+    //         changeSet.tail = firstNode.prev;
+    //     }
+
+    //     // Add the entire subtree to the end
+    //     firstNode.prev = changeSet.tail;
+    //     lastNode.next = undefined;
+
+    //     if (changeSet.tail) {
+    //         changeSet.tail.next = firstNode;
+    //     } else {
+    //         changeSet.next = firstNode;
+    //     }
+
+    //     changeSet.tail = lastNode;
+    // }
+
+    // private findSubtreeRange(changeTree: ChangeTree, changeSetName: ChangeSetName): { firstNode: ChangeTreeNode, lastNode: ChangeTreeNode } | null {
+    //     const rootNode = changeTree[changeSetName].queueRootNode;
+    //     if (!rootNode) return null;
+
+    //     // Collect all refIds that belong to this subtree
+    //     const subtreeRefIds = new Set<number>();
+    //     this.collectSubtreeRefIds(changeTree, subtreeRefIds);
+
+    //     // Find the first and last nodes in the linked list that belong to this subtree
+    //     let firstNode: ChangeTreeNode | null = null;
+    //     let lastNode: ChangeTreeNode | null = null;
+    //     let current = this[changeSetName].next;
+
+    //     while (current) {
+    //         if (subtreeRefIds.has(current.changeTree.refId)) {
+    //             if (!firstNode) firstNode = current;
+    //             lastNode = current;
+    //         }
+    //         current = current.next;
+    //     }
+
+    //     return firstNode && lastNode ? { firstNode, lastNode } : null;
+    // }
+
+    // private collectSubtreeRefIds(changeTree: ChangeTree, result: Set<number>): void {
+    //     result.add(changeTree.refId);
+
+    //     // Collect children recursively
+    //     changeTree.forEachChild((child, _) => {
+    //         this.collectSubtreeRefIds(child, result);
+    //     });
+    // }
 
     public enqueueChangeTree(
         changeTree: ChangeTree,

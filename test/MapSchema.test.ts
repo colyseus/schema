@@ -1,9 +1,7 @@
 import * as assert from "assert";
-import * as util from "util";
 
 import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
 import { MapSchema, type, Schema, ArraySchema, Reflection, $changes, SetSchema, entity, $getByIndex, Encoder } from "../src";
-import { nanoid } from "nanoid";
 
 describe("Type: MapSchema", () => {
 
@@ -976,5 +974,49 @@ describe("Type: MapSchema", () => {
 
         assertDeepStrictEqualEncodeAll(state);
     });
+
+    it("should be allowed to move an item between keys", () => {
+        class PlayerData extends Schema {
+            @type(["number"]) arr: number[] = [1,2,3];
+            @type(["number"]) arr2: number[] = [1,2,3];
+        }
+        class Player extends Schema {
+            @type(PlayerData) data: PlayerData;
+        }
+        // class Action extends Schema {
+        //     @type(Player) player: Player;
+        // }
+        class State extends Schema {
+            @type({ map: Player }) map = new MapSchema<Player>();
+            // @type([Action]) actions = new ArraySchema<Action>();
+        }
+
+        const state = new State();
+        const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(state.encodeAll());
+
+        state.map.set("key1", new Player().assign({ data: new PlayerData().assign({ arr: [1] }) }));
+        decodedState.decode(state.encode());
+
+        assert.deepStrictEqual([0, 1, 2, 3, 4, 5], Schema.debugRefIdEncodingOrder(state, "allChanges"));
+
+        assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+        assert.strictEqual(1, decodedState.map.get("key1").data.arr.at(0));
+
+        const player = state.map.get("key1");
+        // state.actions.push(new Action().assign({ player: state.map.get("key1") }));
+
+        state.map.set("key2", player);
+        state.map.delete("key1");
+        decodedState.decode(state.encode());
+
+        assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+        assert.strictEqual(1, decodedState.map.get("key2").data.arr.at(0));
+
+        assert.deepStrictEqual([0, 1, 2, 3, 4, 5], Schema.debugRefIdEncodingOrder(state, "allChanges"));
+
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
 
 });
