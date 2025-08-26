@@ -41,13 +41,13 @@ export interface ChangeTreeNode {
     changeTree: ChangeTree;
     next?: ChangeTreeNode;
     prev?: ChangeTreeNode;
+    position: number; // Cached position in the linked list for O(1) lookup
 }
 
 // Linked list for change trees
 export interface ChangeTreeList {
     next?: ChangeTreeNode;
     tail?: ChangeTreeNode;
-    length: number;
 }
 
 export interface ChangeSet {
@@ -63,7 +63,7 @@ function createChangeSet(queueRootNode?: ChangeTreeNode): ChangeSet {
 
 // Linked list helper functions
 export function createChangeTreeList(): ChangeTreeList {
-    return { next: undefined, tail: undefined, length: 0 };
+    return { next: undefined, tail: undefined };
 }
 
 export function setOperationAtIndex(changeSet: ChangeSet, index: number) {

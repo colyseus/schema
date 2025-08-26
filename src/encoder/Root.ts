@@ -85,7 +85,7 @@ export class Root {
 
                     } else if (child.parentChain) {
                         // re-assigning a child of the same root, move it next to parent
-                        this.recursivelyMoveNextToParent(child);
+                        this.moveNextToParent(child);
                     }
                 }
             });
@@ -135,6 +135,16 @@ export class Root {
         const parentNode = parent[$changes][changeSetName]?.queueRootNode;
         if (!parentNode || parentNode === node) return;
 
+        // Use cached positions - no iteration needed!
+        const parentPosition = parentNode.position;
+        const childPosition = node.position;
+
+        // If child is already after parent, no need to move
+        if (childPosition > parentPosition) return;
+
+        // Child is before parent, so we need to move it after parent
+        // This maintains decoding order (parent before child)
+
         // Remove node from current position
         if (node.prev) {
             node.prev.next = node.next;
@@ -159,77 +169,10 @@ export class Root {
         }
 
         parentNode.next = node;
+
+        // Update positions after the move
+        this.updatePositionsAfterMove(changeSet, node, parentPosition + 1);
     }
-
-    // moveSubtreeToEndOfChangeTreeList(changeSetName: ChangeSetName, changeTree: ChangeTree): void {
-    //     // Find the contiguous range of nodes that belong to this subtree
-    //     const subtreeRange = this.findSubtreeRange(changeTree, changeSetName);
-    //     if (!subtreeRange) return;
-
-    //     const changeSet = this[changeSetName];
-    //     const { firstNode, lastNode } = subtreeRange;
-
-    //     // If the last node is already at the tail, no need to move
-    //     if (lastNode === changeSet.tail) return;
-
-    //     // Remove the entire subtree range from current position
-    //     if (firstNode.prev) {
-    //         firstNode.prev.next = lastNode.next;
-    //     } else {
-    //         changeSet.next = lastNode.next;
-    //     }
-
-    //     if (lastNode.next) {
-    //         lastNode.next.prev = firstNode.prev;
-    //     } else {
-    //         changeSet.tail = firstNode.prev;
-    //     }
-
-    //     // Add the entire subtree to the end
-    //     firstNode.prev = changeSet.tail;
-    //     lastNode.next = undefined;
-
-    //     if (changeSet.tail) {
-    //         changeSet.tail.next = firstNode;
-    //     } else {
-    //         changeSet.next = firstNode;
-    //     }
-
-    //     changeSet.tail = lastNode;
-    // }
-
-    // private findSubtreeRange(changeTree: ChangeTree, changeSetName: ChangeSetName): { firstNode: ChangeTreeNode, lastNode: ChangeTreeNode } | null {
-    //     const rootNode = changeTree[changeSetName].queueRootNode;
-    //     if (!rootNode) return null;
-
-    //     // Collect all refIds that belong to this subtree
-    //     const subtreeRefIds = new Set<number>();
-    //     this.collectSubtreeRefIds(changeTree, subtreeRefIds);
-
-    //     // Find the first and last nodes in the linked list that belong to this subtree
-    //     let firstNode: ChangeTreeNode | null = null;
-    //     let lastNode: ChangeTreeNode | null = null;
-    //     let current = this[changeSetName].next;
-
-    //     while (current) {
-    //         if (subtreeRefIds.has(current.changeTree.refId)) {
-    //             if (!firstNode) firstNode = current;
-    //             lastNode = current;
-    //         }
-    //         current = current.next;
-    //     }
-
-    //     return firstNode && lastNode ? { firstNode, lastNode } : null;
-    // }
-
-    // private collectSubtreeRefIds(changeTree: ChangeTree, result: Set<number>): void {
-    //     result.add(changeTree.refId);
-
-    //     // Collect children recursively
-    //     changeTree.forEachChild((child, _) => {
-    //         this.collectSubtreeRefIds(child, result);
-    //     });
-    // }
 
     public enqueueChangeTree(
         changeTree: ChangeTree,
@@ -244,7 +187,12 @@ export class Root {
     }
 
     protected addToChangeTreeList(list: ChangeTreeList, changeTree: ChangeTree): ChangeTreeNode {
-        const node: ChangeTreeNode = { changeTree, next: undefined, prev: undefined };
+        const node: ChangeTreeNode = {
+            changeTree,
+            next: undefined,
+            prev: undefined,
+            position: list.tail ? list.tail.position + 1 : 0
+        };
 
         if (!list.next) {
             list.next = node;
@@ -255,9 +203,33 @@ export class Root {
             list.tail = node;
         }
 
-        list.length++;
-
         return node;
+    }
+
+    protected updatePositionsAfterRemoval(list: ChangeTreeList, removedPosition: number) {
+        // Update positions for all nodes after the removed position
+        let current = list.next;
+        let position = 0;
+
+        while (current) {
+            if (position >= removedPosition) {
+                current.position = position;
+            }
+            current = current.next;
+            position++;
+        }
+    }
+
+    protected updatePositionsAfterMove(list: ChangeTreeList, node: ChangeTreeNode, newPosition: number) {
+        // Recalculate all positions - this is more reliable than trying to be clever
+        let current = list.next;
+        let position = 0;
+
+        while (current) {
+            current.position = position;
+            current = current.next;
+            position++;
+        }
     }
 
     public removeChangeFromChangeSet(changeSetName: ChangeSetName, changeTree: ChangeTree) {
@@ -265,6 +237,8 @@ export class Root {
         const node = changeTree[changeSetName].queueRootNode;
 
         if (node && node.changeTree === changeTree) {
+            const removedPosition = node.position;
+
             // Remove the node from the linked list
             if (node.prev) {
                 node.prev.next = node.next;
@@ -278,7 +252,8 @@ export class Root {
                 changeSet.tail = node.prev;
             }
 
-            changeSet.length--;
+            // Update positions for nodes that came after the removed node
+            this.updatePositionsAfterRemoval(changeSet, removedPosition);
 
             // Clear ChangeTree reference
             changeTree[changeSetName].queueRootNode = undefined;

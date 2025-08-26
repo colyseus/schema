@@ -587,7 +587,7 @@ describe("Instance sharing", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
-    it.only("decoder: should increment refId count of deep shared instances", () => {
+    it("decoder: should increment refId count of deep shared instances", () => {
         class Position extends Schema {
             @type("number") x: number;
             @type("number") y: number;

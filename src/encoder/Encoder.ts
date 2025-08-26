@@ -59,7 +59,7 @@ export class Encoder<T extends Schema = any> {
         let current: ChangeTreeList | ChangeTreeNode = this.root[changeSetName];
 
         while (current = current.next) {
-            const changeTree = current.changeTree;
+            const changeTree = (current as ChangeTreeNode).changeTree;
 
             if (hasView) {
                 if (!view.isChangeTreeVisible(changeTree)) {
@@ -284,8 +284,8 @@ export class Encoder<T extends Schema = any> {
 
     get hasChanges() {
         return (
-            this.root.changes.length > 0 ||
-            this.root.filteredChanges.length > 0
+            this.root.changes.next !== undefined ||
+            this.root.filteredChanges.next !== undefined
         );
     }
 }
