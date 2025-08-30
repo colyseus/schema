@@ -224,10 +224,15 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     protected [$onEncodeEnd]() {
         const changeTree = this[$changes];
 
-        // cleanup changeTree.indexes of deleted keys
+        // - cleanup changeTree.indexes
+        // - cleanup $indexes
         for (const indexStr in this.deletedItems) {
-            const key = this.$indexes.get(parseInt(indexStr));
+            const index = parseInt(indexStr);
+            const key = this.$indexes.get(index);
+            // TODO: refactor this.
+            // it shouldn't be necessary to keep track of indexes both on changeTree and on $indexes
             delete changeTree.indexes[key];
+            this.$indexes.delete(index);
         }
 
         this.deletedItems = {};

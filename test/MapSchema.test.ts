@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
+import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, encodeAndAssertEquals } from "./Schema";
 import { MapSchema, type, Schema, ArraySchema, Reflection, $changes, SetSchema, entity, $getByIndex, Encoder } from "../src";
 
 describe("Type: MapSchema", () => {
@@ -410,6 +410,7 @@ describe("Type: MapSchema", () => {
         // TODO: we could get lower than that.
         assert.ok(encoded.length <= 12);
 
+        assert.strictEqual(state.mapOfPlayers['$indexes'].size, 0);
         assertDeepStrictEqualEncodeAll(state);
     });
 
