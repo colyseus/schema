@@ -17,7 +17,14 @@ import type { CollectionSchema } from "../../types/custom/CollectionSchema";
 // - Avoid closures by allowing to pass a context. (https://github.com/colyseus/schema/issues/155#issuecomment-1804694081)
 //
 
-export type SchemaCallbackProxy<RoomState> = (<T extends Schema>(instance: T) => CallbackProxy<T>);
+/**
+ * TODO: define a schema interface, which even having duplicate definitions, it could be used to get the callback proxy.
+ * 
+ * ```ts
+ *     export type SchemaCallbackProxy<RoomState> = (<T extends Schema>(instance: T) => CallbackProxy<T>);
+ * ```
+ */
+export type SchemaCallbackProxy<RoomState> = (<T>(instance: T) => CallbackProxy<T>);
 export type GetCallbackProxy = SchemaCallbackProxy<any>; // workaround for compatibility for < colyseus.js0.16.6. Remove me on next major release.
 
 export type CallbackProxy<T> = unknown extends T // is "any"?
