@@ -661,6 +661,25 @@ describe("Type: MapSchema", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
+    it("should allow removing the same key twice", () => {
+        class Item extends Schema {
+            @type("number") damage: number;
+        }
+        class State extends Schema {
+            @type({ map: Item }) items = new MapSchema<Item>();
+        }
+
+        const state = new State();
+        state.items.set("one", new Item().assign({ damage: 10 }));
+        state.items.set("two", new Item().assign({ damage: 20 }));
+
+        assertDeepStrictEqualEncodeAll(state);
+
+        state.items.delete("one");
+        state.items.delete("one");
+        assertDeepStrictEqualEncodeAll(state);
+    });
+
     it("should allow to move a key from one map to another", () => {
         class Entity extends Schema {
             @type("number") id: number;

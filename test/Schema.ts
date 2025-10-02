@@ -1,8 +1,9 @@
+import * as assert from "assert";
+
 import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator, StateView } from "../src";
 import { Decoder } from "../src/decoder/Decoder";
 import { Encoder } from "../src/encoder/Encoder";
 import { CallbackProxy, getDecoderStateCallbacks, SchemaCallbackProxy } from "../src/decoder/strategy/StateCallbacks";
-import assert = require("assert");
 
 // augment Schema to add encode/decode methods
 // (workaround to keep tests working while we don't migrate the tests to the new API)
