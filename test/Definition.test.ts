@@ -357,6 +357,43 @@ describe("Definition Tests", () => {
             assert.strictEqual(decodedState.x, 10);
         });
 
+        it("should allow to define a class with a constructor", () => {
+            const State = schema({
+                x: "number",
+
+                init (props) {
+                    this.x = 10;
+                }
+            });
+
+            const state = new State();
+            assert.strictEqual(state.x, 10);
+
+            // Test with props
+            const stateWithProps = new State({ x: 5 });
+            assert.strictEqual(stateWithProps.x, 10); // init should override props
+
+            // Test that init receives correct parameters
+            let receivedState: any, receivedProps: any;
+            const StateWithInitCheck = schema({
+                x: "number",
+                y: "number",
+
+                init (props) {
+                    receivedState = this;
+                    receivedProps = props;
+                    this.x = 20;
+                    this.y = 30;
+                }
+            });
+
+            const testState = new StateWithInitCheck({ x: 1, y: 2 });
+            assert.strictEqual(receivedState, testState);
+            assert.deepStrictEqual(receivedProps, { x: 1, y: 2 });
+            assert.strictEqual(testState.x, 20);
+            assert.strictEqual(testState.y, 30);
+        });
+
     });
 
 });

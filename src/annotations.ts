@@ -504,8 +504,13 @@ export interface SchemaWithExtendsConstructor<T extends Definition, P extends ty
     new (...args: any[]): InferSchemaInstanceType<T>;
 }
 
+// Supporting types for mixin pattern
+export type AnyConstructor<A = object> = new (...input: any[]) => A;
+export type Mixin<T extends AnyFunction> = InstanceType<ReturnType<T>>;
+export type AnyFunction<A = any> = (...input: any[]) => A;
+
 export function schema<T extends Definition, P extends typeof Schema = typeof Schema>(
-    fieldsAndMethods: T,
+    fieldsAndMethods: T & { init?: (props: InferSchemaInstanceType<T>) => void },
     name?: string,
     inherits: P = Schema as P
 ): SchemaWithExtendsConstructor<T, P> {
@@ -590,13 +595,24 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
         return defaults;
     };
 
-    // Create the class with methods already on the prototype
-    const klass = Metadata.setFields<any>(class extends inherits {
-        constructor (...args: any[]) {
-            args[0] = Object.assign({}, getDefaultValues(), args[0]);
-            super(...args);
+    // Always use the mixin pattern to avoid TypeScript mixin constructor issues
+    const SchemaMixin = <TBase extends AnyConstructor>(base: TBase) => {
+        class SchemaMixinClass extends base {
+            constructor (...args: any[]) {
+                args[0] = Object.assign({}, getDefaultValues(), args[0]);
+                super(...args);
+
+                // Call init method if it exists
+                if (methods.init && typeof methods.init === 'function') {
+                    methods.init.call(this, args[0] || {});
+                }
+            }
         }
-    }, fields) as SchemaWithExtendsConstructor<T, P>;
+        return SchemaMixinClass;
+    };
+
+    /** @codegen-ignore */
+    const klass = Metadata.setFields<any>(SchemaMixin(inherits as any), fields) as SchemaWithExtendsConstructor<T, P>;
 
     // Store the getDefaultValues function on the class for inheritance
     (klass as any)._getDefaultValues = getDefaultValues;

@@ -145,7 +145,8 @@ export class Reflection extends Schema {
         }
 
         const buf = reflectionEncoder.encodeAll(it);
-        return Buffer.from(buf, 0, it.offset);
+        return buf.slice(0, it.offset)
+        // return Buffer.from(buf, 0, it.offset);
     }
 
     /**

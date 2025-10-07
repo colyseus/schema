@@ -17,7 +17,7 @@ import { getIndent } from './utils';
 /**
  * Schema encoder / decoder
  */
-export class Schema {
+export class Schema<C = any> {
     static [$encoder] = encodeSchemaOperation;
     static [$decoder] = decodeSchemaOperation;
 
@@ -81,7 +81,7 @@ export class Schema {
     }
 
     // allow inherited classes to have a constructor
-    constructor(...args: any[]) {
+    constructor(arg?: C) {
         //
         // inline
         // Schema.initialize(this);
@@ -91,8 +91,8 @@ export class Schema {
         //
         // Assign initial values
         //
-        if (args[0]) {
-            Object.assign(this, args[0]);
+        if (arg) {
+            Object.assign(this, arg);
         }
     }
 
