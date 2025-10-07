@@ -9,7 +9,7 @@ import { OPERATION } from "./encoding/spec";
 import { TypeContext } from "./types/TypeContext";
 import { assertInstanceType, assertType } from "./encoding/assert";
 import type { Ref } from "./encoder/ChangeTree";
-import type { DefinedSchemaType, InferValueType } from "./types/HelperTypes";
+import type { InferValueType, InferSchemaInstanceType } from "./types/HelperTypes";
 import { CollectionSchema } from "./types/custom/CollectionSchema";
 import { SetSchema } from "./types/custom/SetSchema";
 
@@ -492,18 +492,23 @@ export function defineTypes(
     return target;
 }
 
-export interface SchemaWithExtends<T extends Definition, P extends typeof Schema> extends DefinedSchemaType<T, P> {
+export interface SchemaWithExtends<T extends Definition, P extends typeof Schema> {
     extends: <T2 extends Definition>(
         fields: T2,
         name?: string
-    ) => SchemaWithExtends<T & T2, typeof this>;
+    ) => SchemaWithExtendsConstructor<T & T2, P>;
+}
+
+export interface SchemaWithExtendsConstructor<T extends Definition, P extends typeof Schema>
+    extends SchemaWithExtends<T, P> {
+    new (...args: any[]): InferSchemaInstanceType<T>;
 }
 
 export function schema<T extends Definition, P extends typeof Schema = typeof Schema>(
     fieldsAndMethods: T,
     name?: string,
     inherits: P = Schema as P
-): SchemaWithExtends<T, P> {
+): SchemaWithExtendsConstructor<T, P> {
     const fields: any = {};
     const methods: any = {};
 
@@ -565,39 +570,50 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
 
     const getDefaultValues = () => {
         const defaults: any = {};
+
+        // Inheritance: get default values from parent class
+        if (inherits && inherits !== Schema && (inherits as any)._getDefaultValues) {
+            Object.assign(defaults, (inherits as any)._getDefaultValues());
+        }
+
+        // Current class: use current class default values
         for (const fieldName in defaultValues) {
             const defaultValue = defaultValues[fieldName];
-            // If the default value has a clone method, use it to get a fresh instance
             if (defaultValue && typeof defaultValue.clone === 'function') {
+                // complex, cloneable values, e.g. Schema, ArraySchema, MapSchema, CollectionSchema, SetSchema
                 defaults[fieldName] = defaultValue.clone();
             } else {
-                // Otherwise, use the value as-is (for primitives and non-cloneable objects)
+                // primitives and non-cloneable values
                 defaults[fieldName] = defaultValue;
             }
         }
         return defaults;
     };
 
+    // Create the class with methods already on the prototype
     const klass = Metadata.setFields<any>(class extends inherits {
         constructor (...args: any[]) {
             args[0] = Object.assign({}, getDefaultValues(), args[0]);
             super(...args);
         }
-    }, fields) as SchemaWithExtends<T, P>;
+    }, fields) as SchemaWithExtendsConstructor<T, P>;
+
+    // Store the getDefaultValues function on the class for inheritance
+    (klass as any)._getDefaultValues = getDefaultValues;
+
+    // Add methods to the prototype
+    Object.assign(klass.prototype, methods);
 
     for (let fieldName in viewTagFields) {
         view(viewTagFields[fieldName])(klass.prototype, fieldName);
-    }
-
-    for (let methodName in methods) {
-        klass.prototype[methodName] = methods[methodName];
     }
 
     if (name) {
         Object.defineProperty(klass, "name", { value: name });
     }
 
-    klass.extends = (fields, name) => schema(fields, name, klass);
+    klass.extends = <T2 extends Definition>(fields: T2, name?: string) =>
+        schema(fields, name, klass as any) as any;
 
     return klass;
 }

@@ -60,13 +60,8 @@ export type InferValueType<T extends DefinitionType> =
 
     : never;
 
-export type InferSchemaInstanceType<T extends Definition> = {
-    [K in keyof T]: InferValueType<T[K]>
-} & Schema;
-
-export type DefinedSchemaType<T extends Definition, P extends typeof Schema> = {
-    new (): InferSchemaInstanceType<T> & InstanceType<P>;
-} & typeof Schema;
+export type InferSchemaInstanceType<T extends Definition> =
+    { [K in keyof T]: InferValueType<T[K]> } & Schema;
 
 export type NonFunctionProps<T> = Omit<T, {
     [K in keyof T]: T[K] extends Function ? K : never;

@@ -4,6 +4,7 @@ import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
 import { schema, defineTypes } from "../src/annotations";
 import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
 import { $changes, $numFields } from "../src/types/symbols";
+import { assertType } from "../src/encoding/assert";
 
 describe("Definition Tests", () => {
 
@@ -293,6 +294,48 @@ describe("Definition Tests", () => {
             assert.ok(state.default_undefined === undefined);
             assert.ok(state.default_null === null);
         })
+
+        it("should respect inheritance, including methods and default values", () => {
+            const V1 = schema({
+                x: { type: "number", default: 10 },
+                method1() { return 10; }
+            });
+            const V2 = V1.extends({
+                y: { type: "number", default: 20 },
+                method2() { return 20; }
+            });
+            const V3 = V2.extends({
+                z: { type: "number", default: 30 },
+                method3() { return 30; }
+            });
+
+            const v1 = new V1();
+            assert.strictEqual(v1.x, 10);
+            assert.strictEqual(v1.method1(), 10);
+            assert.ok(v1 instanceof V1);
+            assert.ok(!(v1 instanceof V2));
+            assert.ok(!(v1 instanceof V3));
+
+            const v2 = new V2();
+            assert.strictEqual(v2.x, 10);
+            assert.strictEqual(v2.y, 20);
+            assert.strictEqual(v2.method1(), 10);
+            assert.strictEqual(v2.method2(), 20);
+            assert.ok(v2 instanceof V1);
+            assert.ok(v2 instanceof V2);
+            assert.ok(!(v2 instanceof V3));
+
+            const v3 = new V3();
+            assert.strictEqual(v3.x, 10);
+            assert.strictEqual(v3.y, 20);
+            assert.strictEqual(v3.z, 30);
+            assert.strictEqual(v3.method1(), 10);
+            assert.strictEqual(v3.method2(), 20);
+            assert.strictEqual(v3.method3(), 30);
+            assert.ok(v3 instanceof V1);
+            assert.ok(v3 instanceof V2);
+            assert.ok(v3 instanceof V3);
+        });
 
         it("should allow to define methods", () => {
             const State = schema({
