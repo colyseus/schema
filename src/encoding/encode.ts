@@ -24,7 +24,7 @@
 import type { TextEncoder } from "util";
 import type { Iterator } from "./decode";
 
-export type BufferLike = number[] | ArrayBufferLike;
+export type BufferLike = number[] | ArrayBufferLike | Buffer;
 
 /**
  * msgpack implementation highly based on notepack.io

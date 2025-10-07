@@ -162,6 +162,18 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     ? node.parent.parent as ts.CallExpression
                     : node.parent as ts.CallExpression;
 
+                /**
+                 * Skip if @codegen-ignore comment is found before the call expression
+                 * TODO: currently, if @codegen-ignore is on the file, it will skip all the setFields calls.
+                 */
+                const sourceFile = node.getSourceFile();
+                const fullText = sourceFile.getFullText();
+                const nodeStart = callExpression.getFullStart();
+                const textBeforeNode = fullText.substring(0, nodeStart);
+                if (textBeforeNode.includes('@codegen-ignore')) {
+                    break;
+                }
+
                 if (callExpression.kind !== ts.SyntaxKind.CallExpression) {
                     break;
                 }
