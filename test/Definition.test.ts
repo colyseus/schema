@@ -394,6 +394,53 @@ describe("Definition Tests", () => {
             assert.strictEqual(testState.y, 30);
         });
 
+        it("init should respect inheritance", () => {
+            const V1 = schema({
+                x: "number",
+                init(props) {
+                    // @ts-ignore
+                    this.x = props.x * 2;
+                }
+            });
+
+            const V2 = V1.extends({
+                y: { type: "number", default: 20 },
+                init(props) {
+                    super.init(props);
+                    this.y = props.y * 2;
+                }
+            });
+
+            const V3 = V2.extends({
+                z: { type: "number", default: 30 },
+                init(props) {
+                    super.init(props);
+                    this.z = props.z * 2;
+                }
+            });
+
+            const v1 = new V1({ x: 10 });
+            assert.strictEqual(v1.x, 20);
+            assert.ok(v1 instanceof V1);
+            assert.ok(!(v1 instanceof V2));
+            assert.ok(!(v1 instanceof V3));
+
+            const v2 = new V2({x: 10, y: 20});
+            assert.strictEqual(v2.x, 20);
+            assert.strictEqual(v2.y, 40);
+            assert.ok(v2 instanceof V1);
+            assert.ok(v2 instanceof V2);
+            assert.ok(!(v2 instanceof V3));
+
+            const v3 = new V3({x: 10, y: 20, z: 30});
+            assert.strictEqual(v3.x, 20);
+            assert.strictEqual(v3.y, 40);
+            assert.strictEqual(v3.z, 60);
+            assert.ok(v3 instanceof V1);
+            assert.ok(v3 instanceof V2);
+            assert.ok(v3 instanceof V3);
+        });
+
     });
 
 });

@@ -9,7 +9,7 @@ import { OPERATION } from "./encoding/spec";
 import { TypeContext } from "./types/TypeContext";
 import { assertInstanceType, assertType } from "./encoding/assert";
 import type { Ref } from "./encoder/ChangeTree";
-import type { InferValueType, InferSchemaInstanceType } from "./types/HelperTypes";
+import type { InferValueType, InferSchemaInstanceType, NonFunctionPropNames } from "./types/HelperTypes";
 import { CollectionSchema } from "./types/custom/CollectionSchema";
 import { SetSchema } from "./types/custom/SetSchema";
 
@@ -510,7 +510,9 @@ export type Mixin<T extends AnyFunction> = InstanceType<ReturnType<T>>;
 export type AnyFunction<A = any> = (...input: any[]) => A;
 
 export function schema<T extends Definition, P extends typeof Schema = typeof Schema>(
-    fieldsAndMethods: T & { init?: (props: InferSchemaInstanceType<T>) => void },
+    fieldsAndMethods: T & {
+        init?: (this: InferSchemaInstanceType<T>, props: { [prop in NonFunctionPropNames<T>]?: T[prop] }) => void
+    },
     name?: string,
     inherits: P = Schema as P
 ): SchemaWithExtendsConstructor<T, P> {
