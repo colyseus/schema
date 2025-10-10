@@ -361,7 +361,7 @@ describe("Definition Tests", () => {
             const State = schema({
                 x: "number",
 
-                init (props) {
+                initialize (props) {
                     this.x = 10;
                 }
             });
@@ -379,7 +379,7 @@ describe("Definition Tests", () => {
                 x: "number",
                 y: "number",
 
-                init (props) {
+                initialize (props) {
                     receivedState = this;
                     receivedProps = props;
                     this.x = 20;
@@ -394,10 +394,10 @@ describe("Definition Tests", () => {
             assert.strictEqual(testState.y, 30);
         });
 
-        it("init should respect inheritance", () => {
+        it("initialize should respect inheritance", () => {
             const V1 = schema({
                 x: "number",
-                init(props) {
+                initialize(props) {
                     // @ts-ignore
                     this.x = props.x * 2;
                 }
@@ -405,16 +405,16 @@ describe("Definition Tests", () => {
 
             const V2 = V1.extends({
                 y: { type: "number", default: 20 },
-                init(props) {
-                    super.init(props);
+                initialize(props) {
+                    super.initialize(props);
                     this.y = props.y * 2;
                 }
             });
 
             const V3 = V2.extends({
                 z: { type: "number", default: 30 },
-                init(props) {
-                    super.init(props);
+                initialize(props) {
+                    super.initialize(props);
                     this.z = props.z * 2;
                 }
             });

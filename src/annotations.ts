@@ -511,7 +511,7 @@ export type AnyFunction<A = any> = (...input: any[]) => A;
 
 export function schema<T extends Definition, P extends typeof Schema = typeof Schema>(
     fieldsAndMethods: T & {
-        init?: (this: InferSchemaInstanceType<T>, props: { [prop in NonFunctionPropNames<T>]?: T[prop] }) => void
+        initialize?: (this: InferSchemaInstanceType<T>, props: { [prop in NonFunctionPropNames<T>]?: T[prop] }) => void
     },
     name?: string,
     inherits: P = Schema as P

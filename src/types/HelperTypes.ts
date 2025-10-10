@@ -29,6 +29,7 @@ export type InferValueType<T extends DefinitionType> =
     : T extends "boolean" ? boolean
 
     // Handle { type: ... } patterns
+    : T extends { type: infer ChildType extends PrimitiveType } ? InferValueType<ChildType>
     : T extends { type: infer ChildType extends Constructor } ? InstanceType<ChildType>
     : T extends { type: Array<infer ChildType> } ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType][] : ChildType[]) // TS ENUM
     : T extends { type: { map: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType]> : MapSchema<ChildType>) // TS ENUM
