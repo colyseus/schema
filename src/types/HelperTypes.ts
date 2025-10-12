@@ -9,7 +9,7 @@ export type Constructor<T = {}> = new (...args: any[]) => T;
 
 export interface Collection<K = any, V = any, IT = V> {
     [Symbol.iterator](): IterableIterator<IT>;
-    forEach(callback: Function);
+    forEach(callback: Function): void;
     entries(): IterableIterator<[K, V]>;
 }
 
@@ -61,8 +61,11 @@ export type InferValueType<T extends DefinitionType> =
 
     : never;
 
-export type InferSchemaInstanceType<T extends Definition> =
-    { [K in keyof T]: InferValueType<T[K]> } & Schema;
+export type InferSchemaInstanceType<T extends Definition> = {
+    [K in keyof T]: T[K] extends (...args: any[]) => any
+        ? (T[K] extends new (...args: any[]) => any ? InferValueType<T[K]> : T[K])
+        : InferValueType<T[K]>
+} & Schema;
 
 export type NonFunctionProps<T> = Omit<T, {
     [K in keyof T]: T[K] extends Function ? K : never;
@@ -89,3 +92,23 @@ export type ToJSON<T> = NonFunctionProps<{
                 ? U[]
                 : T[K]
 }>;
+
+/**
+ * Type helper for .assign() method - allows assigning values in a flexible way
+ * - Primitives can be assigned directly
+ * - Schema instances can be assigned from plain objects or Schema instances
+ * - Collections can be assigned from their JSON representations
+ */
+export type AssignableProps<T> = {
+    [K in NonFunctionPropNames<T>]?: T[K] extends MapSchema<infer U>
+        ? MapSchema<U> | Record<string, U extends Schema ? (U | AssignableProps<U>) : U>
+        : T[K] extends ArraySchema<infer U>
+            ? ArraySchema<U> | (U extends Schema ? (U | AssignableProps<U>)[] : U[])
+            : T[K] extends SetSchema<infer U>
+                ? SetSchema<U> | Set<U> | (U extends Schema ? (U | AssignableProps<U>)[] : U[])
+                : T[K] extends CollectionSchema<infer U>
+                    ? CollectionSchema<U> | (U extends Schema ? (U | AssignableProps<U>)[] : U[])
+                    : T[K] extends Schema
+                        ? T[K] | AssignableProps<T[K]>
+                        : T[K]
+};

@@ -8,7 +8,6 @@ import { TypeDefinition, getType } from "./types/registry";
 import { OPERATION } from "./encoding/spec";
 import { TypeContext } from "./types/TypeContext";
 import { assertInstanceType, assertType } from "./encoding/assert";
-import type { Ref } from "./encoder/ChangeTree";
 import type { InferValueType, InferSchemaInstanceType, NonFunctionPropNames } from "./types/HelperTypes";
 import { CollectionSchema } from "./types/custom/CollectionSchema";
 import { SetSchema } from "./types/custom/SetSchema";
@@ -48,8 +47,8 @@ export interface TypeOptions {
 
 export const DEFAULT_VIEW_TAG = -1;
 
-export function entity(constructor) {
-    TypeContext.register(constructor);
+export function entity(constructor: any): any {
+    TypeContext.register(constructor as typeof Schema);
     return constructor;
 }
 
@@ -366,9 +365,9 @@ export function getPropertyDescriptor(
     complexTypeKlass: TypeDefinition,
 ) {
     return {
-        get: function () { return this[fieldCached]; },
+        get: function (this: Schema) { return this[fieldCached as keyof Schema]; },
         set: function (this: Schema, value: any) {
-            const previousValue = this[fieldCached] ?? undefined;
+            const previousValue = this[fieldCached as keyof Schema] ?? undefined;
 
             // skip if value is the same as cached.
             if (value === previousValue) { return; }
@@ -388,6 +387,11 @@ export function getPropertyDescriptor(
                         value = new MapSchema(value);
                     }
 
+                    // // automaticallty transform Array into SetSchema
+                    // if (complexTypeKlass.constructor === SetSchema && !(value instanceof SetSchema)) {
+                    //     value = new SetSchema(value);
+                    // }
+
                     value[$childType] = type;
 
                 } else if (typeof (type) !== "string") {
@@ -404,17 +408,17 @@ export function getPropertyDescriptor(
                 //
                 if (previousValue !== undefined && previousValue[$changes]) {
                     changeTree.root?.remove(previousValue[$changes]);
-                    this.constructor[$track](changeTree, fieldIndex, OPERATION.DELETE_AND_ADD);
+                    (this.constructor as typeof Schema)[$track](changeTree, fieldIndex, OPERATION.DELETE_AND_ADD);
 
                 } else {
-                    this.constructor[$track](changeTree, fieldIndex, OPERATION.ADD);
+                    (this.constructor as typeof Schema)[$track](changeTree, fieldIndex, OPERATION.ADD);
                 }
 
                 //
                 // call setParent() recursively for this and its child
                 // structures.
                 //
-                (value as Ref)[$changes]?.setParent(this, changeTree.root, fieldIndex);
+                value[$changes]?.setParent(this, changeTree.root, fieldIndex);
 
             } else if (previousValue !== undefined) {
                 //
@@ -423,7 +427,7 @@ export function getPropertyDescriptor(
                 this[$changes].delete(fieldIndex);
             }
 
-            this[fieldCached] = value;
+            this[fieldCached as keyof Schema] = value;
         },
 
         enumerable: true,
@@ -494,25 +498,21 @@ export function defineTypes(
 
 export interface SchemaWithExtends<T extends Definition, P extends typeof Schema> {
     extends: <T2 extends Definition>(
-        fields: T2,
+        fields: T2 & ThisType<InferSchemaInstanceType<T & T2>>,
         name?: string
     ) => SchemaWithExtendsConstructor<T & T2, P>;
 }
 
 export interface SchemaWithExtendsConstructor<T extends Definition, P extends typeof Schema>
     extends SchemaWithExtends<T, P> {
-    new (...args: any[]): InferSchemaInstanceType<T>;
+    new (...args: any[]): InferSchemaInstanceType<T> & InstanceType<P>;
+    prototype: InferSchemaInstanceType<T> & InstanceType<P> & {
+        initialize?: (props: any) => void;
+    };
 }
 
-// Supporting types for mixin pattern
-export type AnyConstructor<A = object> = new (...input: any[]) => A;
-export type Mixin<T extends AnyFunction> = InstanceType<ReturnType<T>>;
-export type AnyFunction<A = any> = (...input: any[]) => A;
-
 export function schema<T extends Definition, P extends typeof Schema = typeof Schema>(
-    fieldsAndMethods: T & {
-        initialize?: (this: InferSchemaInstanceType<T>, props: { [prop in NonFunctionPropNames<T>]?: T[prop] }) => void
-    },
+    fieldsAndMethods: T & ThisType<InferSchemaInstanceType<T>>,
     name?: string,
     inherits: P = Schema as P
 ): SchemaWithExtendsConstructor<T, P> {
@@ -523,7 +523,7 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
     const viewTagFields: any = {};
 
     for (let fieldName in fieldsAndMethods) {
-        const value = fieldsAndMethods[fieldName] as DefinitionType;
+        const value: any = fieldsAndMethods[fieldName] as DefinitionType;
         if (typeof (value) === "object") {
             if (value['view'] !== undefined) {
                 viewTagFields[fieldName] = (typeof (value['view']) === "boolean")
@@ -597,24 +597,18 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
         return defaults;
     };
 
-    // Always use the mixin pattern to avoid TypeScript mixin constructor issues
-    const SchemaMixin = <TBase extends AnyConstructor>(base: TBase) => {
-        class SchemaMixinClass extends base {
-            constructor (...args: any[]) {
-                args[0] = Object.assign({}, getDefaultValues(), args[0]);
-                super(...args);
+    /** @codegen-ignore */
+    const klass = Metadata.setFields<any>(class extends (inherits as any) {
+        constructor(...args: any[]) {
+            args[0] = Object.assign({}, getDefaultValues(), args[0]);
+            super(...args);
 
-                // Call init method if it exists
-                if (methods.init && typeof methods.init === 'function') {
-                    methods.init.call(this, args[0] || {});
-                }
+            // Call init method if it exists
+            if (methods.initialize && typeof methods.initialize === 'function') {
+                methods.initialize.call(this, args[0] || {});
             }
         }
-        return SchemaMixinClass;
-    };
-
-    /** @codegen-ignore */
-    const klass = Metadata.setFields<any>(SchemaMixin(inherits as any), fields) as SchemaWithExtendsConstructor<T, P>;
+    }, fields) as SchemaWithExtendsConstructor<T, P>;
 
     // Store the getDefaultValues function on the class for inheritance
     (klass as any)._getDefaultValues = getDefaultValues;
@@ -631,7 +625,7 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
     }
 
     klass.extends = <T2 extends Definition>(fields: T2, name?: string) =>
-        schema(fields, name, klass as any) as any;
+        schema(fields, name, klass as any) as SchemaWithExtendsConstructor<T & T2, P>;
 
     return klass;
 }

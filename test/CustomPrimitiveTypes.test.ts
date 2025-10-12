@@ -18,7 +18,7 @@ describe("CustomPrimitiveTypes", () => {
 
     const types = {
         cstring: {
-            encode: (bytes, value, it) => {
+            encode: (bytes: any, value: any, it: any) => {
                 value ??= "";
                 value += "\x00";
                 if (bytes instanceof Uint8Array) {
@@ -29,7 +29,7 @@ describe("CustomPrimitiveTypes", () => {
                     for (let i = 0; i < len; ++i) bytes[it.offset++] = encoded[i]; // could probably also figure out if bytes has .set
                 }
             },
-            decode: (bytes, it) => {
+            decode: (bytes: any, it: any) => {
                 // should short circuit if buffer length can't be determined for some reason so we don't just infinitely loop
                 const len = (bytes as Buffer | ArrayBuffer).byteLength ?? (bytes as number[]).length;
                 if (len === undefined) throw TypeError("Unable to determine length of 'BufferLike' " + bytes.toString());
@@ -40,12 +40,12 @@ describe("CustomPrimitiveTypes", () => {
         },
 
         bigInt64: {
-            encode(bytes, value, it) {
+            encode(bytes: any, value: any, it: any) {
                 _int64[0] = BigInt.asIntN(64, value);
                 encode.int32(bytes, _int32[0], it);
                 encode.int32(bytes, _int32[1], it);
             },
-            decode(bytes, it) {
+            decode(bytes: any, it: any) {
                 _int32[0] = decode.int32(bytes, it);
                 _int32[1] = decode.int32(bytes, it);
                 return _int64[0];
@@ -53,12 +53,12 @@ describe("CustomPrimitiveTypes", () => {
         },
 
         bigUint64: {
-            encode (bytes, value, it) {
+            encode (bytes: any, value: any, it: any) {
                 _int64[0] = BigInt.asIntN(64, value);
                 encode.int32(bytes, _int32[0], it);
                 encode.int32(bytes, _int32[1], it);
             },
-            decode(bytes, it) {
+            decode(bytes: any, it: any) {
                 _int32[0] = decode.int32(bytes, it);
                 _int32[1] = decode.int32(bytes, it);
                 return _uint64[0];
@@ -66,7 +66,7 @@ describe("CustomPrimitiveTypes", () => {
         },
 
         varUint: {
-            encode(bytes, value, it) {
+            encode(bytes: any, value: any, it: any) {
                 value |= 0; // Infinity, -Infinity, NaN = 0
                 do {
                     let byte = value;
@@ -75,7 +75,7 @@ describe("CustomPrimitiveTypes", () => {
                     bytes[it.offset++] = byte & 0xFF; // set byte
                 } while (value !== 0);
             },
-            decode(bytes, it) {
+            decode(bytes: any, it: any) {
                 let value = 0, shift = 0;
                 while(bytes[it.offset] & 0x80) { // check continuation indicator bit
                   value |= (bytes[it.offset++] & 0x7f) << shift; // read 7 bits
@@ -87,17 +87,17 @@ describe("CustomPrimitiveTypes", () => {
         },
 
         varInt: {
-            encode(bytes, value, it) {
+            encode(bytes: any, value: any, it: any) {
                 types.varUint.encode(bytes, (0 - (value < 0 ? 1 : 0)) ^ (value << 1), it); // zig zag encoding
             },
-            decode (bytes, it) {
+            decode (bytes: any, it: any) {
                 const value = types.varUint.decode(bytes, it);
                 return (0 - (value & 1)) ^ (value >>> 1); // zig zag decoding
             }
         },
 
         varBigUint: {
-            encode (bytes, value, it) {
+            encode (bytes: any, value: any, it: any) {
                 do {
                     let byte = value;
                     value >>= 7n; // shift by 7 bits
@@ -105,7 +105,7 @@ describe("CustomPrimitiveTypes", () => {
                     bytes[it.offset++] = Number(byte & 0xFFn); // set byte
                 } while (value !== 0n);
             },
-            decode (bytes, it) {
+            decode (bytes: any, it: any) {
                 let value = 0n, shift = 0n;
                 while(bytes[it.offset] & 0x80) { // check continuation indicator bit
                   value |= BigInt((bytes[it.offset++] & 0x7f)) << shift; // read 7 bits
@@ -117,23 +117,23 @@ describe("CustomPrimitiveTypes", () => {
         },
 
         varBigInt: {
-            encode (bytes, value, it) {
+            encode (bytes: any, value: any, it: any) {
                 types.varBigUint.encode(bytes, (0n - (value < 0n ? 1n : 0n)) ^ (value << 1n), it); // zig zag encoding
             },
-            decode (bytes, it) {
+            decode (bytes: any, it: any) {
                 const value = types.varBigUint.decode(bytes, it);
                 return (0n - (value & 1n)) ^ (value >> 1n); // zig zag decoding
             }
         },
 
         varFloat32: {
-            encode (bytes, value, it) {
+            encode (bytes: any, value: any, it: any) {
                 _float32[0] = value;
                 // there are scenarios where splitting is unoptimal, however splitting usually is a bit more efficient
                 types.varUint.encode(bytes, _uint16[0], it); // mantissa (16 bits)
                 types.varUint.encode(bytes, _uint16[1], it); // mantissa (7 bits), exponent (8 bits), sign (1 bit)
             },
-            decode (bytes, it) {
+            decode (bytes: any, it: any) {
                 _uint16[0] = types.varUint.decode(bytes, it);
                 _uint16[1] = types.varUint.decode(bytes, it);
                 return _float32[0];
@@ -141,14 +141,14 @@ describe("CustomPrimitiveTypes", () => {
         },
 
         varFloat64: {
-            encode (bytes, value, it) {
+            encode (bytes: any, value: any, it: any) {
                 _float64[0] = value;
 
                 // there are scenarios where splitting is unoptimal, however splitting usually is a bit more efficient
                 types.varUint.encode(bytes, _uint32[0], it); // mantissa (32 bits)
                 types.varUint.encode(bytes, _uint32[1], it); // mantissa (20 bits), exponent (11 bits), sign (1 bit)
             },
-            decode (bytes, it) {
+            decode (bytes: any, it: any) {
                 _uint32[0] = types.varUint.decode(bytes, it);
                 _uint32[1] = types.varUint.decode(bytes, it);
                 return _float64[0];

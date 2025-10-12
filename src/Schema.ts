@@ -1,9 +1,9 @@
 import { OPERATION } from './encoding/spec';
 import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations";
 
-import { NonFunctionPropNames, ToJSON } from './types/HelperTypes';
+import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
-import { ChangeSet, ChangeSetName, ChangeTree, Ref } from './encoder/ChangeTree';
+import { ChangeSet, ChangeSetName, ChangeTree, IRef, Ref } from './encoder/ChangeTree';
 import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $track } from './types/symbols';
 import { StateView } from './encoder/StateView';
 
@@ -11,13 +11,14 @@ import { encodeSchemaOperation } from './encoder/EncodeOperation';
 import { decodeSchemaOperation } from './decoder/DecodeOperation';
 
 import type { Decoder } from './decoder/Decoder';
-import type { Metadata } from './Metadata';
+import type { Metadata, MetadataField } from './Metadata';
 import { getIndent } from './utils';
 
 /**
  * Schema encoder / decoder
  */
-export class Schema<C = any> {
+export class Schema<C = any> implements IRef {
+    static [Symbol.metadata]: Metadata;
     static [$encoder] = encodeSchemaOperation;
     static [$decoder] = decodeSchemaOperation;
 
@@ -36,9 +37,7 @@ export class Schema<C = any> {
     }
 
     static is(type: DefinitionType) {
-        return typeof(type[Symbol.metadata]) === "object";
-        // const metadata = type[Symbol.metadata];
-        // return metadata && Object.prototype.hasOwnProperty.call(metadata, -1);
+        return typeof((type as typeof Schema)[Symbol.metadata]) === "object";
     }
 
     /**
@@ -58,7 +57,7 @@ export class Schema<C = any> {
      * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
      */
     static [$filter] (ref: Schema, index: number, view: StateView) {
-        const metadata: Metadata = ref.constructor[Symbol.metadata];
+        const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
         const tag = metadata[index]?.tag;
 
         if (view === undefined) {
@@ -96,9 +95,9 @@ export class Schema<C = any> {
         }
     }
 
-    public assign(
-        props: { [prop in NonFunctionPropNames<this>]?: this[prop] } | ToJSON<this>,
-    ) {
+    public assign<T extends Partial<this>>(
+        props: AssignableProps<T>,
+    ): this {
         Object.assign(this, props);
         return this;
     }
@@ -110,7 +109,7 @@ export class Schema<C = any> {
      * @param operation OPERATION to perform (detected automatically)
      */
     public setDirty<K extends NonFunctionPropNames<this>>(property: K | number, operation?: OPERATION) {
-        const metadata: Metadata = this.constructor[Symbol.metadata];
+        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
         this[$changes].change(
             metadata[metadata[property as string]].index,
             operation
@@ -119,22 +118,21 @@ export class Schema<C = any> {
 
     clone (): this {
         const cloned = new ((this as any).constructor);
-        const metadata: Metadata = this.constructor[Symbol.metadata];
+        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
 
         //
         // TODO: clone all properties, not only annotated ones
         //
         // for (const field in this) {
         for (const fieldIndex in metadata) {
-            // const field = metadata[metadata[fieldIndex]].name;
-            const field = metadata[fieldIndex as any as number].name;
+            const field = metadata[fieldIndex as any as number].name as keyof this;
 
             if (
                 typeof (this[field]) === "object" &&
-                typeof (this[field]?.clone) === "function"
+                typeof ((this[field] as any)?.clone) === "function"
             ) {
                 // deep clone
-                cloned[field] = this[field].clone();
+                cloned[field] = (this[field] as any).clone();
 
             } else {
                 // primitive values
@@ -145,11 +143,11 @@ export class Schema<C = any> {
         return cloned;
     }
 
-    toJSON () {
-        const obj: unknown = {};
+    toJSON (this: any) {
+        const obj: any = {};
         const metadata = this.constructor[Symbol.metadata];
         for (const index in metadata) {
-            const field = metadata[index];
+            const field = metadata[index] as MetadataField;
             const fieldName = field.name;
             if (!field.deprecated && this[fieldName] !== null && typeof (this[fieldName]) !== "undefined") {
                 obj[fieldName] = (typeof (this[fieldName]['toJSON']) === "function")
@@ -168,14 +166,14 @@ export class Schema<C = any> {
         this[$changes].discardAll();
     }
 
-    protected [$getByIndex](index: number) {
-        const metadata: Metadata = this.constructor[Symbol.metadata];
-        return this[metadata[index].name];
+    [$getByIndex](index: number): any {
+        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
+        return this[metadata[index].name as keyof this];
     }
 
-    protected [$deleteByIndex](index: number) {
-        const metadata: Metadata = this.constructor[Symbol.metadata];
-        this[metadata[index].name] = undefined;
+    [$deleteByIndex](index: number): void {
+        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
+        this[metadata[index].name as keyof this] = undefined;
     }
 
     /**
@@ -185,7 +183,7 @@ export class Schema<C = any> {
      * @param showContents display JSON contents of the instance
      * @returns
      */
-    static debugRefIds(ref: Ref, showContents: boolean = false, level: number = 0, decoder?: Decoder, keyPrefix: string = "") {
+    static debugRefIds<T extends Schema>(ref: T, showContents: boolean = false, level: number = 0, decoder?: Decoder, keyPrefix: string = "") {
         const contents = (showContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
         const changeTree: ChangeTree = ref[$changes];
 
@@ -201,18 +199,18 @@ export class Schema<C = any> {
 
         changeTree.forEachChild((childChangeTree, indexOrKey) => {
             let key = indexOrKey;
-            if (typeof indexOrKey === 'number' && ref['$indexes']) {
+            if (typeof indexOrKey === 'number' && (ref as any)['$indexes']) {
                 // MapSchema
-                key = ref['$indexes'].get(indexOrKey) ?? indexOrKey;
+                key = (ref as any)['$indexes'].get(indexOrKey) ?? indexOrKey;
             }
-            const keyPrefix = (ref['forEach'] !== undefined && key !== undefined) ? `["${key}"]: ` : "";
+            const keyPrefix = ((ref as any)['forEach'] !== undefined && key !== undefined) ? `["${key}"]: ` : "";
             output += this.debugRefIds(childChangeTree.ref, showContents, level + 1, decoder, keyPrefix);
         });
 
         return output;
     }
 
-    static debugRefIdEncodingOrder(ref: Ref, changeSet: ChangeSetName = 'allChanges') {
+    static debugRefIdEncodingOrder<T extends Ref>(ref: T, changeSet: ChangeSetName = 'allChanges') {
         let encodeOrder: number[] = [];
         let current = ref[$changes].root[changeSet].next;
         while (current) {
@@ -236,7 +234,7 @@ export class Schema<C = any> {
      * @param isEncodeAll Return "full encode" instead of current change set.
      * @returns
      */
-    static debugChanges(instance: Ref, isEncodeAll: boolean = false) {
+    static debugChanges<T extends Ref>(instance: T, isEncodeAll: boolean = false) {
         const changeTree: ChangeTree = instance[$changes];
 
         const changeSet = (isEncodeAll) ? changeTree.allChanges : changeTree.changes;
@@ -278,7 +276,7 @@ export class Schema<C = any> {
         return output;
     }
 
-    static debugChangesDeep(ref: Ref, changeSetName: "changes" | "allChanges" | "allFilteredChanges" | "filteredChanges" = "changes") {
+    static debugChangesDeep<T extends Schema>(ref: T, changeSetName: "changes" | "allChanges" | "allFilteredChanges" | "filteredChanges" = "changes") {
         let output = "";
 
         const rootChangeTree: ChangeTree = ref[$changes];
@@ -290,7 +288,7 @@ export class Schema<C = any> {
 
         // TODO: FIXME: this method is not working as expected
         for (const [refId, changes] of Object.entries(root[changeSetName])) {
-            const changeTree = root.changeTrees[refId];
+            const changeTree = root.changeTrees[refId as any as number];
             if (!changeTree) { continue; }
 
             let includeChangeTree = false;

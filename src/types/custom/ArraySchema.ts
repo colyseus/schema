@@ -1,6 +1,6 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd } from "../symbols";
 import type { Schema } from "../../Schema";
-import { ChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
+import { type IRef, ChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
@@ -18,17 +18,19 @@ const DEFAULT_SORT = (a: any, b: any) => {
     else return 0
 }
 
-export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
+export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IRef {
     [n: number]: V;
+    [$changes]: ChangeTree;
+
+    protected [$childType]: string | typeof Schema;
 
     protected items: V[] = [];
     protected tmpItems: V[] = [];
     protected deletedIndexes: {[index: number]: boolean} = {};
+    protected isMovingItems = false;
 
     static [$encoder] = encodeArray;
     static [$decoder] = decodeArray;
-
-    protected isMovingItems = false;
 
     /**
      * Determine if a property must be filtered.
@@ -76,7 +78,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                     // FIXME: d8 accuses this as low performance
                     !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
                 ) {
-                    return this.items[prop];
+                    return this.items[prop as unknown as number];
 
                 } else {
                     return Reflect.get(obj, prop);
@@ -142,7 +144,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                     obj.$deleteAt(prop);
 
                 } else {
-                    delete obj[prop];
+                    delete obj[prop as unknown as number];
                 }
 
                 return true;
@@ -759,7 +761,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         return this.items.findLast.apply(this.items, arguments);
     }
 
-    findLastIndex(...args) {
+    findLastIndex(...args: any[]) {
         // @ts-ignore
         return this.items.findLastIndex.apply(this.items, arguments);
     }
@@ -821,7 +823,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
         return this;
     }
 
-    protected [$getByIndex](index: number, isEncodeAll: boolean = false) {
+    [$getByIndex](index: number, isEncodeAll: boolean = false): any {
         //
         // TODO: avoid unecessary `this.tmpItems` check during decoding.
         //
@@ -836,7 +838,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
                 : this.tmpItems[index] || this.items[index];
     }
 
-    protected [$deleteByIndex](index: number) {
+    [$deleteByIndex](index: number): void {
         this.items[index] = undefined;
         this.tmpItems[index] = undefined; // TODO: do not try to get "tmpItems" at decoding time.
     }
@@ -856,7 +858,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V> {
     }
 
     toJSON() {
-        return this.toArray().map((value) => {
+        return this.toArray().map((value: any) => {
             return (typeof (value['toJSON']) === "function")
                 ? value['toJSON']()
                 : value;

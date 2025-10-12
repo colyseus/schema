@@ -1,15 +1,18 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd } from "../symbols";
-import { ChangeTree } from "../../encoder/ChangeTree";
+import { ChangeTree, type IRef } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
 import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
 import type { StateView } from "../../encoder/StateView";
+import type { Schema } from "../../Schema";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
-export class CollectionSchema<V=any> implements Collection<K, V>{
+export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
+    public [$changes]: ChangeTree;
+    protected [$childType]: string | typeof Schema;
 
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
@@ -159,11 +162,11 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
         return this.$indexes.get(index);
     }
 
-    protected [$getByIndex](index: number) {
+    [$getByIndex](index: number): any {
         return this.$items.get(this.$indexes.get(index));
     }
 
-    protected [$deleteByIndex](index: number) {
+    [$deleteByIndex](index: number): void {
         const key = this.$indexes.get(index);
         this.$items.delete(key);
         this.$indexes.delete(index);
@@ -180,7 +183,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
     toJSON() {
         const values: V[] = [];
 
-        this.forEach((value, key) => {
+        this.forEach((value: any, key: K) => {
             values.push(
                 (typeof (value['toJSON']) === "function")
                     ? value['toJSON']()
@@ -204,7 +207,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>{
         } else {
             // server-side
             cloned = new CollectionSchema();
-            this.forEach((value) => {
+            this.forEach((value: any) => {
                 if (value[$changes]) {
                     cloned.add(value['clone']());
                 } else {

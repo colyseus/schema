@@ -117,11 +117,11 @@ export class Reflection extends Schema {
                         } else {
                             fieldType = Object.keys(field.type)[0];
 
-                            if (typeof (field.type[fieldType]) === "string") {
-                                fieldType += ":" + field.type[fieldType]; // array:string
+                            if (typeof (field.type[fieldType as keyof typeof field.type]) === "string") {
+                                fieldType += ":" + field.type[fieldType as keyof typeof field.type]; // array:string
 
                             } else {
-                                childTypeSchema = field.type[fieldType];
+                                childTypeSchema = field.type[fieldType as keyof typeof field.type];
                             }
                         }
 

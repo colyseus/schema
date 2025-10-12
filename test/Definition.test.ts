@@ -15,12 +15,8 @@ describe("Definition Tests", () => {
             somethingPrivate: number = 10;
         }
         class MySchema extends Schema {
-            @type("string")
-            str: string;
-
-            @type({map: Player})
-            players = new MapSchema<Player>();
-
+            @type("string") str: string;
+            @type({ map: Player }) players = new MapSchema<Player>();
             notSynched: boolean = true;
         }
 
@@ -94,20 +90,20 @@ describe("Definition Tests", () => {
 
             assert.strictEqual(
                 // state.extendedProps -> props.str
-                originalContext.types[0][Symbol.metadata][1].type[Symbol.metadata][0].index,
-                reflectedContext.types[0][Symbol.metadata][1].type[Symbol.metadata][0].index
+                (originalContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][0].index,
+                (reflectedContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][0].index
             );
 
             assert.strictEqual(
                 // state.extendedProps -> props.id
-                originalContext.types[0][Symbol.metadata][1].type[Symbol.metadata][1].index,
-                reflectedContext.types[0][Symbol.metadata][1].type[Symbol.metadata][1].index
+                (originalContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][1].index,
+                (reflectedContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][1].index
             );
 
             assert.strictEqual(
                 // state.extendedProps -> props.value
-                originalContext.types[0][Symbol.metadata][1].type[Symbol.metadata][2].index,
-                reflectedContext.types[0][Symbol.metadata][1].type[Symbol.metadata][2].index
+                (originalContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][2].index,
+                (reflectedContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][2].index
             );
         });
     });
@@ -296,23 +292,41 @@ describe("Definition Tests", () => {
         })
 
         it("should respect inheritance, including methods and default values", () => {
+            let v1this: any = undefined;
+            let v2this: any = undefined;
+            let v3this: any = undefined;
+
             const V1 = schema({
                 x: { type: "number", default: 10 },
-                method1() { return 10; }
+                method1() { return 10; },
+                shared() {
+                    v1this = this;
+                    return 100;
+                }
             });
             const V2 = V1.extends({
                 y: { type: "number", default: 20 },
-                method2() { return 20; }
+                method2() { return this.method1() + 20; },
+                shared() {
+                    v2this = this;
+                    return V1.prototype.shared.call(this) + 100;
+                }
             });
             const V3 = V2.extends({
                 z: { type: "number", default: 30 },
-                method3() { return 30; }
+                method3() { return this.method2() + 30; },
+                shared() {
+                    v3this = this;
+                    return V2.prototype.shared.call(this) + 100;
+                }
             });
 
             const v1 = new V1();
             assert.strictEqual(v1.x, 10);
             assert.strictEqual(v1.method1(), 10);
+            assert.strictEqual(v1.shared(), 100);
             assert.ok(v1 instanceof V1);
+            assert.ok(v1this instanceof V1);
             assert.ok(!(v1 instanceof V2));
             assert.ok(!(v1 instanceof V3));
 
@@ -320,9 +334,11 @@ describe("Definition Tests", () => {
             assert.strictEqual(v2.x, 10);
             assert.strictEqual(v2.y, 20);
             assert.strictEqual(v2.method1(), 10);
-            assert.strictEqual(v2.method2(), 20);
+            assert.strictEqual(v2.method2(), 30);
+            assert.strictEqual(v2.shared(), 200);
             assert.ok(v2 instanceof V1);
             assert.ok(v2 instanceof V2);
+            assert.ok(v2this instanceof V2);
             assert.ok(!(v2 instanceof V3));
 
             const v3 = new V3();
@@ -330,11 +346,13 @@ describe("Definition Tests", () => {
             assert.strictEqual(v3.y, 20);
             assert.strictEqual(v3.z, 30);
             assert.strictEqual(v3.method1(), 10);
-            assert.strictEqual(v3.method2(), 20);
-            assert.strictEqual(v3.method3(), 30);
+            assert.strictEqual(v3.method2(), 30);
+            assert.strictEqual(v3.method3(), 60);
+            assert.strictEqual(v3.shared(), 300);
             assert.ok(v3 instanceof V1);
             assert.ok(v3 instanceof V2);
             assert.ok(v3 instanceof V3);
+            assert.ok(v3this instanceof V3);
         });
 
         it("should allow to define methods", () => {
@@ -361,7 +379,7 @@ describe("Definition Tests", () => {
             const State = schema({
                 x: "number",
 
-                initialize (props) {
+                initialize (props: any) {
                     this.x = 10;
                 }
             });
@@ -379,7 +397,7 @@ describe("Definition Tests", () => {
                 x: "number",
                 y: "number",
 
-                initialize (props) {
+                initialize (props: any) {
                     receivedState = this;
                     receivedProps = props;
                     this.x = 20;
@@ -397,24 +415,23 @@ describe("Definition Tests", () => {
         it("initialize should respect inheritance", () => {
             const V1 = schema({
                 x: "number",
-                initialize(props) {
-                    // @ts-ignore
+                initialize(props: any) {
                     this.x = props.x * 2;
                 }
             });
 
             const V2 = V1.extends({
                 y: { type: "number", default: 20 },
-                initialize(props) {
-                    super.initialize(props);
+                initialize(props: any) {
+                    V1.prototype.initialize.call(this, props);
                     this.y = props.y * 2;
                 }
             });
 
             const V3 = V2.extends({
                 z: { type: "number", default: 30 },
-                initialize(props) {
-                    super.initialize(props);
+                initialize(props: any) {
+                    V2.prototype.initialize.call(this, props);
                     this.z = props.z * 2;
                 }
             });

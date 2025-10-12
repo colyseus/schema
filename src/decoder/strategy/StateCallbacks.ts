@@ -19,7 +19,7 @@ import type { CollectionSchema } from "../../types/custom/CollectionSchema";
 
 /**
  * TODO: define a schema interface, which even having duplicate definitions, it could be used to get the callback proxy.
- * 
+ *
  * ```ts
  *     export type SchemaCallbackProxy<RoomState> = (<T extends Schema>(instance: T) => CallbackProxy<T>);
  * ```
@@ -228,7 +228,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
         let metadata: Metadata = context.instance?.constructor[Symbol.metadata] || metadataOrType;
         let isCollection = (
             (context.instance && typeof (context.instance['forEach']) === "function") ||
-            (metadataOrType && typeof (metadataOrType[Symbol.metadata]) === "undefined")
+            (metadataOrType && typeof ((metadataOrType as typeof Schema)[Symbol.metadata]) === "undefined")
         );
 
         if (metadata && !isCollection) {
@@ -327,7 +327,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
 
                     } else {
                         // accessing the function
-                        return target[prop];
+                        return target[prop as keyof typeof target];
                     }
                 },
                 has(target, prop: string) { return metadata[prop] !== undefined; },
@@ -346,7 +346,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     (ref as CollectionSchema).forEach((v, k) => callback(v, k));
                 }
 
-                return $root.addCallback($root.refIds.get(ref), OPERATION.ADD, (value, key) => {
+                return $root.addCallback($root.refIds.get(ref), OPERATION.ADD, (value: any, key: any) => {
                     onAddCalls.set(callback, true);
                     currentOnAddCallback = callback;
                     callback(value, key);
@@ -364,7 +364,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
             };
 
             return new Proxy({
-                onAdd: function(callback: (value, key) => void, immediate: boolean = true) {
+                onAdd: function(callback: (value: any, key: any) => void, immediate: boolean = true) {
                     //
                     // https://github.com/colyseus/schema/issues/147
                     // If parent instance has "onAdd" registered, avoid triggering immediate callback.
@@ -384,7 +384,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                         return () => detachCallback();
                     }
                 },
-                onRemove: function(callback: (value, key) => void) {
+                onRemove: function(callback: (value: any, key: any) => void) {
                     if (context.instance) {
                         return onRemove(context.instance, callback);
 
@@ -399,7 +399,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                         return () => detachCallback();
                     }
                 },
-                onChange: function(callback: (value, key) => void) {
+                onChange: function(callback: (value: any, key: any) => void) {
                     if (context.instance) {
                         return onChange(context.instance, callback);
 
@@ -416,12 +416,12 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 },
             }, {
                 get(target, prop: string) {
-                    if (!target[prop]) {
+                    if (!target[prop as keyof typeof target]) {
                         throw new Error(`Can't access '${prop}' through callback proxy. access the instance directly.`);
                     }
-                    return target[prop];
+                    return target[prop as keyof typeof target];
                 },
-                has(target, prop) { return target[prop] !== undefined; },
+                has(target, prop) { return target[prop as keyof typeof target] !== undefined; },
                 set(_, _1, _2) { throw new Error("not allowed"); },
                 deleteProperty(_, _1) { throw new Error("not allowed"); },
             });

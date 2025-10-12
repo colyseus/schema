@@ -58,7 +58,7 @@ export class Decoder<T extends Schema = any> {
             if (bytes[it.offset] == SWITCH_TO_STRUCTURE) {
                 it.offset++;
 
-                ref[$onDecodeEnd]?.()
+                (ref as any)[$onDecodeEnd]?.()
 
                 const nextRefId = decode.number(bytes, it);
                 const nextRef = $root.refs.get(nextRefId);
@@ -91,7 +91,7 @@ export class Decoder<T extends Schema = any> {
         }
 
         // FIXME: DRY with SWITCH_TO_STRUCTURE block.
-        ref[$onDecodeEnd]?.()
+        (ref as any)[$onDecodeEnd]?.()
 
         // trigger changes
         this.triggerChanges?.(allChanges);
@@ -136,7 +136,7 @@ export class Decoder<T extends Schema = any> {
     }
 
     removeChildRefs(ref: Collection, allChanges: DataChange[]) {
-        const needRemoveRef = typeof (ref[$childType]) !== "string";
+        const needRemoveRef = typeof ((ref as any)[$childType]) !== "string";
         const refId = this.root.refIds.get(ref as Ref);
 
         ref.forEach((value: any, key: any) => {

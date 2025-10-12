@@ -1,7 +1,7 @@
 import { Class, Property, File, getCommentHeader, getInheritanceTree, Context, Interface } from "../types";
 import { GenerateOptions } from "../api";
 
-const typeMaps = {
+const typeMaps: { [key: string]: string } = {
     "string": "string",
     "number": "number",
     "boolean": "boolean",
@@ -17,7 +17,8 @@ const typeMaps = {
     "float64": "number",
 }
 
-const distinct = (value, index, self) => self.indexOf(value) === index;
+const distinct = (value: string, index: number, self: string[]) =>
+    self.indexOf(value) === index;
 
 export function generate (context: Context, options: GenerateOptions): File[] {
     return [

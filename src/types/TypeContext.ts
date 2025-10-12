@@ -97,7 +97,7 @@ export class TypeContext {
             this.discoverTypes(parent);
         }
 
-        const metadata: Metadata = (klass[Symbol.metadata] ??= {});
+        const metadata: Metadata = (klass[Symbol.metadata] ??= {} as Metadata);
 
         // if any schema/field has filters, mark "context" as having filters.
         if (metadata[$viewFieldIndexes]) {

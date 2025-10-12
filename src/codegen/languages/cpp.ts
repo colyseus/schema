@@ -1,7 +1,7 @@
 import { Class, Property, File, getCommentHeader, getInheritanceTree, Context } from "../types";
 import { GenerateOptions } from "../api";
 
-const typeMaps = {
+const typeMaps: { [key: string]: string } = {
     "string": "string",
     "number": "varint_t",
     "boolean": "bool",
@@ -17,7 +17,7 @@ const typeMaps = {
     "float64": "float64_t",
 }
 
-const typeInitializer = {
+const typeInitializer: { [key: string]: string } = {
     "string": '""',
     "number": "0",
     "boolean": "false",
@@ -37,11 +37,12 @@ const typeInitializer = {
  * C++ Code Generator
  */
 
-const capitalize = (s) => {
+const capitalize = (s: string) => {
     if (typeof s !== 'string') return ''
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
-const distinct = (value, index, self) => self.indexOf(value) === index;
+const distinct = (value: string, index: number, self: string[]) =>
+    self.indexOf(value) === index;
 
 export function generate (context: Context, options: GenerateOptions): File[] {
     return context.classes.map(klass => ({

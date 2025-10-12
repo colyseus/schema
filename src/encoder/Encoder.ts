@@ -167,30 +167,6 @@ export class Encoder<T extends Schema = any> {
         ]);
     }
 
-    debugChanges(field: "changes" | "allFilteredChanges" | "allChanges" | "filteredChanges") {
-        const rootChangeSet = (typeof (field) === "string")
-            ? this.root[field]
-            : field;
-
-        let current = rootChangeSet.next;
-        while (current) {
-            const changeTree = current.changeTree;
-            const changeSet = changeTree[field];
-
-            const metadata: Metadata = changeTree.ref.constructor[Symbol.metadata];
-            console.log("->", { ref: changeTree.ref.constructor.name, refId: changeTree.refId, changes: Object.keys(changeSet).length });
-            for (const index in changeSet) {
-                const op = changeSet[index];
-                console.log("  ->", {
-                    index,
-                    field: metadata?.[index],
-                    op: OPERATION[op],
-                });
-            }
-            current = current.next;
-        }
-    }
-
     encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
         const viewOffset = it.offset;
 

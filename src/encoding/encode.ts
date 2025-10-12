@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * Copyright (c) 2018 Endel Dreyer
  * Copyright (c) 2014 Ion Drive Software Ltd.

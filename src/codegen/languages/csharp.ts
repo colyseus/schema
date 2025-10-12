@@ -9,7 +9,7 @@ import {
 import { GenerateOptions } from "../api";
 import { Context } from "../types";
 
-const typeMaps = {
+const typeMaps: { [key: string]: string } = {
     "string": "string",
     "number": "float",
     "boolean": "bool",
@@ -28,7 +28,7 @@ const typeMaps = {
 /**
  * C# Code Generator
  */
-const capitalize = (s) => {
+const capitalize = (s: string) => {
     if (typeof s !== 'string') return ''
     return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -137,7 +137,7 @@ describe("Next Iteration", () => {
             }
 
             class State extends Schema {
-                @type(Player) player;
+                @type(Player) player: Player;
                 @type({ map: Player }) players = new Map<string, Player>();
             }
 
@@ -168,7 +168,7 @@ describe("Next Iteration", () => {
             }
 
             class State extends Schema {
-                @type(Player) player;
+                @type(Player) player: Player;
                 @type({ map: Player }) players = new Map<string, Player>();
             }
 
@@ -583,7 +583,7 @@ describe("Next Iteration", () => {
                 @type("string") name: string;
             }
             class Child extends Schema {
-                @type({ map: Player }) players;
+                @type({ map: Player }) players: Map<string, Player>;
                 @type(Player) player: Player;
             }
             class State extends Schema {

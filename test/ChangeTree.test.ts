@@ -17,6 +17,7 @@ describe("ChangeTree", () => {
         it("change() should add operation to changeset", () => {
             const state = new State();
 
+            // @ts-ignore
             const changeTree = new ChangeTree(state);
             changeTree.change(0, OPERATION.ADD);
 

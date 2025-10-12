@@ -2,8 +2,6 @@ import type { Schema } from "./Schema";
 import { OPERATION } from "./encoding/spec";
 import { $changes } from "./types/symbols";
 
-type ChangeItem = [string, number | string, any?];
-
 interface ChangeDump {
     ops: {
         ADD?: number;
@@ -43,8 +41,8 @@ export function dumpChanges(schema: Schema) {
         for (const index in changes) {
             const op = changes[index];
             const opName = OPERATION[op];
-            if (!dump.ops[opName]) { dump.ops[opName] = 0; }
-            dump.ops[OPERATION[op]]++;
+            if (!dump.ops[opName as keyof ChangeDump['ops']]) { dump.ops[opName as keyof ChangeDump['ops']] = 0; }
+            dump.ops[OPERATION[op] as keyof ChangeDump['ops']]++;
         }
         current = current.next;
     }

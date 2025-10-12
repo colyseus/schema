@@ -50,7 +50,7 @@ export { getRawChangesCallback } from "./decoder/strategy/RawChanges";
 
 export { Encoder } from "./encoder/Encoder";
 export { encodeSchemaOperation, encodeArray, encodeKeyValueOperation } from "./encoder/EncodeOperation";
-export { ChangeTree, Ref, type ChangeSetName, type ChangeSet} from "./encoder/ChangeTree";
+export { ChangeTree, Ref, IRef, type ChangeSetName, type ChangeSet} from "./encoder/ChangeTree";
 export { StateView } from "./encoder/StateView";
 
 export { Decoder } from "./decoder/Decoder";
