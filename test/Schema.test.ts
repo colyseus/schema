@@ -1460,6 +1460,28 @@ describe("Type: Schema", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
+
+        xit("should allow to call .assign() ArraySchema and MapSchema using .toJSON() response", () => {
+            class Prop extends Schema {
+                @type("string") name: string;
+            }
+            class Item extends Schema {
+                @type({ map: Prop }) props = new MapSchema<Prop>();
+            }
+            class MyState extends Schema {
+                @type("string") str: string;
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+            const state = new MyState();
+            state.str = "Hello world";
+            state.items.push(new Item().assign({ props: new MapSchema<Prop>().set('one', new Prop().assign({ name: "Hello" })) }));
+
+            const state2 = new MyState();
+            state2.assign(state.toJSON());
+            assert.deepStrictEqual(state2.toJSON(), state.toJSON());
+            assertDeepStrictEqualEncodeAll(state2);
+        });
+
     });
 
     describe("move and nullify previous", () => {
