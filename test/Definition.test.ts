@@ -493,6 +493,9 @@ describe("Definition Tests", () => {
                 const initParams = new InitParams(1, 2);
                 assert.strictEqual(initParams.one, 1);
                 assert.strictEqual(initParams.two, 2);
+
+                // @ts-expect-error
+                new InitParams();
             });
 
             it("should infer initialize props by default", () => {
