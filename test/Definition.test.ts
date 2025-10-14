@@ -375,60 +375,21 @@ describe("Definition Tests", () => {
             assert.strictEqual(decodedState.x, 10);
         });
 
-        it("should allow to define a class with a constructor", () => {
-            const State = schema<{ x?: number }>({
-                x: { type: "number", default: 10 },
-
-                initialize (props) {
-                    if (props.x !== undefined) {
-                        this.x = props.x;
-                    }
-                }
-            });
-
-            const state = new State({});
-            assert.strictEqual(state.x, 10);
-
-            // Test with props
-            const stateWithProps = new State({ x: 5 });
-            assert.strictEqual(stateWithProps.x, 5);
-
-            // Test that init receives correct parameters
-            let receivedState: any, receivedProps: any;
-            const StateWithInitCheck = schema<{ x: number, y: number }>({
-                x: "number",
-                y: "number",
-
-                initialize (props) {
-                    receivedState = this;
-                    receivedProps = props;
-                    this.x = props.x;
-                    this.y = props.y;
-                }
-            });
-
-            const testState = new StateWithInitCheck({ x: 1, y: 2 });
-            assert.strictEqual(receivedState, testState);
-            assert.deepStrictEqual(receivedProps, { x: 1, y: 2 });
-            assert.strictEqual(testState.x, 1);
-            assert.strictEqual(testState.y, 2);
-        });
-
         it("initialize should respect inheritance", () => {
-            const V1 = schema<{ x?: number }>({
+            const V1 = schema({
                 x: "number",
                 method() {
                 },
-                initialize(props) {
+                initialize(props: { x?: number }) {
                     if (props.x !== undefined) {
                         this.x = props.x * 2;
                     }
                 }
             });
 
-            const V2 = V1.extends<{ x?: number, y?: number }>({
+            const V2 = V1.extends({
                 y: { type: "number", default: 20 },
-                initialize(props) {
+                initialize(props: { x?: number, y?: number }) {
                     V1.prototype.initialize.call(this, props);
                     if (props.y !== undefined) {
                         this.y = props.y * 2;
@@ -436,9 +397,9 @@ describe("Definition Tests", () => {
                 }
             });
 
-            const V3 = V2.extends<{ x?: number, y?: number, z?: number }>({
+            const V3 = V2.extends({
                 z: { type: "number", default: 30 },
-                initialize(props) {
+                initialize(props: { x?: number, y?: number, z?: number }) {
                     V2.prototype.initialize.call(this, props);
                     if (props.z !== undefined) {
                         this.z = props.z * 2;
@@ -452,20 +413,129 @@ describe("Definition Tests", () => {
             assert.ok(!(v1 instanceof V2));
             assert.ok(!(v1 instanceof V3));
 
-            const v2 = new V2({x: 10, y: 20});
+            const v2 = new V2({ x: 10, y: 20 });
             assert.strictEqual(v2.x, 20);
             assert.strictEqual(v2.y, 40);
             assert.ok(v2 instanceof V1);
             assert.ok(v2 instanceof V2);
             assert.ok(!(v2 instanceof V3));
 
-            const v3 = new V3({x: 10, y: 20, z: 30});
+            const v3 = new V3({ x: 10, y: 20, z: 30 });
             assert.strictEqual(v3.x, 20);
             assert.strictEqual(v3.y, 40);
             assert.strictEqual(v3.z, 60);
             assert.ok(v3 instanceof V1);
             assert.ok(v3 instanceof V2);
             assert.ok(v3 instanceof V3);
+        });
+
+        describe("initialize", () => {
+            it("should allow to specify or left unspecified the initialize method", () => {
+                const NoInit = schema({
+                    x: "number",
+                    initialize() { this.x = 10; }
+                });
+
+                const noInit = new NoInit();
+                assert.strictEqual(noInit.x, 10);
+
+                // @ts-expect-error
+                const noInitWithArgs = new NoInit({ x: 10 });
+
+                const WithInit = schema({
+                    x: "number",
+                    initialize(props: { x: number }) {
+                        this.x = props.x;
+                    }
+                });
+                const WithInitExtend = NoInit.extends({
+                    y: "number",
+                    initialize(props: { y: number }) {
+                        NoInit.prototype.initialize.call(this, props);
+                        this.y = props.y;
+                    }
+                });
+
+                const withInit = new WithInit({ x: 20 });
+                assert.strictEqual(withInit.x, 20);
+
+                const withInitExtend = new WithInitExtend({ y: 20 });
+                assert.strictEqual(withInitExtend.y, 20);
+                assert.strictEqual(withInitExtend.x, 10);
+            });
+
+            it("should allow initialize with multiple parameters", () => {
+                const InitParams = schema({
+                    one: "number",
+                    two: "number",
+                    initialize(one: number, two: number) {
+                        this.one = one;
+                        this.two = two;
+                    }
+                });
+
+                const initParams = new InitParams(1, 2);
+                assert.strictEqual(initParams.one, 1);
+                assert.strictEqual(initParams.two, 2);
+            });
+
+            it("should infer initialize props by default", () => {
+                const Vec3 = schema({
+                    x: "number",
+                    y: "number",
+                    z: "number",
+                    initialize(props) {
+                        this.x = props.x;
+                        this.y = props.y;
+                        this.z = props.z;
+                    }
+                });
+
+                const vec3 = new Vec3({ x: 1, y: 2, z: 3 });
+                assert.strictEqual(vec3.x, 1);
+                assert.strictEqual(vec3.y, 2);
+                assert.strictEqual(vec3.z, 3);
+            });
+
+            it("should allow to define a class with a constructor", () => {
+                const State = schema({
+                    x: { type: "number", default: 10 },
+
+                    initialize (props: { x?: number }) {
+                        if (props.x !== undefined) {
+                            this.x = props.x;
+                        }
+                    }
+                });
+
+                const state = new State({});
+                assert.strictEqual(state.x, 10);
+
+                // Test with props
+                const stateWithProps = new State({ x: 5 });
+                assert.strictEqual(stateWithProps.x, 5);
+
+                // Test that init receives correct parameters
+                let receivedState: any, receivedProps: any;
+                const StateWithInitCheck = schema({
+                    x: "number",
+                    y: "number",
+
+                    initialize (props: { x: number, y: number }) {
+                        receivedState = this;
+                        receivedProps = props;
+                        this.x = props.x;
+                        this.y = props.y;
+                    }
+                });
+
+                const testState = new StateWithInitCheck({ x: 1, y: 2 });
+                assert.strictEqual(receivedState, testState);
+                assert.deepStrictEqual(receivedProps, { x: 1, y: 2 });
+                assert.strictEqual(testState.x, 1);
+                assert.strictEqual(testState.y, 2);
+            });
+
         });
 
     });

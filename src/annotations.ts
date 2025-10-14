@@ -496,33 +496,41 @@ export function defineTypes(
     return target;
 }
 
-// Helper type for schema definition with optional initialize method
-type SchemaDefinition<InitProps = never> = Record<string, DefinitionType> & { initialize?(props: InitProps): void; };
+// Helper type to extract InitProps from initialize method
+// Supports both single object parameter and multiple parameters
+type ExtractInitProps<T> = T extends { initialize: (props: infer P) => void }
+    ? P extends object
+        ? P
+        : never
+    : T extends { initialize: (...args: infer P) => void }
+    ? P extends readonly []
+        ? never
+        : P
+    : never;
 
-export interface SchemaWithExtends<T extends Definition, P extends typeof Schema, InitProps = never> {
-    extends: <InitProps2 = InitProps, T2 extends SchemaDefinition<InitProps2> = SchemaDefinition<InitProps2>>(
+export interface SchemaWithExtends<T extends Definition, P extends typeof Schema, > {
+    extends: <T2 extends Definition = Definition>(
         fields: T2 & ThisType<InferSchemaInstanceType<T & T2>>,
         name?: string
-    ) => SchemaWithExtendsConstructor<T & T2, P, InitProps2>;
+    ) => SchemaWithExtendsConstructor<T & T2, ExtractInitProps<T2>, P>;
 }
 
-export interface SchemaWithExtendsConstructor<T extends Definition, P extends typeof Schema, InitProps = never>
-    extends SchemaWithExtends<T, P, InitProps> {
-    new (...args: IsNever<InitProps> extends true ? [] | [InitProps?] : [InitProps]): InferSchemaInstanceType<T> & InstanceType<P>;
+export interface SchemaWithExtendsConstructor<T extends Definition, InitProps, P extends typeof Schema>
+    extends SchemaWithExtends<T, P> {
+    new (...args: [InitProps] extends [never] ? [] : InitProps extends readonly any[] ? InitProps : [InitProps?]): InferSchemaInstanceType<T> & InstanceType<P>;
     prototype: InferSchemaInstanceType<T> & InstanceType<P> & {
-        initialize(props: InitProps): void;
+        initialize(...args: [InitProps] extends [never] ? [] : InitProps extends readonly any[] ? InitProps : [InitProps]): void;
     };
 }
 
 export function schema<
-    InitProps = never,
-    T extends SchemaDefinition<InitProps> = SchemaDefinition<InitProps>,
+    T extends Record<string, DefinitionType>,
     P extends typeof Schema = typeof Schema
 >(
     fieldsAndMethods: T & ThisType<InferSchemaInstanceType<T>>,
     name?: string,
     inherits: P = Schema as P
-): SchemaWithExtendsConstructor<T, P, InitProps> {
+): SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P> {
     const fields: any = {};
     const methods: any = {};
 
@@ -607,15 +615,34 @@ export function schema<
     /** @codegen-ignore */
     const klass = Metadata.setFields<any>(class extends (inherits as any) {
         constructor(...args: any[]) {
-            args[0] = Object.assign({}, getDefaultValues(), args[0]);
-            super(...args);
+            // Check if initialize method expects a single object parameter
+            const initializeLength = methods.initialize?.length || 0;
+            const isSingleObjectParam = initializeLength === 1 && args.length === 1 && typeof args[0] === 'object' && args[0] !== null;
 
-            // Call init method if it exists
-            if (methods.initialize && typeof methods.initialize === 'function') {
-                methods.initialize.call(this, args[0] || {});
+            if (isSingleObjectParam) {
+                // Single object parameter pattern - merge with defaults
+                args[0] = Object.assign({}, getDefaultValues(), args[0]);
+                super(...args);
+                // Call init method with single object parameter
+                if (methods.initialize && typeof methods.initialize === 'function') {
+                    methods.initialize.call(this, args[0]);
+                }
+            } else {
+                // Multiple parameters pattern - don't modify args, just pass defaults to super
+                const defaultValues = getDefaultValues();
+                if (args.length === 0) {
+                    super(defaultValues);
+                } else {
+                    super(...args);
+                }
+
+                // Call init method with all arguments
+                if (methods.initialize && typeof methods.initialize === 'function') {
+                    methods.initialize.call(this, ...args);
+                }
             }
         }
-    }, fields) as SchemaWithExtendsConstructor<T, P, InitProps>;
+    }, fields) as SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P>;
 
     // Store the getDefaultValues function on the class for inheritance
     (klass as any)._getDefaultValues = getDefaultValues;
@@ -631,8 +658,8 @@ export function schema<
         Object.defineProperty(klass, "name", { value: name });
     }
 
-    klass.extends = <InitProps2 = InitProps, T2 extends Definition = Definition>(fields: T2, name?: string) =>
-        schema<InitProps2, T2>(fields, name, klass as any) as SchemaWithExtendsConstructor<T & T2, P, InitProps2>;
+    klass.extends = <T2 extends Definition = Definition>(fields: T2, name?: string) =>
+        schema<T2>(fields, name, klass as any) as SchemaWithExtendsConstructor<T & T2, ExtractInitProps<T2>, P>;
 
     return klass;
 }
