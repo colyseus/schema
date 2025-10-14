@@ -376,63 +376,73 @@ describe("Definition Tests", () => {
         });
 
         it("should allow to define a class with a constructor", () => {
-            const State = schema({
-                x: "number",
+            const State = schema<{ x?: number }>({
+                x: { type: "number", default: 10 },
 
-                initialize (props: any) {
-                    this.x = 10;
+                initialize (props) {
+                    if (props.x !== undefined) {
+                        this.x = props.x;
+                    }
                 }
             });
 
-            const state = new State();
+            const state = new State({});
             assert.strictEqual(state.x, 10);
 
             // Test with props
             const stateWithProps = new State({ x: 5 });
-            assert.strictEqual(stateWithProps.x, 10); // init should override props
+            assert.strictEqual(stateWithProps.x, 5);
 
             // Test that init receives correct parameters
             let receivedState: any, receivedProps: any;
-            const StateWithInitCheck = schema({
+            const StateWithInitCheck = schema<{ x: number, y: number }>({
                 x: "number",
                 y: "number",
 
-                initialize (props: any) {
+                initialize (props) {
                     receivedState = this;
                     receivedProps = props;
-                    this.x = 20;
-                    this.y = 30;
+                    this.x = props.x;
+                    this.y = props.y;
                 }
             });
 
             const testState = new StateWithInitCheck({ x: 1, y: 2 });
             assert.strictEqual(receivedState, testState);
             assert.deepStrictEqual(receivedProps, { x: 1, y: 2 });
-            assert.strictEqual(testState.x, 20);
-            assert.strictEqual(testState.y, 30);
+            assert.strictEqual(testState.x, 1);
+            assert.strictEqual(testState.y, 2);
         });
 
         it("initialize should respect inheritance", () => {
-            const V1 = schema({
+            const V1 = schema<{ x?: number }>({
                 x: "number",
-                initialize(props: any) {
-                    this.x = props.x * 2;
+                method() {
+                },
+                initialize(props) {
+                    if (props.x !== undefined) {
+                        this.x = props.x * 2;
+                    }
                 }
             });
 
-            const V2 = V1.extends({
+            const V2 = V1.extends<{ x?: number, y?: number }>({
                 y: { type: "number", default: 20 },
-                initialize(props: any) {
+                initialize(props) {
                     V1.prototype.initialize.call(this, props);
-                    this.y = props.y * 2;
+                    if (props.y !== undefined) {
+                        this.y = props.y * 2;
+                    }
                 }
             });
 
-            const V3 = V2.extends({
+            const V3 = V2.extends<{ x?: number, y?: number, z?: number }>({
                 z: { type: "number", default: 30 },
-                initialize(props: any) {
+                initialize(props) {
                     V2.prototype.initialize.call(this, props);
-                    this.z = props.z * 2;
+                    if (props.z !== undefined) {
+                        this.z = props.z * 2;
+                    }
                 }
             });
 

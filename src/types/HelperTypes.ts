@@ -93,6 +93,9 @@ export type ToJSON<T> = NonFunctionProps<{
                 : T[K]
 }>;
 
+// Helper type to check if T is exactly 'never' (meaning no InitProps was provided)
+export type IsNever<T> = [T] extends [never] ? true : false;
+
 /**
  * Type helper for .assign() method - allows assigning values in a flexible way
  * - Primitives can be assigned directly

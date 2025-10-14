@@ -45,6 +45,9 @@ export { TypeContext } from "./types/TypeContext";
 // Annotation types
 export type { DefinitionType, PrimitiveType, Definition, } from "./annotations";
 
+// Helper types for type inference
+export type { InferValueType, InferSchemaInstanceType, AssignableProps } from "./types/HelperTypes";
+
 export { getDecoderStateCallbacks, CallbackProxy, SchemaCallback, CollectionCallback, SchemaCallbackProxy } from "./decoder/strategy/StateCallbacks";
 export { getRawChangesCallback } from "./decoder/strategy/RawChanges";
 

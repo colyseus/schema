@@ -8,7 +8,7 @@ import { TypeDefinition, getType } from "./types/registry";
 import { OPERATION } from "./encoding/spec";
 import { TypeContext } from "./types/TypeContext";
 import { assertInstanceType, assertType } from "./encoding/assert";
-import type { InferValueType, InferSchemaInstanceType, NonFunctionPropNames } from "./types/HelperTypes";
+import type { InferValueType, InferSchemaInstanceType, AssignableProps, IsNever } from "./types/HelperTypes";
 import { CollectionSchema } from "./types/custom/CollectionSchema";
 import { SetSchema } from "./types/custom/SetSchema";
 
@@ -496,26 +496,33 @@ export function defineTypes(
     return target;
 }
 
-export interface SchemaWithExtends<T extends Definition, P extends typeof Schema> {
-    extends: <T2 extends Definition>(
+// Helper type for schema definition with optional initialize method
+type SchemaDefinition<InitProps = never> = Record<string, DefinitionType> & { initialize?(props: InitProps): void; };
+
+export interface SchemaWithExtends<T extends Definition, P extends typeof Schema, InitProps = never> {
+    extends: <InitProps2 = InitProps, T2 extends SchemaDefinition<InitProps2> = SchemaDefinition<InitProps2>>(
         fields: T2 & ThisType<InferSchemaInstanceType<T & T2>>,
         name?: string
-    ) => SchemaWithExtendsConstructor<T & T2, P>;
+    ) => SchemaWithExtendsConstructor<T & T2, P, InitProps2>;
 }
 
-export interface SchemaWithExtendsConstructor<T extends Definition, P extends typeof Schema>
-    extends SchemaWithExtends<T, P> {
-    new (...args: any[]): InferSchemaInstanceType<T> & InstanceType<P>;
+export interface SchemaWithExtendsConstructor<T extends Definition, P extends typeof Schema, InitProps = never>
+    extends SchemaWithExtends<T, P, InitProps> {
+    new (...args: IsNever<InitProps> extends true ? [] | [InitProps?] : [InitProps]): InferSchemaInstanceType<T> & InstanceType<P>;
     prototype: InferSchemaInstanceType<T> & InstanceType<P> & {
-        initialize?: (props: any) => void;
+        initialize(props: InitProps): void;
     };
 }
 
-export function schema<T extends Definition, P extends typeof Schema = typeof Schema>(
+export function schema<
+    InitProps = never,
+    T extends SchemaDefinition<InitProps> = SchemaDefinition<InitProps>,
+    P extends typeof Schema = typeof Schema
+>(
     fieldsAndMethods: T & ThisType<InferSchemaInstanceType<T>>,
     name?: string,
     inherits: P = Schema as P
-): SchemaWithExtendsConstructor<T, P> {
+): SchemaWithExtendsConstructor<T, P, InitProps> {
     const fields: any = {};
     const methods: any = {};
 
@@ -608,7 +615,7 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
                 methods.initialize.call(this, args[0] || {});
             }
         }
-    }, fields) as SchemaWithExtendsConstructor<T, P>;
+    }, fields) as SchemaWithExtendsConstructor<T, P, InitProps>;
 
     // Store the getDefaultValues function on the class for inheritance
     (klass as any)._getDefaultValues = getDefaultValues;
@@ -624,8 +631,8 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
         Object.defineProperty(klass, "name", { value: name });
     }
 
-    klass.extends = <T2 extends Definition>(fields: T2, name?: string) =>
-        schema(fields, name, klass as any) as SchemaWithExtendsConstructor<T & T2, P>;
+    klass.extends = <InitProps2 = InitProps, T2 extends Definition = Definition>(fields: T2, name?: string) =>
+        schema<InitProps2, T2>(fields, name, klass as any) as SchemaWithExtendsConstructor<T & T2, P, InitProps2>;
 
     return klass;
 }
