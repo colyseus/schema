@@ -430,6 +430,19 @@ describe("Definition Tests", () => {
         });
 
         describe("initialize", () => {
+            it("should accept default values", () => {
+                const State = schema({
+                    x: { type: "number", default: 10 },
+                    y: "number",
+                    z: "number"
+                });
+
+                const state = new State({ x: 20, y: 30, z: 40 });
+                assert.strictEqual(state.x, 20);
+                assert.strictEqual(state.y, 30);
+                assert.strictEqual(state.z, 40);
+            });
+
             it("should allow to specify or left unspecified the initialize method", () => {
                 const NoInit = schema({
                     x: "number",
@@ -484,7 +497,7 @@ describe("Definition Tests", () => {
                     x: "number",
                     y: "number",
                     z: "number",
-                    initialize(props) {
+                    initialize(props: any) {
                         this.x = props.x;
                         this.y = props.y;
                         this.z = props.z;

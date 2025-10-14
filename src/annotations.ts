@@ -498,15 +498,18 @@ export function defineTypes(
 
 // Helper type to extract InitProps from initialize method
 // Supports both single object parameter and multiple parameters
+// If no initialize method is specified, use AssignableProps
 type ExtractInitProps<T> = T extends { initialize: (props: infer P) => void }
     ? P extends object
         ? P
         : never
     : T extends { initialize: (...args: infer P) => void }
-    ? P extends readonly []
-        ? never
-        : P
-    : never;
+        ? P extends readonly []
+            ? never
+            : P
+        : T extends Definition
+            ? AssignableProps<InferSchemaInstanceType<T>>
+            : never;
 
 export interface SchemaWithExtends<T extends Definition, P extends typeof Schema, > {
     extends: <T2 extends Definition = Definition>(
@@ -593,12 +596,7 @@ export function schema<
     const getDefaultValues = () => {
         const defaults: any = {};
 
-        // Inheritance: get default values from parent class
-        if (inherits && inherits !== Schema && (inherits as any)._getDefaultValues) {
-            Object.assign(defaults, (inherits as any)._getDefaultValues());
-        }
-
-        // Current class: use current class default values
+        // use current class default values
         for (const fieldName in defaultValues) {
             const defaultValue = defaultValues[fieldName];
             if (defaultValue && typeof defaultValue.clone === 'function') {
@@ -615,31 +613,11 @@ export function schema<
     /** @codegen-ignore */
     const klass = Metadata.setFields<any>(class extends (inherits as any) {
         constructor(...args: any[]) {
-            // Check if initialize method expects a single object parameter
-            const initializeLength = methods.initialize?.length || 0;
-            const isSingleObjectParam = initializeLength === 1 && args.length === 1 && typeof args[0] === 'object' && args[0] !== null;
+            super(Object.assign({}, getDefaultValues(), args[0] || {}));
 
-            if (isSingleObjectParam) {
-                // Single object parameter pattern - merge with defaults
-                args[0] = Object.assign({}, getDefaultValues(), args[0]);
-                super(...args);
-                // Call init method with single object parameter
-                if (methods.initialize && typeof methods.initialize === 'function') {
-                    methods.initialize.call(this, args[0]);
-                }
-            } else {
-                // Multiple parameters pattern - don't modify args, just pass defaults to super
-                const defaultValues = getDefaultValues();
-                if (args.length === 0) {
-                    super(defaultValues);
-                } else {
-                    super(...args);
-                }
-
-                // Call init method with all arguments
-                if (methods.initialize && typeof methods.initialize === 'function') {
-                    methods.initialize.call(this, ...args);
-                }
+            // call initialize method
+            if (methods.initialize && typeof methods.initialize === 'function') {
+                methods.initialize.apply(this, args);
             }
         }
     }, fields) as SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P>;
