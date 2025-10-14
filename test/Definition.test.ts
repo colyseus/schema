@@ -472,6 +472,9 @@ describe("Definition Tests", () => {
                 const withInit = new WithInit({ x: 20 });
                 assert.strictEqual(withInit.x, 20);
 
+                // @ts-expect-error
+                assert.throws(() => new WithInit());
+
                 const withInitExtend = new WithInitExtend({ y: 20 });
                 assert.strictEqual(withInitExtend.y, 20);
                 assert.strictEqual(withInitExtend.x, 10);
