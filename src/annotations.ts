@@ -499,23 +499,25 @@ export function defineTypes(
 // Helper type to extract InitProps from initialize method
 // Supports both single object parameter and multiple parameters
 // If no initialize method is specified, use AssignableProps for field initialization
-type ExtractInitProps<T> = T extends { initialize: (props: infer P) => void }
-    ? P extends object
-        ? P
-        : never
-    : T extends { initialize: (...args: infer P) => void }
-        ? P extends readonly []
-            ? never
+type ExtractInitProps<T> = T extends { initialize: (...args: infer P) => void }
+    ? P extends readonly []
+        ? never
+        : P extends readonly [infer First]
+            ? First extends object
+                ? First
+                : P
             : P
-        : T extends Definition
-            ? AssignableProps<InferSchemaInstanceType<T>>
-            : never;
+    : T extends Definition
+        ? AssignableProps<InferSchemaInstanceType<T>>
+        : never;
 
 // Helper type to determine if InitProps should be required
 type IsInitPropsRequired<T> = T extends { initialize: (props: any) => void }
     ? true
-    : T extends { initialize: (...args: any[]) => void }
-        ? true
+    : T extends { initialize: (...args: infer P) => void }
+        ? P extends readonly []
+            ? false
+            : true
         : false;
 
 export interface SchemaWithExtends<T extends Definition, P extends typeof Schema, > {

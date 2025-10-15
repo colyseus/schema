@@ -520,6 +520,21 @@ describe("Definition Tests", () => {
                 assert.strictEqual(withInitExtend.x, 10);
             });
 
+            it("should allow initialize with a single parameter", () => {
+                const InitParams = schema({
+                    one: "number",
+                    initialize(one: number) {
+                        this.one = one;
+                    }
+                });
+
+                const initParams = new InitParams(1);
+                assert.strictEqual(initParams.one, 1);
+
+                // @ts-expect-error
+                new InitParams();
+            });
+
             it("should allow initialize with multiple parameters", () => {
                 const InitParams = schema({
                     one: "number",
