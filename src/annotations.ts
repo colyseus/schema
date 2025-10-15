@@ -527,6 +527,13 @@ export interface SchemaWithExtends<T extends Definition, P extends typeof Schema
 
 /**
  * Get the type of the schema defined via `schema({...})` method.
+ *
+ * @example
+ * const Entity = schema({
+ *     x: "number",
+ *     y: "number",
+ * });
+ * type Entity = SchemaType<typeof Entity>;
  */
 export type SchemaType<T extends {'~type': any}> = T['~type'];
 
