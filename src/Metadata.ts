@@ -22,7 +22,7 @@ export type Metadata =
     { [field: string]: number; } & // field name => field metadata
     { [$descriptors]: { [field: string]: PropertyDescriptor } }  // property descriptors
 
-export function getNormalizedType(type: DefinitionType): DefinitionType  {
+export function getNormalizedType(type: any): DefinitionType  {
     if (Array.isArray(type)) {
         return { array: getNormalizedType(type[0]) };
 
@@ -308,7 +308,7 @@ export const Metadata = {
 
     getFields(klass: any) {
         const metadata: Metadata = klass[Symbol.metadata];
-        const fields = {};
+        const fields: any = {};
         for (let i = 0; i <= metadata[$numFields]; i++) {
             fields[metadata[i].name] = metadata[i].type;
         }

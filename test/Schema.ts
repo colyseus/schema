@@ -21,11 +21,13 @@ export function getCallbacks<T extends Schema>(state: T): (<F extends Schema>(in
 }
 
 export function getDecoder<T extends Schema>(state: T) {
+    // @ts-ignore
     if (!state['_decoder']) { state['_decoder'] = new Decoder(state); }
+    // @ts-ignore
     return state['_decoder'] as Decoder<T>;
 }
 
-export function encodeAndAssertEquals(state: Schema, decodedState: Schema) {
+export function encodeAndAssertEquals<T extends Schema>(state: T, decodedState: T) {
     const encoded = state.encode();
     decodedState.decode(encoded);
     assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
@@ -34,7 +36,7 @@ export function encodeAndAssertEquals(state: Schema, decodedState: Schema) {
 /**
  * This assertion simulates a new client joining the room, and receiving the initial state.
  */
-export function assertDeepStrictEqualEncodeAll(state: Schema, assetRefIds: boolean = true) {
+export function assertDeepStrictEqualEncodeAll<T extends Schema>(state: T, assetRefIds: boolean = true) {
     const freshDecode = createInstanceFromReflection(state);
     const encodeAll = state.encodeAll();
     freshDecode.decode(encodeAll);
@@ -50,7 +52,7 @@ export function assertDeepStrictEqualEncodeAll(state: Schema, assetRefIds: boole
     // assert.deepStrictEqual(freshDecode.toJSON(), state.toJSON());
 }
 
-export function assertRefIdCounts(source: Schema, target: Schema) {
+export function assertRefIdCounts<T extends Schema>(source: T, target: T) {
     // assert ref counts
     const encoder = getEncoder(source);
     const decoder = getDecoder(target);
@@ -64,14 +66,17 @@ export function assertRefIdCounts(source: Schema, target: Schema) {
     }
 }
 
-export function getEncoder(state: Schema) {
+export function getEncoder<T extends Schema>(state: T) {
+    // @ts-ignore
     if (!state['_encoder']) { state['_encoder'] = new Encoder(state); }
+    // @ts-ignore
     return state['_encoder'] as Encoder;
 }
 
 export function createInstanceFromReflection<T extends Schema>(state: T, encoder?: Encoder<T>) {
     encoder ??= getEncoder(state);
     const decoder = Reflection.decode<T>(Reflection.encode(encoder));
+    // @ts-ignore
     decoder.state['_decoder'] = decoder;
     return decoder.state;
 }

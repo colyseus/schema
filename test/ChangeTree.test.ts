@@ -17,6 +17,7 @@ describe("ChangeTree", () => {
         it("change() should add operation to changeset", () => {
             const state = new State();
 
+            // @ts-ignore
             const changeTree = new ChangeTree(state);
             changeTree.change(0, OPERATION.ADD);
 
@@ -144,7 +145,7 @@ describe("ChangeTree", () => {
         }
 
         const state = new State();
-        state.game = new Game(0, 1);
+        state.game = new Game();
 
         const changes: ChangeTree = state.game[$changes];
         assert.deepStrictEqual(changes.changes.operations, [0]);

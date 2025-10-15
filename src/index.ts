@@ -39,18 +39,21 @@ export {
 
 // Annotations, Metadata and TypeContext
 export { Metadata } from "./Metadata";
-export { type, deprecated, defineTypes, view, schema, entity, type SchemaWithExtends, } from "./annotations";
+export { type, deprecated, defineTypes, view, schema, entity, type SchemaWithExtends, type SchemaType } from "./annotations";
 export { TypeContext } from "./types/TypeContext";
 
 // Annotation types
 export type { DefinitionType, PrimitiveType, Definition, } from "./annotations";
+
+// Helper types for type inference
+export type { InferValueType, InferSchemaInstanceType, AssignableProps } from "./types/HelperTypes";
 
 export { getDecoderStateCallbacks, CallbackProxy, SchemaCallback, CollectionCallback, SchemaCallbackProxy } from "./decoder/strategy/StateCallbacks";
 export { getRawChangesCallback } from "./decoder/strategy/RawChanges";
 
 export { Encoder } from "./encoder/Encoder";
 export { encodeSchemaOperation, encodeArray, encodeKeyValueOperation } from "./encoder/EncodeOperation";
-export { ChangeTree, Ref, type ChangeSetName, type ChangeSet} from "./encoder/ChangeTree";
+export { ChangeTree, Ref, IRef, type ChangeSetName, type ChangeSet} from "./encoder/ChangeTree";
 export { StateView } from "./encoder/StateView";
 
 export { Decoder } from "./decoder/Decoder";

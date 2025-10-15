@@ -45,8 +45,8 @@ describe("Type: MapSchema", () => {
         map.set('two', 2);
         map.set('three', 3);
 
-        const keys = [];
-        const values = [];
+        const keys: string[] = [];
+        const values: number[] = [];
 
         map.forEach((value, key) => {
             keys.push(key);
@@ -209,31 +209,31 @@ describe("Type: MapSchema", () => {
 
         const state = new State();
         const playerOne = new Player();
-        state.players['one'] = playerOne;
+        state.players.set('one', playerOne);
 
         playerOne.name = "One!";
-        playerOne.inventory.slots['one'] = new Item(100);
-        playerOne.inventory.slots['two'] = new Item(100);
-        playerOne.inventory.slots['three'] = new Item(100);
+        playerOne.inventory.slots.set('one', new Item(100));
+        playerOne.inventory.slots.set('two', new Item(100));
+        playerOne.inventory.slots.set('three', new Item(100));
 
         state.encodeAll();
 
         const playerTwo = new Player();
-        state.players['two'] = playerTwo
+        state.players.set('two', playerTwo);
         playerTwo.name = "Two!";
 
-        delete state.players['two'];
+        state.players.delete('two');
         playerTwo.name = "Hello";
-        playerTwo.purchase.slots['one'] = new Item(500);
-        playerTwo.purchase.slots['two'] = new Item(500);
-        playerTwo.purchase.slots['three'] = new Item(500);
+        playerTwo.purchase.slots.set('one', new Item(500));
+        playerTwo.purchase.slots.set('two', new Item(500));
+        playerTwo.purchase.slots.set('three', new Item(500));
 
         state.encode();
 
         playerTwo.name = "Hello";
-        playerTwo.purchase.slots['one'] = new Item(500);
-        playerTwo.purchase.slots['two'] = new Item(500);
-        playerTwo.purchase.slots['three'] = new Item(500);
+        playerTwo.purchase.slots.set('one', new Item(500));
+        playerTwo.purchase.slots.set('two', new Item(500));
+        playerTwo.purchase.slots.set('three', new Item(500));
         state.encode();
 
         const decodedState = new State();
@@ -328,7 +328,7 @@ describe("Type: MapSchema", () => {
         }
         class Entity extends Schema {
             @type("string") name: string;
-            @type([Item]) items = new ArraySchema<Item>();
+            @type([Item]) items: Item[] = [];
         }
         class State extends Schema {
             @type({map: Entity}) entities = new MapSchema<Entity>();

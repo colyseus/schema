@@ -5,7 +5,8 @@
         "lib": ["ES2022"],
         "experimentalDecorators": true,
         "useDefineForClassFields": false,
-        "noImplicitAny": false,
+        "noImplicitAny": true,
+        "noImplicitThis": true,
         "inlineSources": true,
         "sourceMap": true
     },

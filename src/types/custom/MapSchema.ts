@@ -1,5 +1,5 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $numFields } from "../symbols";
-import { ChangeTree } from "../../encoder/ChangeTree";
+import { ChangeTree, IRef } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { Collection } from "../HelperTypes";
@@ -9,14 +9,14 @@ import type { StateView } from "../../encoder/StateView";
 import type { Schema } from "../../Schema";
 import { assertInstanceType } from "../../encoding/assert";
 
-export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]> {
+export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]>, IRef {
     protected childType: new () => V;
+    [$changes]: ChangeTree;
+    protected [$childType]: string | typeof Schema;
 
     protected $items: Map<K, V> = new Map<K, V>();
     protected $indexes: Map<number, K> = new Map<number, K>();
     protected deletedItems: { [index: string]: V } = {};
-
-    protected [$changes]: ChangeTree;
 
     static [$encoder] = encodeKeyValueOperation;
     static [$decoder] = decodeKeyValueOperation;
@@ -215,11 +215,11 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         return this.$indexes.get(index);
     }
 
-    protected [$getByIndex](index: number) {
+    [$getByIndex](index: number): V | undefined {
         return this.$items.get(this.$indexes.get(index));
     }
 
-    protected [$deleteByIndex](index: number) {
+    [$deleteByIndex](index: number): void {
         const key = this.$indexes.get(index);
         this.$items.delete(key);
         this.$indexes.delete(index);
@@ -245,7 +245,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     toJSON() {
         const map: any = {};
 
-        this.forEach((value, key) => {
+        this.forEach((value: any, key) => {
             map[key] = (typeof (value['toJSON']) === "function")
                 ? value['toJSON']()
                 : value;
@@ -269,7 +269,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
             // server-side
             cloned = new MapSchema();
 
-            this.forEach((value, key) => {
+            this.forEach((value: any, key) => {
                 if (value[$changes]) {
                     cloned.set(key, value['clone']());
                 } else {

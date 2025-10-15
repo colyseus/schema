@@ -1,9 +1,10 @@
 import * as assert from "assert";
 
 import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
-import { schema, defineTypes } from "../src/annotations";
+import { schema, defineTypes, SchemaType } from "../src/annotations";
 import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
 import { $changes, $numFields } from "../src/types/symbols";
+import { assertType } from "../src/encoding/assert";
 
 describe("Definition Tests", () => {
 
@@ -14,12 +15,8 @@ describe("Definition Tests", () => {
             somethingPrivate: number = 10;
         }
         class MySchema extends Schema {
-            @type("string")
-            str: string;
-
-            @type({map: Player})
-            players = new MapSchema<Player>();
-
+            @type("string") str: string;
+            @type({ map: Player }) players = new MapSchema<Player>();
             notSynched: boolean = true;
         }
 
@@ -93,20 +90,20 @@ describe("Definition Tests", () => {
 
             assert.strictEqual(
                 // state.extendedProps -> props.str
-                originalContext.types[0][Symbol.metadata][1].type[Symbol.metadata][0].index,
-                reflectedContext.types[0][Symbol.metadata][1].type[Symbol.metadata][0].index
+                (originalContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][0].index,
+                (reflectedContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][0].index
             );
 
             assert.strictEqual(
                 // state.extendedProps -> props.id
-                originalContext.types[0][Symbol.metadata][1].type[Symbol.metadata][1].index,
-                reflectedContext.types[0][Symbol.metadata][1].type[Symbol.metadata][1].index
+                (originalContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][1].index,
+                (reflectedContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][1].index
             );
 
             assert.strictEqual(
                 // state.extendedProps -> props.value
-                originalContext.types[0][Symbol.metadata][1].type[Symbol.metadata][2].index,
-                reflectedContext.types[0][Symbol.metadata][1].type[Symbol.metadata][2].index
+                (originalContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][2].index,
+                (reflectedContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][2].index
             );
         });
     });
@@ -126,6 +123,46 @@ describe("Definition Tests", () => {
     });
 
     describe("define type via 'schema' method", () => {
+
+        it("should be possible to use definition as type in function parameters", () => {
+            const Entity = schema({
+                x: "number",
+                y: "number",
+            }, 'Entity');
+            type Entity = SchemaType<typeof Entity>;
+
+            const WalkableEntity = Entity.extends({
+                hp: "number",
+            }, 'WalkableEntity');
+            type WalkableEntity = SchemaType<typeof WalkableEntity>;
+
+            const Player = WalkableEntity.extends({
+                age: "number",
+                name: "string",
+            }, 'Player');
+            type Player = SchemaType<typeof Player>;
+
+            const Enemy = WalkableEntity.extends({
+                speed: "number",
+            }, 'Enemy');
+            type Enemy = SchemaType<typeof Enemy>;
+
+            function createEntity(entity: Entity) {
+                return entity;
+            }
+
+            function createWalkableEntity(entity: WalkableEntity) {
+                return entity;
+            }
+
+            assert.ok(createEntity(new Entity()) instanceof Entity);
+            assert.ok(createEntity(new Player()) instanceof Player);
+            assert.ok(createEntity(new Enemy()) instanceof Enemy);
+
+            assert.ok(createWalkableEntity(new WalkableEntity()) instanceof WalkableEntity);
+            assert.ok(createWalkableEntity(new Player()) instanceof Player);
+            assert.ok(createWalkableEntity(new Enemy()) instanceof Enemy);
+        })
 
         it("inheritance / instanceof should work", () => {
             const Entity = schema({
@@ -294,6 +331,70 @@ describe("Definition Tests", () => {
             assert.ok(state.default_null === null);
         })
 
+        it("should respect inheritance, including methods and default values", () => {
+            let v1this: any = undefined;
+            let v2this: any = undefined;
+            let v3this: any = undefined;
+
+            const V1 = schema({
+                x: { type: "number", default: 10 },
+                method1() { return 10; },
+                shared() {
+                    v1this = this;
+                    return 100;
+                }
+            });
+            const V2 = V1.extends({
+                y: { type: "number", default: 20 },
+                method2() { return this.method1() + 20; },
+                shared() {
+                    v2this = this;
+                    return V1.prototype.shared.call(this) + 100;
+                }
+            });
+            const V3 = V2.extends({
+                z: { type: "number", default: 30 },
+                method3() { return this.method2() + 30; },
+                shared() {
+                    v3this = this;
+                    return V2.prototype.shared.call(this) + 100;
+                }
+            });
+
+            const v1 = new V1();
+            assert.strictEqual(v1.x, 10);
+            assert.strictEqual(v1.method1(), 10);
+            assert.strictEqual(v1.shared(), 100);
+            assert.ok(v1 instanceof V1);
+            assert.ok(v1this instanceof V1);
+            assert.ok(!(v1 instanceof V2));
+            assert.ok(!(v1 instanceof V3));
+
+            const v2 = new V2();
+            assert.strictEqual(v2.x, 10);
+            assert.strictEqual(v2.y, 20);
+            assert.strictEqual(v2.method1(), 10);
+            assert.strictEqual(v2.method2(), 30);
+            assert.strictEqual(v2.shared(), 200);
+            assert.ok(v2 instanceof V1);
+            assert.ok(v2 instanceof V2);
+            assert.ok(v2this instanceof V2);
+            assert.ok(!(v2 instanceof V3));
+
+            const v3 = new V3();
+            assert.strictEqual(v3.x, 10);
+            assert.strictEqual(v3.y, 20);
+            assert.strictEqual(v3.z, 30);
+            assert.strictEqual(v3.method1(), 10);
+            assert.strictEqual(v3.method2(), 30);
+            assert.strictEqual(v3.method3(), 60);
+            assert.strictEqual(v3.shared(), 300);
+            assert.ok(v3 instanceof V1);
+            assert.ok(v3 instanceof V2);
+            assert.ok(v3 instanceof V3);
+            assert.ok(v3this instanceof V3);
+        });
+
         it("should allow to define methods", () => {
             const State = schema({
                 x: "number",
@@ -312,6 +413,188 @@ describe("Definition Tests", () => {
 
             decodedState.decode(state.encodeAll());
             assert.strictEqual(decodedState.x, 10);
+        });
+
+        it("initialize should respect inheritance", () => {
+            const V1 = schema({
+                x: "number",
+                method() {
+                },
+                initialize(props: { x?: number }) {
+                    if (props.x !== undefined) {
+                        this.x = props.x * 2;
+                    }
+                }
+            });
+
+            const V2 = V1.extends({
+                y: { type: "number", default: 20 },
+                initialize(props: { x?: number, y?: number }) {
+                    V1.prototype.initialize.call(this, props);
+                    if (props.y !== undefined) {
+                        this.y = props.y * 2;
+                    }
+                }
+            });
+
+            const V3 = V2.extends({
+                z: { type: "number", default: 30 },
+                initialize(props: { x?: number, y?: number, z?: number }) {
+                    V2.prototype.initialize.call(this, props);
+                    if (props.z !== undefined) {
+                        this.z = props.z * 2;
+                    }
+                }
+            });
+
+            const v1 = new V1({ x: 10 });
+            assert.strictEqual(v1.x, 20);
+            assert.ok(v1 instanceof V1);
+            assert.ok(!(v1 instanceof V2));
+            assert.ok(!(v1 instanceof V3));
+
+            const v2 = new V2({ x: 10, y: 20 });
+            assert.strictEqual(v2.x, 20);
+            assert.strictEqual(v2.y, 40);
+            assert.ok(v2 instanceof V1);
+            assert.ok(v2 instanceof V2);
+            assert.ok(!(v2 instanceof V3));
+
+            const v3 = new V3({ x: 10, y: 20, z: 30 });
+            assert.strictEqual(v3.x, 20);
+            assert.strictEqual(v3.y, 40);
+            assert.strictEqual(v3.z, 60);
+            assert.ok(v3 instanceof V1);
+            assert.ok(v3 instanceof V2);
+            assert.ok(v3 instanceof V3);
+        });
+
+        describe("initialize", () => {
+            it("should accept default values", () => {
+                const State = schema({
+                    x: { type: "number", default: 10 },
+                    y: "number",
+                    z: "number"
+                });
+
+                const state = new State({ x: 20, y: 30, z: 40 });
+                assert.strictEqual(state.x, 20);
+                assert.strictEqual(state.y, 30);
+                assert.strictEqual(state.z, 40);
+            });
+
+            it("should allow to specify or left unspecified the initialize method", () => {
+                const NoInit = schema({
+                    x: "number",
+                    initialize() { this.x = 10; }
+                });
+
+                const noInit = new NoInit();
+                assert.strictEqual(noInit.x, 10);
+
+                // @ts-expect-error
+                const noInitWithArgs = new NoInit({ x: 10 });
+
+                const WithInit = schema({
+                    x: "number",
+                    initialize(props: { x: number }) {
+                        this.x = props.x;
+                    }
+                });
+                const WithInitExtend = NoInit.extends({
+                    y: "number",
+                    initialize(props: { y: number }) {
+                        NoInit.prototype.initialize.call(this, props);
+                        this.y = props.y;
+                    }
+                });
+
+                const withInit = new WithInit({ x: 20 });
+                assert.strictEqual(withInit.x, 20);
+
+                // @ts-expect-error
+                assert.throws(() => new WithInit());
+
+                const withInitExtend = new WithInitExtend({ y: 20 });
+                assert.strictEqual(withInitExtend.y, 20);
+                assert.strictEqual(withInitExtend.x, 10);
+            });
+
+            it("should allow initialize with multiple parameters", () => {
+                const InitParams = schema({
+                    one: "number",
+                    two: "number",
+                    initialize(one: number, two: number) {
+                        this.one = one;
+                        this.two = two;
+                    }
+                });
+
+                const initParams = new InitParams(1, 2);
+                assert.strictEqual(initParams.one, 1);
+                assert.strictEqual(initParams.two, 2);
+
+                // @ts-expect-error
+                new InitParams();
+            });
+
+            it("should infer initialize props by default", () => {
+                const Vec3 = schema({
+                    x: "number",
+                    y: "number",
+                    z: "number",
+                    initialize(props: any) {
+                        this.x = props.x;
+                        this.y = props.y;
+                        this.z = props.z;
+                    }
+                });
+
+                const vec3 = new Vec3({ x: 1, y: 2, z: 3 });
+                assert.strictEqual(vec3.x, 1);
+                assert.strictEqual(vec3.y, 2);
+                assert.strictEqual(vec3.z, 3);
+            });
+
+            it("should allow to define a class with a constructor", () => {
+                const State = schema({
+                    x: { type: "number", default: 10 },
+
+                    initialize (props: { x?: number }) {
+                        if (props.x !== undefined) {
+                            this.x = props.x;
+                        }
+                    }
+                });
+
+                const state = new State({});
+                assert.strictEqual(state.x, 10);
+
+                // Test with props
+                const stateWithProps = new State({ x: 5 });
+                assert.strictEqual(stateWithProps.x, 5);
+
+                // Test that init receives correct parameters
+                let receivedState: any, receivedProps: any;
+                const StateWithInitCheck = schema({
+                    x: "number",
+                    y: "number",
+
+                    initialize (props: { x: number, y: number }) {
+                        receivedState = this;
+                        receivedProps = props;
+                        this.x = props.x;
+                        this.y = props.y;
+                    }
+                });
+
+                const testState = new StateWithInitCheck({ x: 1, y: 2 });
+                assert.strictEqual(receivedState, testState);
+                assert.deepStrictEqual(receivedProps, { x: 1, y: 2 });
+                assert.strictEqual(testState.x, 1);
+                assert.strictEqual(testState.y, 2);
+            });
+
         });
 
     });

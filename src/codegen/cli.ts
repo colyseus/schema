@@ -1,7 +1,7 @@
 import argv from "./argv";
 import { generate } from "./api";
 
-const supportedTargets = {
+const supportedTargets: Record<string, string> = {
     csharp: 'generate for C#/Unity',
     cpp: 'generate for C++',
     haxe: 'generate for Haxe',

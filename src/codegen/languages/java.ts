@@ -1,7 +1,7 @@
 import { Class, Property, File, getCommentHeader, Context } from "../types";
 import { GenerateOptions } from "../api";
 
-const typeMaps = {
+const typeMaps: { [key: string]: string } = {
     "string": "String",
     "number": "float",
     "boolean": "boolean",
@@ -17,7 +17,7 @@ const typeMaps = {
     "float64": "double",
 }
 
-const typeInitializer = {
+const typeInitializer: { [key: string]: string } = {
     "string": '""',
     "number": "0",
     "boolean": "false",

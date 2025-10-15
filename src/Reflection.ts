@@ -117,11 +117,11 @@ export class Reflection extends Schema {
                         } else {
                             fieldType = Object.keys(field.type)[0];
 
-                            if (typeof (field.type[fieldType]) === "string") {
-                                fieldType += ":" + field.type[fieldType]; // array:string
+                            if (typeof (field.type[fieldType as keyof typeof field.type]) === "string") {
+                                fieldType += ":" + field.type[fieldType as keyof typeof field.type]; // array:string
 
                             } else {
-                                childTypeSchema = field.type[fieldType];
+                                childTypeSchema = field.type[fieldType as keyof typeof field.type];
                             }
                         }
 
@@ -145,7 +145,8 @@ export class Reflection extends Schema {
         }
 
         const buf = reflectionEncoder.encodeAll(it);
-        return Buffer.from(buf, 0, it.offset);
+        return buf.slice(0, it.offset)
+        // return Buffer.from(buf, 0, it.offset);
     }
 
     /**

@@ -7,7 +7,7 @@ import { GenerateOptions } from "../api";
     - Support importing Schema dependencies
 */
 
-const typeMaps = {
+const typeMaps: { [key: string]: string } = {
     "string": "string",
     "number": "number",
     "boolean": "boolean",
@@ -23,7 +23,8 @@ const typeMaps = {
     "float64": "number",
 }
 
-const distinct = (value, index, self) => self.indexOf(value) === index;
+const distinct = (value: string, index: number, self: string[]) =>
+    self.indexOf(value) === index;
 
 export function generate (context: Context, options: GenerateOptions): File[] {
     return context.classes.map(klass => ({

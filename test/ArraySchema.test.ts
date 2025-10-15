@@ -99,7 +99,7 @@ describe("ArraySchema Tests", () => {
                 @type("number") i: number;
             }
             class MyState extends Schema {
-                @type([Entity]) entities;
+                @type([Entity]) entities: Entity[];
             }
 
             const state = new MyState();
@@ -146,7 +146,7 @@ describe("ArraySchema Tests", () => {
                 @type("number") i: number;
             }
             class MyState extends Schema {
-                @type([Entity]) entities;
+                @type([Entity]) entities: Entity[];
             }
 
             const state = new MyState();
@@ -275,7 +275,7 @@ describe("ArraySchema Tests", () => {
                 @type("number") i: number;
             }
             class MyState extends Schema {
-                @type([Entity]) entities;
+                @type([Entity]) entities: Entity[];
             }
 
             const state = new MyState();
@@ -314,7 +314,7 @@ describe("ArraySchema Tests", () => {
             const state = new State();
             state.entities = new ArraySchema<Entity>();
 
-            const repopulateEntitiesArray = (count) => {
+            const repopulateEntitiesArray = (count: number) => {
                 for (let i = 0; i < count; i++) {
                     const ent = new Entity();
                     ent.thing = i;
@@ -1717,7 +1717,7 @@ describe("ArraySchema Tests", () => {
     it("updates an item after removing another", () => {
         class Item extends Schema {
             @type("string") name: string;
-            constructor(name) {
+            constructor(name: string) {
                 super();
                 this.name = name;
             }
@@ -1766,7 +1766,7 @@ describe("ArraySchema Tests", () => {
         class Item extends Schema {
             @type("string") name: string;
             @type("uint8") x: number;
-            constructor(name, x) {
+            constructor(name: string, x: number) {
                 super();
                 this.name = name;
                 this.x = x;
@@ -1776,7 +1776,7 @@ describe("ArraySchema Tests", () => {
             @type([Item]) items = new ArraySchema();
         }
         // Just updates x position on item
-        const updateItem = (item, idx) => item.x = idx * 10;
+        const updateItem = (item: Item, idx: number) => item.x = idx * 10;
 
         const state = new State();
         const decodedState = new State();
@@ -1871,7 +1871,7 @@ describe("ArraySchema Tests", () => {
     it("keeps items in order after splicing multiple items in one go", () => {
         class Item extends Schema {
             @type("string") name: string;
-            constructor(name) {
+            constructor(name: string) {
                 super();
                 this.name = name;
             }
@@ -1935,7 +1935,7 @@ describe("ArraySchema Tests", () => {
         class Item extends Schema {
             @type("uint8") id: number;
             @type("string") name: string;
-            constructor(name) {
+            constructor(name: string) {
                 super();
                 this.name = name;
                 this.id = Math.round(Math.random() * 250);

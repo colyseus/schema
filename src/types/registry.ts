@@ -18,8 +18,8 @@ export function registerType(identifier: string, definition: TypeDefinition) {
         registeredTypes[identifier] = definition;
     }
 
-    if (definition.encode) { encode[identifier] = definition.encode; }
-    if (definition.decode) { decode[identifier] = definition.decode; }
+    if (definition.encode) { (encode as any)[identifier] = definition.encode; }
+    if (definition.decode) { (decode as any)[identifier] = definition.decode; }
 }
 
 export function getIdentifier(klass: any): string {

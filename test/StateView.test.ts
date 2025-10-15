@@ -879,7 +879,7 @@ describe("StateView", () => {
             }
 
             class ListComponent extends Component {
-                @type(["string"]) list = new ArraySchema<string>();
+                @type(["string"]) list: string[] = new ArraySchema<string>();
             }
 
             class TagComponent extends Component {
@@ -888,7 +888,7 @@ describe("StateView", () => {
 
             class Entity extends Schema {
                 @type("string") id: string = nanoid(9);
-                @type([Component]) components = new ArraySchema<Component>();
+                @type([Component]) components: Component[] = new ArraySchema<Component>();
             }
 
             class MyRoomState extends Schema {
@@ -962,7 +962,7 @@ describe("StateView", () => {
             }
 
             class ListComponent extends Component {
-                @type(["string"]) list = new ArraySchema<string>();
+                @type(["string"]) list: string[] = new ArraySchema<string>();
             }
 
             class TagComponent extends Component {
@@ -971,7 +971,7 @@ describe("StateView", () => {
 
             class Entity extends Schema {
                 @type("string") id: string = nanoid(9);
-                @type([Component]) components = new ArraySchema<Component>();
+                @type([Component]) components: Component[] = new ArraySchema<Component>();
             }
 
             class MyRoomState extends Schema {
@@ -1980,9 +1980,9 @@ describe("StateView", () => {
             }
             class Quest extends Schema {
                 @type('string') name: string;
-                @type([QuestRequirement]) requirements = new ArraySchema<QuestRequirement>();
-                @type([QuestReward]) rewards = new ArraySchema<QuestReward>();
-                @type([QuestCondition]) conditions = new ArraySchema<QuestCondition>();
+                @type([QuestRequirement]) requirements: QuestRequirement[] = new ArraySchema<QuestRequirement>();
+                @type([QuestReward]) rewards: QuestReward[] = new ArraySchema<QuestReward>();
+                @type([QuestCondition]) conditions: QuestCondition[] = new ArraySchema<QuestCondition>();
             }
             class QuestBook extends Component {
                 @type([Quest]) finished: Quest[] = new ArraySchema<Quest>();
@@ -1990,7 +1990,7 @@ describe("StateView", () => {
             }
             class Entity extends Schema {
                 @type("string") id: string = nanoid(9);
-                @type([Component]) components = new ArraySchema<Component>();
+                @type([Component]) components: Component[] = new ArraySchema<Component>();
             }
 
             class MyRoomState extends Schema {
@@ -2494,12 +2494,12 @@ describe("StateView", () => {
             class Entity extends Schema {
                 @type("string") id: string = nanoid(9);
                 @type([Component]) components = new ArraySchema<Component>();
-                @type(Component) component;
+                @type(Component) component: Component;
             }
 
             class MyRoomState extends Schema {
                 @view() @type({ map: Entity }) entities = new Map<string, Entity>();
-                @type(Component) component;
+                @type(Component) component: Component;
             }
 
 

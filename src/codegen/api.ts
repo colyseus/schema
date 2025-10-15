@@ -57,7 +57,7 @@ export function generate(targetId: string, options: GenerateOptions) {
 
 function recursiveFiles(dir: string): string[] {
     const files = fs.readdirSync(dir, { withFileTypes: true });
-    let collect = [];
+    let collect: string[] = [];
     files.forEach(file => {
         const filename = path.resolve(dir, file.name);
         file.isDirectory() ? collect.push(...recursiveFiles(filename)) : collect.push(filename);

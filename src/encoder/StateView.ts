@@ -1,9 +1,10 @@
-import { ChangeSet, ChangeTree, IndexedOperations, Ref } from "./ChangeTree";
+import { ChangeTree, IndexedOperations, Ref } from "./ChangeTree";
 import { $changes, $fieldIndexesByViewTag, $viewFieldIndexes } from "../types/symbols";
 import { DEFAULT_VIEW_TAG } from "../annotations";
 import { OPERATION } from "../encoding/spec";
 import { Metadata } from "../Metadata";
 import { spliceOne } from "../types/utils";
+import type { Schema } from "../Schema";
 
 export function createView(iterable: boolean = false) {
     return new StateView(iterable);
@@ -66,7 +67,7 @@ export class StateView {
         }
 
         // FIXME: ArraySchema/MapSchema do not have metadata
-        const metadata: Metadata = obj.constructor[Symbol.metadata];
+        const metadata: Metadata = (obj.constructor as typeof Schema)[Symbol.metadata];
         this.visible.add(changeTree);
 
         // add to iterable list (only the explicitly added items)

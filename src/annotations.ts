@@ -8,8 +8,7 @@ import { TypeDefinition, getType } from "./types/registry";
 import { OPERATION } from "./encoding/spec";
 import { TypeContext } from "./types/TypeContext";
 import { assertInstanceType, assertType } from "./encoding/assert";
-import type { Ref } from "./encoder/ChangeTree";
-import type { DefinedSchemaType, InferValueType } from "./types/HelperTypes";
+import type { InferValueType, InferSchemaInstanceType, AssignableProps, IsNever } from "./types/HelperTypes";
 import { CollectionSchema } from "./types/custom/CollectionSchema";
 import { SetSchema } from "./types/custom/SetSchema";
 
@@ -48,8 +47,8 @@ export interface TypeOptions {
 
 export const DEFAULT_VIEW_TAG = -1;
 
-export function entity(constructor) {
-    TypeContext.register(constructor);
+export function entity(constructor: any): any {
+    TypeContext.register(constructor as typeof Schema);
     return constructor;
 }
 
@@ -366,9 +365,9 @@ export function getPropertyDescriptor(
     complexTypeKlass: TypeDefinition,
 ) {
     return {
-        get: function () { return this[fieldCached]; },
+        get: function (this: Schema) { return this[fieldCached as keyof Schema]; },
         set: function (this: Schema, value: any) {
-            const previousValue = this[fieldCached] ?? undefined;
+            const previousValue = this[fieldCached as keyof Schema] ?? undefined;
 
             // skip if value is the same as cached.
             if (value === previousValue) { return; }
@@ -388,6 +387,11 @@ export function getPropertyDescriptor(
                         value = new MapSchema(value);
                     }
 
+                    // // automaticallty transform Array into SetSchema
+                    // if (complexTypeKlass.constructor === SetSchema && !(value instanceof SetSchema)) {
+                    //     value = new SetSchema(value);
+                    // }
+
                     value[$childType] = type;
 
                 } else if (typeof (type) !== "string") {
@@ -404,17 +408,17 @@ export function getPropertyDescriptor(
                 //
                 if (previousValue !== undefined && previousValue[$changes]) {
                     changeTree.root?.remove(previousValue[$changes]);
-                    this.constructor[$track](changeTree, fieldIndex, OPERATION.DELETE_AND_ADD);
+                    (this.constructor as typeof Schema)[$track](changeTree, fieldIndex, OPERATION.DELETE_AND_ADD);
 
                 } else {
-                    this.constructor[$track](changeTree, fieldIndex, OPERATION.ADD);
+                    (this.constructor as typeof Schema)[$track](changeTree, fieldIndex, OPERATION.ADD);
                 }
 
                 //
                 // call setParent() recursively for this and its child
                 // structures.
                 //
-                (value as Ref)[$changes]?.setParent(this, changeTree.root, fieldIndex);
+                value[$changes]?.setParent(this, changeTree.root, fieldIndex);
 
             } else if (previousValue !== undefined) {
                 //
@@ -423,7 +427,7 @@ export function getPropertyDescriptor(
                 this[$changes].delete(fieldIndex);
             }
 
-            this[fieldCached] = value;
+            this[fieldCached as keyof Schema] = value;
         },
 
         enumerable: true,
@@ -492,18 +496,67 @@ export function defineTypes(
     return target;
 }
 
-export interface SchemaWithExtends<T extends Definition, P extends typeof Schema> extends DefinedSchemaType<T, P> {
-    extends: <T2 extends Definition>(
-        fields: T2,
+// Helper type to extract InitProps from initialize method
+// Supports both single object parameter and multiple parameters
+// If no initialize method is specified, use AssignableProps for field initialization
+type ExtractInitProps<T> = T extends { initialize: (props: infer P) => void }
+    ? P extends object
+        ? P
+        : never
+    : T extends { initialize: (...args: infer P) => void }
+        ? P extends readonly []
+            ? never
+            : P
+        : T extends Definition
+            ? AssignableProps<InferSchemaInstanceType<T>>
+            : never;
+
+// Helper type to determine if InitProps should be required
+type IsInitPropsRequired<T> = T extends { initialize: (props: any) => void }
+    ? true
+    : T extends { initialize: (...args: any[]) => void }
+        ? true
+        : false;
+
+export interface SchemaWithExtends<T extends Definition, P extends typeof Schema, > {
+    extends: <T2 extends Definition = Definition>(
+        fields: T2 & ThisType<InferSchemaInstanceType<T & T2>>,
         name?: string
-    ) => SchemaWithExtends<T & T2, typeof this>;
+    ) => SchemaWithExtendsConstructor<T & T2, ExtractInitProps<T2>, P>;
 }
 
-export function schema<T extends Definition, P extends typeof Schema = typeof Schema>(
-    fieldsAndMethods: T,
+/**
+ * Get the type of the schema defined via `schema({...})` method.
+ *
+ * @example
+ * const Entity = schema({
+ *     x: "number",
+ *     y: "number",
+ * });
+ * type Entity = SchemaType<typeof Entity>;
+ */
+export type SchemaType<T extends {'~type': any}> = T['~type'];
+
+export interface SchemaWithExtendsConstructor<
+    T extends Definition,
+    InitProps,
+    P extends typeof Schema
+> extends SchemaWithExtends<T, P> {
+    '~type': InferSchemaInstanceType<T>;
+    new (...args: [InitProps] extends [never] ? [] : InitProps extends readonly any[] ? InitProps : IsInitPropsRequired<T> extends true ? [InitProps] : [InitProps?]): InferSchemaInstanceType<T> & InstanceType<P>;
+    prototype: InferSchemaInstanceType<T> & InstanceType<P> & {
+        initialize(...args: [InitProps] extends [never] ? [] : InitProps extends readonly any[] ? InitProps : [InitProps]): void;
+    };
+}
+
+export function schema<
+    T extends Record<string, DefinitionType>,
+    P extends typeof Schema = typeof Schema
+>(
+    fieldsAndMethods: T & ThisType<InferSchemaInstanceType<T>>,
     name?: string,
     inherits: P = Schema as P
-): SchemaWithExtends<T, P> {
+): SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P> {
     const fields: any = {};
     const methods: any = {};
 
@@ -511,7 +564,7 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
     const viewTagFields: any = {};
 
     for (let fieldName in fieldsAndMethods) {
-        const value = fieldsAndMethods[fieldName] as DefinitionType;
+        const value: any = fieldsAndMethods[fieldName] as DefinitionType;
         if (typeof (value) === "object") {
             if (value['view'] !== undefined) {
                 viewTagFields[fieldName] = (typeof (value['view']) === "boolean")
@@ -565,39 +618,49 @@ export function schema<T extends Definition, P extends typeof Schema = typeof Sc
 
     const getDefaultValues = () => {
         const defaults: any = {};
+
+        // use current class default values
         for (const fieldName in defaultValues) {
             const defaultValue = defaultValues[fieldName];
-            // If the default value has a clone method, use it to get a fresh instance
             if (defaultValue && typeof defaultValue.clone === 'function') {
+                // complex, cloneable values, e.g. Schema, ArraySchema, MapSchema, CollectionSchema, SetSchema
                 defaults[fieldName] = defaultValue.clone();
             } else {
-                // Otherwise, use the value as-is (for primitives and non-cloneable objects)
+                // primitives and non-cloneable values
                 defaults[fieldName] = defaultValue;
             }
         }
         return defaults;
     };
 
-    const klass = Metadata.setFields<any>(class extends inherits {
-        constructor (...args: any[]) {
-            args[0] = Object.assign({}, getDefaultValues(), args[0]);
-            super(...args);
+    /** @codegen-ignore */
+    const klass = Metadata.setFields<any>(class extends (inherits as any) {
+        constructor(...args: any[]) {
+            super(Object.assign({}, getDefaultValues(), args[0] || {}));
+
+            // call initialize method
+            if (methods.initialize && typeof methods.initialize === 'function') {
+                methods.initialize.apply(this, args);
+            }
         }
-    }, fields) as SchemaWithExtends<T, P>;
+    }, fields) as SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P>;
+
+    // Store the getDefaultValues function on the class for inheritance
+    (klass as any)._getDefaultValues = getDefaultValues;
+
+    // Add methods to the prototype
+    Object.assign(klass.prototype, methods);
 
     for (let fieldName in viewTagFields) {
         view(viewTagFields[fieldName])(klass.prototype, fieldName);
-    }
-
-    for (let methodName in methods) {
-        klass.prototype[methodName] = methods[methodName];
     }
 
     if (name) {
         Object.defineProperty(klass, "name", { value: name });
     }
 
-    klass.extends = (fields, name) => schema(fields, name, klass);
+    klass.extends = <T2 extends Definition = Definition>(fields: T2, name?: string) =>
+        schema<T2>(fields, name, klass as any) as SchemaWithExtendsConstructor<T & T2, ExtractInitProps<T2>, P>;
 
     return klass;
 }

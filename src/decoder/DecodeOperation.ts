@@ -33,10 +33,10 @@ export type DecodeOperation<T extends Schema = any> = (
     allChanges: DataChange[],
 ) => number | void;
 
-export function decodeValue(
+export function decodeValue<T extends Ref>(
     decoder: Decoder,
     operation: OPERATION,
-    ref: Ref,
+    ref: T,
     index: number,
     type: any,
     bytes: Buffer,
@@ -44,7 +44,7 @@ export function decodeValue(
     allChanges: DataChange[],
 ) {
     const $root = decoder.root;
-    const previousValue = ref[$getByIndex](index);
+    const previousValue = (ref as any)[$getByIndex](index) as T;
 
     let value: any;
 
@@ -58,7 +58,7 @@ export function decodeValue(
         // Delete operations
         //
         if (operation !== OPERATION.DELETE_AND_ADD) {
-            ref[$deleteByIndex](index);
+            (ref as any)[$deleteByIndex](index);
         }
 
         value = undefined;
@@ -93,7 +93,7 @@ export function decodeValue(
         //
         // primitive value (number, string, boolean, etc)
         //
-        value = decode[type as string](bytes, it);
+        value = (decode as any)[type](bytes, it);
 
     } else {
         const typeDef = getType(Object.keys(type)[0]);
@@ -113,7 +113,7 @@ export function decodeValue(
                 //
                 // enqueue onRemove if structure has been replaced.
                 //
-                const entries: IterableIterator<[any, any]> = previousValue.entries();
+                const entries: IterableIterator<[any, any]> = (previousValue as any).entries();
                 let iter: IteratorResult<[any, any]>;
                 while ((iter = entries.next()) && !iter.done) {
                     const [key, value] = iter.value;
@@ -146,15 +146,15 @@ export function decodeValue(
     return { value, previousValue };
 }
 
-export const decodeSchemaOperation: DecodeOperation = function (
+export const decodeSchemaOperation: DecodeOperation = function <T extends Schema>(
     decoder: Decoder<any>,
     bytes: Buffer,
     it: Iterator,
-    ref: Ref,
+    ref: T,
     allChanges: DataChange[],
 ) {
     const first_byte = bytes[it.offset++];
-    const metadata: Metadata = ref.constructor[Symbol.metadata];
+    const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
 
     // "compressed" index + operation
     const operation = (first_byte >> 6) << 6
@@ -179,7 +179,7 @@ export const decodeSchemaOperation: DecodeOperation = function (
     );
 
     if (value !== null && value !== undefined) {
-        ref[field.name] = value;
+        ref[field.name as keyof T] = value;
     }
 
     // add change
@@ -218,20 +218,20 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     }
 
     const index = decode.number(bytes, it);
-    const type = ref[$childType];
+    const type = (ref as any)[$childType];
 
     let dynamicIndex: number | string;
 
     if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
-        if (typeof(ref['set']) === "function") {
+        if (typeof((ref as any)['set']) === "function") {
             dynamicIndex = decode.string(bytes, it); // MapSchema
-            ref['setIndex'](index, dynamicIndex);
+            (ref as any)['setIndex'](index, dynamicIndex);
         } else {
             dynamicIndex = index; // ArraySchema
         }
     } else {
         // get dynamic index from "ref"
-        dynamicIndex = ref['getIndex'](index);
+        dynamicIndex = (ref as any)['getIndex'](index);
     }
 
     const { value, previousValue } = decodeValue(
@@ -246,20 +246,20 @@ export const decodeKeyValueOperation: DecodeOperation = function (
     );
 
     if (value !== null && value !== undefined) {
-        if (typeof(ref['set']) === "function") {
+        if (typeof((ref as any)['set']) === "function") {
             // MapSchema
-            (ref as MapSchema)['$items'].set(dynamicIndex as string, value);
+            (ref as any)['$items'].set(dynamicIndex as string, value);
 
-        } else if (typeof(ref['$setAt']) === "function") {
+        } else if (typeof((ref as any)['$setAt']) === "function") {
             // ArraySchema
-            (ref as ArraySchema)['$setAt'](index, value, operation);
+            (ref as any)['$setAt'](index, value, operation);
 
-        } else if (typeof(ref['add']) === "function") {
+        } else if (typeof((ref as any)['add']) === "function") {
             // CollectionSchema && SetSchema
-            const index = (ref as CollectionSchema).add(value);
+            const index = (ref as any).add(value);
 
             if (typeof(index) === "number") {
-                ref['setIndex'](index, index);
+                (ref as any)['setIndex'](index, index);
             }
         }
     }

@@ -49,7 +49,7 @@ describe("Type: Schema", () => {
 
         it("uint16", () => {
             class Data extends Schema {
-                @type("uint16") uint16;
+                @type("uint16") uint16: number;
             }
 
             let data = new Data();
@@ -65,7 +65,7 @@ describe("Type: Schema", () => {
 
         it("uint32", () => {
             class Data extends Schema {
-                @type("uint32") uint32;
+                @type("uint32") uint32: number;
             }
 
             let data = new Data();
@@ -81,7 +81,7 @@ describe("Type: Schema", () => {
 
         it("uint64", () => {
             class Data extends Schema {
-                @type("uint64") uint64;
+                @type("uint64") uint64: number;
             }
 
             let data = new Data();
@@ -97,7 +97,7 @@ describe("Type: Schema", () => {
 
         it("int8", () => {
             class Data extends Schema {
-                @type("int8") int8;
+                @type("int8") int8: number;
             }
 
             let data = new Data();
@@ -113,7 +113,7 @@ describe("Type: Schema", () => {
 
         it("int16", () => {
             class Data extends Schema {
-                @type("int16") int16;
+                @type("int16") int16: number;
             }
 
             let data = new Data();
@@ -129,7 +129,7 @@ describe("Type: Schema", () => {
 
         it("int32", () => {
             class Data extends Schema {
-                @type("int32") int32;
+                @type("int32") int32: number;
             }
 
             let data = new Data();
@@ -145,7 +145,7 @@ describe("Type: Schema", () => {
 
         it("int64", () => {
             class Data extends Schema {
-                @type("int64") int64;
+                @type("int64") int64: number;
             }
 
             let data = new Data();
@@ -159,7 +159,7 @@ describe("Type: Schema", () => {
 
         it("float32", () => {
             class Data extends Schema {
-                @type("float32") float32;
+                @type("float32") float32: number;
             }
 
             let data = new Data();
@@ -175,7 +175,7 @@ describe("Type: Schema", () => {
 
         it("float64", () => {
             class Data extends Schema {
-                @type("float64") float64;
+                @type("float64") float64: number;
             }
 
             let data = new Data();
@@ -231,7 +231,7 @@ describe("Type: Schema", () => {
 
         it("boolean", () => {
             class Data extends Schema {
-                @type("boolean") bool;
+                @type("boolean") bool: boolean;
             }
 
             let data = new Data();
@@ -253,7 +253,7 @@ describe("Type: Schema", () => {
 
         it("string", () => {
             class Data extends Schema {
-                @type("string") str;
+                @type("string") str: string;
             }
 
             let data = new Data();
@@ -270,7 +270,7 @@ describe("Type: Schema", () => {
 
         it("string with utf8", () => {
             class Data extends Schema {
-                @type("string") utf8;
+                @type("string") utf8: string;
             }
 
             let data = new Data();
@@ -286,7 +286,7 @@ describe("Type: Schema", () => {
 
         it("long string", () => {
             class Data extends Schema {
-                @type("string") longstring;
+                @type("string") longstring: string;
             }
 
             const longstring = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur ac justo quis massa ultricies dictum cursus at tellus. Curabitur laoreet ipsum eu risus convallis rutrum. Integer bibendum hendrerit nisl, eget vestibulum nisi interdum sed. Pellentesque lacus risus, luctus a iaculis non, vulputate eget massa. Nunc aliquet venenatis lorem, id viverra lectus rutrum a. Nulla nunc mauris, euismod a est nec, scelerisque maximus felis. Sed vel lobortis velit, non congue lectus. In eget lectus at sem bibendum vestibulum in non turpis.";
@@ -624,6 +624,7 @@ describe("Type: Schema", () => {
 
             assert.deepStrictEqual({ players: { one: { str: 'Hello', num: 123 } } }, decodedState.toJSON());
         });
+
     });
 
     describe("encoding/decoding", () => {
@@ -1459,6 +1460,28 @@ describe("Type: Schema", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
+
+        xit("should allow to call .assign() ArraySchema and MapSchema using .toJSON() response", () => {
+            class Prop extends Schema {
+                @type("string") name: string;
+            }
+            class Item extends Schema {
+                @type({ map: Prop }) props = new MapSchema<Prop>();
+            }
+            class MyState extends Schema {
+                @type("string") str: string;
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+            const state = new MyState();
+            state.str = "Hello world";
+            state.items.push(new Item().assign({ props: new MapSchema<Prop>().set('one', new Prop().assign({ name: "Hello" })) }));
+
+            const state2 = new MyState();
+            state2.assign(state.toJSON());
+            assert.deepStrictEqual(state2.toJSON(), state.toJSON());
+            assertDeepStrictEqualEncodeAll(state2);
+        });
+
     });
 
     describe("move and nullify previous", () => {

@@ -48,13 +48,13 @@ describe("Performance", () => {
 
         assertExecutionTime(() => {
             for (let i = 0; i < totalItems; i++) {
-                state.mapOfPlayers["player" + i] = new Player("Player " + i, getRandomNumber(), getRandomNumber());
+                state.mapOfPlayers.set("player" + i, new Player("Player " + i, getRandomNumber(), getRandomNumber()));
             }
         }, `inserting ${totalItems} items to map`, 3500); // 2700, TODO: improve this value!
 
         assertExecutionTime(() => state.encode(), `encoding ${totalItems} map entries`, 300); // 150
 
-        const player: Player = state.mapOfPlayers[`player${Math.floor(totalItems / 2)}`];
+        const player: Player = state.mapOfPlayers.get(`player${Math.floor(totalItems / 2)}`);
         player.x = getRandomNumber();
         player.y = getRandomNumber();
 

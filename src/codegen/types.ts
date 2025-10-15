@@ -89,7 +89,7 @@ export interface IStructure {
     context: Context;
     name: string;
     properties: Property[];
-    addProperty(property: Property);
+    addProperty(property: Property): void;
 }
 
 export class Interface implements IStructure {
@@ -97,7 +97,7 @@ export class Interface implements IStructure {
     name: string;
     properties: Property[] = [];
 
-    addProperty(property: Property) {
+    addProperty(property: Property): void {
         if (property.type.indexOf("[]") >= 0) {
             // is array!
             property.childType = property.type.match(/([^\[]+)/i)[1];

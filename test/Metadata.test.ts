@@ -27,7 +27,7 @@ describe("Metadata Tests", () => {
         const decodedState = createInstanceFromReflection(state);
         decodedState.decode(state.encodeAll());
 
-        assert.strictEqual(RawState[Symbol.metadata][$numFields], 1);
+        assert.strictEqual((RawState as any)[Symbol.metadata][$numFields], 1);
         assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
     });
 
@@ -66,7 +66,7 @@ describe("Metadata Tests", () => {
         const decodedState = createInstanceFromReflection(state);
         decodedState.decode(state.encodeAll());
 
-        assert.strictEqual(Raw2State[Symbol.metadata][$numFields], 2);
+        assert.strictEqual((Raw2State as any)[Symbol.metadata][$numFields], 2);
         assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
     });
 

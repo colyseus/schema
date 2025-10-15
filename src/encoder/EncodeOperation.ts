@@ -32,7 +32,7 @@ export function encodeValue(
     it: Iterator,
 ) {
     if (typeof (type) === "string") {
-        encode[type]?.(bytes, value, it);
+        (encode as any)[type]?.(bytes, value, it);
 
     } else if (type[Symbol.metadata] !== undefined) {
         //
@@ -59,10 +59,10 @@ export function encodeValue(
  * Used for Schema instances.
  * @private
  */
-export const encodeSchemaOperation: EncodeOperation = function (
+export const encodeSchemaOperation: EncodeOperation = function <T extends Schema> (
     encoder: Encoder,
     bytes: Buffer,
-    changeTree: ChangeTree<Schema>,
+    changeTree: ChangeTree<T>,
     index: number,
     operation: OPERATION,
     it: Iterator,
@@ -86,7 +86,7 @@ export const encodeSchemaOperation: EncodeOperation = function (
         encoder,
         bytes,
         metadata[index].type,
-        ref[field.name],
+        ref[field.name as keyof T],
         operation,
         it
     );

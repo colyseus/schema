@@ -2,12 +2,12 @@
  * @author Ethan Davis
  * https://github.com/ethanent/gar
  */
-export default (sargs): any => {
-	let props = {}
-	let lones = []
+export default (sargs: string[]): any => {
+	let props: any = {}
+	let lones: any = []
 
-	const convertIfApplicable = (value) => (isNaN(value) ? (value.toString().toLowerCase() === 'true' ? true : (value.toString().toLowerCase() === 'false' ? false : value)) : Number(value))
-	const removeStartHyphens = (value) => value.replace(/^\-+/g, '')
+	const convertIfApplicable = (value: any) => (isNaN(value) ? (value.toString().toLowerCase() === 'true' ? true : (value.toString().toLowerCase() === 'false' ? false : value)) : Number(value))
+	const removeStartHyphens = (value: string) => value.replace(/^\-+/g, '')
 
 	for (let i = 0; i < sargs.length; i++) {
 		const equalsIndex = sargs[i].indexOf('=')

@@ -2,12 +2,15 @@ import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
 import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd } from "../symbols";
 import { Collection } from "../HelperTypes";
-import { ChangeTree } from "../../encoder/ChangeTree";
+import { ChangeTree, type IRef } from "../../encoder/ChangeTree";
 import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
 import type { StateView } from "../../encoder/StateView";
+import type { Schema } from "../../Schema";
 
-export class SetSchema<V=any> implements Collection<number, V> {
+export class SetSchema<V=any> implements Collection<number, V>, IRef {
+    [$changes]: ChangeTree;
+    protected [$childType]: string | typeof Schema;
 
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
@@ -163,11 +166,11 @@ export class SetSchema<V=any> implements Collection<number, V> {
         return this.$indexes.get(index);
     }
 
-    protected [$getByIndex](index: number) {
+    [$getByIndex](index: number): any {
         return this.$items.get(this.$indexes.get(index));
     }
 
-    protected [$deleteByIndex](index: number) {
+    [$deleteByIndex](index: number): void {
         const key = this.$indexes.get(index);
         this.$items.delete(key);
         this.$indexes.delete(index);
@@ -184,7 +187,7 @@ export class SetSchema<V=any> implements Collection<number, V> {
     toJSON() {
         const values: V[] = [];
 
-        this.forEach((value, key) => {
+        this.forEach((value: any, key: number) => {
             values.push(
                 (typeof (value['toJSON']) === "function")
                     ? value['toJSON']()
@@ -208,7 +211,7 @@ export class SetSchema<V=any> implements Collection<number, V> {
         } else {
             // server-side
             cloned = new SetSchema();
-            this.forEach((value) => {
+            this.forEach((value: any) => {
                 if (value[$changes]) {
                     cloned.add(value['clone']());
                 } else {

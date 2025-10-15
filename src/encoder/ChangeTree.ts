@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec";
 import { Schema } from "../Schema";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refTypeFieldIndexes, $viewFieldIndexes } from "../types/symbols";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refTypeFieldIndexes, $viewFieldIndexes, type $deleteByIndex } from "../types/symbols";
 
 import type { MapSchema } from "../types/custom/MapSchema";
 import type { ArraySchema } from "../types/custom/ArraySchema";
@@ -19,6 +19,12 @@ declare global {
         [$encoder]?: EncodeOperation,
         [$decoder]?: DecodeOperation,
     }
+}
+
+export interface IRef {
+    [$changes]?: ChangeTree;
+    [$getByIndex]?: (index: number, isEncodeAll?: boolean) => any;
+    [$deleteByIndex]?: (index: number) => void;
 }
 
 export type Ref = Schema
@@ -76,7 +82,7 @@ export function setOperationAtIndex(changeSet: ChangeSet, index: number) {
 }
 
 export function deleteOperationAtIndex(changeSet: ChangeSet, index: number | string) {
-    let operationsIndex = changeSet.indexes[index];
+    let operationsIndex = changeSet.indexes[index as any as number];
     if (operationsIndex === undefined) {
         //
         // if index is not found, we need to find the last operation
@@ -88,7 +94,7 @@ export function deleteOperationAtIndex(changeSet: ChangeSet, index: number | str
         index = Object.entries(changeSet.indexes).find(([_, value]) => value === operationsIndex)?.[0];
     }
     changeSet.operations[operationsIndex] = undefined;
-    delete changeSet.indexes[index];
+    delete changeSet.indexes[index as any as number];
 }
 
 export function debugChangeSet(label: string, changeSet: ChangeSet) {
@@ -155,7 +161,7 @@ export class ChangeTree<T extends Ref = any> {
 
     constructor(ref: T) {
         this.ref = ref;
-        this.metadata = ref.constructor[Symbol.metadata];
+        this.metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
 
         //
         // Does this structure have "filters" declared?
@@ -227,8 +233,8 @@ export class ChangeTree<T extends Ref = any> {
         //
         // assign same parent on child structures
         //
-        if (this.ref[$childType]) {
-            if (typeof (this.ref[$childType]) !== "string") {
+        if ((this.ref as any)[$childType]) {
+            if (typeof ((this.ref as any)[$childType]) !== "string") {
                 // MapSchema / ArraySchema, etc.
                 for (const [key, value] of (this.ref as MapSchema).entries()) {
                     callback(value[$changes], this.indexes?.[key] ?? key);
@@ -238,7 +244,7 @@ export class ChangeTree<T extends Ref = any> {
         } else {
             for (const index of this.metadata?.[$refTypeFieldIndexes] ?? []) {
                 const field = this.metadata[index as any as number];
-                const value = this.ref[field.name];
+                const value = this.ref[field.name as keyof Ref];
                 if (!value) { continue; }
                 callback(value[$changes], index);
             }
@@ -303,8 +309,8 @@ export class ChangeTree<T extends Ref = any> {
             ? this.filteredChanges
             : this.changes;
 
-        const newIndexedOperations = {};
-        const newIndexes = {};
+        const newIndexedOperations: any = {};
+        const newIndexes: { [index: number]: number } = {};
         for (const index in this.indexedOperations) {
             newIndexedOperations[Number(index) + shiftIndex] = this.indexedOperations[index];
             newIndexes[Number(index) + shiftIndex] = changeSet.indexes[index];
@@ -331,7 +337,7 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     private _shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0, changeSet: ChangeSet) {
-        const newIndexes = {};
+        const newIndexes: { [index: number]: number } = {};
         let newKey = 0;
         for (const key in changeSet.indexes) {
             newIndexes[newKey++] = changeSet.indexes[key];
@@ -369,7 +375,7 @@ export class ChangeTree<T extends Ref = any> {
             // - { map: "string" } => "string"
             // - { set: "string" } => "string"
             //
-            this.ref[$childType] || // ArraySchema | MapSchema | SetSchema | CollectionSchema
+            (this.ref as any)[$childType] || // ArraySchema | MapSchema | SetSchema | CollectionSchema
             this.metadata[index].type // Schema
         );
     }
@@ -385,7 +391,7 @@ export class ChangeTree<T extends Ref = any> {
         //
         // `isEncodeAll` param is only used by ArraySchema
         //
-        return this.ref[$getByIndex](index, isEncodeAll);
+        return (this.ref as any)[$getByIndex](index, isEncodeAll);
     }
 
     delete(index: number, operation?: OPERATION, allChangesIndex = index) {
@@ -444,7 +450,7 @@ export class ChangeTree<T extends Ref = any> {
         this[changeSetName] = createChangeSet();
 
         // ArraySchema and MapSchema have a custom "encode end" method
-        this.ref[$onEncodeEnd]?.();
+        (this.ref as any)[$onEncodeEnd]?.();
 
         // Not a new instance anymore
         this.isNew = false;
@@ -456,7 +462,7 @@ export class ChangeTree<T extends Ref = any> {
         //      Remove cached key to ensure ADD operations is unsed instead of
         //      REPLACE in case same key is used on next patches.
         //
-        this.ref[$onEncodeEnd]?.();
+        (this.ref as any)[$onEncodeEnd]?.();
 
         this.indexedOperations = {};
         this.changes = createChangeSet(this.changes.queueRootNode);
@@ -534,7 +540,7 @@ export class ChangeTree<T extends Ref = any> {
         //
         const refType = Metadata.isValidInstance(this.ref)
             ? this.ref.constructor
-            : this.ref[$childType];
+            : (this.ref as any)[$childType];
 
         let parentChangeTree: ChangeTree;
 

@@ -2,8 +2,10 @@ import { Metadata } from "../Metadata";
 import { $childType } from "../types/symbols";
 import { Ref } from "../encoder/ChangeTree";
 import { spliceOne } from "../types/utils";
-import type { MapSchema } from "../types/custom/MapSchema";
 import { OPERATION } from "../encoding/spec";
+
+import type { MapSchema } from "../types/custom/MapSchema";
+import type { Schema } from "../Schema";
 
 class DecodingWarning extends Error {
     constructor(message: string) {
@@ -98,18 +100,18 @@ export class ReferenceTracker {
             //
             // Ensure child schema instances have their references removed as well.
             //
-            if (ref.constructor[Symbol.metadata] !== undefined) {
-                const metadata: Metadata = ref.constructor[Symbol.metadata];
+            if ((ref.constructor as typeof Schema)[Symbol.metadata] !== undefined) {
+                const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
                 for (const index in metadata) {
                     const field = metadata[index as any as number].name;
-                    const childRefId = typeof(ref[field]) === "object" && this.refIds.get(ref[field]);
+                    const childRefId = typeof(ref[field as keyof Ref]) === "object" && this.refIds.get((ref as any)[field]);
                     if (childRefId && !this.deletedRefs.has(childRefId)) {
                         this.removeRef(childRefId);
                     }
                 }
 
             } else {
-                if (typeof (ref[$childType]) === "function") {
+                if (typeof ((ref as any)[$childType]) === "function") {
                     Array.from((ref as MapSchema).values())
                         .forEach((child) => {
                             const childRefId = this.refIds.get(child);

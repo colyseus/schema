@@ -10,18 +10,18 @@ describe("Edge cases", () => {
         const maxFields = 64;
         class State extends Schema {};
 
-        const schema = {};
+        const schema: any = {};
         for (let i = 0; i < maxFields; i++) { schema[`field_${i}`] = "string"; }
         defineTypes(State, schema);
 
         const state = new State();
-        for (let i = 0; i < maxFields; i++) { state[`field_${i}`] = "value " + i; }
+        for (let i = 0; i < maxFields; i++) { (state as any)[`field_${i}`] = "value " + i; }
 
         const decodedState = createInstanceFromReflection(state);
         decodedState.decode(state.encode());
 
         for (let i = 0; i < maxFields; i++) {
-            assert.strictEqual("value " + i, decodedState[`field_${i}`]);
+            assert.strictEqual("value " + i, (decodedState as any)[`field_${i}`]);
         }
 
         assertDeepStrictEqualEncodeAll(state);
@@ -237,15 +237,15 @@ describe("Edge cases", () => {
 
         const decodedState1 = new State();
         decodedState1.decode(state.encodeAll()); // new client joining
-        state.mapOfPlayers[nanoid(8)] = new Player("Player " + i++, i++, i++);
+        state.mapOfPlayers.set(nanoid(8), new Player("Player " + i++, i++, i++));
 
         const decodedState2 = new State();
-        state.mapOfPlayers[nanoid(8)] = new Player("Player " + i++, i++, i++);
+        state.mapOfPlayers.set(nanoid(8), new Player("Player " + i++, i++, i++));
         decodedState2.decode(state.encodeAll()); // new client joining
 
         const decodedState3 = new State();
         decodedState3.decode(state.encodeAll()); // new client joining
-        state.mapOfPlayers[nanoid(8)] = new Player("Player " + i++, i++, i++);
+        state.mapOfPlayers.set(nanoid(8), new Player("Player " + i++, i++, i++));
 
         const encoded = state.encode(); // patch state
         decodedState1.decode(encoded);
@@ -253,7 +253,7 @@ describe("Edge cases", () => {
         decodedState3.decode(encoded);
 
         const decodedState4 = new State();
-        state.mapOfPlayers[nanoid(8)] = new Player("Player " + i++, i++, i++);
+        state.mapOfPlayers.set(nanoid(8), new Player("Player " + i++, i++, i++));
         decodedState4.decode(state.encodeAll()); // new client joining
 
         assert.strictEqual(JSON.stringify(decodedState1), JSON.stringify(decodedState2));
@@ -286,7 +286,7 @@ describe("Edge cases", () => {
         const state = new State();
         const decodeState = new State()
 
-        function getNewTiles(num): MapTileSchema[] {
+        function getNewTiles(num: number): MapTileSchema[] {
             const tiles: MapTileSchema[] = [];
             for (let i=0; i<num; i++) {
                 tiles.push(new MapTileSchema().assign({
