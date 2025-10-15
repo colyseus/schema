@@ -525,8 +525,17 @@ export interface SchemaWithExtends<T extends Definition, P extends typeof Schema
     ) => SchemaWithExtendsConstructor<T & T2, ExtractInitProps<T2>, P>;
 }
 
-export interface SchemaWithExtendsConstructor<T extends Definition, InitProps, P extends typeof Schema>
-    extends SchemaWithExtends<T, P> {
+/**
+ * Get the type of the schema defined via `schema({...})` method.
+ */
+export type SchemaType<T extends {'~type': any}> = T['~type'];
+
+export interface SchemaWithExtendsConstructor<
+    T extends Definition,
+    InitProps,
+    P extends typeof Schema
+> extends SchemaWithExtends<T, P> {
+    '~type': InferSchemaInstanceType<T>;
     new (...args: [InitProps] extends [never] ? [] : InitProps extends readonly any[] ? InitProps : IsInitPropsRequired<T> extends true ? [InitProps] : [InitProps?]): InferSchemaInstanceType<T> & InstanceType<P>;
     prototype: InferSchemaInstanceType<T> & InstanceType<P> & {
         initialize(...args: [InitProps] extends [never] ? [] : InitProps extends readonly any[] ? InitProps : [InitProps]): void;

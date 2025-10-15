@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
-import { schema, defineTypes } from "../src/annotations";
+import { schema, defineTypes, SchemaType } from "../src/annotations";
 import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
 import { $changes, $numFields } from "../src/types/symbols";
 import { assertType } from "../src/encoding/assert";
@@ -123,6 +123,46 @@ describe("Definition Tests", () => {
     });
 
     describe("define type via 'schema' method", () => {
+
+        it("should be possible to use definition as type in function parameters", () => {
+            const Entity = schema({
+                x: "number",
+                y: "number",
+            }, 'Entity');
+            type Entity = SchemaType<typeof Entity>;
+
+            const WalkableEntity = Entity.extends({
+                hp: "number",
+            }, 'WalkableEntity');
+            type WalkableEntity = SchemaType<typeof WalkableEntity>;
+
+            const Player = WalkableEntity.extends({
+                age: "number",
+                name: "string",
+            }, 'Player');
+            type Player = SchemaType<typeof Player>;
+
+            const Enemy = WalkableEntity.extends({
+                speed: "number",
+            }, 'Enemy');
+            type Enemy = SchemaType<typeof Enemy>;
+
+            function createEntity(entity: Entity) {
+                return entity;
+            }
+
+            function createWalkableEntity(entity: WalkableEntity) {
+                return entity;
+            }
+
+            assert.ok(createEntity(new Entity()) instanceof Entity);
+            assert.ok(createEntity(new Player()) instanceof Player);
+            assert.ok(createEntity(new Enemy()) instanceof Enemy);
+
+            assert.ok(createWalkableEntity(new WalkableEntity()) instanceof WalkableEntity);
+            assert.ok(createWalkableEntity(new Player()) instanceof Player);
+            assert.ok(createWalkableEntity(new Enemy()) instanceof Enemy);
+        })
 
         it("inheritance / instanceof should work", () => {
             const Entity = schema({
