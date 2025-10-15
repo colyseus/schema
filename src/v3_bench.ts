@@ -58,7 +58,7 @@ const encoder = new Encoder(state);
 let encoded = encoder.encode();
 console.log(`(${encoded.length})`, [...encoded]);
 
-globalThis.perform = function() {
+(globalThis as any).perform = function(): void {
     for (let i = 0; i < 500000; i++) {
         encoder.encodeAll();
     }
