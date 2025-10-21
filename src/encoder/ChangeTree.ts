@@ -237,6 +237,7 @@ export class ChangeTree<T extends Ref = any> {
             if (typeof ((this.ref as any)[$childType]) !== "string") {
                 // MapSchema / ArraySchema, etc.
                 for (const [key, value] of (this.ref as MapSchema).entries()) {
+                    if (!value) { continue; } // sparse arrays can have undefined values
                     callback(value[$changes], this.indexes?.[key] ?? key);
                 };
             }

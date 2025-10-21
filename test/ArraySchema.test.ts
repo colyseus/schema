@@ -2726,6 +2726,70 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(100, copy[1]);
         });
 
+        it("should not crash when setting undefined values within sparse arrays", () => {
+            class Item extends Schema {
+                @type("string") name: string;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            const decodedState = new State();
+            decodedState.decode(state.encodeAll());
+
+            // Add some items
+            state.items.push(new Item().assign({ name: "Item 1" }));
+            state.items.push(new Item().assign({ name: "Item 2" }));
+            state.items.push(new Item().assign({ name: "Item 3" }));
+
+            decodedState.decode(state.encodeAll());
+            assert.strictEqual(3, decodedState.items.length);
+
+            // Scenario 1: Explicitly set item to undefined
+            // This should trigger the undefined value issue in encodeValue
+            state.items[1] = undefined;
+
+            // This should not throw an error, but internally it might cause issues
+            // when encodeValue tries to access value[$changes].refId on undefined
+            assert.doesNotThrow(() => {
+                const encoded = state.encode();
+                decodedState.decode(encoded);
+            }, "Setting array item to undefined should not throw during encoding");
+
+            // Verify the item was removed
+            assert.strictEqual(2, decodedState.items.length);
+            assert.strictEqual("Item 1", decodedState.items[0].name);
+            assert.strictEqual("Item 3", decodedState.items[1].name);
+
+            // Scenario 2: Create sparse array with holes
+            state.items = new ArraySchema<Item>();
+            state.items[0] = new Item().assign({ name: "Sparse 0" });
+            state.items[2] = new Item().assign({ name: "Sparse 2" }); // Skip index 1
+            state.items[4] = new Item().assign({ name: "Sparse 4" }); // Skip index 3
+
+            // This should handle sparse arrays correctly
+            assert.doesNotThrow(() => {
+                const encoded = state.encode();
+                decodedState.decode(encoded);
+            }, "Sparse arrays should not throw during encoding");
+
+            // Verify sparse array handling
+            assert.strictEqual(3, decodedState.items.length);
+            assert.strictEqual("Sparse 0", decodedState.items[0].name);
+            assert.strictEqual("Sparse 2", decodedState.items[1].name);
+            assert.strictEqual("Sparse 4", decodedState.items[2].name);
+
+
+            // Scenario 3: Delete items and then try to encode
+            state.items = new ArraySchema<Item>();
+            state.items.push(new Item().assign({ name: "Delete 1" }));
+            state.items.push(new Item().assign({ name: "Delete 2" }));
+            state.items.push(new Item().assign({ name: "Delete 3" }));
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
         it("fix 'Decode warning: trying to remove refId that doesn't exist'", () => {
             /**
              * This test was triggering "Decode warning: trying to remove refId that doesn't exist"
