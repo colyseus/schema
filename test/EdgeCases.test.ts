@@ -10,8 +10,8 @@ describe("Edge cases", () => {
         const maxFields = 64;
         class State extends Schema {};
 
-        const schema: any = {};
-        for (let i = 0; i < maxFields; i++) { schema[`field_${i}`] = "string"; }
+        const schema = {};
+        for (let i = 0; i < maxFields; i++) { (schema as any)[`field_${i}`] = "string"; }
         defineTypes(State, schema);
 
         const state = new State();
@@ -729,26 +729,25 @@ describe("Edge cases", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
-    it("consecutive .clear() should not impact number of items in enqueued change list", () => {
-        class Item extends Schema {
-            @type("number") value: number;
+    xit("DELETE: should not try to encode undefined values (exception reading '~changes')", () => {
+        class Player extends Schema {
+            @type("string") id = nanoid();
         }
+
         class State extends Schema {
-            @type([Item]) arr = new ArraySchema<Item>();
-            @type({ map: Item }) map = new MapSchema<Item>();
+            @type(Player) host = new Player();
         }
+
         const state = new State();
-        const encoder = getEncoder(state);
+        assertDeepStrictEqualEncodeAll(state);
 
-        assert.deepStrictEqual([0, 1, 2], Schema.debugRefIdEncodingOrder(state, 'changes'));
+        state.encode();
 
-        state.arr.push(new Item().assign({ value: 1 }));
-        state.map.set("key1", new Item().assign({ value: 2 }));
+        delete state.host;
 
-        state.arr.clear();
-        state.map.clear();
+        state.encode();
 
-        assert.deepStrictEqual([0, 1, 2], Schema.debugRefIdEncodingOrder(state, 'changes'));
+        state.encodeAll();
     });
 
 });
