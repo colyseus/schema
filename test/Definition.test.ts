@@ -3,8 +3,7 @@ import * as assert from "assert";
 import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
 import { schema, defineTypes, SchemaType } from "../src/annotations";
 import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
-import { $changes, $numFields } from "../src/types/symbols";
-import { assertType } from "../src/encoding/assert";
+import { $numFields } from "../src/types/symbols";
 
 describe("Definition Tests", () => {
 
@@ -609,6 +608,51 @@ describe("Definition Tests", () => {
                 assert.strictEqual(testState.x, 1);
                 assert.strictEqual(testState.y, 2);
             });
+
+        });
+
+        it("should allow to clone with custom constructor", () => {
+            const Entity = schema({
+                x: "number",
+                y: "number",
+                initialize(props: { complex: { x: number, y: number } }) {
+                    this.x = props.complex.x;
+                    this.y = props.complex.y;
+                }
+            });
+            const Player = Entity.extends({
+                name: "string",
+                age: "number",
+                initialize(props: { complex: { name: string, age: number, x: number, y: number } }) {
+                    Entity.prototype.initialize.call(this, props);
+                    this.name = props.complex.name;
+                    this.age = props.complex.age;
+                }
+            });
+            const State = schema({
+                x: "number",
+                y: "number",
+                players: { map: Player },
+                initialize(props: { complex: { x: number, y: number } }) {
+                    this.x = props.complex.x;
+                    this.y = props.complex.y;
+                }
+            });
+
+            const state = new State({ complex: { x: 1, y: 2 } });
+            state.players.set('one', new Player({ complex: { name: "John", age: 30, x: 10, y: 20 } }));
+            state.players.set('two', new Player({ complex: { name: "Jane", age: 25, x: 30, y: 40 } }));
+
+            const clonedState = state.clone();
+            assert.deepStrictEqual(clonedState.toJSON(), state.toJSON());
+
+            const clonedPlayerOne = clonedState.players.get('one');
+            assert.ok(clonedPlayerOne instanceof Player);
+            assert.ok(clonedPlayerOne instanceof Entity);
+            assert.ok(clonedPlayerOne.name === "John");
+            assert.ok(clonedPlayerOne.age === 30);
+            assert.ok(clonedPlayerOne.x === 10);
+            assert.ok(clonedPlayerOne.y === 20);
 
         });
 
