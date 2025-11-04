@@ -118,7 +118,7 @@ export class Schema<C = any> implements IRef {
 
     clone (): this {
         // Create instance without calling custom constructor
-        const cloned = Object.create((this as any).constructor.prototype);
+        const cloned = Object.create(this.constructor.prototype);
         Schema.initialize(cloned);
 
         const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
