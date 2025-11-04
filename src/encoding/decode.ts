@@ -43,6 +43,9 @@ const _uint64 = new BigUint64Array(_convoBuffer);
 const _int64 = new BigInt64Array(_convoBuffer);
 
 function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
+  // boundary check
+  if (length > bytes.length - it.offset) { length = bytes.length - it.offset; }
+
   var string = '', chr = 0;
   for (var i = it.offset, end = it.offset + length; i < end; i++) {
     var byte = bytes[i];
@@ -79,9 +82,11 @@ function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
       continue;
     }
 
-    console.error('Invalid byte ' + byte.toString(16));
     // (do not throw error to avoid server/client from crashing due to hack attemps)
     // throw new Error('Invalid byte ' + byte.toString(16));
+
+    console.error('decode.utf8Read(): Invalid byte ' + byte + ' at offset ' + i + '. Skip to end of string: ' + (it.offset + length));
+    break;
   }
   it.offset += length;
   return string;
