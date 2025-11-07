@@ -8,7 +8,7 @@
 
 import * as assert from "assert";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
-import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema, schema } from "../src";
+import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema, schema, ToJSON } from "../src";
 import { getNormalizedType } from "../src/Metadata";
 
 describe("Type: Schema", () => {
@@ -40,7 +40,7 @@ describe("Type: Schema", () => {
             data.uint8 = 127;
 
             let encoded = data.encode();
-            // assert.deepEqual(encoded, [0, 127]);
+            // assert.deepStrictEqual(encoded, [0, 127]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -56,7 +56,7 @@ describe("Type: Schema", () => {
             data.uint16 = 65500;
 
             let encoded = data.encode();
-            // assert.deepEqual(encoded, [ 0, 220, 255 ]);
+            // assert.deepStrictEqual(encoded, [ 0, 220, 255 ]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -72,7 +72,7 @@ describe("Type: Schema", () => {
             data.uint32 = 4294967290;
 
             let encoded = data.encode();
-            // assert.deepEqual(encoded, [0, 250, 255, 255, 255]);
+            // assert.deepStrictEqual(encoded, [0, 250, 255, 255, 255]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -88,7 +88,7 @@ describe("Type: Schema", () => {
             data.uint64 = Number.MAX_SAFE_INTEGER;
 
             const encoded = data.encode();
-            // assert.deepEqual(encoded, [0, 255, 255, 255, 255, 255, 255, 31, 0]);
+            // assert.deepStrictEqual(encoded, [0, 255, 255, 255, 255, 255, 255, 31, 0]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -104,7 +104,7 @@ describe("Type: Schema", () => {
             data.int8 = -128;
 
             let encoded = data.encode();
-            // assert.deepEqual(encoded, [0, 128]);
+            // assert.deepStrictEqual(encoded, [0, 128]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -120,7 +120,7 @@ describe("Type: Schema", () => {
             data.int16 = -32768;
 
             let encoded = data.encode();
-            // assert.deepEqual(encoded, []);
+            // assert.deepStrictEqual(encoded, []);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -136,7 +136,7 @@ describe("Type: Schema", () => {
             data.int32 = -2147483648;
 
             let encoded = data.encode();
-            // assert.deepEqual(encoded, [0, 4294967290, -1, -1, -1]);
+            // assert.deepStrictEqual(encoded, [0, 4294967290, -1, -1, -1]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -166,7 +166,7 @@ describe("Type: Schema", () => {
             data.float32 = 24.5;
 
             let encoded = data.encode();
-            // assert.deepEqual(encoded, [0, 0, 0, 196, 65]);
+            // assert.deepStrictEqual(encoded, [0, 0, 0, 196, 65]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -277,7 +277,7 @@ describe("Type: Schema", () => {
             data.utf8 = "🚀ॐ漢字♤♧♥♢®⚔";
 
             let encoded = data.encode();
-            // assert.deepEqual(encoded, [0, 190, 240, 159, 154, 128, 224, 165, 144, 230, 188, 162, 229, 173, 151, 226, 153, 164, 226, 153, 167, 226, 153, 165, 226, 153, 162, 194, 174, 226, 154, 148]);
+            // assert.deepStrictEqual(encoded, [0, 190, 240, 159, 154, 128, 224, 165, 144, 230, 188, 162, 229, 173, 151, 226, 153, 164, 226, 153, 167, 226, 153, 165, 226, 153, 162, 194, 174, 226, 154, 148]);
 
             const decoded = new Data();
             decoded.decode(encoded);
@@ -633,7 +633,7 @@ describe("Type: Schema", () => {
             state.fieldString = "Hello world";
 
             let encoded = state.encode();
-            // assert.deepEqual(encoded, [0, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]);
+            // assert.deepStrictEqual(encoded, [0, 171, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100]);
 
             const decodedState = new State();
             decodedState.decode(encoded);
@@ -648,7 +648,7 @@ describe("Type: Schema", () => {
             const decodedState = new State();
 
             let encoded = state.encode();
-            // assert.deepEqual(encoded, [1, 50]);
+            // assert.deepStrictEqual(encoded, [1, 50]);
 
             decodedState.decode(encoded);
 
@@ -687,7 +687,7 @@ describe("Type: Schema", () => {
             const encoded = state.encode();
             decodedState.decode(encoded);
 
-            // assert.deepEqual(encoded, [2, 193]);
+            // assert.deepStrictEqual(encoded, [2, 193]);
             assert.ok(decodedState.player instanceof Player);
         });
 
@@ -716,7 +716,7 @@ describe("Type: Schema", () => {
             const encoded = state.encode();
             decodedState.decode(encoded);
 
-            // assert.deepEqual(encoded, [2, 0, 164, 74, 97, 107, 101, 1, 100, 2, 204, 200, 193]);
+            // assert.deepStrictEqual(encoded, [2, 0, 164, 74, 97, 107, 101, 1, 100, 2, 204, 200, 193]);
             assert.ok(decodedState.player instanceof Player);
             assert.strictEqual(decodedState.player.x, 100);
             assert.strictEqual(decodedState.player.y, 200);
@@ -748,8 +748,8 @@ describe("Type: Schema", () => {
             const encoded = state.encode();
             decodedState.decode(encoded);
 
-            // assert.deepEqual(encoded, [3, 0, 0]);
-            assert.deepEqual(decodedState.arrayOfPlayers.toJSON(), []);
+            // assert.deepStrictEqual(encoded, [3, 0, 0]);
+            assert.deepStrictEqual(decodedState.arrayOfPlayers.toJSON(), []);
         });
 
         it("should encode map of objects", () => {
@@ -760,7 +760,7 @@ describe("Type: Schema", () => {
             });
 
             let encoded = state.encode();
-            // assert.deepEqual(encoded, [4, 2, 163, 111, 110, 101, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 163, 116, 119, 111, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
+            // assert.deepStrictEqual(encoded, [4, 2, 163, 111, 110, 101, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 193, 163, 116, 119, 111, 0, 173, 83, 110, 97, 107, 101, 32, 83, 97, 110, 100, 101, 114, 115, 193]);
 
             const decodedState = new State();
             decodedState.decode(encoded);
@@ -775,7 +775,7 @@ describe("Type: Schema", () => {
             state.mapOfPlayers.get('one').name = "Tarquinn";
 
             encoded = state.encode();
-            // assert.deepEqual(encoded, [4, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
+            // assert.deepStrictEqual(encoded, [4, 1, 0, 0, 168, 84, 97, 114, 113, 117, 105, 110, 110, 193]);
 
             decodedState.decode(encoded);
 
@@ -840,15 +840,15 @@ describe("Type: Schema", () => {
             const decodedState = new State();
             decodedState.decode(state.encodeAll());
 
-            assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ['1', '2']);
+            assert.deepStrictEqual(Array.from(decodedState.mapOfPlayers.keys()), ['1', '2']);
             assert.strictEqual(decodedState.mapOfPlayers.get('1').name, "Snake Sanders");
             assert.strictEqual(decodedState.mapOfPlayers.get('2').name, "Jake Badlands");
 
             state.mapOfPlayers.get('1').name = "New name";
             decodedState.decode(state.encodeAll());
 
-            assert.deepEqual(decodedState.mapOfPlayers.get('1').name, "New name");
-            assert.deepEqual(decodedState.mapOfPlayers.get('2').name, "Jake Badlands");
+            assert.deepStrictEqual(decodedState.mapOfPlayers.get('1').name, "New name");
+            assert.deepStrictEqual(decodedState.mapOfPlayers.get('2').name, "Jake Badlands");
         });
 
         it("should encode changed values", () => {
@@ -861,7 +861,7 @@ describe("Type: Schema", () => {
             state.player.y = 50;
 
             const encoded = state.encode();
-            // assert.deepEqual(encoded, [0, 172, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 33, 1, 50, 2, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 2, 50, 193]);
+            // assert.deepStrictEqual(encoded, [0, 172, 72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 33, 1, 50, 2, 0, 173, 74, 97, 107, 101, 32, 66, 97, 100, 108, 97, 110, 100, 115, 2, 50, 193]);
 
             // SHOULD PRESERVE VALUES AFTER SERIALIZING
             assert.strictEqual(state.fieldString, "Hello world!");
@@ -918,19 +918,19 @@ describe("Type: Schema", () => {
             state.arrayOfStrings = new ArraySchema("one", "two", "three");
 
             let encoded = state.encode();
-            // assert.deepEqual(encoded, [0, 3, 3, 0, 163, 111, 110, 101, 1, 163, 116, 119, 111, 2, 165, 116, 104, 114, 101, 101]);
+            // assert.deepStrictEqual(encoded, [0, 3, 3, 0, 163, 111, 110, 101, 1, 163, 116, 119, 111, 2, 165, 116, 104, 114, 101, 101]);
 
             const decodedState = new MyState();
             decodedState.decode(encoded);
-            assert.deepEqual(decodedState.arrayOfStrings.toArray(), ["one", "two", "three"]);
+            assert.deepStrictEqual(decodedState.arrayOfStrings.toArray(), ["one", "two", "three"]);
 
             // mutate array
             state.arrayOfStrings.push("four")
             encoded = state.encode();
-            // assert.deepEqual(encoded, [ 0, 4, 1, 3, 164, 102, 111, 117, 114 ]);
+            // assert.deepStrictEqual(encoded, [ 0, 4, 1, 3, 164, 102, 111, 117, 114 ]);
 
             decodedState.decode(encoded);
-            assert.deepEqual(decodedState.arrayOfStrings.toArray(), ["one", "two", "three", "four"]);
+            assert.deepStrictEqual(decodedState.arrayOfStrings.toArray(), ["one", "two", "three", "four"]);
         });
 
         it("should support array of numbers", () => {
@@ -943,20 +943,20 @@ describe("Type: Schema", () => {
             state.arrayOfNumbers = new ArraySchema(0, 144, 233, 377, 610, 987, 1597, 2584);
 
             let encoded = state.encode();
-            // assert.deepEqual(encoded, [0, 8, 8, 0, 0, 1, 204, 144, 2, 204, 233, 3, 205, 121, 1, 4, 205, 98, 2, 5, 205, 219, 3, 6, 205, 61, 6, 7, 205, 24, 10]);
+            // assert.deepStrictEqual(encoded, [0, 8, 8, 0, 0, 1, 204, 144, 2, 204, 233, 3, 205, 121, 1, 4, 205, 98, 2, 5, 205, 219, 3, 6, 205, 61, 6, 7, 205, 24, 10]);
 
             const decodedState = new MyState();
             decodedState.decode(encoded);
 
-            assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [0, 144, 233, 377, 610, 987, 1597, 2584]);
+            assert.deepStrictEqual(decodedState.arrayOfNumbers.toArray(), [0, 144, 233, 377, 610, 987, 1597, 2584]);
 
             // mutate array
             state.arrayOfNumbers.push(999999);
             encoded = state.encode();
-            // assert.deepEqual(encoded, [0, 9, 1, 8, 206, 63, 66, 15, 0]);
+            // assert.deepStrictEqual(encoded, [0, 9, 1, 8, 206, 63, 66, 15, 0]);
 
             decodedState.decode(encoded);
-            assert.deepEqual(decodedState.arrayOfNumbers.toArray(), [0, 144, 233, 377, 610, 987, 1597, 2584, 999999]);
+            assert.deepStrictEqual(decodedState.arrayOfNumbers.toArray(), [0, 144, 233, 377, 610, 987, 1597, 2584, 999999]);
         });
 
         it("should support map of numbers", () => {
@@ -968,7 +968,7 @@ describe("Type: Schema", () => {
             state.mapOfNumbers = new MapSchema<number>({ 'zero': 0, 'one': 1, 'two': 2 });
 
             let encoded = state.encode();
-            // assert.deepEqual(encoded, []);
+            // assert.deepStrictEqual(encoded, []);
 
             const decodedState = new MyState();
             decodedState.decode(encoded);
@@ -977,7 +977,7 @@ describe("Type: Schema", () => {
             // mutate map
             state.mapOfNumbers.set('three', 3);
             encoded = state.encode();
-            // assert.deepEqual(encoded, []);
+            // assert.deepStrictEqual(encoded, []);
 
             decodedState.decode(encoded);
             assert.deepStrictEqual(decodedState.mapOfNumbers.toJSON(), { 'zero': 0, 'one': 1, 'two': 2, 'three': 3 });
@@ -1166,7 +1166,7 @@ describe("Type: Schema", () => {
 
             const decoded = new MyState();
             decoded.decode(state.encode());
-            assert.deepEqual(["hello"], decoded.array.toArray());
+            assert.deepStrictEqual(["hello"], decoded.array.toArray());
         });
 
         it("should transform plain map into MapSchema", () => {
@@ -1180,7 +1180,7 @@ describe("Type: Schema", () => {
 
             const decoded = new MyState();
             decoded.decode(state.encode());
-            assert.deepEqual({one: "hello"}, decoded.map.toJSON());
+            assert.deepStrictEqual({one: "hello"}, decoded.map.toJSON());
         });
     })
 
@@ -1195,7 +1195,7 @@ describe("Type: Schema", () => {
 
             const decodedState = new State();
             decodedState.decode(state.encode());
-            assert.deepEqual(Array.from(decodedState.mapOfPlayers.keys()), ['jake', 'katarina']);
+            assert.deepStrictEqual(Array.from(decodedState.mapOfPlayers.keys()), ['jake', 'katarina']);
 
             let jakeX = Math.random() * 2000;
             state.mapOfPlayers.get('jake').x = jakeX;
@@ -1458,6 +1458,30 @@ describe("Type: Schema", () => {
             const newState = new State().assign(state);
             assert.deepStrictEqual(state.toJSON(), newState.toJSON());
 
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("deep nested structures should be converted to JSON", () => {
+            class Prop extends Schema {
+                @type("string") name: string;
+            }
+            class Item extends Schema {
+                @type({ map: Prop }) props = new MapSchema<Prop>();
+            }
+            class Player extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+            class MyState extends Schema {
+                @type(Player) player = new Player();
+            }
+
+            const state = new MyState();
+            state.player.items.push(new Item().assign({ props: new MapSchema<Prop>().set('one', new Prop().assign({ name: "Hello" })) }));
+
+            assert.deepStrictEqual(
+                state.toJSON(),
+                { player: { items: [{ props: { one: { name: "Hello" } } }] } } as ToJSON<MyState>
+            );
             assertDeepStrictEqualEncodeAll(state);
         });
 

@@ -146,7 +146,7 @@ export class Schema<C = any> implements IRef {
         return cloned;
     }
 
-    toJSON (this: any) {
+    toJSON (this: any): ToJSON<this> {
         const obj: any = {};
         const metadata = this.constructor[Symbol.metadata];
         for (const index in metadata) {
@@ -158,7 +158,7 @@ export class Schema<C = any> implements IRef {
                     : this[fieldName];
             }
         }
-        return obj as ToJSON<typeof this>;
+        return obj;
     }
 
     /**
