@@ -94,8 +94,9 @@ export type CollectionCallback<K, V> = {
      * If you want to listen to changes on individual items, you need to attach callbacks to the them directly inside the `onAdd` callback.
      *
      * @param callback
+     * @return callback to detach the onChange listener
      */
-    onChange(callback: (item: V, index: K) => void): void;
+    onChange(callback: (item: V, index: K) => void): () => void;
 };
 
 type OnInstanceAvailableCallback = (callback: (ref: Ref, existing: boolean) => void) => void;
