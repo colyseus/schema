@@ -183,7 +183,9 @@ export const decodeSchemaOperation: DecodeOperation = function <T extends Schema
     }
 
     // add change
-    if (previousValue !== value) {
+    if (previousValue !== value && (typeof value !== 'object' ||
+            typeof previousValue !== 'object' ||
+            decoder.root.refIds.get(previousValue) !== decoder.root.refIds.get(value))){
         allChanges.push({
             ref,
             refId: decoder.currentRefId,
