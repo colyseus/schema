@@ -39,11 +39,25 @@ export {
 
 // Annotations, Metadata and TypeContext
 export { Metadata } from "./Metadata";
-export { type, deprecated, defineTypes, view, schema, entity, type SchemaWithExtends, type SchemaType } from "./annotations";
-export { TypeContext } from "./types/TypeContext";
 
-// Annotation types
-export type { DefinitionType, PrimitiveType, Definition, } from "./annotations";
+// Schema definition types
+export {
+    type,
+    deprecated,
+    defineTypes,
+    view,
+    schema,
+    entity,
+    type DefinitionType,
+    type PrimitiveType,
+    type Definition,
+    // Raw schema() return types
+    type SchemaWithExtendsConstructor,
+    type SchemaWithExtends,
+    type SchemaType,
+} from "./annotations";
+
+export { TypeContext } from "./types/TypeContext";
 
 // Helper types for type inference
 export type { InferValueType, InferSchemaInstanceType, AssignableProps } from "./types/HelperTypes";
