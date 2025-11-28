@@ -109,6 +109,16 @@ describe("schema-codegen", () => {
 
             assert.strictEqual(3, outputFiles.length);
         });
+
+        it("with map", () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "PlainSchemaMap.ts"));
+
+            generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
+
+            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts"));
+
+            assert.strictEqual(2, outputFiles.length);
+        });
     });
 
     describe("invalid/error", () => {

@@ -186,7 +186,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                 // skip if no className is provided
                 if (!className) { break; }
 
-                if (currentStructure.name !== className) {
+                if (currentStructure?.name !== className) {
                     currentStructure = new Class();
                 }
                 context.addStructure(currentStructure);
@@ -277,7 +277,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                 // skip if no className is provided
                 if (!className) { break; }
 
-                if (currentStructure.name !== className) {
+                if (currentStructure?.name !== className) {
                     currentStructure = new Class();
                     context.addStructure(currentStructure);
                 }
