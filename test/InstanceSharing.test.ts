@@ -1,7 +1,7 @@
 import * as util from "util";
 import * as assert from "assert";
 import { Schema, type, ArraySchema, MapSchema, Reflection } from "../src";
-import { $changes } from "../src/types/symbols";
+import { $changes, $refId } from "../src/types/symbols";
 import { assertDeepStrictEqualEncodeAll, assertRefIdCounts, createInstanceFromReflection, getCallbacks, getDecoder, getEncoder } from "./Schema";
 
 describe("Instance sharing", () => {
@@ -95,7 +95,7 @@ describe("Instance sharing", () => {
 
         const decoder = getDecoder(decodedState);
 
-        assert.strictEqual(2, encoder.root.refCount[player[$changes].refId]);
+        assert.strictEqual(2, encoder.root.refCount[player[$refId]]);
 
         const refCount = decoder.root.refs.size;
         assert.strictEqual(5, refCount);
@@ -359,7 +359,7 @@ describe("Instance sharing", () => {
 
         // Client requests to move item to player.item
         state.player.item = item;
-        assert.strictEqual(1, encoder.root.refCount[item[$changes].refId]);
+        assert.strictEqual(1, encoder.root.refCount[item[$refId]]);
 
         assert.ok(item[$changes].root, "item should have 'root' reference");
 
@@ -370,7 +370,7 @@ describe("Instance sharing", () => {
         item.x = 999;
 
         decodedState.decode(state.encode());
-        assert.strictEqual(1, decoder.root.refCount[item[$changes].refId]);
+        assert.strictEqual(1, decoder.root.refCount[item[$refId]]);
 
         assert.strictEqual(999, decodedState.player.item.x);
 
@@ -427,7 +427,7 @@ describe("Instance sharing", () => {
         let current = encoder.root.allChanges.next;
         while (current) {
             if (current.changeTree !== undefined) {
-                refIds.push(current.changeTree.refId);
+                refIds.push(current.changeTree.ref[$refId]);
             }
             current = current.next;
         }
@@ -558,22 +558,22 @@ describe("Instance sharing", () => {
         const newSong = new Song().assign({ url: "song2" });
         state.buckets.get(sessionId).queue.push(newSong);
 
-        console.log("refCount after adding to player queue:", getEncoder(state).root.refCount[newSong[$changes].refId]);
+        console.log("refCount after adding to player queue:", getEncoder(state).root.refCount[newSong[$refId]]);
         console.log("-----");
 
         state.queue = new ArraySchema<Song>();
         state.queue.push(newSong);
 
-        console.log("refCount after adding to state queue:", getEncoder(state).root.refCount[newSong[$changes].refId]);
+        console.log("refCount after adding to state queue:", getEncoder(state).root.refCount[newSong[$refId]]);
         console.log("-----");
 
         state.playing = state.buckets.get(sessionId).queue.shift();
-        console.log("refCount after shift to playing:", getEncoder(state).root.refCount[newSong[$changes].refId]);
+        console.log("refCount after shift to playing:", getEncoder(state).root.refCount[newSong[$refId]]);
         console.log("-----");
 
         state.queue = new ArraySchema<Song>();
 
-        console.log("refCount after replacing state queue:", getEncoder(state).root.refCount[newSong[$changes].refId]);
+        console.log("refCount after replacing state queue:", getEncoder(state).root.refCount[newSong[$refId]]);
         console.log("Song parents:", newSong[$changes].getAllParents());
         console.log("-----");
 
@@ -618,7 +618,7 @@ describe("Instance sharing", () => {
         assertRefIdCounts(state, decodedState);
 
         // assert refCount of activePlayer
-        const activePlayerRefId = activePlayer[$changes].refId;
+        const activePlayerRefId = activePlayer[$refId];
         assert.strictEqual(3, encoder.root.refCount[activePlayerRefId]);
 
         console.log("----------------------------------------")
@@ -677,7 +677,7 @@ describe("Instance sharing", () => {
         assertRefIdCounts(state, decodedState);
 
         // assert refCount of activePlayer
-        const activePlayerRefId = activePlayer[$changes].refId;
+        const activePlayerRefId = activePlayer[$refId];
         assert.strictEqual(3, encoder.root.refCount[activePlayerRefId]);
 
         // delete 2 references

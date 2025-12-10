@@ -1,3 +1,4 @@
+export const $refId = "~refId";
 export const $track = "~track";
 export const $encoder = "~encoder";
 export const $decoder = "~decoder";

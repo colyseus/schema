@@ -4,7 +4,7 @@ import { Schema } from "../Schema";
 import type { Ref } from "../encoder/ChangeTree";
 import type { Decoder } from "./Decoder";
 import { Iterator, decode } from "../encoding/decode";
-import { $childType, $deleteByIndex, $getByIndex } from "../types/symbols";
+import { $childType, $deleteByIndex, $getByIndex, $refId } from "../types/symbols";
 
 import type { MapSchema } from "../types/custom/MapSchema";
 import type { ArraySchema } from "../types/custom/ArraySchema";
@@ -27,7 +27,7 @@ export const DEFINITION_MISMATCH = -1;
 
 export type DecodeOperation<T extends Schema = any> = (
     decoder: Decoder<T>,
-    bytes: Buffer,
+    bytes: Uint8Array,
     it: Iterator,
     ref: Ref,
     allChanges: DataChange[],
@@ -39,7 +39,7 @@ export function decodeValue<T extends Ref>(
     ref: T,
     index: number,
     type: any,
-    bytes: Buffer,
+    bytes: Uint8Array,
     it: Iterator,
     allChanges: DataChange[],
 ) {
@@ -51,7 +51,7 @@ export function decodeValue<T extends Ref>(
     if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
     {
         // Flag `refId` for garbage collection.
-        const previousRefId = $root.refIds.get(previousValue);
+        const previousRefId = previousValue?.[$refId];
         if (previousRefId !== undefined) { $root.removeRef(previousRefId); }
 
         //
@@ -107,7 +107,7 @@ export function decodeValue<T extends Ref>(
         value[$childType] = Object.values(type)[0]; // cache childType for ArraySchema and MapSchema
 
         if (previousValue) {
-            let previousRefId = $root.refIds.get(previousValue);
+            let previousRefId = previousValue[$refId];
 
             if (previousRefId !== undefined && refId !== previousRefId) {
                 //
@@ -120,7 +120,7 @@ export function decodeValue<T extends Ref>(
 
                     // if value is a schema, remove its reference
                     if (typeof(value) === "object") {
-                        previousRefId = $root.refIds.get(value);
+                        previousRefId = value[$refId];
                         $root.removeRef(previousRefId);
                     }
 
@@ -148,7 +148,7 @@ export function decodeValue<T extends Ref>(
 
 export const decodeSchemaOperation: DecodeOperation = function <T extends Schema>(
     decoder: Decoder<any>,
-    bytes: Buffer,
+    bytes: Uint8Array,
     it: Iterator,
     ref: T,
     allChanges: DataChange[],
@@ -197,7 +197,7 @@ export const decodeSchemaOperation: DecodeOperation = function <T extends Schema
 
 export const decodeKeyValueOperation: DecodeOperation = function (
     decoder: Decoder<any>,
-    bytes: Buffer,
+    bytes: Uint8Array,
     it: Iterator,
     ref: Ref,
     allChanges: DataChange[]
@@ -280,7 +280,7 @@ export const decodeKeyValueOperation: DecodeOperation = function (
 
 export const decodeArray: DecodeOperation = function (
     decoder: Decoder<any>,
-    bytes: Buffer,
+    bytes: Uint8Array,
     it: Iterator,
     ref: ArraySchema,
     allChanges: DataChange[]

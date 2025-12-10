@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
-        "module": "commonjs",
-        "moduleResolution": "node",
+        "module": "ESNext",
+        // "moduleResolution": "NodeNext",
         "lib": ["ES2022"],
         "experimentalDecorators": true,
         "useDefineForClassFields": false,

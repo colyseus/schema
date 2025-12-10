@@ -156,7 +156,7 @@ export class Reflection extends Schema {
      * @param it
      * @returns Decoder instance
      */
-    static decode<T extends Schema = Schema>(bytes: Buffer, it?: Iterator): Decoder<T> {
+    static decode<T extends Schema = Schema>(bytes: Uint8Array, it?: Iterator): Decoder<T> {
         const reflection = new Reflection();
 
         const reflectionDecoder = new Decoder(reflection);

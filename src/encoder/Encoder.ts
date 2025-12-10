@@ -1,6 +1,6 @@
 import type { Schema } from "../Schema";
 import { TypeContext } from "../types/TypeContext";
-import { $changes, $encoder, $filter, $getByIndex } from "../types/symbols";
+import { $changes, $encoder, $filter, $getByIndex, $refId } from "../types/symbols";
 
 import { encode } from "../encoding/encode";
 import type { Iterator } from "../encoding/decode";
@@ -13,9 +13,16 @@ import type { Metadata } from "../Metadata";
 import type { ChangeSetName, ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree";
 import { createChangeTreeList } from "./ChangeTree";
 
+function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
+    const result = new Uint8Array(a.length + b.length);
+    result.set(a, 0);
+    result.set(b, a.length);
+    return result;
+}
+
 export class Encoder<T extends Schema = any> {
-    static BUFFER_SIZE = (typeof(Buffer) !== "undefined") && Buffer.poolSize || 8 * 1024; // 8KB
-    sharedBuffer = Buffer.allocUnsafe(Encoder.BUFFER_SIZE);
+    static BUFFER_SIZE = 8 * 1024; // 8KB
+    sharedBuffer = new Uint8Array(Encoder.BUFFER_SIZE);
 
     context: TypeContext;
     state: T;
@@ -52,7 +59,7 @@ export class Encoder<T extends Schema = any> {
         changeSetName: ChangeSetName = "changes",
         isEncodeAll = changeSetName === "allChanges",
         initialOffset = it.offset // cache current offset in case we need to resize the buffer
-    ): Buffer {
+    ): Uint8Array {
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
@@ -63,7 +70,7 @@ export class Encoder<T extends Schema = any> {
 
             if (hasView) {
                 if (!view.isChangeTreeVisible(changeTree)) {
-                    // console.log("MARK AS INVISIBLE:", { ref: changeTree.ref.constructor.name, refId: changeTree.refId, raw: changeTree.ref.toJSON() });
+                    // console.log("MARK AS INVISIBLE:", { ref: changeTree.ref.constructor.name, refId: changeTree.ref[$refId], raw: changeTree.ref.toJSON() });
                     view.invisible.add(changeTree);
                     continue; // skip this change tree
                 }
@@ -86,7 +93,7 @@ export class Encoder<T extends Schema = any> {
             // (unless it "hasView", which will need to revisit the root)
             if (hasView || it.offset > initialOffset || changeTree !== rootChangeTree) {
                 buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-                encode.number(buffer, changeTree.refId, it);
+                encode.number(buffer, ref[$refId], it);
             }
 
             for (let j = 0; j < numChanges; j++) {
@@ -121,10 +128,9 @@ export class Encoder<T extends Schema = any> {
         }
 
         if (it.offset > buffer.byteLength) {
-            // we can assume that n + 1 poolSize will suffice given that we are likely done with encoding at this point
-            // multiples of poolSize are faster to allocate than arbitrary sizes
-            // if we are on an older platform that doesn't implement pooling use 8kb as poolSize (that's the default for node)
-            const newSize = Math.ceil(it.offset / (Buffer.poolSize ?? 8 * 1024)) * (Buffer.poolSize ?? 8 * 1024);
+            // we can assume that n + 1 BUFFER_SIZE will suffice given that we are likely done with encoding at this point
+            // multiples of BUFFER_SIZE are faster to allocate than arbitrary sizes
+            const newSize = Math.ceil(it.offset / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
 
             console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
 
@@ -136,7 +142,9 @@ export class Encoder<T extends Schema = any> {
             // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
             // -> No we probably can't unless we catch the need for resize before encoding which is likely more computationally expensive than resizing on demand
             //
-            buffer = Buffer.alloc(newSize, buffer); // fill with buffer here to memcpy previous encoding steps beyond the initialOffset
+            const newBuffer = new Uint8Array(newSize);
+            newBuffer.set(buffer); // copy previous encoding steps beyond the initialOffset
+            buffer = newBuffer;
 
             // assign resized buffer to local sharedBuffer
             if (buffer === this.sharedBuffer) {
@@ -151,7 +159,7 @@ export class Encoder<T extends Schema = any> {
         }
     }
 
-    encodeAll(it: Iterator = { offset: 0 }, buffer: Buffer = this.sharedBuffer) {
+    encodeAll(it: Iterator = { offset: 0 }, buffer = this.sharedBuffer) {
         return this.encode(it, undefined, buffer, "allChanges", true);
     }
 
@@ -161,10 +169,10 @@ export class Encoder<T extends Schema = any> {
         // try to encode "filtered" changes
         this.encode(it, view, bytes, "allFilteredChanges", true, viewOffset);
 
-        return Buffer.concat([
+        return concatBytes(
             bytes.subarray(0, sharedOffset),
             bytes.subarray(viewOffset, it.offset)
-        ]);
+        );
     }
 
     encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
@@ -195,7 +203,7 @@ export class Encoder<T extends Schema = any> {
             const metadata = ctor[Symbol.metadata];
 
             bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-            encode.number(bytes, changeTree.refId, it);
+            encode.number(bytes, ref[$refId], it);
 
             for (let i = 0, numChanges = keys.length; i < numChanges; i++) {
                 const index = Number(keys[i]);
@@ -219,10 +227,10 @@ export class Encoder<T extends Schema = any> {
         // try to encode "filtered" changes
         this.encode(it, view, bytes, "filteredChanges", false, viewOffset);
 
-        return Buffer.concat([
+        return concatBytes(
             bytes.subarray(0, sharedOffset),
             bytes.subarray(viewOffset, it.offset)
-        ]);
+        );
     }
 
     discardChanges() {
@@ -243,7 +251,7 @@ export class Encoder<T extends Schema = any> {
         this.root.filteredChanges = createChangeTreeList();
     }
 
-    tryEncodeTypeId (bytes: Buffer, baseType: typeof Schema, targetType: typeof Schema, it: Iterator) {
+    tryEncodeTypeId (bytes: Uint8Array, baseType: typeof Schema, targetType: typeof Schema, it: Iterator) {
         const baseTypeId = this.context.getTypeId(baseType);
         const targetTypeId = this.context.getTypeId(targetType);
 

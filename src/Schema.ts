@@ -4,7 +4,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations";
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
 import { ChangeSet, ChangeSetName, ChangeTree, IRef, Ref } from './encoder/ChangeTree';
-import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $track } from './types/symbols';
+import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $refId, $track } from './types/symbols';
 import { StateView } from './encoder/StateView';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation';
@@ -190,7 +190,7 @@ export class Schema<C = any> implements IRef {
         const contents = (showContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
         const changeTree: ChangeTree = ref[$changes];
 
-        const refId = (decoder) ? decoder.root.refIds.get(ref) : changeTree.refId;
+        const refId = (ref as IRef)[$refId];
         const root = (decoder) ? decoder.root : changeTree.root;
 
          // log reference count if > 1
@@ -218,7 +218,7 @@ export class Schema<C = any> implements IRef {
         let current = ref[$changes].root[changeSet].next;
         while (current) {
             if (current.changeTree) {
-                encodeOrder.push(current.changeTree.refId);
+                encodeOrder.push(current.changeTree.ref[$refId]);
             }
             current = current.next;
         }
@@ -243,7 +243,7 @@ export class Schema<C = any> implements IRef {
         const changeSet = (isEncodeAll) ? changeTree.allChanges : changeTree.changes;
         const changeSetName = (isEncodeAll) ? "allChanges" : "changes";
 
-        let output = `${instance.constructor.name} (${changeTree.refId}) -> .${changeSetName}:\n`;
+        let output = `${instance.constructor.name} (${instance[$refId]}) -> .${changeSetName}:\n`;
 
         function dumpChangeSet(changeSet: ChangeSet) {
             changeSet.operations
@@ -262,7 +262,7 @@ export class Schema<C = any> implements IRef {
             changeTree.filteredChanges &&
             (changeTree.filteredChanges.operations).filter(op => op).length > 0
         ) {
-            output += `${instance.constructor.name} (${changeTree.refId}) -> .filteredChanges:\n`;
+            output += `${instance.constructor.name} (${instance[$refId]}) -> .filteredChanges:\n`;
             dumpChangeSet(changeTree.filteredChanges);
         }
 
@@ -272,7 +272,7 @@ export class Schema<C = any> implements IRef {
             changeTree.allFilteredChanges &&
             (changeTree.allFilteredChanges.operations).filter(op => op).length > 0
         ) {
-            output += `${instance.constructor.name} (${changeTree.refId}) -> .allFilteredChanges:\n`;
+            output += `${instance.constructor.name} (${instance[$refId]}) -> .allFilteredChanges:\n`;
             dumpChangeSet(changeTree.allFilteredChanges);
         }
 
@@ -313,14 +313,14 @@ export class Schema<C = any> implements IRef {
             }
 
             if (includeChangeTree) {
-                instanceRefIds.push(changeTree.refId);
+                instanceRefIds.push(changeTree.ref[$refId]);
                 totalOperations += Object.keys(changes).length;
                 changeTrees.set(changeTree, parentChangeTrees.reverse());
             }
         }
 
         output += "---\n"
-        output += `root refId: ${rootChangeTree.refId}\n`;
+        output += `root refId: ${rootChangeTree.ref[$refId]}\n`;
         output += `Total instances: ${instanceRefIds.length} (refIds: ${instanceRefIds.join(", ")})\n`;
         output += `Total changes: ${totalOperations}\n`;
         output += "---\n"
@@ -330,7 +330,7 @@ export class Schema<C = any> implements IRef {
         for (const [changeTree, parentChangeTrees] of changeTrees.entries()) {
             parentChangeTrees.forEach((parentChangeTree, level) => {
                 if (!visitedParents.has(parentChangeTree)) {
-                    output += `${getIndent(level)}${parentChangeTree.ref.constructor.name} (refId: ${parentChangeTree.refId})\n`;
+                    output += `${getIndent(level)}${parentChangeTree.ref.constructor.name} (refId: ${parentChangeTree.ref[$refId]})\n`;
                     visitedParents.add(parentChangeTree);
                 }
             });
@@ -340,7 +340,7 @@ export class Schema<C = any> implements IRef {
             const indent = getIndent(level);
 
             const parentIndex = (level > 0) ? `(${changeTree.parentIndex}) ` : "";
-            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.refId}) - changes: ${Object.keys(changes).length}\n`;
+            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${Object.keys(changes).length}\n`;
 
             for (const index in changes) {
                 const operation = changes[index];

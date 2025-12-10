@@ -1,6 +1,6 @@
 import type { Schema } from "./Schema";
 import { OPERATION } from "./encoding/spec";
-import { $changes } from "./types/symbols";
+import { $changes, $refId } from "./types/symbols";
 
 interface ChangeDump {
     ops: {
@@ -37,7 +37,7 @@ export function dumpChanges(schema: Schema) {
 
         const changes = changeTree.indexedOperations;
 
-        dump.refs.push(`refId#${changeTree.refId}`);
+        dump.refs.push(`refId#${changeTree.ref[$refId]}`);
         for (const index in changes) {
             const op = changes[index];
             const opName = OPERATION[op];

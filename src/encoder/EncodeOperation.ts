@@ -1,5 +1,5 @@
 import { OPERATION } from "../encoding/spec";
-import { $changes, $childType, $getByIndex } from "../types/symbols";
+import { $changes, $childType, $getByIndex, $refId } from "../types/symbols";
 
 import { encode } from "../encoding/encode";
 
@@ -13,7 +13,7 @@ import type { Metadata } from "../Metadata";
 
 export type EncodeOperation<T extends Ref = any> = (
     encoder: Encoder,
-    bytes: Buffer,
+    bytes: Uint8Array,
     changeTree: ChangeTree<T>,
     index: number,
     operation: OPERATION,
@@ -25,7 +25,7 @@ export type EncodeOperation<T extends Ref = any> = (
 
 export function encodeValue(
     encoder: Encoder,
-    bytes: Buffer,
+    bytes: Uint8Array,
     type: any,
     value: any,
     operation: OPERATION,
@@ -39,7 +39,7 @@ export function encodeValue(
         // Encode refId for this instance.
         // The actual instance is going to be encoded on next `changeTree` iteration.
         //
-        encode.number(bytes, value[$changes].refId, it);
+        encode.number(bytes, value[$refId], it);
 
         // Try to encode inherited TYPE_ID if it's an ADD operation.
         if ((operation & OPERATION.ADD) === OPERATION.ADD) {
@@ -51,7 +51,7 @@ export function encodeValue(
         // Encode refId for this instance.
         // The actual instance is going to be encoded on next `changeTree` iteration.
         //
-        encode.number(bytes, value[$changes].refId, it);
+        encode.number(bytes, value[$refId], it);
     }
 }
 
@@ -61,7 +61,7 @@ export function encodeValue(
  */
 export const encodeSchemaOperation: EncodeOperation = function <T extends Schema> (
     encoder: Encoder,
-    bytes: Buffer,
+    bytes: Uint8Array,
     changeTree: ChangeTree<T>,
     index: number,
     operation: OPERATION,
@@ -98,7 +98,7 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
  */
 export const encodeKeyValueOperation: EncodeOperation = function (
     encoder: Encoder,
-    bytes: Buffer,
+    bytes: Uint8Array,
     changeTree: ChangeTree,
     index: number,
     operation: OPERATION,
@@ -163,7 +163,7 @@ export const encodeKeyValueOperation: EncodeOperation = function (
  */
 export const encodeArray: EncodeOperation = function (
     encoder: Encoder,
-    bytes: Buffer,
+    bytes: Uint8Array,
     changeTree: ChangeTree<ArraySchema>,
     field: number,
     operation: OPERATION,
@@ -182,7 +182,7 @@ export const encodeArray: EncodeOperation = function (
         // Skip encoding if item is undefined (e.g. when clear() is called)
         if (!item) { return; }
 
-        refOrIndex = item[$changes].refId;
+        refOrIndex = item[$refId];
 
         if (operation === OPERATION.DELETE) {
             operation = OPERATION.DELETE_BY_REFID;

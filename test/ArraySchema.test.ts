@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
-import { ArraySchema, Schema, type, $changes, MapSchema, ChangeTree, schema } from "../src";
+import { ArraySchema, Schema, type, $changes, $refId, MapSchema, ChangeTree, schema } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -18,7 +18,7 @@ describe("ArraySchema Tests", () => {
         const referenceTracker = getDecoder(decodedState).root;
 
         decodedState.decode(state.encode());
-        const playersRefId = state.players[$changes].refId;
+        const playersRefId = state.players[$refId];
         assert.ok(referenceTracker.refs.has(playersRefId));
 
         state.players = new ArraySchema();
@@ -2302,15 +2302,15 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
 
-            assert.strictEqual(1, encoder.root.refCount[state.cards[0][$changes].refId]);
-            assert.strictEqual(1, encoder.root.refCount[state.cards[1][$changes].refId]);
-            assert.strictEqual(1, encoder.root.refCount[state.cards[2][$changes].refId]);
-            assert.strictEqual(1, encoder.root.refCount[state.cards[3][$changes].refId]);
+            assert.strictEqual(1, encoder.root.refCount[state.cards[0][$refId]]);
+            assert.strictEqual(1, encoder.root.refCount[state.cards[1][$refId]]);
+            assert.strictEqual(1, encoder.root.refCount[state.cards[2][$refId]]);
+            assert.strictEqual(1, encoder.root.refCount[state.cards[3][$refId]]);
 
             const removedCard = state.cards.splice(2, 1)[0];
-            console.log("removedCard, refId =>", removedCard[$changes].refId);
+            console.log("removedCard, refId =>", removedCard[$refId]);
             state.cards.forEach((card, i) => {
-                console.log(`state.cards[${i}] =>`, card[$changes].refId, card.toJSON());
+                console.log(`state.cards[${i}] =>`, card[$refId], card.toJSON());
             });
 
             // swap refId 5 <=> 2
@@ -2320,9 +2320,9 @@ describe("ArraySchema Tests", () => {
 
             console.log(Schema.debugChangesDeep(state));
 
-            assert.strictEqual(1, encoder.root.refCount[state.cards[0][$changes].refId]);
-            assert.strictEqual(1, encoder.root.refCount[state.cards[1][$changes].refId]);
-            assert.strictEqual(1, encoder.root.refCount[state.cards[2][$changes].refId]);
+            assert.strictEqual(1, encoder.root.refCount[state.cards[0][$refId]]);
+            assert.strictEqual(1, encoder.root.refCount[state.cards[1][$refId]]);
+            assert.strictEqual(1, encoder.root.refCount[state.cards[2][$refId]]);
 
             const encoded = state.encode();
             console.log({ encoded: Array.from(encoded) });
@@ -2751,7 +2751,7 @@ describe("ArraySchema Tests", () => {
             state.items[1] = undefined;
 
             // This should not throw an error, but internally it might cause issues
-            // when encodeValue tries to access value[$changes].refId on undefined
+            // when encodeValue tries to access value[$refId] on undefined
             assert.doesNotThrow(() => {
                 const encoded = state.encode();
                 decodedState.decode(encoded);

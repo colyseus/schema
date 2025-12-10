@@ -1,5 +1,5 @@
 import { TypeContext } from "../types/TypeContext";
-import { $changes, $childType, $decoder, $onDecodeEnd } from "../types/symbols";
+import { $changes, $childType, $decoder, $onDecodeEnd, $refId } from "../types/symbols";
 import { Schema } from "../Schema";
 
 import { decode } from "../encoding/decode";
@@ -38,7 +38,7 @@ export class Decoder<T extends Schema = any> {
     }
 
     decode(
-        bytes: Buffer,
+        bytes: Uint8Array,
         it: Iterator = { offset: 0 },
         ref: Ref = this.state,
     ) {
@@ -102,7 +102,7 @@ export class Decoder<T extends Schema = any> {
         return allChanges;
     }
 
-    skipCurrentStructure(bytes: Buffer, it: Iterator, totalBytes: number) {
+    skipCurrentStructure(bytes: Uint8Array, it: Iterator, totalBytes: number) {
         //
         // keep skipping next bytes until reaches a known structure
         // by local decoder.
@@ -119,7 +119,7 @@ export class Decoder<T extends Schema = any> {
         }
     }
 
-    getInstanceType(bytes: Buffer, it: Iterator, defaultType: typeof Schema): typeof Schema {
+    getInstanceType(bytes: Uint8Array, it: Iterator, defaultType: typeof Schema): typeof Schema {
         let type: typeof Schema;
 
         if (bytes[it.offset] === TYPE_ID) {
@@ -137,7 +137,7 @@ export class Decoder<T extends Schema = any> {
 
     removeChildRefs(ref: Collection, allChanges: DataChange[]) {
         const needRemoveRef = typeof ((ref as any)[$childType]) !== "string";
-        const refId = this.root.refIds.get(ref as Ref);
+        const refId = (ref as Ref)[$refId];
 
         ref.forEach((value: any, key: any) => {
             allChanges.push({
@@ -150,7 +150,7 @@ export class Decoder<T extends Schema = any> {
             });
 
             if (needRemoveRef) {
-                this.root.removeRef(this.root.refIds.get(value));
+                this.root.removeRef(value[$refId]);
             }
         });
     }

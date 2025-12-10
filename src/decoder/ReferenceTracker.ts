@@ -1,5 +1,5 @@
 import { Metadata } from "../Metadata";
-import { $childType } from "../types/symbols";
+import { $childType, $refId } from "../types/symbols";
 import { Ref } from "../encoder/ChangeTree";
 import { spliceOne } from "../types/utils";
 import { OPERATION } from "../encoding/spec";
@@ -26,7 +26,6 @@ export class ReferenceTracker {
     // For direct access of structures during decoding time.
     //
     public refs = new Map<number, Ref>();
-    public refIds = new WeakMap<Ref, number>();
 
     public refCount: { [refId: number]: number; } = {};
     public deletedRefs = new Set<number>();
@@ -41,7 +40,7 @@ export class ReferenceTracker {
     // for decoding
     addRef(refId: number, ref: Ref, incrementCount: boolean = true) {
         this.refs.set(refId, ref);
-        this.refIds.set(ref, refId);
+        ref[$refId] = refId;
 
         if (incrementCount) {
             this.refCount[refId] = (this.refCount[refId] || 0) + 1;
@@ -104,9 +103,12 @@ export class ReferenceTracker {
                 const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
                 for (const index in metadata) {
                     const field = metadata[index as any as number].name;
-                    const childRefId = typeof(ref[field as keyof Ref]) === "object" && this.refIds.get((ref as any)[field]);
-                    if (childRefId && !this.deletedRefs.has(childRefId)) {
-                        this.removeRef(childRefId);
+                    const child = ref[field as keyof Ref];
+                    if (typeof(child) === "object" && child) {
+                        const childRefId = (child as any)[$refId];
+                        if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
+                            this.removeRef(childRefId);
+                        }
                     }
                 }
 
@@ -114,8 +116,8 @@ export class ReferenceTracker {
                 if (typeof ((ref as any)[$childType]) === "function") {
                     Array.from((ref as MapSchema).values())
                         .forEach((child) => {
-                            const childRefId = this.refIds.get(child);
-                            if (!this.deletedRefs.has(childRefId)) {
+                            const childRefId = child[$refId];
+                            if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
                                 this.removeRef(childRefId);
                             }
                         });

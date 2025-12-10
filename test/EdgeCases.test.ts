@@ -201,7 +201,7 @@ describe("Edge cases", () => {
     });
 
     it("string: containing specific UTF-8 characters", () => {
-        let bytes: Buffer;
+        let bytes: Uint8Array;
 
         const state = new State();
         const decodedState = new State();

@@ -986,9 +986,7 @@ describe("Type: Schema", () => {
         describe("no changes", () => {
             it("empty state", () => {
                 const state = new State();
-
-                // TODO: ideally this should be 0
-                assert.ok(state.encode().length <= 2);
+                assert.ok(state.encode().length === 0);
 
                 const decodedState = new State();
                 assert.doesNotThrow(() => decodedState.decode(state.encode()));
