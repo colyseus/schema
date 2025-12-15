@@ -344,6 +344,7 @@ describe("Type: Schema", () => {
 
             assert.throws(() => {
                 class Player extends Entity {
+                    // @ts-ignore
                     @type("string") id: string;
                 }
             }, /Duplicate 'id' definition on 'Player'/);

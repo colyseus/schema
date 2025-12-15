@@ -307,8 +307,8 @@ describe("Definition Tests", () => {
             });
 
             const state = new State();
-            assert.ok(state.entity1 instanceof Entity);
-            assert.ok(state.entity2 instanceof Entity);
+            assert.ok(state.entity1 === undefined);
+            assert.ok(state.entity2 === undefined);
 
             assert.ok(state.map instanceof MapSchema);
             assert.strictEqual(state.map.size, 0);
@@ -320,8 +320,6 @@ describe("Definition Tests", () => {
             assert.strictEqual(state.array2.length, 0);
 
             const state2 = new State();
-            assert.ok(state.entity1 !== state2.entity1);
-            assert.ok(state.entity2 !== state2.entity2);
             assert.ok(state.map !== state2.map);
             assert.ok(state.array1 !== state2.array1);
             assert.ok(state.array2 !== state2.array2);
@@ -654,6 +652,27 @@ describe("Definition Tests", () => {
             assert.ok(clonedPlayerOne.x === 10);
             assert.ok(clonedPlayerOne.y === 20);
 
+        });
+
+        it("should not auto-initialize Schema instances", () => {
+            const Base = schema({
+                value: 'string',
+                initialize(value: { something: string }) {
+                    this.value = value.something;
+                },
+            });
+
+            const Child = schema({
+                world: 'string',
+                random: Base,
+                initialize(world: string) {
+                    this.world = world;
+                },
+            });
+
+            assert.doesNotThrow(() => {
+                new Child('hello');
+            });
         });
 
     });

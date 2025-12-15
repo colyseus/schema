@@ -55,6 +55,7 @@ describe("backwards/forwards compatibility", () => {
             x: 10,
             y: 10,
             name: "Forward",
+            // @ts-ignore
             arrayOfStrings: new ArraySchema("one"),
         }));
 

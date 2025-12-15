@@ -2520,7 +2520,8 @@ describe("StateView", () => {
             entity.components.push(new TagComponent());
             assert.strictEqual(entity.components[1][$changes].isFiltered, true);
 
-            entity.components.push(new ListComponent().assign({list: new ArraySchema("one", "two")}));
+            // @ts-ignore
+            entity.components.push(new ListComponent().assign({ list: new ArraySchema("one", "two") }));
             assert.strictEqual(entity.components[2][$changes].isFiltered, true);
 
             entity.component = new Component();
