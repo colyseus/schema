@@ -712,7 +712,7 @@ describe("Definition Tests", () => {
             assert.strictEqual(entity.stats.get('hp')?.value, 500);
         });
 
-        it("should exclude parent props from encode method (2)", () => {
+        it("should auto-initialize Schema instances with default values", () => {
             const AnotherRandomSchema = schema({
                 value: { type: 'string', default: 'world', },
             });
@@ -730,9 +730,78 @@ describe("Definition Tests", () => {
                 },
             });
 
-            const entity = new StatSchema(5);
-            console.log(entity.random.value, entity.random.anotherRandom.value);
+            assert.doesNotThrow(() => {
+                const entity = new StatSchema(5);
+                assert.strictEqual(entity.value, 5);
+                assert.strictEqual(entity.random.value, 'hello');
+                assert.strictEqual(entity.random.anotherRandom.value, 'world');
+
+            })
         })
+
+        describe("extends", () => {
+            it("should not call initialize automatically when creating an instance of inherited Schema (1)", () => {
+                let childSchemaInitializeCallCount = 0;
+
+                const ChildSchema = schema({
+                    name: 'string',
+                    initialize(props: { name: string }) {
+                        this.name = props.name;
+                        childSchemaInitializeCallCount++;
+                    },
+                });
+
+                const ParentSchema = ChildSchema.extends({
+                    id: 'string',
+                    initialize(props: { id: string }) {
+                        ChildSchema.prototype.initialize.call(this, {
+                            name: 'Jim',
+                        });
+                        this.id = props.id;
+                    },
+                });
+
+                assert.doesNotThrow(() => {
+                    const parent = new ParentSchema({ id: 'parent' });
+                    assert.strictEqual(parent.id, 'parent');
+                    assert.strictEqual(parent.name, 'Jim');
+                });
+
+                assert.strictEqual(childSchemaInitializeCallCount, 1);
+            })
+
+            it("should not call initialize automatically when creating an instance of inherited Schema (2)", () => {
+                const EntitySchema = schema({
+                    id: 'string',
+                    name: 'string',
+                    initialize(props: { id: string; name: string }) {
+                        this.id = props.id;
+                        this.name = props.name;
+                    },
+                });
+
+                const PlayerSchema = EntitySchema.extends({
+                    initialize(props: any) {
+                        EntitySchema.prototype.initialize.call(this, {
+                            id: props.public_id,
+                            name: props.username,
+                        });
+                    },
+                });
+
+                const player = new EntitySchema({ id: '1', name: 'test' });
+                assert.strictEqual(player.id, '1');
+                assert.strictEqual(player.name, 'test');
+
+                assert.doesNotThrow(() => {
+                    const player = new PlayerSchema({ id: 1, public_id: '1', username: 'test' });
+                    assert.strictEqual(player.id, '1');
+                    assert.strictEqual(player.name, 'test');
+                });
+            });
+
+        });
+
 
     });
 

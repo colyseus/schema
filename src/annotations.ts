@@ -662,7 +662,13 @@ export function schema<
             // call initialize method
             if (methods.initialize && typeof methods.initialize === 'function') {
                 super(Object.assign({}, getDefaultValues(), getParentProps(args[0] || {})));
-                methods.initialize.apply(this, args);
+                /**
+                 * only call initialize() in the current class, not the parent ones.
+                 * see "should not call initialize automatically when creating an instance of inherited Schema"
+                 */
+                if (new.target === klass) {
+                    methods.initialize.apply(this, args);
+                }
 
             } else {
                 super(Object.assign({}, getDefaultValues(), args[0] || {}));
