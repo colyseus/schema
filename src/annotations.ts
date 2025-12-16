@@ -597,8 +597,12 @@ export function schema<
 
                 } else if (value['type'] !== undefined && Schema.is(value['type'])) {
                     // Direct Schema type: Type → new Type()
-                    // TODO: should we auto-initialize Schema instances, in case their initialize() method is not defined?
-                    // defaultValues[fieldName] = new value['type']();
+                    if (!value['type'].prototype.initialize || value['type'].prototype.initialize.length === 0) {
+                        // only auto-initialize Schema instances if:
+                        // - they don't have an initialize method
+                        // - or initialize method doesn't accept any parameters
+                        defaultValues[fieldName] = new value['type']();
+                    }
                 }
             } else {
                 defaultValues[fieldName] = value['default'];
@@ -608,8 +612,12 @@ export function schema<
         } else if (typeof (value) === "function") {
             if (Schema.is(value)) {
                 // Direct Schema type: Type → new Type()
-                // TODO: should we auto-initialize Schema instances, in case their initialize() method is not defined?
-                // defaultValues[fieldName] = new value();
+                if (!value.prototype.initialize || value.prototype.initialize.length === 0) {
+                    // only auto-initialize Schema instances if:
+                    // - they don't have an initialize method
+                    // - or initialize method doesn't accept any parameters
+                    defaultValues[fieldName] = new value();
+                }
                 fields[fieldName] = getNormalizedType(value);
             } else {
                 methods[fieldName] = value;

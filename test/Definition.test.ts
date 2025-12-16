@@ -307,8 +307,8 @@ describe("Definition Tests", () => {
             });
 
             const state = new State();
-            assert.ok(state.entity1 === undefined);
-            assert.ok(state.entity2 === undefined);
+            assert.ok(state.entity1 instanceof Entity);
+            assert.ok(state.entity2 instanceof Entity);
 
             assert.ok(state.map instanceof MapSchema);
             assert.strictEqual(state.map.size, 0);
@@ -320,6 +320,8 @@ describe("Definition Tests", () => {
             assert.strictEqual(state.array2.length, 0);
 
             const state2 = new State();
+            assert.ok(state.entity1 !== state2.entity1);
+            assert.ok(state.entity2 !== state2.entity2);
             assert.ok(state.map !== state2.map);
             assert.ok(state.array1 !== state2.array1);
             assert.ok(state.array2 !== state2.array2);
@@ -675,7 +677,7 @@ describe("Definition Tests", () => {
             });
         });
 
-        it("should exclude parent props from initialize method", () => {
+        it("should exclude parent props from initialize method (1)", () => {
             const StatSchema = schema({
                 value: 'number',
                 initialize(value: number) {
@@ -709,6 +711,28 @@ describe("Definition Tests", () => {
             assert.strictEqual(entity.id, '123');
             assert.strictEqual(entity.stats.get('hp')?.value, 500);
         });
+
+        it("should exclude parent props from encode method (2)", () => {
+            const AnotherRandomSchema = schema({
+                value: { type: 'string', default: 'world', },
+            });
+
+            const RandomSchema = schema({
+                value: { type: 'string', default: 'hello', },
+                anotherRandom: AnotherRandomSchema,
+            });
+
+            const StatSchema = schema({
+                value: 'number',
+                random: RandomSchema,
+                initialize(value: number) {
+                    this.value = value;
+                },
+            });
+
+            const entity = new StatSchema(5);
+            console.log(entity.random.value, entity.random.anotherRandom.value);
+        })
 
     });
 
