@@ -637,14 +637,27 @@ export function schema<
         return defaults;
     };
 
+    const getParentProps = (props: any) => {
+        const fieldNames = Object.keys(fields);
+        const parentProps: any = {};
+        for (const key in props) {
+            if (!fieldNames.includes(key)) {
+                parentProps[key] = props[key];
+            }
+        }
+        return parentProps;
+    }
+
     /** @codegen-ignore */
     const klass = Metadata.setFields<any>(class extends (inherits as any) {
         constructor(...args: any[]) {
-            super(Object.assign({}, getDefaultValues(), args[0] || {}));
-
             // call initialize method
             if (methods.initialize && typeof methods.initialize === 'function') {
+                super(Object.assign({}, getDefaultValues(), getParentProps(args[0] || {})));
                 methods.initialize.apply(this, args);
+
+            } else {
+                super(Object.assign({}, getDefaultValues(), args[0] || {}));
             }
         }
     }, fields) as SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P>;

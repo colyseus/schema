@@ -675,6 +675,41 @@ describe("Definition Tests", () => {
             });
         });
 
+        it("should exclude parent props from initialize method", () => {
+            const StatSchema = schema({
+                value: 'number',
+                initialize(value: number) {
+                    this.value = value;
+                },
+            });
+
+            const EntitySchema = schema({
+                id: 'string',
+                initialize({ id }: any) {
+                    this.id = id;
+                },
+            });
+
+            const LivingEntitySchema = EntitySchema.extends({
+                stats: { map: StatSchema },
+                initialize(props: any) {
+                    EntitySchema.prototype.initialize.call(this, props);
+
+                    for (const [key, value] of Object.entries(props.stats)) {
+                        this.stats.set(key, new StatSchema(value as number));
+                    }
+                },
+            });
+
+            const entity = new LivingEntitySchema({
+                id: '123',
+                stats: { hp: 500, },
+            });
+
+            assert.strictEqual(entity.id, '123');
+            assert.strictEqual(entity.stats.get('hp')?.value, 500);
+        });
+
     });
 
 });
