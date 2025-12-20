@@ -2,6 +2,7 @@ import * as util from "util";
 import * as assert from "assert";
 import { Reflection, Schema, type, MapSchema, ArraySchema, $changes, TypeContext, Decoder, entity } from "../src";
 import { createInstanceFromReflection, getEncoder } from "./Schema";
+import { Reflection } from "../src/Reflection";
 
 /**
  * No filters example
@@ -314,7 +315,7 @@ describe("Reflection", () => {
         const decoder = new Decoder(reflected);
         decoder.decode(encoded);
 
-        const types = reflected.types.toArray();
+        const types = reflected.types;
         assert.strictEqual(11, types.length)
 
         const addedTypeIds = new Set<number>();
