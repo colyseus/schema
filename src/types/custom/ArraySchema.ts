@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd } from "../symbols";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $refId } from "../symbols";
 import type { Schema } from "../../Schema";
 import { type IRef, ChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
@@ -21,6 +21,7 @@ const DEFAULT_SORT = (a: any, b: any) => {
 export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IRef {
     [n: number]: V;
     [$changes]: ChangeTree;
+    [$refId]?: number;
 
     protected [$childType]: string | typeof Schema;
 

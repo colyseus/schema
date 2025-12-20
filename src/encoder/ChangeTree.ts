@@ -29,7 +29,7 @@ export interface IRef {
     [$deleteByIndex]?: (index: number) => void;
 }
 
-export type Ref = IRef & (Schema | ArraySchema | MapSchema | CollectionSchema | SetSchema);
+export type Ref = Schema | ArraySchema | MapSchema | CollectionSchema | SetSchema;
 
 export type ChangeSetName = "changes"
     | "allChanges"

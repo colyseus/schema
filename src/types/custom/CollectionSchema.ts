@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd } from "../symbols";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId } from "../symbols";
 import { ChangeTree, type IRef } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
@@ -11,7 +11,9 @@ import type { Schema } from "../../Schema";
 type K = number; // TODO: allow to specify K generic on MapSchema.
 
 export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
-    public [$changes]: ChangeTree;
+    [$changes]: ChangeTree;
+    [$refId]?: number;
+
     protected [$childType]: string | typeof Schema;
 
     protected $items: Map<number, V> = new Map<number, V>();

@@ -22,6 +22,8 @@ export class Schema<C = any> implements IRef {
     static [$encoder] = encodeSchemaOperation;
     static [$decoder] = decodeSchemaOperation;
 
+    [$refId]?: number;
+
     /**
      * Assign the property descriptors required to track changes on this instance.
      * @param instance

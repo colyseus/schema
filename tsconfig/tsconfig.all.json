@@ -4,7 +4,6 @@
         // "moduleResolution": "NodeNext",
         "lib": ["ES2022"],
         "experimentalDecorators": true,
-        "useDefineForClassFields": false,
         "noImplicitAny": true,
         "noImplicitThis": true,
         "inlineSources": true,
