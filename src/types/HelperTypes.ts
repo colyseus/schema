@@ -39,19 +39,24 @@ export type InferValueType<T extends DefinitionType> =
 
     // Handle direct array patterns
     : T extends Array<infer ChildType extends Constructor> ? InstanceType<ChildType>[]
+    : T extends Array<infer ChildType extends RawPrimitiveType> ? InferValueType<ChildType>[] // primitive types
     : T extends Array<infer ChildType> ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType][] : ChildType[]) // TS ENUM
 
     // Handle collection object patterns
     : T extends { array: infer ChildType extends Constructor } ? InstanceType<ChildType>[]
+    : T extends { array: infer ChildType extends RawPrimitiveType } ? InferValueType<ChildType>[] // primitive types
     : T extends { array: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType][] : ChildType[]) // TS ENUM
 
     : T extends { map: infer ChildType extends Constructor } ? MapSchema<InstanceType<ChildType>>
+    : T extends { map: infer ChildType extends RawPrimitiveType } ? MapSchema<InferValueType<ChildType>> // primitive types
     : T extends { map: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType]> : MapSchema<ChildType>) // TS ENUM
 
     : T extends { set: infer ChildType extends Constructor } ? SetSchema<InstanceType<ChildType>>
+    : T extends { set: infer ChildType extends RawPrimitiveType } ? SetSchema<InferValueType<ChildType>> // primitive types
     : T extends { set: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? SetSchema<ChildType[keyof ChildType]> : SetSchema<ChildType>) // TS ENUM
 
     : T extends { collection: infer ChildType extends Constructor } ? CollectionSchema<InstanceType<ChildType>>
+    : T extends { collection: infer ChildType extends RawPrimitiveType } ? CollectionSchema<InferValueType<ChildType>> // primitive types
     : T extends { collection: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? CollectionSchema<ChildType[keyof ChildType]> : CollectionSchema<ChildType>) // TS ENUM
 
     // Handle direct types
