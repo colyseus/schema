@@ -97,10 +97,76 @@ export class Schema<C = any> implements IRef {
         }
     }
 
-    public assign<T extends Partial<this>>(
-        props: AssignableProps<T>,
-    ): this {
+    /**
+     * Assign properties to the instance.
+     * @param props Properties to assign to the instance
+     * @returns
+     */
+    public assign<T extends Partial<this>>(props: AssignableProps<T>,): this {
         Object.assign(this, props);
+        return this;
+    }
+
+    /**
+     * Restore the instance from JSON data.
+     * @param jsonData JSON data to restore the instance from
+     * @returns
+     */
+    public restore(jsonData: ToJSON<this>): this {
+        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
+
+        for (const fieldIndex in metadata) {
+            const field = metadata[fieldIndex as any as number];
+            const fieldName = field.name as keyof this;
+            const fieldType = field.type;
+            const value = (jsonData as any)[fieldName];
+
+            if (value === undefined || value === null) {
+                continue;
+            }
+
+            if (typeof fieldType === "string") {
+                // Primitive type: assign directly
+                this[fieldName] = value;
+
+            } else if (Schema.is(fieldType)) {
+                // Schema type: create instance and restore
+                const instance = new (fieldType as typeof Schema)();
+                instance.restore(value);
+                this[fieldName] = instance as any;
+
+            } else if (typeof fieldType === "object") {
+                // Collection types: { map: ... }, { array: ... }, etc.
+                const collectionType = Object.keys(fieldType)[0] as string;
+                const childType = (fieldType as any)[collectionType];
+
+                if (collectionType === "map") {
+                    const mapSchema = this[fieldName] as any;
+                    for (const key in value) {
+                        if (Schema.is(childType)) {
+                            const childInstance = new (childType as typeof Schema)();
+                            childInstance.restore(value[key]);
+                            mapSchema.set(key, childInstance);
+                        } else {
+                            mapSchema.set(key, value[key]);
+                        }
+                    }
+
+                } else if (collectionType === "array") {
+                    const arraySchema = this[fieldName] as any;
+                    for (let i = 0; i < value.length; i++) {
+                        if (Schema.is(childType)) {
+                            const childInstance = new (childType as typeof Schema)();
+                            childInstance.restore(value[i]);
+                            arraySchema.push(childInstance);
+                        } else {
+                            arraySchema.push(value[i]);
+                        }
+                    }
+                }
+            }
+        }
+
         return this;
     }
 
