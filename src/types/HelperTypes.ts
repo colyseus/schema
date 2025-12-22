@@ -7,6 +7,13 @@ import type { SetSchema } from "./custom/SetSchema";
 
 export type Constructor<T = {}> = new (...args: any[]) => T;
 
+// Helper to convert primitive type literals to actual runtime types
+type PrimitiveStringToType<T> =
+    T extends "string" ? string
+    : T extends "number" | "int8" | "uint8" | "int16" | "uint16" | "int32" | "uint32" | "int64" | "uint64" | "float32" | "float64" ? number
+    : T extends "boolean" ? boolean
+    : T;
+
 export interface Collection<K = any, V = any, IT = V> {
     [Symbol.iterator](): IterableIterator<IT>;
     forEach(callback: Function): void;
@@ -38,15 +45,15 @@ export type InferValueType<T extends DefinitionType> =
     : T extends { type: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType] : ChildType) // TS ENUM
 
     // Handle direct array patterns
-    : T extends Array<infer ChildType extends Constructor> ? InstanceType<ChildType>[]
-    : T extends Array<infer ChildType> ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType][] : ChildType[]) // TS ENUM
+    : T extends Array<infer ChildType extends Constructor> ? ArraySchema<InstanceType<ChildType>>
+    : T extends Array<infer ChildType> ? (ChildType extends Record<string | number, string | number> ? ArraySchema<ChildType[keyof ChildType]> : ArraySchema<PrimitiveStringToType<ChildType>>) // TS ENUM
 
     // Handle collection object patterns
-    : T extends { array: infer ChildType extends Constructor } ? InstanceType<ChildType>[]
-    : T extends { array: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType][] : ChildType[]) // TS ENUM
+    : T extends { array: infer ChildType extends Constructor } ? ArraySchema<InstanceType<ChildType>>
+    : T extends { array: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? ArraySchema<ChildType[keyof ChildType]> : ArraySchema<PrimitiveStringToType<ChildType>>) // TS ENUM
 
     : T extends { map: infer ChildType extends Constructor } ? MapSchema<InstanceType<ChildType>>
-    : T extends { map: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType]> : MapSchema<ChildType>) // TS ENUM
+    : T extends { map: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType]> : MapSchema<PrimitiveStringToType<ChildType>>) // TS ENUM
 
     : T extends { set: infer ChildType extends Constructor } ? SetSchema<InstanceType<ChildType>>
     : T extends { set: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? SetSchema<ChildType[keyof ChildType]> : SetSchema<ChildType>) // TS ENUM
@@ -84,7 +91,7 @@ export type NonFunctionNonPrimitivePropNames<T> = {
 }[keyof T];
 
 // Helper to recursively convert Schema instances to their JSON representation
-type ToJSONValue<U> = U extends Schema ? ToJSON<U> : U;
+type ToJSONValue<U> = U extends Schema ? ToJSON<U> : PrimitiveStringToType<U>;
 
 export type ToJSON<T> = NonFunctionProps<{
     [K in keyof T]:
