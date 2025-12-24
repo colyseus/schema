@@ -294,7 +294,11 @@ export const Metadata = {
             }
         }
 
-        constructor[Symbol.metadata] = metadata;
+        Object.defineProperty(constructor, Symbol.metadata, {
+            value: metadata,
+            writable: false,
+            configurable: true
+        });
 
         return metadata;
     },
