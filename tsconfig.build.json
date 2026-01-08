@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig/tsconfig.all.json",
+  "compilerOptions": {
+    // "module": "ESNext",
+    "module": "NodeNext",
+    "target": "ES2022",
+    // "target": "es5",
+    "outDir": "lib",
+    "declaration": true,
+
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+
+    // "downlevelIteration": true, /*only for tests*/
+    // "emitDecoratorMetadata": true
+  },
+}

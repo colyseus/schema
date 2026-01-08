@@ -62,7 +62,8 @@ export { TypeContext } from "./types/TypeContext";
 // Helper types for type inference
 export type { InferValueType, InferSchemaInstanceType, AssignableProps } from "./types/HelperTypes";
 
-export { getDecoderStateCallbacks, CallbackProxy, SchemaCallback, CollectionCallback, SchemaCallbackProxy } from "./decoder/strategy/StateCallbacks";
+export { getDecoderStateCallbacks, CallbackProxy, SchemaCallback, CollectionCallback, SchemaCallbackProxy } from "./decoder/strategy/getDecoderStateCallbacks";
+export { Callbacks, StateCallbackStrategy } from "./decoder/strategy/Callbacks";
 export { getRawChangesCallback } from "./decoder/strategy/RawChanges";
 
 export { Encoder } from "./encoder/Encoder";

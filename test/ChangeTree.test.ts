@@ -62,7 +62,7 @@ describe("ChangeTree", () => {
         class State extends Schema {
             @type("string") str: string;
             @type("number") num: number;
-            @type({ map: Player }) players: Map<string, Player>;
+            @type({ map: Player }) players: MapSchema<Player>;
             @type(Player) player: Player;
         };
 
@@ -71,7 +71,7 @@ describe("ChangeTree", () => {
         player.item = new Item();
         state.player = player;
 
-        const players = new Map<string, Player>();
+        const players = new MapSchema<Player>();
         players.set("one", new Player());
         players.get("one").item = new Item();
 

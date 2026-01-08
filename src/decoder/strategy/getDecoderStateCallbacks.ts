@@ -108,7 +108,12 @@ type CallContext = {
     onInstanceAvailable?: OnInstanceAvailableCallback,
 }
 
-
+/**
+ * Legacy callback system
+ *
+ * @param decoder
+ * @returns
+ */
 export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>): SchemaCallbackProxy<T> {
     const $root = decoder.root;
     const callbacks = $root.callbacks;
