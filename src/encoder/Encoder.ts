@@ -9,7 +9,6 @@ import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
 import { Root } from "./Root";
 
 import type { StateView } from "./StateView";
-import type { Metadata } from "../Metadata";
 import type { ChangeSetName, ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree";
 import { createChangeTreeList } from "./ChangeTree";
 
@@ -22,7 +21,7 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
 
 export class Encoder<T extends Schema = any> {
     static BUFFER_SIZE = 8 * 1024; // 8KB
-    sharedBuffer = new Uint8Array(Encoder.BUFFER_SIZE);
+    sharedBuffer: Uint8Array = new Uint8Array(Encoder.BUFFER_SIZE);
 
     context: TypeContext;
     state: T;
@@ -55,7 +54,7 @@ export class Encoder<T extends Schema = any> {
     encode(
         it: Iterator = { offset: 0 },
         view?: StateView,
-        buffer = this.sharedBuffer,
+        buffer: Uint8Array = this.sharedBuffer,
         changeSetName: ChangeSetName = "changes",
         isEncodeAll = changeSetName === "allChanges",
         initialOffset = it.offset // cache current offset in case we need to resize the buffer
@@ -159,11 +158,19 @@ export class Encoder<T extends Schema = any> {
         }
     }
 
-    encodeAll(it: Iterator = { offset: 0 }, buffer = this.sharedBuffer) {
+    encodeAll(
+        it: Iterator = { offset: 0 },
+        buffer: Uint8Array = this.sharedBuffer
+    ) {
         return this.encode(it, undefined, buffer, "allChanges", true);
     }
 
-    encodeAllView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
+    encodeAllView(
+        view: StateView,
+        sharedOffset: number,
+        it: Iterator,
+        bytes: Uint8Array = this.sharedBuffer
+    ) {
         const viewOffset = it.offset;
 
         // try to encode "filtered" changes
@@ -175,7 +182,12 @@ export class Encoder<T extends Schema = any> {
         );
     }
 
-    encodeView(view: StateView, sharedOffset: number, it: Iterator, bytes = this.sharedBuffer) {
+    encodeView(
+        view: StateView,
+        sharedOffset: number,
+        it: Iterator,
+        bytes: Uint8Array = this.sharedBuffer
+    ) {
         const viewOffset = it.offset;
 
         // encode visibility changes (add/remove for this view)
@@ -251,7 +263,12 @@ export class Encoder<T extends Schema = any> {
         this.root.filteredChanges = createChangeTreeList();
     }
 
-    tryEncodeTypeId (bytes: Uint8Array, baseType: typeof Schema, targetType: typeof Schema, it: Iterator) {
+    tryEncodeTypeId(
+        bytes: Uint8Array,
+        baseType: typeof Schema,
+        targetType: typeof Schema,
+        it: Iterator
+    ) {
         const baseTypeId = this.context.getTypeId(baseType);
         const targetTypeId = this.context.getTypeId(targetType);
 
