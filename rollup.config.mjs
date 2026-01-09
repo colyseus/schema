@@ -11,7 +11,7 @@ export default [
 
     {
         input: ['src/index.ts'],
-        output: [{ dir: 'build/cjs', format: 'cjs', entryFileNames: '[name].js', sourcemap: true, preserveModules: false}],
+        output: [{ dir: 'build/cjs', format: 'cjs', entryFileNames: '[name].cjs', sourcemap: true, preserveModules: false}],
         plugins: [typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],
     },
 

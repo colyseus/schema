@@ -1,9 +1,14 @@
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
 import * as rimraf from "rimraf";
 import * as glob from "glob";
 import * as assert from "assert";
-import { generate } from "../../src/codegen/api";
+import { generate } from "../../src/codegen/api.js";
+
+// ESM-compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const INPUT_DIR = path.resolve(__dirname, "sources");
 const OUTPUT_DIR = path.resolve(__dirname, "tmp-codegen-output");

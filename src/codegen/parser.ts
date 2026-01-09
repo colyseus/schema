@@ -1,7 +1,7 @@
 import * as ts from "typescript";
 import * as path from "path";
-import {readFileSync} from "fs";
-import {IStructure, Class, Interface, Property, Context, Enum} from "./types";
+import { readFileSync } from "fs";
+import { IStructure, Class, Interface, Property, Context, Enum } from "./types";
 
 let currentStructure: IStructure;
 let currentProperty: Property;

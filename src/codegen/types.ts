@@ -1,4 +1,9 @@
 import * as fs from "fs";
+import * as path from "path";
+
+if (typeof(__dirname) === "undefined") {
+    global.__dirname = path.dirname(new URL(import.meta.url).pathname);
+}
 
 const VERSION = JSON.parse(fs.readFileSync(__dirname + "/../../package.json").toString()).version;
 const COMMENT_HEADER = `

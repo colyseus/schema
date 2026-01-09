@@ -2,8 +2,8 @@
   "extends": "./tsconfig/tsconfig.all.json",
   "compilerOptions": {
     // "module": "ESNext",
-    "module": "NodeNext",
-    "target": "ES2022",
+    "module": "ESNext",
+    "target": "ESNext",
     // "target": "es5",
     "outDir": "lib",
     "declaration": true,
@@ -14,4 +14,7 @@
     // "downlevelIteration": true, /*only for tests*/
     // "emitDecoratorMetadata": true
   },
+  "include": [
+    "src/**/*.ts"
+  ]
 }

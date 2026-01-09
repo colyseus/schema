@@ -1,8 +1,15 @@
 import * as fs from "fs";
 import * as path from "path";
+import { createRequire } from "module";
+// import { fileURLToPath } from "url";
 
 import { File } from "./types";
 import { parseFiles } from "./parser";
+
+// Create require relative to this file's location (for ESM compatibility)
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
 
 export interface GenerateOptions {
     files: string[],
