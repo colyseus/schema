@@ -71,12 +71,12 @@ describe("Callbacks (new API)", () => {
             let hpValue: number | undefined;
             let hpPrevious: number | undefined;
 
-            // C# style: callbacks.onAdd("players", (sessionId, player) => {
+            // C# style: callbacks.onAdd("players", (player, sessionId) => {
             //     callbacks.listen(player, "hp", (current, previous) => { ... });
             // });
             callbacks.onAdd(
                 "players",
-                (sessionId, playerInstance) => {
+                (playerInstance, sessionId) => {
                     callbacks.listen(
                         playerInstance,
                         "hp",
@@ -134,7 +134,7 @@ describe("Callbacks (new API)", () => {
     });
 
     describe("onAdd / onRemove", () => {
-        it("should trigger onAdd with (key, value) parameter order", () => {
+        it("should trigger onAdd with (value, key) parameter order", () => {
             class Player extends Schema {
                 @type("string") name: string;
             }
@@ -153,12 +153,12 @@ describe("Callbacks (new API)", () => {
             let addedKey: string | undefined;
             let addedPlayer: Player | undefined;
 
-            // C# style: callbacks.onAdd("players", (sessionId, player) => { ... });
+            // C# style: callbacks.onAdd("players", (player, sessionId) => { ... });
             callbacks.onAdd(
                 "players",
-                (sessionId, player) => {
-                    addedKey = sessionId;
+                (player, sessionId) => {
                     addedPlayer = player;
+                    addedKey = sessionId;
                 }
             );
 
@@ -168,7 +168,7 @@ describe("Callbacks (new API)", () => {
             assert.strictEqual(addedPlayer?.name, "Alice");
         });
 
-        it("should trigger onRemove with (key, value) parameter order", () => {
+        it("should trigger onRemove with (value, key) parameter order", () => {
             class Player extends Schema {
                 @type("string") name: string;
             }
@@ -190,9 +190,9 @@ describe("Callbacks (new API)", () => {
             callbacks.onAdd("players", () => {});
             callbacks.onRemove(
                 "players",
-                (sessionId, player) => {
-                    removedKey = sessionId;
+                (player, sessionId) => {
                     removedPlayer = player;
+                    removedKey = sessionId;
                 }
             );
 
@@ -227,9 +227,9 @@ describe("Callbacks (new API)", () => {
 
             callbacks.onAdd(
                 "items",
-                (index, item) => {
-                    addedIndexes.push(index);
+                (item, index) => {
                     addedAmounts.push(item.amount);
+                    addedIndexes.push(index);
                 }
             );
 
@@ -341,7 +341,7 @@ describe("Callbacks (new API)", () => {
             // C# style: callbacks.bindTo(player, playerVisual);
             callbacks.onAdd(
                 "players",
-                (sessionId, player) => {
+                (player, sessionId) => {
                     callbacks.bindTo(player, visualObject);
                 }
             );
@@ -446,7 +446,7 @@ describe("Callbacks (new API)", () => {
             // C# style nested callbacks
             callbacks.onAdd(
                 "entities",
-                (sessionId, entity) => {
+                (entity, sessionId) => {
                     entityAddCount++;
 
                     callbacks.listen(
@@ -460,13 +460,13 @@ describe("Callbacks (new API)", () => {
                     callbacks.onAdd(
                         entity,
                         "items",
-                        (itemKey, item) => {
+                        (item, itemKey) => {
                             itemAddCount++;
 
                             callbacks.onAdd(
                                 item,
                                 "properties",
-                                (propKey, prop) => {
+                                (prop, propKey) => {
                                     propAddCount++;
 
                                     callbacks.listen(

@@ -12,17 +12,17 @@ import { getDecoderStateCallbacks, type SchemaCallbackProxy } from "./getDecoder
 import { getRawChangesCallback } from "./RawChanges.js";
 
 //
-// C#-style Callbacks API
-// Matches the API from: https://docs.colyseus.io/state/callbacks
+// C#-style Callbacks API (https://docs.colyseus.io/state/callbacks)
 //
 // Key features:
 // - Uses string property names with TypeScript auto-completion
-// - Consistent parameter order (key, value) for collection callbacks
+// - Parameter order (value, key) for onAdd/onRemove callbacks
 // - Overloaded methods for nested instance callbacks
 //
 
 type PropertyChangeCallback<K> = (currentValue: K, previousValue: K) => void;
 type KeyValueCallback<K, V> = (key: K, value: V) => void;
+type ValueKeyCallback<V, K> = (value: V, key: K) => void;
 type InstanceChangeCallback = () => void;
 
 // Exclude internal properties from valid property names
@@ -45,32 +45,6 @@ type CollectionKeyType<T, K extends keyof T> =
     T[K] extends ArraySchema<any> ? number :
     T[K] extends Collection<infer Key, any, any> ? Key : never;
 
-/**
- * State Callbacks handler
- *
- * Usage:
- * ```ts
- * const $ = Callbacks.get(decoder);
- *
- * // Listen to property changes
- * $.listen("currentTurn", (currentValue, previousValue) => { ... });
- *
- * // Listen to collection additions
- * $.onAdd("entities", (sessionId, entity) => {
- *     // Nested property listening
- *     $.listen(entity, "hp", (currentHp, previousHp) => { ... });
- * });
- *
- * // Listen to collection removals
- * $.onRemove("entities", (sessionId, entity) => { ... });
- *
- * // Listen to any property change on an instance
- * $.onChange(entity, () => { ... });
- *
- * // Bind properties to another object
- * $.bindTo(player, playerVisual);
- * ```
- */
 export class StateCallbackStrategy<TState extends Schema> {
     protected decoder: Decoder<TState>;
     protected uniqueRefIds: Set<number> = new Set();
@@ -131,7 +105,7 @@ export class StateCallbackStrategy<TState extends Schema> {
 
             if (operation === OPERATION.ADD && immediate) {
                 (collection as Collection<any, any>).forEach((value: any, key: any) => {
-                    handler(key, value);
+                    handler(value, key);
                 });
             }
 
@@ -244,7 +218,7 @@ export class StateCallbackStrategy<TState extends Schema> {
      */
     onAdd<K extends CollectionPropNames<TState>>(
         property: K,
-        handler: KeyValueCallback<CollectionKeyType<TState, K>, CollectionValueType<TState, K>>,
+        handler: ValueKeyCallback<CollectionValueType<TState, K>, CollectionKeyType<TState, K>>,
         immediate?: boolean
     ): () => void;
 
@@ -254,7 +228,7 @@ export class StateCallbackStrategy<TState extends Schema> {
     onAdd<TInstance extends Schema, K extends CollectionPropNames<TInstance>>(
         instance: TInstance,
         property: K,
-        handler: KeyValueCallback<CollectionKeyType<TInstance, K>, CollectionValueType<TInstance, K>>,
+        handler: ValueKeyCallback<CollectionValueType<TInstance, K>, CollectionKeyType<TInstance, K>>,
         immediate?: boolean
     ): () => void;
 
@@ -285,7 +259,7 @@ export class StateCallbackStrategy<TState extends Schema> {
      */
     onRemove<K extends CollectionPropNames<TState>>(
         property: K,
-        handler: KeyValueCallback<CollectionKeyType<TState, K>, CollectionValueType<TState, K>>
+        handler: ValueKeyCallback<CollectionValueType<TState, K>, CollectionKeyType<TState, K>>
     ): () => void;
 
     /**
@@ -294,7 +268,7 @@ export class StateCallbackStrategy<TState extends Schema> {
     onRemove<TInstance extends Schema, K extends CollectionPropNames<TInstance>>(
         instance: TInstance,
         property: K,
-        handler: KeyValueCallback<CollectionKeyType<TInstance, K>, CollectionValueType<TInstance, K>>
+        handler: ValueKeyCallback<CollectionValueType<TInstance, K>, CollectionKeyType<TInstance, K>>
     ): () => void;
 
     onRemove(...args: any[]): () => void {
@@ -426,11 +400,11 @@ export class StateCallbackStrategy<TState extends Schema> {
                     // FIXME: `previousValue` should always be available.
                     //
                     if (change.previousValue !== undefined) {
-                        // trigger onRemove (key, value)
+                        // trigger onRemove (value, key)
                         const deleteCallbacks = $callbacks[OPERATION.DELETE];
                         if (deleteCallbacks) {
                             for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
-                                deleteCallbacks[j](dynamicIndex, change.previousValue);
+                                deleteCallbacks[j](change.previousValue, dynamicIndex);
                             }
                         }
                     }
@@ -441,7 +415,7 @@ export class StateCallbackStrategy<TState extends Schema> {
                         if (addCallbacks) {
                             this.isTriggering = true;
                             for (let j = addCallbacks.length - 1; j >= 0; j--) {
-                                addCallbacks[j](dynamicIndex, change.value);
+                                addCallbacks[j](change.value, dynamicIndex);
                             }
                             this.isTriggering = false;
                         }
@@ -451,12 +425,12 @@ export class StateCallbackStrategy<TState extends Schema> {
                     (change.op & OPERATION.ADD) === OPERATION.ADD &&
                     change.previousValue !== change.value
                 ) {
-                    // trigger onAdd (key, value)
+                    // trigger onAdd (value, key)
                     const addCallbacks = $callbacks[OPERATION.ADD];
                     if (addCallbacks) {
                         this.isTriggering = true;
                         for (let j = addCallbacks.length - 1; j >= 0; j--) {
-                            addCallbacks[j](dynamicIndex, change.value);
+                            addCallbacks[j](change.value, dynamicIndex);
                         }
                         this.isTriggering = false;
                     }
@@ -493,13 +467,13 @@ export const Callbacks = {
      * callbacks.listen("currentTurn", (currentValue, previousValue) => { ... });
      *
      * // Listen to collection additions
-     * callbacks.onAdd("entities", (sessionId, entity) => {
+     * callbacks.onAdd("entities", (entity, sessionId) => {
      *     // Nested property listening
      *     callbacks.listen(entity, "hp", (currentHp, previousHp) => { ... });
      * });
      *
      * // Listen to collection removals
-     * callbacks.onRemove("entities", (sessionId, entity) => { ... });
+     * callbacks.onRemove("entities", (entity, sessionId) => { ... });
      *
      * // Listen to any property change on an instance
      * callbacks.onChange(entity, () => { ... });
