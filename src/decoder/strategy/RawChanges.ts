@@ -1,5 +1,5 @@
-import { DataChange } from "../DecodeOperation";
-import { Decoder } from "../Decoder";
+import { DataChange } from "../DecodeOperation.js";
+import { Decoder } from "../Decoder.js";
 
 export function getRawChangesCallback(
     decoder: Decoder,

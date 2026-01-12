@@ -1,18 +1,18 @@
-import { OPERATION } from './encoding/spec';
-import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations";
+import { OPERATION } from './encoding/spec.js';
+import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
-import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes';
+import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
-import { ChangeSet, ChangeSetName, ChangeTree, IRef, Ref } from './encoder/ChangeTree';
-import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $refId, $track } from './types/symbols';
-import { StateView } from './encoder/StateView';
+import { ChangeSet, ChangeSetName, ChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
+import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $refId, $track } from './types/symbols.js';
+import { StateView } from './encoder/StateView.js';
 
-import { encodeSchemaOperation } from './encoder/EncodeOperation';
-import { decodeSchemaOperation } from './decoder/DecodeOperation';
+import { encodeSchemaOperation } from './encoder/EncodeOperation.js';
+import { decodeSchemaOperation } from './decoder/DecodeOperation.js';
 
-import type { Decoder } from './decoder/Decoder';
-import type { Metadata, MetadataField } from './Metadata';
-import { getIndent } from './utils';
+import type { Decoder } from './decoder/Decoder.js';
+import type { Metadata, MetadataField } from './Metadata.js';
+import { getIndent } from './utils.js';
 
 /**
  * Schema encoder / decoder

@@ -1,12 +1,12 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId } from "../symbols";
-import { ChangeTree, type IRef } from "../../encoder/ChangeTree";
-import { OPERATION } from "../../encoding/spec";
-import { registerType } from "../registry";
-import { Collection } from "../HelperTypes";
-import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
-import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
-import type { StateView } from "../../encoder/StateView";
-import type { Schema } from "../../Schema";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId } from "../symbols.js";
+import { ChangeTree, type IRef } from "../../encoder/ChangeTree.js";
+import { OPERATION } from "../../encoding/spec.js";
+import { registerType } from "../registry.js";
+import { Collection } from "../HelperTypes.js";
+import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
+import { encodeKeyValueOperation } from "../../encoder/EncodeOperation.js";
+import type { StateView } from "../../encoder/StateView.js";
+import type { Schema } from "../../Schema.js";
 
 type K = number; // TODO: allow to specify K generic on MapSchema.
 

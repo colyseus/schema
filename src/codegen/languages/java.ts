@@ -1,5 +1,5 @@
-import { Class, Property, File, getCommentHeader, Context } from "../types";
-import { GenerateOptions } from "../api";
+import { Class, Property, File, getCommentHeader, Context } from "../types.js";
+import { GenerateOptions } from "../api.js";
 
 const typeMaps: { [key: string]: string } = {
     "string": "String",

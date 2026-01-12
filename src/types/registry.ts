@@ -1,6 +1,6 @@
-import { DefinitionType, type } from "../annotations";
-import { BufferLike, encode } from "../encoding/encode";
-import { decode, Iterator } from "../encoding/decode";
+import { DefinitionType, type } from "../annotations.js";
+import { BufferLike, encode } from "../encoding/encode.js";
+import { decode, Iterator } from "../encoding/decode.js";
 
 export interface TypeDefinition {
     constructor?: any,

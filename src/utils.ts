@@ -1,6 +1,6 @@
-import type { Schema } from "./Schema";
-import { OPERATION } from "./encoding/spec";
-import { $changes, $refId } from "./types/symbols";
+import type { Schema } from "./Schema.js";
+import { OPERATION } from "./encoding/spec.js";
+import { $changes, $refId } from "./types/symbols.js";
 
 interface ChangeDump {
     ops: {

@@ -1,14 +1,14 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $refId } from "../symbols";
-import type { Schema } from "../../Schema";
-import { type IRef, ChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree";
-import { OPERATION } from "../../encoding/spec";
-import { registerType } from "../registry";
-import { Collection } from "../HelperTypes";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $refId } from "../symbols.js";
+import type { Schema } from "../../Schema.js";
+import { type IRef, ChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree.js";
+import { OPERATION } from "../../encoding/spec.js";
+import { registerType } from "../registry.js";
+import { Collection } from "../HelperTypes.js";
 
-import { encodeArray } from "../../encoder/EncodeOperation";
-import { decodeArray } from "../../decoder/DecodeOperation";
-import type { StateView } from "../../encoder/StateView";
-import { assertInstanceType } from "../../encoding/assert";
+import { encodeArray } from "../../encoder/EncodeOperation.js";
+import { decodeArray } from "../../decoder/DecodeOperation.js";
+import type { StateView } from "../../encoder/StateView.js";
+import { assertInstanceType } from "../../encoding/assert.js";
 
 const DEFAULT_SORT = (a: any, b: any) => {
     const A = a.toString();

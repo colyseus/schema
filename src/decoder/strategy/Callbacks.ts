@@ -1,15 +1,15 @@
-import { Metadata } from "../../Metadata";
-import { Collection, NonFunctionPropNames } from "../../types/HelperTypes";
-import { Ref } from "../../encoder/ChangeTree";
-import { Decoder } from "../Decoder";
-import { DataChange } from "../DecodeOperation";
-import { OPERATION } from "../../encoding/spec";
-import { Schema } from "../../Schema";
-import { $refId } from "../../types/symbols";
-import { MapSchema } from "../../types/custom/MapSchema";
-import { ArraySchema } from "../../types/custom/ArraySchema";
-import { getDecoderStateCallbacks, type SchemaCallbackProxy } from "./getDecoderStateCallbacks";
-import { getRawChangesCallback } from "./RawChanges";
+import { Metadata } from "../../Metadata.js";
+import { Collection, NonFunctionPropNames } from "../../types/HelperTypes.js";
+import { Ref } from "../../encoder/ChangeTree.js";
+import { Decoder } from "../Decoder.js";
+import { DataChange } from "../DecodeOperation.js";
+import { OPERATION } from "../../encoding/spec.js";
+import { Schema } from "../../Schema.js";
+import { $refId } from "../../types/symbols.js";
+import { MapSchema } from "../../types/custom/MapSchema.js";
+import { ArraySchema } from "../../types/custom/ArraySchema.js";
+import { getDecoderStateCallbacks, type SchemaCallbackProxy } from "./getDecoderStateCallbacks.js";
+import { getRawChangesCallback } from "./RawChanges.js";
 
 //
 // C#-style Callbacks API

@@ -1,14 +1,14 @@
-import { TypeContext } from "../types/TypeContext";
-import { $changes, $childType, $decoder, $onDecodeEnd, $refId } from "../types/symbols";
-import { Schema } from "../Schema";
+import { TypeContext } from "../types/TypeContext.js";
+import { $changes, $childType, $decoder, $onDecodeEnd, $refId } from "../types/symbols.js";
+import { Schema } from "../Schema.js";
 
-import { decode } from "../encoding/decode";
-import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
-import type { Ref } from "../encoder/ChangeTree";
-import type { Iterator } from "../encoding/decode";
-import { ReferenceTracker } from "./ReferenceTracker";
-import { DEFINITION_MISMATCH, type DataChange, type DecodeOperation } from "./DecodeOperation";
-import { Collection } from "../types/HelperTypes";
+import { decode } from "../encoding/decode.js";
+import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec.js';
+import type { Ref } from "../encoder/ChangeTree.js";
+import type { Iterator } from "../encoding/decode.js";
+import { ReferenceTracker } from "./ReferenceTracker.js";
+import { DEFINITION_MISMATCH, type DataChange, type DecodeOperation } from "./DecodeOperation.js";
+import { Collection } from "../types/HelperTypes.js";
 
 export class Decoder<T extends Schema = any> {
     context: TypeContext;

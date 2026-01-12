@@ -1,4 +1,4 @@
-import { Schema, type, MapSchema, ArraySchema, Reflection, Encoder, Decoder } from "./index";
+import { Schema, type, MapSchema, ArraySchema, Reflection, Encoder, Decoder } from "./index.js";
 
 // globalThis.interval = setInterval(() => {}, 1000);
 

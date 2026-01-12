@@ -5,8 +5,10 @@
     "module": "ESNext",
     "target": "ESNext",
     // "target": "es5",
-    "outDir": "lib",
+    "outDir": "build",
+
     "declaration": true,
+    "emitDeclarationOnly": true,
 
     "experimentalDecorators": true,
     "useDefineForClassFields": false,

@@ -1,9 +1,9 @@
-import type { Definition, DefinitionType, PrimitiveType, RawPrimitiveType } from "../annotations";
-import type { Schema } from "../Schema";
-import type { ArraySchema } from "./custom/ArraySchema";
-import type { CollectionSchema } from "./custom/CollectionSchema";
-import type { MapSchema } from "./custom/MapSchema";
-import type { SetSchema } from "./custom/SetSchema";
+import type { Definition, DefinitionType, PrimitiveType, RawPrimitiveType } from "../annotations.js";
+import type { Schema } from "../Schema.js";
+import type { ArraySchema } from "./custom/ArraySchema.js";
+import type { CollectionSchema } from "./custom/CollectionSchema.js";
+import type { MapSchema } from "./custom/MapSchema.js";
+import type { SetSchema } from "./custom/SetSchema.js";
 
 export type Constructor<T = {}> = new (...args: any[]) => T;
 

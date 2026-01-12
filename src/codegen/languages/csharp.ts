@@ -5,9 +5,9 @@ import {
     getCommentHeader,
     Interface,
     Enum,
-} from "../types";
-import { GenerateOptions } from "../api";
-import { Context } from "../types";
+} from "../types.js";
+import { GenerateOptions } from "../api.js";
+import { Context } from "../types.js";
 
 const typeMaps: { [key: string]: string } = {
     "string": "string",

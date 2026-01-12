@@ -1,5 +1,5 @@
-import argv from "./argv";
-import { generate } from "./api";
+import argv from "./argv.js";
+import { generate } from "./api.js";
 
 const supportedTargets: Record<string, string> = {
     csharp: 'generate for C#/Unity',

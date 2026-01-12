@@ -1,16 +1,16 @@
-import type { Schema } from "../Schema";
-import { TypeContext } from "../types/TypeContext";
-import { $changes, $encoder, $filter, $getByIndex, $refId } from "../types/symbols";
+import type { Schema } from "../Schema.js";
+import { TypeContext } from "../types/TypeContext.js";
+import { $changes, $encoder, $filter, $getByIndex, $refId } from "../types/symbols.js";
 
-import { encode } from "../encoding/encode";
-import type { Iterator } from "../encoding/decode";
+import { encode } from "../encoding/encode.js";
+import type { Iterator } from "../encoding/decode.js";
 
-import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec';
-import { Root } from "./Root";
+import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec.js';
+import { Root } from "./Root.js";
 
-import type { StateView } from "./StateView";
-import type { ChangeSetName, ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree";
-import { createChangeTreeList } from "./ChangeTree";
+import type { StateView } from "./StateView.js";
+import type { ChangeSetName, ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree.js";
+import { createChangeTreeList } from "./ChangeTree.js";
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
     const result = new Uint8Array(a.length + b.length);

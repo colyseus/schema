@@ -1,11 +1,11 @@
-import { Metadata } from "../Metadata";
-import { $childType, $refId } from "../types/symbols";
-import { Ref } from "../encoder/ChangeTree";
-import { spliceOne } from "../types/utils";
-import { OPERATION } from "../encoding/spec";
+import { Metadata } from "../Metadata.js";
+import { $childType, $refId } from "../types/symbols.js";
+import { Ref } from "../encoder/ChangeTree.js";
+import { spliceOne } from "../types/utils.js";
+import { OPERATION } from "../encoding/spec.js";
 
-import type { MapSchema } from "../types/custom/MapSchema";
-import type { Schema } from "../Schema";
+import type { MapSchema } from "../types/custom/MapSchema.js";
+import type { Schema } from "../Schema.js";
 
 class DecodingWarning extends Error {
     constructor(message: string) {

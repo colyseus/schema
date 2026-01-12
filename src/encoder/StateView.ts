@@ -1,10 +1,10 @@
-import { ChangeTree, IndexedOperations, Ref } from "./ChangeTree";
-import { $changes, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols";
-import { DEFAULT_VIEW_TAG } from "../annotations";
-import { OPERATION } from "../encoding/spec";
-import { Metadata } from "../Metadata";
-import { spliceOne } from "../types/utils";
-import type { Schema } from "../Schema";
+import { ChangeTree, IndexedOperations, Ref } from "./ChangeTree.js";
+import { $changes, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols.js";
+import { DEFAULT_VIEW_TAG } from "../annotations.js";
+import { OPERATION } from "../encoding/spec.js";
+import { Metadata } from "../Metadata.js";
+import { spliceOne } from "../types/utils.js";
+import type { Schema } from "../Schema.js";
 
 export function createView(iterable: boolean = false) {
     return new StateView(iterable);

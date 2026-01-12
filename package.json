@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "4.0.2",
+  "version": "4.0.3",
   "description": "Binary state serializer with delta encoding for games",
   "type": "module",
   "bin": {
@@ -28,20 +28,19 @@
   },
   "files": [
     "src",
-    "lib",
     "build",
     "bin"
   ],
-  "types": "lib/index.d.ts",
-  "main": "build/cjs/index.cjs",
-  "module": "build/esm/index.mjs",
-  "browser": "./build/umd/index.js",
+  "types": "./build/index.d.ts",
+  "main": "./build/index.cjs",
+  "module": "./build/index.mjs",
+  "browser": "./build/index.js",
   "exports": {
     ".": {
-      "browser": "./build/umd/index.js",
-      "import": "./build/esm/index.mjs",
-      "require": "./build/cjs/index.cjs",
-      "types": "./lib/index.d.ts"
+      "browser": "./build/index.mjs",
+      "import": "./build/index.mjs",
+      "require": "./build/index.cjs",
+      "types": "./build/index.d.ts"
     }
   },
   "repository": {

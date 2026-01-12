@@ -1,16 +1,16 @@
-import { OPERATION } from "../encoding/spec";
-import { Schema } from "../Schema";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $viewFieldIndexes, type $deleteByIndex } from "../types/symbols";
+import { OPERATION } from "../encoding/spec.js";
+import { Schema } from "../Schema.js";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $viewFieldIndexes, type $deleteByIndex } from "../types/symbols.js";
 
-import type { MapSchema } from "../types/custom/MapSchema";
-import type { ArraySchema } from "../types/custom/ArraySchema";
-import type { CollectionSchema } from "../types/custom/CollectionSchema";
-import type { SetSchema } from "../types/custom/SetSchema";
+import type { MapSchema } from "../types/custom/MapSchema.js";
+import type { ArraySchema } from "../types/custom/ArraySchema.js";
+import type { CollectionSchema } from "../types/custom/CollectionSchema.js";
+import type { SetSchema } from "../types/custom/SetSchema.js";
 
-import { Root } from "./Root";
-import { Metadata } from "../Metadata";
-import type { EncodeOperation } from "./EncodeOperation";
-import type { DecodeOperation } from "../decoder/DecodeOperation";
+import { Root } from "./Root.js";
+import { Metadata } from "../Metadata.js";
+import type { EncodeOperation } from "./EncodeOperation.js";
+import type { DecodeOperation } from "../decoder/DecodeOperation.js";
 
 declare global {
     interface Object {

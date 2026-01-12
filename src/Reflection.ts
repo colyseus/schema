@@ -1,10 +1,10 @@
-import { PrimitiveType, schema, SchemaType } from "./annotations";
-import { TypeContext } from "./types/TypeContext";
-import { Metadata } from "./Metadata";
-import { Iterator } from "./encoding/decode";
-import { Encoder } from "./encoder/Encoder";
-import { Decoder } from "./decoder/Decoder";
-import { Schema } from "./Schema";
+import { PrimitiveType, schema, SchemaType } from "./annotations.js";
+import { TypeContext } from "./types/TypeContext.js";
+import { Metadata } from "./Metadata.js";
+import { Iterator } from "./encoding/decode.js";
+import { Encoder } from "./encoder/Encoder.js";
+import { Decoder } from "./decoder/Decoder.js";
+import { Schema } from "./Schema.js";
 
 /**
  * Static methods available on Reflection

@@ -1,8 +1,8 @@
-import { DefinitionType, getPropertyDescriptor } from "./annotations";
-import { Schema } from "./Schema";
-import { getType, registeredTypes } from "./types/registry";
-import { $decoder, $descriptors, $encoder, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $viewFieldIndexes } from "./types/symbols";
-import { TypeContext } from "./types/TypeContext";
+import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
+import { Schema } from "./Schema.js";
+import { getType, registeredTypes } from "./types/registry.js";
+import { $decoder, $descriptors, $encoder, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $viewFieldIndexes } from "./types/symbols.js";
+import { TypeContext } from "./types/TypeContext.js";
 
 export type MetadataField = {
     type: DefinitionType,

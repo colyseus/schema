@@ -1,7 +1,7 @@
-import { OPERATION } from "../encoding/spec";
-import { TypeContext } from "../types/TypeContext";
-import { ChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName, type ChangeTreeNode } from "./ChangeTree";
-import { $changes, $refId } from "../types/symbols";
+import { OPERATION } from "../encoding/spec.js";
+import { TypeContext } from "../types/TypeContext.js";
+import { ChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName, type ChangeTreeNode } from "./ChangeTree.js";
+import { $changes, $refId } from "../types/symbols.js";
 
 export class Root {
     protected nextUniqueId: number = 0;

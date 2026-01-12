@@ -1,9 +1,9 @@
-import type { Schema } from "../Schema";
-import type { CollectionSchema } from "../types/custom/CollectionSchema";
-import type { MapSchema } from "../types/custom/MapSchema";
-import type { SetSchema } from "../types/custom/SetSchema";
-import type { ArraySchema } from "../types/custom/ArraySchema";
-import type { Ref } from "../encoder/ChangeTree";
+import type { Schema } from "../Schema.js";
+import type { CollectionSchema } from "../types/custom/CollectionSchema.js";
+import type { MapSchema } from "../types/custom/MapSchema.js";
+import type { SetSchema } from "../types/custom/SetSchema.js";
+import type { ArraySchema } from "../types/custom/ArraySchema.js";
+import type { Ref } from "../encoder/ChangeTree.js";
 
 export class EncodeSchemaError extends Error {}
 
