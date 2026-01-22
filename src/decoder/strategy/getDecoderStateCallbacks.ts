@@ -137,7 +137,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
             //
             if (
                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
-                change.previousValue instanceof Schema
+                Schema.isSchema(change.previousValue)
             ) {
                 const deleteCallbacks = callbacks[(change.previousValue as Ref)[$refId]]?.[OPERATION.DELETE];
                 for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
@@ -145,7 +145,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 }
             }
 
-            if (ref instanceof Schema) {
+            if (Schema.isSchema(ref)) {
                 //
                 // Handle schema instance
                 //

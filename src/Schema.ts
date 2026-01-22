@@ -43,6 +43,16 @@ export class Schema<C = any> implements IRef {
     }
 
     /**
+     * Check if a value is an instance of Schema.
+     * This method uses duck-typing to avoid issues with multiple @colyseus/schema versions.
+     * @param obj Value to check
+     * @returns true if the value is a Schema instance
+     */
+    static isSchema(obj: any): obj is Schema {
+        return typeof obj?.assign === "function";
+    }
+
+    /**
      * Track property changes
      */
     static [$track] (changeTree: ChangeTree, index: number, operation: OPERATION = OPERATION.ADD) {

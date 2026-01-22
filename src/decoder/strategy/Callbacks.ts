@@ -344,7 +344,7 @@ export class StateCallbackStrategy<TState extends Schema> {
             //
             if (
                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
-                change.previousValue instanceof Schema
+                Schema.isSchema(change.previousValue)
             ) {
                 const childRefId = (change.previousValue as Ref)[$refId];
                 const deleteCallbacks = this.callbacks[childRefId]?.[OPERATION.DELETE];
@@ -355,7 +355,7 @@ export class StateCallbackStrategy<TState extends Schema> {
                 }
             }
 
-            if (ref instanceof Schema) {
+            if (Schema.isSchema(ref)) {
                 //
                 // Handle Schema instance
                 //
