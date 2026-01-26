@@ -1,6 +1,6 @@
 import { Metadata } from "../../Metadata.js";
 import { Collection, NonFunctionPropNames } from "../../types/HelperTypes.js";
-import { Ref } from "../../encoder/ChangeTree.js";
+import type { IRef, Ref } from "../../encoder/ChangeTree.js";
 import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
 import { OPERATION } from "../../encoding/spec.js";
@@ -45,7 +45,7 @@ type CollectionKeyType<T, K extends keyof T> =
     T[K] extends ArraySchema<any> ? number :
     T[K] extends Collection<infer Key, any, any> ? Key : never;
 
-export class StateCallbackStrategy<TState extends Schema> {
+export class StateCallbackStrategy<TState extends IRef> {
     protected decoder: Decoder<TState>;
     protected uniqueRefIds: Set<number> = new Set();
     protected isTriggering: boolean = false;
@@ -72,7 +72,7 @@ export class StateCallbackStrategy<TState extends Schema> {
         return $root.addCallback(refId, operationOrProperty, handler);
     }
 
-    protected addCallbackOrWaitCollectionAvailable<TInstance extends Schema, TReturn extends Ref>(
+    protected addCallbackOrWaitCollectionAvailable<TInstance extends IRef, TReturn extends Ref>(
         instance: TInstance,
         propertyName: string,
         operation: OPERATION,
@@ -142,7 +142,7 @@ export class StateCallbackStrategy<TState extends Schema> {
         }
     }
 
-    protected listenInstance<TInstance extends Schema>(
+    protected listenInstance<TInstance extends IRef>(
         instance: TInstance,
         propertyName: string,
         handler: PropertyChangeCallback<any>,
@@ -485,7 +485,7 @@ export const Callbacks = {
      * @param roomOrDecoder - Room or Decoder instance to get the callbacks for.
      * @returns the new callbacks standard API.
      */
-    get<T extends Schema>(roomOrDecoder: Decoder<T> | { serializer: { decoder: Decoder<T> } }): StateCallbackStrategy<T> {
+    get<T extends IRef>(roomOrDecoder: Decoder<T> | { serializer: { decoder: Decoder<T> } }): StateCallbackStrategy<T> {
         if (roomOrDecoder instanceof Decoder) {
             return new StateCallbackStrategy<T>(roomOrDecoder);
 

@@ -4,13 +4,13 @@ import { Schema } from "../Schema.js";
 
 import { decode } from "../encoding/decode.js";
 import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec.js';
-import type { Ref } from "../encoder/ChangeTree.js";
+import type { IRef, Ref } from "../encoder/ChangeTree.js";
 import type { Iterator } from "../encoding/decode.js";
 import { ReferenceTracker } from "./ReferenceTracker.js";
 import { DEFINITION_MISMATCH, type DataChange, type DecodeOperation } from "./DecodeOperation.js";
 import { Collection } from "../types/HelperTypes.js";
 
-export class Decoder<T extends Schema = any> {
+export class Decoder<T extends IRef = any> {
     context: TypeContext;
 
     state: T;
@@ -40,7 +40,7 @@ export class Decoder<T extends Schema = any> {
     decode(
         bytes: Uint8Array,
         it: Iterator = { offset: 0 },
-        ref: Ref = this.state,
+        ref: IRef = this.state,
     ) {
         const allChanges: DataChange[] = [];
 

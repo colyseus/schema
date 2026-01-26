@@ -1,20 +1,18 @@
 import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
 import { Schema } from "../Schema.js";
-import type { Ref } from "../encoder/ChangeTree.js";
+import type { IRef, Ref } from "../encoder/ChangeTree.js";
 import type { Decoder } from "./Decoder.js";
 import { Iterator, decode } from "../encoding/decode.js";
 import { $childType, $deleteByIndex, $getByIndex, $refId } from "../types/symbols.js";
 
-import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
-import type { CollectionSchema } from "../types/custom/CollectionSchema.js";
 
 import { getType } from "../types/registry.js";
 import { Collection } from "../types/HelperTypes.js";
 
 export interface DataChange<T = any, F = string> {
-    ref: Ref,
+    ref: IRef,
     refId: number,
     op: OPERATION,
     field: F;
@@ -29,7 +27,7 @@ export type DecodeOperation<T extends Schema = any> = (
     decoder: Decoder<T>,
     bytes: Uint8Array,
     it: Iterator,
-    ref: Ref,
+    ref: IRef,
     allChanges: DataChange[],
 ) => number | void;
 

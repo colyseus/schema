@@ -1,6 +1,6 @@
 import { Metadata } from "../Metadata.js";
 import { $childType, $refId } from "../types/symbols.js";
-import { Ref } from "../encoder/ChangeTree.js";
+import type { IRef } from "../encoder/ChangeTree.js";
 import { spliceOne } from "../types/utils.js";
 import { OPERATION } from "../encoding/spec.js";
 
@@ -25,7 +25,7 @@ export class ReferenceTracker {
     // Relation of refId => Schema structure
     // For direct access of structures during decoding time.
     //
-    public refs = new Map<number, Ref>();
+    public refs = new Map<number, IRef>();
 
     public refCount: { [refId: number]: number; } = {};
     public deletedRefs = new Set<number>();
@@ -38,7 +38,7 @@ export class ReferenceTracker {
     }
 
     // for decoding
-    addRef(refId: number, ref: Ref, incrementCount: boolean = true) {
+    addRef(refId: number, ref: IRef, incrementCount: boolean = true) {
         this.refs.set(refId, ref);
         ref[$refId] = refId;
 
@@ -103,7 +103,7 @@ export class ReferenceTracker {
                 const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
                 for (const index in metadata) {
                     const field = metadata[index as any as number].name;
-                    const child = ref[field as keyof Ref];
+                    const child = ref[field as keyof IRef];
                     if (typeof(child) === "object" && child) {
                         const childRefId = (child as any)[$refId];
                         if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
