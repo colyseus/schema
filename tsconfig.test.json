@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig/tsconfig.all.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "target": "ES2022",
+    "noEmit": true,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ]
+}

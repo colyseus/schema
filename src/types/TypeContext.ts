@@ -1,6 +1,6 @@
-import { Metadata } from "../Metadata";
-import { Schema } from "../Schema";
-import { $viewFieldIndexes } from "./symbols";
+import { Metadata } from "../Metadata.js";
+import { Schema } from "../Schema.js";
+import { $viewFieldIndexes } from "./symbols.js";
 
 export class TypeContext {
     types: { [id: number]: typeof Schema; } = {};

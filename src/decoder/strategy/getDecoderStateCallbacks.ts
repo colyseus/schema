@@ -1,13 +1,13 @@
-import { Metadata } from "../../Metadata";
-import { Collection, NonFunctionNonPrimitivePropNames, NonFunctionPropNames } from "../../types/HelperTypes";
-import { IRef, Ref } from "../../encoder/ChangeTree";
-import { Decoder } from "../Decoder";
-import { DataChange } from "../DecodeOperation";
-import { OPERATION } from "../../encoding/spec";
-import { Schema } from "../../Schema";
-import { $refId } from "../../types/symbols";
-import type { DefinitionType } from "../../annotations";
-import type { CollectionSchema } from "../../types/custom/CollectionSchema";
+import { Metadata } from "../../Metadata.js";
+import { Collection, NonFunctionNonPrimitivePropNames, NonFunctionPropNames } from "../../types/HelperTypes.js";
+import { IRef, Ref } from "../../encoder/ChangeTree.js";
+import { Decoder } from "../Decoder.js";
+import { DataChange } from "../DecodeOperation.js";
+import { OPERATION } from "../../encoding/spec.js";
+import { Schema } from "../../Schema.js";
+import { $refId } from "../../types/symbols.js";
+import type { DefinitionType } from "../../annotations.js";
+import type { CollectionSchema } from "../../types/custom/CollectionSchema.js";
 
 //
 // Discussion: https://github.com/colyseus/schema/issues/155
@@ -108,7 +108,12 @@ type CallContext = {
     onInstanceAvailable?: OnInstanceAvailableCallback,
 }
 
-
+/**
+ * Legacy callback system
+ *
+ * @param decoder
+ * @returns
+ */
 export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>): SchemaCallbackProxy<T> {
     const $root = decoder.root;
     const callbacks = $root.callbacks;
@@ -132,7 +137,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
             //
             if (
                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
-                change.previousValue instanceof Schema
+                Schema.isSchema(change.previousValue)
             ) {
                 const deleteCallbacks = callbacks[(change.previousValue as Ref)[$refId]]?.[OPERATION.DELETE];
                 for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
@@ -140,7 +145,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 }
             }
 
-            if (ref instanceof Schema) {
+            if (Schema.isSchema(ref)) {
                 //
                 // Handle schema instance
                 //

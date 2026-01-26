@@ -1,7 +1,7 @@
 import * as ts from "typescript";
 import * as path from "path";
-import {readFileSync} from "fs";
-import {IStructure, Class, Interface, Property, Context, Enum} from "./types";
+import { readFileSync } from "fs";
+import { IStructure, Class, Interface, Property, Context, Enum } from "./types.js";
 
 let currentStructure: IStructure;
 let currentProperty: Property;
@@ -357,6 +357,11 @@ export function parseFiles(
         ) {
             fileNameAlternatives.push(`${fileName}.ts`);
             fileNameAlternatives.push(`${fileName}/index.ts`);
+
+        } else if (fileName.endsWith(".js")) {
+            // Handle .js extensions by also trying .ts (ESM imports often use .js extension)
+            fileNameAlternatives.push(fileName);
+            fileNameAlternatives.push(fileName.replace(/\.js$/, ".ts"));
 
         } else {
             fileNameAlternatives.push(fileName);

@@ -1,16 +1,16 @@
-import "./symbol.shim";
-import { Schema } from './Schema';
-import { ArraySchema } from './types/custom/ArraySchema';
-import { MapSchema } from './types/custom/MapSchema';
-import { getNormalizedType, Metadata } from "./Metadata";
-import { $changes, $childType, $descriptors, $numFields, $track } from "./types/symbols";
-import { TypeDefinition, getType } from "./types/registry";
-import { OPERATION } from "./encoding/spec";
-import { TypeContext } from "./types/TypeContext";
-import { assertInstanceType, assertType } from "./encoding/assert";
-import type { InferValueType, InferSchemaInstanceType, AssignableProps, IsNever } from "./types/HelperTypes";
-import { CollectionSchema } from "./types/custom/CollectionSchema";
-import { SetSchema } from "./types/custom/SetSchema";
+import "./symbol.shim.js";
+import { Schema } from './Schema.js';
+import { ArraySchema } from './types/custom/ArraySchema.js';
+import { MapSchema } from './types/custom/MapSchema.js';
+import { getNormalizedType, Metadata } from "./Metadata.js";
+import { $changes, $childType, $descriptors, $numFields, $track } from "./types/symbols.js";
+import { TypeDefinition, getType } from "./types/registry.js";
+import { OPERATION } from "./encoding/spec.js";
+import { TypeContext } from "./types/TypeContext.js";
+import { assertInstanceType, assertType } from "./encoding/assert.js";
+import type { InferValueType, InferSchemaInstanceType, AssignableProps, IsNever } from "./types/HelperTypes.js";
+import { CollectionSchema } from "./types/custom/CollectionSchema.js";
+import { SetSchema } from "./types/custom/SetSchema.js";
 
 export type RawPrimitiveType = "string" |
     "number" |

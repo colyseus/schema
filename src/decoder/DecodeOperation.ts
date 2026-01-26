@@ -1,17 +1,17 @@
-import { OPERATION } from "../encoding/spec";
-import { Metadata } from "../Metadata";
-import { Schema } from "../Schema";
-import type { Ref } from "../encoder/ChangeTree";
-import type { Decoder } from "./Decoder";
-import { Iterator, decode } from "../encoding/decode";
-import { $childType, $deleteByIndex, $getByIndex, $refId } from "../types/symbols";
+import { OPERATION } from "../encoding/spec.js";
+import { Metadata } from "../Metadata.js";
+import { Schema } from "../Schema.js";
+import type { Ref } from "../encoder/ChangeTree.js";
+import type { Decoder } from "./Decoder.js";
+import { Iterator, decode } from "../encoding/decode.js";
+import { $childType, $deleteByIndex, $getByIndex, $refId } from "../types/symbols.js";
 
-import type { MapSchema } from "../types/custom/MapSchema";
-import type { ArraySchema } from "../types/custom/ArraySchema";
-import type { CollectionSchema } from "../types/custom/CollectionSchema";
+import type { MapSchema } from "../types/custom/MapSchema.js";
+import type { ArraySchema } from "../types/custom/ArraySchema.js";
+import type { CollectionSchema } from "../types/custom/CollectionSchema.js";
 
-import { getType } from "../types/registry";
-import { Collection } from "../types/HelperTypes";
+import { getType } from "../types/registry.js";
+import { Collection } from "../types/HelperTypes.js";
 
 export interface DataChange<T = any, F = string> {
     ref: Ref,

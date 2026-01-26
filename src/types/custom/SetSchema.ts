@@ -1,12 +1,12 @@
-import { OPERATION } from "../../encoding/spec";
-import { registerType } from "../registry";
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId } from "../symbols";
-import { Collection } from "../HelperTypes";
-import { ChangeTree, type IRef } from "../../encoder/ChangeTree";
-import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
-import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
-import type { StateView } from "../../encoder/StateView";
-import type { Schema } from "../../Schema";
+import { OPERATION } from "../../encoding/spec.js";
+import { registerType } from "../registry.js";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId } from "../symbols.js";
+import { Collection } from "../HelperTypes.js";
+import { ChangeTree, type IRef } from "../../encoder/ChangeTree.js";
+import { encodeKeyValueOperation } from "../../encoder/EncodeOperation.js";
+import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
+import type { StateView } from "../../encoder/StateView.js";
+import type { Schema } from "../../Schema.js";
 
 export class SetSchema<V=any> implements Collection<number, V>, IRef {
     [$changes]: ChangeTree;

@@ -1,13 +1,13 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $numFields, $refId } from "../symbols";
-import { ChangeTree, IRef } from "../../encoder/ChangeTree";
-import { OPERATION } from "../../encoding/spec";
-import { registerType } from "../registry";
-import { Collection } from "../HelperTypes";
-import { decodeKeyValueOperation } from "../../decoder/DecodeOperation";
-import { encodeKeyValueOperation } from "../../encoder/EncodeOperation";
-import type { StateView } from "../../encoder/StateView";
-import type { Schema } from "../../Schema";
-import { assertInstanceType } from "../../encoding/assert";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $numFields, $refId } from "../symbols.js";
+import { ChangeTree, IRef } from "../../encoder/ChangeTree.js";
+import { OPERATION } from "../../encoding/spec.js";
+import { registerType } from "../registry.js";
+import { Collection } from "../HelperTypes.js";
+import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
+import { encodeKeyValueOperation } from "../../encoder/EncodeOperation.js";
+import type { StateView } from "../../encoder/StateView.js";
+import type { Schema } from "../../Schema.js";
+import { assertInstanceType } from "../../encoding/assert.js";
 
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]>, IRef {
     [$changes]: ChangeTree;

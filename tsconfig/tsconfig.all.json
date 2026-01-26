@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
         "module": "ESNext",
-        // "moduleResolution": "NodeNext",
+        "moduleResolution": "bundler",
         "lib": ["ES2022"],
         "experimentalDecorators": true,
         "noImplicitAny": true,

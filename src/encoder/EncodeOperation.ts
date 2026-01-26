@@ -1,15 +1,15 @@
-import { OPERATION } from "../encoding/spec";
-import { $changes, $childType, $getByIndex, $refId } from "../types/symbols";
+import { OPERATION } from "../encoding/spec.js";
+import { $changes, $childType, $getByIndex, $refId } from "../types/symbols.js";
 
-import { encode } from "../encoding/encode";
+import { encode } from "../encoding/encode.js";
 
-import type { ChangeTree, Ref } from "./ChangeTree";
-import type { Encoder } from "./Encoder";
-import type { Schema } from "../Schema";
+import type { ChangeTree, Ref } from "./ChangeTree.js";
+import type { Encoder } from "./Encoder.js";
+import type { Schema } from "../Schema.js";
 
-import type { Iterator } from "../encoding/decode";
-import type { ArraySchema } from "../types/custom/ArraySchema";
-import type { Metadata } from "../Metadata";
+import type { Iterator } from "../encoding/decode.js";
+import type { ArraySchema } from "../types/custom/ArraySchema.js";
+import type { Metadata } from "../Metadata.js";
 
 export type EncodeOperation<T extends Ref = any> = (
     encoder: Encoder,

@@ -1,5 +1,5 @@
-import { Class, Property, File, getCommentHeader, getInheritanceTree, Context } from "../types";
-import { GenerateOptions } from "../api";
+import { Class, Property, File, getCommentHeader, getInheritanceTree, Context } from "../types.js";
+import { GenerateOptions } from "../api.js";
 
 /**
     TODO:

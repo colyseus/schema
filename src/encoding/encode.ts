@@ -24,7 +24,7 @@
  */
 
 import type { TextEncoder } from "util";
-import type { Iterator } from "./decode";
+import type { Iterator } from "./decode.js";
 
 export type BufferLike = ArrayLike<number> & { [index: number]: number };
 

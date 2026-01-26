@@ -23,7 +23,7 @@
  * SOFTWARE
  */
 
-import type { BufferLike } from "./encode";
+import type { BufferLike } from "./encode.js";
 
 /**
  * msgpack implementation highly based on notepack.io
