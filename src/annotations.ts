@@ -33,11 +33,11 @@ export type PrimitiveType = RawPrimitiveType | typeof Schema | object;
 // TODO: infer "default" value type correctly.
 export type DefinitionType<T extends PrimitiveType = PrimitiveType> = T
     | T[]
-    | { type: T, default?: InferValueType<T>, view?: boolean | number }
-    | { array: T, default?: ArraySchema<InferValueType<T>>, view?: boolean | number }
-    | { map: T, default?: MapSchema<InferValueType<T>>, view?: boolean | number }
-    | { collection: T, default?: CollectionSchema<InferValueType<T>>, view?: boolean | number }
-    | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number };
+    | { type: T, default?: InferValueType<T>, view?: boolean | number, sync?: boolean }
+    | { array: T, default?: ArraySchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
+    | { map: T, default?: MapSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
+    | { collection: T, default?: CollectionSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
+    | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean };
 
 export type Definition = { [field: string]: DefinitionType };
 
@@ -574,7 +574,10 @@ export function schema<
                     : value['view'];
             }
 
-            fields[fieldName] = getNormalizedType(value);
+            // allow to define a field as not synced
+            if (value['sync'] !== false) {
+                fields[fieldName] = getNormalizedType(value);
+            }
 
             // If no explicit default provided, handle automatic instantiation for collection types
             if (!Object.prototype.hasOwnProperty.call(value, 'default')) {

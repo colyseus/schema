@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, encodeAndAssertEquals } from "./Schema";
-import { MapSchema, type, Schema, ArraySchema, Reflection, $changes, SetSchema, entity, $getByIndex, Encoder } from "../src";
+import { MapSchema, type, Schema, ArraySchema, Reflection, $changes, $refId, SetSchema, entity, $getByIndex, Encoder } from "../src";
 
 describe("Type: MapSchema", () => {
 
@@ -297,7 +297,7 @@ describe("Type: MapSchema", () => {
         decodedState.decode(state.encode());
 
         const decoder = getDecoder(decodedState);
-        assert.strictEqual(decoder.root.refIds.get(decodedState.mapOfPlayers.get('one')), one[$changes].refId);
+        assert.strictEqual(decodedState.mapOfPlayers.get('one')[$refId], one[$refId]);
         assert.strictEqual(decodedState.mapOfPlayers.get('one').name, "Jake");
         assertDeepStrictEqualEncodeAll(state);
     });
@@ -883,11 +883,11 @@ describe("Type: MapSchema", () => {
         console.log(debugOutput);
 
         // Verify that map keys are displayed
-        assert(debugOutput.includes('["player1"]: Player'), "Should display player1 key");
-        assert(debugOutput.includes('["player2"]: Player'), "Should display player2 key");
-        assert(debugOutput.includes('["sword"]: Item'), "Should display sword key");
-        assert(debugOutput.includes('["shield"]: Item'), "Should display shield key");
-        assert(debugOutput.includes('["bow"]: Item'), "Should display bow key");
+        assert.ok(debugOutput.includes('["player1"]: Player'), "Should display player1 key");
+        assert.ok(debugOutput.includes('["player2"]: Player'), "Should display player2 key");
+        assert.ok(debugOutput.includes('["sword"]: Item'), "Should display sword key");
+        assert.ok(debugOutput.includes('["shield"]: Item'), "Should display shield key");
+        assert.ok(debugOutput.includes('["bow"]: Item'), "Should display bow key");
     });
 
     it("sharing parent container and clearing it should not trigger refId not found", () => {

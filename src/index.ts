@@ -26,7 +26,7 @@ registerType("collection", { constructor: CollectionSchema, });
 export { dumpChanges } from "./utils";
 
 // Encoder / Decoder
-export { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType } from "./types/symbols";
+export { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType, $refId } from "./types/symbols";
 export { encode } from "./encoding/encode";
 export { decode, type Iterator } from "./encoding/decode";
 

@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { Schema, type, MapSchema, ArraySchema, Reflection } from "../src";
+import { Schema, type, MapSchema, ArraySchema } from "../src";
 import { schema, defineTypes, SchemaType } from "../src/annotations";
 import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
 import { $numFields } from "../src/types/symbols";
@@ -802,6 +802,24 @@ describe("Definition Tests", () => {
 
         });
 
+        it("should allow to define a field as not synced", () => {
+            const State = schema({
+                x: { type: "number", default: 10 },
+                y: { type: "number", default: 20 },
+                privateField: { type: "number", default: 30, sync: false },
+            });
+
+            const state = new State();
+            assert.strictEqual(state.x, 10);
+            assert.strictEqual(state.y, 20);
+            assert.strictEqual(state.privateField, 30);
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encodeAll());
+            assert.strictEqual(decodedState.x, 10);
+            assert.strictEqual(decodedState.y, 20);
+            assert.strictEqual(decodedState.privateField, undefined);
+        });
 
     });
 

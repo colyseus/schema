@@ -314,7 +314,7 @@ describe("Reflection", () => {
         const decoder = new Decoder(reflected);
         decoder.decode(encoded);
 
-        const types = reflected.types.toArray();
+        const types = reflected.types;
         assert.strictEqual(11, types.length)
 
         const addedTypeIds = new Set<number>();

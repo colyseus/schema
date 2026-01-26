@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec";
 import { Schema } from "../Schema";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refTypeFieldIndexes, $viewFieldIndexes, type $deleteByIndex } from "../types/symbols";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $viewFieldIndexes, type $deleteByIndex } from "../types/symbols";
 
 import type { MapSchema } from "../types/custom/MapSchema";
 import type { ArraySchema } from "../types/custom/ArraySchema";
@@ -16,6 +16,7 @@ declare global {
     interface Object {
         // FIXME: not a good practice to extend globals here
         [$changes]?: ChangeTree;
+        // [$refId]?: number;
         [$encoder]?: EncodeOperation,
         [$decoder]?: DecodeOperation,
     }
@@ -23,15 +24,12 @@ declare global {
 
 export interface IRef {
     [$changes]?: ChangeTree;
+    [$refId]?: number;
     [$getByIndex]?: (index: number, isEncodeAll?: boolean) => any;
     [$deleteByIndex]?: (index: number) => void;
 }
 
-export type Ref = Schema
-    | ArraySchema
-    | MapSchema
-    | CollectionSchema
-    | SetSchema;
+export type Ref = Schema | ArraySchema | MapSchema | CollectionSchema | SetSchema;
 
 export type ChangeSetName = "changes"
     | "allChanges"
@@ -126,7 +124,6 @@ export interface ParentChain {
 
 export class ChangeTree<T extends Ref = any> {
     ref: T;
-    refId: number;
     metadata: Metadata;
 
     root?: Root;

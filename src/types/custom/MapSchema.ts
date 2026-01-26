@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $numFields } from "../symbols";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $numFields, $refId } from "../symbols";
 import { ChangeTree, IRef } from "../../encoder/ChangeTree";
 import { OPERATION } from "../../encoding/spec";
 import { registerType } from "../registry";
@@ -10,8 +10,10 @@ import type { Schema } from "../../Schema";
 import { assertInstanceType } from "../../encoding/assert";
 
 export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]>, IRef {
-    protected childType: new () => V;
     [$changes]: ChangeTree;
+    [$refId]?: number;
+
+    protected childType: new () => V;
     protected [$childType]: string | typeof Schema;
 
     protected $items: Map<K, V> = new Map<K, V>();

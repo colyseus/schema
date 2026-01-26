@@ -1,7 +1,7 @@
 import { OPERATION } from "../encoding/spec";
 import { TypeContext } from "../types/TypeContext";
 import { ChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName, type ChangeTreeNode } from "./ChangeTree";
-import { $changes } from "../types/symbols";
+import { $changes, $refId } from "../types/symbols";
 
 export class Root {
     protected nextUniqueId: number = 0;
@@ -24,15 +24,19 @@ export class Root {
     }
 
     add(changeTree: ChangeTree) {
-        // Assign unique `refId` to changeTree if it doesn't have one yet.
-        if (changeTree.refId === undefined) {
-            changeTree.refId = this.getNextUniqueId();
+        const ref = changeTree.ref;
+
+        // Assign unique `refId` to ref if it doesn't have one yet.
+        if (ref[$refId] === undefined) {
+            ref[$refId] = this.getNextUniqueId();
         }
 
-        const isNewChangeTree = (this.changeTrees[changeTree.refId] === undefined);
-        if (isNewChangeTree) { this.changeTrees[changeTree.refId] = changeTree; }
+        const refId = ref[$refId];
 
-        const previousRefCount = this.refCount[changeTree.refId];
+        const isNewChangeTree = (this.changeTrees[refId] === undefined);
+        if (isNewChangeTree) { this.changeTrees[refId] = changeTree; }
+
+        const previousRefCount = this.refCount[refId];
         if (previousRefCount === 0) {
             //
             // When a ChangeTree is re-added, it means that it was previously removed.
@@ -46,24 +50,25 @@ export class Root {
             }
         }
 
-        this.refCount[changeTree.refId] = (previousRefCount || 0) + 1;
+        this.refCount[refId] = (previousRefCount || 0) + 1;
 
-        // console.log("ADD", { refId: changeTree.refId, ref: changeTree.ref.constructor.name, refCount: this.refCount[changeTree.refId], isNewChangeTree });
+        // console.log("ADD", { refId, ref: ref.constructor.name, refCount: this.refCount[refId], isNewChangeTree });
 
         return isNewChangeTree;
     }
 
     remove(changeTree: ChangeTree) {
-        const refCount = (this.refCount[changeTree.refId]) - 1;
+        const refId = changeTree.ref[$refId];
+        const refCount = (this.refCount[refId]) - 1;
 
-        // console.log("REMOVE", { refId: changeTree.refId, ref: changeTree.ref.constructor.name, refCount, needRemove: refCount <= 0 });
+        // console.log("REMOVE", { refId, ref: changeTree.ref.constructor.name, refCount, needRemove: refCount <= 0 });
 
         if (refCount <= 0) {
             //
             // Only remove "root" reference if it's the last reference
             //
             changeTree.root = undefined;
-            delete this.changeTrees[changeTree.refId];
+            delete this.changeTrees[refId];
 
             this.removeChangeFromChangeSet("allChanges", changeTree);
             this.removeChangeFromChangeSet("changes", changeTree);
@@ -73,13 +78,13 @@ export class Root {
                 this.removeChangeFromChangeSet("filteredChanges", changeTree);
             }
 
-            this.refCount[changeTree.refId] = 0;
+            this.refCount[refId] = 0;
 
             changeTree.forEachChild((child, _) => {
                 if (child.removeParent(changeTree.ref)) {
                     if ((
                         child.parentChain === undefined || // no parent, remove it
-                        (child.parentChain && this.refCount[child.refId] > 0) // parent is still in use, but has more than one reference, remove it
+                        (child.parentChain && this.refCount[child.ref[$refId]] > 0) // parent is still in use, but has more than one reference, remove it
                     )) {
                         this.remove(child);
 
@@ -91,7 +96,7 @@ export class Root {
             });
 
         } else {
-            this.refCount[changeTree.refId] = refCount;
+            this.refCount[refId] = refCount;
 
             //
             // When losing a reference to an instance, it is best to move the

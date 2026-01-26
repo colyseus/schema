@@ -9,9 +9,9 @@ import { CallbackProxy, getDecoderStateCallbacks, SchemaCallbackProxy } from "..
 // (workaround to keep tests working while we don't migrate the tests to the new API)
 declare module "../src/Schema" {
   interface Schema {
-    encode(it?: Iterator): Buffer;
-    encodeAll(): Buffer;
-    decode(bytes: Buffer): void;
+    encode(it?: Iterator): Uint8Array;
+    encodeAll(): Uint8Array;
+    decode(bytes: Uint8Array): void;
   }
 }
 
@@ -88,7 +88,7 @@ Schema.prototype.encode = function(it: Iterator) {
     return bytes;
 }
 
-Schema.prototype.decode = function(bytes: Buffer) {
+Schema.prototype.decode = function(bytes: Uint8Array) {
     return getDecoder(this).decode(bytes);
 }
 
@@ -117,7 +117,7 @@ export function createClientWithView<T extends Schema>(from: T, stateView: State
 }
 
 export function encodeAllForView<T extends Schema>(encoder: Encoder<T>, client: ClientWithState<T>, printEncodeAll?: boolean) {
-    const buf = Buffer.alloc(4096);
+    const buf = new Uint8Array(4096);
     const itAll = { offset: 0 };
     const fullEncode = encoder.encodeAll(itAll, buf);
 

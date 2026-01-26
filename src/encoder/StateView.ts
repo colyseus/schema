@@ -1,5 +1,5 @@
 import { ChangeTree, IndexedOperations, Ref } from "./ChangeTree";
-import { $changes, $fieldIndexesByViewTag, $viewFieldIndexes } from "../types/symbols";
+import { $changes, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols";
 import { DEFAULT_VIEW_TAG } from "../annotations";
 import { OPERATION } from "../encoding/spec";
 import { Metadata } from "../Metadata";
@@ -52,7 +52,7 @@ export class StateView {
 
         } else if (
             !parentChangeTree &&
-            changeTree.refId !== 0 // allow root object
+            obj[$refId] !== 0 // allow root object
         ) {
             /**
              * TODO: can we avoid this?
@@ -82,11 +82,11 @@ export class StateView {
             this.addParentOf(changeTree, tag);
         }
 
-        let changes = this.changes.get(changeTree.refId);
+        let changes = this.changes.get(obj[$refId]);
         if (changes === undefined) {
             changes = {};
             // FIXME / OPTIMIZE: do not add if no changes are needed
-            this.changes.set(changeTree.refId, changes);
+            this.changes.set(obj[$refId], changes);
         }
 
         let isChildAdded = false;
@@ -182,10 +182,10 @@ export class StateView {
 
         // add parent's tag properties
         if (changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
-            let changes = this.changes.get(changeTree.refId);
+            let changes = this.changes.get(changeTree.ref[$refId]);
             if (changes === undefined) {
                 changes = {};
-                this.changes.set(changeTree.refId, changes);
+                this.changes.set(changeTree.ref[$refId], changes);
             }
 
             if (!this.tags) {
@@ -227,28 +227,30 @@ export class StateView {
         const ref = changeTree.ref;
         const metadata: Metadata = ref.constructor[Symbol.metadata]; // ArraySchema/MapSchema do not have metadata
 
-        let changes = this.changes.get(changeTree.refId);
+        const refId = ref[$refId];
+
+        let changes = this.changes.get(refId);
         if (changes === undefined) {
             changes = {};
-            this.changes.set(changeTree.refId, changes);
+            this.changes.set(refId, changes);
         }
 
         if (tag === DEFAULT_VIEW_TAG) {
             // parent is collection (Map/Array)
             const parent = changeTree.parent;
             if (parent && !Metadata.isValidInstance(parent) && changeTree.isFiltered) {
-                const parentChangeTree = parent[$changes];
-                let changes = this.changes.get(parentChangeTree.refId);
+                const parentRefId = parent[$refId];
+                let changes = this.changes.get(parentRefId);
                 if (changes === undefined) {
                     changes = {};
-                    this.changes.set(parentChangeTree.refId, changes);
+                    this.changes.set(parentRefId, changes);
 
                 } else if (changes[changeTree.parentIndex] === OPERATION.ADD) {
                     //
                     // SAME PATCH ADD + REMOVE:
                     // The 'changes' of deleted structure should be ignored.
                     //
-                    this.changes.delete(changeTree.refId);
+                    this.changes.delete(refId);
                 }
 
                 // DELETE / DELETE BY REF ID
@@ -322,7 +324,7 @@ export class StateView {
 
             // console.log("CHECK AGAINST PARENT...", {
             //     ref: changeTree.ref.constructor.name,
-            //     refId: changeTree.refId,
+            //     refId: changeTree.ref[$refId],
             //     parent: changeTree.parent.constructor.name,
             // });
 

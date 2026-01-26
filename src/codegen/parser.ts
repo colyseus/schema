@@ -326,7 +326,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             break;
     }
 
-    ts.forEachChild(node, (n) => inspectNode(n, context, decoratorName));
+    ts.forEachChild(node, (n: ts.Node) => inspectNode(n, context, decoratorName));
 }
 
 let parsedFiles: { [filename: string]: boolean };

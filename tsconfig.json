@@ -1,7 +1,8 @@
 {
   "extends": "./tsconfig/tsconfig.all.json",
   "compilerOptions": {
-    "module": "CommonJS", // TODO: remove me (defined on ./tsconfig dir)
+    // "module": "ESNext",
+    "module": "NodeNext",
     "target": "ES2022",
     // "target": "es5",
     "outDir": "lib",
@@ -12,5 +13,5 @@
 
     // "downlevelIteration": true, /*only for tests*/
     // "emitDecoratorMetadata": true
-  }
+  },
 }

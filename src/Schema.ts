@@ -4,7 +4,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations";
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes';
 
 import { ChangeSet, ChangeSetName, ChangeTree, IRef, Ref } from './encoder/ChangeTree';
-import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $track } from './types/symbols';
+import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $refId, $track } from './types/symbols';
 import { StateView } from './encoder/StateView';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation';
@@ -21,6 +21,8 @@ export class Schema<C = any> implements IRef {
     static [Symbol.metadata]: Metadata;
     static [$encoder] = encodeSchemaOperation;
     static [$decoder] = decodeSchemaOperation;
+
+    [$refId]?: number;
 
     /**
      * Assign the property descriptors required to track changes on this instance.
@@ -95,10 +97,76 @@ export class Schema<C = any> implements IRef {
         }
     }
 
-    public assign<T extends Partial<this>>(
-        props: AssignableProps<T>,
-    ): this {
+    /**
+     * Assign properties to the instance.
+     * @param props Properties to assign to the instance
+     * @returns
+     */
+    public assign<T extends Partial<this>>(props: AssignableProps<T>,): this {
         Object.assign(this, props);
+        return this;
+    }
+
+    /**
+     * Restore the instance from JSON data.
+     * @param jsonData JSON data to restore the instance from
+     * @returns
+     */
+    public restore(jsonData: ToJSON<this>): this {
+        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
+
+        for (const fieldIndex in metadata) {
+            const field = metadata[fieldIndex as any as number];
+            const fieldName = field.name as keyof this;
+            const fieldType = field.type;
+            const value = (jsonData as any)[fieldName];
+
+            if (value === undefined || value === null) {
+                continue;
+            }
+
+            if (typeof fieldType === "string") {
+                // Primitive type: assign directly
+                this[fieldName] = value;
+
+            } else if (Schema.is(fieldType)) {
+                // Schema type: create instance and restore
+                const instance = new (fieldType as typeof Schema)();
+                instance.restore(value);
+                this[fieldName] = instance as any;
+
+            } else if (typeof fieldType === "object") {
+                // Collection types: { map: ... }, { array: ... }, etc.
+                const collectionType = Object.keys(fieldType)[0] as string;
+                const childType = (fieldType as any)[collectionType];
+
+                if (collectionType === "map") {
+                    const mapSchema = this[fieldName] as any;
+                    for (const key in value) {
+                        if (Schema.is(childType)) {
+                            const childInstance = new (childType as typeof Schema)();
+                            childInstance.restore(value[key]);
+                            mapSchema.set(key, childInstance);
+                        } else {
+                            mapSchema.set(key, value[key]);
+                        }
+                    }
+
+                } else if (collectionType === "array") {
+                    const arraySchema = this[fieldName] as any;
+                    for (let i = 0; i < value.length; i++) {
+                        if (Schema.is(childType)) {
+                            const childInstance = new (childType as typeof Schema)();
+                            childInstance.restore(value[i]);
+                            arraySchema.push(childInstance);
+                        } else {
+                            arraySchema.push(value[i]);
+                        }
+                    }
+                }
+            }
+        }
+
         return this;
     }
 
@@ -190,7 +258,7 @@ export class Schema<C = any> implements IRef {
         const contents = (showContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
         const changeTree: ChangeTree = ref[$changes];
 
-        const refId = (decoder) ? decoder.root.refIds.get(ref) : changeTree.refId;
+        const refId = (ref as IRef)[$refId];
         const root = (decoder) ? decoder.root : changeTree.root;
 
          // log reference count if > 1
@@ -218,7 +286,7 @@ export class Schema<C = any> implements IRef {
         let current = ref[$changes].root[changeSet].next;
         while (current) {
             if (current.changeTree) {
-                encodeOrder.push(current.changeTree.refId);
+                encodeOrder.push(current.changeTree.ref[$refId]);
             }
             current = current.next;
         }
@@ -243,7 +311,7 @@ export class Schema<C = any> implements IRef {
         const changeSet = (isEncodeAll) ? changeTree.allChanges : changeTree.changes;
         const changeSetName = (isEncodeAll) ? "allChanges" : "changes";
 
-        let output = `${instance.constructor.name} (${changeTree.refId}) -> .${changeSetName}:\n`;
+        let output = `${instance.constructor.name} (${instance[$refId]}) -> .${changeSetName}:\n`;
 
         function dumpChangeSet(changeSet: ChangeSet) {
             changeSet.operations
@@ -262,7 +330,7 @@ export class Schema<C = any> implements IRef {
             changeTree.filteredChanges &&
             (changeTree.filteredChanges.operations).filter(op => op).length > 0
         ) {
-            output += `${instance.constructor.name} (${changeTree.refId}) -> .filteredChanges:\n`;
+            output += `${instance.constructor.name} (${instance[$refId]}) -> .filteredChanges:\n`;
             dumpChangeSet(changeTree.filteredChanges);
         }
 
@@ -272,7 +340,7 @@ export class Schema<C = any> implements IRef {
             changeTree.allFilteredChanges &&
             (changeTree.allFilteredChanges.operations).filter(op => op).length > 0
         ) {
-            output += `${instance.constructor.name} (${changeTree.refId}) -> .allFilteredChanges:\n`;
+            output += `${instance.constructor.name} (${instance[$refId]}) -> .allFilteredChanges:\n`;
             dumpChangeSet(changeTree.allFilteredChanges);
         }
 
@@ -313,14 +381,14 @@ export class Schema<C = any> implements IRef {
             }
 
             if (includeChangeTree) {
-                instanceRefIds.push(changeTree.refId);
+                instanceRefIds.push(changeTree.ref[$refId]);
                 totalOperations += Object.keys(changes).length;
                 changeTrees.set(changeTree, parentChangeTrees.reverse());
             }
         }
 
         output += "---\n"
-        output += `root refId: ${rootChangeTree.refId}\n`;
+        output += `root refId: ${rootChangeTree.ref[$refId]}\n`;
         output += `Total instances: ${instanceRefIds.length} (refIds: ${instanceRefIds.join(", ")})\n`;
         output += `Total changes: ${totalOperations}\n`;
         output += "---\n"
@@ -330,7 +398,7 @@ export class Schema<C = any> implements IRef {
         for (const [changeTree, parentChangeTrees] of changeTrees.entries()) {
             parentChangeTrees.forEach((parentChangeTree, level) => {
                 if (!visitedParents.has(parentChangeTree)) {
-                    output += `${getIndent(level)}${parentChangeTree.ref.constructor.name} (refId: ${parentChangeTree.refId})\n`;
+                    output += `${getIndent(level)}${parentChangeTree.ref.constructor.name} (refId: ${parentChangeTree.ref[$refId]})\n`;
                     visitedParents.add(parentChangeTree);
                 }
             });
@@ -340,7 +408,7 @@ export class Schema<C = any> implements IRef {
             const indent = getIndent(level);
 
             const parentIndex = (level > 0) ? `(${changeTree.parentIndex}) ` : "";
-            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.refId}) - changes: ${Object.keys(changes).length}\n`;
+            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${Object.keys(changes).length}\n`;
 
             for (const index in changes) {
                 const operation = changes[index];
