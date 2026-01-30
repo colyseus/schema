@@ -1,15 +1,19 @@
 import * as fs from "fs";
 import * as path from "path";
-import { createRequire } from "module";
-// import { fileURLToPath } from "url";
 
 import { File } from "./types.js";
 import { parseFiles } from "./parser.js";
 
-// Create require relative to this file's location (for ESM compatibility)
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = path.dirname(__filename);
-const require = createRequire(import.meta.url);
+// Statically import all language generators (for bundling)
+import { generate as csharp } from "./languages/csharp.js";
+import { generate as cpp } from "./languages/cpp.js";
+import { generate as haxe } from "./languages/haxe.js";
+import { generate as ts } from "./languages/ts.js";
+import { generate as js } from "./languages/js.js";
+import { generate as java } from "./languages/java.js";
+import { generate as lua } from "./languages/lua.js";
+
+const generators: Record<string, Function> = { csharp, cpp, haxe, ts, js, java, lua, };
 
 export interface GenerateOptions {
     files: string[],
@@ -19,12 +23,9 @@ export interface GenerateOptions {
 }
 
 export function generate(targetId: string, options: GenerateOptions) {
-    let generator: Function;
+    const generator = generators[targetId];
 
-    try {
-        generator = require('./languages/' + targetId + '.js').generate;
-
-    } catch (e) {
+    if (!generator) {
         throw new Error("You must provide a valid generator as argument, such as: --csharp, --haxe or --cpp");
     }
 
