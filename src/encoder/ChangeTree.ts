@@ -23,7 +23,8 @@ declare global {
 }
 
 export interface IRef {
-    [$changes]?: ChangeTree;
+    // FIXME: we only commented this out to allow mixing @colyseus/schema bundled types with server types in Cocos Creator
+    // [$changes]?: ChangeTree;
     [$refId]?: number;
     [$getByIndex]?: (index: number, isEncodeAll?: boolean) => any;
     [$deleteByIndex]?: (index: number) => void;
