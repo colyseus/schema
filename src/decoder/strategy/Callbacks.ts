@@ -485,11 +485,13 @@ export const Callbacks = {
      * @param roomOrDecoder - Room or Decoder instance to get the callbacks for.
      * @returns the new callbacks standard API.
      */
-    get<T extends IRef>(roomOrDecoder: Decoder<T> | { serializer: { decoder: Decoder<T> } }): StateCallbackStrategy<T> {
+    get<T extends IRef>(
+        roomOrDecoder: Decoder<T> | { serializer: { decoder: Decoder<T> } } | { state: T; serializer: object }
+    ): StateCallbackStrategy<T> {
         if (roomOrDecoder instanceof Decoder) {
             return new StateCallbackStrategy<T>(roomOrDecoder);
 
-        } else if (roomOrDecoder.serializer.decoder) {
+        } else if ('decoder' in roomOrDecoder.serializer) {
             return new StateCallbackStrategy<T>(roomOrDecoder.serializer.decoder);
 
         } else {
@@ -505,11 +507,13 @@ export const Callbacks = {
      * @param roomOrDecoder - Room or Decoder instance to get the legacy callbacks for.
      * @returns the legacy callbacks API.
      */
-    getLegacy<T extends Schema>(roomOrDecoder: Decoder<T> | { serializer: { decoder: Decoder<T> } }): SchemaCallbackProxy<T> {
+    getLegacy<T extends Schema>(
+        roomOrDecoder: Decoder<T> | { serializer: { decoder: Decoder<T> } } | { state: T; serializer: object }
+    ): SchemaCallbackProxy<T> {
         if (roomOrDecoder instanceof Decoder) {
             return getDecoderStateCallbacks(roomOrDecoder);
 
-        } else if (roomOrDecoder.serializer.decoder) {
+        } else if ('decoder' in roomOrDecoder.serializer) {
             return getDecoderStateCallbacks(roomOrDecoder.serializer.decoder);
         }
     },
