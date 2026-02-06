@@ -192,7 +192,7 @@ function string(bytes: BufferLike, value: string, it: Iterator) {
   // str 8
   else if (length < 0x100) {
     bytes[it.offset++] = 0xd9;
-    bytes[it.offset++] = length % 255;
+    bytes[it.offset++] = length;
     size = 2;
   }
   // str 16

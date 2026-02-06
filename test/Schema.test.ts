@@ -299,6 +299,26 @@ describe("Type: Schema", () => {
             assert.strictEqual(decoded.longstring, longstring);
         });
 
+        it("string with exactly 255 UTF-8 bytes", () => {
+            class Data extends Schema {
+                @type("string") str: string;
+                @type("number") num: number;
+            }
+
+            // Create a string that is exactly 255 UTF-8 bytes
+            const str255 = "a".repeat(255);
+            assert.strictEqual(Buffer.byteLength(str255, "utf8"), 255);
+
+            let data = new Data();
+            data.str = str255;
+            data.num = 42;
+
+            const decoded = new Data();
+            decoded.decode(data.encode());
+            assert.strictEqual(decoded.str, str255);
+            assert.strictEqual(decoded.num, 42);
+        });
+
         it("bigints", () => {
             class Data extends Schema {
                 @type("biguint64") u64: bigint;
