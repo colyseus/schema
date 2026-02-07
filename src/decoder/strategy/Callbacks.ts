@@ -85,7 +85,7 @@ export class StateCallbackStrategy<TState extends IRef> {
         const collection = (instance as any)[propertyName] as TReturn;
 
         // Collection not available yet. Listen for its availability before attaching the handler.
-        if (collection === null || collection === undefined) {
+        if (!collection || collection[$refId] === undefined) {
             removeHandler = this.addCallback(
                 instance[$refId],
                 propertyName,
