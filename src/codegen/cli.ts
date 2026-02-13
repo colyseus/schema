@@ -1,15 +1,5 @@
 import argv from "./argv.js";
-import { generate } from "./api.js";
-
-const supportedTargets: Record<string, string> = {
-    csharp: 'generate for C#/Unity',
-    cpp: 'generate for C++',
-    haxe: 'generate for Haxe',
-    ts: 'generate for TypeScript',
-    js: 'generate for JavaScript',
-    java: 'generate for Java',
-    lua: 'generate for LUA',
-}
+import { generate, generators } from "./api.js";
 
 function displayHelp() {
     console.log(`\nschema-codegen [path/to/Schema.ts]
@@ -20,9 +10,9 @@ Usage (C#/Unity)
 Valid options:
     --output: the output directory for generated client-side schema files
 ${Object.
-    keys(supportedTargets).
+    keys(generators).
     map((targetId) => (
-`    --${targetId}: ${supportedTargets[targetId]}`
+`    --${targetId}: generate for ${generators[targetId].name}`
     )).
     join("\n")}
 
@@ -38,7 +28,7 @@ if (args.help) {
 }
 
 let targetId: string;
-for (let target in supportedTargets) {
+for (let target in generators) {
     if (args[target]) {
         targetId = target;
     }

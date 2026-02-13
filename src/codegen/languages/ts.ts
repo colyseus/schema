@@ -1,6 +1,8 @@
 import { Class, Property, File, getCommentHeader, getInheritanceTree, Context, Interface } from "../types.js";
 import { GenerateOptions } from "../api.js";
 
+export const name = "TypeScript";
+
 const typeMaps: { [key: string]: string } = {
     "string": "string",
     "number": "number",

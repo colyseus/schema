@@ -9,6 +9,8 @@ import {
 import { GenerateOptions } from "../api.js";
 import { Context } from "../types.js";
 
+export const name = "Unity/C#";
+
 const typeMaps: { [key: string]: string } = {
     "string": "string",
     "number": "float",

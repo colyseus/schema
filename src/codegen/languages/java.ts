@@ -1,6 +1,8 @@
 import { Class, Property, File, getCommentHeader, Context } from "../types.js";
 import { GenerateOptions } from "../api.js";
 
+export const name = "Java";
+
 const typeMaps: { [key: string]: string } = {
     "string": "String",
     "number": "float",

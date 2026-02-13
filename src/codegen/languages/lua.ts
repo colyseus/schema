@@ -1,6 +1,8 @@
 import { Class, Property, File, getCommentHeader, getInheritanceTree, Context } from "../types.js";
 import { GenerateOptions } from "../api.js";
 
+export const name = "LUA";
+
 /**
     TODO:
     - Support inheritance
