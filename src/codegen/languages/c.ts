@@ -45,6 +45,7 @@ const fieldTypeMaps: { [key: string]: string } = {
 };
 
 const COMMON_INCLUDES = `#include "colyseus/schema/types.h"
+#include "colyseus/schema/collections.h"
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdbool.h>`;
@@ -79,12 +80,6 @@ export function renderBundle(context: Context, options: GenerateOptions): File {
     const fileName = options.namespace ? `${toSnakeCase(options.namespace)}.h` : "schema.h";
     const guardName = `__SCHEMA_CODEGEN_${(options.namespace || "SCHEMA").toUpperCase()}_H__`;
 
-    // Generate all class bodies (forward declare all types first)
-    const forwardDecls = context.classes.map(klass => {
-        const snakeName = toSnakeCase(klass.name);
-        return `typedef struct ${snakeName}_s ${snakeName}_t;`;
-    }).join("\n");
-
     const classBodies = context.classes.map(klass =>
         generateClassBody(klass, context.classes)
     ).join("\n\n");
@@ -94,9 +89,6 @@ export function renderBundle(context: Context, options: GenerateOptions): File {
 #define ${guardName} 1
 
 ${COMMON_INCLUDES}
-
-/* Forward declarations */
-${forwardDecls}
 
 ${classBodies}
 
@@ -181,15 +173,15 @@ function getCType(prop: Property): string {
         return `${toSnakeCase(prop.childType)}_t*`;
     } else if (prop.type === "array") {
         if (typeMaps[prop.childType]) {
-            return `colyseus_array_t*`;
+            return `colyseus_array_schema_t*`;
         } else {
-            return `colyseus_array_t*`;
+            return `colyseus_array_schema_t*`;
         }
     } else if (prop.type === "map") {
         if (typeMaps[prop.childType]) {
-            return `colyseus_map_t*`;
+            return `colyseus_map_schema_t*`;
         } else {
-            return `colyseus_map_t*`;
+            return `colyseus_map_schema_t*`;
         }
     } else {
         return typeMaps[prop.type] || `${toSnakeCase(prop.type)}_t*`;
@@ -201,9 +193,7 @@ function getFieldType(prop: Property): string {
 }
 
 function getFieldTypeString(prop: Property): string {
-    if (prop.type === "ref" || prop.type === "array" || prop.type === "map") {
-        return prop.childType || prop.type;
-    }
+    // Always return the type itself (ref, array, map, string, number, etc.)
     return prop.type;
 }
 
@@ -216,20 +206,17 @@ function generateFieldsArray(klass: Class, typeName: string, snakeName: string, 
         const fieldType = getFieldType(prop);
         const typeString = getFieldTypeString(prop);
 
-        let createFn = "NULL";
         let vtableRef = "NULL";
 
         if (prop.type === "ref" && prop.childType && !typeMaps[prop.childType]) {
             const childSnake = toSnakeCase(prop.childType);
-            createFn = `(colyseus_schema_t* (*)(void))${childSnake}_create`;
             vtableRef = `&${childSnake}_vtable`;
         } else if ((prop.type === "array" || prop.type === "map") && prop.childType && !typeMaps[prop.childType]) {
             const childSnake = toSnakeCase(prop.childType);
-            createFn = `(colyseus_schema_t* (*)(void))${childSnake}_create`;
             vtableRef = `&${childSnake}_vtable`;
         }
 
-        return `    {${prop.index}, "${prop.name}", ${fieldType}, "${typeString}", offsetof(${typeName}, ${prop.name}), ${createFn}, ${vtableRef}}`;
+        return `    {${prop.index}, "${prop.name}", ${fieldType}, "${typeString}", offsetof(${typeName}, ${prop.name}), ${vtableRef}, NULL}`;
     }).join(",\n");
 
     return `static const colyseus_field_t ${snakeName}_fields[] = {
@@ -258,7 +245,8 @@ function generateDestroyFunction(klass: Class, snakeName: string, typeName: stri
                 freeStatements.push(`    if (instance->${prop.name}) ${childSnake}_destroy((colyseus_schema_t*)instance->${prop.name});`);
             }
         } else if (prop.type === "array" || prop.type === "map") {
-            freeStatements.push(`    if (instance->${prop.name}) colyseus_${prop.type}_destroy(instance->${prop.name});`);
+            // arrays and maps are scheduled for destruction at the decoder level
+            // freeStatements.push(`    if (instance->${prop.name}) colyseus_${prop.type}_destroy(instance->${prop.name});`);
         }
     });
 
