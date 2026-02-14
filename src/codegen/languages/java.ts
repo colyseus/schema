@@ -35,10 +35,17 @@ const typeInitializer: { [key: string]: string } = {
     "float64": "0",
 }
 
+const COMMON_IMPORTS = `import io.colyseus.serializer.schema.Schema;
+import io.colyseus.serializer.schema.annotations.SchemaClass;
+import io.colyseus.serializer.schema.annotations.SchemaField;`;
+
 /**
- * C# Code Generator
+ * Java Code Generator
  */
 
+/**
+ * Generate individual files for each class
+ */
 export function generate (context: Context, options: GenerateOptions): File[] {
     return context.classes.map(klass => ({
         name: klass.name + ".java",
@@ -46,14 +53,46 @@ export function generate (context: Context, options: GenerateOptions): File[] {
     }));
 }
 
+/**
+ * Generate a single bundled file containing all classes
+ * Note: Java typically requires one public class per file, so bundled mode
+ * generates all classes in a single file with package-private visibility
+ */
+export function renderBundle(context: Context, options: GenerateOptions): File {
+    const fileName = options.namespace ? `Schema.java` : "Schema.java";
+
+    const classBodies = context.classes.map(klass => generateClassBody(klass));
+
+    const content = `${getCommentHeader()}
+${options.namespace ? `\npackage ${options.namespace};` : ""}
+
+${COMMON_IMPORTS}
+
+${classBodies.join("\n\n")}
+`;
+
+    return { name: fileName, content };
+}
+
+/**
+ * Generate just the class body (without package/imports) for bundling
+ */
+function generateClassBody(klass: Class): string {
+    return `@SchemaClass
+class ${klass.name} extends ${klass.extends} {
+${klass.properties.map(prop => generateProperty(prop, "")).join("\n\n")}
+}`;
+}
+
+/**
+ * Generate a complete class file with package/imports (for individual file mode)
+ */
 function generateClass(klass: Class, namespace: string) {
     const indent = (namespace) ? "\t" : "";
     return `${getCommentHeader()}
 ${namespace ? `\npackage ${namespace};` : ""}
 
-import io.colyseus.serializer.schema.Schema;
-import io.colyseus.serializer.schema.annotations.SchemaClass;
-import io.colyseus.serializer.schema.annotations.SchemaField;
+${COMMON_IMPORTS}
 
 @SchemaClass
 ${indent}public class ${klass.name} extends ${klass.extends} {

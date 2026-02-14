@@ -9,6 +9,9 @@ Usage (C#/Unity)
 
 Valid options:
     --output: the output directory for generated client-side schema files
+    --bundle: bundle all generated files into a single file
+
+Generators:
 ${Object.
     keys(generators).
     map((targetId) => (
@@ -45,7 +48,8 @@ try {
         files: args._,
         decorator: args.decorator,
         output: args.output,
-        namespace: args.namespace
+        namespace: args.namespace,
+        bundle: args.bundle
     });
 
 } catch (e) {

@@ -19,9 +19,14 @@ const typeMaps: { [key: string]: string } = {
     "float64": "number",
 }
 
+const COMMON_IMPORTS = `import { Schema, type, ArraySchema, MapSchema, SetSchema, DataChange } from '@colyseus/schema';`;
+
 const distinct = (value: string, index: number, self: string[]) =>
     self.indexOf(value) === index;
 
+/**
+ * Generate individual files for each class/interface
+ */
 export function generate (context: Context, options: GenerateOptions): File[] {
     return [
         ...context.classes.map(structure => ({
@@ -35,6 +40,49 @@ export function generate (context: Context, options: GenerateOptions): File[] {
     ];
 }
 
+/**
+ * Generate a single bundled file containing all classes and interfaces
+ */
+export function renderBundle(context: Context, options: GenerateOptions): File {
+    const fileName = options.namespace ? `${options.namespace}.ts` : "schema.ts";
+
+    // Collect all class bodies
+    const classBodies = context.classes.map(klass => generateClassBody(klass));
+
+    // Collect all interface bodies
+    const interfaceBodies = context.interfaces.map(iface => generateInterfaceBody(iface));
+
+    const content = `${getCommentHeader()}
+
+${COMMON_IMPORTS}
+
+${classBodies.join("\n\n")}
+${interfaceBodies.length > 0 ? "\n" + interfaceBodies.join("\n\n") : ""}`;
+
+    return { name: fileName, content };
+}
+
+/**
+ * Generate just the class body (without imports) for bundling
+ */
+function generateClassBody(klass: Class): string {
+    return `export class ${klass.name} extends ${klass.extends} {
+${klass.properties.map(prop => `    ${generateProperty(prop)}`).join("\n")}
+}`;
+}
+
+/**
+ * Generate just the interface body (without imports) for bundling
+ */
+function generateInterfaceBody(iface: Interface): string {
+    return `export interface ${iface.name} {
+${iface.properties.map(prop => `    ${prop.name}: ${prop.type};`).join("\n")}
+}`;
+}
+
+/**
+ * Generate a complete class file with imports (for individual file mode)
+ */
 function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     const allRefs: Property[] = [];
     klass.properties.forEach(property => {
@@ -46,20 +94,20 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
         }
     });
 
+    const localImports = allRefs.
+        filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
+        map(ref => ref.childType).
+        concat(getInheritanceTree(klass, allClasses, false).map(klass => klass.name)).
+        filter(distinct).
+        map(childType => `import { ${childType} } from './${childType}'`).
+        join("\n");
+
     return `${getCommentHeader()}
 
-import { Schema, type, ArraySchema, MapSchema, SetSchema, DataChange } from '@colyseus/schema';
-${allRefs.
-    filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
-    map(ref => ref.childType).
-    concat(getInheritanceTree(klass, allClasses, false).map(klass => klass.name)).
-    filter(distinct).
-    map(childType => `import { ${childType} } from './${childType}'`).
-    join("\n")}
+${COMMON_IMPORTS}
+${localImports}
 
-export class ${klass.name} extends ${klass.extends} {
-${klass.properties.map(prop => `    ${generateProperty(prop)}`).join("\n")}
-}
+${generateClassBody(klass)}
 `;
 }
 
@@ -122,11 +170,12 @@ function generateProperty(prop: Property) {
 }
 
 
+/**
+ * Generate a complete interface file with header (for individual file mode)
+ */
 function generateInterface(structure: Interface, namespace: string, allClasses: Class[]) {
     return `${getCommentHeader()}
 
-export interface ${structure.name} {
-${structure.properties.map(prop => `    ${prop.name}: ${prop.type};`).join("\n")}
-}
+${generateInterfaceBody(structure)}
 `;
 }

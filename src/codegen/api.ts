@@ -21,6 +21,7 @@ export interface GenerateOptions {
     output: string;
     decorator?: string;
     namespace?: string;
+    bundle?: boolean;
 }
 
 export function generate(targetId: string, options: GenerateOptions) {
@@ -55,13 +56,21 @@ export function generate(targetId: string, options: GenerateOptions) {
     // Post-process classes before generating
     structures.classes.forEach(klass => klass.postProcessing());
 
-    const files = generator.generate(structures, options);
-
-    files.forEach((file: File) => {
-        const outputPath = path.resolve(options.output, file.name);
-        fs.writeFileSync(outputPath, file.content);
-        console.log("generated:", file.name);
-    });
+    if (options.bundle && generator.renderBundle) {
+        // Bundle mode: generate all classes/interfaces/enums into a single file
+        const bundled = generator.renderBundle(structures, options);
+        const outputPath = path.resolve(options.output, bundled.name);
+        fs.writeFileSync(outputPath, bundled.content);
+        console.log("generated (bundled):", bundled.name);
+    } else {
+        // Standard mode: write individual files
+        const generatedFiles = generator.generate(structures, options);
+        generatedFiles.forEach((file: File) => {
+            const outputPath = path.resolve(options.output, file.name);
+            fs.writeFileSync(outputPath, file.content);
+            console.log("generated:", file.name);
+        });
+    }
 }
 
 function recursiveFiles(dir: string): string[] {

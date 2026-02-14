@@ -44,6 +44,11 @@ const fieldTypeMaps: { [key: string]: string } = {
     "map": "COLYSEUS_FIELD_MAP",
 };
 
+const COMMON_INCLUDES = `#include "colyseus/schema/types.h"
+#include <stdlib.h>
+#include <stddef.h>
+#include <stdbool.h>`;
+
 /**
  * Native C Code Generator
  */
@@ -57,6 +62,9 @@ const toSnakeCase = (s: string) => {
 const distinct = (value: string, index: number, self: string[]) =>
     self.indexOf(value) === index;
 
+/**
+ * Generate individual files for each class
+ */
 export function generate(context: Context, options: GenerateOptions): File[] {
     return context.classes.map(klass => ({
         name: toSnakeCase(klass.name) + ".h",
@@ -64,12 +72,67 @@ export function generate(context: Context, options: GenerateOptions): File[] {
     }));
 }
 
+/**
+ * Generate a single bundled header file containing all classes
+ */
+export function renderBundle(context: Context, options: GenerateOptions): File {
+    const fileName = options.namespace ? `${toSnakeCase(options.namespace)}.h` : "schema.h";
+    const guardName = `__SCHEMA_CODEGEN_${(options.namespace || "SCHEMA").toUpperCase()}_H__`;
+
+    // Generate all class bodies (forward declare all types first)
+    const forwardDecls = context.classes.map(klass => {
+        const snakeName = toSnakeCase(klass.name);
+        return `typedef struct ${snakeName}_s ${snakeName}_t;`;
+    }).join("\n");
+
+    const classBodies = context.classes.map(klass =>
+        generateClassBody(klass, context.classes)
+    ).join("\n\n");
+
+    const content = `${getCommentHeader()}
+#ifndef ${guardName}
+#define ${guardName} 1
+
+${COMMON_INCLUDES}
+
+/* Forward declarations */
+${forwardDecls}
+
+${classBodies}
+
+#endif
+`;
+
+    return { name: fileName, content };
+}
+
+/**
+ * Generate just the class body (without guards/includes) for bundling
+ */
+function generateClassBody(klass: Class, allClasses: Class[]): string {
+    const snakeName = toSnakeCase(klass.name);
+    const typeName = `${snakeName}_t`;
+    const allProperties = getAllProperties(klass, allClasses);
+
+    return `${generateTypedef(klass, typeName, allClasses)}
+
+${generateFieldsArray(klass, typeName, snakeName, allProperties)}
+
+${generateCreateFunction(snakeName, typeName)}
+
+${generateDestroyFunction(klass, snakeName, typeName, allProperties)}
+
+${generateVtable(klass, snakeName, typeName, allProperties)}`;
+}
+
+/**
+ * Generate a complete class file with guards/includes (for individual file mode)
+ */
 function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     const snakeName = toSnakeCase(klass.name);
     const typeName = `${snakeName}_t`;
     const guardName = `__SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__`;
 
-    const allProperties = getAllProperties(klass, allClasses);
     const allRefs: Property[] = [];
 
     klass.properties.forEach(property => {
@@ -91,20 +154,9 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
 #ifndef ${guardName}
 #define ${guardName} 1
 
-#include "colyseus/schema/types.h"
-#include <stdlib.h>
-#include <stddef.h>
-#include <stdbool.h>
+${COMMON_INCLUDES}
 ${refIncludes ? `\n${refIncludes}\n` : ""}
-${generateTypedef(klass, typeName, allClasses)}
-
-${generateFieldsArray(klass, typeName, snakeName, allProperties)}
-
-${generateCreateFunction(snakeName, typeName)}
-
-${generateDestroyFunction(klass, snakeName, typeName, allProperties)}
-
-${generateVtable(klass, snakeName, typeName, allProperties)}
+${generateClassBody(klass, allClasses)}
 
 #endif
 `;

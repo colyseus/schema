@@ -287,6 +287,37 @@ schema-codegen ./schemas/State.ts --output ./cpp-project/ --cpp
 schema-codegen ./schemas/State.ts --output ./haxe-project/ --haxe
 ```
 
+### Code Generation Options
+
+| Option | Description |
+|--------|-------------|
+| `--output` | The output directory for generated client-side schema files (required) |
+| `--bundle` | Bundle all generated files into a single file |
+| `--namespace` | Generate namespace/package on output code |
+| `--decorator` | Custom name for `@type` decorator to scan for |
+
+### Bundle Mode
+
+By default, the code generator creates one file per schema class. Use the `--bundle` option to combine all generated classes into a single file:
+
+```
+# Generate a single bundled file
+schema-codegen ./schemas/State.ts --output ./unity-project/ --csharp --bundle
+
+# With namespace
+schema-codegen ./schemas/State.ts --output ./unity-project/ --csharp --bundle --namespace MyGame.Schema
+```
+
+Bundle mode output filenames:
+- **TypeScript**: `schema.ts` (or `{namespace}.ts`)
+- **JavaScript**: `schema.js` (or `{namespace}.js`)
+- **C#**: `Schema.cs` (or `{namespace}.cs`)
+- **C++**: `schema.hpp` (or `{namespace}.hpp`)
+- **Haxe**: `Schema.hx` (or `{namespace}.hx`)
+- **Java**: `Schema.java`
+- **Lua**: `schema.lua` (or `{namespace}.lua`)
+- **C**: `schema.h` (or `{namespace}.h`)
+
 ## Benchmarks:
 
 | Scenario | `@colyseus/schema` | `msgpack` + `fossil-delta` |
