@@ -8,7 +8,7 @@ export const name = "C";
  */
 const typeMaps: { [key: string]: string } = {
     "string": "char*",
-    "number": "float",
+    "number": "double",
     "boolean": "bool",
     "int8": "int8_t",
     "uint8": "uint8_t",
