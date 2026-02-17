@@ -104,11 +104,32 @@ function generateClassBody(klass: Class): string {
         ? properties.map(prop => generateFieldDefinition(prop)).join(",\n") + ","
         : "";
 
+    // Generate _to_string() method
+    const toStringMethod = generateToStringMethod(klass.name, properties);
+
     return `class ${klass.name} extends ${parentClass}:
 	static func definition():
 		return [
 ${fieldsContent}
-		]`;
+		]
+
+${toStringMethod}`;
+}
+
+/**
+ * Generate _to_string() method for the class
+ */
+function generateToStringMethod(className: string, properties: Property[]): string {
+    const fieldNames = properties.map(prop => prop.name);
+    const allFields = ["__ref_id", ...fieldNames];
+
+    const formatParts = allFields.map(name => `${name}: %s`).join(", ");
+    const formatString = `${className}(${formatParts})`;
+
+    const selfReferences = allFields.map(name => `self.${name}`).join(", ");
+
+    return `\tfunc _to_string() -> String:
+		return "${formatString}" % [${selfReferences}]`;
 }
 
 /**
