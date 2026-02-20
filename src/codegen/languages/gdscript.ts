@@ -12,28 +12,28 @@ import { GenerateOptions } from "../api.js";
 export const name = "GDScript";
 
 /**
- * Type mappings from schema types to GDScript ColyseusSchema type constants
+ * Type mappings from schema types to GDScript Colyseus.Schema type constants
  */
 const typeMaps: { [key: string]: string } = {
-    "string": "ColyseusSchema.STRING",
-    "number": "ColyseusSchema.NUMBER",
-    "boolean": "ColyseusSchema.BOOLEAN",
-    "int8": "ColyseusSchema.INT8",
-    "uint8": "ColyseusSchema.UINT8",
-    "int16": "ColyseusSchema.INT16",
-    "uint16": "ColyseusSchema.UINT16",
-    "int32": "ColyseusSchema.INT32",
-    "uint32": "ColyseusSchema.UINT32",
-    "int64": "ColyseusSchema.INT64",
-    "uint64": "ColyseusSchema.UINT64",
-    "float32": "ColyseusSchema.FLOAT32",
-    "float64": "ColyseusSchema.FLOAT64",
+    "string": "Colyseus.Schema.STRING",
+    "number": "Colyseus.Schema.NUMBER",
+    "boolean": "Colyseus.Schema.BOOLEAN",
+    "int8": "Colyseus.Schema.INT8",
+    "uint8": "Colyseus.Schema.UINT8",
+    "int16": "Colyseus.Schema.INT16",
+    "uint16": "Colyseus.Schema.UINT16",
+    "int32": "Colyseus.Schema.INT32",
+    "uint32": "Colyseus.Schema.UINT32",
+    "int64": "Colyseus.Schema.INT64",
+    "uint64": "Colyseus.Schema.UINT64",
+    "float32": "Colyseus.Schema.FLOAT32",
+    "float64": "Colyseus.Schema.FLOAT64",
 };
 
 const containerMaps: { [key: string]: string } = {
-    "array": "ColyseusSchema.ARRAY",
-    "map": "ColyseusSchema.MAP",
-    "ref": "ColyseusSchema.REF",
+    "array": "Colyseus.Schema.ARRAY",
+    "map": "Colyseus.Schema.MAP",
+    "ref": "Colyseus.Schema.REF",
 };
 
 const distinct = (value: string, index: number, self: string[]) =>
@@ -96,7 +96,7 @@ function generateClassBody(klass: Class): string {
     // Determine parent class
     const parentClass = (klass.extends !== "Schema")
         ? klass.extends
-        : "ColyseusSchema.Schema";
+        : "Colyseus.Schema";
 
     const properties = klass.properties;
 
@@ -180,7 +180,7 @@ function generateFieldDefinition(prop: Property): string {
         args = [`"${prop.name}"`, typeRef];
     }
 
-    return `\t\t\tColyseusSchema.Field.new(${args.join(", ")})`;
+    return `\t\t\tColyseus.Schema.Field.new(${args.join(", ")})`;
 }
 
 /**
