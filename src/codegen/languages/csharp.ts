@@ -9,6 +9,8 @@ import {
 import { GenerateOptions } from "../api.js";
 import { Context } from "../types.js";
 
+export const name = "Unity/C#";
+
 const typeMaps: { [key: string]: string } = {
     "string": "string",
     "number": "float",
@@ -25,6 +27,11 @@ const typeMaps: { [key: string]: string } = {
     "float64": "double",
 }
 
+const COMMON_IMPORTS = `using Colyseus.Schema;
+#if UNITY_5_3_OR_NEWER
+using UnityEngine.Scripting;
+#endif`;
+
 /**
  * C# Code Generator
  */
@@ -33,6 +40,9 @@ const capitalize = (s: string) => {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/**
+ * Generate individual files for each class/interface/enum
+ */
 export function generate(context: Context, options: GenerateOptions): File[] {
     // enrich typeMaps with enums
     context.enums.forEach((structure) => {
@@ -54,31 +64,69 @@ export function generate(context: Context, options: GenerateOptions): File[] {
     ];
 }
 
-function generateClass(klass: Class, namespace: string) {
-    const indent = (namespace) ? "\t" : "";
-    return `${getCommentHeader()}
+/**
+ * Generate a single bundled file containing all classes, interfaces, and enums
+ */
+export function renderBundle(context: Context, options: GenerateOptions): File {
+    const fileName = options.namespace ? `${options.namespace}.cs` : "Schema.cs";
+    const indent = options.namespace ? "\t" : "";
 
-using Colyseus.Schema;
-#if UNITY_5_3_OR_NEWER
-using UnityEngine.Scripting;
-#endif
-${namespace ? `\nnamespace ${namespace} {` : ""}
-${indent}public partial class ${klass.name} : ${klass.extends} {
+    // enrich typeMaps with enums
+    context.enums.forEach((structure) => {
+        typeMaps[structure.name] = structure.name;
+    });
+
+    // Collect all bodies
+    const classBodies = context.classes.map(klass => generateClassBody(klass, indent));
+    const interfaceBodies = context.interfaces.map(iface => generateInterfaceBody(iface, indent));
+    const enumBodies = context.enums
+        .filter(structure => structure.name !== 'OPERATION')
+        .map(e => generateEnumBody(e, indent));
+
+    const allBodies = [...classBodies, ...interfaceBodies, ...enumBodies].join("\n\n");
+
+    const content = `${getCommentHeader()}
+
+${COMMON_IMPORTS}
+${options.namespace ? `\nnamespace ${options.namespace} {\n` : ""}
+${allBodies}
+${options.namespace ? "}" : ""}`;
+
+    return { name: fileName, content };
+}
+
+/**
+ * Generate just the class body (without imports/namespace) for bundling
+ */
+function generateClassBody(klass: Class, indent: string = ""): string {
+    return `${indent}public partial class ${klass.name} : ${klass.extends} {
 #if UNITY_5_3_OR_NEWER
 [Preserve]
 #endif
 public ${klass.name}() { }
 ${klass.properties.map((prop) => generateProperty(prop, indent)).join("\n\n")}
-${indent}}
+${indent}}`;
+}
+
+/**
+ * Generate a complete class file with imports/namespace (for individual file mode)
+ */
+function generateClass(klass: Class, namespace: string) {
+    const indent = (namespace) ? "\t" : "";
+    return `${getCommentHeader()}
+
+${COMMON_IMPORTS}
+${namespace ? `\nnamespace ${namespace} {` : ""}
+${generateClassBody(klass, indent)}
 ${namespace ? "}" : ""}
 `;
 }
 
-function generateEnum(_enum: Enum, namespace: string) {
-    const indent = namespace ? "\t" : "";
-    return `${getCommentHeader()}
-${namespace ? `\nnamespace ${namespace} {` : ""}
-${indent}public struct ${_enum.name} {
+/**
+ * Generate just the enum body (without imports/namespace) for bundling
+ */
+function generateEnumBody(_enum: Enum, indent: string = ""): string {
+    return `${indent}public struct ${_enum.name} {
 
 ${_enum.properties
     .map((prop) => {
@@ -99,7 +147,17 @@ ${_enum.properties
         return `${indent}\tpublic const ${dataType} ${prop.name} = ${value};`;
     })
         .join("\n")}
-${indent}}
+${indent}}`;
+}
+
+/**
+ * Generate a complete enum file with imports/namespace (for individual file mode)
+ */
+function generateEnum(_enum: Enum, namespace: string) {
+    const indent = namespace ? "\t" : "";
+    return `${getCommentHeader()}
+${namespace ? `\nnamespace ${namespace} {` : ""}
+${generateEnumBody(_enum, indent)}
 ${namespace ? "}" : ""}`
 }
 
@@ -134,15 +192,25 @@ function generateProperty(prop: Property, indent: string = "") {
 \t${indent}${property} = ${initializer};`;
 }
 
+/**
+ * Generate just the interface body (without imports/namespace) for bundling
+ */
+function generateInterfaceBody(struct: Interface, indent: string = ""): string {
+    return `${indent}public class ${struct.name} {
+${struct.properties.map(prop => `\t${indent}public ${getType(prop)} ${prop.name};`).join("\n")}
+${indent}}`;
+}
+
+/**
+ * Generate a complete interface file with imports/namespace (for individual file mode)
+ */
 function generateInterface(struct: Interface, namespace: string) {
     const indent = (namespace) ? "\t" : "";
     return `${getCommentHeader()}
 
 using Colyseus.Schema;
 ${namespace ? `\nnamespace ${namespace} {` : ""}
-${indent}public class ${struct.name} {
-${struct.properties.map(prop => `\t${indent}public ${getType(prop)} ${prop.name};`).join("\n")}
-${indent}}
+${generateInterfaceBody(struct, indent)}
 ${namespace ? "}" : ""}
 `;
 }

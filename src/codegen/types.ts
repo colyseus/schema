@@ -166,6 +166,21 @@ export interface File {
     content: string;
 }
 
+/**
+ * Structured file representation for code generation.
+ * Separates imports, local references, and body content to enable
+ * clean bundling without string parsing.
+ */
+export interface GeneratedFile {
+    name: string;
+    /** External imports (e.g., "@colyseus/schema", "Colyseus.Schema") */
+    imports: string[];
+    /** References to other generated classes (used for imports in non-bundle mode) */
+    localRefs: string[];
+    /** The class/interface/enum definition body (without imports or namespace wrapper) */
+    body: string;
+}
+
 export function getInheritanceTree(klass: Class, allClasses: Class[], includeSelf: boolean = true) {
     let currentClass = klass;
     let inheritanceTree: Class[] = [];

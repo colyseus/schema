@@ -5,21 +5,24 @@ import { File } from "./types.js";
 import { parseFiles } from "./parser.js";
 
 // Statically import all language generators (for bundling)
-import { generate as csharp } from "./languages/csharp.js";
-import { generate as cpp } from "./languages/cpp.js";
-import { generate as haxe } from "./languages/haxe.js";
-import { generate as ts } from "./languages/ts.js";
-import { generate as js } from "./languages/js.js";
-import { generate as java } from "./languages/java.js";
-import { generate as lua } from "./languages/lua.js";
+import * as csharp from "./languages/csharp.js";
+import * as cpp from "./languages/cpp.js";
+import * as haxe from "./languages/haxe.js";
+import * as ts from "./languages/ts.js";
+import * as js from "./languages/js.js";
+import * as java from "./languages/java.js";
+import * as lua from "./languages/lua.js";
+import * as c from "./languages/c.js";
+import * as gdscript from "./languages/gdscript.js";
 
-const generators: Record<string, Function> = { csharp, cpp, haxe, ts, js, java, lua, };
+export const generators: Record<string, any> = { csharp, cpp, haxe, ts, js, java, lua, c, gdscript, };
 
 export interface GenerateOptions {
     files: string[],
     output: string;
     decorator?: string;
     namespace?: string;
+    bundle?: boolean;
 }
 
 export function generate(targetId: string, options: GenerateOptions) {
@@ -54,13 +57,21 @@ export function generate(targetId: string, options: GenerateOptions) {
     // Post-process classes before generating
     structures.classes.forEach(klass => klass.postProcessing());
 
-    const files = generator(structures, options);
-
-    files.forEach((file: File) => {
-        const outputPath = path.resolve(options.output, file.name);
-        fs.writeFileSync(outputPath, file.content);
-        console.log("generated:", file.name);
-    });
+    if (options.bundle && generator.renderBundle) {
+        // Bundle mode: generate all classes/interfaces/enums into a single file
+        const bundled = generator.renderBundle(structures, options);
+        const outputPath = path.resolve(options.output, bundled.name);
+        fs.writeFileSync(outputPath, bundled.content);
+        console.log("generated (bundled):", bundled.name);
+    } else {
+        // Standard mode: write individual files
+        const generatedFiles = generator.generate(structures, options);
+        generatedFiles.forEach((file: File) => {
+            const outputPath = path.resolve(options.output, file.name);
+            fs.writeFileSync(outputPath, file.content);
+            console.log("generated:", file.name);
+        });
+    }
 }
 
 function recursiveFiles(dir: string): string[] {

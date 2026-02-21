@@ -1,6 +1,8 @@
 import { Class, Property, File, getCommentHeader, getInheritanceTree, Context } from "../types.js";
 import { GenerateOptions } from "../api.js";
 
+export const name = "LUA";
+
 /**
     TODO:
     - Support inheritance
@@ -23,9 +25,14 @@ const typeMaps: { [key: string]: string } = {
     "float64": "number",
 }
 
+const COMMON_IMPORTS = `local schema = require 'colyseus.serializer.schema.schema'`;
+
 const distinct = (value: string, index: number, self: string[]) =>
     self.indexOf(value) === index;
 
+/**
+ * Generate individual files for each class
+ */
 export function generate (context: Context, options: GenerateOptions): File[] {
     return context.classes.map(klass => ({
         name: klass.name + ".lua",
@@ -33,6 +40,49 @@ export function generate (context: Context, options: GenerateOptions): File[] {
     }));
 }
 
+/**
+ * Generate a single bundled file containing all classes
+ */
+export function renderBundle(context: Context, options: GenerateOptions): File {
+    const fileName = options.namespace ? `${options.namespace}.lua` : "schema.lua";
+
+    const classBodies = context.classes.map(klass => generateClassBody(klass));
+    const classNames = context.classes.map(klass => `    ${klass.name} = ${klass.name},`).join("\n");
+
+    const content = `${getCommentHeader().replace(/\/\//mg, "--")}
+
+${COMMON_IMPORTS}
+
+${classBodies.join("\n\n")}
+
+return {
+${classNames}
+}
+`;
+
+    return { name: fileName, content };
+}
+
+/**
+ * Generate just the class body (without requires) for bundling
+ */
+function generateClassBody(klass: Class): string {
+    // Inheritance support
+    const inherits = (klass.extends !== "Schema")
+        ? `, ${klass.extends}`
+        : "";
+
+    return `---@class ${klass.name}: ${klass.extends}
+${klass.properties.map(prop => `---@field ${prop.name} ${getLUATypeAnnotation(prop)}`).join("\n")}
+local ${klass.name} = schema.define({
+${klass.properties.map(prop => generatePropertyDeclaration(prop)).join(",\n")},
+    ["_fields_by_index"] = { ${klass.properties.map(prop => `"${prop.name}"`).join(", ")} },
+}${inherits})`;
+}
+
+/**
+ * Generate a complete class file with requires (for individual file mode)
+ */
 function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     const allRefs: Property[] = [];
     klass.properties.forEach(property => {
@@ -44,28 +94,20 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
         }
     });
 
-    // Inheritance support
-    const inherits = (klass.extends !== "Schema")
-        ? `, ${klass.extends}`
-        : "";
+    const localRequires = allRefs.
+        filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
+        map(ref => ref.childType).
+        concat(getInheritanceTree(klass, allClasses, false).map(klass => klass.name)).
+        filter(distinct).
+        map(childType => `local ${childType} = require '${(namespace ? `${namespace}.` : '')}${childType}'`).
+        join("\n");
 
     return `${getCommentHeader().replace(/\/\//mg, "--")}
 
-local schema = require 'colyseus.serializer.schema.schema'
-${allRefs.
-    filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
-    map(ref => ref.childType).
-    concat(getInheritanceTree(klass, allClasses, false).map(klass => klass.name)).
-    filter(distinct).
-    map(childType => `local ${childType} = require '${(namespace ? `${namespace}.` : '')}${childType}'`).
-    join("\n")}
+${COMMON_IMPORTS}
+${localRequires}
 
----@class ${klass.name}: ${klass.extends}
-${klass.properties.map(prop => `---@field ${prop.name} ${getLUATypeAnnotation(prop)}`).join("\n")}
-local ${klass.name} = schema.define({
-${klass.properties.map(prop => generatePropertyDeclaration(prop)).join(",\n")},
-    ["_fields_by_index"] = { ${klass.properties.map(prop => `"${prop.name}"`).join(", ")} },
-}${inherits})
+${generateClassBody(klass)}
 
 return ${klass.name}
 `;

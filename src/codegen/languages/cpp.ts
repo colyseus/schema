@@ -1,6 +1,8 @@
 import { Class, Property, File, getCommentHeader, getInheritanceTree, Context } from "../types.js";
 import { GenerateOptions } from "../api.js";
 
+export const name = "C++";
+
 const typeMaps: { [key: string]: string } = {
     "string": "string",
     "number": "varint_t",
@@ -33,6 +35,12 @@ const typeInitializer: { [key: string]: string } = {
     "float64": "0",
 }
 
+const COMMON_INCLUDES = `#include "schema.h"
+#include <typeinfo>
+#include <typeindex>
+
+using namespace colyseus::schema;`;
+
 /**
  * C++ Code Generator
  */
@@ -44,6 +52,9 @@ const capitalize = (s: string) => {
 const distinct = (value: string, index: number, self: string[]) =>
     self.indexOf(value) === index;
 
+/**
+ * Generate individual files for each class
+ */
 export function generate (context: Context, options: GenerateOptions): File[] {
     return context.classes.map(klass => ({
         name: klass.name + ".hpp",
@@ -51,7 +62,35 @@ export function generate (context: Context, options: GenerateOptions): File[] {
     }));
 }
 
-function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
+/**
+ * Generate a single bundled header file containing all classes
+ */
+export function renderBundle(context: Context, options: GenerateOptions): File {
+    const fileName = options.namespace ? `${options.namespace}.hpp` : "schema.hpp";
+    const guardName = `__SCHEMA_CODEGEN_${(options.namespace || "SCHEMA").toUpperCase()}_H__`;
+
+    const classBodies = context.classes.map(klass => generateClassBody(klass, context.classes, options.namespace));
+
+    const content = `${getCommentHeader()}
+#ifndef ${guardName}
+#define ${guardName} 1
+
+${COMMON_INCLUDES}
+
+${options.namespace ? `namespace ${options.namespace} {\n` : ""}
+${classBodies.join("\n\n")}
+${options.namespace ? "}" : ""}
+
+#endif
+`;
+
+    return { name: fileName, content };
+}
+
+/**
+ * Generate just the class body (without includes/guards) for bundling
+ */
+function generateClassBody(klass: Class, allClasses: Class[], namespace: string): string {
     const propertiesPerType: {[type: string]: Property[]} = {};
     const allRefs: Property[] = [];
     klass.properties.forEach(property => {
@@ -79,26 +118,7 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
 \t\treturn ${klass.extends}::createInstance(type);
 \t}`;
 
-    return `${getCommentHeader()}
-#ifndef __SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__
-#define __SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__ 1
-
-#include "schema.h"
-#include <typeinfo>
-#include <typeindex>
-
-${allRefs.
-    filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
-    map(ref => ref.childType).
-    concat(getInheritanceTree(klass, allClasses, false).map(klass => klass.name)).
-    filter(distinct).
-    map(childType => `#include "${childType}.hpp"`).
-    join("\n")}
-
-using namespace colyseus::schema;
-
-${namespace ? `namespace ${namespace} {` : ""}
-class ${klass.name} : public ${klass.extends} {
+    return `class ${klass.name} : public ${klass.extends} {
 public:
 ${klass.properties.map(prop => generateProperty(prop)).join("\n")}
 
@@ -119,7 +139,39 @@ ${Object.keys(propertiesPerType).map(type =>
     join("\n")}
 
 ${createInstanceMethod}
-};
+};`;
+}
+
+/**
+ * Generate a complete class file with includes/guards (for individual file mode)
+ */
+function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
+    const allRefs: Property[] = [];
+    klass.properties.forEach(property => {
+        let type = property.type;
+        // keep all refs list
+        if ((type === "ref" || type === "array" || type === "map")) {
+            allRefs.push(property);
+        }
+    });
+
+    const localIncludes = allRefs.
+        filter(ref => ref.childType && typeMaps[ref.childType] === undefined).
+        map(ref => ref.childType).
+        concat(getInheritanceTree(klass, allClasses, false).map(klass => klass.name)).
+        filter(distinct).
+        map(childType => `#include "${childType}.hpp"`).
+        join("\n");
+
+    return `${getCommentHeader()}
+#ifndef __SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__
+#define __SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__ 1
+
+${COMMON_INCLUDES}
+${localIncludes}
+
+${namespace ? `namespace ${namespace} {` : ""}
+${generateClassBody(klass, allClasses, namespace)}
 ${namespace ? "}" : ""}
 
 #endif

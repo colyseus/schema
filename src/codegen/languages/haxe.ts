@@ -1,6 +1,8 @@
 import { Class, Property, File, getCommentHeader, Context } from "../types.js";
 import { GenerateOptions } from "../api.js";
 
+export const name = "Haxe";
+
 const typeMaps: { [key: string]: string } = {
     "string": "String",
     "number": "Dynamic",
@@ -33,11 +35,36 @@ const typeInitializer: { [key: string]: string } = {
     "float64": "0",
 }
 
+const COMMON_IMPORTS = `import io.colyseus.serializer.schema.Schema;
+import io.colyseus.serializer.schema.types.*;`;
+
+/**
+ * Generate individual files for each class
+ */
 export function generate (context: Context, options: GenerateOptions): File[] {
     return context.classes.map(klass => ({
         name: klass.name + ".hx",
         content: generateClass(klass, options.namespace, context.classes)
     }));
+}
+
+/**
+ * Generate a single bundled file containing all classes
+ */
+export function renderBundle(context: Context, options: GenerateOptions): File {
+    const fileName = options.namespace ? `${options.namespace}.hx` : "Schema.hx";
+
+    const classBodies = context.classes.map(klass => generateClassBody(klass));
+
+    const content = `${getCommentHeader()}
+
+${options.namespace ? `package ${options.namespace};` : ""}
+${COMMON_IMPORTS}
+
+${classBodies.join("\n\n")}
+`;
+
+    return { name: fileName, content };
 }
 
 function getInheritanceTree(klass: Class, allClasses: Class[], includeSelf: boolean = true) {
@@ -56,16 +83,25 @@ function getInheritanceTree(klass: Class, allClasses: Class[], includeSelf: bool
     return inheritanceTree;
 }
 
+/**
+ * Generate just the class body (without package/imports) for bundling
+ */
+function generateClassBody(klass: Class): string {
+    return `class ${klass.name} extends ${klass.extends} {
+${klass.properties.map(prop => generateProperty(prop)).join("\n")}
+}`;
+}
+
+/**
+ * Generate a complete class file with package/imports (for individual file mode)
+ */
 function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
     return `${getCommentHeader()}
 
 ${namespace ? `package ${namespace};` : ""}
-import io.colyseus.serializer.schema.Schema;
-import io.colyseus.serializer.schema.types.*;
+${COMMON_IMPORTS}
 
-class ${klass.name} extends ${klass.extends} {
-${klass.properties.map(prop => generateProperty(prop)).join("\n")}
-}
+${generateClassBody(klass)}
 `;
 }
 
