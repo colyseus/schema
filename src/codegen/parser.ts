@@ -77,12 +77,15 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
         case ts.SyntaxKind.PropertySignature:
             if (currentStructure instanceof Interface) {
-                const interfaceDeclaration = node.parent;
+                const parent = node.parent;
 
-                if (
-                    currentStructure.name !== (interfaceDeclaration as ts.TypeParameterDeclaration).name.escapedText.toString()
-                ) {
-                    // skip if property if for a another interface than the one we're interested in.
+                // Only process direct children of InterfaceDeclaration, skip TypeLiterals
+                if (!ts.isInterfaceDeclaration(parent)) {
+                    break;
+                }
+
+                // Skip if property if for a another interface than the one we're interested in.
+                if (currentStructure.name !== parent.name.escapedText.toString()) {
                     break;
                 }
 
