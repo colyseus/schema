@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import * as util from "util";
 import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION, SetSchema, CollectionSchema } from "../src";
-import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts } from "./Schema";
+import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts, InheritanceRoot, Position } from "./Schema";
 import { nanoid } from "nanoid";
 
 describe("StateView", () => {
@@ -2593,6 +2593,87 @@ describe("StateView", () => {
 
             assertEncodeAllMultiple(encoder, state, [client1]);
         });
+    });
+
+    it("should encode nested Schema", () => {
+        const state = new InheritanceRoot();
+        const encoder = getEncoder(state);
+
+        const client = createClientWithView(state);
+        client.view.add(state.parent);
+
+        // Initial encode: child property is undefined
+        encodeMultiple(encoder, state, [client]);
+
+        // Assign a child Schema instance.
+        state.parent.standardChild = new Position(1, 2, 3);
+
+        /**
+         * Encode an assignment of a child field:
+         * Its fields should be visible to the client, because it inherits visibility from its parent.
+         */
+        encodeMultiple(encoder, state, [client]);
+
+        assert.notStrictEqual(client.state.parent, undefined);
+        assert.notStrictEqual(client.state.parent.standardChild, undefined);
+        assert.strictEqual(client.state.parent.standardChild.x, 1);
+        assert.strictEqual(client.state.parent.standardChild.y, 2);
+        assert.strictEqual(client.state.parent.standardChild.z, 3);
+    });
+
+    it("should not encode nested Schema with @view", () => {
+        const state = new InheritanceRoot();
+        const encoder = getEncoder(state);
+
+        const client = createClientWithView(state);
+        client.view.add(state.parent);
+
+        // Initial encode: child property is undefined
+        encodeMultiple(encoder, state, [client]);
+
+        // Assign a child Schema that uses @view
+        state.parent.viewChild = new Position(1, 2, 3);
+
+        /**
+         * Encode an assignment of a child field:
+         * the child "viewChild" field (Position) is marked with @view,
+         * so it does not share visibility with its parent, and
+         * its fields are not encoded for the client.
+         */
+        encodeMultiple(encoder, state, [client]);
+
+        assert.notStrictEqual(client.state.parent, undefined);
+        assert.notStrictEqual(client.state.parent.viewChild, undefined);
+        assert.strictEqual(client.state.parent.viewChild.x, undefined);
+        assert.strictEqual(client.state.parent.viewChild.y, undefined);
+        assert.strictEqual(client.state.parent.viewChild.z, undefined);
+    });
+
+    it("should encode nested Schema wrapped in ArraySchema", () => {
+        const state = new InheritanceRoot();
+        const encoder = getEncoder(state);
+
+        const client = createClientWithView(state);
+        client.view.add(state.parent);
+
+        // Initial encode: child property is undefined
+        encodeMultiple(encoder, state, [client]);
+
+        // Assign a child Schema wrapped in an ArraySchema, to demonstrate this workaround.
+        state.parent.arrayChild.push(new Position(1, 2, 3));
+
+        /**
+         * Encode an assignment of a child field wrapped in an ArraySchema
+         * the child "arrayChild" field (Position) shares visibility with its parent,
+         * and its fields are encoded for the client.
+         */
+        encodeMultiple(encoder, state, [client]);
+
+        assert.notStrictEqual(client.state.parent, undefined);
+        assert.strictEqual(client.state.parent.arrayChild.length, 1);
+        assert.strictEqual(client.state.parent.arrayChild[0].x, 1);
+        assert.strictEqual(client.state.parent.arrayChild[0].y, 2);
+        assert.strictEqual(client.state.parent.arrayChild[0].z, 3);
     });
 
 });

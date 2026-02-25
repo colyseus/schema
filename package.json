@@ -24,7 +24,7 @@
     "generate-test-10": "bin/schema-codegen test-external/Callbacks.ts --namespace SchemaTest.Callbacks --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/Callbacks",
     "generate-test-11": "bin/schema-codegen test-external/MapSchemaMoveNullifyType.ts --namespace SchemaTest.MapSchemaMoveNullifyType --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/MapSchemaMoveNullifyType",
     "generate-test-12": "bin/schema-codegen test-external/ArraySchemaClear --namespace SchemaTest.ArraySchemaClear --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/ArraySchemaClear",
-    "prepublishOnly": "npm run build"
+    "prepare": "npm run build"
   },
   "files": [
     "src",

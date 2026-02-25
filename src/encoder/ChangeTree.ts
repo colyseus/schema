@@ -568,7 +568,7 @@ export class ChangeTree<T extends Ref = any> {
             || fieldHasViewTag;
 
         //
-        // "isFiltered" may not be imedialely available during `change()` due to the instance not being attached to the root yet.
+        // "isFiltered" may not be immediately available during `change()` due to the instance not being attached to the root yet.
         // when it's available, we need to enqueue the "changes" changeset into the "filteredChanges" changeset.
         //
         if (this.isFiltered) {
@@ -576,8 +576,7 @@ export class ChangeTree<T extends Ref = any> {
             this.isVisibilitySharedWithParent = (
                 parentChangeTree.isFiltered &&
                 typeof (refType) !== "string" &&
-                !fieldHasViewTag &&
-                parentIsCollection
+                !fieldHasViewTag
             );
 
             if (!this.filteredChanges) {
