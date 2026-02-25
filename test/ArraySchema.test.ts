@@ -700,7 +700,7 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("consecutive unshift calls should not break 'encodeAll'", () => {
+        it("consecutive unshift calls should not break 'encodeAll'", () => {
             class State extends Schema {
                 @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
             }
