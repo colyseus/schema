@@ -172,7 +172,8 @@ export const encodeArray: EncodeOperation = function (
     hasView: boolean,
 ) {
     const ref = changeTree.ref;
-    const useOperationByRefId = hasView && changeTree.isFiltered && (typeof (changeTree.getType(field)) !== "string");
+    const isSchemaChild = typeof (changeTree.getType(field)) !== "string";
+    const useOperationByRefId = hasView && changeTree.isFiltered && isSchemaChild;
 
     let refOrIndex: number;
 
@@ -190,6 +191,18 @@ export const encodeArray: EncodeOperation = function (
         } else if (operation === OPERATION.ADD) {
             operation = OPERATION.ADD_BY_REFID;
         }
+
+    } else if (operation === OPERATION.DELETE && isSchemaChild) {
+        //
+        // Use DELETE_BY_REFID for Schema children to make DELETE
+        // operations idempotent. This prevents stale DELETEs
+        // (accumulated in `changes` before an `encodeAll()`) from
+        // corrupting a client that received a full encode.
+        //
+        const item = ref['tmpItems'][field];
+        if (!item) { return; }
+        refOrIndex = item[$refId];
+        operation = OPERATION.DELETE_BY_REFID;
 
     } else {
         refOrIndex = field;
