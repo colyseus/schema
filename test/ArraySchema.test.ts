@@ -360,7 +360,58 @@ describe("ArraySchema Tests", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
+
+        xit("encodeAll() + with enqueued encode() shifts with primitive children", () => {
+            class State extends Schema {
+                @type(["number"]) numbers: ArraySchema<number>;
+            }
+
+            const state = new State();
+            state.numbers = new ArraySchema<number>();
+
+            const repopulateArray = (count: number) => {
+                for (let i = 0; i < count; i++) {
+                    state.numbers.push(i);
+                }
+            };
+            repopulateArray(35);
+
+            function mutateAllAndShift(count: number = 6) {
+                for (let i = 0; i < count; i++) {
+                    for (let j = 0; j < state.numbers.length; j++) {
+                        state.numbers[j]++;
+                    }
+                    state.numbers.shift();
+                }
+            }
+
+            const decoded1 = createInstanceFromReflection(state);
+            decoded1.decode(state.encodeAll());
+            mutateAllAndShift(6);
+            decoded1.decode(state.encode());
+            mutateAllAndShift(6);
+            decoded1.decode(state.encode());
+
+            mutateAllAndShift(9);
+
+            const decoded2 = createInstanceFromReflection(state);
+            decoded2.decode(state.encodeAll());
+
+            mutateAllAndShift(3);
+            decoded2.decode(state.encode());
+
+            assert.deepStrictEqual(state.toJSON(), decoded2.toJSON());
+
+            mutateAllAndShift(6);
+            decoded2.decode(state.encode());
+
+            assert.deepStrictEqual(state.toJSON(), decoded2.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
     });
+
 
     it("should allow mutating primitive value by index", () => {
         class State extends Schema {
