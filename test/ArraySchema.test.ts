@@ -303,7 +303,7 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("encodeAll() + with enqueued encode() shifts with Schema children", () => {
+        it("encodeAll() + with enqueued encode() shifts with Schema children", () => {
             class Entity extends Schema {
                 @type("number") thing: number;
             }
