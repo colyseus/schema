@@ -2546,6 +2546,779 @@ describe("StateView", () => {
 
     });
 
+    describe("Spatial view with dynamic entities (refId not found)", () => {
+        /**
+         * Reproduces the "refId not found" / "Schema refId not ready" error.
+         * The pattern involves:
+         * - Non-filtered MapSchemas containing entities with @view() fields
+         * - A nested container object with sub-MapSchemas of @view() entities
+         * - Spatial view updates (add/remove entities as players move)
+         * - Dynamic entity creation/removal during gameplay
+         */
+
+        class MovableSchema extends Schema {
+            @view() @type("uint32") x: number = 0;
+            @view() @type("uint32") y: number = 0;
+        }
+
+        class NpcSchema extends MovableSchema {
+            @view() @type("boolean") hidden: boolean = false;
+            @view() @type("int16") hitpoints: number = 0;
+            @view() @type("string") npcId: string = "npc_unknown";
+            @view() @type("string") name: string = "Unknown";
+        }
+
+        class PlayerSchema extends MovableSchema {
+            @view() @type("boolean") hidden: boolean = false;
+            @view() @type("uint16") combatLevel: number = 0;
+            @view() @type("string") name: string = "";
+        }
+
+        class ObjectSchema extends Schema {
+            @view() @type("boolean") defined: boolean = true;
+        }
+
+        class TrainingDummySchema extends ObjectSchema {
+            @view() @type("uint32") x: number = 0;
+            @view() @type("uint32") y: number = 0;
+            @view() @type("int16") hitpoints: number = 0;
+            @view() @type("string") subtype: string = "dummy";
+        }
+
+        class DynamicObjectSchema extends ObjectSchema {
+            @view() @type("uint32") x: number = 0;
+            @view() @type("uint32") y: number = 0;
+            @view() @type("string") subtype: string = "";
+        }
+
+        class WorldObjectsSchema extends Schema {
+            @type({ map: TrainingDummySchema }) trainingDummies = new MapSchema<TrainingDummySchema>();
+            @type({ map: DynamicObjectSchema }) dynamicObjects = new MapSchema<DynamicObjectSchema>();
+        }
+
+        class RoomState extends Schema {
+            @type({ map: PlayerSchema }) players = new MapSchema<PlayerSchema>();
+            @type({ map: NpcSchema }) npcs = new MapSchema<NpcSchema>();
+            @type(WorldObjectsSchema) objects = new WorldObjectsSchema();
+        }
+
+        it("should handle spatial view add/remove of entities with @view() fields", () => {
+            const state = new RoomState();
+            const encoder = getEncoder(state);
+
+            // Add some NPCs and training dummies to the world
+            const npc1 = new NpcSchema().assign({ npcId: "goblin_1", name: "Goblin", x: 100, y: 100, hitpoints: 50 });
+            const npc2 = new NpcSchema().assign({ npcId: "goblin_2", name: "Goblin", x: 200, y: 200, hitpoints: 50 });
+            const npc3 = new NpcSchema().assign({ npcId: "goblin_3", name: "Goblin", x: 300, y: 300, hitpoints: 50 });
+            state.npcs.set("npc1", npc1);
+            state.npcs.set("npc2", npc2);
+            state.npcs.set("npc3", npc3);
+
+            const dummy1 = new TrainingDummySchema().assign({ x: 150, y: 150, hitpoints: 100, subtype: "dummy" });
+            state.objects.trainingDummies.set("dummy1", dummy1);
+
+            // Player joins - initial encode with no view items
+            const client1 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1]);
+
+            // Player's spatial hash detects nearby entities
+            client1.view.add(npc1);
+            client1.view.add(dummy1);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.npcs.size, 3); // all NPCs visible (map not filtered)
+            assert.strictEqual(client1.state.npcs.get("npc1").name, "Goblin"); // view fields visible
+            assert.strictEqual(client1.state.npcs.get("npc2").name, undefined); // not in view
+            assert.strictEqual(client1.state.objects.trainingDummies.get("dummy1").hitpoints, 100);
+
+            // Player moves - npc1 leaves range, npc2 enters range
+            client1.view.remove(npc1);
+            client1.view.add(npc2);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.npcs.get("npc1").name, undefined); // removed from view
+            assert.strictEqual(client1.state.npcs.get("npc2").name, "Goblin"); // added to view
+
+            // Dynamically spawn a new training dummy while player is nearby
+            const dummy2 = new TrainingDummySchema().assign({ x: 200, y: 200, hitpoints: 100, subtype: "dummy" });
+            state.objects.trainingDummies.set("dummy2", dummy2);
+            client1.view.add(dummy2);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.objects.trainingDummies.get("dummy2").hitpoints, 100);
+
+            // Mutate viewed entity
+            npc2.hitpoints = 25;
+            dummy2.hitpoints = 50;
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.npcs.get("npc2").hitpoints, 25);
+            assert.strictEqual(client1.state.objects.trainingDummies.get("dummy2").hitpoints, 50);
+
+            assertEncodeAllMultiple(encoder, state, [client1]);
+        });
+
+        it("should handle dynamic NPC removal while in view + new NPC spawn", () => {
+            const state = new RoomState();
+            const encoder = getEncoder(state);
+
+            const npc1 = new NpcSchema().assign({ npcId: "goblin_1", name: "Goblin", x: 100, y: 100, hitpoints: 50 });
+            const npc2 = new NpcSchema().assign({ npcId: "goblin_2", name: "Goblin", x: 150, y: 150, hitpoints: 50 });
+            state.npcs.set("npc1", npc1);
+            state.npcs.set("npc2", npc2);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            // Both clients see both NPCs in view
+            client1.view.add(npc1);
+            client1.view.add(npc2);
+            client2.view.add(npc1);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.npcs.get("npc1").name, "Goblin");
+            assert.strictEqual(client1.state.npcs.get("npc2").name, "Goblin");
+            assert.strictEqual(client2.state.npcs.get("npc1").name, "Goblin");
+            assert.strictEqual(client2.state.npcs.get("npc2").name, undefined);
+
+            // NPC1 dies and is removed from state while both clients have it in view
+            client1.view.remove(npc1);
+            client2.view.remove(npc1);
+            state.npcs.delete("npc1");
+
+            // Simultaneously, a new NPC spawns
+            const npc3 = new NpcSchema().assign({ npcId: "goblin_3", name: "Goblin Elite", x: 100, y: 100, hitpoints: 100 });
+            state.npcs.set("npc3", npc3);
+            client1.view.add(npc3);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.npcs.get("npc1"), undefined);
+            assert.strictEqual(client1.state.npcs.get("npc3").name, "Goblin Elite");
+            assert.strictEqual(client2.state.npcs.get("npc1"), undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("should handle multiple clients with overlapping spatial views and dynamic entity lifecycle", () => {
+            const state = new RoomState();
+            const encoder = getEncoder(state);
+
+            // Pre-populate world
+            const npcs: NpcSchema[] = [];
+            for (let i = 0; i < 5; i++) {
+                const npc = new NpcSchema().assign({ npcId: `npc_${i}`, name: `NPC ${i}`, x: i * 100, y: i * 100, hitpoints: 50 + i * 10 });
+                npcs.push(npc);
+                state.npcs.set(`npc${i}`, npc);
+            }
+
+            const dummy1 = new TrainingDummySchema().assign({ x: 50, y: 50, hitpoints: 100 });
+            const dummy2 = new TrainingDummySchema().assign({ x: 250, y: 250, hitpoints: 100 });
+            state.objects.trainingDummies.set("dummy1", dummy1);
+            state.objects.trainingDummies.set("dummy2", dummy2);
+
+            // Two players connect
+            const player1 = new PlayerSchema().assign({ name: "Player1", x: 100, y: 100, combatLevel: 10 });
+            const player2 = new PlayerSchema().assign({ name: "Player2", x: 300, y: 300, combatLevel: 20 });
+            state.players.set("p1", player1);
+            state.players.set("p2", player2);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            // Initial encode - no view items yet
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // Player1's spatial view: nearby NPCs and dummies
+            client1.view.add(player1);
+            client1.view.add(npcs[0]);
+            client1.view.add(npcs[1]);
+            client1.view.add(dummy1);
+
+            // Player2's spatial view: different set of nearby entities
+            client2.view.add(player2);
+            client2.view.add(npcs[2]);
+            client2.view.add(npcs[3]);
+            client2.view.add(dummy2);
+
+            // Both players can see each other's non-@view() data
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.players.get("p1").name, "Player1");
+            assert.strictEqual(client1.state.players.get("p2").name, undefined); // p2 not in client1's view
+            assert.strictEqual(client2.state.players.get("p1").name, undefined);
+            assert.strictEqual(client2.state.players.get("p2").name, "Player2");
+
+            // Simulate game tick: players move, spatial views change
+            // Player1 moves toward player2
+            player1.x = 250;
+            player1.y = 250;
+
+            // Update spatial views: npc0 leaves, npc2 enters for client1
+            client1.view.remove(npcs[0]);
+            client1.view.remove(dummy1);
+            client1.view.add(npcs[2]); // now in range
+            client1.view.add(player2); // player2 now in range
+            client1.view.add(dummy2);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.npcs.get("npc0").name, undefined); // removed
+            assert.strictEqual(client1.state.npcs.get("npc2").name, "NPC 2"); // added
+            assert.strictEqual(client1.state.players.get("p2").name, "Player2"); // now visible
+
+            // Dynamically spawn a new NPC near both players
+            const newNpc = new NpcSchema().assign({ npcId: "boss_1", name: "Boss", x: 260, y: 260, hitpoints: 500 });
+            state.npcs.set("boss1", newNpc);
+
+            // Both clients detect it in their spatial hash
+            client1.view.add(newNpc);
+            client2.view.add(newNpc);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.npcs.get("boss1").name, "Boss");
+            assert.strictEqual(client2.state.npcs.get("boss1").name, "Boss");
+
+            // Boss takes damage
+            newNpc.hitpoints = 300;
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.strictEqual(client1.state.npcs.get("boss1").hitpoints, 300);
+            assert.strictEqual(client2.state.npcs.get("boss1").hitpoints, 300);
+
+            // Boss dies - remove from state and views
+            client1.view.remove(newNpc);
+            client2.view.remove(newNpc);
+            state.npcs.delete("boss1");
+
+            // At the same time, a training dummy gets destroyed and replaced
+            state.objects.trainingDummies.delete("dummy2");
+            const dummy3 = new TrainingDummySchema().assign({ x: 260, y: 260, hitpoints: 100 });
+            state.objects.trainingDummies.set("dummy3", dummy3);
+            client1.view.add(dummy3);
+            client2.view.add(dummy3);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.npcs.get("boss1"), undefined);
+            assert.strictEqual(client1.state.objects.trainingDummies.get("dummy3").hitpoints, 100);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("should handle rapid add/remove cycles (entity flickering in/out of view range)", () => {
+            const state = new RoomState();
+            const encoder = getEncoder(state);
+
+            const npc = new NpcSchema().assign({ npcId: "npc_1", name: "Guard", x: 100, y: 100, hitpoints: 100 });
+            state.npcs.set("npc1", npc);
+
+            const dummy = new TrainingDummySchema().assign({ x: 100, y: 100, hitpoints: 50 });
+            state.objects.trainingDummies.set("dummy1", dummy);
+
+            const client1 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1]);
+
+            // Rapid add/remove (entity on boundary of view range, flickering)
+            for (let i = 0; i < 5; i++) {
+                client1.view.add(npc);
+                client1.view.add(dummy);
+                encodeMultiple(encoder, state, [client1]);
+
+                // Mutate while visible
+                npc.hitpoints = 100 - i * 10;
+                dummy.hitpoints = 50 - i * 5;
+                encodeMultiple(encoder, state, [client1]);
+
+                client1.view.remove(npc);
+                client1.view.remove(dummy);
+                encodeMultiple(encoder, state, [client1]);
+            }
+
+            assertEncodeAllMultiple(encoder, state, [client1]);
+        });
+
+        it("should handle late-joining client with existing dynamic entities", () => {
+            const state = new RoomState();
+            const encoder = getEncoder(state);
+
+            // World already has entities
+            const npc1 = new NpcSchema().assign({ npcId: "npc_1", name: "Guard", x: 100, y: 100, hitpoints: 100 });
+            state.npcs.set("npc1", npc1);
+
+            const dummy1 = new TrainingDummySchema().assign({ x: 150, y: 150, hitpoints: 100 });
+            state.objects.trainingDummies.set("dummy1", dummy1);
+
+            // First client
+            const client1 = createClientWithView(state);
+            client1.view.add(npc1);
+            client1.view.add(dummy1);
+            encodeMultiple(encoder, state, [client1]);
+
+            // Some game ticks pass, entity is mutated
+            npc1.hitpoints = 75;
+            dummy1.hitpoints = 50;
+            encodeMultiple(encoder, state, [client1]);
+
+            // More entities added dynamically
+            const npc2 = new NpcSchema().assign({ npcId: "npc_2", name: "Thief", x: 200, y: 200, hitpoints: 40 });
+            state.npcs.set("npc2", npc2);
+            client1.view.add(npc2);
+            encodeMultiple(encoder, state, [client1]);
+
+            // Discard old changes (simulate server broadcastPatch cycle)
+            encoder.discardChanges();
+
+            // Second client joins late
+            const client2 = createClientWithView(state);
+            client2.view.add(npc1);
+            client2.view.add(npc2);
+            client2.view.add(dummy1);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client2.state.npcs.get("npc1").hitpoints, 75);
+            assert.strictEqual(client2.state.npcs.get("npc2").hitpoints, 40);
+            assert.strictEqual(client2.state.objects.trainingDummies.get("dummy1").hitpoints, 50);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("should handle entity removed from state while still referenced in view", () => {
+            const state = new RoomState();
+            const encoder = getEncoder(state);
+
+            const npc = new NpcSchema().assign({ npcId: "npc_1", name: "Goblin", x: 100, y: 100, hitpoints: 50 });
+            state.npcs.set("npc1", npc);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(npc);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.npcs.get("npc1").name, "Goblin");
+
+            // NPC is removed from state, but the view.remove() for this entity
+            // happens AFTER state removal (race condition in spatial update timing)
+            state.npcs.delete("npc1");
+            encodeMultiple(encoder, state, [client1]);
+
+            // Now view.remove() is called on a detached entity
+            client1.view.remove(npc);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.npcs.get("npc1"), undefined);
+
+            // Add a new entity with a different key to ensure encoding is still working
+            const npc2 = new NpcSchema().assign({ npcId: "npc_2", name: "Orc", x: 200, y: 200, hitpoints: 80 });
+            state.npcs.set("npc2", npc2);
+            client1.view.add(npc2);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.npcs.get("npc2").name, "Orc");
+
+            assertEncodeAllMultiple(encoder, state, [client1]);
+        });
+
+        it("should handle simultaneous state add + view add before any encode", () => {
+            const state = new RoomState();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1]);
+
+            // Dynamically add entity to state AND view before encoding
+            const dummy = new TrainingDummySchema().assign({ x: 100, y: 100, hitpoints: 100, subtype: "dummy" });
+            state.objects.trainingDummies.set("dummy1", dummy);
+            client1.view.add(dummy);
+
+            // Also add an NPC at the same time
+            const npc = new NpcSchema().assign({ npcId: "npc_1", name: "Guard", x: 100, y: 100, hitpoints: 100 });
+            state.npcs.set("npc1", npc);
+            client1.view.add(npc);
+
+            // Single encode handles both new entities
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.objects.trainingDummies.get("dummy1").hitpoints, 100);
+            assert.strictEqual(client1.state.npcs.get("npc1").name, "Guard");
+
+            assertEncodeAllMultiple(encoder, state, [client1]);
+        });
+
+        it("should handle NPC with @view() ArraySchema fields entering/leaving view", () => {
+            // NPC has @view() fields including ArraySchema children
+            class NpcWithArrays extends Schema {
+                @view() @type("uint32") x: number = 0;
+                @view() @type("uint32") y: number = 0;
+                @view() @type("boolean") hidden: boolean = false;
+                @view() @type("int16") hitpoints: number = 0;
+                @view() @type("string") npcId: string = "unknown";
+                @view() @type("string") name: string = "Unknown";
+                @view() @type(["string"]) appearanceLayers = new ArraySchema<string>();
+                @view() @type(["string"]) equipmentLayers = new ArraySchema<string>();
+            }
+
+            class GameState extends Schema {
+                @type({ map: NpcWithArrays }) npcs = new MapSchema<NpcWithArrays>();
+            }
+
+            const state = new GameState();
+            const encoder = getEncoder(state);
+
+            // Create NPCs with populated arrays
+            const npc1 = new NpcWithArrays().assign({
+                x: 100, y: 100, npcId: "goblin_1", name: "Goblin",
+                hitpoints: 50, hidden: false,
+            });
+            npc1.appearanceLayers.push("body_green", "armor_leather");
+            npc1.equipmentLayers.push("sword", "shield");
+            state.npcs.set("npc1", npc1);
+
+            const npc2 = new NpcWithArrays().assign({
+                x: 200, y: 200, npcId: "skeleton_1", name: "Skeleton",
+                hitpoints: 30, hidden: false,
+            });
+            npc2.appearanceLayers.push("body_bone");
+            npc2.equipmentLayers.push("rusty_sword");
+            state.npcs.set("npc2", npc2);
+
+            const npc3 = new NpcWithArrays().assign({
+                x: 300, y: 300, npcId: "dragon_1", name: "Dragon",
+                hitpoints: 500, hidden: false,
+            });
+            npc3.appearanceLayers.push("body_red", "wings");
+            state.npcs.set("npc3", npc3);
+
+            // Two clients with different spatial views
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            // Initial encode - no views yet
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // Client1 sees npc1 and npc2
+            client1.view.add(npc1);
+            client1.view.add(npc2);
+            // Client2 sees npc2 and npc3
+            client2.view.add(npc2);
+            client2.view.add(npc3);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // Client1 should see @view() fields for npc1 and npc2
+            assert.strictEqual(client1.state.npcs.get("npc1").name, "Goblin");
+            assert.strictEqual(client1.state.npcs.get("npc1").appearanceLayers.length, 2);
+            assert.strictEqual(client1.state.npcs.get("npc1").equipmentLayers.length, 2);
+            assert.strictEqual(client1.state.npcs.get("npc2").name, "Skeleton");
+            assert.strictEqual(client1.state.npcs.get("npc3").name, undefined); // not in view
+
+            // Client2 should see @view() fields for npc2 and npc3
+            assert.strictEqual(client2.state.npcs.get("npc1").name, undefined);
+            assert.strictEqual(client2.state.npcs.get("npc2").name, "Skeleton");
+            assert.strictEqual(client2.state.npcs.get("npc3").name, "Dragon");
+            assert.strictEqual(client2.state.npcs.get("npc3").appearanceLayers.length, 2);
+
+            // Simulate movement: npc1 leaves client1's view, npc3 enters
+            client1.view.remove(npc1);
+            client1.view.add(npc3);
+
+            // Mutate arrays while in view
+            npc2.appearanceLayers.push("helmet");
+            npc3.equipmentLayers.push("fire_breath");
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.npcs.get("npc1").name, undefined); // removed from view
+            assert.strictEqual(client1.state.npcs.get("npc3").name, "Dragon");
+            assert.strictEqual(client1.state.npcs.get("npc3").appearanceLayers.length, 2);
+            assert.strictEqual(client1.state.npcs.get("npc2").appearanceLayers.length, 2); // helmet added (was 1, now 2)
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("should deliver @view() ArraySchema push to existing view (minimal repro)", () => {
+            // Minimal reproduction of "refId not found" / missing array push
+            class Entity extends Schema {
+                @view() @type("string") name: string = "";
+                @view() @type(["string"]) items = new ArraySchema<string>();
+            }
+
+            class State extends Schema {
+                @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const e1 = new Entity().assign({ name: "one" });
+            e1.items.push("a", "b");
+            state.entities.set("e1", e1);
+
+            const e2 = new Entity().assign({ name: "two" });
+            e2.items.push("x");
+            state.entities.set("e2", e2);
+
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            // Add both to view
+            client.view.add(e1);
+            client.view.add(e2);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.entities.get("e1").items.length, 2);
+            assert.strictEqual(client.state.entities.get("e2").items.length, 1);
+
+            // Remove e1 from view, push to e2's items
+            client.view.remove(e1);
+            e2.items.push("y");
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.entities.get("e1").name, undefined);
+            assert.strictEqual(client.state.entities.get("e2").items.length, 2);
+            assert.strictEqual(client.state.entities.get("e2").items[1], "y");
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("view.remove() should remove @view() ArraySchema children from visible set", () => {
+            // Specific bug: view.remove(entity) does not remove child ArraySchema
+            // from visible set when entity.isFiltered === false
+            class Entity extends Schema {
+                @view() @type("string") name: string = "";
+                @view() @type(["string"]) items = new ArraySchema<string>();
+            }
+
+            class State extends Schema {
+                @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const e1 = new Entity().assign({ name: "one" });
+            e1.items.push("a", "b");
+            state.entities.set("e1", e1);
+
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(e1);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.entities.get("e1").name, "one");
+            assert.strictEqual(client.state.entities.get("e1").items.length, 2);
+
+            // Verify e1.items ArraySchema is visible
+            assert.ok(client.view.isChangeTreeVisible(e1.items[$changes]),
+                "ArraySchema should be visible after view.add(entity)");
+
+            // Remove entity from view
+            client.view.remove(e1);
+
+            // BUG: e1.items ArraySchema is still visible after view.remove(entity)
+            assert.ok(!client.view.isChangeTreeVisible(e1.items[$changes]),
+                "ArraySchema should NOT be visible after view.remove(entity)");
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.entities.get("e1").name, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("should handle dynamic NPC spawn with populated arrays + immediate view add", () => {
+            class NpcWithArrays extends Schema {
+                @view() @type("uint32") x: number = 0;
+                @view() @type("uint32") y: number = 0;
+                @view() @type("string") npcId: string = "unknown";
+                @view() @type(["string"]) layers = new ArraySchema<string>();
+            }
+
+            class GameState extends Schema {
+                @type({ map: NpcWithArrays }) npcs = new MapSchema<NpcWithArrays>();
+            }
+
+            const state = new GameState();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1]);
+
+            // Dynamically spawn NPC with array data and immediately add to view
+            for (let i = 0; i < 10; i++) {
+                const npc = new NpcWithArrays().assign({ x: i * 50, y: i * 50, npcId: `npc_${i}` });
+                npc.layers.push(`layer_${i}_a`, `layer_${i}_b`);
+                state.npcs.set(`npc${i}`, npc);
+                client1.view.add(npc);
+            }
+
+            encodeMultiple(encoder, state, [client1]);
+
+            for (let i = 0; i < 10; i++) {
+                assert.strictEqual(client1.state.npcs.get(`npc${i}`).npcId, `npc_${i}`);
+                assert.strictEqual(client1.state.npcs.get(`npc${i}`).layers.length, 2);
+            }
+
+            // Remove half from view, spawn new ones
+            for (let i = 0; i < 5; i++) {
+                client1.view.remove(state.npcs.get(`npc${i}`));
+            }
+            for (let i = 10; i < 15; i++) {
+                const npc = new NpcWithArrays().assign({ x: i * 50, y: i * 50, npcId: `npc_${i}` });
+                npc.layers.push(`layer_${i}`);
+                state.npcs.set(`npc${i}`, npc);
+                client1.view.add(npc);
+            }
+
+            encodeMultiple(encoder, state, [client1]);
+
+            // Verify removed ones have undefined @view() fields
+            for (let i = 0; i < 5; i++) {
+                assert.strictEqual(client1.state.npcs.get(`npc${i}`).npcId, undefined);
+            }
+            // Verify new ones are visible
+            for (let i = 10; i < 15; i++) {
+                assert.strictEqual(client1.state.npcs.get(`npc${i}`).npcId, `npc_${i}`);
+                assert.strictEqual(client1.state.npcs.get(`npc${i}`).layers.length, 1);
+            }
+
+            // Late joining client
+            encoder.discardChanges();
+            const client2 = createClientWithView(state);
+            client2.view.add(state.npcs.get("npc5"));
+            client2.view.add(state.npcs.get("npc10"));
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client2.state.npcs.get("npc5").npcId, `npc_5`);
+            assert.strictEqual(client2.state.npcs.get("npc10").npcId, `npc_10`);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("should handle nested WorldObjects container with multiple sub-maps", () => {
+            // Nested WorldObjects container pattern
+            class TrainDummy extends Schema {
+                @view() @type("uint32") x: number = 0;
+                @view() @type("uint32") y: number = 0;
+                @view() @type("int16") hp: number = 0;
+                @view() @type("string") subtype: string = "dummy";
+            }
+
+            class MiningSpot extends Schema {
+                @view() @type("uint32") x: number = 0;
+                @view() @type("uint32") y: number = 0;
+                @view() @type("boolean") depleted: boolean = false;
+            }
+
+            class GroundItem extends Schema {
+                @view() @type("uint32") x: number = 0;
+                @view() @type("uint32") y: number = 0;
+                @view() @type("string") itemId: string = "";
+                @view() @type("string") owner: string = "";
+            }
+
+            class WorldObjects extends Schema {
+                @type({ map: TrainDummy }) dummies = new MapSchema<TrainDummy>();
+                @type({ map: MiningSpot }) mines = new MapSchema<MiningSpot>();
+                @type({ map: GroundItem }) groundItems = new MapSchema<GroundItem>();
+            }
+
+            class NpcEntity extends Schema {
+                @view() @type("uint32") x: number = 0;
+                @view() @type("uint32") y: number = 0;
+                @view() @type("string") name: string = "";
+                @view() @type("int16") hp: number = 0;
+            }
+
+            class GameState extends Schema {
+                @type({ map: NpcEntity }) npcs = new MapSchema<NpcEntity>();
+                @type(WorldObjects) objects = new WorldObjects();
+            }
+
+            const state = new GameState();
+            const encoder = getEncoder(state);
+
+            // Populate objects across different sub-maps
+            for (let i = 0; i < 5; i++) {
+                state.objects.dummies.set(`d${i}`, new TrainDummy().assign({ x: i * 100, y: i * 100, hp: 100, subtype: "dummy" }));
+                state.objects.mines.set(`m${i}`, new MiningSpot().assign({ x: i * 100 + 50, y: i * 100 + 50 }));
+            }
+            for (let i = 0; i < 3; i++) {
+                state.npcs.set(`npc${i}`, new NpcEntity().assign({ x: i * 100, y: i * 100, name: `NPC ${i}`, hp: 50 }));
+            }
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            // Initial encode
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // Simulate spatial proximity: client1 near origin, client2 near x=300
+            client1.view.add(state.npcs.get("npc0"));
+            client1.view.add(state.objects.dummies.get("d0"));
+            client1.view.add(state.objects.mines.get("m0"));
+
+            client2.view.add(state.npcs.get("npc2"));
+            client2.view.add(state.objects.dummies.get("d3"));
+            client2.view.add(state.objects.mines.get("m3"));
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.npcs.get("npc0").name, "NPC 0");
+            assert.strictEqual(client1.state.objects.dummies.get("d0").hp, 100);
+            assert.strictEqual(client1.state.npcs.get("npc2").name, undefined);
+
+            assert.strictEqual(client2.state.npcs.get("npc2").name, "NPC 2");
+            assert.strictEqual(client2.state.objects.dummies.get("d3").hp, 100);
+            assert.strictEqual(client2.state.npcs.get("npc0").name, undefined);
+
+            // Dynamic: ground item drops near client1
+            const loot = new GroundItem().assign({ x: 10, y: 10, itemId: "sword_123", owner: "player1" });
+            state.objects.groundItems.set("loot1", loot);
+            client1.view.add(loot);
+
+            // Dynamic: training dummy destroyed and replaced
+            state.objects.dummies.delete("d0");
+            client1.view.remove(state.objects.dummies.get("d0") ?? ({} as any)); // already deleted
+            const newDummy = new TrainDummy().assign({ x: 10, y: 10, hp: 100, subtype: "reinforced" });
+            state.objects.dummies.set("d0_new", newDummy);
+            client1.view.add(newDummy);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.objects.groundItems.get("loot1").itemId, "sword_123");
+            assert.strictEqual(client1.state.objects.dummies.get("d0_new").hp, 100);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("should handle replacing entity at same key in MapSchema while in view", () => {
+            const state = new RoomState();
+            const encoder = getEncoder(state);
+
+            const npc1 = new NpcSchema().assign({ npcId: "npc_1", name: "Goblin", x: 100, y: 100, hitpoints: 50 });
+            state.npcs.set("spawn_point_1", npc1);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(npc1);
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.npcs.get("spawn_point_1").name, "Goblin");
+
+            // NPC dies, respawns at same key with new instance
+            client1.view.remove(npc1);
+            const npc2 = new NpcSchema().assign({ npcId: "npc_1", name: "Goblin", x: 100, y: 100, hitpoints: 50 });
+            state.npcs.set("spawn_point_1", npc2); // replace at same key
+            client1.view.add(npc2);
+
+            encodeMultiple(encoder, state, [client1]);
+
+            assert.strictEqual(client1.state.npcs.get("spawn_point_1").name, "Goblin");
+            assert.strictEqual(client1.state.npcs.get("spawn_point_1").hitpoints, 50);
+
+            assertEncodeAllMultiple(encoder, state, [client1]);
+        });
+    });
+
     describe("StateView.remove()", () => {
         it("should handle undefined changeTree.parent when filtered item loses parent reference", () => {
             class Item extends Schema {
