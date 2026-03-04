@@ -276,8 +276,16 @@ export class StateView {
 
         } else {
             // delete only tagged properties
-            metadata?.[$fieldIndexesByViewTag][tag].forEach((index) =>
-                changes[index] = OPERATION.DELETE);
+            metadata?.[$fieldIndexesByViewTag][tag].forEach((index) => {
+                changes[index] = OPERATION.DELETE;
+
+                // Remove child structures from visible set
+                const value = changeTree.ref[metadata[index].name as keyof Ref];
+                if (value?.[$changes]) {
+                    this.visible.delete(value[$changes]);
+                    this._recursiveDeleteVisibleChangeTree(value[$changes]);
+                }
+            });
         }
 
         // remove tag

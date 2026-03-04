@@ -3366,6 +3366,103 @@ describe("StateView", () => {
 
             assertEncodeAllMultiple(encoder, state, [client1]);
         });
+
+        it("removing child from view before removing parent should not break sync", () => {
+            class Entity extends Schema {
+                @view() @type("string") name: string = "";
+                @view() @type(["string"]) items = new ArraySchema<string>();
+                @view() @type(["string"]) tags = new ArraySchema<string>();
+            }
+
+            class State extends Schema {
+                @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const e1 = new Entity().assign({ name: "one" });
+            e1.items.push("a", "b");
+            e1.tags.push("x", "y");
+            state.entities.set("e1", e1);
+
+            const e2 = new Entity().assign({ name: "two" });
+            e2.items.push("c");
+            state.entities.set("e2", e2);
+
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            // Add both entities to view
+            client.view.add(e1);
+            client.view.add(e2);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.entities.get("e1").items.length, 2);
+            assert.strictEqual(client.state.entities.get("e1").tags.length, 2);
+            assert.strictEqual(client.state.entities.get("e2").items.length, 1);
+
+            // Remove a child before removing the parent
+            client.view.remove(e1.items);
+            client.view.remove(e1);
+
+            // Both children should be gone from visible
+            assert.ok(!client.view.visible.has(e1.items[$changes]),
+                "items should not be visible after remove");
+            assert.ok(!client.view.visible.has(e1.tags[$changes]),
+                "tags should not be visible after remove");
+
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.entities.get("e1").name, undefined);
+            assert.strictEqual(client.state.entities.get("e2").items.length, 1);
+
+            // Re-add e1 — should get full state again
+            client.view.add(e1);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.entities.get("e1").name, "one");
+            assert.strictEqual(client.state.entities.get("e1").items.length, 2);
+            assert.strictEqual(client.state.entities.get("e1").tags.length, 2);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("tagged remove() should remove child structures from visible set", () => {
+            const TAG_INVENTORY = 1;
+
+            class Player extends Schema {
+                @type("string") name: string = "";
+                @view(TAG_INVENTORY) @type(["string"]) inventory = new ArraySchema<string>();
+            }
+
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const player = new Player().assign({ name: "Hero" });
+            player.inventory.push("sword", "shield", "potion");
+            state.players.set("p1", player);
+
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            // Add player with inventory tag — adds ArraySchema child to visible
+            client.view.add(player, TAG_INVENTORY);
+
+            const inventoryChangeTree = player.inventory[$changes];
+            assert.ok(client.view.visible.has(inventoryChangeTree),
+                "inventory ChangeTree should be in visible after add");
+
+            // Remove with inventory tag — should remove ArraySchema child from visible
+            client.view.remove(player, TAG_INVENTORY);
+
+            assert.ok(!client.view.visible.has(inventoryChangeTree),
+                "inventory ChangeTree should NOT be in visible after tagged remove");
+        });
     });
 
 });
