@@ -20,7 +20,7 @@ describe("TypeScript Types", () => {
     });
 
     describe("complex declaration scenarios", () => {
-        it("implements / extends without conflicts", () => {
+        it("implements / extends interfaces without conflicts", () => {
             // Defines a generic schema
             interface SchemaInterface extends Schema {
                 players: Map<string, string>;
@@ -41,5 +41,32 @@ describe("TypeScript Types", () => {
             class AbstractRoomImpl extends AbstractRoom<SchemaInterfaceImpl> { }
         });
 
-    })
+        it("custom generic with inheritance", () => {
+            class Actions extends Schema {
+                @type("string") actionTypes: string;
+            }
+
+            class NodeBase extends Schema {
+                @type("string") id: string; // < if you comment this line the error a goes away...
+            }
+
+            class TreeBase<N extends NodeBase> extends Schema {
+                @type("string") id: string;
+
+                @type([NodeBase]) nodes = new ArraySchema<N>();
+            }
+
+            class SpecialNode<E extends Actions> extends NodeBase {
+                @type("string") type: string;
+
+                @type(Actions) actions: E; // < if you comment this line the error also goes away...
+            }
+
+            // Here I get the typescript error "Type 'SpecialNode<E>' does not satisfy the constraint 'NodeBase'"
+            class SpecialTree<E extends Actions> extends TreeBase<SpecialNode<E>> {
+                @type("string") user: string;
+            }
+        });
+    });
+
 });

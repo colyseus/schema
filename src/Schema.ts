@@ -122,7 +122,7 @@ export class Schema<C = any> implements IRef {
      * @param jsonData JSON data to restore the instance from
      * @returns
      */
-    public restore(jsonData: ToJSON<this>): this {
+    public restore<T extends Partial<this>>(jsonData: ToJSON<T>): this {
         const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
 
         for (const fieldIndex in metadata) {
@@ -224,7 +224,7 @@ export class Schema<C = any> implements IRef {
         return cloned;
     }
 
-    toJSON (this: any): ToJSON<this> {
+    toJSON (this: any): ToJSON<Partial<this>> {
         const obj: any = {};
         const metadata = this.constructor[Symbol.metadata];
         for (const index in metadata) {
