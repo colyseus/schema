@@ -129,7 +129,7 @@ export class StateCallbackStrategy<TState extends IRef> {
     /**
      * Listen to property changes on a nested instance.
      */
-    listen<TInstance extends Schema, K extends PublicPropNames<TInstance>>(
+    listen<TInstance, K extends PublicPropNames<TInstance>>(
         instance: TInstance,
         property: K,
         handler: PropertyChangeCallback<TInstance[K]>,
