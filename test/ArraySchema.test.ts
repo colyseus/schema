@@ -2245,13 +2245,13 @@ describe("ArraySchema Tests", () => {
             const refCounts = $root.refCount;
 
             assert.strictEqual($root.refs.size, 7, "should have 7 refs");
-            assert.strictEqual(refCounts[0], 1, JSON.stringify($root.refs.get(0).toJSON()));
-            assert.strictEqual(refCounts[1], 1, JSON.stringify($root.refs.get(1).toJSON()));
-            assert.strictEqual(refCounts[2], 1, JSON.stringify($root.refs.get(2).toJSON()));
-            assert.strictEqual(refCounts[3], 1, JSON.stringify($root.refs.get(3).toJSON()));
-            assert.strictEqual(refCounts[4], 1, JSON.stringify($root.refs.get(4).toJSON()));
-            assert.strictEqual(refCounts[5], 1, JSON.stringify($root.refs.get(5).toJSON()));
-            assert.strictEqual(refCounts[6], 1, JSON.stringify($root.refs.get(6).toJSON()));
+            assert.strictEqual(refCounts[0], 1, JSON.stringify(($root.refs.get(0) as Schema).toJSON()));
+            assert.strictEqual(refCounts[1], 1, JSON.stringify(($root.refs.get(1) as Schema).toJSON()));
+            assert.strictEqual(refCounts[2], 1, JSON.stringify(($root.refs.get(2) as Schema).toJSON()));
+            assert.strictEqual(refCounts[3], 1, JSON.stringify(($root.refs.get(3) as Schema).toJSON()));
+            assert.strictEqual(refCounts[4], 1, JSON.stringify(($root.refs.get(4) as Schema).toJSON()));
+            assert.strictEqual(refCounts[5], 1, JSON.stringify(($root.refs.get(5) as Schema).toJSON()));
+            assert.strictEqual(refCounts[6], 1, JSON.stringify(($root.refs.get(6) as Schema).toJSON()));
 
             assertDeepStrictEqualEncodeAll(state);
         });

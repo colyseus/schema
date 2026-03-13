@@ -95,8 +95,8 @@ export type NonFunctionNonPrimitivePropNames<T> = {
 // Helper to recursively convert Schema instances to their JSON representation
 type ToJSONValue<U> = U extends Schema ? ToJSON<U> : PrimitiveStringToType<U>;
 
-export type ToJSON<T> = NonFunctionProps<{
-    [K in keyof T]:
+export type ToJSON<T> = {
+    [K in keyof T as T[K] extends Function ? never : K]:
         T[K] extends MapSchema<infer U> ? Record<string, ToJSONValue<U>>
         : T[K] extends Map<string, infer U> ? Record<string, ToJSONValue<U>>
         : T[K] extends ArraySchema<infer U> ? ToJSONValue<U>[]
@@ -104,7 +104,7 @@ export type ToJSON<T> = NonFunctionProps<{
         : T[K] extends CollectionSchema<infer U> ? ToJSONValue<U>[]
         : T[K] extends Schema ? ToJSON<T[K]>
         : T[K]
-}>;
+};
 
 // Helper type to check if T is exactly 'never' (meaning no InitProps was provided)
 export type IsNever<T> = [T] extends [never] ? true : false;
