@@ -1,4 +1,4 @@
-import { ChangeTree, IndexedOperations, Ref } from "./ChangeTree.js";
+import { ChangeTree, type IndexedOperations, Ref } from "./ChangeTree.js";
 import { $changes, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
@@ -133,28 +133,73 @@ export class StateView {
 
         } else if (!changeTree.isNew || isChildAdded) {
             // new structures will be added as part of .encode() call, no need to force it to .encodeView()
-            const changeSet = (changeTree.filteredChanges !== undefined)
-                ? changeTree.allFilteredChanges
-                : changeTree.allChanges;
-
             const isInvisible = this.invisible.has(changeTree);
 
-            for (let i = 0, len = changeSet.operations.length; i < len; i++) {
-                const index = changeSet.operations[i];
-                if (index === undefined) { continue; } // skip "undefined" indexes
+            if (changeTree.isSchemaType) {
+                // Schema path: iterate allChanged/allFiltered bitfields
+                const useFiltered = changeTree.hasFilteredEncoding;
+                let bits = useFiltered ? changeTree.allFilteredBits : changeTree.allChangedBits;
+                let bitsHigh = useFiltered ? changeTree.allFilteredBitsHigh : changeTree.allChangedBitsHigh;
 
-                const op = changeTree.indexedOperations[index] ?? OPERATION.ADD;
-                const tagAtIndex = metadata?.[index].tag;
-                if (
-                    op !== OPERATION.DELETE &&
-                    (
-                        isInvisible || // if "invisible", include all
-                        tagAtIndex === undefined || // "all change" with no tag
-                        tagAtIndex === tag // tagged property
-                    )
-                ) {
-                    changes[index] = op;
-                    isChildAdded = true; // FIXME: assign only once
+                while (bits !== 0) {
+                    const index = 31 - Math.clz32(bits & -bits);
+                    bits &= bits - 1;
+
+                    const op = changeTree.getChange(index) ?? OPERATION.ADD;
+                    const tagAtIndex = metadata?.[index].tag;
+                    if (
+                        op !== OPERATION.DELETE &&
+                        (
+                            isInvisible || // if "invisible", include all
+                            tagAtIndex === undefined || // "all change" with no tag
+                            tagAtIndex === tag // tagged property
+                        )
+                    ) {
+                        changes[index] = op;
+                        isChildAdded = true;
+                    }
+                }
+                while (bitsHigh !== 0) {
+                    const index = 31 - Math.clz32(bitsHigh & -bitsHigh) + 32;
+                    bitsHigh &= bitsHigh - 1;
+
+                    const op = changeTree.getChange(index) ?? OPERATION.ADD;
+                    const tagAtIndex = metadata?.[index].tag;
+                    if (
+                        op !== OPERATION.DELETE &&
+                        (
+                            isInvisible ||
+                            tagAtIndex === undefined ||
+                            tagAtIndex === tag
+                        )
+                    ) {
+                        changes[index] = op;
+                        isChildAdded = true;
+                    }
+                }
+            } else {
+                // Collection path: iterate ChangeSet operations
+                const changeSet = (changeTree.filteredChanges !== undefined)
+                    ? changeTree.allFilteredChanges
+                    : changeTree.allChanges;
+
+                for (let i = 0, len = changeSet.operations.length; i < len; i++) {
+                    const index = changeSet.operations[i];
+                    if (index === undefined) { continue; } // skip "undefined" indexes
+
+                    const op = changeTree.getChange(index) ?? OPERATION.ADD;
+                    const tagAtIndex = metadata?.[index].tag;
+                    if (
+                        op !== OPERATION.DELETE &&
+                        (
+                            isInvisible || // if "invisible", include all
+                            tagAtIndex === undefined || // "all change" with no tag
+                            tagAtIndex === tag // tagged property
+                        )
+                    ) {
+                        changes[index] = op;
+                        isChildAdded = true; // FIXME: assign only once
+                    }
                 }
             }
         }
@@ -172,7 +217,7 @@ export class StateView {
 
             // add parent's parent
             const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
-            if (parentChangeTree && (parentChangeTree.filteredChanges !== undefined)) {
+            if (parentChangeTree && (parentChangeTree.isSchemaType ? parentChangeTree.hasFilteredEncoding : parentChangeTree.filteredChanges !== undefined)) {
                 this.addParentOf(changeTree, tag);
             }
 

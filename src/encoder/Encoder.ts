@@ -60,6 +60,7 @@ export class Encoder<T extends Schema = any> {
         initialOffset = it.offset // cache current offset in case we need to resize the buffer
     ): Uint8Array {
         const hasView = (view !== undefined);
+        const hasFilters = this.root.types.hasFilters;
         const rootChangeTree = this.state[$changes];
 
         let current: ChangeTreeList | ChangeTreeNode = this.root[changeSetName];
@@ -69,60 +70,129 @@ export class Encoder<T extends Schema = any> {
 
             if (hasView) {
                 if (!view.isChangeTreeVisible(changeTree)) {
-                    // console.log("MARK AS INVISIBLE:", { ref: changeTree.ref.constructor.name, refId: changeTree.ref[$refId], raw: changeTree.ref.toJSON() });
                     view.invisible.add(changeTree);
                     continue; // skip this change tree
                 }
                 view.invisible.delete(changeTree); // remove from invisible list
             }
 
-            const changeSet = changeTree[changeSetName];
             const ref = changeTree.ref;
-
-            // TODO: avoid iterating over change tree if no changes were made
-            const numChanges = changeSet.operations.length;
-            if (numChanges === 0) { continue; }
-
             const ctor = ref.constructor;
             const encoder = ctor[$encoder];
-            const filter = ctor[$filter];
             const metadata = ctor[Symbol.metadata];
 
-            // skip root `refId` if it's the first change tree
-            // (unless it "hasView", which will need to revisit the root)
-            if (hasView || it.offset > initialOffset || changeTree !== rootChangeTree) {
-                buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-                encode.number(buffer, ref[$refId], it);
-            }
-
-            for (let j = 0; j < numChanges; j++) {
-                const fieldIndex = changeSet.operations[j];
-
-                if (fieldIndex < 0) {
-                    // "pure" operation without fieldIndex (e.g. CLEAR, REVERSE, etc.)
-                    // encode and continue early - no need to reach $filter check
-                    buffer[it.offset++] = Math.abs(fieldIndex) & 255;
-                    continue;
+            if (changeTree.isSchemaType) {
+                //
+                // Schema path: bitfield iteration
+                //
+                let bits: number, bitsHigh: number;
+                switch (changeSetName) {
+                    case 'changes': bits = changeTree.changedBits; bitsHigh = changeTree.changedBitsHigh; break;
+                    case 'allChanges': bits = changeTree.allChangedBits; bitsHigh = changeTree.allChangedBitsHigh; break;
+                    case 'filteredChanges': bits = changeTree.filteredBits; bitsHigh = changeTree.filteredBitsHigh; break;
+                    case 'allFilteredChanges': bits = changeTree.allFilteredBits; bitsHigh = changeTree.allFilteredBitsHigh; break;
                 }
 
-                const operation = (isEncodeAll)
-                    ? OPERATION.ADD
-                    : changeTree.indexedOperations[fieldIndex];
+                // skip if no changes
+                if (bits === 0 && bitsHigh === 0) { continue; }
 
-                //
-                // first pass (encodeAll), identify "filtered" operations without encoding them
-                // they will be encoded per client, based on their view.
-                //
-                // TODO: how can we optimize filtering out "encode all" operations?
-                // TODO: avoid checking if no view tags were defined
-                //
-                if (fieldIndex === undefined || operation === undefined || (filter && !filter(ref, fieldIndex, view))) {
-                    // console.log("ADD AS INVISIBLE:", fieldIndex, changeTree.ref.constructor.name)
-                    // view?.invisible.add(changeTree);
-                    continue;
+                // encode structure header (skip root refId if first change tree)
+                if (hasView || it.offset > initialOffset || changeTree !== rootChangeTree) {
+                    buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
+                    encode.uint(buffer, ref[$refId], it);
                 }
 
-                encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView, metadata);
+                if (!hasFilters) {
+                    // Fast path: no filters
+                    while (bits !== 0) {
+                        const fieldIndex = 31 - Math.clz32(bits & -bits);
+                        const operation = isEncodeAll ? OPERATION.ADD : changeTree.operationsByIndex[fieldIndex];
+                        encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, false, metadata);
+                        bits &= bits - 1;
+                    }
+                    while (bitsHigh !== 0) {
+                        const fieldIndex = 31 - Math.clz32(bitsHigh & -bitsHigh) + 32;
+                        const operation = isEncodeAll ? OPERATION.ADD : changeTree.operationsByIndex[fieldIndex];
+                        encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, false, metadata);
+                        bitsHigh &= bitsHigh - 1;
+                    }
+                } else {
+                    // Filter path
+                    const filter = ctor[$filter];
+                    while (bits !== 0) {
+                        const fieldIndex = 31 - Math.clz32(bits & -bits);
+                        bits &= bits - 1;
+                        const operation = isEncodeAll ? OPERATION.ADD : changeTree.operationsByIndex[fieldIndex];
+                        if (!filter(ref, fieldIndex, view)) { continue; }
+                        encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView, metadata);
+                    }
+                    while (bitsHigh !== 0) {
+                        const fieldIndex = 31 - Math.clz32(bitsHigh & -bitsHigh) + 32;
+                        bitsHigh &= bitsHigh - 1;
+                        const operation = isEncodeAll ? OPERATION.ADD : changeTree.operationsByIndex[fieldIndex];
+                        if (!filter(ref, fieldIndex, view)) { continue; }
+                        encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView, metadata);
+                    }
+                }
+
+            } else {
+                //
+                // Collection path: ChangeSet iteration
+                //
+                const changeSet = changeTree[changeSetName];
+
+                // skip if no changes were made
+                const numChanges = changeSet.operations.length;
+                if (numChanges === 0) { continue; }
+
+                // encode structure header (skip root refId if first change tree)
+                if (hasView || it.offset > initialOffset || changeTree !== rootChangeTree) {
+                    buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
+                    encode.uint(buffer, ref[$refId], it);
+                }
+
+                // Fast path: no filters configured, skip $filter function call per field
+                if (!hasFilters) {
+                    for (let j = 0; j < numChanges; j++) {
+                        const fieldIndex = changeSet.operations[j];
+
+                        if (fieldIndex < 0) {
+                            buffer[it.offset++] = (-fieldIndex) & 255;
+                            continue;
+                        }
+
+                        const operation = (isEncodeAll)
+                            ? OPERATION.ADD
+                            : changeTree.indexedOperations[fieldIndex];
+
+                        if (fieldIndex === undefined || operation === undefined) {
+                            continue;
+                        }
+
+                        encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, false, metadata);
+                    }
+                } else {
+                    const filter = ctor[$filter];
+
+                    for (let j = 0; j < numChanges; j++) {
+                        const fieldIndex = changeSet.operations[j];
+
+                        if (fieldIndex < 0) {
+                            buffer[it.offset++] = (-fieldIndex) & 255;
+                            continue;
+                        }
+
+                        const operation = (isEncodeAll)
+                            ? OPERATION.ADD
+                            : changeTree.indexedOperations[fieldIndex];
+
+                        if (fieldIndex === undefined || operation === undefined || !filter(ref, fieldIndex, view)) {
+                            continue;
+                        }
+
+                        encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView, metadata);
+                    }
+                }
             }
         }
 
@@ -215,7 +285,7 @@ export class Encoder<T extends Schema = any> {
             const metadata = ctor[Symbol.metadata];
 
             bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-            encode.number(bytes, ref[$refId], it);
+            encode.uint(bytes, ref[$refId], it);
 
             for (let i = 0, numChanges = keys.length; i < numChanges; i++) {
                 const index = Number(keys[i]);
@@ -279,7 +349,7 @@ export class Encoder<T extends Schema = any> {
 
         if (baseTypeId !== targetTypeId) {
             bytes[it.offset++] = TYPE_ID & 255;
-            encode.number(bytes, targetTypeId, it);
+            encode.uint(bytes, targetTypeId, it);
         }
     }
 

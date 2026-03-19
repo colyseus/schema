@@ -46,11 +46,30 @@ export class Root {
             // When a ChangeTree is re-added, it means that it was previously removed.
             // We need to re-add all changes to the `changes` map.
             //
-            const ops = changeTree.allChanges.operations;
-            let len = ops.length;
-            while (len--) {
-                changeTree.indexedOperations[ops[len]] = OPERATION.ADD;
-                setOperationAtIndex(changeTree.changes, len);
+            if (changeTree.isSchemaType) {
+                // Schema path: iterate allChangedBits and restore operations
+                let bits = changeTree.allChangedBits;
+                while (bits !== 0) {
+                    const fieldIndex = 31 - Math.clz32(bits & -bits);
+                    changeTree.operationsByIndex[fieldIndex] = OPERATION.ADD;
+                    changeTree.changedBits |= (1 << fieldIndex);
+                    bits &= bits - 1;
+                }
+                let bitsHigh = changeTree.allChangedBitsHigh;
+                while (bitsHigh !== 0) {
+                    const fieldIndex = 31 - Math.clz32(bitsHigh & -bitsHigh) + 32;
+                    changeTree.operationsByIndex[fieldIndex] = OPERATION.ADD;
+                    changeTree.changedBitsHigh |= (1 << (fieldIndex - 32));
+                    bitsHigh &= bitsHigh - 1;
+                }
+            } else {
+                // Collection path
+                const ops = changeTree.allChanges.operations;
+                let len = ops.length;
+                while (len--) {
+                    changeTree.indexedOperations[ops[len]] = OPERATION.ADD;
+                    setOperationAtIndex(changeTree.changes, len);
+                }
             }
         }
 
@@ -77,7 +96,11 @@ export class Root {
             this.removeChangeFromChangeSet("allChanges", changeTree);
             this.removeChangeFromChangeSet("changes", changeTree);
 
-            if (changeTree.filteredChanges) {
+            const hasFilters = changeTree.isSchemaType
+                ? changeTree.hasFilteredEncoding
+                : changeTree.filteredChanges !== undefined;
+
+            if (hasFilters) {
                 this.removeChangeFromChangeSet("allFilteredChanges", changeTree);
                 this.removeChangeFromChangeSet("filteredChanges", changeTree);
             }
@@ -123,7 +146,11 @@ export class Root {
     }
 
     moveNextToParent(changeTree: ChangeTree) {
-        if (changeTree.filteredChanges) {
+        const hasFilters = changeTree.isSchemaType
+            ? changeTree.hasFilteredEncoding
+            : changeTree.filteredChanges !== undefined;
+
+        if (hasFilters) {
             this.moveNextToParentInChangeTreeList("filteredChanges", changeTree);
             this.moveNextToParentInChangeTreeList("allFilteredChanges", changeTree);
         } else {
@@ -134,14 +161,14 @@ export class Root {
 
     moveNextToParentInChangeTreeList(changeSetName: ChangeSetName, changeTree: ChangeTree): void {
         const changeSet = this[changeSetName];
-        const node = changeTree[changeSetName].queueRootNode;
+        const node = changeTree.getQueueNode(changeSetName);
         if (!node) return;
 
         // Find the parent in the linked list
         const parent = changeTree.parent;
         if (!parent || !parent[$changes]) return;
 
-        const parentNode = parent[$changes][changeSetName]?.queueRootNode;
+        const parentNode = parent[$changes].getQueueNode(changeSetName);
         if (!parentNode || parentNode === node) return;
 
         // Use cached positions - no iteration needed!
@@ -185,14 +212,16 @@ export class Root {
 
     public enqueueChangeTree(
         changeTree: ChangeTree,
-        changeSet: 'changes' | 'filteredChanges' | 'allFilteredChanges' | 'allChanges',
-        queueRootNode = changeTree[changeSet].queueRootNode
+        changeSetName: ChangeSetName,
     ) {
-        // skip
-        if (queueRootNode) { return; }
+        // skip if already enqueued
+        if (changeTree.getQueueNode(changeSetName)) { return; }
 
-        // Add to linked list if not already present
-        changeTree[changeSet].queueRootNode = this.addToChangeTreeList(this[changeSet], changeTree);
+        // Add to linked list
+        changeTree.setQueueNode(
+            changeSetName,
+            this.addToChangeTreeList(this[changeSetName], changeTree)
+        );
     }
 
     protected addToChangeTreeList(list: ChangeTreeList, changeTree: ChangeTree): ChangeTreeNode {
@@ -243,7 +272,7 @@ export class Root {
 
     public removeChangeFromChangeSet(changeSetName: ChangeSetName, changeTree: ChangeTree) {
         const changeSet = this[changeSetName];
-        const node = changeTree[changeSetName].queueRootNode;
+        const node = changeTree.getQueueNode(changeSetName);
 
         if (node && node.changeTree === changeTree) {
             const removedPosition = node.position;
@@ -265,7 +294,7 @@ export class Root {
             this.updatePositionsAfterRemoval(changeSet, removedPosition);
 
             // Clear ChangeTree reference
-            changeTree[changeSetName].queueRootNode = undefined;
+            changeTree.setQueueNode(changeSetName, undefined);
             return true;
         }
 

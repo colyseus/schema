@@ -35,14 +35,25 @@ export function dumpChanges(schema: Schema) {
             continue;
         }
 
-        const changes = changeTree.indexedOperations;
-
         dump.refs.push(`refId#${changeTree.ref[$refId]}`);
-        for (const index in changes) {
-            const op = changes[index];
-            const opName = OPERATION[op];
-            if (!dump.ops[opName as keyof ChangeDump['ops']]) { dump.ops[opName as keyof ChangeDump['ops']] = 0; }
-            dump.ops[OPERATION[op] as keyof ChangeDump['ops']]++;
+
+        if (changeTree.isSchemaType) {
+            for (let i = 0, len = changeTree.operationsByIndex.length; i < len; i++) {
+                const op = changeTree.operationsByIndex[i];
+                if (op !== 0) {
+                    const opName = OPERATION[op];
+                    if (!dump.ops[opName as keyof ChangeDump['ops']]) { dump.ops[opName as keyof ChangeDump['ops']] = 0; }
+                    dump.ops[opName as keyof ChangeDump['ops']]++;
+                }
+            }
+        } else {
+            const changes = changeTree.indexedOperations;
+            for (const index in changes) {
+                const op = changes[index];
+                const opName = OPERATION[op];
+                if (!dump.ops[opName as keyof ChangeDump['ops']]) { dump.ops[opName as keyof ChangeDump['ops']] = 0; }
+                dump.ops[OPERATION[op] as keyof ChangeDump['ops']]++;
+            }
         }
         current = current.next;
     }

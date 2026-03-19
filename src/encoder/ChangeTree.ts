@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $viewFieldIndexes, type $deleteByIndex } from "../types/symbols.js";
+import { $changes, $childType, $decoder, $numFields, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $viewFieldIndexes, type $deleteByIndex } from "../types/symbols.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
@@ -59,11 +59,10 @@ export interface ChangeSet {
     // field index -> operation index
     indexes: { [index: number]: number };
     operations: number[];
-    queueRootNode?: ChangeTreeNode; // direct reference to ChangeTreeNode in the linked list
 }
 
-function createChangeSet(queueRootNode?: ChangeTreeNode): ChangeSet {
-    return { indexes: {}, operations: [], queueRootNode };
+function createChangeSet(): ChangeSet {
+    return { indexes: {}, operations: [] };
 }
 
 // Linked list helper functions
@@ -127,6 +126,12 @@ export class ChangeTree<T extends Ref = any> {
     ref: T;
     metadata: Metadata;
 
+    /**
+     * Schema types (bounded 0-63 fields) use typed arrays + bitfields.
+     * Collection types (unbounded) use plain objects + ChangeSet.
+     */
+    isSchemaType: boolean;
+
     root?: Root;
     parentChain?: ParentChain; // Linked list for tracking parents
 
@@ -136,19 +141,47 @@ export class ChangeTree<T extends Ref = any> {
     isFiltered: boolean = false;
     isVisibilitySharedWithParent?: boolean; // See test case: 'should not be required to manually call view.add() items to child arrays without @view() tag'
 
-    indexedOperations: IndexedOperations = {};
+    //
+    // Schema-only: typed array for field operations (0 = no change)
+    // OPERATION.REPLACE (0) is never stored for Schema types, so 0 is safe as sentinel.
+    //
+    operationsByIndex: Uint8Array;
 
     //
-    // TODO:
-    //   try storing the index + operation per item.
-    //   example: 1024 & 1025 => ADD, 1026 => DELETE
+    // Schema-only: bitfield change tracking
+    // changedBits/changedBitsHigh: pending changes for current encode cycle (fields 0-31 / 32-63)
+    // allChangedBits/allChangedBitsHigh: all-time changes for encodeAll
     //
-    // => https://chatgpt.com/share/67107d0c-bc20-8004-8583-83b17dd7c196
+    changedBits: number = 0;
+    changedBitsHigh: number = 0;
+    allChangedBits: number = 0;
+    allChangedBitsHigh: number = 0;
+
+    // Schema-only: filtered bitfield variants (only when @view() tags exist)
+    filteredBits: number = 0;
+    filteredBitsHigh: number = 0;
+    allFilteredBits: number = 0;
+    allFilteredBitsHigh: number = 0;
+
+    // Schema-only: equivalent of `filteredChanges !== undefined` for collections
+    hasFilteredEncoding: boolean = false;
+
     //
-    changes: ChangeSet = { indexes: {}, operations: [] };
-    allChanges: ChangeSet = { indexes: {}, operations: [] };
+    // Collection-only: plain object operations + ChangeSet tracking
+    //
+    indexedOperations: IndexedOperations;
+    changes: ChangeSet;
+    allChanges: ChangeSet;
     filteredChanges: ChangeSet;
     allFilteredChanges: ChangeSet;
+
+    //
+    // Queue nodes for linked list membership (shared for both Schema and Collection)
+    //
+    changesQueueNode?: ChangeTreeNode;
+    allChangesQueueNode?: ChangeTreeNode;
+    filteredChangesQueueNode?: ChangeTreeNode;
+    allFilteredChangesQueueNode?: ChangeTreeNode;
 
     indexes: { [index: string]: any }; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
 
@@ -161,12 +194,47 @@ export class ChangeTree<T extends Ref = any> {
         this.ref = ref;
         this.metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
 
-        //
-        // Does this structure have "filters" declared?
-        //
-        if (this.metadata?.[$viewFieldIndexes]) {
-            this.allFilteredChanges = { indexes: {}, operations: [] };
-            this.filteredChanges = { indexes: {}, operations: [] };
+        const numFields = this.metadata?.[$numFields];
+        this.isSchemaType = numFields !== undefined && numFields <= 63;
+
+        if (this.isSchemaType) {
+            // Schema: use typed array for operations
+            this.operationsByIndex = new Uint8Array(numFields + 1);
+
+            if (this.metadata[$viewFieldIndexes]) {
+                this.hasFilteredEncoding = true;
+            }
+        } else {
+            // Collection: use plain objects
+            this.indexedOperations = {};
+            this.changes = { indexes: {}, operations: [] };
+            this.allChanges = { indexes: {}, operations: [] };
+
+            //
+            // Does this structure have "filters" declared?
+            //
+            if (this.metadata?.[$viewFieldIndexes]) {
+                this.allFilteredChanges = { indexes: {}, operations: [] };
+                this.filteredChanges = { indexes: {}, operations: [] };
+            }
+        }
+    }
+
+    getQueueNode(changeSetName: ChangeSetName): ChangeTreeNode | undefined {
+        switch (changeSetName) {
+            case 'changes': return this.changesQueueNode;
+            case 'allChanges': return this.allChangesQueueNode;
+            case 'filteredChanges': return this.filteredChangesQueueNode;
+            case 'allFilteredChanges': return this.allFilteredChangesQueueNode;
+        }
+    }
+
+    setQueueNode(changeSetName: ChangeSetName, node: ChangeTreeNode | undefined): void {
+        switch (changeSetName) {
+            case 'changes': this.changesQueueNode = node; break;
+            case 'allChanges': this.allChangesQueueNode = node; break;
+            case 'filteredChanges': this.filteredChangesQueueNode = node; break;
+            case 'allFilteredChanges': this.allFilteredChangesQueueNode = node; break;
         }
     }
 
@@ -234,18 +302,23 @@ export class ChangeTree<T extends Ref = any> {
         if ((this.ref as any)[$childType]) {
             if (typeof ((this.ref as any)[$childType]) !== "string") {
                 // MapSchema / ArraySchema, etc.
-                for (const [key, value] of (this.ref as MapSchema).entries()) {
-                    if (!value) { continue; } // sparse arrays can have undefined values
-                    callback(value[$changes], this.indexes?.[key] ?? key);
-                };
+                const indexes = this.indexes;
+                (this.ref as MapSchema).forEach((value: any, key: any) => {
+                    if (!value) { return; } // sparse arrays can have undefined values
+                    callback(value[$changes], indexes?.[key] ?? key);
+                });
             }
 
         } else {
-            for (const index of this.metadata?.[$refTypeFieldIndexes] ?? []) {
-                const field = this.metadata[index as any as number];
-                const value = this.ref[field.name as keyof Ref];
-                if (!value) { continue; }
-                callback(value[$changes], index);
+            const refTypeIndexes = this.metadata?.[$refTypeFieldIndexes];
+            if (refTypeIndexes) {
+                for (let i = 0, len = refTypeIndexes.length; i < len; i++) {
+                    const index = refTypeIndexes[i];
+                    const field = this.metadata[index as any as number];
+                    const value = this.ref[field.name as keyof Ref];
+                    if (!value) { continue; }
+                    callback(value[$changes], index);
+                }
             }
         }
     }
@@ -253,6 +326,7 @@ export class ChangeTree<T extends Ref = any> {
     operation(op: OPERATION) {
         // operations without index use negative values to represent them
         // this is checked during .encode() time.
+        // NOTE: only used by collection types (CLEAR, REVERSE)
         if (this.filteredChanges !== undefined) {
             this.filteredChanges.operations.push(-op);
             this.root?.enqueueChangeTree(this, 'filteredChanges');
@@ -264,37 +338,76 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
-        const isFiltered = this.isFiltered || (this.metadata?.[index]?.tag !== undefined);
-        const changeSet = (isFiltered)
-            ? this.filteredChanges
-            : this.changes;
-
-        const previousOperation = this.indexedOperations[index];
-        if (!previousOperation || previousOperation === OPERATION.DELETE) {
-            const op = (!previousOperation)
-                ? operation
-                : (previousOperation === OPERATION.DELETE)
-                    ? OPERATION.DELETE_AND_ADD
-                    : operation
+        if (this.isSchemaType) {
             //
-            // TODO: are DELETE operations being encoded as ADD here ??
+            // Schema path: typed array + bitfields
             //
-            this.indexedOperations[index] = op;
-        }
+            const previousOperation = this.operationsByIndex[index];
+            if (!previousOperation || previousOperation === OPERATION.DELETE) {
+                this.operationsByIndex[index] = (!previousOperation)
+                    ? operation
+                    : OPERATION.DELETE_AND_ADD;
+            }
 
-        setOperationAtIndex(changeSet, index);
+            const isFiltered = this.isFiltered || this.metadata[index]?.tag !== undefined;
 
-        if (isFiltered) {
-            setOperationAtIndex(this.allFilteredChanges, index);
+            if (isFiltered) {
+                if (index < 32) {
+                    this.filteredBits |= (1 << index);
+                    this.allFilteredBits |= (1 << index);
+                } else {
+                    this.filteredBitsHigh |= (1 << (index - 32));
+                    this.allFilteredBitsHigh |= (1 << (index - 32));
+                }
 
-            if (this.root) {
-                this.root.enqueueChangeTree(this, 'filteredChanges');
-                this.root.enqueueChangeTree(this, 'allFilteredChanges');
+                const root = this.root;
+                if (root) {
+                    root.enqueueChangeTree(this, 'filteredChanges');
+                    root.enqueueChangeTree(this, 'allFilteredChanges');
+                }
+
+            } else {
+                if (index < 32) {
+                    this.changedBits |= (1 << index);
+                    this.allChangedBits |= (1 << index);
+                } else {
+                    this.changedBitsHigh |= (1 << (index - 32));
+                    this.allChangedBitsHigh |= (1 << (index - 32));
+                }
+                if (this.root) { this.root.enqueueChangeTree(this, 'changes'); }
             }
 
         } else {
-            setOperationAtIndex(this.allChanges, index);
-            this.root?.enqueueChangeTree(this, 'changes');
+            //
+            // Collection path: plain objects + ChangeSet
+            //
+            const isFiltered = this.isFiltered || (this.metadata !== undefined && this.metadata[index]?.tag !== undefined);
+            const changeSet = (isFiltered)
+                ? this.filteredChanges
+                : this.changes;
+
+            const previousOperation = this.indexedOperations[index];
+            if (!previousOperation || previousOperation === OPERATION.DELETE) {
+                this.indexedOperations[index] = (!previousOperation)
+                    ? operation
+                    : OPERATION.DELETE_AND_ADD;
+            }
+
+            setOperationAtIndex(changeSet, index);
+
+            if (isFiltered) {
+                setOperationAtIndex(this.allFilteredChanges, index);
+
+                const root = this.root;
+                if (root) {
+                    root.enqueueChangeTree(this, 'filteredChanges');
+                    root.enqueueChangeTree(this, 'allFilteredChanges');
+                }
+
+            } else {
+                setOperationAtIndex(this.allChanges, index);
+                if (this.root) { this.root.enqueueChangeTree(this, 'changes'); }
+            }
         }
     }
 
@@ -303,6 +416,8 @@ export class ChangeTree<T extends Ref = any> {
         // Used only during:
         //
         // - ArraySchema#unshift()
+        //
+        // NOTE: collection-only, never called for Schema types
         //
         const changeSet = (this.isFiltered)
             ? this.filteredChanges
@@ -325,6 +440,8 @@ export class ChangeTree<T extends Ref = any> {
         // Used only during:
         //
         // - ArraySchema#splice()
+        //
+        // NOTE: collection-only, never called for Schema types
         //
         if (this.filteredChanges !== undefined) {
             this._shiftAllChangeIndexes(shiftIndex, startIndex, this.allFilteredChanges);
@@ -352,6 +469,7 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     indexedOperation(index: number, operation: OPERATION, allChangesIndex: number = index) {
+        // NOTE: only used by collection types
         this.indexedOperations[index] = operation;
 
         if (this.filteredChanges !== undefined) {
@@ -379,7 +497,12 @@ export class ChangeTree<T extends Ref = any> {
         );
     }
 
-    getChange(index: number) {
+
+    getChange(index: number): OPERATION | undefined {
+        if (this.isSchemaType) {
+            const op = this.operationsByIndex[index];
+            return op !== 0 ? op as OPERATION : undefined;
+        }
         return this.indexedOperations[index];
     }
 
@@ -403,50 +526,118 @@ export class ChangeTree<T extends Ref = any> {
             return;
         }
 
-        const changeSet = (this.filteredChanges !== undefined)
-            ? this.filteredChanges
-            : this.changes;
+        if (this.isSchemaType) {
+            //
+            // Schema path
+            //
+            this.operationsByIndex[index] = operation ?? OPERATION.DELETE;
 
-        this.indexedOperations[index] = operation ?? OPERATION.DELETE;
-        setOperationAtIndex(changeSet, index);
-        deleteOperationAtIndex(this.allChanges, allChangesIndex);
+            // Clear from allChangedBits (the field is being deleted)
+            if (index < 32) {
+                this.allChangedBits &= ~(1 << index);
+            } else {
+                this.allChangedBitsHigh &= ~(1 << (index - 32));
+            }
 
-        const previousValue = this.getValue(index);
+            const previousValue = this.getValue(index);
 
-        // remove `root` reference
-        if (previousValue && previousValue[$changes]) {
-            //
-            // FIXME: this.root is "undefined"
-            //
-            // This method is being called at decoding time when a DELETE operation is found.
-            //
-            // - This is due to using the concrete Schema class at decoding time.
-            // - "Reflected" structures do not have this problem.
-            //
-            // (The property descriptors should NOT be used at decoding time. only at encoding time.)
-            //
-            this.root?.remove(previousValue[$changes]);
-        }
+            // remove `root` reference
+            if (previousValue && previousValue[$changes]) {
+                this.root?.remove(previousValue[$changes]);
+            }
 
-        //
-        // FIXME: this is looking a ugly and repeated
-        //
-        if (this.filteredChanges !== undefined) {
-            deleteOperationAtIndex(this.allFilteredChanges, allChangesIndex);
-            this.root?.enqueueChangeTree(this, 'filteredChanges');
+            if (this.hasFilteredEncoding) {
+                if (index < 32) {
+                    this.filteredBits |= (1 << index);
+                    this.allFilteredBits &= ~(1 << index);
+                } else {
+                    this.filteredBitsHigh |= (1 << (index - 32));
+                    this.allFilteredBitsHigh &= ~(1 << (index - 32));
+                }
+                this.root?.enqueueChangeTree(this, 'filteredChanges');
+
+            } else {
+                if (index < 32) {
+                    this.changedBits |= (1 << index);
+                } else {
+                    this.changedBitsHigh |= (1 << (index - 32));
+                }
+                this.root?.enqueueChangeTree(this, 'changes');
+            }
+
+            return previousValue;
 
         } else {
-            this.root?.enqueueChangeTree(this, 'changes');
-        }
+            //
+            // Collection path
+            //
+            const changeSet = (this.filteredChanges !== undefined)
+                ? this.filteredChanges
+                : this.changes;
 
-        return previousValue;
+            this.indexedOperations[index] = operation ?? OPERATION.DELETE;
+            setOperationAtIndex(changeSet, index);
+            deleteOperationAtIndex(this.allChanges, allChangesIndex);
+
+            const previousValue = this.getValue(index);
+
+            // remove `root` reference
+            if (previousValue && previousValue[$changes]) {
+                this.root?.remove(previousValue[$changes]);
+            }
+
+            if (this.filteredChanges !== undefined) {
+                deleteOperationAtIndex(this.allFilteredChanges, allChangesIndex);
+                this.root?.enqueueChangeTree(this, 'filteredChanges');
+
+            } else {
+                this.root?.enqueueChangeTree(this, 'changes');
+            }
+
+            return previousValue;
+        }
     }
 
     endEncode(changeSetName: ChangeSetName) {
-        this.indexedOperations = {};
+        if (this.isSchemaType) {
+            //
+            // Schema path: zero-allocation clear
+            //
+            this.operationsByIndex.fill(0);
 
-        // clear changeset
-        this[changeSetName] = createChangeSet();
+            switch (changeSetName) {
+                case 'changes':
+                    this.changedBits = 0;
+                    this.changedBitsHigh = 0;
+                    break;
+                case 'filteredChanges':
+                    this.filteredBits = 0;
+                    this.filteredBitsHigh = 0;
+                    break;
+                case 'allChanges':
+                    this.allChangedBits = 0;
+                    this.allChangedBitsHigh = 0;
+                    break;
+                case 'allFilteredChanges':
+                    this.allFilteredBits = 0;
+                    this.allFilteredBitsHigh = 0;
+                    break;
+            }
+
+        } else {
+            //
+            // Collection path
+            //
+            this.indexedOperations = {};
+
+            // clear changeset
+            const cs = this[changeSetName];
+            cs.indexes = {};
+            cs.operations.length = 0;
+        }
+
+        // Clear queue node
+        this.setQueueNode(changeSetName, undefined);
 
         // ArraySchema and MapSchema have a custom "encode end" method
         (this.ref as any)[$onEncodeEnd]?.();
@@ -463,19 +654,46 @@ export class ChangeTree<T extends Ref = any> {
         //
         (this.ref as any)[$onEncodeEnd]?.();
 
-        this.indexedOperations = {};
-        this.changes = createChangeSet(this.changes.queueRootNode);
+        if (this.isSchemaType) {
+            //
+            // Schema path: zero-allocation clear
+            //
+            this.operationsByIndex.fill(0);
+            this.changedBits = 0;
+            this.changedBitsHigh = 0;
 
-        if (this.filteredChanges !== undefined) {
-            this.filteredChanges = createChangeSet(this.filteredChanges.queueRootNode);
-        }
+            if (this.hasFilteredEncoding) {
+                this.filteredBits = 0;
+                this.filteredBitsHigh = 0;
+            }
 
-        if (discardAll) {
-            // preserve queueRootNode references
-            this.allChanges = createChangeSet(this.allChanges.queueRootNode);
+            if (discardAll) {
+                this.allChangedBits = 0;
+                this.allChangedBitsHigh = 0;
 
-            if (this.allFilteredChanges !== undefined) {
-                this.allFilteredChanges = createChangeSet(this.allFilteredChanges.queueRootNode);
+                if (this.hasFilteredEncoding) {
+                    this.allFilteredBits = 0;
+                    this.allFilteredBitsHigh = 0;
+                }
+            }
+
+        } else {
+            //
+            // Collection path
+            //
+            this.indexedOperations = {};
+            this.changes = createChangeSet();
+
+            if (this.filteredChanges !== undefined) {
+                this.filteredChanges = createChangeSet();
+            }
+
+            if (discardAll) {
+                this.allChanges = createChangeSet();
+
+                if (this.allFilteredChanges !== undefined) {
+                    this.allFilteredChanges = createChangeSet();
+                }
             }
         }
     }
@@ -485,12 +703,23 @@ export class ChangeTree<T extends Ref = any> {
      * (Used in tests only)
      */
     discardAll() {
-        const keys = Object.keys(this.indexedOperations);
-        for (let i = 0, len = keys.length; i < len; i++) {
-            const value = this.getValue(Number(keys[i]));
+        if (this.isSchemaType) {
+            for (let i = 0, len = this.operationsByIndex.length; i < len; i++) {
+                if (this.operationsByIndex[i] !== 0) {
+                    const value = this.getValue(i);
+                    if (value && value[$changes]) {
+                        value[$changes].discardAll();
+                    }
+                }
+            }
+        } else {
+            const keys = Object.keys(this.indexedOperations);
+            for (let i = 0, len = keys.length; i < len; i++) {
+                const value = this.getValue(Number(keys[i]));
 
-            if (value && value[$changes]) {
-                value[$changes].discardAll();
+                if (value && value[$changes]) {
+                    value[$changes].discardAll();
+                }
             }
         }
 
@@ -498,11 +727,17 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     get changed() {
+        if (this.isSchemaType) {
+            return this.changedBits !== 0 || this.changedBitsHigh !== 0 ||
+                   this.filteredBits !== 0 || this.filteredBitsHigh !== 0;
+        }
         return (Object.entries(this.indexedOperations).length > 0);
     }
 
     protected checkIsFiltered(parent: Ref, parentIndex: number, isNewChangeTree: boolean) {
-        if (this.root.types.hasFilters) {
+        const root = this.root;
+
+        if (root.types.hasFilters) {
             //
             // At Schema initialization, the "root" structure might not be available
             // yet, as it only does once the "Encoder" has been set up.
@@ -511,20 +746,20 @@ export class ChangeTree<T extends Ref = any> {
             //
             this._checkFilteredByParent(parent, parentIndex);
 
-            if (this.filteredChanges !== undefined) {
-                this.root?.enqueueChangeTree(this, 'filteredChanges');
+            if (this.isSchemaType ? this.hasFilteredEncoding : this.filteredChanges !== undefined) {
+                root.enqueueChangeTree(this, 'filteredChanges');
 
                 if (isNewChangeTree) {
-                    this.root?.enqueueChangeTree(this, 'allFilteredChanges');
+                    root.enqueueChangeTree(this, 'allFilteredChanges');
                 }
             }
         }
 
         if (!this.isFiltered) {
-            this.root?.enqueueChangeTree(this, 'changes');
+            root.enqueueChangeTree(this, 'changes');
 
             if (isNewChangeTree) {
-                this.root?.enqueueChangeTree(this, 'allChanges');
+                root.enqueueChangeTree(this, 'allChanges');
             }
         }
     }
@@ -580,20 +815,44 @@ export class ChangeTree<T extends Ref = any> {
                 parentIsCollection
             );
 
-            if (!this.filteredChanges) {
-                this.filteredChanges = createChangeSet();
-                this.allFilteredChanges = createChangeSet();
-            }
+            if (this.isSchemaType) {
+                //
+                // Schema path: move changedBits to filteredBits
+                //
+                if (!this.hasFilteredEncoding) {
+                    this.hasFilteredEncoding = true;
+                }
 
-            if (this.changes.operations.length > 0) {
-                this.changes.operations.forEach((index) =>
-                    setOperationAtIndex(this.filteredChanges, index));
+                if (this.changedBits !== 0 || this.changedBitsHigh !== 0) {
+                    this.filteredBits |= this.changedBits;
+                    this.filteredBitsHigh |= this.changedBitsHigh;
+                    this.allFilteredBits |= this.allChangedBits;
+                    this.allFilteredBitsHigh |= this.allChangedBitsHigh;
+                    this.changedBits = 0;
+                    this.changedBitsHigh = 0;
+                    this.allChangedBits = 0;
+                    this.allChangedBitsHigh = 0;
+                }
 
-                this.allChanges.operations.forEach((index) =>
-                    setOperationAtIndex(this.allFilteredChanges, index));
+            } else {
+                //
+                // Collection path
+                //
+                if (!this.filteredChanges) {
+                    this.filteredChanges = createChangeSet();
+                    this.allFilteredChanges = createChangeSet();
+                }
 
-                this.changes = createChangeSet();
-                this.allChanges = createChangeSet();
+                if (this.changes.operations.length > 0) {
+                    this.changes.operations.forEach((index) =>
+                        setOperationAtIndex(this.filteredChanges, index));
+
+                    this.allChanges.operations.forEach((index) =>
+                        setOperationAtIndex(this.allFilteredChanges, index));
+
+                    this.changes = createChangeSet();
+                    this.allChanges = createChangeSet();
+                }
             }
         }
     }
@@ -616,11 +875,23 @@ export class ChangeTree<T extends Ref = any> {
      * Add a parent to the chain
      */
     addParent(parent: Ref, index: number) {
-        // Check if this parent already exists in the chain
-        if (this.hasParent((p, _) => p[$changes] === parent[$changes])) {
-        // if (this.hasParent((p, i) => p[$changes] === parent[$changes] && i === index)) {
-            this.parentChain.index = index;
-            return;
+        // Fast path: check immediate parent first (most common case, avoids closure allocation)
+        const parentChanges = parent[$changes];
+        if (this.parentChain) {
+            if (this.parentChain.ref[$changes] === parentChanges) {
+                this.parentChain.index = index;
+                return;
+            }
+            // Walk the chain only if there are more parents
+            let current = this.parentChain.next;
+            while (current) {
+                if (current.ref[$changes] === parentChanges) {
+                    // Match original behavior: update head's index
+                    this.parentChain.index = index;
+                    return;
+                }
+                current = current.next;
+            }
         }
 
         this.parentChain = {

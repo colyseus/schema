@@ -317,41 +317,76 @@ export class Schema<C = any> implements IRef {
      */
     static debugChanges<T extends Ref>(instance: T, isEncodeAll: boolean = false) {
         const changeTree: ChangeTree = instance[$changes];
-
-        const changeSet = (isEncodeAll) ? changeTree.allChanges : changeTree.changes;
         const changeSetName = (isEncodeAll) ? "allChanges" : "changes";
 
         let output = `${instance.constructor.name} (${instance[$refId]}) -> .${changeSetName}:\n`;
 
-        function dumpChangeSet(changeSet: ChangeSet) {
-            changeSet.operations
-                .filter(op => op)
-                .forEach((index) => {
-                    const operation = changeTree.indexedOperations[index];
-                    output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(Number(index), isEncodeAll))})\n`
-                });
-        }
+        if (changeTree.isSchemaType) {
+            // Schema path: iterate bitfields
+            function dumpBits(bits: number, bitsHigh: number, offset: number = 0) {
+                while (bits !== 0) {
+                    const index = 31 - Math.clz32(bits & -bits);
+                    bits &= bits - 1;
+                    const operation = changeTree.operationsByIndex[index + offset];
+                    output += `- [${index + offset}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(index + offset, isEncodeAll))})\n`;
+                }
+                while (bitsHigh !== 0) {
+                    const index = 31 - Math.clz32(bitsHigh & -bitsHigh) + 32;
+                    bitsHigh &= bitsHigh - 1;
+                    const operation = changeTree.operationsByIndex[index + offset];
+                    output += `- [${index + offset}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(index + offset, isEncodeAll))})\n`;
+                }
+            }
 
-        dumpChangeSet(changeSet);
+            if (isEncodeAll) {
+                dumpBits(changeTree.allChangedBits, changeTree.allChangedBitsHigh);
+            } else {
+                dumpBits(changeTree.changedBits, changeTree.changedBitsHigh);
+            }
 
-        // display filtered changes
-        if (
-            !isEncodeAll &&
-            changeTree.filteredChanges &&
-            (changeTree.filteredChanges.operations).filter(op => op).length > 0
-        ) {
-            output += `${instance.constructor.name} (${instance[$refId]}) -> .filteredChanges:\n`;
-            dumpChangeSet(changeTree.filteredChanges);
-        }
+            // display filtered changes
+            if (!isEncodeAll && changeTree.hasFilteredEncoding && (changeTree.filteredBits !== 0 || changeTree.filteredBitsHigh !== 0)) {
+                output += `${instance.constructor.name} (${instance[$refId]}) -> .filteredChanges:\n`;
+                dumpBits(changeTree.filteredBits, changeTree.filteredBitsHigh);
+            }
+            if (isEncodeAll && changeTree.hasFilteredEncoding && (changeTree.allFilteredBits !== 0 || changeTree.allFilteredBitsHigh !== 0)) {
+                output += `${instance.constructor.name} (${instance[$refId]}) -> .allFilteredChanges:\n`;
+                dumpBits(changeTree.allFilteredBits, changeTree.allFilteredBitsHigh);
+            }
 
-        // display filtered changes
-        if (
-            isEncodeAll &&
-            changeTree.allFilteredChanges &&
-            (changeTree.allFilteredChanges.operations).filter(op => op).length > 0
-        ) {
-            output += `${instance.constructor.name} (${instance[$refId]}) -> .allFilteredChanges:\n`;
-            dumpChangeSet(changeTree.allFilteredChanges);
+        } else {
+            // Collection path: iterate ChangeSet
+            const changeSet = (isEncodeAll) ? changeTree.allChanges : changeTree.changes;
+
+            function dumpChangeSet(changeSet: ChangeSet) {
+                changeSet.operations
+                    .filter(op => op)
+                    .forEach((index) => {
+                        const operation = changeTree.indexedOperations[index];
+                        output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(Number(index), isEncodeAll))})\n`
+                    });
+            }
+
+            dumpChangeSet(changeSet);
+
+            // display filtered changes
+            if (
+                !isEncodeAll &&
+                changeTree.filteredChanges &&
+                (changeTree.filteredChanges.operations).filter(op => op).length > 0
+            ) {
+                output += `${instance.constructor.name} (${instance[$refId]}) -> .filteredChanges:\n`;
+                dumpChangeSet(changeTree.filteredChanges);
+            }
+
+            if (
+                isEncodeAll &&
+                changeTree.allFilteredChanges &&
+                (changeTree.allFilteredChanges.operations).filter(op => op).length > 0
+            ) {
+                output += `${instance.constructor.name} (${instance[$refId]}) -> .allFilteredChanges:\n`;
+                dumpChangeSet(changeTree.allFilteredChanges);
+            }
         }
 
         return output;
@@ -413,16 +448,29 @@ export class Schema<C = any> implements IRef {
                 }
             });
 
-            const changes = changeTree.indexedOperations;
             const level = parentChangeTrees.length;
             const indent = getIndent(level);
-
             const parentIndex = (level > 0) ? `(${changeTree.parentIndex}) ` : "";
-            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${Object.keys(changes).length}\n`;
 
-            for (const index in changes) {
-                const operation = changes[index];
-                output += `${getIndent(level + 1)}${OPERATION[operation]}: ${index}\n`;
+            if (changeTree.isSchemaType) {
+                let numChanges = 0;
+                for (let i = 0, len = changeTree.operationsByIndex.length; i < len; i++) {
+                    if (changeTree.operationsByIndex[i] !== 0) numChanges++;
+                }
+                output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${numChanges}\n`;
+                for (let i = 0, len = changeTree.operationsByIndex.length; i < len; i++) {
+                    const operation = changeTree.operationsByIndex[i];
+                    if (operation !== 0) {
+                        output += `${getIndent(level + 1)}${OPERATION[operation]}: ${i}\n`;
+                    }
+                }
+            } else {
+                const changes = changeTree.indexedOperations;
+                output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${Object.keys(changes).length}\n`;
+                for (const index in changes) {
+                    const operation = changes[index];
+                    output += `${getIndent(level + 1)}${OPERATION[operation]}: ${index}\n`;
+                }
             }
         }
 

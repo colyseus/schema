@@ -307,6 +307,43 @@ function number(bytes: BufferLike, value: number, it: Iterator) {
   }
 }
 
+/**
+ * Specialized encoder for non-negative integers (refIds, indexes).
+ * Produces the same bytes as `number()` but skips NaN/Infinity/float/negative checks.
+ */
+function uint(bytes: BufferLike, value: number, it: Iterator) {
+  // positive fixnum
+  if (value < 0x80) {
+    bytes[it.offset++] = value;
+    return;
+  }
+  // uint 8
+  if (value < 0x100) {
+    bytes[it.offset++] = 0xcc;
+    bytes[it.offset++] = value;
+    return;
+  }
+  // uint 16
+  if (value < 0x10000) {
+    bytes[it.offset++] = 0xcd;
+    bytes[it.offset++] = value & 255;
+    bytes[it.offset++] = (value >> 8) & 255;
+    return;
+  }
+  // uint 32
+  if (value < 0x100000000) {
+    bytes[it.offset++] = 0xce;
+    bytes[it.offset++] = value & 255;
+    bytes[it.offset++] = (value >> 8) & 255;
+    bytes[it.offset++] = (value >> 16) & 255;
+    bytes[it.offset++] = (value >> 24) & 255;
+    return;
+  }
+  // uint 64
+  bytes[it.offset++] = 0xcf;
+  uint64(bytes, value, it);
+}
+
 export const encode = {
     int8,
     uint8,
@@ -323,6 +360,7 @@ export const encode = {
     boolean,
     string,
     number,
+    uint,
     utf8Write,
     utf8Length,
 }

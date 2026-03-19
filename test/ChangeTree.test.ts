@@ -19,27 +19,29 @@ describe("ChangeTree", () => {
 
             // @ts-ignore
             const changeTree = new ChangeTree(state);
+
+            // State is a Schema type — uses operationsByIndex + bitfields
+            assert.strictEqual(changeTree.isSchemaType, true);
+
             changeTree.change(0, OPERATION.ADD);
 
-            assert.deepStrictEqual(changeTree.indexedOperations, { '0': OPERATION.ADD });
-            assert.deepStrictEqual(changeTree.changes.indexes, { '0': 0 });
-            assert.deepStrictEqual(changeTree.changes.operations, [0]);
-            assert.deepStrictEqual(changeTree.allChanges.indexes, { '0': 0 });
-            assert.deepStrictEqual(changeTree.allChanges.operations, [0]);
+            assert.strictEqual(changeTree.operationsByIndex[0], OPERATION.ADD);
+            assert.strictEqual(changeTree.changedBits, 1 << 0);
+            assert.strictEqual(changeTree.allChangedBits, 1 << 0);
 
             changeTree.change(1, OPERATION.ADD);
-            assert.deepStrictEqual(changeTree.indexedOperations, { '0': OPERATION.ADD, '1': OPERATION.ADD });
-            assert.deepStrictEqual(changeTree.changes.indexes, { '0': 0, '1': 1 });
-            assert.deepStrictEqual(changeTree.changes.operations, [0, 1]);
-            assert.deepStrictEqual(changeTree.allChanges.indexes, { '0': 0, '1': 1  });
-            assert.deepStrictEqual(changeTree.allChanges.operations, [0, 1]);
+            assert.strictEqual(changeTree.operationsByIndex[0], OPERATION.ADD);
+            assert.strictEqual(changeTree.operationsByIndex[1], OPERATION.ADD);
+            assert.strictEqual(changeTree.changedBits, (1 << 0) | (1 << 1));
+            assert.strictEqual(changeTree.allChangedBits, (1 << 0) | (1 << 1));
 
             changeTree.delete(0, OPERATION.DELETE);
-            assert.deepStrictEqual(changeTree.indexedOperations, { '0': OPERATION.DELETE, '1': OPERATION.ADD });
-            assert.deepStrictEqual(changeTree.changes.indexes, { '0': 0, '1': 1 });
-            assert.deepStrictEqual(changeTree.changes.operations, [0, 1]);
-            assert.deepStrictEqual(changeTree.allChanges.indexes, { '1': 1  });
-            assert.deepStrictEqual(changeTree.allChanges.operations, [undefined, 1]);
+            assert.strictEqual(changeTree.operationsByIndex[0], OPERATION.DELETE);
+            assert.strictEqual(changeTree.operationsByIndex[1], OPERATION.ADD);
+            // changedBits: bit 0 still set (DELETE is a change), bit 1 still set
+            assert.strictEqual(changeTree.changedBits, (1 << 0) | (1 << 1));
+            // allChangedBits: bit 0 cleared (deleted), bit 1 still set
+            assert.strictEqual(changeTree.allChangedBits, 1 << 1);
         });
     });
 
@@ -148,8 +150,11 @@ describe("ChangeTree", () => {
         state.game = new Game();
 
         const changes: ChangeTree = state.game[$changes];
-        assert.deepStrictEqual(changes.changes.operations, [0]);
-        assert.deepStrictEqual(changes.allChanges.operations, [0]);
+        // Schema type: check that only field 0 (state) has a change, not privProperty
+        assert.strictEqual(changes.isSchemaType, true);
+        assert.strictEqual(changes.operationsByIndex[0], OPERATION.ADD); // "state" field
+        assert.strictEqual(changes.changedBits, 1 << 0); // only bit 0 set
+        assert.strictEqual(changes.allChangedBits, 1 << 0);
     });
 
     it("should not instantiate 'filteredChanges'", () => {
@@ -168,8 +173,9 @@ describe("ChangeTree", () => {
         }
 
         const state = new MyState();
-        assert.ok(state[$changes].filteredChanges !== undefined);
-        assert.ok(state[$changes].allFilteredChanges !== undefined);
+        // Schema type: uses hasFilteredEncoding flag instead of filteredChanges ChangeSet
+        assert.strictEqual(state[$changes].isSchemaType, true);
+        assert.ok(state[$changes].hasFilteredEncoding);
     })
 
     it("detached instance and filtered changes", () => {

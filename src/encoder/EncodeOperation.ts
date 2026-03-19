@@ -39,7 +39,7 @@ export function encodeValue(
         // Encode refId for this instance.
         // The actual instance is going to be encoded on next `changeTree` iteration.
         //
-        encode.number(bytes, value[$refId], it);
+        encode.uint(bytes, value[$refId], it);
 
         // Try to encode inherited TYPE_ID if it's an ADD operation.
         if ((operation & OPERATION.ADD) === OPERATION.ADD) {
@@ -51,7 +51,7 @@ export function encodeValue(
         // Encode refId for this instance.
         // The actual instance is going to be encoded on next `changeTree` iteration.
         //
-        encode.number(bytes, value[$refId], it);
+        encode.uint(bytes, value[$refId], it);
     }
 }
 
@@ -78,18 +78,23 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
         return;
     }
 
-    const ref = changeTree.ref;
+    // Inlined encodeValue for Schema fields
     const field = metadata[index];
+    const type = field.type as any;
+    const value = changeTree.ref[field.name as keyof T] as any;
 
-    // TODO: inline this function call small performance gain
-    encodeValue(
-        encoder,
-        bytes,
-        metadata[index].type,
-        ref[field.name as keyof T],
-        operation,
-        it
-    );
+    if (typeof type === "string") {
+        (encode as any)[type](bytes, value, it);
+
+    } else if (type[Symbol.metadata] !== undefined) {
+        encode.uint(bytes, value[$refId], it);
+        if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+            encoder.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema, it);
+        }
+
+    } else {
+        encode.uint(bytes, value[$refId], it);
+    }
 }
 
 /**
@@ -108,7 +113,7 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     bytes[it.offset++] = operation & 255;
 
     // encode index
-    encode.number(bytes, index, it);
+    encode.uint(bytes, index, it);
 
     // Do not encode value for DELETE operations
     if (operation === OPERATION.DELETE) {
@@ -130,31 +135,22 @@ export const encodeKeyValueOperation: EncodeOperation = function (
         }
     }
 
+    // Inlined encodeValue for collection items
     const type = ref[$childType];
     const value = ref[$getByIndex](index);
 
-    // try { throw new Error(); } catch (e) {
-    //     // only print if not coming from Reflection.ts
-    //     if (!e.stack.includes("src/Reflection.ts")) {
-    //         console.log("encodeKeyValueOperation -> ", {
-    //             ref: changeTree.ref.constructor.name,
-    //             field,
-    //             operation: OPERATION[operation],
-    //             value: value?.toJSON(),
-    //             items: ref.toJSON(),
-    //         });
-    //     }
-    // }
+    if (typeof type === "string") {
+        (encode as any)[type](bytes, value, it);
 
-    // TODO: inline this function call small performance gain
-    encodeValue(
-        encoder,
-        bytes,
-        type,
-        value,
-        operation,
-        it
-    );
+    } else if (type[Symbol.metadata] !== undefined) {
+        encode.uint(bytes, value[$refId], it);
+        if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+            encoder.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema, it);
+        }
+
+    } else {
+        encode.uint(bytes, value[$refId], it);
+    }
 }
 
 /**
@@ -199,33 +195,27 @@ export const encodeArray: EncodeOperation = function (
     bytes[it.offset++] = operation & 255;
 
     // encode index
-    encode.number(bytes, refOrIndex, it);
+    encode.uint(bytes, refOrIndex, it);
 
     // Do not encode value for DELETE operations
     if (operation === OPERATION.DELETE || operation === OPERATION.DELETE_BY_REFID) {
         return;
     }
 
+    // Inlined encodeValue for array items
     const type = changeTree.getType(field);
     const value = changeTree.getValue(field, isEncodeAll);
 
-    // console.log({ type, field, value });
+    if (typeof type === "string") {
+        (encode as any)[type](bytes, value, it);
 
-    // console.log("encodeArray -> ", {
-    //     ref: changeTree.ref.constructor.name,
-    //     field,
-    //     operation: OPERATION[operation],
-    //     value: value?.toJSON(),
-    //     items: ref.toJSON(),
-    // });
+    } else if (type[Symbol.metadata] !== undefined) {
+        encode.uint(bytes, value[$refId], it);
+        if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+            encoder.tryEncodeTypeId(bytes, type as typeof Schema, value.constructor as typeof Schema, it);
+        }
 
-    // TODO: inline this function call small performance gain
-    encodeValue(
-        encoder,
-        bytes,
-        type,
-        value,
-        operation,
-        it
-    );
+    } else {
+        encode.uint(bytes, value[$refId], it);
+    }
 }
