@@ -1,6 +1,6 @@
 # Changelog
 
-## 4.0.21
+## 4.0.20
 
 ### C# codegen: emit native `enum` for positive-int enums
 

@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "4.0.21",
+  "version": "4.0.20",
   "description": "Binary state serializer with delta encoding for games",
   "type": "module",
   "bin": {
@@ -79,7 +79,7 @@
     "source-map-support": "^0.5.13",
     "tslib": "^2.1.0",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.2"
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "typescript": "^5.0.0 || ^6.0.0"
