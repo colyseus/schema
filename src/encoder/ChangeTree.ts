@@ -138,18 +138,29 @@ export interface ParentChain {
     next?: ParentChain;
 }
 
+// Flags bitfield
+const IS_FILTERED = 1;
+const IS_VISIBILITY_SHARED = 2;
+const IS_NEW = 4;
+
 export class ChangeTree<T extends Ref = any> {
     ref: T;
     metadata: Metadata;
 
     root?: Root;
-    parentChain?: ParentChain; // Linked list for tracking parents
+
+    // Inline single parent (the common case)
+    parentRef?: Ref;
+    _parentIndex?: number;
+    extraParents?: ParentChain; // linked list for 2nd+ parents (rare: instance sharing)
 
     /**
-     * Whether this structure is parent of a filtered structure.
+     * Packed boolean flags:
+     * bit 0: isFiltered
+     * bit 1: isVisibilitySharedWithParent
+     * bit 2: isNew
      */
-    isFiltered: boolean = false;
-    isVisibilitySharedWithParent?: boolean; // See test case: 'should not be required to manually call view.add() items to child arrays without @view() tag'
+    flags: number = IS_NEW; // default: isNew=true
 
     // Sparse array: index -> OPERATION. Much faster than Map for small integer keys.
     indexedOperations: OPERATION[] = [];
@@ -168,10 +179,15 @@ export class ChangeTree<T extends Ref = any> {
 
     indexes: { [index: string]: any }; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
 
-    /**
-     * Is this a new instance? Used on ArraySchema to determine OPERATION.MOVE_AND_ADD operation.
-     */
-    isNew = true;
+    // Accessor properties for flags
+    get isFiltered(): boolean { return (this.flags & IS_FILTERED) !== 0; }
+    set isFiltered(v: boolean) { this.flags = v ? (this.flags | IS_FILTERED) : (this.flags & ~IS_FILTERED); }
+
+    get isVisibilitySharedWithParent(): boolean { return (this.flags & IS_VISIBILITY_SHARED) !== 0; }
+    set isVisibilitySharedWithParent(v: boolean) { this.flags = v ? (this.flags | IS_VISIBILITY_SHARED) : (this.flags & ~IS_VISIBILITY_SHARED); }
+
+    get isNew(): boolean { return (this.flags & IS_NEW) !== 0; }
+    set isNew(v: boolean) { this.flags = v ? (this.flags | IS_NEW) : (this.flags & ~IS_NEW); }
 
     constructor(ref: T) {
         this.ref = ref;
@@ -628,66 +644,103 @@ export class ChangeTree<T extends Ref = any> {
      * Get the immediate parent
      */
     get parent(): Ref | undefined {
-        return this.parentChain?.ref;
+        return this.parentRef;
     }
 
     /**
      * Get the immediate parent index
      */
     get parentIndex(): number | undefined {
-        return this.parentChain?.index;
+        return this._parentIndex;
     }
 
     /**
      * Add a parent to the chain
      */
     addParent(parent: Ref, index: number) {
-        // Check if this parent already exists in the chain
-        if (this.hasParent((p, _) => p[$changes] === parent[$changes])) {
-        // if (this.hasParent((p, i) => p[$changes] === parent[$changes] && i === index)) {
-            this.parentChain.index = index;
-            return;
+        // Check if this parent already exists anywhere in the chain
+        if (this.parentRef) {
+            if (this.parentRef[$changes] === parent[$changes]) {
+                // Primary parent matches — update index
+                this._parentIndex = index;
+                return;
+            }
+
+            // Check extra parents for duplicate
+            if (this.hasParent((p, _) => p[$changes] === parent[$changes])) {
+                // Match old behavior: update primary parent's index
+                this._parentIndex = index;
+                return;
+            }
         }
 
-        this.parentChain = {
-            ref: parent,
-            index,
-            next: this.parentChain
-        };
+        if (this.parentRef === undefined) {
+            // First parent — store inline
+            this.parentRef = parent;
+            this._parentIndex = index;
+        } else {
+            // Push current inline parent to extraParents, set new as primary
+            this.extraParents = {
+                ref: this.parentRef,
+                index: this._parentIndex,
+                next: this.extraParents
+            };
+            this.parentRef = parent;
+            this._parentIndex = index;
+        }
     }
 
     /**
      * Remove a parent from the chain
      * @param parent - The parent to remove
-     * @returns true if parent was removed
+     * @returns true if parent was found and removed
      */
     removeParent(parent: Ref = this.parent): boolean {
-        let current = this.parentChain;
+        //
+        // FIXME: it is required to check against `$changes` here because
+        // ArraySchema is instance of Proxy
+        //
+        if (this.parentRef && this.parentRef[$changes] === parent[$changes]) {
+            // Removing inline parent — promote first extra parent if exists
+            if (this.extraParents) {
+                this.parentRef = this.extraParents.ref;
+                this._parentIndex = this.extraParents.index;
+                this.extraParents = this.extraParents.next;
+            } else {
+                this.parentRef = undefined;
+                this._parentIndex = undefined;
+            }
+            return true; // parent was found and removed
+        }
+
+        // Search extra parents
+        let current = this.extraParents;
         let previous = null;
         while (current) {
-            //
-            // FIXME: it is required to check against `$changes` here because
-            // ArraySchema is instance of Proxy
-            //
             if (current.ref[$changes] === parent[$changes]) {
                 if (previous) {
                     previous.next = current.next;
                 } else {
-                    this.parentChain = current.next;
+                    this.extraParents = current.next;
                 }
-                return true;
+                return true; // parent was found and removed
             }
             previous = current;
             current = current.next;
         }
-        return this.parentChain === undefined;
+        return this.parentRef === undefined;
     }
 
     /**
      * Find a specific parent in the chain
      */
     findParent(predicate: (parent: Ref, index: number) => boolean): ParentChain | undefined {
-        let current = this.parentChain;
+        // Check inline parent first
+        if (this.parentRef && predicate(this.parentRef, this._parentIndex)) {
+            return { ref: this.parentRef, index: this._parentIndex };
+        }
+
+        let current = this.extraParents;
         while (current) {
             if (predicate(current.ref, current.index)) {
                 return current;
@@ -709,7 +762,10 @@ export class ChangeTree<T extends Ref = any> {
      */
     getAllParents(): Array<{ ref: Ref, index: number }> {
         const parents: Array<{ ref: Ref, index: number }> = [];
-        let current = this.parentChain;
+        if (this.parentRef) {
+            parents.push({ ref: this.parentRef, index: this._parentIndex });
+        }
+        let current = this.extraParents;
         while (current) {
             parents.push({ ref: current.ref, index: current.index });
             current = current.next;

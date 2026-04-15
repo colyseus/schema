@@ -87,12 +87,12 @@ export class Root {
             changeTree.forEachChild((child, _) => {
                 if (child.removeParent(changeTree.ref)) {
                     if ((
-                        child.parentChain === undefined || // no parent, remove it
-                        (child.parentChain && this.refCount[child.ref[$refId]] > 0) // parent is still in use, but has more than one reference, remove it
+                        child.parentRef === undefined || // no parent, remove it
+                        (child.parentRef && this.refCount[child.ref[$refId]] > 0) // parent is still in use, but has more than one reference, remove it
                     )) {
                         this.remove(child);
 
-                    } else if (child.parentChain) {
+                    } else if (child.parentRef) {
                         // re-assigning a child of the same root, move it next to parent
                         this.moveNextToParent(child);
                     }
