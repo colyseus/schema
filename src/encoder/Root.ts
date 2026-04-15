@@ -17,7 +17,8 @@ export class Root {
     changes: ChangeTreeList = createChangeTreeList();
     filteredChanges: ChangeTreeList;
 
-    constructor(public types: TypeContext) {
+    constructor(public types: TypeContext, startRefId: number = 0) {
+        this.nextUniqueId = startRefId;
         if (types.hasFilters) {
             this.allFilteredChanges = createChangeTreeList();
             this.filteredChanges = createChangeTreeList();

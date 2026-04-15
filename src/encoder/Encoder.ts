@@ -28,7 +28,7 @@ export class Encoder<T extends Schema = any> {
 
     root: Root;
 
-    constructor(state: T) {
+    constructor(state: T, root?: Root) {
         //
         // Use .cache() here to avoid re-creating a new context for every new room instance.
         //
@@ -36,7 +36,7 @@ export class Encoder<T extends Schema = any> {
         // schemas - which would lead to memory leaks
         //
         this.context = TypeContext.cache(state.constructor as typeof Schema);
-        this.root = new Root(this.context);
+        this.root = root ?? new Root(this.context);
 
         this.setState(state);
 
