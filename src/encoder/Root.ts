@@ -144,12 +144,13 @@ export class Root {
         const parentNode = parent[$changes][changeSetName]?.queueRootNode;
         if (!parentNode || parentNode === node) return;
 
-        // Use cached positions - no iteration needed!
-        const parentPosition = parentNode.position;
-        const childPosition = node.position;
-
-        // If child is already after parent, no need to move
-        if (childPosition > parentPosition) return;
+        // Check if child is already after parent by walking from parent
+        let cursor = parentNode.next;
+        while (cursor) {
+            if (cursor === node) return; // already after parent
+            cursor = cursor.next;
+        }
+        // If we reach here, node is before parent — need to move
 
         // Child is before parent, so we need to move it after parent
         // This maintains decoding order (parent before child)
@@ -178,9 +179,6 @@ export class Root {
         }
 
         parentNode.next = node;
-
-        // Update positions after the move
-        this.updatePositionsAfterMove(changeSet, node, parentPosition + 1);
     }
 
     public enqueueChangeTree(
@@ -200,7 +198,7 @@ export class Root {
             changeTree,
             next: undefined,
             prev: undefined,
-            position: list.tail ? list.tail.position + 1 : 0
+            position: 0
         };
 
         if (!list.next) {
@@ -215,39 +213,11 @@ export class Root {
         return node;
     }
 
-    protected updatePositionsAfterRemoval(list: ChangeTreeList, removedPosition: number) {
-        // Update positions for all nodes after the removed position
-        let current = list.next;
-        let position = 0;
-
-        while (current) {
-            if (position >= removedPosition) {
-                current.position = position;
-            }
-            current = current.next;
-            position++;
-        }
-    }
-
-    protected updatePositionsAfterMove(list: ChangeTreeList, node: ChangeTreeNode, newPosition: number) {
-        // Recalculate all positions - this is more reliable than trying to be clever
-        let current = list.next;
-        let position = 0;
-
-        while (current) {
-            current.position = position;
-            current = current.next;
-            position++;
-        }
-    }
-
     public removeChangeFromChangeSet(changeSetName: ChangeSetName, changeTree: ChangeTree) {
         const changeSet = this[changeSetName];
         const node = changeTree[changeSetName].queueRootNode;
 
         if (node && node.changeTree === changeTree) {
-            const removedPosition = node.position;
-
             // Remove the node from the linked list
             if (node.prev) {
                 node.prev.next = node.next;
@@ -260,9 +230,6 @@ export class Root {
             } else {
                 changeSet.tail = node.prev;
             }
-
-            // Update positions for nodes that came after the removed node
-            this.updatePositionsAfterRemoval(changeSet, removedPosition);
 
             // Clear ChangeTree reference
             changeTree[changeSetName].queueRootNode = undefined;
