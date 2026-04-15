@@ -255,12 +255,14 @@ export class Encoder<T extends Schema = any> {
         this.root.changes = createChangeTreeList();
 
         // discard filtered changes
-        current = this.root.filteredChanges.next;
-        while (current) {
-            current.changeTree.endEncode('filteredChanges');
-            current = current.next;
+        if (this.root.filteredChanges) {
+            current = this.root.filteredChanges.next;
+            while (current) {
+                current.changeTree.endEncode('filteredChanges');
+                current = current.next;
+            }
+            this.root.filteredChanges = createChangeTreeList();
         }
-        this.root.filteredChanges = createChangeTreeList();
     }
 
     tryEncodeTypeId(
@@ -286,7 +288,7 @@ export class Encoder<T extends Schema = any> {
     get hasChanges() {
         return (
             this.root.changes.next !== undefined ||
-            this.root.filteredChanges.next !== undefined
+            this.root.filteredChanges?.next !== undefined
         );
     }
 }

@@ -1,4 +1,4 @@
-import { ChangeTree, IndexedOperations, Ref } from "./ChangeTree.js";
+import { ChangeTree, Ref } from "./ChangeTree.js";
 import { $changes, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
@@ -33,7 +33,7 @@ export class StateView {
      * Manual "ADD" operations for changes per ChangeTree, specific to this view.
      * (This is used to force encoding a property, even if it was not changed)
      */
-    changes = new Map<number, IndexedOperations>();
+    changes = new Map<number, { [index: number]: OPERATION }>();
 
     constructor(public iterable: boolean = false) {
         if (iterable) {

@@ -11,13 +11,18 @@ export class Root {
 
     // all changes
     allChanges: ChangeTreeList = createChangeTreeList();
-    allFilteredChanges: ChangeTreeList = createChangeTreeList();// TODO: do not initialize it if filters are not used
+    allFilteredChanges: ChangeTreeList;
 
     // pending changes to be encoded
     changes: ChangeTreeList = createChangeTreeList();
-    filteredChanges: ChangeTreeList = createChangeTreeList();// TODO: do not initialize it if filters are not used
+    filteredChanges: ChangeTreeList;
 
-    constructor(public types: TypeContext) { }
+    constructor(public types: TypeContext) {
+        if (types.hasFilters) {
+            this.allFilteredChanges = createChangeTreeList();
+            this.filteredChanges = createChangeTreeList();
+        }
+    }
 
     getNextUniqueId() {
         return this.nextUniqueId++;
