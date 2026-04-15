@@ -113,19 +113,29 @@ describe("ArraySchema Tests", () => {
             decodedState.decode(state.encode())
 
             const entitiesChangeTree: ChangeTree = state.entities[$changes];
-            assert.deepStrictEqual({ '0': 0, '1': 1, '2': 2, '3': 3, '4': 4 }, entitiesChangeTree.allChanges.indexes);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[0], 0);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[1], 1);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[2], 2);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[3], 3);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[4], 4);
 
             state.entities.shift();
-            assert.deepStrictEqual({ '0': 1, '1': 2, '2': 3, '3': 4 }, entitiesChangeTree.allChanges.indexes);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[0], 1);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[1], 2);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[2], 3);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[3], 4);
 
             state.entities.shift();
-            assert.deepStrictEqual({ '0': 2, '1': 3, '2': 4 }, entitiesChangeTree.allChanges.indexes);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[0], 2);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[1], 3);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[2], 4);
 
             state.entities.shift();
-            assert.deepStrictEqual({ '0': 3, '1': 4 }, entitiesChangeTree.allChanges.indexes);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[0], 3);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[1], 4);
 
             state.entities.shift();
-            assert.deepStrictEqual({ '0': 4 }, entitiesChangeTree.allChanges.indexes);
+            assert.strictEqual(entitiesChangeTree.allChanges.indexes[0], 4);
 
             assertDeepStrictEqualEncodeAll(state);
 

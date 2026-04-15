@@ -3,7 +3,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
-import { ChangeSet, ChangeSetName, ChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
+import { ChangeSetName, ChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
 import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $refId, $track } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
@@ -323,7 +323,7 @@ export class Schema<C = any> implements IRef {
 
         let output = `${instance.constructor.name} (${instance[$refId]}) -> .${changeSetName}:\n`;
 
-        function dumpChangeSet(changeSet: ChangeSet) {
+        function dumpChangeSet(changeSet: { operations: number[] }) {
             changeSet.operations
                 .filter(op => op)
                 .forEach((index) => {
@@ -418,11 +418,13 @@ export class Schema<C = any> implements IRef {
             const indent = getIndent(level);
 
             const parentIndex = (level > 0) ? `(${changeTree.parentIndex}) ` : "";
-            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${Object.keys(changes).length}\n`;
+            let changeCount = 0;
+            for (let ci = 0; ci < changes.length; ci++) { if (changes[ci] !== undefined) changeCount++; }
+            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${changeCount}\n`;
 
-            for (const index in changes) {
-                const operation = changes[index];
-                output += `${getIndent(level + 1)}${OPERATION[operation]}: ${index}\n`;
+            for (let ci = 0; ci < changes.length; ci++) {
+                if (changes[ci] === undefined) continue;
+                output += `${getIndent(level + 1)}${OPERATION[changes[ci]]}: ${ci}\n`;
             }
         }
 

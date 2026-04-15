@@ -27,7 +27,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
     protected items: V[] = [];
     protected tmpItems: V[] = [];
-    protected deletedIndexes: {[index: number]: boolean} = {};
+    protected deletedIndexes: boolean[] = [];
     protected isMovingItems = false;
 
     static [$encoder] = encodeArray;
@@ -846,7 +846,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
     protected [$onEncodeEnd]() {
         this.tmpItems = this.items.slice();
-        this.deletedIndexes = {};
+        this.deletedIndexes.length = 0;
     }
 
     protected [$onDecodeEnd]() {
