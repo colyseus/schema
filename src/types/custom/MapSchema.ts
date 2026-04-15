@@ -19,6 +19,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     protected $items: Map<K, V> = new Map<K, V>();
     protected $indexes: Map<number, K> = new Map<number, K>();
     protected deletedItems: { [index: string]: V } = {};
+    _collectionIndexes: { [key: string]: any } = {};
 
     static [$encoder] = encodeKeyValueOperation;
     static [$decoder] = decodeKeyValueOperation;
@@ -46,7 +47,6 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     constructor (initialValues?: Map<K, V> | Record<K, V>) {
         const changeTree = new ChangeTree(this);
-        changeTree.indexes = {};
 
         Object.defineProperty(this, $changes, {
             value: changeTree,
@@ -101,8 +101,8 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         let operation: OPERATION;
 
         // IS REPLACE?
-        if (typeof(changeTree.indexes[key]) !== "undefined") {
-            index = changeTree.indexes[key];
+        if (typeof(this._collectionIndexes[key]) !== "undefined") {
+            index = this._collectionIndexes[key];
             operation = OPERATION.REPLACE;
 
             const previousValue = this.$items.get(key);
@@ -125,12 +125,12 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
             }
 
         } else {
-            index = changeTree.indexes[$numFields] ?? 0;
+            index = this._collectionIndexes[$numFields] ?? 0;
             operation = OPERATION.ADD;
 
             this.$indexes.set(index, key);
-            changeTree.indexes[key] = index;
-            changeTree.indexes[$numFields] = index + 1;
+            this._collectionIndexes[key] = index;
+            this._collectionIndexes[$numFields] = index + 1;
         }
 
         this.$items.set(key, value);
@@ -157,7 +157,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
             return false;
         }
 
-        const index = this[$changes].indexes[key];
+        const index = this._collectionIndexes[key];
 
         this.deletedItems[index] = this[$changes].delete(index);
 
@@ -169,7 +169,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         // discard previous operations.
         changeTree.discard(true);
-        changeTree.indexes = {};
+        this._collectionIndexes = {};
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {
@@ -230,18 +230,17 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     protected [$onEncodeEnd]() {
         const changeTree = this[$changes];
 
-        // - cleanup changeTree.indexes
+        // - cleanup _collectionIndexes
         // - cleanup $indexes
         for (const indexStr in this.deletedItems) {
             const index = parseInt(indexStr);
             const key = this.$indexes.get(index);
             // TODO: refactor this.
-            // it shouldn't be necessary to keep track of indexes both on changeTree and on $indexes
-            delete changeTree.indexes[key];
+            // it shouldn't be necessary to keep track of indexes both on _collectionIndexes and on $indexes
+            delete this._collectionIndexes[key];
             this.$indexes.delete(index);
+            delete this.deletedItems[indexStr];
         }
-
-        this.deletedItems = {};
     }
 
     toJSON() {

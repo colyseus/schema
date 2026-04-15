@@ -177,8 +177,6 @@ export class ChangeTree<T extends Ref = any> {
     filteredChanges: ChangeSet;
     allFilteredChanges: ChangeSet;
 
-    indexes: { [index: string]: any }; // TODO: remove this, only used by MapSchema/SetSchema/CollectionSchema (`encodeKeyValueOperation`)
-
     // Accessor properties for flags
     get isFiltered(): boolean { return (this.flags & IS_FILTERED) !== 0; }
     set isFiltered(v: boolean) { this.flags = v ? (this.flags | IS_FILTERED) : (this.flags & ~IS_FILTERED); }
@@ -268,7 +266,7 @@ export class ChangeTree<T extends Ref = any> {
                 // MapSchema / ArraySchema, etc.
                 for (const [key, value] of (this.ref as MapSchema).entries()) {
                     if (!value) { continue; } // sparse arrays can have undefined values
-                    callback(value[$changes], this.indexes?.[key] ?? key);
+                    callback(value[$changes], (this.ref as any)._collectionIndexes?.[key] ?? key);
                 };
             }
 

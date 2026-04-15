@@ -19,6 +19,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
     protected $items: Map<number, V> = new Map<number, V>();
     protected $indexes: Map<number, number> = new Map<number, number>();
     protected deletedItems: { [field: string]: V } = {};
+    _collectionIndexes: { [key: string]: any } = {};
 
     protected $refId: number = 0;
 
@@ -48,7 +49,6 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
 
     constructor (initialValues?: Array<V>) {
         this[$changes] = new ChangeTree(this);
-        this[$changes].indexes = {};
 
         if (initialValues) {
             initialValues.forEach((v) => this.add(v));
@@ -71,7 +71,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
             value[$changes].setParent(this, this[$changes].root, index);
         }
 
-        this[$changes].indexes[index] = index;
+        this._collectionIndexes[index] = index;
 
         this.$indexes.set(index, index);
         this.$items.set(index, value);
@@ -119,7 +119,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
 
         // discard previous operations.
         changeTree.discard(true);
-        changeTree.indexes = {};
+        this._collectionIndexes = {};
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {
@@ -175,7 +175,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
     }
 
     protected [$onEncodeEnd]() {
-        this.deletedItems = {};
+        for (const key in this.deletedItems) { delete this.deletedItems[key]; }
     }
 
     toArray() {
