@@ -84,6 +84,43 @@ describe("schema-codegen", () => {
         assert.strictEqual(2, outputFiles.length);
     });
 
+    it("should emit native C# enum for positive-int enums, struct otherwise", () => {
+        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "EnumsAllKinds.ts"));
+        generate("csharp", { files: inputFiles, output: OUTPUT_DIR });
+
+        const read = (name: string) => fs.readFileSync(path.resolve(OUTPUT_DIR, name), "utf8");
+
+        // implicit index ints -> native enum
+        const implicitInt = read("ImplicitInt.cs");
+        assert.match(implicitInt, /public enum ImplicitInt : int \{/);
+        assert.match(implicitInt, /A = 0,/);
+        assert.match(implicitInt, /B = 1,/);
+        assert.match(implicitInt, /C = 2,/);
+        assert.doesNotMatch(implicitInt, /public struct/);
+
+        // explicit positive ints -> native enum
+        const explicitInt = read("ExplicitInt.cs");
+        assert.match(explicitInt, /public enum ExplicitInt : int \{/);
+        assert.match(explicitInt, /X = 10,/);
+        assert.match(explicitInt, /Y = 20,/);
+        assert.match(explicitInt, /Z = 30,/);
+        assert.doesNotMatch(explicitInt, /public struct/);
+
+        // string values -> struct with string consts (unchanged)
+        const stringEnum = read("StringEnum.cs");
+        assert.match(stringEnum, /public struct StringEnum \{/);
+        assert.match(stringEnum, /public const string Foo = "foo";/);
+        assert.match(stringEnum, /public const string Bar = "bar";/);
+        assert.doesNotMatch(stringEnum, /public enum/);
+
+        // float values -> struct with float consts (unchanged)
+        const floatEnum = read("FloatEnum.cs");
+        assert.match(floatEnum, /public struct FloatEnum \{/);
+        assert.match(floatEnum, /public const float Half = 0\.5;/);
+        assert.match(floatEnum, /public const float OneAndHalf = 1\.5;/);
+        assert.doesNotMatch(floatEnum, /public enum/);
+    });
+
     describe("Metadata.setFields", () => {
         it("single structure ", async () => {
             const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Metadata.ts"));

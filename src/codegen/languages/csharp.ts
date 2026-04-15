@@ -123,9 +123,33 @@ ${namespace ? "}" : ""}
 }
 
 /**
+ * Check if all enum members resolve to non-negative integers,
+ * allowing emission as a native C# `enum` (which only supports integral types).
+ */
+function canUseNativeEnum(_enum: Enum): boolean {
+    return _enum.properties.every((prop) => {
+        if (!prop.type) return true;
+        const n = Number(prop.type);
+        return Number.isInteger(n) && n >= 0;
+    });
+}
+
+/**
  * Generate just the enum body (without imports/namespace) for bundling
  */
 function generateEnumBody(_enum: Enum, indent: string = ""): string {
+    if (canUseNativeEnum(_enum)) {
+        const members = _enum.properties
+            .map((prop, i) => {
+                const value = prop.type ? Number(prop.type) : i;
+                return `${indent}\t${prop.name} = ${value},`;
+            })
+            .join("\n");
+        return `${indent}public enum ${_enum.name} : int {
+${members}
+${indent}}`;
+    }
+
     return `${indent}public struct ${_enum.name} {
 
 ${_enum.properties

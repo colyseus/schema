@@ -39,10 +39,24 @@ jobs:
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+    - name: Extract CHANGELOG entry for this version
+      if: steps.check.outputs.changed == 'true'
+      id: changelog
+      run: |
+        awk -v ver="${{ steps.check.outputs.version }}" '
+          $0 ~ "^## " ver "([^0-9]|$)" { flag = 1; next }
+          flag && /^## / { exit }
+          flag { print }
+        ' CHANGELOG.md > RELEASE_NOTES.md
+        if [ ! -s RELEASE_NOTES.md ]; then
+          echo "No CHANGELOG entry found for version ${{ steps.check.outputs.version }}" >&2
+        fi
+
     - name: Release
       if: steps.check.outputs.changed == 'true'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.check.outputs.version }}
         prerelease: false
+        body_path: RELEASE_NOTES.md
 
