@@ -11,6 +11,7 @@ export type MetadataField = {
     tag?: number,
     unreliable?: boolean,
     deprecated?: boolean,
+    owned?: boolean,
 };
 
 export type Metadata =

@@ -33,11 +33,11 @@ export type PrimitiveType = RawPrimitiveType | typeof Schema | object;
 // TODO: infer "default" value type correctly.
 export type DefinitionType<T extends PrimitiveType = PrimitiveType> = T
     | T[]
-    | { type: T, default?: InferValueType<T>, view?: boolean | number, sync?: boolean }
-    | { array: T, default?: ArraySchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
-    | { map: T, default?: MapSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
-    | { collection: T, default?: CollectionSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
-    | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean };
+    | { type: T, default?: InferValueType<T>, view?: boolean | number, sync?: boolean, owned?: boolean }
+    | { array: T, default?: ArraySchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
+    | { map: T, default?: MapSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
+    | { collection: T, default?: CollectionSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
+    | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean };
 
 export type Definition = { [field: string]: DefinitionType };
 
@@ -243,6 +243,17 @@ export function view<T> (tag: number = DEFAULT_VIEW_TAG) {
 
         Metadata.setTag(metadata, fieldName, tag);
     }
+}
+
+export function owned<T> (target: T, field: string) {
+    const constructor = target.constructor as typeof Schema;
+
+    const parentClass = Object.getPrototypeOf(constructor);
+    const parentMetadata = parentClass[Symbol.metadata];
+
+    const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
+
+    metadata[metadata[field]].owned = true;
 }
 
 export function unreliable<T> (target: T, field: string) {
@@ -564,6 +575,7 @@ export function schema<
 
     const defaultValues: any = {};
     const viewTagFields: any = {};
+    const ownedFields: string[] = [];
 
     for (let fieldName in fieldsAndMethods) {
         const value: any = fieldsAndMethods[fieldName] as DefinitionType;
@@ -572,6 +584,10 @@ export function schema<
                 viewTagFields[fieldName] = (typeof (value['view']) === "boolean")
                     ? DEFAULT_VIEW_TAG
                     : value['view'];
+            }
+
+            if (value['owned'] === true) {
+                ownedFields.push(fieldName);
             }
 
             // allow to define a field as not synced
@@ -687,6 +703,10 @@ export function schema<
 
     for (let fieldName in viewTagFields) {
         view(viewTagFields[fieldName])(klass.prototype, fieldName);
+    }
+
+    for (const fieldName of ownedFields) {
+        owned(klass.prototype, fieldName);
     }
 
     if (name) {

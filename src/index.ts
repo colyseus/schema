@@ -44,6 +44,7 @@ export { Metadata } from "./Metadata.js";
 export {
     type,
     deprecated,
+    owned,
     defineTypes,
     view,
     schema,
