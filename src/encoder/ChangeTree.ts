@@ -59,19 +59,15 @@ export interface ChangeSet {
     // sparse array: field index -> position in operations array (undefined = not tracked)
     indexes: number[];
     operations: number[];
-    queueRootNode?: ChangeTreeNode; // direct reference to ChangeTreeNode in the linked list
 }
 
-function createChangeSet(queueRootNode?: ChangeTreeNode): ChangeSet {
-    return { indexes: [], operations: [], queueRootNode };
+function createChangeSet(): ChangeSet {
+    return { indexes: [], operations: [] };
 }
 
-function resetChangeSet(changeSet: ChangeSet, clearQueueNode: boolean = false) {
+function resetChangeSet(changeSet: ChangeSet) {
     changeSet.indexes.length = 0;
     changeSet.operations.length = 0;
-    if (clearQueueNode) {
-        changeSet.queueRootNode = undefined;
-    }
 }
 
 // Linked list helper functions
@@ -176,6 +172,31 @@ export class ChangeTree<T extends Ref = any> {
     allChanges: ChangeSet = { indexes: [], operations: [] };
     filteredChanges: ChangeSet;
     allFilteredChanges: ChangeSet;
+
+    // Direct queue-node refs (moved from ChangeSet).
+    // Set by Root.addToChangeTreeList / cleared by endEncode / removeChangeFromChangeSet.
+    changesNode?: ChangeTreeNode;
+    allChangesNode?: ChangeTreeNode;
+    filteredChangesNode?: ChangeTreeNode;
+    allFilteredChangesNode?: ChangeTreeNode;
+
+    getQueueNode(name: ChangeSetName): ChangeTreeNode | undefined {
+        switch (name) {
+            case "changes": return this.changesNode;
+            case "allChanges": return this.allChangesNode;
+            case "filteredChanges": return this.filteredChangesNode;
+            case "allFilteredChanges": return this.allFilteredChangesNode;
+        }
+    }
+
+    setQueueNode(name: ChangeSetName, node: ChangeTreeNode | undefined): void {
+        switch (name) {
+            case "changes": this.changesNode = node; break;
+            case "allChanges": this.allChangesNode = node; break;
+            case "filteredChanges": this.filteredChangesNode = node; break;
+            case "allFilteredChanges": this.allFilteredChangesNode = node; break;
+        }
+    }
 
     // Accessor properties for flags
     get isFiltered(): boolean { return (this.flags & IS_FILTERED) !== 0; }
@@ -475,7 +496,10 @@ export class ChangeTree<T extends Ref = any> {
         this.indexedOperations.length = 0;
 
         // clear changeset in place
-        resetChangeSet(this[changeSetName], true);
+        resetChangeSet(this[changeSetName]);
+
+        // clear queue node for this changeSet
+        this.setQueueNode(changeSetName, undefined);
 
         // ArraySchema and MapSchema have a custom "encode end" method
         (this.ref as any)[$onEncodeEnd]?.();

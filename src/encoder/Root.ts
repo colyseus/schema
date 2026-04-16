@@ -140,14 +140,14 @@ export class Root {
 
     moveNextToParentInChangeTreeList(changeSetName: ChangeSetName, changeTree: ChangeTree): void {
         const changeSet = this[changeSetName];
-        const node = changeTree[changeSetName].queueRootNode;
+        const node = changeTree.getQueueNode(changeSetName);
         if (!node) return;
 
         // Find the parent in the linked list
         const parent = changeTree.parent;
         if (!parent || !parent[$changes]) return;
 
-        const parentNode = parent[$changes][changeSetName]?.queueRootNode;
+        const parentNode = parent[$changes].getQueueNode(changeSetName);
         if (!parentNode || parentNode === node) return;
 
         // Check if child is already after parent by walking from parent
@@ -190,13 +190,13 @@ export class Root {
     public enqueueChangeTree(
         changeTree: ChangeTree,
         changeSet: 'changes' | 'filteredChanges' | 'allFilteredChanges' | 'allChanges',
-        queueRootNode = changeTree[changeSet].queueRootNode
+        queueRootNode = changeTree.getQueueNode(changeSet)
     ) {
         // skip
         if (queueRootNode) { return; }
 
         // Add to linked list if not already present
-        changeTree[changeSet].queueRootNode = this.addToChangeTreeList(this[changeSet], changeTree);
+        changeTree.setQueueNode(changeSet, this.addToChangeTreeList(this[changeSet], changeTree));
     }
 
     protected addToChangeTreeList(list: ChangeTreeList, changeTree: ChangeTree): ChangeTreeNode {
@@ -221,7 +221,7 @@ export class Root {
 
     public removeChangeFromChangeSet(changeSetName: ChangeSetName, changeTree: ChangeTree) {
         const changeSet = this[changeSetName];
-        const node = changeTree[changeSetName].queueRootNode;
+        const node = changeTree.getQueueNode(changeSetName);
 
         if (node && node.changeTree === changeTree) {
             // Remove the node from the linked list
@@ -238,7 +238,7 @@ export class Root {
             }
 
             // Clear ChangeTree reference
-            changeTree[changeSetName].queueRootNode = undefined;
+            changeTree.setQueueNode(changeSetName, undefined);
             return true;
         }
 
