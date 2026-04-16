@@ -1,10 +1,11 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $numFields, $refId } from "../symbols.js";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $refId } from "../symbols.js";
 import { ChangeTree, IRef } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
 import { encodeKeyValueOperation } from "../../encoder/EncodeOperation.js";
+import { MapJournal } from "../../encoder/MapJournal.js";
 import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
 import { assertInstanceType } from "../../encoding/assert.js";
@@ -17,9 +18,24 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     protected [$childType]: string | typeof Schema;
 
     protected $items: Map<K, V> = new Map<K, V>();
-    protected $indexes: Map<number, K> = new Map<number, K>();
-    protected deletedItems: { [index: string]: V } = {};
-    _collectionIndexes: { [key: string]: any } = {};
+
+    /**
+     * Wire-protocol identity + change-tracking metadata for this map.
+     *
+     * Owns: index↔key mapping, monotonic index counter, snapshots of removed
+     * values for filter visibility checks. Replaces what used to live as three
+     * separate fields on this class ($indexes, _collectionIndexes, deletedItems).
+     */
+    protected journal: MapJournal<K> = new MapJournal<K>();
+
+    /** Backwards-compat alias for `journal.keyByIndex`. */
+    get $indexes(): Map<number, K> { return this.journal.keyByIndex; }
+
+    /**
+     * Backwards-compat alias for `journal.indexByKey`. Plain object so
+     * polymorphic call sites like `ref._collectionIndexes?.[key]` keep working.
+     */
+    get _collectionIndexes(): { [key: string]: number } { return this.journal.indexByKey; }
 
     static [$encoder] = encodeKeyValueOperation;
     static [$decoder] = decodeKeyValueOperation;
@@ -34,11 +50,9 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
      */
     static [$filter] (ref: MapSchema, index: number, view: StateView) {
-        return (
-            !view ||
-            typeof (ref[$childType]) === "string" ||
-            view.isChangeTreeVisible((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
-        );
+        if (!view || typeof (ref[$childType]) === "string") return true;
+        const value = ref[$getByIndex](index) ?? ref.journal.snapshotAt(index);
+        return view.isChangeTreeVisible(value[$changes]);
     }
 
     static is(type: any) {
@@ -93,13 +107,13 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         const changeTree = this[$changes];
         const isRef = (value[$changes]) !== undefined;
+        const journal = this.journal;
 
-        let index: number;
+        let index = journal.indexOf(key);
         let operation: OPERATION;
 
-        // IS REPLACE?
-        if (typeof(this._collectionIndexes[key]) !== "undefined") {
-            index = this._collectionIndexes[key];
+        if (index !== undefined) {
+            // REPLACE branch
             operation = OPERATION.REPLACE;
 
             const previousValue = this.$items.get(key);
@@ -117,17 +131,15 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
                 }
             }
 
-            if (this.deletedItems[index]) {
-                delete this.deletedItems[index];
+            // Re-setting after a delete: discard the snapshot.
+            if (journal.snapshotAt(index) !== undefined) {
+                journal.forgetSnapshot(index);
             }
 
         } else {
-            index = this._collectionIndexes[$numFields] ?? 0;
+            // ADD branch
+            index = journal.assign(key);
             operation = OPERATION.ADD;
-
-            this.$indexes.set(index, key);
-            this._collectionIndexes[key] = index;
-            this._collectionIndexes[$numFields] = index + 1;
         }
 
         this.$items.set(key, value);
@@ -154,9 +166,14 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
             return false;
         }
 
-        const index = this._collectionIndexes[key];
+        const index = this.journal.indexOf(key)!;
+        const previousValue = this.$items.get(key)!;
 
-        this.deletedItems[index] = this[$changes].delete(index);
+        // Snapshot the deleted value (used by [$filter] for visibility checks
+        // until $onEncodeEnd cleans it up).
+        this.journal.snapshot(index, previousValue);
+
+        this[$changes].delete(index);
 
         return this.$items.delete(key);
     }
@@ -166,15 +183,14 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         // discard previous operations.
         changeTree.discard(true);
-        this._collectionIndexes = {};
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {
             changeTree.root?.remove(childChangeTree);
         });
 
-        // clear previous indexes
-        this.$indexes.clear();
+        // reset journal (clears all index/key state and snapshots)
+        this.journal.reset();
 
         // clear items
         this.$items.clear();
@@ -207,37 +223,28 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     protected setIndex(index: number, key: K) {
-        this.$indexes.set(index, key);
+        this.journal.setIndex(index, key);
     }
 
     protected getIndex(index: number) {
-        return this.$indexes.get(index);
+        return this.journal.keyOf(index);
     }
 
     [$getByIndex](index: number): V | undefined {
-        return this.$items.get(this.$indexes.get(index));
+        const key = this.journal.keyOf(index);
+        return key !== undefined ? this.$items.get(key) : undefined;
     }
 
     [$deleteByIndex](index: number): void {
-        const key = this.$indexes.get(index);
-        this.$items.delete(key);
-        this.$indexes.delete(index);
+        const key = this.journal.keyOf(index);
+        if (key !== undefined) {
+            this.$items.delete(key);
+            this.journal.keyByIndex.delete(index);
+        }
     }
 
     protected [$onEncodeEnd]() {
-        const changeTree = this[$changes];
-
-        // - cleanup _collectionIndexes
-        // - cleanup $indexes
-        for (const indexStr in this.deletedItems) {
-            const index = parseInt(indexStr);
-            const key = this.$indexes.get(index);
-            // TODO: refactor this.
-            // it shouldn't be necessary to keep track of indexes both on _collectionIndexes and on $indexes
-            delete this._collectionIndexes[key];
-            this.$indexes.delete(index);
-            delete this.deletedItems[indexStr];
-        }
+        this.journal.cleanupAfterEncode();
     }
 
     toJSON() {
