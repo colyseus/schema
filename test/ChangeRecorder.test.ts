@@ -47,6 +47,18 @@ describe("ChangeRecorder", () => {
             assert.strictEqual(r.operationAt(2), OPERATION.DELETE_AND_ADD);
         });
 
+        it("recordDelete adds to dirty but removes from cumulative", () => {
+            const r = new SchemaChangeRecorder(8);
+            r.record(3, OPERATION.ADD, false);
+            assert.strictEqual(r.has("changes"), true);
+            assert.strictEqual(r.has("allChanges"), true);
+
+            r.recordDelete(3, OPERATION.DELETE, false);
+            assert.strictEqual(r.has("changes"), true);   // DELETE still queued
+            assert.strictEqual(r.has("allChanges"), false); // cumulative cleared
+            assert.strictEqual(r.operationAt(3), OPERATION.DELETE);
+        });
+
         it("first ADD wins; subsequent ADD does not change op", () => {
             const r = new SchemaChangeRecorder(8);
             r.record(2, OPERATION.ADD, false);
@@ -144,6 +156,18 @@ describe("ChangeRecorder", () => {
             r.record(5, OPERATION.DELETE, false);
             r.record(5, OPERATION.ADD, false);
             assert.strictEqual(r.operationAt(5), OPERATION.DELETE_AND_ADD);
+        });
+
+        it("recordDelete adds to dirty but removes from cumulative", () => {
+            const r = new CollectionChangeRecorder();
+            r.record(7, OPERATION.ADD, false);
+            assert.strictEqual(r.has("changes"), true);
+            assert.strictEqual(r.has("allChanges"), true);
+
+            r.recordDelete(7, OPERATION.DELETE, false);
+            assert.strictEqual(r.has("changes"), true);
+            assert.strictEqual(r.has("allChanges"), false);
+            assert.strictEqual(r.operationAt(7), OPERATION.DELETE);
         });
 
         it("filtered records go into filtered store (lazy alloc)", () => {

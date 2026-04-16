@@ -37,6 +37,13 @@ export interface ChangeRecorder {
     record(index: number, op: OPERATION, filtered: boolean): void;
 
     /**
+     * Record a DELETE at the given index. Adds to current-tick dirty set
+     * but REMOVES from cumulative set (a deleted item shouldn't reappear
+     * in encodeAll snapshots).
+     */
+    recordDelete(index: number, op: OPERATION, filtered: boolean): void;
+
+    /**
      * Record a pure operation (CLEAR, REVERSE) that has no index.
      * Only collections use this. Schema implementations may throw.
      */
@@ -139,6 +146,27 @@ export class SchemaChangeRecorder implements ChangeRecorder {
             this.dirtyHigh |= highBit;
             this.allLow |= lowBit;
             this.allHigh |= highBit;
+        }
+    }
+
+    recordDelete(index: number, op: OPERATION, filtered: boolean): void {
+        this.ops[index] = op;
+
+        const lowBit = (index < 32) ? (1 << index) : 0;
+        const highBit = (index >= 32) ? (1 << (index - 32)) : 0;
+
+        if (filtered) {
+            this._hasFiltered = true;
+            this.filteredLow |= lowBit;
+            this.filteredHigh |= highBit;
+            // Remove from cumulative — deleted items shouldn't appear in encodeAll
+            this.allFilteredLow &= ~lowBit;
+            this.allFilteredHigh &= ~highBit;
+        } else {
+            this.dirtyLow |= lowBit;
+            this.dirtyHigh |= highBit;
+            this.allLow &= ~lowBit;
+            this.allHigh &= ~highBit;
         }
     }
 
@@ -279,6 +307,20 @@ export class CollectionChangeRecorder implements ChangeRecorder {
         } else {
             this.dirty.set(index, op);
             this.all.set(index, op);
+        }
+    }
+
+    recordDelete(index: number, op: OPERATION, filtered: boolean): void {
+        this.ops.set(index, op);
+
+        if (filtered) {
+            this.ensureFilteredStorage();
+            this.filteredDirty!.set(index, op);
+            // Remove from cumulative — deleted items shouldn't appear in encodeAll
+            this.allFiltered!.delete(index);
+        } else {
+            this.dirty.set(index, op);
+            this.all.delete(index);
         }
     }
 

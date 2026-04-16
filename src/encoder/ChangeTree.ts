@@ -492,8 +492,9 @@ export class ChangeTree<T extends Ref = any> {
         setOperationAtIndex(changeSet, index);
         deleteOperationAtIndex(this.allChanges, allChangesIndex);
 
-        // Dual-write to recorder.
-        this.recorder.record(index, operation ?? OPERATION.DELETE, this.filteredChanges !== undefined);
+        // Dual-write to recorder. recordDelete() adds to dirty but removes
+        // from cumulative — matching the legacy delete-from-allChanges behavior.
+        this.recorder.recordDelete(index, operation ?? OPERATION.DELETE, this.filteredChanges !== undefined);
 
         const previousValue = this.getValue(index);
 
