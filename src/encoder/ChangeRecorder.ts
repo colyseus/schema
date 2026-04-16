@@ -61,6 +61,24 @@ export interface ChangeRecorder {
     recordPure(op: OPERATION, filtered: boolean): void;
 
     /**
+     * Add an entry to the current-tick dirty set only (changes / filteredChanges),
+     * WITHOUT also adding to the cumulative set.
+     *
+     * Used by ChangeTree.trackCumulativeIndex when mirroring legacy's
+     * asymmetric setOperationAtIndex(filteredChanges, i) call in ArraySchema.unshift.
+     */
+    recordInCurrentTick(index: number, op: OPERATION, filtered: boolean): void;
+
+    /**
+     * Add an entry to the cumulative set only (allChanges / allFilteredChanges),
+     * WITHOUT also adding to the current-tick set.
+     *
+     * Used by ChangeTree.trackCumulativeIndex when mirroring legacy's
+     * asymmetric setOperationAtIndex(allChanges, i) call in ArraySchema.unshift.
+     */
+    recordInCumulative(index: number, op: OPERATION, filtered: boolean): void;
+
+    /**
      * Get the current operation type recorded at index, or 0 / undefined if none.
      * Used by Root.add() re-add path and ChangeTree's getChange() debug API.
      */
@@ -204,6 +222,34 @@ export class SchemaChangeRecorder implements ChangeRecorder {
         throw new Error("SchemaChangeRecorder: pure operations are not supported");
     }
 
+    recordInCurrentTick(index: number, op: OPERATION, filtered: boolean): void {
+        this.ops[index] = op;
+        const lowBit = (index < 32) ? (1 << index) : 0;
+        const highBit = (index >= 32) ? (1 << (index - 32)) : 0;
+        if (filtered) {
+            this._hasFiltered = true;
+            this.filteredLow |= lowBit;
+            this.filteredHigh |= highBit;
+        } else {
+            this.dirtyLow |= lowBit;
+            this.dirtyHigh |= highBit;
+        }
+    }
+
+    recordInCumulative(index: number, op: OPERATION, filtered: boolean): void {
+        this.ops[index] = op;
+        const lowBit = (index < 32) ? (1 << index) : 0;
+        const highBit = (index >= 32) ? (1 << (index - 32)) : 0;
+        if (filtered) {
+            this._hasFiltered = true;
+            this.allFilteredLow |= lowBit;
+            this.allFilteredHigh |= highBit;
+        } else {
+            this.allLow |= lowBit;
+            this.allHigh |= highBit;
+        }
+    }
+
     shift(_shiftIndex: number): void {
         // Schema field indexes don't shift.
         throw new Error("SchemaChangeRecorder: shift is not supported");
@@ -269,14 +315,21 @@ export class SchemaChangeRecorder implements ChangeRecorder {
 
     reset(kind: ChangeKind): void {
         switch (kind) {
-            case "changes": this.dirtyLow = 0; this.dirtyHigh = 0; break;
+            case "changes":
+                this.dirtyLow = 0; this.dirtyHigh = 0;
+                // Clear ops to match legacy endEncode's `indexedOperations.length = 0`.
+                // Prevents stale op values from breaking the record() merge logic
+                // on subsequent ticks (e.g., a field that was ADD last tick being
+                // replaced with DELETE_AND_ADD this tick).
+                this.ops.fill(0);
+                break;
             case "allChanges": this.allLow = 0; this.allHigh = 0; break;
-            case "filteredChanges": this.filteredLow = 0; this.filteredHigh = 0; break;
+            case "filteredChanges":
+                this.filteredLow = 0; this.filteredHigh = 0;
+                this.ops.fill(0);
+                break;
             case "allFilteredChanges": this.allFilteredLow = 0; this.allFilteredHigh = 0; break;
         }
-        // Note: ops are not cleared on per-kind reset. They get overwritten on
-        // next record() or are stale-but-harmless (only read when corresponding
-        // bit is set in some mask).
     }
 
     promoteToFiltered(): void {
@@ -364,12 +417,11 @@ export class CollectionChangeRecorder implements ChangeRecorder {
     }
 
     recordWithCumulativeIndex(index: number, cumulativeIndex: number, op: OPERATION, filtered: boolean): void {
-        // Op merge is keyed by the current-tick index (which is what the
-        // encoder reads). Cumulative index only affects allChanges iteration.
-        const prev = this.ops.get(index);
-        if (prev === undefined || prev === OPERATION.DELETE) {
-            this.ops.set(index, prev === OPERATION.DELETE ? OPERATION.DELETE_AND_ADD : op);
-        }
+        // No merge — ArraySchema's positional indexes don't have the
+        // DELETE→ADD = DELETE_AND_ADD semantics that Schema field refs
+        // need. Matches legacy `indexedOperation` which just overwrites
+        // `indexedOperations[index] = operation` unconditionally.
+        this.ops.set(index, op);
 
         if (filtered) {
             this.ensureFilteredStorage();
@@ -387,6 +439,26 @@ export class CollectionChangeRecorder implements ChangeRecorder {
             this.filteredPureOps!.push(op);
         } else {
             this.pureOps.push(op);
+        }
+    }
+
+    recordInCurrentTick(index: number, op: OPERATION, filtered: boolean): void {
+        this.ops.set(index, op);
+        if (filtered) {
+            this.ensureFilteredStorage();
+            this.filteredDirty!.set(index, op);
+        } else {
+            this.dirty.set(index, op);
+        }
+    }
+
+    recordInCumulative(index: number, op: OPERATION, filtered: boolean): void {
+        this.ops.set(index, op);
+        if (filtered) {
+            this.ensureFilteredStorage();
+            this.allFiltered!.set(index, op);
+        } else {
+            this.all.set(index, op);
         }
     }
 

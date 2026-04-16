@@ -349,15 +349,15 @@ export class ChangeTree<T extends Ref = any> {
      * cumulative list (it's being relocated, not newly added).
      */
     trackCumulativeIndex(index: number) {
+        const op = this.indexedOperations[index] ?? OPERATION.ADD;
         if (this.filteredChanges !== undefined) {
+            // Legacy writes to filteredChanges (current-tick filtered).
             setOperationAtIndex(this.filteredChanges, index);
-            // Mirror in recorder: the legacy code writes to filteredChanges
-            // here (not allFilteredChanges). We record into cumulative via
-            // the "allFilteredChanges" side since that's the cumulative map.
-            this.recorder.recordWithCumulativeIndex(index, index, this.indexedOperations[index] ?? OPERATION.ADD, true);
+            this.recorder.recordInCurrentTick(index, op, true);
         } else {
+            // Legacy writes to allChanges (cumulative unfiltered).
             setOperationAtIndex(this.allChanges, index);
-            this.recorder.recordWithCumulativeIndex(index, index, this.indexedOperations[index] ?? OPERATION.ADD, false);
+            this.recorder.recordInCumulative(index, op, false);
         }
     }
 
