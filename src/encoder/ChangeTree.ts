@@ -9,6 +9,8 @@ import type { SetSchema } from "../types/custom/SetSchema.js";
 
 import { Root } from "./Root.js";
 import { Metadata } from "../Metadata.js";
+import { type ChangeRecorder, SchemaChangeRecorder, CollectionChangeRecorder } from "./ChangeRecorder.js";
+import { $numFields } from "../types/symbols.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 import type { DecodeOperation } from "../decoder/DecodeOperation.js";
 
@@ -173,6 +175,13 @@ export class ChangeTree<T extends Ref = any> {
     filteredChanges: ChangeSet;
     allFilteredChanges: ChangeSet;
 
+    /**
+     * Unified change-tracking abstraction. Populated alongside the legacy
+     * fields above (dual-write). Future commits will migrate readers to use
+     * this exclusively, then remove the legacy fields.
+     */
+    recorder: ChangeRecorder;
+
     // Direct queue-node refs (moved from ChangeSet).
     // Set by Root.addToChangeTreeList / cleared by endEncode / removeChangeFromChangeSet.
     changesNode?: ChangeTreeNode;
@@ -218,6 +227,17 @@ export class ChangeTree<T extends Ref = any> {
         if (this.metadata?.[$viewFieldIndexes]) {
             this.allFilteredChanges = { indexes: [], operations: [] };
             this.filteredChanges = { indexes: [], operations: [] };
+        }
+
+        // Allocate the appropriate ChangeRecorder. Schema instances have
+        // metadata with $numFields; collections do not (their items are
+        // dynamic, not declared via metadata).
+        const isSchema = Metadata.isValidInstance(ref);
+        if (isSchema) {
+            const numFields = (this.metadata?.[$numFields] ?? 0) as number;
+            this.recorder = new SchemaChangeRecorder(numFields);
+        } else {
+            this.recorder = new CollectionChangeRecorder();
         }
     }
 
@@ -299,10 +319,12 @@ export class ChangeTree<T extends Ref = any> {
         // this is checked during .encode() time.
         if (this.filteredChanges !== undefined) {
             this.filteredChanges.operations.push(-op);
+            this.recorder.recordPure(op, true);
             this.root?.enqueueChangeTree(this, 'filteredChanges');
 
         } else {
             this.changes.operations.push(-op);
+            this.recorder.recordPure(op, false);
             this.root?.enqueueChangeTree(this, 'changes');
         }
     }
@@ -327,6 +349,9 @@ export class ChangeTree<T extends Ref = any> {
         }
 
         setOperationAtIndex(changeSet, index);
+
+        // Dual-write to the unified recorder (legacy state above is the read source).
+        this.recorder.record(index, this.indexedOperations[index], isFiltered);
 
         if (isFiltered) {
             setOperationAtIndex(this.allFilteredChanges, index);
@@ -404,6 +429,12 @@ export class ChangeTree<T extends Ref = any> {
     indexedOperation(index: number, operation: OPERATION, allChangesIndex: number = index) {
         this.indexedOperations[index] = operation;
 
+        // Dual-write to recorder. Note: ArraySchema can pass distinct
+        // current-tick (index) vs cumulative (allChangesIndex). The recorder
+        // currently records both at `index`; if migration to recorder reveals
+        // ArraySchema-specific behavior changes, extend the API then.
+        this.recorder.record(index, operation, this.filteredChanges !== undefined);
+
         if (this.filteredChanges !== undefined) {
             setOperationAtIndex(this.allFilteredChanges, allChangesIndex);
             setOperationAtIndex(this.filteredChanges, index);
@@ -461,6 +492,9 @@ export class ChangeTree<T extends Ref = any> {
         setOperationAtIndex(changeSet, index);
         deleteOperationAtIndex(this.allChanges, allChangesIndex);
 
+        // Dual-write to recorder.
+        this.recorder.record(index, operation ?? OPERATION.DELETE, this.filteredChanges !== undefined);
+
         const previousValue = this.getValue(index);
 
         // remove `root` reference
@@ -498,6 +532,9 @@ export class ChangeTree<T extends Ref = any> {
         // clear changeset in place
         resetChangeSet(this[changeSetName]);
 
+        // Dual-write: also clear the recorder for this kind.
+        this.recorder.reset(changeSetName);
+
         // clear queue node for this changeSet
         this.setQueueNode(changeSetName, undefined);
 
@@ -518,16 +555,20 @@ export class ChangeTree<T extends Ref = any> {
 
         this.indexedOperations.length = 0;
         resetChangeSet(this.changes);
+        this.recorder.reset("changes");
 
         if (this.filteredChanges !== undefined) {
             resetChangeSet(this.filteredChanges);
+            this.recorder.reset("filteredChanges");
         }
 
         if (discardAll) {
             resetChangeSet(this.allChanges);
+            this.recorder.reset("allChanges");
 
             if (this.allFilteredChanges !== undefined) {
                 resetChangeSet(this.allFilteredChanges);
+                this.recorder.reset("allFilteredChanges");
             }
         }
     }
@@ -652,6 +693,9 @@ export class ChangeTree<T extends Ref = any> {
                 resetChangeSet(this.changes);
                 resetChangeSet(this.allChanges);
             }
+
+            // Mirror promotion in the recorder.
+            this.recorder.promoteToFiltered();
         }
     }
 
