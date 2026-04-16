@@ -113,7 +113,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         const changeTree = this[$changes];
 
         // discard previous operations.
-        changeTree.discard(true);
+        changeTree.discard();
 
         // clear items
         this.$items.clear();

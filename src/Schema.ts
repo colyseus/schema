@@ -359,15 +359,43 @@ export class Schema<C = any> implements IRef {
         return output;
     }
 
-    static debugRefIdEncodingOrder<T extends Ref>(ref: T, changeSet: ChangeSetName = 'allChanges') {
-        let encodeOrder: number[] = [];
-        let current = ref[$changes].root[changeSet].next;
-        while (current) {
-            if (current.changeTree) {
-                encodeOrder.push(current.changeTree.ref[$refId]);
+    /**
+     * @param changeSet
+     *  - "changes" / "filteredChanges": iterate the current-tick dirty queue
+     *  - "allChanges" / "allFilteredChanges" (legacy): structurally walk the
+     *    tree in DFS preorder (matches the order in which full-sync emits trees)
+     */
+    static debugRefIdEncodingOrder<T extends Ref>(
+        ref: T,
+        changeSet: "changes" | "filteredChanges" | "allChanges" | "allFilteredChanges" = 'allChanges'
+    ) {
+        const encodeOrder: number[] = [];
+        const rootChangeTree = ref[$changes];
+
+        if (changeSet === "changes" || changeSet === "filteredChanges") {
+            let current = rootChangeTree.root[changeSet]?.next;
+            while (current) {
+                if (current.changeTree) {
+                    encodeOrder.push(current.changeTree.ref[$refId]);
+                }
+                current = current.next;
             }
-            current = current.next;
+            return encodeOrder;
         }
+
+        // Full-sync modes: DFS preorder from root, filtered by tree's
+        // filter-status to match the unfiltered / filtered split.
+        const wantFiltered = (changeSet === "allFilteredChanges");
+        const visited = new Set<ChangeTree>();
+        const walk = (changeTree: ChangeTree) => {
+            if (visited.has(changeTree)) return;
+            visited.add(changeTree);
+            if (changeTree.hasFilteredChanges === wantFiltered) {
+                encodeOrder.push(changeTree.ref[$refId]);
+            }
+            changeTree.forEachChild((child, _) => walk(child));
+        };
+        walk(rootChangeTree);
         return encodeOrder;
     }
 
@@ -385,30 +413,31 @@ export class Schema<C = any> implements IRef {
      */
     static debugChanges<T extends Ref>(instance: T, isEncodeAll: boolean = false) {
         const changeTree: ChangeTree = instance[$changes];
+        const label = isEncodeAll ? "allChanges" : "changes";
+        let output = `${instance.constructor.name} (${instance[$refId]}) -> .${label}:\n`;
 
-        const primaryKind = (isEncodeAll) ? "allChanges" : "changes";
-        const filteredKind = (isEncodeAll) ? "allFilteredChanges" : "filteredChanges";
-
-        let output = `${instance.constructor.name} (${instance[$refId]}) -> .${primaryKind}:\n`;
-
-        const dumpKind = (kind: "changes" | "allChanges" | "filteredChanges" | "allFilteredChanges") => {
-            changeTree.recorder.forEach(kind, (index, op) => {
-                if (index < 0 || !op) return;
-                output += `- [${index}]: ${OPERATION[op]} (${JSON.stringify(changeTree.getValue(Number(index), isEncodeAll))})\n`;
+        if (isEncodeAll) {
+            changeTree.forEachLive((index) => {
+                output += `- [${index}]: ADD (${JSON.stringify(changeTree.getValue(Number(index), true))})\n`;
             });
-        };
-
-        dumpKind(primaryKind);
-
-        if (changeTree.recorder.hasFilteredStorage && changeTree.recorder.has(filteredKind)) {
-            output += `${instance.constructor.name} (${instance[$refId]}) -> .${filteredKind}:\n`;
-            dumpKind(filteredKind);
+        } else {
+            changeTree.recorder.forEach("changes", (index, op) => {
+                if (index < 0 || !op) return;
+                output += `- [${index}]: ${OPERATION[op]} (${JSON.stringify(changeTree.getValue(Number(index), false))})\n`;
+            });
+            if (changeTree.recorder.hasFilteredStorage && changeTree.recorder.has("filteredChanges")) {
+                output += `${instance.constructor.name} (${instance[$refId]}) -> .filteredChanges:\n`;
+                changeTree.recorder.forEach("filteredChanges", (index, op) => {
+                    if (index < 0 || !op) return;
+                    output += `- [${index}]: ${OPERATION[op]} (${JSON.stringify(changeTree.getValue(Number(index), false))})\n`;
+                });
+            }
         }
 
         return output;
     }
 
-    static debugChangesDeep<T extends Schema>(ref: T, changeSetName: "changes" | "allChanges" | "allFilteredChanges" | "filteredChanges" = "changes") {
+    static debugChangesDeep<T extends Schema>(ref: T, changeSetName: "changes" | "filteredChanges" = "changes") {
         let output = "";
 
         const rootChangeTree: ChangeTree = ref[$changes];
@@ -419,7 +448,7 @@ export class Schema<C = any> implements IRef {
         let totalOperations = 0;
 
         // TODO: FIXME: this method is not working as expected
-        for (const [refId, changes] of Object.entries(root[changeSetName])) {
+        for (const [refId, changes] of Object.entries(root[changeSetName] ?? {})) {
             const changeTree = root.changeTrees[refId as any as number];
             if (!changeTree) { continue; }
 

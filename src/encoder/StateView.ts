@@ -133,26 +133,20 @@ export class StateView {
 
         } else if (!changeTree.isNew || isChildAdded) {
             // new structures will be added as part of .encode() call, no need to force it to .encodeView()
-            const kind = (changeTree.hasFilteredChanges)
-                ? "allFilteredChanges"
-                : "allChanges";
-
             const isInvisible = this.invisible.has(changeTree);
 
-            changeTree.recorder.forEach(kind, (index, op) => {
-                if (index < 0) return; // skip pure ops (CLEAR/REVERSE)
-
-                const resolvedOp = op || OPERATION.ADD;
-                const tagAtIndex = metadata?.[index].tag;
+            // Full-sync snapshot: walk the live ref structurally instead of
+            // iterating a cumulative recorder bucket. Every populated index
+            // is emitted as ADD (matching the op-coercion previously done
+            // at encode time).
+            changeTree.forEachLive((index) => {
+                const tagAtIndex = metadata?.[index]?.tag;
                 if (
-                    resolvedOp !== OPERATION.DELETE &&
-                    (
-                        isInvisible || // if "invisible", include all
-                        tagAtIndex === undefined || // "all change" with no tag
-                        tagAtIndex === tag // tagged property
-                    )
+                    isInvisible || // if "invisible", include all
+                    tagAtIndex === undefined || // "all change" with no tag
+                    tagAtIndex === tag // tagged property
                 ) {
-                    changes[index] = resolvedOp;
+                    changes[index] = OPERATION.ADD;
                     isChildAdded = true; // FIXME: assign only once
                 }
             });

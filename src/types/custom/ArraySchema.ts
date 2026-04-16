@@ -209,7 +209,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
                 // TODO: move value[$changes]?.setParent() to this block.
             }
 
-            changeTree.indexedOperation(length, OPERATION.ADD, this.items.length);
+            changeTree.indexedOperation(length, OPERATION.ADD);
 
             this.items.push(value);
             this.tmpItems.push(value);
@@ -243,7 +243,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             return undefined;
         }
 
-        this[$changes].delete(index, undefined, this.items.length - 1);
+        this[$changes].delete(index);
 
         this.deletedIndexes[index] = true;
 
@@ -322,7 +322,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             changeTree.root?.remove(childChangeTree);
         });
 
-        changeTree.discard(true);
+        changeTree.discard();
         changeTree.operation(OPERATION.CLEAR);
 
         this.items.length = 0;
@@ -366,11 +366,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         const changeTree = this[$changes];
 
         const index = this.tmpItems.findIndex(item => item === this.items[0]);
-        const allChangesIndex = this.items.findIndex(item => item === this.items[0]);
-
-        changeTree.delete(index, OPERATION.DELETE, allChangesIndex);
-        changeTree.shiftAllChangeIndexes(-1, allChangesIndex);
-
+        changeTree.delete(index, OPERATION.DELETE);
         this.deletedIndexes[index] = true;
 
         return this.items.shift();
@@ -478,14 +474,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             }
         }
 
-        //
-        // delete exceeding indexes from "allChanges"
-        // (prevent .encodeAll() from encoding non-existing items)
-        //
-        if (deleteCount > insertCount) {
-            changeTree.shiftAllChangeIndexes(-(deleteCount - insertCount), indexes[start + insertCount]);
-        }
-
         changeTree.root?.enqueueChangeTree(
             changeTree,
             changeTree.hasFilteredChanges ? 'filteredChanges' : 'changes'
@@ -503,10 +491,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
         // shift indexes
         changeTree.shiftChangeIndexes(items.length);
-
-        // Track the former-last index in the cumulative list
-        // (it will appear at position this.items.length after the shift).
-        changeTree.trackCumulativeIndex(this.items.length);
 
         // FIXME: should we use OPERATION.MOVE here instead?
         items.forEach((_, index) => {

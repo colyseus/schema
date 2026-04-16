@@ -34,10 +34,7 @@ export interface IRef {
 
 export type Ref = Schema | ArraySchema | MapSchema | CollectionSchema | SetSchema;
 
-export type ChangeSetName = "changes"
-    | "allChanges"
-    | "filteredChanges"
-    | "allFilteredChanges";
+export type ChangeSetName = "changes" | "filteredChanges";
 
 export interface IndexedOperations {
     [index: number]: OPERATION;
@@ -90,50 +87,40 @@ export class ChangeTree<T extends Ref = any> {
      * bit 0: isFiltered
      * bit 1: isVisibilitySharedWithParent
      * bit 2: isNew
-     * bit 3: hasFilteredChanges (tree tracks filtered/allFiltered changes in its recorder)
+     * bit 3: hasFilteredChanges (tree tracks filtered changes in its recorder)
      */
     flags: number = IS_NEW; // default: isNew=true
 
     /**
      * Unified change-tracking abstraction — the single source of truth for
-     * current-tick and cumulative changes on this tree. SchemaChangeRecorder
-     * (bitmask) for Schema instances, CollectionChangeRecorder (Map) for
-     * ArraySchema / MapSchema / SetSchema / CollectionSchema.
+     * current-tick changes on this tree. Full-sync snapshots (encodeAll,
+     * StateView.add of an existing instance) are derived by walking the
+     * live ref structure via {@link forEachLive}, not from the recorder.
      */
     recorder: ChangeRecorder;
 
     /**
      * When true, mutations on the associated ref are NOT tracked.
      * See `pause()` / `resume()` / `untracked(fn)`.
-     *
-     * The public API lives on Schema (and collection classes) as
-     * `instance.pauseTracking()`, `instance.resumeTracking()`, and
-     * `instance.untracked(fn)` — all of which delegate here.
      */
     paused: boolean = false;
 
-    // Direct queue-node refs (moved from ChangeSet).
-    // Set by Root.addToChangeTreeList / cleared by endEncode / removeChangeFromChangeSet.
+    // Direct queue-node refs. Set by Root.addToChangeTreeList / cleared by
+    // endEncode / removeChangeFromChangeSet.
     changesNode?: ChangeTreeNode;
-    allChangesNode?: ChangeTreeNode;
     filteredChangesNode?: ChangeTreeNode;
-    allFilteredChangesNode?: ChangeTreeNode;
 
     getQueueNode(name: ChangeSetName): ChangeTreeNode | undefined {
         switch (name) {
             case "changes": return this.changesNode;
-            case "allChanges": return this.allChangesNode;
             case "filteredChanges": return this.filteredChangesNode;
-            case "allFilteredChanges": return this.allFilteredChangesNode;
         }
     }
 
     setQueueNode(name: ChangeSetName, node: ChangeTreeNode | undefined): void {
         switch (name) {
             case "changes": this.changesNode = node; break;
-            case "allChanges": this.allChangesNode = node; break;
             case "filteredChanges": this.filteredChangesNode = node; break;
-            case "allFilteredChanges": this.allFilteredChangesNode = node; break;
         }
     }
 
@@ -154,9 +141,6 @@ export class ChangeTree<T extends Ref = any> {
         this.ref = ref;
         this.metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
 
-        // Allocate the appropriate ChangeRecorder. Schema instances have
-        // metadata with $numFields; collections do not (their items are
-        // dynamic, not declared via metadata).
         const isSchema = Metadata.isValidInstance(ref);
         if (isSchema) {
             const numFields = (this.metadata?.[$numFields] ?? 0) as number;
@@ -165,11 +149,6 @@ export class ChangeTree<T extends Ref = any> {
             this.recorder = new CollectionChangeRecorder();
         }
 
-        //
-        // Does this structure have "filters" declared? Mark the tree as
-        // filter-capable so subsequent change() / delete() calls route to
-        // the filtered buckets.
-        //
         if (this.metadata?.[$viewFieldIndexes]) {
             this.hasFilteredChanges = true;
         }
@@ -248,6 +227,58 @@ export class ChangeTree<T extends Ref = any> {
         }
     }
 
+    /**
+     * Walk all currently-populated indexes on this tree, emitting each index
+     * once. Used by Root.add (re-stage), Encoder.encodeAll, and StateView.add
+     * to derive full-sync output from the live structure rather than from a
+     * maintained cumulative bucket.
+     *
+     * - Schema: walks metadata fields 0..$numFields, emits indexes where
+     *   `ref[field.name] !== undefined`.
+     * - ArraySchema: walks `items`, emits indexes where the slot is defined.
+     * - MapSchema: walks the journal's index→key map, emits indexes whose
+     *   key is still present in `$items`.
+     * - SetSchema / CollectionSchema: walks `$items.keys()` (the key IS the
+     *   wire index).
+     */
+    forEachLive(callback: (index: number) => void): void {
+        const ref = this.ref as any;
+
+        if (ref[$childType] !== undefined) {
+            // Collection types: dispatch by shape.
+            if (Array.isArray(ref.items)) {
+                // ArraySchema
+                const items = ref.items as any[];
+                for (let i = 0, len = items.length; i < len; i++) {
+                    if (items[i] !== undefined) callback(i);
+                }
+            } else if (ref.journal !== undefined) {
+                // MapSchema
+                for (const [index, key] of ref.journal.keyByIndex as Map<number, any>) {
+                    if (ref.$items.has(key)) callback(index);
+                }
+            } else if (ref.$items !== undefined) {
+                // SetSchema / CollectionSchema (key === wire index)
+                for (const index of (ref.$items as Map<number, any>).keys()) {
+                    callback(index);
+                }
+            }
+        } else {
+            // Schema: walk declared fields. `null` is treated as absent —
+            // the setter records a DELETE when a field is set to null or
+            // undefined, so it should not appear in full-sync output.
+            const metadata = this.metadata;
+            if (!metadata) return;
+            const numFields = (metadata[$numFields] ?? -1) as number;
+            for (let i = 0; i <= numFields; i++) {
+                const field = metadata[i as any];
+                if (field === undefined) continue;
+                const value = ref[field.name];
+                if (value !== undefined && value !== null) callback(i);
+            }
+        }
+    }
+
     operation(op: OPERATION) {
         if (this.paused) return;
 
@@ -257,24 +288,6 @@ export class ChangeTree<T extends Ref = any> {
         } else {
             this.recorder.recordPure(op, false);
             this.root?.enqueueChangeTree(this, 'changes');
-        }
-    }
-
-    /**
-     * Ensure `index` is tracked in the cumulative (allChanges / allFilteredChanges)
-     * list without also adding to the current-tick dirty list.
-     *
-     * Used by ArraySchema.unshift to append the former-last index to the
-     * cumulative list (it's being relocated, not newly added).
-     */
-    trackCumulativeIndex(index: number) {
-        const op = this.recorder.operationAt(index) ?? OPERATION.ADD;
-        if (this.hasFilteredChanges) {
-            // Legacy semantics: writes to filteredChanges (current-tick filtered).
-            this.recorder.recordInCurrentTick(index, op, true);
-        } else {
-            // Legacy semantics: writes to allChanges (cumulative unfiltered).
-            this.recorder.recordInCumulative(index, op, false);
         }
     }
 
@@ -293,10 +306,7 @@ export class ChangeTree<T extends Ref = any> {
         this.recorder.record(index, op, isFiltered);
 
         if (isFiltered) {
-            if (this.root) {
-                this.root.enqueueChangeTree(this, 'filteredChanges');
-                this.root.enqueueChangeTree(this, 'allFilteredChanges');
-            }
+            this.root?.enqueueChangeTree(this, 'filteredChanges');
         } else {
             this.root?.enqueueChangeTree(this, 'changes');
         }
@@ -309,19 +319,10 @@ export class ChangeTree<T extends Ref = any> {
         this.recorder.shift(shiftIndex);
     }
 
-    shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0) {
-        //
-        // Used only during ArraySchema#splice()
-        //
-        this.recorder.shiftCumulative(shiftIndex, startIndex);
-    }
-
-    indexedOperation(index: number, operation: OPERATION, allChangesIndex: number = index) {
+    indexedOperation(index: number, operation: OPERATION) {
         if (this.paused) return;
 
-        // ArraySchema passes distinct current-tick (index) vs cumulative
-        // (allChangesIndex); other callers default both to the same index.
-        this.recorder.recordWithCumulativeIndex(index, allChangesIndex, operation, this.hasFilteredChanges);
+        this.recorder.recordRaw(index, operation, this.hasFilteredChanges);
 
         if (this.hasFilteredChanges) {
             this.root?.enqueueChangeTree(this, 'filteredChanges');
@@ -357,14 +358,6 @@ export class ChangeTree<T extends Ref = any> {
 
     /**
      * Stop recording mutations until resume() is called.
-     *
-     * Mutations applied while paused are NOT emitted in the next encode()
-     * output. `allChanges` is also not updated for those mutations — if
-     * you pause, mutate, resume, then encode, the paused mutations will
-     * NOT appear in subsequent encodeAll() snapshots either.
-     *
-     * Use `markDirty(index)` after resuming to force specific fields into
-     * the next patch if needed.
      */
     pause(): void {
         this.paused = true;
@@ -414,7 +407,7 @@ export class ChangeTree<T extends Ref = any> {
         return (this.ref as any)[$getByIndex](index, isEncodeAll);
     }
 
-    delete(index: number, operation?: OPERATION, allChangesIndex = index) {
+    delete(index: number, operation?: OPERATION) {
         if (index === undefined) {
             try {
                 throw new Error(`@colyseus/schema ${this.ref.constructor.name}: trying to delete non-existing index '${index}'`);
@@ -430,11 +423,7 @@ export class ChangeTree<T extends Ref = any> {
             return this.getValue(index);
         }
 
-        // recordDelete adds to the dirty bucket (filtered if the tree has
-        // filtered storage) and removes from both `all` and `allFiltered`
-        // cumulative maps. For ArraySchema, `index` (tmpItems-position) may
-        // differ from `allChangesIndex` (items-position).
-        this.recorder.recordDelete(index, operation ?? OPERATION.DELETE, this.hasFilteredChanges, allChangesIndex);
+        this.recorder.recordDelete(index, operation ?? OPERATION.DELETE, this.hasFilteredChanges);
 
         const previousValue = this.getValue(index);
 
@@ -471,7 +460,7 @@ export class ChangeTree<T extends Ref = any> {
         this.isNew = false;
     }
 
-    discard(discardAll: boolean = false) {
+    discard() {
         //
         // > MapSchema:
         //      Remove cached key to ensure ADD operations is unsed instead of
@@ -482,13 +471,6 @@ export class ChangeTree<T extends Ref = any> {
         this.recorder.reset("changes");
         if (this.hasFilteredChanges) {
             this.recorder.reset("filteredChanges");
-        }
-
-        if (discardAll) {
-            this.recorder.reset("allChanges");
-            if (this.hasFilteredChanges) {
-                this.recorder.reset("allFilteredChanges");
-            }
         }
     }
 
@@ -523,19 +505,11 @@ export class ChangeTree<T extends Ref = any> {
 
             if (this.hasFilteredChanges) {
                 this.root?.enqueueChangeTree(this, 'filteredChanges');
-
-                if (isNewChangeTree) {
-                    this.root?.enqueueChangeTree(this, 'allFilteredChanges');
-                }
             }
         }
 
         if (!this.isFiltered) {
             this.root?.enqueueChangeTree(this, 'changes');
-
-            if (isNewChangeTree) {
-                this.root?.enqueueChangeTree(this, 'allChanges');
-            }
         }
     }
 
@@ -592,8 +566,8 @@ export class ChangeTree<T extends Ref = any> {
 
             this.hasFilteredChanges = true;
 
-            // Promote any current-tick/cumulative entries recorded before this
-            // tree was known to be filtered into the filtered buckets.
+            // Promote any current-tick entries recorded before this tree was
+            // known to be filtered into the filtered bucket.
             this.recorder.promoteToFiltered();
         }
     }

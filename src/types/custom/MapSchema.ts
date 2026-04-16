@@ -182,7 +182,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         const changeTree = this[$changes];
 
         // discard previous operations.
-        changeTree.discard(true);
+        changeTree.discard();
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {

@@ -9,10 +9,6 @@ export class Root {
     refCount: {[id: number]: number} = {};
     changeTrees: {[refId: number]: ChangeTree} = {};
 
-    // all changes
-    allChanges: ChangeTreeList = createChangeTreeList();
-    allFilteredChanges: ChangeTreeList;
-
     // pending changes to be encoded
     changes: ChangeTreeList = createChangeTreeList();
     filteredChanges: ChangeTreeList;
@@ -20,7 +16,6 @@ export class Root {
     constructor(public types: TypeContext, startRefId: number = 0) {
         this.nextUniqueId = startRefId;
         if (types.hasFilters) {
-            this.allFilteredChanges = createChangeTreeList();
             this.filteredChanges = createChangeTreeList();
         }
     }
@@ -50,21 +45,17 @@ export class Root {
         if (previousRefCount === 0) {
             //
             // When a ChangeTree is re-added, it means that it was previously
-            // removed. Re-stage every cumulative (allChanges / allFilteredChanges)
-            // field as a fresh ADD in the current-tick dirty set so the next
-            // encode re-emits all of them.
+            // removed. Re-stage every currently-populated index as a fresh ADD
+            // in the current-tick dirty set so the next encode re-emits them.
             //
             const recorder = changeTree.recorder;
             const isFiltered = changeTree.hasFilteredChanges;
-            recorder.forEach(isFiltered ? "allFilteredChanges" : "allChanges", (fieldIndex, _op) => {
-                if (fieldIndex < 0) return; // skip pure ops
+            changeTree.forEachLive((fieldIndex) => {
                 recorder.record(fieldIndex, OPERATION.ADD, isFiltered);
             });
         }
 
         this.refCount[refId] = (previousRefCount || 0) + 1;
-
-        // console.log("ADD", { refId, ref: ref.constructor.name, refCount: this.refCount[refId], isNewChangeTree });
 
         return isNewChangeTree;
     }
@@ -73,8 +64,6 @@ export class Root {
         const refId = changeTree.ref[$refId];
         const refCount = (this.refCount[refId]) - 1;
 
-        // console.log("REMOVE", { refId, ref: changeTree.ref.constructor.name, refCount, needRemove: refCount <= 0 });
-
         if (refCount <= 0) {
             //
             // Only remove "root" reference if it's the last reference
@@ -82,11 +71,9 @@ export class Root {
             changeTree.root = undefined;
             delete this.changeTrees[refId];
 
-            this.removeChangeFromChangeSet("allChanges", changeTree);
             this.removeChangeFromChangeSet("changes", changeTree);
 
             if (changeTree.hasFilteredChanges) {
-                this.removeChangeFromChangeSet("allFilteredChanges", changeTree);
                 this.removeChangeFromChangeSet("filteredChanges", changeTree);
             }
 
@@ -133,10 +120,8 @@ export class Root {
     moveNextToParent(changeTree: ChangeTree) {
         if (changeTree.hasFilteredChanges) {
             this.moveNextToParentInChangeTreeList("filteredChanges", changeTree);
-            this.moveNextToParentInChangeTreeList("allFilteredChanges", changeTree);
         } else {
             this.moveNextToParentInChangeTreeList("changes", changeTree);
-            this.moveNextToParentInChangeTreeList("allChanges", changeTree);
         }
     }
 
@@ -191,7 +176,7 @@ export class Root {
 
     public enqueueChangeTree(
         changeTree: ChangeTree,
-        changeSet: 'changes' | 'filteredChanges' | 'allFilteredChanges' | 'allChanges',
+        changeSet: ChangeSetName,
         queueRootNode = changeTree.getQueueNode(changeSet)
     ) {
         // skip

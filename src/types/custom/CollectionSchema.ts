@@ -119,7 +119,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
         const changeTree = this[$changes];
 
         // discard previous operations.
-        changeTree.discard(true);
+        changeTree.discard();
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {

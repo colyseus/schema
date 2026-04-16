@@ -1,5 +1,6 @@
 import type { Schema } from "../Schema.js";
 import { TypeContext } from "../types/TypeContext.js";
+import { Metadata } from "../Metadata.js";
 import { $changes, $encoder, $filter, $getByIndex, $refId } from "../types/symbols.js";
 
 import { encode } from "../encoding/encode.js";
@@ -73,11 +74,6 @@ export class Encoder<T extends Schema = any> {
         this.root = root ?? new Root(this.context);
 
         this.setState(state);
-
-        // console.log(">>>>>>>>>>>>>>>> Encoder types");
-        // this.context.schemas.forEach((id, schema) => {
-        //     console.log("type:", id, schema.name, Object.keys(schema[Symbol.metadata]));
-        // });
     }
 
     protected setState(state: T) {
@@ -86,20 +82,24 @@ export class Encoder<T extends Schema = any> {
     }
 
     // Reused context for encode iteration — avoids allocating a closure per
-    // ChangeTree in the hot encode path. Fields are reset inside each loop
-    // iteration before handing to recorder.forEachWithCtx.
+    // ChangeTree in the hot encode path.
     private _encodeCtx: EncodeCtx = {
         self: undefined!, buffer: undefined!, it: undefined!, changeTree: undefined!,
         ref: undefined, encoder: undefined!, filter: undefined, metadata: undefined,
         view: undefined, isEncodeAll: false, hasView: false,
     };
 
+    /**
+     * Dedupe set used by the structural full-sync walker. Reused across calls
+     * to avoid allocation; cleared at the start of each walk.
+     */
+    private _fullSyncVisited: Set<ChangeTree> = new Set();
+
     encode(
         it: Iterator = { offset: 0 },
         view?: StateView,
         buffer: Uint8Array = this.sharedBuffer,
         changeSetName: ChangeSetName = "changes",
-        isEncodeAll = changeSetName === "allChanges",
         initialOffset = it.offset // cache current offset in case we need to resize the buffer
     ): Uint8Array {
         const hasView = (view !== undefined);
@@ -110,7 +110,7 @@ export class Encoder<T extends Schema = any> {
         ctx.buffer = buffer;
         ctx.it = it;
         ctx.view = view;
-        ctx.isEncodeAll = isEncodeAll;
+        ctx.isEncodeAll = false;
         ctx.hasView = hasView;
 
         let current: ChangeTreeList | ChangeTreeNode = this.root[changeSetName];
@@ -150,42 +150,150 @@ export class Encoder<T extends Schema = any> {
         }
 
         if (it.offset > buffer.byteLength) {
-            // we can assume that n + 1 BUFFER_SIZE will suffice given that we are likely done with encoding at this point
-            // multiples of BUFFER_SIZE are faster to allocate than arbitrary sizes
-            const newSize = Math.ceil(it.offset / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
+            buffer = this._resizeAndRetryEncode(buffer, it.offset, initialOffset, view, changeSetName);
+            return this.encode({ offset: initialOffset }, view, buffer, changeSetName);
+        }
 
-            console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
+        return buffer.subarray(0, it.offset);
+    }
+
+    /**
+     * Structural DFS walker for full-sync (encodeAll / encodeAllView).
+     * Visits each ChangeTree in DFS preorder starting from the state root,
+     * emitting ADD operations for every currently-populated index via
+     * {@link ChangeTree.forEachLive}.
+     *
+     * `emitFiltered` selects which subset of trees to emit:
+     *  - false → only unfiltered trees (encodeAll baseline)
+     *  - true  → only filtered trees (encodeAllView per-view layer)
+     */
+    private encodeFullSync(
+        it: Iterator,
+        buffer: Uint8Array,
+        emitFiltered: boolean,
+        view?: StateView,
+        initialOffset: number = it.offset
+    ): Uint8Array {
+        const hasView = (view !== undefined);
+        const rootChangeTree = this.state[$changes];
+
+        const ctx = this._encodeCtx;
+        ctx.self = this;
+        ctx.buffer = buffer;
+        ctx.it = it;
+        ctx.view = view;
+        ctx.isEncodeAll = true;
+        ctx.hasView = hasView;
+
+        const visited = this._fullSyncVisited;
+        visited.clear();
+
+        const walk = (changeTree: ChangeTree): void => {
+            if (visited.has(changeTree)) return;
+            visited.add(changeTree);
+
+            const ref = changeTree.ref;
+            const ctor = ref.constructor;
+            const metadata = ctor[Symbol.metadata];
+
+            // Visibility gate: when a view is active, a non-visible tree
+            // contributes nothing itself but we still recurse so descendants
+            // (which may have been explicitly view.add()-ed) are reachable.
+            let visibleHere = true;
+            if (hasView) {
+                if (!view.isChangeTreeVisible(changeTree)) {
+                    view.invisible.add(changeTree);
+                    visibleHere = false;
+                } else {
+                    view.invisible.delete(changeTree);
+                }
+            }
+
+            // Filter classification (must match ChangeTree.change()):
+            // a given (tree, index) is filtered iff tree.isFiltered (inherited
+            // from a filtered ancestor) OR the field itself has a @view tag.
+            // - Schema trees: per-field if tree.isFiltered is false, else all fields.
+            // - Collection trees: tree-wide via hasFilteredChanges.
+            const isSchema = Metadata.isValidInstance(ref);
+            const treeIsFiltered = changeTree.isFiltered;
+            const collectionIsFiltered = !isSchema && changeTree.hasFilteredChanges;
+
+            let emitFields = visibleHere;
+            if (emitFields && !isSchema) {
+                emitFields = collectionIsFiltered === emitFiltered;
+            }
+
+            let structSwitchEmitted = false;
+            const ensureStructSwitch = () => {
+                if (structSwitchEmitted) return;
+                if (hasView || ctx.it.offset > initialOffset || changeTree !== rootChangeTree) {
+                    ctx.buffer[ctx.it.offset++] = SWITCH_TO_STRUCTURE & 255;
+                    encode.number(ctx.buffer, ref[$refId], ctx.it);
+                }
+                ctx.changeTree = changeTree;
+                ctx.ref = ref;
+                ctx.encoder = ctor[$encoder];
+                ctx.filter = ctor[$filter];
+                ctx.metadata = metadata;
+                structSwitchEmitted = true;
+            };
+
+            if (emitFields) {
+                changeTree.forEachLive((index) => {
+                    if (isSchema) {
+                        // Same filtered-index rule as ChangeTree.change().
+                        const fieldFiltered = treeIsFiltered || (metadata?.[index]?.tag !== undefined);
+                        if (fieldFiltered !== emitFiltered) return;
+                    }
+                    ensureStructSwitch();
+                    encodeChangeCb(ctx, index, OPERATION.ADD);
+                });
+            }
+
+            changeTree.forEachChild((child, _) => walk(child));
+        };
+
+        walk(rootChangeTree);
+
+        if (it.offset > buffer.byteLength) {
+            buffer = this._resizeAndRetryEncode(buffer, it.offset, initialOffset, view, undefined);
+            return this.encodeFullSync({ offset: initialOffset }, buffer, emitFiltered, view);
+        }
+
+        return buffer.subarray(0, it.offset);
+    }
+
+    private _resizeAndRetryEncode(
+        buffer: Uint8Array,
+        usedOffset: number,
+        _initialOffset: number,
+        _view: StateView | undefined,
+        _changeSetName: ChangeSetName | undefined,
+    ): Uint8Array {
+        const newSize = Math.ceil(usedOffset / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
+
+        console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
 
     import { Encoder } from "@colyseus/schema";
     Encoder.BUFFER_SIZE = ${Math.round(newSize / 1024)} * 1024; // ${Math.round(newSize / 1024)} KB
 `);
 
-            //
-            // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
-            // -> No we probably can't unless we catch the need for resize before encoding which is likely more computationally expensive than resizing on demand
-            //
-            const newBuffer = new Uint8Array(newSize);
-            newBuffer.set(buffer); // copy previous encoding steps beyond the initialOffset
-            buffer = newBuffer;
+        const newBuffer = new Uint8Array(newSize);
+        newBuffer.set(buffer);
 
-            // assign resized buffer to local sharedBuffer
-            if (buffer === this.sharedBuffer) {
-                this.sharedBuffer = buffer;
-            }
-
-            return this.encode({ offset: initialOffset }, view, buffer, changeSetName, isEncodeAll);
-
-        } else {
-
-            return buffer.subarray(0, it.offset);
+        // assign resized buffer to local sharedBuffer
+        if (buffer === this.sharedBuffer) {
+            this.sharedBuffer = newBuffer;
         }
+
+        return newBuffer;
     }
 
     encodeAll(
         it: Iterator = { offset: 0 },
         buffer: Uint8Array = this.sharedBuffer
     ) {
-        return this.encode(it, undefined, buffer, "allChanges", true);
+        return this.encodeFullSync(it, buffer, /* emitFiltered */ false);
     }
 
     encodeAllView(
@@ -197,7 +305,7 @@ export class Encoder<T extends Schema = any> {
         const viewOffset = it.offset;
 
         // try to encode "filtered" changes
-        this.encode(it, view, bytes, "allFilteredChanges", true, viewOffset);
+        this.encodeFullSync(it, bytes, /* emitFiltered */ true, view, viewOffset);
 
         return concatBytes(
             bytes.subarray(0, sharedOffset),
@@ -219,7 +327,6 @@ export class Encoder<T extends Schema = any> {
 
             if (changeTree === undefined) {
                 // detached instance, remove from view and skip.
-                // console.log("detached instance, remove from view and skip.", refId);
                 view.changes.delete(refId);
                 continue;
             }
@@ -227,7 +334,6 @@ export class Encoder<T extends Schema = any> {
             const keys = Object.keys(changes);
             if (keys.length === 0) {
                 // FIXME: avoid having empty changes if no changes were made
-                // console.log("changes.size === 0, skip", refId, changeTree.ref.constructor.name);
                 continue;
             }
 
@@ -260,7 +366,7 @@ export class Encoder<T extends Schema = any> {
         view.changes.clear();
 
         // try to encode "filtered" changes
-        this.encode(it, view, bytes, "filteredChanges", false, viewOffset);
+        this.encode(it, view, bytes, "filteredChanges", viewOffset);
 
         return concatBytes(
             bytes.subarray(0, sharedOffset),

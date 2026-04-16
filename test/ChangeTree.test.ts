@@ -19,29 +19,25 @@ describe("ChangeTree", () => {
 
             // @ts-ignore
             const changeTree = new ChangeTree(state);
-            const collect = (kind: "changes" | "allChanges") => {
+            const collect = () => {
                 const out: Array<[number, number]> = [];
-                changeTree.recorder.forEach(kind, (i, op) => { if (i >= 0) out.push([i, op]); });
+                changeTree.recorder.forEach("changes", (i, op) => { if (i >= 0) out.push([i, op]); });
                 return out;
             };
 
             changeTree.change(0, OPERATION.ADD);
             assert.strictEqual(changeTree.getChange(0), OPERATION.ADD);
-            assert.deepStrictEqual(collect("changes"), [[0, OPERATION.ADD]]);
-            assert.deepStrictEqual(collect("allChanges"), [[0, OPERATION.ADD]]);
+            assert.deepStrictEqual(collect(), [[0, OPERATION.ADD]]);
 
             changeTree.change(1, OPERATION.ADD);
             assert.strictEqual(changeTree.getChange(0), OPERATION.ADD);
             assert.strictEqual(changeTree.getChange(1), OPERATION.ADD);
-            assert.deepStrictEqual(collect("changes"), [[0, OPERATION.ADD], [1, OPERATION.ADD]]);
-            assert.deepStrictEqual(collect("allChanges"), [[0, OPERATION.ADD], [1, OPERATION.ADD]]);
+            assert.deepStrictEqual(collect(), [[0, OPERATION.ADD], [1, OPERATION.ADD]]);
 
             changeTree.delete(0, OPERATION.DELETE);
             assert.strictEqual(changeTree.getChange(0), OPERATION.DELETE);
             assert.strictEqual(changeTree.getChange(1), OPERATION.ADD);
-            assert.deepStrictEqual(collect("changes"), [[0, OPERATION.DELETE], [1, OPERATION.ADD]]);
-            // DELETE removes the cumulative entry — only index 1 remains.
-            assert.deepStrictEqual(collect("allChanges"), [[1, OPERATION.ADD]]);
+            assert.deepStrictEqual(collect(), [[0, OPERATION.DELETE], [1, OPERATION.ADD]]);
         });
     });
 
@@ -150,13 +146,18 @@ describe("ChangeTree", () => {
         state.game = new Game();
 
         const changes: ChangeTree = state.game[$changes];
-        const collect = (kind: "changes" | "allChanges") => {
+        const collectDirty = () => {
             const out: number[] = [];
-            changes.recorder.forEach(kind, (i) => { if (i >= 0) out.push(i); });
+            changes.recorder.forEach("changes", (i) => { if (i >= 0) out.push(i); });
             return out;
         };
-        assert.deepStrictEqual(collect("changes"), [0]);
-        assert.deepStrictEqual(collect("allChanges"), [0]);
+        const collectLive = () => {
+            const out: number[] = [];
+            changes.forEachLive((i) => out.push(i));
+            return out;
+        };
+        assert.deepStrictEqual(collectDirty(), [0]);
+        assert.deepStrictEqual(collectLive(), [0]);
     });
 
     it("should not instantiate 'filteredChanges'", () => {
@@ -194,8 +195,8 @@ describe("ChangeTree", () => {
             state.items.push(new Item().assign({ amount: i }));
         }
 
-        // Check that no undefined values exist in the linked list
-        let current = encoder.root.allFilteredChanges.next;
+        // Check that no undefined values exist in the filtered-changes list
+        let current = encoder.root.filteredChanges?.next;
         let foundUndefined = false;
         while (current) {
             if (current.changeTree === undefined) {

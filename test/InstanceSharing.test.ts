@@ -423,15 +423,8 @@ describe("Instance sharing", () => {
         decodedState.decode(state.encode());
         assertRefIdCounts(state, decodedState);
 
-        let refIds: number[] = [];
-        let current = encoder.root.allChanges.next;
-        while (current) {
-            if (current.changeTree !== undefined) {
-                refIds.push(current.changeTree.ref[$refId]);
-            }
-            current = current.next;
-        }
-
+        // Full-sync order is a structural DFS from root.
+        const refIds = Schema.debugRefIdEncodingOrder(state, 'allChanges');
         assert.deepStrictEqual([0, 1, 2, 3], refIds, "must include all refId's");
 
         assertDeepStrictEqualEncodeAll(state);

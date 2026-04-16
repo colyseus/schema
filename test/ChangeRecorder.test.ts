@@ -10,7 +10,6 @@ describe("ChangeRecorder", () => {
             r.record(3, OPERATION.ADD, false);
 
             assert.strictEqual(r.has("changes"), true);
-            assert.strictEqual(r.has("allChanges"), true);
             assert.strictEqual(r.sizeOf("changes"), 1);
             assert.strictEqual(r.operationAt(3), OPERATION.ADD);
         });
@@ -47,15 +46,11 @@ describe("ChangeRecorder", () => {
             assert.strictEqual(r.operationAt(2), OPERATION.DELETE_AND_ADD);
         });
 
-        it("recordDelete adds to dirty but removes from cumulative", () => {
+        it("recordDelete records DELETE in the dirty bucket", () => {
             const r = new SchemaChangeRecorder(8);
             r.record(3, OPERATION.ADD, false);
-            assert.strictEqual(r.has("changes"), true);
-            assert.strictEqual(r.has("allChanges"), true);
-
             r.recordDelete(3, OPERATION.DELETE, false);
-            assert.strictEqual(r.has("changes"), true);   // DELETE still queued
-            assert.strictEqual(r.has("allChanges"), false); // cumulative cleared
+            assert.strictEqual(r.has("changes"), true);
             assert.strictEqual(r.operationAt(3), OPERATION.DELETE);
         });
 
@@ -78,18 +73,15 @@ describe("ChangeRecorder", () => {
             r.record(1, OPERATION.ADD, true);
 
             assert.strictEqual(r.has("changes"), false);
-            assert.strictEqual(r.has("allChanges"), false);
             assert.strictEqual(r.has("filteredChanges"), true);
-            assert.strictEqual(r.has("allFilteredChanges"), true);
             assert.strictEqual(r.hasFilteredStorage, true);
         });
 
-        it("reset('changes') clears current-tick but not cumulative", () => {
+        it("reset('changes') clears the dirty bucket", () => {
             const r = new SchemaChangeRecorder(8);
             r.record(3, OPERATION.ADD, false);
             r.reset("changes");
             assert.strictEqual(r.has("changes"), false);
-            assert.strictEqual(r.has("allChanges"), true);
         });
 
         it("forEach iterates in low-then-high order", () => {
@@ -105,7 +97,7 @@ describe("ChangeRecorder", () => {
             assert.deepStrictEqual(seen, [2, 7, 33, 45]);
         });
 
-        it("promoteToFiltered moves all entries", () => {
+        it("promoteToFiltered moves dirty entries into filtered bucket", () => {
             const r = new SchemaChangeRecorder(64);
             r.record(0, OPERATION.ADD, false);
             r.record(35, OPERATION.ADD, false);
@@ -113,9 +105,7 @@ describe("ChangeRecorder", () => {
             r.promoteToFiltered();
 
             assert.strictEqual(r.has("changes"), false);
-            assert.strictEqual(r.has("allChanges"), false);
             assert.strictEqual(r.sizeOf("filteredChanges"), 2);
-            assert.strictEqual(r.sizeOf("allFilteredChanges"), 2);
             assert.strictEqual(r.hasFilteredStorage, true);
         });
 
@@ -158,15 +148,11 @@ describe("ChangeRecorder", () => {
             assert.strictEqual(r.operationAt(5), OPERATION.DELETE_AND_ADD);
         });
 
-        it("recordDelete adds to dirty but removes from cumulative", () => {
+        it("recordDelete records DELETE in the dirty bucket", () => {
             const r = new CollectionChangeRecorder();
             r.record(7, OPERATION.ADD, false);
-            assert.strictEqual(r.has("changes"), true);
-            assert.strictEqual(r.has("allChanges"), true);
-
             r.recordDelete(7, OPERATION.DELETE, false);
             assert.strictEqual(r.has("changes"), true);
-            assert.strictEqual(r.has("allChanges"), false);
             assert.strictEqual(r.operationAt(7), OPERATION.DELETE);
         });
 
@@ -198,26 +184,13 @@ describe("ChangeRecorder", () => {
             ]);
         });
 
-        it("pure ops aren't replayed in 'allChanges' (only in 'changes')", () => {
-            const r = new CollectionChangeRecorder();
-            r.recordPure(OPERATION.CLEAR, false);
-
-            // pure ops belong to current-tick only — they're already destructive
-            assert.strictEqual(r.has("changes"), true);
-            assert.strictEqual(r.has("allChanges"), false);
-        });
-
-        it("reset clears the right kind", () => {
+        it("reset clears the dirty bucket", () => {
             const r = new CollectionChangeRecorder();
             r.record(1, OPERATION.ADD, false);
             r.record(2, OPERATION.ADD, false);
 
             r.reset("changes");
             assert.strictEqual(r.has("changes"), false);
-            assert.strictEqual(r.has("allChanges"), true);  // cumulative remains
-
-            r.reset("allChanges");
-            assert.strictEqual(r.has("allChanges"), false);
         });
 
         it("promoteToFiltered moves entries and clears originals", () => {
@@ -228,12 +201,10 @@ describe("ChangeRecorder", () => {
             r.promoteToFiltered();
 
             assert.strictEqual(r.has("changes"), false);
-            assert.strictEqual(r.has("allChanges"), false);
             assert.strictEqual(r.sizeOf("filteredChanges"), 2);
-            assert.strictEqual(r.sizeOf("allFilteredChanges"), 1);
         });
 
-        it("operationAt is shared across all kinds", () => {
+        it("operationAt is shared across filtered/unfiltered stores", () => {
             const r = new CollectionChangeRecorder();
             r.record(3, OPERATION.ADD, false);
             assert.strictEqual(r.operationAt(3), OPERATION.ADD);
@@ -252,7 +223,7 @@ describe("ChangeRecorder", () => {
         for (const [name, factory] of variants) {
             it(`${name}: empty state`, () => {
                 const r = factory();
-                const kinds: ChangeKind[] = ["changes", "allChanges", "filteredChanges", "allFilteredChanges"];
+                const kinds: ChangeKind[] = ["changes", "filteredChanges"];
                 for (const k of kinds) {
                     assert.strictEqual(r.has(k), false, `has(${k})`);
                     assert.strictEqual(r.sizeOf(k), 0, `sizeOf(${k})`);
@@ -273,7 +244,6 @@ describe("ChangeRecorder", () => {
 
                 r.reset("changes");
                 assert.strictEqual(r.has("changes"), false);
-                assert.strictEqual(r.has("allChanges"), true); // cumulative survives
             });
 
             it(`${name}: filtered isolation`, () => {

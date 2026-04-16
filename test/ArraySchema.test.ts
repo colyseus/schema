@@ -115,11 +115,11 @@ describe("ArraySchema Tests", () => {
             const entitiesChangeTree: ChangeTree = state.entities[$changes];
             const collectAll = () => {
                 const out: number[] = [];
-                entitiesChangeTree.recorder.forEach("allChanges", (idx) => { if (idx >= 0) out.push(idx); });
+                entitiesChangeTree.forEachLive((idx) => out.push(idx));
                 return out;
             };
-            // After each shift, the cumulative change set is shifted so its
-            // field indexes align with the current array positions.
+            // Full-sync iterates live items — after each shift, indexes
+            // collapse toward the current array positions.
             assert.deepStrictEqual(collectAll(), [0, 1, 2, 3, 4]);
 
             state.entities.shift();
@@ -1076,8 +1076,7 @@ describe("ArraySchema Tests", () => {
             const itemsChangeTree = state.items[$changes];
             const checkItemsSameAsOperations = () => {
                 let count = 0;
-                itemsChangeTree.recorder.forEach("allChanges", (fieldIndex) => {
-                    if (fieldIndex < 0) return;
+                itemsChangeTree.forEachLive((fieldIndex) => {
                     count++;
                     const value = itemsChangeTree.getValue(fieldIndex, true);
                     assert.ok(value);
@@ -1128,8 +1127,7 @@ describe("ArraySchema Tests", () => {
             const itemsChangeTree = state.items[$changes];
             const checkItemsSameAsOperations = () => {
                 let count = 0;
-                itemsChangeTree.recorder.forEach("allChanges", (fieldIndex) => {
-                    if (fieldIndex < 0) return;
+                itemsChangeTree.forEachLive((fieldIndex) => {
                     count++;
                     const value = itemsChangeTree.getValue(fieldIndex, true);
                     assert.ok(value);
