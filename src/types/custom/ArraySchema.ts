@@ -504,14 +504,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         // shift indexes
         changeTree.shiftChangeIndexes(items.length);
 
-        // new index
-        if (changeTree.isFiltered) {
-            setOperationAtIndex(changeTree.filteredChanges, this.items.length);
-            // changeTree.filteredChanges[this.items.length] = OPERATION.ADD;
-        } else {
-            setOperationAtIndex(changeTree.allChanges, this.items.length);
-            // changeTree.allChanges[this.items.length] = OPERATION.ADD;
-        }
+        // Track the former-last index in the cumulative list
+        // (it will appear at position this.items.length after the shift).
+        changeTree.trackCumulativeIndex(this.items.length);
 
         // FIXME: should we use OPERATION.MOVE here instead?
         items.forEach((_, index) => {

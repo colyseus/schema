@@ -329,6 +329,26 @@ export class ChangeTree<T extends Ref = any> {
         }
     }
 
+    /**
+     * Ensure `index` is tracked in the cumulative (allChanges / allFilteredChanges)
+     * list without also adding to the current-tick dirty list.
+     *
+     * Used by ArraySchema.unshift to append the former-last index to the
+     * cumulative list (it's being relocated, not newly added).
+     */
+    trackCumulativeIndex(index: number) {
+        if (this.filteredChanges !== undefined) {
+            setOperationAtIndex(this.filteredChanges, index);
+            // Mirror in recorder: the legacy code writes to filteredChanges
+            // here (not allFilteredChanges). We record into cumulative via
+            // the "allFilteredChanges" side since that's the cumulative map.
+            this.recorder.recordWithCumulativeIndex(index, index, this.indexedOperations[index] ?? OPERATION.ADD, true);
+        } else {
+            setOperationAtIndex(this.allChanges, index);
+            this.recorder.recordWithCumulativeIndex(index, index, this.indexedOperations[index] ?? OPERATION.ADD, false);
+        }
+    }
+
     change(index: number, operation: OPERATION = OPERATION.ADD) {
         const isFiltered = this.isFiltered || (this.metadata?.[index]?.tag !== undefined);
         const changeSet = (isFiltered)
@@ -390,6 +410,9 @@ export class ChangeTree<T extends Ref = any> {
         changeSet.indexes = newIndexes;
 
         changeSet.operations = changeSet.operations.map((index) => index + shiftIndex);
+
+        // Dual-write: mirror the shift in the recorder.
+        this.recorder.shift(shiftIndex);
     }
 
     shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0) {
@@ -405,6 +428,9 @@ export class ChangeTree<T extends Ref = any> {
         } else {
             this._shiftAllChangeIndexes(shiftIndex, startIndex, this.allChanges);
         }
+
+        // Dual-write: mirror the shift in the recorder.
+        this.recorder.shiftCumulative(shiftIndex, startIndex);
     }
 
     private _shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0, changeSet: ChangeSet) {
@@ -429,11 +455,10 @@ export class ChangeTree<T extends Ref = any> {
     indexedOperation(index: number, operation: OPERATION, allChangesIndex: number = index) {
         this.indexedOperations[index] = operation;
 
-        // Dual-write to recorder. Note: ArraySchema can pass distinct
-        // current-tick (index) vs cumulative (allChangesIndex). The recorder
-        // currently records both at `index`; if migration to recorder reveals
-        // ArraySchema-specific behavior changes, extend the API then.
-        this.recorder.record(index, operation, this.filteredChanges !== undefined);
+        // Dual-write to recorder. ArraySchema passes distinct current-tick
+        // (index) vs cumulative (allChangesIndex); other callers default
+        // both to the same index.
+        this.recorder.recordWithCumulativeIndex(index, allChangesIndex, operation, this.filteredChanges !== undefined);
 
         if (this.filteredChanges !== undefined) {
             setOperationAtIndex(this.allFilteredChanges, allChangesIndex);

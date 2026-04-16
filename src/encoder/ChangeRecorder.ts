@@ -44,6 +44,17 @@ export interface ChangeRecorder {
     recordDelete(index: number, op: OPERATION, filtered: boolean): void;
 
     /**
+     * Like record(), but allows distinct current-tick index and cumulative
+     * index. Used by ArraySchema.push()/set() where the position in tmpItems
+     * (the last-encoded snapshot) can differ from the position in items (the
+     * live state).
+     *
+     * Schema implementations treat cumulativeIndex as identical to index
+     * (Schema field indexes are stable).
+     */
+    recordWithCumulativeIndex(index: number, cumulativeIndex: number, op: OPERATION, filtered: boolean): void;
+
+    /**
      * Record a pure operation (CLEAR, REVERSE) that has no index.
      * Only collections use this. Schema implementations may throw.
      */
@@ -83,6 +94,18 @@ export interface ChangeRecorder {
      * when an instance becomes filtered after first being recorded as unfiltered.
      */
     promoteToFiltered(): void;
+
+    /**
+     * Shift current-tick dirty indexes by `shiftIndex`. Used by ArraySchema.unshift.
+     * Each entry at index i becomes index i+shiftIndex; ops array is likewise shifted.
+     */
+    shift(shiftIndex: number): void;
+
+    /**
+     * Shift cumulative dirty indexes (allChanges/allFilteredChanges) that are
+     * greater than startIndex by shiftIndex. Used by ArraySchema.splice.
+     */
+    shiftCumulative(shiftIndex: number, startIndex: number): void;
 
     /**
      * Returns true if filtered storage has been allocated.
@@ -170,9 +193,25 @@ export class SchemaChangeRecorder implements ChangeRecorder {
         }
     }
 
+    recordWithCumulativeIndex(index: number, _cumulativeIndex: number, op: OPERATION, filtered: boolean): void {
+        // Schema field indexes are stable — cumulative and current-tick are
+        // always the same. Delegate to record().
+        this.record(index, op, filtered);
+    }
+
     recordPure(_op: OPERATION, _filtered: boolean): void {
         // Schema types never use pure ops (CLEAR/REVERSE). Indicates a bug.
         throw new Error("SchemaChangeRecorder: pure operations are not supported");
+    }
+
+    shift(_shiftIndex: number): void {
+        // Schema field indexes don't shift.
+        throw new Error("SchemaChangeRecorder: shift is not supported");
+    }
+
+    shiftCumulative(_shiftIndex: number, _startIndex: number): void {
+        // Schema field indexes don't shift.
+        throw new Error("SchemaChangeRecorder: shiftCumulative is not supported");
     }
 
     operationAt(index: number): OPERATION | undefined {
@@ -324,6 +363,24 @@ export class CollectionChangeRecorder implements ChangeRecorder {
         }
     }
 
+    recordWithCumulativeIndex(index: number, cumulativeIndex: number, op: OPERATION, filtered: boolean): void {
+        // Op merge is keyed by the current-tick index (which is what the
+        // encoder reads). Cumulative index only affects allChanges iteration.
+        const prev = this.ops.get(index);
+        if (prev === undefined || prev === OPERATION.DELETE) {
+            this.ops.set(index, prev === OPERATION.DELETE ? OPERATION.DELETE_AND_ADD : op);
+        }
+
+        if (filtered) {
+            this.ensureFilteredStorage();
+            this.filteredDirty!.set(index, op);
+            this.allFiltered!.set(cumulativeIndex, op);
+        } else {
+            this.dirty.set(index, op);
+            this.all.set(cumulativeIndex, op);
+        }
+    }
+
     recordPure(op: OPERATION, filtered: boolean): void {
         if (filtered) {
             this.ensureFilteredStorage();
@@ -379,11 +436,19 @@ export class CollectionChangeRecorder implements ChangeRecorder {
 
     reset(kind: ChangeKind): void {
         switch (kind) {
-            case "changes": this.dirty.clear(); this.pureOps.length = 0; break;
+            case "changes":
+                this.dirty.clear();
+                this.pureOps.length = 0;
+                // Clear ops to match legacy endEncode's `indexedOperations.length = 0`.
+                // Prevents stale entries from being shifted by a subsequent shift() call
+                // (e.g., ArraySchema.unshift after encode).
+                this.ops.clear();
+                break;
             case "allChanges": this.all.clear(); break;
             case "filteredChanges":
                 this.filteredDirty?.clear();
                 if (this.filteredPureOps) this.filteredPureOps.length = 0;
+                this.ops.clear();
                 break;
             case "allFilteredChanges": this.allFiltered?.clear(); break;
         }
@@ -398,6 +463,40 @@ export class CollectionChangeRecorder implements ChangeRecorder {
         this.all.clear();
         this.pureOps.length = 0;
     }
+
+    shift(shiftIndex: number): void {
+        // Shift entries in current-tick dirty (and filtered variant, if present)
+        // plus the ops map. Cumulative (allChanges) is NOT shifted — matches
+        // the existing shiftChangeIndexes behavior.
+        this.dirty = shiftMap(this.dirty, shiftIndex);
+        this.ops = shiftMap(this.ops, shiftIndex);
+        if (this.filteredDirty !== undefined) {
+            this.filteredDirty = shiftMap(this.filteredDirty, shiftIndex);
+        }
+    }
+
+    shiftCumulative(shiftIndex: number, startIndex: number): void {
+        this.all = shiftMapConditional(this.all, shiftIndex, startIndex);
+        if (this.allFiltered !== undefined) {
+            this.allFiltered = shiftMapConditional(this.allFiltered, shiftIndex, startIndex);
+        }
+    }
+}
+
+function shiftMap<V>(src: Map<number, V>, shiftIndex: number): Map<number, V> {
+    const dst = new Map<number, V>();
+    for (const [idx, val] of src) {
+        dst.set(idx + shiftIndex, val);
+    }
+    return dst;
+}
+
+function shiftMapConditional<V>(src: Map<number, V>, shiftIndex: number, startIndex: number): Map<number, V> {
+    const dst = new Map<number, V>();
+    for (const [idx, val] of src) {
+        dst.set(idx > startIndex ? idx + shiftIndex : idx, val);
+    }
+    return dst;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
