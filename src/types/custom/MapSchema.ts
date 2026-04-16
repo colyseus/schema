@@ -46,12 +46,16 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     constructor (initialValues?: Map<K, V> | Record<K, V>) {
-        const changeTree = new ChangeTree(this);
-
         Object.defineProperty(this, $changes, {
-            value: changeTree,
+            value: new ChangeTree(this),
             enumerable: false,
             writable: true,
+        });
+        Object.defineProperty(this, $childType, {
+            value: undefined,
+            enumerable: false,
+            writable: true,
+            configurable: true,
         });
 
         if (initialValues) {
@@ -67,13 +71,6 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
                 }
             }
         }
-
-        Object.defineProperty(this, $childType, {
-            value: undefined,
-            enumerable: false,
-            writable: true,
-            configurable: true,
-        });
     }
 
     /** Iterator */

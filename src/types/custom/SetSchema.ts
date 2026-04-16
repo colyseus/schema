@@ -46,18 +46,21 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     }
 
     constructor (initialValues?: Array<V>) {
-        this[$changes] = new ChangeTree(this);
-
-        if (initialValues) {
-            initialValues.forEach((v) => this.add(v));
-        }
-
+        Object.defineProperty(this, $changes, {
+            value: new ChangeTree(this),
+            enumerable: false,
+            writable: true,
+        });
         Object.defineProperty(this, $childType, {
             value: undefined,
             enumerable: false,
             writable: true,
             configurable: true,
         });
+
+        if (initialValues) {
+            initialValues.forEach((v) => this.add(v));
+        }
     }
 
     add(value: V) {
