@@ -1,7 +1,7 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
 import { getType, registeredTypes } from "./types/registry.js";
-import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $staticFieldIndexes, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
 
@@ -25,6 +25,7 @@ export type Metadata =
     { [$refTypeFieldIndexes]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
     { [$unreliableFieldIndexes]: number[]; } & // all field indexes tagged with @unreliable
     { [$transientFieldIndexes]: number[]; } & // all field indexes tagged with @transient (not persisted to snapshots)
+    { [$staticFieldIndexes]: number[]; } & // all field indexes tagged with @static (not tracked after assignment)
     { [$encoders]: Array<(bytes: Uint8Array, value: any, it: any) => void>; } & // pre-computed encoder fn per primitive field
     { [field: number]: MetadataField; } & // index => field name
     { [field: string]: number; } & // field name => field metadata
@@ -201,6 +202,21 @@ export const Metadata = {
         metadata[$transientFieldIndexes].push(index);
     },
 
+    setStatic(metadata: Metadata, fieldName: string) {
+        const index = metadata[fieldName];
+        metadata[index].static = true;
+
+        if (!metadata[$staticFieldIndexes]) {
+            Object.defineProperty(metadata, $staticFieldIndexes, {
+                value: [],
+                enumerable: false,
+                configurable: true,
+                writable: true,
+            });
+        }
+        metadata[$staticFieldIndexes].push(index);
+    },
+
     setFields<T extends { new (...args: any[]): InstanceType<T> } = any>(target: T, fields: { [field in keyof InstanceType<T>]?: DefinitionType }) {
         // for inheritance support
         const constructor = target.prototype.constructor;
@@ -357,6 +373,16 @@ export const Metadata = {
                     });
                 }
 
+                // $staticFieldIndexes
+                if (parentMetadata[$staticFieldIndexes] !== undefined) {
+                    Object.defineProperty(metadata, $staticFieldIndexes, {
+                        value: [...parentMetadata[$staticFieldIndexes]],
+                        enumerable: false,
+                        configurable: true,
+                        writable: true,
+                    });
+                }
+
                 // $descriptors
                 Object.defineProperty(metadata, $descriptors, {
                     value: { ...parentMetadata[$descriptors] },
@@ -412,5 +438,9 @@ export const Metadata = {
 
     hasTransientAtIndex(metadata: Metadata, index: number) {
         return metadata?.[$transientFieldIndexes]?.includes(index);
+    },
+
+    hasStaticAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$staticFieldIndexes]?.includes(index);
     }
 }

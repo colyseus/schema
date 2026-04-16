@@ -65,6 +65,7 @@ const IS_VISIBILITY_SHARED = 2;
 const IS_NEW = 4;
 const IS_UNRELIABLE = 8;   // tree inherits unreliable classification from parent field
 const IS_TRANSIENT = 16;   // tree inherits transient classification from parent field
+const IS_STATIC = 32;      // tree inherits static classification from parent field (skip change tracking)
 
 export class ChangeTree<T extends Ref = any> {
     ref: T;
@@ -128,6 +129,9 @@ export class ChangeTree<T extends Ref = any> {
     get isTransient(): boolean { return (this.flags & IS_TRANSIENT) !== 0; }
     set isTransient(v: boolean) { this.flags = v ? (this.flags | IS_TRANSIENT) : (this.flags & ~IS_TRANSIENT); }
 
+    get isStatic(): boolean { return (this.flags & IS_STATIC) !== 0; }
+    set isStatic(v: boolean) { this.flags = v ? (this.flags | IS_STATIC) : (this.flags & ~IS_STATIC); }
+
     /**
      * True if this tree carries at least one filtered field — either it
      * inherits `isFiltered` from a filtered ancestor, OR its Schema class
@@ -155,6 +159,16 @@ export class ChangeTree<T extends Ref = any> {
      */
     isFieldUnreliable(index: number): boolean {
         return this.isUnreliable || Metadata.hasUnreliableAtIndex(this.metadata, index);
+    }
+
+    /**
+     * Return true if the given (tree, index) pair should skip change tracking.
+     * A @static field is synchronized once via full-sync and never emits on
+     * per-tick patches; mutations post-initial-set are silently ignored by
+     * the tracker (the value still lives on the instance).
+     */
+    isFieldStatic(index: number): boolean {
+        return this.isStatic || Metadata.hasStaticAtIndex(this.metadata, index);
     }
 
     constructor(ref: T) {
@@ -296,7 +310,7 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     operation(op: OPERATION) {
-        if (this.paused) return;
+        if (this.paused || this.isStatic) return;
         // Pure ops (CLEAR/REVERSE) apply to collections; collections inherit
         // their channel at tree level via `isUnreliable`.
         if (this.isUnreliable) {
@@ -309,7 +323,7 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
-        if (this.paused) return;
+        if (this.paused || this.isFieldStatic(index)) return;
 
         const unreliable = this.isFieldUnreliable(index);
         const recorder = unreliable ? this.ensureUnreliableRecorder() : this.recorder;
@@ -340,7 +354,7 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     indexedOperation(index: number, operation: OPERATION) {
-        if (this.paused) return;
+        if (this.paused || this.isFieldStatic(index)) return;
 
         if (this.isFieldUnreliable(index)) {
             this.ensureUnreliableRecorder().recordRaw(index, operation);
@@ -430,7 +444,7 @@ export class ChangeTree<T extends Ref = any> {
             return;
         }
 
-        if (this.paused) {
+        if (this.paused || this.isFieldStatic(index)) {
             return this.getValue(index);
         }
 
@@ -515,6 +529,10 @@ export class ChangeTree<T extends Ref = any> {
     protected checkIsFiltered(parent: Ref, parentIndex: number, _isNewChangeTree: boolean) {
         this._checkInheritedFlags(parent, parentIndex);
 
+        // Static trees never track per-tick changes — skip the queue entirely.
+        // Full-sync reaches them via structural walk (forEachChild).
+        if (this.isStatic) return;
+
         // Mutations that happened before setRoot (e.g. class-field initializers)
         // recorded into the appropriate recorder but couldn't enqueue yet.
         // Reconcile both queues now.
@@ -566,19 +584,32 @@ export class ChangeTree<T extends Ref = any> {
         const parentConstructor = parent?.constructor as typeof Schema;
         const parentMetadata = parentConstructor?.[Symbol.metadata];
 
-        // Unreliable/transient inheritance — from parent schema's field annotation.
+        // Unreliable/transient/static inheritance — from parent schema's field annotation.
         const fieldIsUnreliable = Metadata.hasUnreliableAtIndex(parentMetadata, parentIndex);
         const fieldIsTransient = Metadata.hasTransientAtIndex(parentMetadata, parentIndex);
+        const fieldIsStatic = Metadata.hasStaticAtIndex(parentMetadata, parentIndex);
         const becameUnreliable = !this.isUnreliable && (parentChangeTree.isUnreliable || fieldIsUnreliable);
+        const becameStatic = !this.isStatic && (parentChangeTree.isStatic || fieldIsStatic);
         this.isUnreliable = parentChangeTree.isUnreliable || fieldIsUnreliable;
         this.isTransient = parentChangeTree.isTransient || fieldIsTransient;
+        this.isStatic = parentChangeTree.isStatic || fieldIsStatic;
 
+        // If this tree just became static via inheritance, discard any
+        // entries that may have been recorded before the parent was
+        // assigned (e.g. `new Config().assign({...})` populates the
+        // recorder before the Config instance is attached to its parent).
+        // Static trees ship their state via structural walk only; any
+        // per-tick dirty state is moot and would leak post-first-sync.
+        if (becameStatic) {
+            this.recorder.reset();
+            this.unreliableRecorder?.reset();
+        }
         // If this tree just became unreliable via inheritance AND it already
         // has entries in the reliable recorder (recorded before the parent
         // was assigned — e.g. `new Item().assign({...})` populates item's
         // recorder before it's pushed into an unreliable collection),
         // promote them to the unreliable recorder.
-        if (becameUnreliable && this.recorder.has()) {
+        else if (becameUnreliable && this.recorder.has()) {
             const src = this.recorder;
             const dst = this.ensureUnreliableRecorder();
             src.forEach((index, op) => {

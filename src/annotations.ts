@@ -729,11 +729,12 @@ export function schema<
         deprecated(deprecatedFields[fieldName])(klass.prototype, fieldName);
     }
 
-    // `.static()` and `.stream()` are flag-only until the broader 5.0 encoder work lands.
+    // `.static()` wires into the encoder via Metadata.setStatic; `.stream()`
+    // remains flag-only until that work lands.
     if (staticFields.length > 0 || streamFields.length > 0) {
         const metadata = (klass as any)[Symbol.metadata] as Metadata;
         for (const fieldName of staticFields) {
-            metadata[metadata[fieldName]].static = true;
+            Metadata.setStatic(metadata, fieldName);
         }
         for (const fieldName of streamFields) {
             metadata[metadata[fieldName]].stream = true;
