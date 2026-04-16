@@ -474,10 +474,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             }
         }
 
-        changeTree.root?.enqueueChangeTree(
-            changeTree,
-            changeTree.hasFilteredChanges ? 'filteredChanges' : 'changes'
-        );
+        changeTree.root?.enqueueChangeTree(changeTree);
 
         return this.items.splice(start, deleteCount, ...insertItems);
     }

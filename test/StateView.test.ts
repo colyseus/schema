@@ -2509,7 +2509,7 @@ describe("StateView", () => {
             const contextDebug = encoder.context.debug();
 
             assert.strictEqual(false, state[$changes].isFiltered);
-            assert.strictEqual(true, state[$changes].hasFilteredChanges);
+            assert.strictEqual(true, state[$changes].hasFilteredFields);
 
             const entity = new Entity();
             state.entities.set("1", entity);

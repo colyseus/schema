@@ -3,7 +3,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
-import { ChangeSetName, ChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
+import { ChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
 import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $numFields, $refId, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
@@ -361,19 +361,21 @@ export class Schema<C = any> implements IRef {
 
     /**
      * @param changeSet
-     *  - "changes" / "filteredChanges": iterate the current-tick dirty queue
+     *  - "changes": iterate the current-tick dirty queue (per-tick encode order)
      *  - "allChanges" / "allFilteredChanges" (legacy): structurally walk the
-     *    tree in DFS preorder (matches the order in which full-sync emits trees)
+     *    tree in DFS preorder (matches the order in which full-sync emits
+     *    trees). The two legacy modes differ by which side of the filter
+     *    split they include.
      */
     static debugRefIdEncodingOrder<T extends Ref>(
         ref: T,
-        changeSet: "changes" | "filteredChanges" | "allChanges" | "allFilteredChanges" = 'allChanges'
+        changeSet: "changes" | "allChanges" | "allFilteredChanges" = 'allChanges'
     ) {
         const encodeOrder: number[] = [];
         const rootChangeTree = ref[$changes];
 
-        if (changeSet === "changes" || changeSet === "filteredChanges") {
-            let current = rootChangeTree.root[changeSet]?.next;
+        if (changeSet === "changes") {
+            let current = rootChangeTree.root.changes?.next;
             while (current) {
                 if (current.changeTree) {
                     encodeOrder.push(current.changeTree.ref[$refId]);
@@ -390,7 +392,7 @@ export class Schema<C = any> implements IRef {
         const walk = (changeTree: ChangeTree) => {
             if (visited.has(changeTree)) return;
             visited.add(changeTree);
-            if (changeTree.hasFilteredChanges === wantFiltered) {
+            if (changeTree.isFiltered === wantFiltered) {
                 encodeOrder.push(changeTree.ref[$refId]);
             }
             changeTree.forEachChild((child, _) => walk(child));
@@ -421,23 +423,16 @@ export class Schema<C = any> implements IRef {
                 output += `- [${index}]: ADD (${JSON.stringify(changeTree.getValue(Number(index), true))})\n`;
             });
         } else {
-            changeTree.recorder.forEach("changes", (index, op) => {
+            changeTree.recorder.forEach((index, op) => {
                 if (index < 0 || !op) return;
                 output += `- [${index}]: ${OPERATION[op]} (${JSON.stringify(changeTree.getValue(Number(index), false))})\n`;
             });
-            if (changeTree.recorder.hasFilteredStorage && changeTree.recorder.has("filteredChanges")) {
-                output += `${instance.constructor.name} (${instance[$refId]}) -> .filteredChanges:\n`;
-                changeTree.recorder.forEach("filteredChanges", (index, op) => {
-                    if (index < 0 || !op) return;
-                    output += `- [${index}]: ${OPERATION[op]} (${JSON.stringify(changeTree.getValue(Number(index), false))})\n`;
-                });
-            }
         }
 
         return output;
     }
 
-    static debugChangesDeep<T extends Schema>(ref: T, changeSetName: "changes" | "filteredChanges" = "changes") {
+    static debugChangesDeep<T extends Schema>(ref: T) {
         let output = "";
 
         const rootChangeTree: ChangeTree = ref[$changes];
@@ -448,7 +443,7 @@ export class Schema<C = any> implements IRef {
         let totalOperations = 0;
 
         // TODO: FIXME: this method is not working as expected
-        for (const [refId, changes] of Object.entries(root[changeSetName] ?? {})) {
+        for (const [refId, changes] of Object.entries(root.changes ?? {})) {
             const changeTree = root.changeTrees[refId as any as number];
             if (!changeTree) { continue; }
 
@@ -497,10 +492,10 @@ export class Schema<C = any> implements IRef {
             const indent = getIndent(level);
 
             const parentIndex = (level > 0) ? `(${changeTree.parentIndex}) ` : "";
-            const changeCount = changeTree.recorder.sizeOf("changes");
+            const changeCount = changeTree.recorder.size();
             output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${changeCount}\n`;
 
-            changeTree.recorder.forEach("changes", (index, op) => {
+            changeTree.recorder.forEach((index, op) => {
                 if (index < 0 || !op) return;
                 output += `${getIndent(level + 1)}${OPERATION[op]}: ${index}\n`;
             });

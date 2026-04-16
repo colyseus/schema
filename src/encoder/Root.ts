@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec.js";
 import { TypeContext } from "../types/TypeContext.js";
-import { ChangeTree, ChangeTreeList, createChangeTreeList, ChangeSetName, type ChangeTreeNode } from "./ChangeTree.js";
+import { ChangeTree, ChangeTreeList, createChangeTreeList, type ChangeTreeNode } from "./ChangeTree.js";
 import { $changes, $refId } from "../types/symbols.js";
 
 export class Root {
@@ -9,15 +9,15 @@ export class Root {
     refCount: {[id: number]: number} = {};
     changeTrees: {[refId: number]: ChangeTree} = {};
 
-    // pending changes to be encoded
+    /**
+     * Single queue of all ChangeTrees with dirty state. Per-tick encode()
+     * walks this queue; per-view encodeView() walks it too (filtering at
+     * emission time via tree.isFiltered + per-field @view tag).
+     */
     changes: ChangeTreeList = createChangeTreeList();
-    filteredChanges: ChangeTreeList;
 
     constructor(public types: TypeContext, startRefId: number = 0) {
         this.nextUniqueId = startRefId;
-        if (types.hasFilters) {
-            this.filteredChanges = createChangeTreeList();
-        }
     }
 
     getNextUniqueId() {
@@ -46,12 +46,11 @@ export class Root {
             //
             // When a ChangeTree is re-added, it means that it was previously
             // removed. Re-stage every currently-populated index as a fresh ADD
-            // in the current-tick dirty set so the next encode re-emits them.
+            // in the dirty set so the next encode re-emits them.
             //
             const recorder = changeTree.recorder;
-            const isFiltered = changeTree.hasFilteredChanges;
             changeTree.forEachLive((fieldIndex) => {
-                recorder.record(fieldIndex, OPERATION.ADD, isFiltered);
+                recorder.record(fieldIndex, OPERATION.ADD);
             });
         }
 
@@ -71,11 +70,7 @@ export class Root {
             changeTree.root = undefined;
             delete this.changeTrees[refId];
 
-            this.removeChangeFromChangeSet("changes", changeTree);
-
-            if (changeTree.hasFilteredChanges) {
-                this.removeChangeFromChangeSet("filteredChanges", changeTree);
-            }
+            this.removeFromQueue(changeTree);
 
             this.refCount[refId] = 0;
 
@@ -117,24 +112,16 @@ export class Root {
         changeTree.forEachChild((child, _) => this.recursivelyMoveNextToParent(child));
     }
 
-    moveNextToParent(changeTree: ChangeTree) {
-        if (changeTree.hasFilteredChanges) {
-            this.moveNextToParentInChangeTreeList("filteredChanges", changeTree);
-        } else {
-            this.moveNextToParentInChangeTreeList("changes", changeTree);
-        }
-    }
-
-    moveNextToParentInChangeTreeList(changeSetName: ChangeSetName, changeTree: ChangeTree): void {
-        const changeSet = this[changeSetName];
-        const node = changeTree.getQueueNode(changeSetName);
+    moveNextToParent(changeTree: ChangeTree): void {
+        const changeSet = this.changes;
+        const node = changeTree.changesNode;
         if (!node) return;
 
         // Find the parent in the linked list
         const parent = changeTree.parent;
         if (!parent || !parent[$changes]) return;
 
-        const parentNode = parent[$changes].getQueueNode(changeSetName);
+        const parentNode = parent[$changes].changesNode;
         if (!parentNode || parentNode === node) return;
 
         // Check if child is already after parent by walking from parent
@@ -144,9 +131,6 @@ export class Root {
             cursor = cursor.next;
         }
         // If we reach here, node is before parent — need to move
-
-        // Child is before parent, so we need to move it after parent
-        // This maintains decoding order (parent before child)
 
         // Remove node from current position
         if (node.prev) {
@@ -176,24 +160,18 @@ export class Root {
 
     public enqueueChangeTree(
         changeTree: ChangeTree,
-        changeSet: ChangeSetName,
-        queueRootNode = changeTree.getQueueNode(changeSet)
+        existingNode = changeTree.changesNode
     ) {
-        // skip
-        if (queueRootNode) { return; }
+        if (existingNode) { return; } // already queued
 
-        // Add to linked list if not already present
-        changeTree.setQueueNode(changeSet, this.addToChangeTreeList(this[changeSet], changeTree));
-    }
-
-    protected addToChangeTreeList(list: ChangeTreeList, changeTree: ChangeTree): ChangeTreeNode {
         const node: ChangeTreeNode = {
             changeTree,
             next: undefined,
             prev: undefined,
-            position: 0
+            position: 0,
         };
 
+        const list = this.changes;
         if (!list.next) {
             list.next = node;
             list.tail = node;
@@ -203,15 +181,14 @@ export class Root {
             list.tail = node;
         }
 
-        return node;
+        changeTree.changesNode = node;
     }
 
-    public removeChangeFromChangeSet(changeSetName: ChangeSetName, changeTree: ChangeTree) {
-        const changeSet = this[changeSetName];
-        const node = changeTree.getQueueNode(changeSetName);
+    public removeFromQueue(changeTree: ChangeTree): boolean {
+        const changeSet = this.changes;
+        const node = changeTree.changesNode;
 
         if (node && node.changeTree === changeTree) {
-            // Remove the node from the linked list
             if (node.prev) {
                 node.prev.next = node.next;
             } else {
@@ -224,8 +201,7 @@ export class Root {
                 changeSet.tail = node.prev;
             }
 
-            // Clear ChangeTree reference
-            changeTree.setQueueNode(changeSetName, undefined);
+            changeTree.changesNode = undefined;
             return true;
         }
 

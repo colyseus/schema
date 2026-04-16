@@ -1,117 +1,96 @@
 import * as assert from "assert";
 import { OPERATION } from "../src/encoding/spec";
-import { SchemaChangeRecorder, CollectionChangeRecorder, ChangeKind } from "../src/encoder/ChangeRecorder";
+import { SchemaChangeRecorder, CollectionChangeRecorder } from "../src/encoder/ChangeRecorder";
 
 describe("ChangeRecorder", () => {
 
     describe("SchemaChangeRecorder", () => {
         it("records a single change in low mask", () => {
             const r = new SchemaChangeRecorder(8);
-            r.record(3, OPERATION.ADD, false);
+            r.record(3, OPERATION.ADD);
 
-            assert.strictEqual(r.has("changes"), true);
-            assert.strictEqual(r.sizeOf("changes"), 1);
+            assert.strictEqual(r.has(), true);
+            assert.strictEqual(r.size(), 1);
             assert.strictEqual(r.operationAt(3), OPERATION.ADD);
         });
 
         it("records a change at field 32 (boundary into high mask)", () => {
             const r = new SchemaChangeRecorder(40);
-            r.record(32, OPERATION.ADD, false);
-            assert.strictEqual(r.has("changes"), true);
-            assert.strictEqual(r.sizeOf("changes"), 1);
+            r.record(32, OPERATION.ADD);
+            assert.strictEqual(r.has(), true);
+            assert.strictEqual(r.size(), 1);
 
             const seen: number[] = [];
-            r.forEach("changes", (idx) => seen.push(idx));
+            r.forEach((idx) => seen.push(idx));
             assert.deepStrictEqual(seen, [32]);
         });
 
         it("records multiple changes spanning low and high masks", () => {
             const r = new SchemaChangeRecorder(64);
-            r.record(0, OPERATION.ADD, false);
-            r.record(31, OPERATION.ADD, false);
-            r.record(32, OPERATION.ADD, false);
-            r.record(63, OPERATION.ADD, false);
+            r.record(0, OPERATION.ADD);
+            r.record(31, OPERATION.ADD);
+            r.record(32, OPERATION.ADD);
+            r.record(63, OPERATION.ADD);
 
-            assert.strictEqual(r.sizeOf("changes"), 4);
+            assert.strictEqual(r.size(), 4);
 
             const seen: number[] = [];
-            r.forEach("changes", (idx) => seen.push(idx));
+            r.forEach((idx) => seen.push(idx));
             assert.deepStrictEqual(seen.sort((a, b) => a - b), [0, 31, 32, 63]);
         });
 
         it("merges DELETE+ADD into DELETE_AND_ADD", () => {
             const r = new SchemaChangeRecorder(8);
-            r.record(2, OPERATION.DELETE, false);
-            r.record(2, OPERATION.ADD, false);
+            r.record(2, OPERATION.DELETE);
+            r.record(2, OPERATION.ADD);
             assert.strictEqual(r.operationAt(2), OPERATION.DELETE_AND_ADD);
         });
 
         it("recordDelete records DELETE in the dirty bucket", () => {
             const r = new SchemaChangeRecorder(8);
-            r.record(3, OPERATION.ADD, false);
-            r.recordDelete(3, OPERATION.DELETE, false);
-            assert.strictEqual(r.has("changes"), true);
+            r.record(3, OPERATION.ADD);
+            r.recordDelete(3, OPERATION.DELETE);
+            assert.strictEqual(r.has(), true);
             assert.strictEqual(r.operationAt(3), OPERATION.DELETE);
         });
 
         it("first ADD wins; subsequent ADD does not change op", () => {
             const r = new SchemaChangeRecorder(8);
-            r.record(2, OPERATION.ADD, false);
-            r.record(2, OPERATION.ADD, false);
+            r.record(2, OPERATION.ADD);
+            r.record(2, OPERATION.ADD);
             assert.strictEqual(r.operationAt(2), OPERATION.ADD);
         });
 
         it("setOperationAt overrides", () => {
             const r = new SchemaChangeRecorder(8);
-            r.record(2, OPERATION.ADD, false);
+            r.record(2, OPERATION.ADD);
             r.setOperationAt(2, OPERATION.DELETE);
             assert.strictEqual(r.operationAt(2), OPERATION.DELETE);
         });
 
-        it("filtered records go into filtered masks, not non-filtered", () => {
+        it("reset() clears the dirty bucket", () => {
             const r = new SchemaChangeRecorder(8);
-            r.record(1, OPERATION.ADD, true);
-
-            assert.strictEqual(r.has("changes"), false);
-            assert.strictEqual(r.has("filteredChanges"), true);
-            assert.strictEqual(r.hasFilteredStorage, true);
-        });
-
-        it("reset('changes') clears the dirty bucket", () => {
-            const r = new SchemaChangeRecorder(8);
-            r.record(3, OPERATION.ADD, false);
-            r.reset("changes");
-            assert.strictEqual(r.has("changes"), false);
+            r.record(3, OPERATION.ADD);
+            r.reset();
+            assert.strictEqual(r.has(), false);
         });
 
         it("forEach iterates in low-then-high order", () => {
             const r = new SchemaChangeRecorder(64);
-            r.record(45, OPERATION.ADD, false);
-            r.record(2, OPERATION.ADD, false);
-            r.record(33, OPERATION.ADD, false);
-            r.record(7, OPERATION.ADD, false);
+            r.record(45, OPERATION.ADD);
+            r.record(2, OPERATION.ADD);
+            r.record(33, OPERATION.ADD);
+            r.record(7, OPERATION.ADD);
 
             const seen: number[] = [];
-            r.forEach("changes", (idx) => seen.push(idx));
+            r.forEach((idx) => seen.push(idx));
             // low bits ascending, then high bits ascending
             assert.deepStrictEqual(seen, [2, 7, 33, 45]);
         });
 
-        it("promoteToFiltered moves dirty entries into filtered bucket", () => {
-            const r = new SchemaChangeRecorder(64);
-            r.record(0, OPERATION.ADD, false);
-            r.record(35, OPERATION.ADD, false);
-
-            r.promoteToFiltered();
-
-            assert.strictEqual(r.has("changes"), false);
-            assert.strictEqual(r.sizeOf("filteredChanges"), 2);
-            assert.strictEqual(r.hasFilteredStorage, true);
-        });
-
         it("recordPure throws (Schema doesn't use pure ops)", () => {
             const r = new SchemaChangeRecorder(8);
-            assert.throws(() => r.recordPure(OPERATION.CLEAR, false));
+            assert.throws(() => r.recordPure(OPERATION.CLEAR));
         });
 
         it("operationAt returns undefined for unrecorded indexes", () => {
@@ -119,63 +98,52 @@ describe("ChangeRecorder", () => {
             assert.strictEqual(r.operationAt(5), undefined);
         });
 
-        it("sizeOf is precise via popcount", () => {
+        it("size is precise via popcount", () => {
             const r = new SchemaChangeRecorder(64);
-            for (let i = 0; i < 50; i++) r.record(i, OPERATION.ADD, false);
-            assert.strictEqual(r.sizeOf("changes"), 50);
+            for (let i = 0; i < 50; i++) r.record(i, OPERATION.ADD);
+            assert.strictEqual(r.size(), 50);
         });
     });
 
     describe("CollectionChangeRecorder", () => {
         it("records sparse indexes (e.g., 0, 7, 1024)", () => {
             const r = new CollectionChangeRecorder();
-            r.record(0, OPERATION.ADD, false);
-            r.record(7, OPERATION.ADD, false);
-            r.record(1024, OPERATION.ADD, false);
+            r.record(0, OPERATION.ADD);
+            r.record(7, OPERATION.ADD);
+            r.record(1024, OPERATION.ADD);
 
-            assert.strictEqual(r.sizeOf("changes"), 3);
+            assert.strictEqual(r.size(), 3);
 
             const seen: number[] = [];
-            r.forEach("changes", (idx) => seen.push(idx));
+            r.forEach((idx) => seen.push(idx));
             // Map iteration order is insertion order
             assert.deepStrictEqual(seen, [0, 7, 1024]);
         });
 
         it("merges DELETE+ADD into DELETE_AND_ADD", () => {
             const r = new CollectionChangeRecorder();
-            r.record(5, OPERATION.DELETE, false);
-            r.record(5, OPERATION.ADD, false);
+            r.record(5, OPERATION.DELETE);
+            r.record(5, OPERATION.ADD);
             assert.strictEqual(r.operationAt(5), OPERATION.DELETE_AND_ADD);
         });
 
         it("recordDelete records DELETE in the dirty bucket", () => {
             const r = new CollectionChangeRecorder();
-            r.record(7, OPERATION.ADD, false);
-            r.recordDelete(7, OPERATION.DELETE, false);
-            assert.strictEqual(r.has("changes"), true);
+            r.record(7, OPERATION.ADD);
+            r.recordDelete(7, OPERATION.DELETE);
+            assert.strictEqual(r.has(), true);
             assert.strictEqual(r.operationAt(7), OPERATION.DELETE);
         });
 
-        it("filtered records go into filtered store (lazy alloc)", () => {
+        it("recordPure stores CLEAR/REVERSE interleaved with indexed ops", () => {
             const r = new CollectionChangeRecorder();
-            assert.strictEqual(r.hasFilteredStorage, false);
+            r.record(0, OPERATION.ADD);
+            r.recordPure(OPERATION.CLEAR);
 
-            r.record(2, OPERATION.ADD, true);
-
-            assert.strictEqual(r.hasFilteredStorage, true);
-            assert.strictEqual(r.has("changes"), false);
-            assert.strictEqual(r.has("filteredChanges"), true);
-        });
-
-        it("recordPure stores CLEAR/REVERSE for current-tick iteration", () => {
-            const r = new CollectionChangeRecorder();
-            r.record(0, OPERATION.ADD, false);
-            r.recordPure(OPERATION.CLEAR, false);
-
-            assert.strictEqual(r.sizeOf("changes"), 2);
+            assert.strictEqual(r.size(), 2);
 
             const seen: Array<[number, number]> = [];
-            r.forEach("changes", (idx, op) => seen.push([idx, op]));
+            r.forEach((idx, op) => seen.push([idx, op]));
 
             // Indexed first (Map order), then pure ops as negative values
             assert.deepStrictEqual(seen, [
@@ -186,27 +154,16 @@ describe("ChangeRecorder", () => {
 
         it("reset clears the dirty bucket", () => {
             const r = new CollectionChangeRecorder();
-            r.record(1, OPERATION.ADD, false);
-            r.record(2, OPERATION.ADD, false);
+            r.record(1, OPERATION.ADD);
+            r.record(2, OPERATION.ADD);
 
-            r.reset("changes");
-            assert.strictEqual(r.has("changes"), false);
+            r.reset();
+            assert.strictEqual(r.has(), false);
         });
 
-        it("promoteToFiltered moves entries and clears originals", () => {
+        it("operationAt returns stored op", () => {
             const r = new CollectionChangeRecorder();
-            r.record(7, OPERATION.ADD, false);
-            r.recordPure(OPERATION.CLEAR, false);
-
-            r.promoteToFiltered();
-
-            assert.strictEqual(r.has("changes"), false);
-            assert.strictEqual(r.sizeOf("filteredChanges"), 2);
-        });
-
-        it("operationAt is shared across filtered/unfiltered stores", () => {
-            const r = new CollectionChangeRecorder();
-            r.record(3, OPERATION.ADD, false);
+            r.record(3, OPERATION.ADD);
             assert.strictEqual(r.operationAt(3), OPERATION.ADD);
 
             r.setOperationAt(3, OPERATION.DELETE);
@@ -223,36 +180,24 @@ describe("ChangeRecorder", () => {
         for (const [name, factory] of variants) {
             it(`${name}: empty state`, () => {
                 const r = factory();
-                const kinds: ChangeKind[] = ["changes", "filteredChanges"];
-                for (const k of kinds) {
-                    assert.strictEqual(r.has(k), false, `has(${k})`);
-                    assert.strictEqual(r.sizeOf(k), 0, `sizeOf(${k})`);
-                    let count = 0;
-                    r.forEach(k, () => count++);
-                    assert.strictEqual(count, 0, `forEach(${k})`);
-                }
+                assert.strictEqual(r.has(), false);
+                assert.strictEqual(r.size(), 0);
+                let count = 0;
+                r.forEach(() => count++);
+                assert.strictEqual(count, 0);
             });
 
             it(`${name}: record + iterate cycle`, () => {
                 const r = factory();
-                r.record(5, OPERATION.ADD, false);
-                r.record(10, OPERATION.ADD, false);
+                r.record(5, OPERATION.ADD);
+                r.record(10, OPERATION.ADD);
 
                 const seen: number[] = [];
-                r.forEach("changes", (idx) => seen.push(idx));
+                r.forEach((idx) => seen.push(idx));
                 assert.deepStrictEqual(seen.sort((a, b) => a - b), [5, 10]);
 
-                r.reset("changes");
-                assert.strictEqual(r.has("changes"), false);
-            });
-
-            it(`${name}: filtered isolation`, () => {
-                const r = factory();
-                r.record(1, OPERATION.ADD, false);
-                r.record(2, OPERATION.ADD, true);
-
-                assert.strictEqual(r.sizeOf("changes"), 1);
-                assert.strictEqual(r.sizeOf("filteredChanges"), 1);
+                r.reset();
+                assert.strictEqual(r.has(), false);
             });
         }
     });

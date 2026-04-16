@@ -21,7 +21,7 @@ describe("ChangeTree", () => {
             const changeTree = new ChangeTree(state);
             const collect = () => {
                 const out: Array<[number, number]> = [];
-                changeTree.recorder.forEach("changes", (i, op) => { if (i >= 0) out.push([i, op]); });
+                changeTree.recorder.forEach((i, op) => { if (i >= 0) out.push([i, op]); });
                 return out;
             };
 
@@ -148,7 +148,7 @@ describe("ChangeTree", () => {
         const changes: ChangeTree = state.game[$changes];
         const collectDirty = () => {
             const out: number[] = [];
-            changes.recorder.forEach("changes", (i) => { if (i >= 0) out.push(i); });
+            changes.recorder.forEach((i) => { if (i >= 0) out.push(i); });
             return out;
         };
         const collectLive = () => {
@@ -160,22 +160,22 @@ describe("ChangeTree", () => {
         assert.deepStrictEqual(collectLive(), [0]);
     });
 
-    it("should not instantiate 'filteredChanges'", () => {
+    it("should not identify filtered fields on a plain Schema", () => {
         class MyState extends Schema {
             @type("string") str: string;
         }
 
         const state = new MyState();
-        assert.strictEqual(false, state[$changes].hasFilteredChanges);
+        assert.strictEqual(false, state[$changes].hasFilteredFields);
     })
 
-    it("should instantiate 'filteredChanges'", () => {
+    it("should identify filtered fields on a @view-tagged Schema", () => {
         class MyState extends Schema {
             @view() @type("string") str: string;
         }
 
         const state = new MyState();
-        assert.strictEqual(true, state[$changes].hasFilteredChanges);
+        assert.strictEqual(true, state[$changes].hasFilteredFields);
     })
 
     it("detached instance and filtered changes", () => {

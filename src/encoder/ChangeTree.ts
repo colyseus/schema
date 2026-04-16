@@ -34,12 +34,6 @@ export interface IRef {
 
 export type Ref = Schema | ArraySchema | MapSchema | CollectionSchema | SetSchema;
 
-export type ChangeSetName = "changes" | "filteredChanges";
-
-export interface IndexedOperations {
-    [index: number]: OPERATION;
-}
-
 // Linked list node for change trees
 export interface ChangeTreeNode {
     changeTree: ChangeTree;
@@ -69,7 +63,6 @@ export interface ParentChain {
 const IS_FILTERED = 1;
 const IS_VISIBILITY_SHARED = 2;
 const IS_NEW = 4;
-const HAS_FILTERED_CHANGES = 8;
 
 export class ChangeTree<T extends Ref = any> {
     ref: T;
@@ -84,12 +77,12 @@ export class ChangeTree<T extends Ref = any> {
 
     /**
      * Packed boolean flags:
-     * bit 0: isFiltered
+     * bit 0: isFiltered (tree lives in a filtered subtree — all its fields
+     *        inherit the filtered classification regardless of per-field tags)
      * bit 1: isVisibilitySharedWithParent
      * bit 2: isNew
-     * bit 3: hasFilteredChanges (tree tracks filtered changes in its recorder)
      */
-    flags: number = IS_NEW; // default: isNew=true
+    flags: number = IS_NEW;
 
     /**
      * Unified change-tracking abstraction — the single source of truth for
@@ -105,24 +98,8 @@ export class ChangeTree<T extends Ref = any> {
      */
     paused: boolean = false;
 
-    // Direct queue-node refs. Set by Root.addToChangeTreeList / cleared by
-    // endEncode / removeChangeFromChangeSet.
+    /** Queue node reference (set by Root.addToChangeTreeList, cleared by endEncode/remove). */
     changesNode?: ChangeTreeNode;
-    filteredChangesNode?: ChangeTreeNode;
-
-    getQueueNode(name: ChangeSetName): ChangeTreeNode | undefined {
-        switch (name) {
-            case "changes": return this.changesNode;
-            case "filteredChanges": return this.filteredChangesNode;
-        }
-    }
-
-    setQueueNode(name: ChangeSetName, node: ChangeTreeNode | undefined): void {
-        switch (name) {
-            case "changes": this.changesNode = node; break;
-            case "filteredChanges": this.filteredChangesNode = node; break;
-        }
-    }
 
     // Accessor properties for flags
     get isFiltered(): boolean { return (this.flags & IS_FILTERED) !== 0; }
@@ -134,8 +111,15 @@ export class ChangeTree<T extends Ref = any> {
     get isNew(): boolean { return (this.flags & IS_NEW) !== 0; }
     set isNew(v: boolean) { this.flags = v ? (this.flags | IS_NEW) : (this.flags & ~IS_NEW); }
 
-    get hasFilteredChanges(): boolean { return (this.flags & HAS_FILTERED_CHANGES) !== 0; }
-    set hasFilteredChanges(v: boolean) { this.flags = v ? (this.flags | HAS_FILTERED_CHANGES) : (this.flags & ~HAS_FILTERED_CHANGES); }
+    /**
+     * True if this tree carries at least one filtered field — either it
+     * inherits `isFiltered` from a filtered ancestor, OR its Schema class
+     * declares one or more @view-tagged fields. Used by StateView.addParentOf
+     * to decide whether a parent must also be included in a view's bootstrap.
+     */
+    get hasFilteredFields(): boolean {
+        return this.isFiltered || (this.metadata?.[$viewFieldIndexes] !== undefined);
+    }
 
     constructor(ref: T) {
         this.ref = ref;
@@ -147,10 +131,6 @@ export class ChangeTree<T extends Ref = any> {
             this.recorder = new SchemaChangeRecorder(numFields);
         } else {
             this.recorder = new CollectionChangeRecorder();
-        }
-
-        if (this.metadata?.[$viewFieldIndexes]) {
-            this.hasFilteredChanges = true;
         }
     }
 
@@ -230,16 +210,7 @@ export class ChangeTree<T extends Ref = any> {
     /**
      * Walk all currently-populated indexes on this tree, emitting each index
      * once. Used by Root.add (re-stage), Encoder.encodeAll, and StateView.add
-     * to derive full-sync output from the live structure rather than from a
-     * maintained cumulative bucket.
-     *
-     * - Schema: walks metadata fields 0..$numFields, emits indexes where
-     *   `ref[field.name] !== undefined`.
-     * - ArraySchema: walks `items`, emits indexes where the slot is defined.
-     * - MapSchema: walks the journal's index→key map, emits indexes whose
-     *   key is still present in `$items`.
-     * - SetSchema / CollectionSchema: walks `$items.keys()` (the key IS the
-     *   wire index).
+     * to derive full-sync output from the live structure.
      */
     forEachLive(callback: (index: number) => void): void {
         const ref = this.ref as any;
@@ -281,20 +252,12 @@ export class ChangeTree<T extends Ref = any> {
 
     operation(op: OPERATION) {
         if (this.paused) return;
-
-        if (this.hasFilteredChanges) {
-            this.recorder.recordPure(op, true);
-            this.root?.enqueueChangeTree(this, 'filteredChanges');
-        } else {
-            this.recorder.recordPure(op, false);
-            this.root?.enqueueChangeTree(this, 'changes');
-        }
+        this.recorder.recordPure(op);
+        this.root?.enqueueChangeTree(this);
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
         if (this.paused) return;
-
-        const isFiltered = this.isFiltered || (this.metadata?.[index]?.tag !== undefined);
 
         const previousOperation = this.recorder.operationAt(index);
         const op = (!previousOperation)
@@ -303,13 +266,8 @@ export class ChangeTree<T extends Ref = any> {
                 ? OPERATION.DELETE_AND_ADD
                 : previousOperation; // preserve existing op (e.g. already-ADD stays ADD)
 
-        this.recorder.record(index, op, isFiltered);
-
-        if (isFiltered) {
-            this.root?.enqueueChangeTree(this, 'filteredChanges');
-        } else {
-            this.root?.enqueueChangeTree(this, 'changes');
-        }
+        this.recorder.record(index, op);
+        this.root?.enqueueChangeTree(this);
     }
 
     shiftChangeIndexes(shiftIndex: number) {
@@ -321,14 +279,8 @@ export class ChangeTree<T extends Ref = any> {
 
     indexedOperation(index: number, operation: OPERATION) {
         if (this.paused) return;
-
-        this.recorder.recordRaw(index, operation, this.hasFilteredChanges);
-
-        if (this.hasFilteredChanges) {
-            this.root?.enqueueChangeTree(this, 'filteredChanges');
-        } else {
-            this.root?.enqueueChangeTree(this, 'changes');
-        }
+        this.recorder.recordRaw(index, operation);
+        this.root?.enqueueChangeTree(this);
     }
 
     getType(index?: number) {
@@ -350,27 +302,20 @@ export class ChangeTree<T extends Ref = any> {
 
     // ────────────────────────────────────────────────────────────────────
     // Change-tracking control API
-    //
-    // By default, every mutation on a Schema / collection instance is
-    // automatically recorded as a change. These methods let the user opt
-    // out for bulk-load scenarios or custom batching.
     // ────────────────────────────────────────────────────────────────────
 
-    /**
-     * Stop recording mutations until resume() is called.
-     */
+    /** Stop recording mutations until resume() is called. */
     pause(): void {
         this.paused = true;
     }
 
-    /** Re-enable automatic change tracking. See pause(). */
+    /** Re-enable automatic change tracking. */
     resume(): void {
         this.paused = false;
     }
 
     /**
-     * Run `fn` with change tracking paused, then resume.
-     * Preserves the previous paused state (safe to nest).
+     * Run `fn` with change tracking paused, then restore the previous state.
      */
     untracked<T>(fn: () => T): T {
         const wasPaused = this.paused;
@@ -423,7 +368,7 @@ export class ChangeTree<T extends Ref = any> {
             return this.getValue(index);
         }
 
-        this.recorder.recordDelete(index, operation ?? OPERATION.DELETE, this.hasFilteredChanges);
+        this.recorder.recordDelete(index, operation ?? OPERATION.DELETE);
 
         const previousValue = this.getValue(index);
 
@@ -442,16 +387,14 @@ export class ChangeTree<T extends Ref = any> {
             this.root?.remove(previousValue[$changes]);
         }
 
-        this.root?.enqueueChangeTree(this, this.hasFilteredChanges ? 'filteredChanges' : 'changes');
+        this.root?.enqueueChangeTree(this);
 
         return previousValue;
     }
 
-    endEncode(changeSetName: ChangeSetName) {
-        this.recorder.reset(changeSetName);
-
-        // clear queue node for this changeSet
-        this.setQueueNode(changeSetName, undefined);
+    endEncode() {
+        this.recorder.reset();
+        this.changesNode = undefined;
 
         // ArraySchema and MapSchema have a custom "encode end" method
         (this.ref as any)[$onEncodeEnd]?.();
@@ -467,11 +410,7 @@ export class ChangeTree<T extends Ref = any> {
         //      REPLACE in case same key is used on next patches.
         //
         (this.ref as any)[$onEncodeEnd]?.();
-
-        this.recorder.reset("changes");
-        if (this.hasFilteredChanges) {
-            this.recorder.reset("filteredChanges");
-        }
+        this.recorder.reset();
     }
 
     /**
@@ -479,7 +418,7 @@ export class ChangeTree<T extends Ref = any> {
      * (Used in tests only)
      */
     discardAll() {
-        this.recorder.forEach("changes", (index, _op) => {
+        this.recorder.forEach((index, _op) => {
             if (index < 0) return; // skip pure ops
             const value = this.getValue(index);
             if (value && value[$changes]) {
@@ -490,10 +429,10 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     get changed() {
-        return this.recorder.has("changes");
+        return this.recorder.has();
     }
 
-    protected checkIsFiltered(parent: Ref, parentIndex: number, isNewChangeTree: boolean) {
+    protected checkIsFiltered(parent: Ref, parentIndex: number, _isNewChangeTree: boolean) {
         if (this.root.types.hasFilters) {
             //
             // At Schema initialization, the "root" structure might not be available
@@ -502,15 +441,9 @@ export class ChangeTree<T extends Ref = any> {
             // So the "parent" may be already set without a "root".
             //
             this._checkFilteredByParent(parent, parentIndex);
-
-            if (this.hasFilteredChanges) {
-                this.root?.enqueueChangeTree(this, 'filteredChanges');
-            }
         }
 
-        if (!this.isFiltered) {
-            this.root?.enqueueChangeTree(this, 'changes');
-        }
+        this.root?.enqueueChangeTree(this);
     }
 
     protected _checkFilteredByParent(parent: Ref, parentIndex: number) {
@@ -547,28 +480,17 @@ export class ChangeTree<T extends Ref = any> {
 
         const fieldHasViewTag = Metadata.hasViewTagAtIndex(parentConstructor?.[Symbol.metadata], parentIndex);
 
-        this.isFiltered = parent[$changes].isFiltered // in case parent is already filtered
+        this.isFiltered = parent[$changes].isFiltered
             || this.root.types.parentFiltered[key]
             || fieldHasViewTag;
 
-        //
-        // "isFiltered" may not be imedialely available during `change()` due to the instance not being attached to the root yet.
-        // when it's available, we need to enqueue the "changes" changeset into the "filteredChanges" changeset.
-        //
         if (this.isFiltered) {
-
             this.isVisibilitySharedWithParent = (
                 parentChangeTree.isFiltered &&
                 typeof (refType) !== "string" &&
                 !fieldHasViewTag &&
                 parentIsCollection
             );
-
-            this.hasFilteredChanges = true;
-
-            // Promote any current-tick entries recorded before this tree was
-            // known to be filtered into the filtered bucket.
-            this.recorder.promoteToFiltered();
         }
     }
 
@@ -642,7 +564,7 @@ export class ChangeTree<T extends Ref = any> {
                 this.parentRef = undefined;
                 this._parentIndex = undefined;
             }
-            return true; // parent was found and removed
+            return true;
         }
 
         // Search extra parents
@@ -655,7 +577,7 @@ export class ChangeTree<T extends Ref = any> {
                 } else {
                     this.extraParents = current.next;
                 }
-                return true; // parent was found and removed
+                return true;
             }
             previous = current;
             current = current.next;

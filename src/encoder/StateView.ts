@@ -165,7 +165,7 @@ export class StateView {
 
             // add parent's parent
             const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
-            if (parentChangeTree && parentChangeTree.hasFilteredChanges) {
+            if (parentChangeTree && parentChangeTree.hasFilteredFields) {
                 this.addParentOf(changeTree, tag);
             }
 
