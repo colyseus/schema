@@ -11,5 +11,8 @@
     },
     "include": [
       "../src/**/*.ts"
+    ],
+    "exclude": [
+      "../src/bench_*.ts"
     ]
 }

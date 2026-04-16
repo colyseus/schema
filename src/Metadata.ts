@@ -22,6 +22,7 @@ export type Metadata =
     { [$viewFieldIndexes]: number[]; } & // all field indexes with "view" tag
     { [$fieldIndexesByViewTag]: {[tag: number]: number[]}; } & // field indexes by "view" tag
     { [$refTypeFieldIndexes]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
+    { [$encoders]: Array<(bytes: Uint8Array, value: any, it: any) => void>; } & // pre-computed encoder fn per primitive field
     { [field: number]: MetadataField; } & // index => field name
     { [field: string]: number; } & // field name => field metadata
     { [$descriptors]: { [field: string]: PropertyDescriptor } }  // property descriptors
