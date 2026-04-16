@@ -231,6 +231,75 @@ describe("@unreliable and @transient", () => {
         });
     });
 
+    describe("same-field @unreliable + @view composition", () => {
+        it("emits only via encodeUnreliableView for visible client, skipped everywhere else", () => {
+            class State extends Schema {
+                @type("string") prop: string;
+                @unreliable @view() @type("number") secret: number;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            state.prop = "public";
+            state.secret = 123;
+
+            // Visible client: view.add(state) to grant access.
+            const clientVisible = new StateView();
+            clientVisible.add(state);
+
+            // Non-visible client: no view.add — state tree is NOT in visible set.
+            const clientHidden = new StateView();
+
+            // Shared reliable encode: only `prop` (reliable + unfiltered).
+            const sharedIt = { offset: 0 };
+            const sharedBytes = encoder.encode(sharedIt);
+            const sharedOffset = sharedIt.offset;
+
+            // Reliable view pass: secret is filtered but also @unreliable → NOT
+            // emitted here (filtered+unreliable belongs to the unreliable view path).
+            const visibleReliable = encoder.encodeView(clientVisible, sharedOffset, sharedIt);
+            const decodedVisible = createInstanceFromReflection(state) as State;
+            getDecoder(decodedVisible).decode(visibleReliable);
+            assert.strictEqual((decodedVisible as any).prop, "public");
+            assert.strictEqual((decodedVisible as any).secret, undefined,
+                "@unreliable + @view must NOT emit on the reliable view pass");
+
+            // Shared unreliable encode: secret is filtered (via @view) → skipped
+            // in shared unreliable pass, only per-view pass emits it.
+            const uSharedIt = { offset: 0 };
+            const uShared = encoder.encodeUnreliable(uSharedIt);
+            const uSharedOffset = uSharedIt.offset;
+            // Even a fresh decoder on only shared-unreliable bytes should not see secret.
+            const sharedOnly = createInstanceFromReflection(state) as State;
+            // bootstrap to make refs available
+            getDecoder(sharedOnly).decode(encoder.encodeAll());
+            getDecoder(sharedOnly).decode(uShared);
+            assert.strictEqual((sharedOnly as any).secret, undefined,
+                "@unreliable + @view must NOT emit on the shared unreliable pass");
+
+            // Unreliable view pass for visible client: secret IS emitted.
+            const uView = encoder.encodeUnreliableView(clientVisible, uSharedOffset, uSharedIt);
+            getDecoder(decodedVisible).decode(uView);
+            assert.strictEqual((decodedVisible as any).secret, 123);
+
+            // Unreliable view pass for hidden client: secret NOT emitted.
+            const uSharedIt2 = { offset: 0 };
+            encoder.encodeUnreliable(uSharedIt2);
+            const uSharedOffset2 = uSharedIt2.offset;
+            const uViewHidden = encoder.encodeUnreliableView(clientHidden, uSharedOffset2, uSharedIt2);
+            const decodedHidden = createInstanceFromReflection(state) as State;
+            getDecoder(decodedHidden).decode(encoder.encodeAll());
+            getDecoder(decodedHidden).decode(uViewHidden);
+            assert.strictEqual((decodedHidden as any).prop, "public");
+            assert.strictEqual((decodedHidden as any).secret, undefined,
+                "hidden client must never receive @view-tagged secret");
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+        });
+    });
+
     describe("isFieldUnreliable classification", () => {
         it("Schema field: unreliable iff metadata says so", () => {
             class S extends Schema {
