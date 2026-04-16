@@ -1,11 +1,11 @@
-import { schema } from "../../../src";
+import { schema, t } from "../../../src";
 import { Vec3 } from "./PlainSchema";
 
-export const Vec4 = Vec3.extends({
-    z: "number"
-});
+export const Vec4 = Vec3.extend({
+    z: t.number(),
+}, "Vec4");
 
 export const State = schema({
-    vec: Vec3,
-    vecs: { map: Vec3 }
-});
+    vec: t.ref(Vec3),
+    vecs: t.map(Vec3),
+}, "State");

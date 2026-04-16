@@ -8,7 +8,7 @@
 
 import * as assert from "assert";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
-import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema, schema, ToJSON, $refId } from "../src";
+import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema, schema, t, ToJSON, $refId } from "../src";
 import { getNormalizedType } from "../src/Metadata";
 
 describe("Type: Schema", () => {
@@ -487,8 +487,8 @@ describe("Type: Schema", () => {
             it("enum with default value", () => {
                 enum Item { SWORD, SHIELD, BOW, POTION }
                 const State = schema({
-                    item: { type: Item, default: Item.SWORD }
-                });
+                    item: t.number().default(Item.SWORD)
+                }, "State");
 
                 const state = new State();
 
@@ -503,9 +503,9 @@ describe("Type: Schema", () => {
             it("array and map of enums", () => {
                 enum Item { SWORD, SHIELD, BOW, POTION }
                 const State = schema({
-                    itemsArray: { type: [Item], default: [Item.SWORD] },
-                    itemsMap: { type: { map: Item }, default: new MapSchema<Item>({ "sword": Item.SWORD }) }
-                });
+                    itemsArray: t.array("number").default(new ArraySchema<Item>(Item.SWORD)),
+                    itemsMap: t.map("number").default(new MapSchema<Item>({ "sword": Item.SWORD }))
+                }, "State");
 
                 const state = new State();
                 if (state.itemsArray[0] !== Item.SWORD) {

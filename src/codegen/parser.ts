@@ -8,7 +8,54 @@ let currentProperty: Property;
 
 let globalContext: Context;
 
+const BUILDER_COLLECTION_KINDS = new Set(["array", "map", "set", "collection"]);
+
+/**
+ * For a t.*().chain().calls() expression, walk down to the base `t.X(...)`
+ * call and return its method name and first argument. Returns null if the
+ * node does not look like a builder chain.
+ */
+function extractBuilderBase(node: ts.CallExpression): { methodName: string, firstArg?: ts.Expression } | null {
+    let current: ts.CallExpression = node;
+    while (true) {
+        const expr = current.expression;
+        if (!ts.isPropertyAccessExpression(expr)) {
+            return null;
+        }
+        if (ts.isCallExpression(expr.expression)) {
+            // Chained modifier, e.g. .default() / .view() — walk deeper.
+            current = expr.expression;
+            continue;
+        }
+        return {
+            methodName: expr.name.text,
+            firstArg: current.arguments[0],
+        };
+    }
+}
+
 function defineProperty(property: Property, initializer: any) {
+    // Builder-style: t.number(), t.array(Item), t.map(Item).view(), etc.
+    if (ts.isCallExpression(initializer)) {
+        const base = extractBuilderBase(initializer);
+        if (base) {
+            if (BUILDER_COLLECTION_KINDS.has(base.methodName)) {
+                property.type = base.methodName;
+                if (base.firstArg) {
+                    property.childType = (base.firstArg as any).text ?? base.firstArg.getText();
+                }
+            } else if (base.methodName === "ref") {
+                property.type = "ref";
+                if (base.firstArg) {
+                    property.childType = (base.firstArg as any).text ?? base.firstArg.getText();
+                }
+            } else {
+                property.type = base.methodName;
+            }
+            return;
+        }
+    }
+
     if (ts.isIdentifier(initializer)) {
         property.type = "ref";
         property.childType = initializer.text;
@@ -207,39 +254,6 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     defineProperty(property, prop.initializer);
                 }
 
-            } else if (
-                node.getText() === "defineTypes" &&
-                (
-                    node.parent.kind === ts.SyntaxKind.CallExpression ||
-                    node.parent.kind === ts.SyntaxKind.PropertyAccessExpression
-                )
-            ) {
-                /**
-                 * JavaScript source file (`.js`)
-                 * Using `defineTypes()`
-                 */
-                const callExpression = (node.parent.kind === ts.SyntaxKind.PropertyAccessExpression)
-                    ? node.parent.parent as ts.CallExpression
-                    : node.parent as ts.CallExpression;
-
-                if (callExpression.kind !== ts.SyntaxKind.CallExpression) {
-                    break;
-                }
-
-                const className = callExpression.arguments[0].getText()
-                currentStructure.name = className;
-
-                const types = callExpression.arguments[1] as any;
-                for (let i = 0; i < types.properties.length; i++) {
-                    const prop = types.properties[i];
-
-                    const property = currentProperty || new Property();
-                    property.name = prop.name.escapedText;
-                    currentStructure.addProperty(property);
-
-                    defineProperty(property, prop.initializer);
-                }
-
             }
 
             if (node.parent.kind === ts.SyntaxKind.ClassDeclaration) {
@@ -252,57 +266,65 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
         case ts.SyntaxKind.CallExpression:
             /**
-             * Defining schema via `schema.schema({ ... })`
-             * - schema.schema({})
-             * - schema({})
-             * - ClassName.extends({})
+             * Defining schema via:
+             * - schema({ ... })
+             * - schema({ ... }, 'Name')
+             * - schema.schema({ ... }, 'Name')
+             * - ParentClass.extend({ ... }, 'Name')
              */
-            if (
-                (
-                    (
-                        (node as ts.CallExpression).expression?.getText() === "schema.schema" ||
-                        (node as ts.CallExpression).expression?.getText() === "schema"
-                    ) ||
-                    (
-                        (node as ts.CallExpression).expression?.getText().indexOf(".extends") !== -1
-                    )
-                ) &&
-                (node as ts.CallExpression).arguments[0].kind === ts.SyntaxKind.ObjectLiteralExpression
-            ) {
+            {
                 const callExpression = node as ts.CallExpression;
+                const callee = callExpression.expression?.getText?.();
+                if (!callee) break;
 
-                let className = callExpression.arguments[1]?.getText();
+                const isSchemaCall = callee === "schema" || callee === "schema.schema";
+                const isExtendCall = callee.indexOf(".extend") !== -1 && !callee.endsWith(".extends");
+                if (!isSchemaCall && !isExtendCall) break;
+
+                // Signature: (fields, name?)
+                const fieldsArg = callExpression.arguments[0];
+                const nameArg = callExpression.arguments[1];
+                if (!fieldsArg || fieldsArg.kind !== ts.SyntaxKind.ObjectLiteralExpression) {
+                    break;
+                }
+
+                let className: string | undefined;
+                if (nameArg) {
+                    if (nameArg.kind === ts.SyntaxKind.StringLiteral) {
+                        className = (nameArg as ts.StringLiteral).text;
+                    } else {
+                        className = nameArg.getText();
+                    }
+                }
 
                 if (!className && callExpression.parent.kind === ts.SyntaxKind.VariableDeclaration) {
                     className = (callExpression.parent as ts.VariableDeclaration).name?.getText();
                 }
 
-                // skip if no className is provided
-                if (!className) { break; }
+                if (!className) break;
 
                 if (currentStructure?.name !== className) {
                     currentStructure = new Class();
                     context.addStructure(currentStructure);
                 }
 
-                if ((node as ts.CallExpression).expression?.getText().indexOf(".extends") !== -1) {
-                    // if it's using `.extends({})`
+                if (isExtendCall) {
                     const extendsClass = (node as any).expression?.expression?.escapedText;
-
-                    // skip if no extendsClass is provided
-                    if (!extendsClass) { break; }
+                    if (!extendsClass) break;
                     (currentStructure as Class).extends = extendsClass;
-
                 } else {
-                    // if it's using `schema({})`
-                    (currentStructure as Class).extends = "Schema"; // force extends to Schema
+                    (currentStructure as Class).extends = "Schema";
                 }
 
                 currentStructure.name = className;
 
-                const types = callExpression.arguments[0] as any;
+                const types = fieldsArg as any;
                 for (let i = 0; i < types.properties.length; i++) {
                     const prop = types.properties[i];
+
+                    // Skip methods declared inside the fields object.
+                    if (prop.kind === ts.SyntaxKind.MethodDeclaration) continue;
+                    if (!prop.initializer) continue;
 
                     const property = currentProperty || new Property();
                     property.name = prop.name.escapedText;

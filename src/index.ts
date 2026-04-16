@@ -45,18 +45,22 @@ export {
     type,
     deprecated,
     owned,
-    defineTypes,
+    unreliable,
     view,
     schema,
     entity,
     type DefinitionType,
     type PrimitiveType,
     type Definition,
+    type FieldsAndMethods,
     // Raw schema() return types
     type SchemaWithExtendsConstructor,
     type SchemaWithExtends,
     type SchemaType,
 } from "./annotations.js";
+
+// zod-style chainable builders
+export { t, FieldBuilder, isBuilder, type BuilderDefinition, type ChildType } from "./types/builder.js";
 
 export { TypeContext } from "./types/TypeContext.js";
 

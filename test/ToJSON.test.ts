@@ -1,33 +1,33 @@
-import { ArraySchema, Encoder, MapSchema, schema, SchemaType } from "../src";
+import { ArraySchema, Encoder, MapSchema, schema, SchemaType, t } from "../src";
 import assert from "assert";
 import { createInstanceFromReflection, getEncoder } from "./Schema";
 
 describe("toJSON", () => {
     const Item = schema({
-        name: "string",
-        attributes: { map: "string" }
-    });
+        name: t.string(),
+        attributes: t.map("string")
+    }, "Item");
     type Item = SchemaType<typeof Item>;
 
     const Position = schema({
-        x: "number",
-        y: "number"
-    });
+        x: t.number(),
+        y: t.number()
+    }, "Position");
     type Position = SchemaType<typeof Position>;
 
     const Player = schema({
-        name: "string",
-        x: "number",
-        y: 'number',
+        name: t.string(),
+        x: t.number(),
+        y: t.number(),
         position: Position,
-        items: { array: Item }
-    });
+        items: t.array(Item)
+    }, "Player");
     type Player = SchemaType<typeof Player>;
 
     const State = schema({
-        str: "string",
-        players: { map: Player }
-    });
+        str: t.string(),
+        players: t.map(Player)
+    }, "State");
     type State = SchemaType<typeof State>;
 
     it("should allow to fill complex object using .assign() with a JSON object", () => {

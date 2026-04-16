@@ -4,6 +4,7 @@ import type { ArraySchema } from "./custom/ArraySchema.js";
 import type { CollectionSchema } from "./custom/CollectionSchema.js";
 import type { MapSchema } from "./custom/MapSchema.js";
 import type { SetSchema } from "./custom/SetSchema.js";
+import type { FieldBuilder } from "./builder.js";
 
 export type Constructor<T = {}> = new (...args: any[]) => T;
 
@@ -20,8 +21,11 @@ export interface Collection<K = any, V = any, IT = V> {
     entries(): IterableIterator<[K, V]>;
 }
 
-export type InferValueType<T extends DefinitionType> =
-    T extends "string" ? string
+export type InferValueType<T> =
+    // FieldBuilder<V> unwraps to V (used by the zod-style schema() API)
+    T extends FieldBuilder<infer V> ? V
+
+    : T extends "string" ? string
     : T extends "number" ? number
     : T extends "int8" ? number
     : T extends "uint8" ? number
@@ -70,10 +74,12 @@ export type InferValueType<T extends DefinitionType> =
 
     : never;
 
-export type InferSchemaInstanceType<T extends Definition> = {
-    [K in keyof T]: T[K] extends (...args: any[]) => any
-        ? (T[K] extends new (...args: any[]) => any ? InferValueType<T[K]> : T[K])
-        : InferValueType<T[K]>
+export type InferSchemaInstanceType<T> = {
+    [K in keyof T]: T[K] extends FieldBuilder<any>
+        ? InferValueType<T[K]>
+        : T[K] extends (...args: any[]) => any
+            ? (T[K] extends new (...args: any[]) => any ? InferValueType<T[K]> : T[K])
+            : InferValueType<T[K]>
 } & Schema;
 
 export type NonFunctionProps<T> = Omit<T, {

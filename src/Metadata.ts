@@ -12,6 +12,8 @@ export type MetadataField = {
     unreliable?: boolean,
     deprecated?: boolean,
     owned?: boolean,
+    static?: boolean,
+    stream?: boolean,
 };
 
 export type Metadata =

@@ -11,6 +11,7 @@ import { assertInstanceType, assertType } from "./encoding/assert.js";
 import type { InferValueType, InferSchemaInstanceType, AssignableProps, IsNever } from "./types/HelperTypes.js";
 import { CollectionSchema } from "./types/custom/CollectionSchema.js";
 import { SetSchema } from "./types/custom/SetSchema.js";
+import { FieldBuilder, isBuilder } from "./types/builder.js";
 
 export type RawPrimitiveType = "string" |
     "number" |
@@ -496,17 +497,6 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
     }
 }
 
-export function defineTypes(
-    target: typeof Schema,
-    fields: Definition,
-    options?: TypeOptions
-) {
-    for (let field in fields) {
-        type(fields[field], options)(target.prototype, field);
-    }
-    return target;
-}
-
 // Helper type to extract InitProps from initialize method
 // Supports both single object parameter and multiple parameters
 // If no initialize method is specified, use AssignableProps for field initialization
@@ -518,9 +508,7 @@ type ExtractInitProps<T> = T extends { initialize: (...args: infer P) => void }
                 ? First
                 : P
             : P
-    : T extends Definition
-        ? AssignableProps<InferSchemaInstanceType<T>>
-        : never;
+    : AssignableProps<InferSchemaInstanceType<T>>;
 
 // Helper type to determine if InitProps should be required
 type IsInitPropsRequired<T> = T extends { initialize: (props: any) => void }
@@ -531,27 +519,33 @@ type IsInitPropsRequired<T> = T extends { initialize: (props: any) => void }
             : true
         : false;
 
-export interface SchemaWithExtends<T extends Definition, P extends typeof Schema, > {
-    extends: <T2 extends Definition = Definition>(
+/**
+ * A `schema()` field definition accepts a FieldBuilder, a Schema subclass
+ * (shorthand for `t.ref(Class)`), or a method (attached to the prototype).
+ */
+export type FieldsAndMethods = Record<string, FieldBuilder<any> | (new (...args: any[]) => Schema) | Function>;
+
+export interface SchemaWithExtends<T, P extends typeof Schema> {
+    extend: <T2 extends FieldsAndMethods = FieldsAndMethods>(
         fields: T2 & ThisType<InferSchemaInstanceType<T & T2>>,
-        name?: string
+        name?: string,
     ) => SchemaWithExtendsConstructor<T & T2, ExtractInitProps<T2>, P>;
 }
 
 /**
- * Get the type of the schema defined via `schema({...})` method.
+ * Get the type of the schema defined via `schema('Name', {...})` method.
  *
  * @example
- * const Entity = schema({
- *     x: "number",
- *     y: "number",
+ * const Entity = schema('Entity', {
+ *     x: t.number(),
+ *     y: t.number(),
  * });
  * type Entity = SchemaType<typeof Entity>;
  */
 export type SchemaType<T extends {'~type': any}> = T['~type'];
 
 export interface SchemaWithExtendsConstructor<
-    T extends Definition,
+    T,
     InitProps,
     P extends typeof Schema
 > extends SchemaWithExtends<T, P> {
@@ -562,102 +556,106 @@ export interface SchemaWithExtendsConstructor<
     };
 }
 
+/**
+ * Define a Schema class declaratively.
+ *
+ * @example
+ * import { schema, t } from '@colyseus/schema';
+ *
+ * const Player = schema({
+ *   hp: t.uint8().default(100),
+ *   name: t.string().view(),
+ *   takeDamage(n: number) { this.hp -= n; },
+ * }, 'Player');
+ *
+ * const Warrior = Player.extend({
+ *   weapon: t.string(),
+ * }, 'Warrior');
+ */
 export function schema<
-    T extends Record<string, DefinitionType>,
+    T extends FieldsAndMethods,
     P extends typeof Schema = typeof Schema
 >(
     fieldsAndMethods: T & ThisType<InferSchemaInstanceType<T>>,
     name?: string,
-    inherits: P = Schema as P
+    inherits: P = Schema as P,
 ): SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P> {
+    if (fieldsAndMethods == null || typeof fieldsAndMethods !== "object") {
+        throw new Error(`schema(): first argument must be a fields object (got ${typeof fieldsAndMethods}).`);
+    }
+
     const fields: any = {};
     const methods: any = {};
-
     const defaultValues: any = {};
-    const viewTagFields: any = {};
+    const viewTagFields: { [field: string]: number } = {};
     const ownedFields: string[] = [];
+    const unreliableFields: string[] = [];
+    const deprecatedFields: { [field: string]: boolean } = {};
+    const staticFields: string[] = [];
+    const streamFields: string[] = [];
 
-    for (let fieldName in fieldsAndMethods) {
-        const value: any = fieldsAndMethods[fieldName] as DefinitionType;
-        if (typeof (value) === "object") {
-            if (value['view'] !== undefined) {
-                viewTagFields[fieldName] = (typeof (value['view']) === "boolean")
-                    ? DEFAULT_VIEW_TAG
-                    : value['view'];
-            }
+    for (const fieldName in fieldsAndMethods) {
+        const value: any = (fieldsAndMethods as any)[fieldName];
 
-            if (value['owned'] === true) {
-                ownedFields.push(fieldName);
-            }
+        if (isBuilder(value)) {
+            const def = value.toDefinition();
+            fields[fieldName] = getNormalizedType(def.type);
 
-            // allow to define a field as not synced
-            if (value['sync'] !== false) {
-                fields[fieldName] = getNormalizedType(value);
-            }
+            if (def.view !== undefined) { viewTagFields[fieldName] = def.view; }
+            if (def.owned) { ownedFields.push(fieldName); }
+            if (def.unreliable) { unreliableFields.push(fieldName); }
+            if (def.deprecated) { deprecatedFields[fieldName] = def.deprecatedThrows; }
+            if (def.static) { staticFields.push(fieldName); }
+            if (def.stream) { streamFields.push(fieldName); }
 
-            // If no explicit default provided, handle automatic instantiation for collection types
-            if (!Object.prototype.hasOwnProperty.call(value, 'default')) {
-                // TODO: remove Array.isArray() check. Use ['array'] !== undefined only.
-                if (Array.isArray(value) || value['array'] !== undefined) {
-                    // Collection: Array → new ArraySchema()
-                    defaultValues[fieldName] = new ArraySchema();
-
-                } else if (value['map'] !== undefined) {
-                    // Collection: Map → new MapSchema()
-                    defaultValues[fieldName] = new MapSchema();
-
-                } else if (value['collection'] !== undefined) {
-                    // Collection: Collection → new CollectionSchema()
-                    defaultValues[fieldName] = new CollectionSchema();
-
-                } else if (value['set'] !== undefined) {
-                    // Collection: Set → new SetSchema()
-                    defaultValues[fieldName] = new SetSchema();
-
-                } else if (value['type'] !== undefined && Schema.is(value['type'])) {
-                    // Direct Schema type: Type → new Type()
-                    if (!value['type'].prototype.initialize || value['type'].prototype.initialize.length === 0) {
-                        // only auto-initialize Schema instances if:
-                        // - they don't have an initialize method
-                        // - or initialize method doesn't accept any parameters
-                        defaultValues[fieldName] = new value['type']();
+            if (def.hasDefault) {
+                defaultValues[fieldName] = def.default;
+            } else {
+                // Auto-instantiate collection/Schema defaults when none is provided.
+                const rawType: any = def.type;
+                if (rawType && typeof rawType === "object") {
+                    if (rawType.array !== undefined) {
+                        defaultValues[fieldName] = new ArraySchema();
+                    } else if (rawType.map !== undefined) {
+                        defaultValues[fieldName] = new MapSchema();
+                    } else if (rawType.set !== undefined) {
+                        defaultValues[fieldName] = new SetSchema();
+                    } else if (rawType.collection !== undefined) {
+                        defaultValues[fieldName] = new CollectionSchema();
+                    }
+                } else if (typeof rawType === "function" && Schema.is(rawType)) {
+                    if (!rawType.prototype.initialize || rawType.prototype.initialize.length === 0) {
+                        defaultValues[fieldName] = new rawType();
                     }
                 }
-            } else {
-                defaultValues[fieldName] = value['default'];
             }
 
-
-        } else if (typeof (value) === "function") {
+        } else if (typeof value === "function") {
             if (Schema.is(value)) {
-                // Direct Schema type: Type → new Type()
+                // Convenience: allow a bare Schema subclass (equivalent to `t.ref(Class)`).
+                fields[fieldName] = getNormalizedType(value);
                 if (!value.prototype.initialize || value.prototype.initialize.length === 0) {
-                    // only auto-initialize Schema instances if:
-                    // - they don't have an initialize method
-                    // - or initialize method doesn't accept any parameters
                     defaultValues[fieldName] = new value();
                 }
-                fields[fieldName] = getNormalizedType(value);
             } else {
                 methods[fieldName] = value;
             }
 
         } else {
-            fields[fieldName] = getNormalizedType(value);
+            throw new Error(
+                `schema(${name ? `'${name}'` : ""}): field '${fieldName}' must be a t.* builder, ` +
+                `Schema subclass, or method (got ${typeof value}).`
+            );
         }
     }
 
     const getDefaultValues = () => {
         const defaults: any = {};
-
-        // use current class default values
         for (const fieldName in defaultValues) {
             const defaultValue = defaultValues[fieldName];
-            if (defaultValue && typeof defaultValue.clone === 'function') {
-                // complex, cloneable values, e.g. Schema, ArraySchema, MapSchema, CollectionSchema, SetSchema
+            if (defaultValue && typeof defaultValue.clone === "function") {
                 defaults[fieldName] = defaultValue.clone();
             } else {
-                // primitives and non-cloneable values
                 defaults[fieldName] = defaultValue;
             }
         }
@@ -673,48 +671,59 @@ export function schema<
             }
         }
         return parentProps;
-    }
+    };
 
     /** @codegen-ignore */
     const klass = Metadata.setFields<any>(class extends (inherits as any) {
         constructor(...args: any[]) {
-            // call initialize method
-            if (methods.initialize && typeof methods.initialize === 'function') {
+            if (methods.initialize && typeof methods.initialize === "function") {
                 super(Object.assign({}, getDefaultValues(), getParentProps(args[0] || {})));
-                /**
-                 * only call initialize() in the current class, not the parent ones.
-                 * see "should not call initialize automatically when creating an instance of inherited Schema"
-                 */
+                // Only call initialize() on the exact target class, not parents.
                 if (new.target === klass) {
                     methods.initialize.apply(this, args);
                 }
-
             } else {
                 super(Object.assign({}, getDefaultValues(), args[0] || {}));
             }
         }
-    }, fields) as SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P>;
+    }, fields) as unknown as SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P>;
 
-    // Store the getDefaultValues function on the class for inheritance
     (klass as any)._getDefaultValues = getDefaultValues;
 
-    // Add methods to the prototype
     Object.assign(klass.prototype, methods);
 
-    for (let fieldName in viewTagFields) {
+    for (const fieldName in viewTagFields) {
         view(viewTagFields[fieldName])(klass.prototype, fieldName);
     }
-
     for (const fieldName of ownedFields) {
         owned(klass.prototype, fieldName);
+    }
+    for (const fieldName of unreliableFields) {
+        unreliable(klass.prototype, fieldName);
+    }
+    for (const fieldName in deprecatedFields) {
+        deprecated(deprecatedFields[fieldName])(klass.prototype, fieldName);
+    }
+
+    // `.static()` and `.stream()` are flag-only until the broader 5.0 encoder work lands.
+    if (staticFields.length > 0 || streamFields.length > 0) {
+        const metadata = (klass as any)[Symbol.metadata] as Metadata;
+        for (const fieldName of staticFields) {
+            metadata[metadata[fieldName]].static = true;
+        }
+        for (const fieldName of streamFields) {
+            metadata[metadata[fieldName]].stream = true;
+        }
     }
 
     if (name) {
         Object.defineProperty(klass, "name", { value: name });
     }
 
-    klass.extends = <T2 extends Definition = Definition>(fields: T2, name?: string) =>
-        schema<T2>(fields, name, klass as any) as SchemaWithExtendsConstructor<T & T2, ExtractInitProps<T2>, P>;
+    (klass as any).extend = <T2 extends FieldsAndMethods = FieldsAndMethods>(
+        childFields: T2,
+        childName?: string,
+    ) => schema<T2>(childFields, childName, klass as any);
 
     return klass;
 }

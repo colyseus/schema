@@ -31,6 +31,11 @@ export const $onEncodeEnd = '~onEncodeEnd';
 export const $onDecodeEnd = "~onDecodeEnd";
 
 /**
+ * Brand for FieldBuilder instances so schema() can detect them.
+ */
+export const $builder = "~builder";
+
+/**
  * Metadata
  */
 export const $descriptors = "~descriptors";

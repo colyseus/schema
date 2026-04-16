@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
-import { ArraySchema, Schema, type, $changes, $refId, MapSchema, ChangeTree, schema } from "../src";
+import { ArraySchema, Schema, type, $changes, $refId, MapSchema, ChangeTree, schema, t } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -198,11 +198,11 @@ describe("ArraySchema Tests", () => {
 
         it("2: shift + repopulate should not trigger refId not found", () => {
             const Entity = schema({
-                i: "number"
-            });
+                i: t.number()
+            }, "Entity");
             const MyState = schema({
-                entities: [Entity]
-            });
+                entities: t.array(Entity)
+            }, "MyState");
 
             const state = new MyState();
             state.entities = new ArraySchema();

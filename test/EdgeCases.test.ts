@@ -1,7 +1,7 @@
 import * as util from "util";
 import * as assert from "assert";
 import { nanoid } from "nanoid";
-import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Encoder, $changes, entity } from "../src";
+import { MapSchema, Schema, type, ArraySchema, Reflection, Encoder, $changes, entity } from "../src";
 
 import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, encodeAndAssertEquals } from "./Schema";
 
@@ -10,9 +10,9 @@ describe("Edge cases", () => {
         const maxFields = 64;
         class State extends Schema {};
 
-        const schema = {};
-        for (let i = 0; i < maxFields; i++) { (schema as any)[`field_${i}`] = "string"; }
-        defineTypes(State, schema);
+        for (let i = 0; i < maxFields; i++) {
+            type("string")(State.prototype, `field_${i}`);
+        }
 
         const state = new State();
         for (let i = 0; i < maxFields; i++) { (state as any)[`field_${i}`] = "value " + i; }

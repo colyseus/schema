@@ -5,6 +5,8 @@ import { Iterator } from "./encoding/decode.js";
 import { Encoder } from "./encoder/Encoder.js";
 import { Decoder } from "./decoder/Decoder.js";
 import { Schema } from "./Schema.js";
+import { t, FieldBuilder } from "./types/builder.js";
+import { ArraySchema } from "./types/custom/ArraySchema.js";
 
 /**
  * Static methods available on Reflection
@@ -33,25 +35,25 @@ interface ReflectionStatic {
  * Reflection
  */
 export const ReflectionField = schema({
-    name: "string",
-    type: "string",
-    referencedType: "number",
-})
+    name: t.string(),
+    type: t.string(),
+    referencedType: t.number(),
+}, "ReflectionField");
 export type ReflectionField = SchemaType<typeof ReflectionField>;
 
 export const ReflectionType = schema({
-    id: "number",
-    extendsId: "number",
-    fields: [ ReflectionField ],
-})
+    id: t.number(),
+    extendsId: t.number(),
+    fields: t.array(ReflectionField),
+}, "ReflectionType");
 export type ReflectionType = SchemaType<typeof ReflectionType>;
 
 export const Reflection = schema({
-    types: [ ReflectionType ],
-    rootType: "number",
-}) as ReturnType<typeof schema<{
-    types: [typeof ReflectionType];
-    rootType: "number";
+    types: t.array(ReflectionType),
+    rootType: t.number(),
+}, "Reflection") as ReturnType<typeof schema<{
+    types: FieldBuilder<ArraySchema<ReflectionType>>;
+    rootType: FieldBuilder<number>;
 }>> & ReflectionStatic;
 
 export type Reflection = SchemaType<typeof Reflection>;
