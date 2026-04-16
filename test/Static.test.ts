@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, schema, t, type, ArraySchema, StateView } from "../src";
+import { Schema, schema, t, type, ArraySchema, SchemaType } from "../src";
 import { getEncoder, getDecoder, createInstanceFromReflection } from "./Schema";
 
 describe("@static modifier (sync-once, skip change tracking)", () => {
@@ -9,25 +9,26 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
             dynamic: t.string(),
             config: t.number().static(),
         }, "State");
+        type State = SchemaType<typeof State>;
 
         const state = new State();
         const encoder = getEncoder(state);
 
-        (state as any).dynamic = "hello";
-        (state as any).config = 42;
+        state.dynamic = "hello";
+        state.config = 42;
 
         // Per-tick encode: only `dynamic`
-        const tickDecoded = createInstanceFromReflection(state);
+        const tickDecoded = createInstanceFromReflection(state) as State;
         getDecoder(tickDecoded).decode(encoder.encode());
-        assert.strictEqual((tickDecoded as any).dynamic, "hello");
-        assert.strictEqual((tickDecoded as any).config, undefined,
+        assert.strictEqual(tickDecoded.dynamic, "hello");
+        assert.strictEqual(tickDecoded.config, undefined,
             "@static field must not be emitted on per-tick encode");
 
         // Full-sync: includes `config`
-        const fullDecoded = createInstanceFromReflection(state);
+        const fullDecoded = createInstanceFromReflection(state) as State;
         getDecoder(fullDecoded).decode(encoder.encodeAll());
-        assert.strictEqual((fullDecoded as any).dynamic, "hello");
-        assert.strictEqual((fullDecoded as any).config, 42);
+        assert.strictEqual(fullDecoded.dynamic, "hello");
+        assert.strictEqual(fullDecoded.config, 42);
 
         encoder.discardChanges();
     });
@@ -37,27 +38,28 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
             dynamic: t.string(),
             config: t.number().static(),
         }, "State");
+        type State = SchemaType<typeof State>;
 
         const state = new State();
         const encoder = getEncoder(state);
 
-        (state as any).dynamic = "v1";
-        (state as any).config = 100;
+        state.dynamic = "v1";
+        state.config = 100;
 
         // Bootstrap
-        const client = createInstanceFromReflection(state);
+        const client = createInstanceFromReflection(state) as State;
         getDecoder(client).decode(encoder.encodeAll());
         encoder.discardChanges();
-        assert.strictEqual((client as any).config, 100);
+        assert.strictEqual(client.config, 100);
 
         // Mutate both fields, re-encode tick
-        (state as any).dynamic = "v2";
-        (state as any).config = 200; // should be silently skipped
+        state.dynamic = "v2";
+        state.config = 200; // should be silently skipped
 
         const tickBytes = encoder.encode();
         getDecoder(client).decode(tickBytes);
-        assert.strictEqual((client as any).dynamic, "v2");
-        assert.strictEqual((client as any).config, 100,
+        assert.strictEqual(client.dynamic, "v2");
+        assert.strictEqual(client.config, 100,
             "mutations on a @static field must not propagate on tick patches");
 
         encoder.discardChanges();
@@ -68,23 +70,24 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
             dynamic: t.string(),
             config: t.number().static(),
         }, "State");
+        type State = SchemaType<typeof State>;
 
         const state = new State();
         const encoder = getEncoder(state);
 
-        (state as any).dynamic = "v1";
-        (state as any).config = 100;
+        state.dynamic = "v1";
+        state.config = 100;
 
         encoder.encode();
         encoder.discardChanges();
 
         // Server mutates config; existing clients won't see it, but a late
         // joiner running encodeAll should receive the new value.
-        (state as any).config = 999;
+        state.config = 999;
 
-        const lateJoiner = createInstanceFromReflection(state);
+        const lateJoiner = createInstanceFromReflection(state) as State;
         getDecoder(lateJoiner).decode(encoder.encodeAll());
-        assert.strictEqual((lateJoiner as any).config, 999);
+        assert.strictEqual(lateJoiner.config, 999);
 
         encoder.discardChanges();
     });
@@ -97,27 +100,27 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
             dynamic: t.string(),
             items: t.array(Item).static(),
         }, "State");
+        type State = SchemaType<typeof State>;
 
         const state = new State();
         const encoder = getEncoder(state);
 
-        (state as any).dynamic = "v";
-        const items = (state as any).items as ArraySchema<Item>;
-        items.push(new Item().assign({ value: 1 }) as any);
-        items.push(new Item().assign({ value: 2 }) as any);
+        state.dynamic = "v";
+        state.items.push(new Item().assign({ value: 1 }));
+        state.items.push(new Item().assign({ value: 2 }));
 
         // Per-tick: items are static → not emitted
-        const tickDecoded = createInstanceFromReflection(state);
+        const tickDecoded = createInstanceFromReflection(state) as State;
         getDecoder(tickDecoded).decode(encoder.encode());
-        assert.strictEqual((tickDecoded as any).dynamic, "v");
-        assert.strictEqual((tickDecoded as any).items?.length ?? 0, 0);
+        assert.strictEqual(tickDecoded.dynamic, "v");
+        assert.strictEqual(tickDecoded.items?.length ?? 0, 0);
 
         // Full-sync: items are emitted
-        const fullDecoded = createInstanceFromReflection(state);
+        const fullDecoded = createInstanceFromReflection(state) as State;
         getDecoder(fullDecoded).decode(encoder.encodeAll());
-        assert.strictEqual((fullDecoded as any).items.length, 2);
-        assert.strictEqual((fullDecoded as any).items[0].value, 1);
-        assert.strictEqual((fullDecoded as any).items[1].value, 2);
+        assert.strictEqual(fullDecoded.items.length, 2);
+        assert.strictEqual(fullDecoded.items[0].value, 1);
+        assert.strictEqual(fullDecoded.items[1].value, 2);
 
         encoder.discardChanges();
     });
@@ -127,39 +130,42 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
             maxPlayers: t.number(),
             mapName: t.string(),
         }, "Config");
+        type Config = SchemaType<typeof Config>;
+
         const State = schema({
             dynamic: t.string(),
             config: t.ref(Config).static(),
         }, "State");
+        type State = SchemaType<typeof State>;
 
         const state = new State();
         const encoder = getEncoder(state);
 
         const cfg = new Config();
-        (cfg as any).maxPlayers = 4;
-        (cfg as any).mapName = "arena";
-        (state as any).dynamic = "hi";
-        (state as any).config = cfg;
+        cfg.maxPlayers = 4;
+        cfg.mapName = "arena";
+        state.dynamic = "hi";
+        state.config = cfg;
 
         // Bootstrap client
-        const client = createInstanceFromReflection(state);
+        const client = createInstanceFromReflection(state) as State;
         getDecoder(client).decode(encoder.encodeAll());
         encoder.discardChanges();
-        assert.strictEqual((client as any).config.maxPlayers, 4);
+        assert.strictEqual(client.config.maxPlayers, 4);
 
         // Mutate a sub-field on the static Config
-        (cfg as any).maxPlayers = 16;
+        cfg.maxPlayers = 16;
 
         // Per-tick encode: mutation NOT propagated
         const tickBytes = encoder.encode();
         getDecoder(client).decode(tickBytes);
-        assert.strictEqual((client as any).config.maxPlayers, 4,
+        assert.strictEqual(client.config.maxPlayers, 4,
             "mutations on fields of a @static sub-tree must NOT propagate on tick");
 
         // encodeAll for new joiner: DOES see the new value
-        const lateJoiner = createInstanceFromReflection(state);
+        const lateJoiner = createInstanceFromReflection(state) as State;
         getDecoder(lateJoiner).decode(encoder.encodeAll());
-        assert.strictEqual((lateJoiner as any).config.maxPlayers, 16);
+        assert.strictEqual(lateJoiner.config.maxPlayers, 16);
 
         encoder.discardChanges();
     });
@@ -176,10 +182,10 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
         // Attaching an encoder triggers setRoot → checkIsFiltered → inherited
         // flag plumbing on child instances.
         getEncoder(state);
-        (state as any).a = 1;
-        (state as any).b = 2;
+        state.a = 1;
+        state.b = 2;
         const cfg = new Config();
-        (state as any).c = cfg;
+        state.c = cfg;
 
         const changes: any = (state as any)["~changes"];
         assert.strictEqual(changes.isFieldStatic(0), false);
