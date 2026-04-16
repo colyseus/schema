@@ -31,6 +31,12 @@ export const $onEncodeEnd = '~onEncodeEnd';
 export const $onDecodeEnd = "~onDecodeEnd";
 
 /**
+ * Per-instance dense array holding field values by index.
+ * Replaces per-field _fieldName shadow properties.
+ */
+export const $values = "~values";
+
+/**
  * Brand for FieldBuilder instances so schema() can detect them.
  */
 export const $builder = "~builder";

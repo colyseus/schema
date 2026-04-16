@@ -7,7 +7,7 @@ import { $numFields } from "../src/types/symbols";
 
 describe("Definition Tests", () => {
 
-    it("private Schema fields should be part of enumerable keys", () => {
+    it("non-tracked fields should be own enumerable keys; tracked fields live on prototype", () => {
         class Player extends Schema {
             @type("number") x: number;
             @type("number") y: number;
@@ -22,9 +22,11 @@ describe("Definition Tests", () => {
         const obj = new MySchema();
         obj.players.set('one', new Player());
 
-        assert.deepStrictEqual(Object.keys(obj), ['str', 'players', 'notSynched']);
+        // Tracked fields are prototype accessors, not own properties.
+        // Only non-tracked own properties appear in Object.keys().
+        assert.deepStrictEqual(Object.keys(obj), ['notSynched']);
         assert.deepStrictEqual(Array.from(obj.players.keys()), ['one']);
-        assert.deepStrictEqual(Object.keys(obj.players.get('one')), ['x', 'y', 'somethingPrivate']);
+        assert.deepStrictEqual(Object.keys(obj.players.get('one')), ['somethingPrivate']);
     });
 
     describe("no fields", () => {

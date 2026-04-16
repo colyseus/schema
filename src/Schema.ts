@@ -4,7 +4,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
 import { ChangeSetName, ChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
-import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $refId, $track } from './types/symbols.js';
+import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $numFields, $refId, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation.js';
@@ -23,10 +23,13 @@ export class Schema<C = any> implements IRef {
     static [$decoder] = decodeSchemaOperation;
 
     [$refId]?: number;
+    [$values]: any[];
 
     /**
-     * Assign the property descriptors required to track changes on this instance.
-     * @param instance
+     * Initialize change tracking on this instance.
+     * Field accessor descriptors (getter/setter) live on the prototype,
+     * installed once at class-definition time. Per-instance work is limited
+     * to allocating a ChangeTree and a values array.
      */
     static initialize(instance: any) {
         Object.defineProperty(instance, $changes, {
@@ -34,8 +37,11 @@ export class Schema<C = any> implements IRef {
             enumerable: false,
             writable: true
         });
-
-        Object.defineProperties(instance, instance.constructor[Symbol.metadata]?.[$descriptors] || {});
+        Object.defineProperty(instance, $values, {
+            value: [],
+            enumerable: false,
+            writable: true
+        });
     }
 
     static is(type: DefinitionType) {
@@ -93,17 +99,9 @@ export class Schema<C = any> implements IRef {
 
     // allow inherited classes to have a constructor
     constructor(arg?: C) {
-        //
-        // inline
-        // Schema.initialize(this);
-        //
         Schema.initialize(this);
-
-        //
-        // Assign initial values
-        //
         if (arg) {
-            Object.assign(this, arg);
+            Schema.assignProps(this, arg);
         }
     }
 
@@ -113,8 +111,34 @@ export class Schema<C = any> implements IRef {
      * @returns
      */
     public assign<T extends Partial<this>>(props: AssignableProps<T>,): this {
-        Object.assign(this, props);
+        Schema.assignProps(this, props);
         return this;
+    }
+
+    /**
+     * Metadata-driven property assignment.
+     * Reads tracked fields via property access (works with prototype accessors),
+     * then copies any remaining own properties for non-tracked fields.
+     */
+    protected static assignProps(target: any, source: any) {
+        const metadata: Metadata = target.constructor[Symbol.metadata];
+        if (metadata && metadata[$numFields] !== undefined) {
+            for (let i = 0; i <= metadata[$numFields]; i++) {
+                const field = metadata[i];
+                if (!field) { continue; }
+                const value = source[field.name];
+                if (value !== undefined) {
+                    target[field.name] = value;
+                }
+            }
+        }
+        // Copy non-tracked own properties (e.g. `notSynched: true`).
+        const keys = Object.keys(source);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            if (metadata && metadata[key] !== undefined) { continue; }
+            target[key] = source[key];
+        }
     }
 
     /**

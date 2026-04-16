@@ -94,16 +94,11 @@ export const Metadata = {
         });
 
         if (descriptor) {
-            // for encoder
+            // Accessor descriptor for the public field name.
+            // Installed on the prototype at class-definition time.
             metadata[$descriptors][name] = descriptor;
-            metadata[$descriptors][`_${name}`] = {
-                value: undefined,
-                writable: true,
-                enumerable: false,
-                configurable: true,
-            };
         } else {
-            // for decoder
+            // For decoder: simple writable slot, also on prototype.
             metadata[$descriptors][name] = {
                 value: undefined,
                 writable: true,
@@ -210,8 +205,13 @@ export const Metadata = {
                 fieldIndex,
                 field,
                 type,
-                getPropertyDescriptor(`_${field}`, fieldIndex, childType, complexTypeKlass)
+                getPropertyDescriptor(field, fieldIndex, childType, complexTypeKlass)
             );
+
+            // Install accessor descriptor on the prototype (once per class field).
+            if (metadata[$descriptors][field]) {
+                Object.defineProperty(target.prototype, field, metadata[$descriptors][field]);
+            }
 
             fieldIndex++;
         }

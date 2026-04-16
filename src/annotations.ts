@@ -3,7 +3,7 @@ import { Schema } from './Schema.js';
 import { ArraySchema } from './types/custom/ArraySchema.js';
 import { MapSchema } from './types/custom/MapSchema.js';
 import { getNormalizedType, Metadata } from "./Metadata.js";
-import { $changes, $childType, $descriptors, $numFields, $track } from "./types/symbols.js";
+import { $changes, $childType, $descriptors, $numFields, $track, $values } from "./types/symbols.js";
 import { TypeDefinition, getType } from "./types/registry.js";
 import { OPERATION } from "./encoding/spec.js";
 import { TypeContext } from "./types/TypeContext.js";
@@ -364,22 +364,27 @@ export function type (
                 fieldIndex,
                 field,
                 type,
-                getPropertyDescriptor(`_${field}`, fieldIndex, childType, complexTypeKlass)
+                getPropertyDescriptor(field, fieldIndex, childType, complexTypeKlass)
             );
+        }
+
+        // Install accessor descriptor on the prototype (once per class field).
+        if (metadata[$descriptors][field]) {
+            Object.defineProperty(target, field, metadata[$descriptors][field]);
         }
     }
 }
 
 export function getPropertyDescriptor(
-    fieldCached: string,
+    fieldName: string,
     fieldIndex: number,
     type: DefinitionType,
     complexTypeKlass: TypeDefinition,
 ) {
     return {
-        get: function (this: Schema) { return this[fieldCached as keyof Schema]; },
+        get: function (this: Schema) { return this[$values][fieldIndex]; },
         set: function (this: Schema, value: any) {
-            const previousValue = this[fieldCached as keyof Schema] ?? undefined;
+            const previousValue = this[$values][fieldIndex] ?? undefined;
 
             // skip if value is the same as cached.
             if (value === previousValue) { return; }
@@ -399,18 +404,13 @@ export function getPropertyDescriptor(
                         value = new MapSchema(value);
                     }
 
-                    // // automaticallty transform Array into SetSchema
-                    // if (complexTypeKlass.constructor === SetSchema && !(value instanceof SetSchema)) {
-                    //     value = new SetSchema(value);
-                    // }
-
                     value[$childType] = type;
 
                 } else if (typeof (type) !== "string") {
-                    assertInstanceType(value, type as typeof Schema, this, fieldCached.substring(1));
+                    assertInstanceType(value, type as typeof Schema, this, fieldName);
 
                 } else {
-                    assertType(value, type, this, fieldCached.substring(1));
+                    assertType(value, type, this, fieldName);
                 }
 
                 const changeTree = this[$changes];
@@ -439,7 +439,7 @@ export function getPropertyDescriptor(
                 this[$changes].delete(fieldIndex);
             }
 
-            this[fieldCached as keyof Schema] = value;
+            this[$values][fieldIndex] = value;
         },
 
         enumerable: true,
@@ -486,6 +486,8 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
                 enumerable: false,
                 configurable: true
             };
+            // Override accessor on the prototype so deprecated throws at access.
+            Object.defineProperty(klass, field, metadata[$descriptors][field]);
         }
 
         // flag metadata[field] as non-enumerable
