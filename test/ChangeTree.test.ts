@@ -19,33 +19,29 @@ describe("ChangeTree", () => {
 
             // @ts-ignore
             const changeTree = new ChangeTree(state);
-            changeTree.change(0, OPERATION.ADD);
+            const collect = (kind: "changes" | "allChanges") => {
+                const out: Array<[number, number]> = [];
+                changeTree.recorder.forEach(kind, (i, op) => { if (i >= 0) out.push([i, op]); });
+                return out;
+            };
 
-            assert.strictEqual(changeTree.indexedOperations[0], OPERATION.ADD);
-            assert.strictEqual(changeTree.changes.indexes[0], 0);
-            assert.deepStrictEqual(changeTree.changes.operations, [0]);
-            assert.strictEqual(changeTree.allChanges.indexes[0], 0);
-            assert.deepStrictEqual(changeTree.allChanges.operations, [0]);
+            changeTree.change(0, OPERATION.ADD);
+            assert.strictEqual(changeTree.getChange(0), OPERATION.ADD);
+            assert.deepStrictEqual(collect("changes"), [[0, OPERATION.ADD]]);
+            assert.deepStrictEqual(collect("allChanges"), [[0, OPERATION.ADD]]);
 
             changeTree.change(1, OPERATION.ADD);
-            assert.strictEqual(changeTree.indexedOperations[0], OPERATION.ADD);
-            assert.strictEqual(changeTree.indexedOperations[1], OPERATION.ADD);
-            assert.strictEqual(changeTree.changes.indexes[0], 0);
-            assert.strictEqual(changeTree.changes.indexes[1], 1);
-            assert.deepStrictEqual(changeTree.changes.operations, [0, 1]);
-            assert.strictEqual(changeTree.allChanges.indexes[0], 0);
-            assert.strictEqual(changeTree.allChanges.indexes[1], 1);
-            assert.deepStrictEqual(changeTree.allChanges.operations, [0, 1]);
+            assert.strictEqual(changeTree.getChange(0), OPERATION.ADD);
+            assert.strictEqual(changeTree.getChange(1), OPERATION.ADD);
+            assert.deepStrictEqual(collect("changes"), [[0, OPERATION.ADD], [1, OPERATION.ADD]]);
+            assert.deepStrictEqual(collect("allChanges"), [[0, OPERATION.ADD], [1, OPERATION.ADD]]);
 
             changeTree.delete(0, OPERATION.DELETE);
-            assert.strictEqual(changeTree.indexedOperations[0], OPERATION.DELETE);
-            assert.strictEqual(changeTree.indexedOperations[1], OPERATION.ADD);
-            assert.strictEqual(changeTree.changes.indexes[0], 0);
-            assert.strictEqual(changeTree.changes.indexes[1], 1);
-            assert.deepStrictEqual(changeTree.changes.operations, [0, 1]);
-            assert.strictEqual(changeTree.allChanges.indexes[0], undefined);
-            assert.strictEqual(changeTree.allChanges.indexes[1], 1);
-            assert.deepStrictEqual(changeTree.allChanges.operations, [undefined, 1]);
+            assert.strictEqual(changeTree.getChange(0), OPERATION.DELETE);
+            assert.strictEqual(changeTree.getChange(1), OPERATION.ADD);
+            assert.deepStrictEqual(collect("changes"), [[0, OPERATION.DELETE], [1, OPERATION.ADD]]);
+            // DELETE removes the cumulative entry — only index 1 remains.
+            assert.deepStrictEqual(collect("allChanges"), [[1, OPERATION.ADD]]);
         });
     });
 
@@ -154,8 +150,13 @@ describe("ChangeTree", () => {
         state.game = new Game();
 
         const changes: ChangeTree = state.game[$changes];
-        assert.deepStrictEqual(changes.changes.operations, [0]);
-        assert.deepStrictEqual(changes.allChanges.operations, [0]);
+        const collect = (kind: "changes" | "allChanges") => {
+            const out: number[] = [];
+            changes.recorder.forEach(kind, (i) => { if (i >= 0) out.push(i); });
+            return out;
+        };
+        assert.deepStrictEqual(collect("changes"), [0]);
+        assert.deepStrictEqual(collect("allChanges"), [0]);
     });
 
     it("should not instantiate 'filteredChanges'", () => {
@@ -164,8 +165,7 @@ describe("ChangeTree", () => {
         }
 
         const state = new MyState();
-        assert.strictEqual(undefined, state[$changes].filteredChanges);
-        assert.strictEqual(undefined, state[$changes].allFilteredChanges);
+        assert.strictEqual(false, state[$changes].hasFilteredChanges);
     })
 
     it("should instantiate 'filteredChanges'", () => {
@@ -174,8 +174,7 @@ describe("ChangeTree", () => {
         }
 
         const state = new MyState();
-        assert.ok(state[$changes].filteredChanges !== undefined);
-        assert.ok(state[$changes].allFilteredChanges !== undefined);
+        assert.strictEqual(true, state[$changes].hasFilteredChanges);
     })
 
     it("detached instance and filtered changes", () => {

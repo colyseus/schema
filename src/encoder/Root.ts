@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec.js";
 import { TypeContext } from "../types/TypeContext.js";
-import { ChangeTree, setOperationAtIndex, ChangeTreeList, createChangeTreeList, ChangeSetName, type ChangeTreeNode } from "./ChangeTree.js";
+import { ChangeTree, ChangeTreeList, createChangeTreeList, ChangeSetName, type ChangeTreeNode } from "./ChangeTree.js";
 import { $changes, $refId } from "../types/symbols.js";
 
 export class Root {
@@ -49,15 +49,17 @@ export class Root {
         const previousRefCount = this.refCount[refId];
         if (previousRefCount === 0) {
             //
-            // When a ChangeTree is re-added, it means that it was previously removed.
-            // We need to re-add all changes to the `changes` map.
+            // When a ChangeTree is re-added, it means that it was previously
+            // removed. Re-stage every cumulative (allChanges / allFilteredChanges)
+            // field as a fresh ADD in the current-tick dirty set so the next
+            // encode re-emits all of them.
             //
-            const ops = changeTree.allChanges.operations;
-            let len = ops.length;
-            while (len--) {
-                changeTree.indexedOperations[ops[len]] = OPERATION.ADD;
-                setOperationAtIndex(changeTree.changes, len);
-            }
+            const recorder = changeTree.recorder;
+            const isFiltered = changeTree.hasFilteredChanges;
+            recorder.forEach(isFiltered ? "allFilteredChanges" : "allChanges", (fieldIndex, _op) => {
+                if (fieldIndex < 0) return; // skip pure ops
+                recorder.record(fieldIndex, OPERATION.ADD, isFiltered);
+            });
         }
 
         this.refCount[refId] = (previousRefCount || 0) + 1;
@@ -83,7 +85,7 @@ export class Root {
             this.removeChangeFromChangeSet("allChanges", changeTree);
             this.removeChangeFromChangeSet("changes", changeTree);
 
-            if (changeTree.filteredChanges) {
+            if (changeTree.hasFilteredChanges) {
                 this.removeChangeFromChangeSet("allFilteredChanges", changeTree);
                 this.removeChangeFromChangeSet("filteredChanges", changeTree);
             }
@@ -129,7 +131,7 @@ export class Root {
     }
 
     moveNextToParent(changeTree: ChangeTree) {
-        if (changeTree.filteredChanges) {
+        if (changeTree.hasFilteredChanges) {
             this.moveNextToParentInChangeTreeList("filteredChanges", changeTree);
             this.moveNextToParentInChangeTreeList("allFilteredChanges", changeTree);
         } else {

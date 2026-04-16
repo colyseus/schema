@@ -57,77 +57,9 @@ export interface ChangeTreeList {
     tail?: ChangeTreeNode;
 }
 
-export interface ChangeSet {
-    // sparse array: field index -> position in operations array (undefined = not tracked)
-    indexes: number[];
-    operations: number[];
-}
-
-function createChangeSet(): ChangeSet {
-    return { indexes: [], operations: [] };
-}
-
-function resetChangeSet(changeSet: ChangeSet) {
-    changeSet.indexes.length = 0;
-    changeSet.operations.length = 0;
-}
-
 // Linked list helper functions
 export function createChangeTreeList(): ChangeTreeList {
     return { next: undefined, tail: undefined };
-}
-
-export function setOperationAtIndex(changeSet: ChangeSet, index: number) {
-    if (changeSet.indexes[index] === undefined) {
-        changeSet.indexes[index] = changeSet.operations.push(index) - 1;
-    }
-}
-
-export function deleteOperationAtIndex(changeSet: ChangeSet, index: number | string) {
-    let operationsIndex = changeSet.indexes[index as number];
-    if (operationsIndex === undefined) {
-        //
-        // if index is not found, we need to find the last operation
-        // FIXME: this is not very efficient
-        //
-        // > See "should allow consecutive splices (same place)" tests
-        //
-        // Scan backwards through indexes to find last entry
-        const indexes = changeSet.indexes;
-        for (let i = indexes.length - 1; i >= 0; i--) {
-            if (indexes[i] !== undefined) {
-                operationsIndex = indexes[i];
-                index = i;
-                break;
-            }
-        }
-    }
-    changeSet.operations[operationsIndex] = undefined;
-    changeSet.indexes[index as number] = undefined;
-}
-
-export function debugChangeSet(label: string, changeSet: ChangeSet) {
-    let indexes: string[] = [];
-    let operations: string[] = [];
-
-    for (let i = 0; i < changeSet.indexes.length; i++) {
-        if (changeSet.indexes[i] !== undefined) {
-            indexes.push(`\t${i} => [${changeSet.indexes[i]}]`);
-        }
-    }
-
-    for (let i = 0; i < changeSet.operations.length; i++) {
-        const index = changeSet.operations[i];
-        if (index !== undefined) {
-            operations.push(`\t[${i}] => ${index}`);
-        }
-    }
-
-    const indexCount = changeSet.indexes.reduce((count, v) => v !== undefined ? count + 1 : count, 0);
-    console.log(`${label} =>\nindexes (${indexCount}) {`);
-    console.log(indexes.join("\n"), "\n}");
-    console.log(`operations (${changeSet.operations.filter(op => op !== undefined).length}) {`);
-    console.log(operations.join("\n"), "\n}");
 }
 
 export interface ParentChain {
@@ -140,6 +72,7 @@ export interface ParentChain {
 const IS_FILTERED = 1;
 const IS_VISIBILITY_SHARED = 2;
 const IS_NEW = 4;
+const HAS_FILTERED_CHANGES = 8;
 
 export class ChangeTree<T extends Ref = any> {
     ref: T;
@@ -157,28 +90,15 @@ export class ChangeTree<T extends Ref = any> {
      * bit 0: isFiltered
      * bit 1: isVisibilitySharedWithParent
      * bit 2: isNew
+     * bit 3: hasFilteredChanges (tree tracks filtered/allFiltered changes in its recorder)
      */
     flags: number = IS_NEW; // default: isNew=true
 
-    // Sparse array: index -> OPERATION. Much faster than Map for small integer keys.
-    indexedOperations: OPERATION[] = [];
-
-    //
-    // TODO:
-    //   try storing the index + operation per item.
-    //   example: 1024 & 1025 => ADD, 1026 => DELETE
-    //
-    // => https://chatgpt.com/share/67107d0c-bc20-8004-8583-83b17dd7c196
-    //
-    changes: ChangeSet = { indexes: [], operations: [] };
-    allChanges: ChangeSet = { indexes: [], operations: [] };
-    filteredChanges: ChangeSet;
-    allFilteredChanges: ChangeSet;
-
     /**
-     * Unified change-tracking abstraction. Populated alongside the legacy
-     * fields above (dual-write). Future commits will migrate readers to use
-     * this exclusively, then remove the legacy fields.
+     * Unified change-tracking abstraction — the single source of truth for
+     * current-tick and cumulative changes on this tree. SchemaChangeRecorder
+     * (bitmask) for Schema instances, CollectionChangeRecorder (Map) for
+     * ArraySchema / MapSchema / SetSchema / CollectionSchema.
      */
     recorder: ChangeRecorder;
 
@@ -227,17 +147,12 @@ export class ChangeTree<T extends Ref = any> {
     get isNew(): boolean { return (this.flags & IS_NEW) !== 0; }
     set isNew(v: boolean) { this.flags = v ? (this.flags | IS_NEW) : (this.flags & ~IS_NEW); }
 
+    get hasFilteredChanges(): boolean { return (this.flags & HAS_FILTERED_CHANGES) !== 0; }
+    set hasFilteredChanges(v: boolean) { this.flags = v ? (this.flags | HAS_FILTERED_CHANGES) : (this.flags & ~HAS_FILTERED_CHANGES); }
+
     constructor(ref: T) {
         this.ref = ref;
         this.metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
-
-        //
-        // Does this structure have "filters" declared?
-        //
-        if (this.metadata?.[$viewFieldIndexes]) {
-            this.allFilteredChanges = { indexes: [], operations: [] };
-            this.filteredChanges = { indexes: [], operations: [] };
-        }
 
         // Allocate the appropriate ChangeRecorder. Schema instances have
         // metadata with $numFields; collections do not (their items are
@@ -248,6 +163,15 @@ export class ChangeTree<T extends Ref = any> {
             this.recorder = new SchemaChangeRecorder(numFields);
         } else {
             this.recorder = new CollectionChangeRecorder();
+        }
+
+        //
+        // Does this structure have "filters" declared? Mark the tree as
+        // filter-capable so subsequent change() / delete() calls route to
+        // the filtered buckets.
+        //
+        if (this.metadata?.[$viewFieldIndexes]) {
+            this.hasFilteredChanges = true;
         }
     }
 
@@ -327,15 +251,10 @@ export class ChangeTree<T extends Ref = any> {
     operation(op: OPERATION) {
         if (this.paused) return;
 
-        // operations without index use negative values to represent them
-        // this is checked during .encode() time.
-        if (this.filteredChanges !== undefined) {
-            this.filteredChanges.operations.push(-op);
+        if (this.hasFilteredChanges) {
             this.recorder.recordPure(op, true);
             this.root?.enqueueChangeTree(this, 'filteredChanges');
-
         } else {
-            this.changes.operations.push(-op);
             this.recorder.recordPure(op, false);
             this.root?.enqueueChangeTree(this, 'changes');
         }
@@ -349,14 +268,12 @@ export class ChangeTree<T extends Ref = any> {
      * cumulative list (it's being relocated, not newly added).
      */
     trackCumulativeIndex(index: number) {
-        const op = this.indexedOperations[index] ?? OPERATION.ADD;
-        if (this.filteredChanges !== undefined) {
-            // Legacy writes to filteredChanges (current-tick filtered).
-            setOperationAtIndex(this.filteredChanges, index);
+        const op = this.recorder.operationAt(index) ?? OPERATION.ADD;
+        if (this.hasFilteredChanges) {
+            // Legacy semantics: writes to filteredChanges (current-tick filtered).
             this.recorder.recordInCurrentTick(index, op, true);
         } else {
-            // Legacy writes to allChanges (cumulative unfiltered).
-            setOperationAtIndex(this.allChanges, index);
+            // Legacy semantics: writes to allChanges (cumulative unfiltered).
             this.recorder.recordInCumulative(index, op, false);
         }
     }
@@ -365,125 +282,50 @@ export class ChangeTree<T extends Ref = any> {
         if (this.paused) return;
 
         const isFiltered = this.isFiltered || (this.metadata?.[index]?.tag !== undefined);
-        const changeSet = (isFiltered)
-            ? this.filteredChanges
-            : this.changes;
 
-        const previousOperation = this.indexedOperations[index];
-        if (!previousOperation || previousOperation === OPERATION.DELETE) {
-            const op = (!previousOperation)
-                ? operation
-                : (previousOperation === OPERATION.DELETE)
-                    ? OPERATION.DELETE_AND_ADD
-                    : operation
-            //
-            // TODO: are DELETE operations being encoded as ADD here ??
-            //
-            this.indexedOperations[index] = op;
-        }
+        const previousOperation = this.recorder.operationAt(index);
+        const op = (!previousOperation)
+            ? operation
+            : (previousOperation === OPERATION.DELETE)
+                ? OPERATION.DELETE_AND_ADD
+                : previousOperation; // preserve existing op (e.g. already-ADD stays ADD)
 
-        setOperationAtIndex(changeSet, index);
-
-        // Dual-write to the unified recorder (legacy state above is the read source).
-        this.recorder.record(index, this.indexedOperations[index], isFiltered);
+        this.recorder.record(index, op, isFiltered);
 
         if (isFiltered) {
-            setOperationAtIndex(this.allFilteredChanges, index);
-
             if (this.root) {
                 this.root.enqueueChangeTree(this, 'filteredChanges');
                 this.root.enqueueChangeTree(this, 'allFilteredChanges');
             }
-
         } else {
-            setOperationAtIndex(this.allChanges, index);
             this.root?.enqueueChangeTree(this, 'changes');
         }
     }
 
     shiftChangeIndexes(shiftIndex: number) {
         //
-        // Used only during:
+        // Used only during ArraySchema#unshift()
         //
-        // - ArraySchema#unshift()
-        //
-        const changeSet = (this.isFiltered)
-            ? this.filteredChanges
-            : this.changes;
-
-        const oldOps = this.indexedOperations;
-        const newOps: OPERATION[] = [];
-        const newIndexes: number[] = [];
-        for (let i = 0; i < oldOps.length; i++) {
-            if (oldOps[i] !== undefined) {
-                newOps[i + shiftIndex] = oldOps[i];
-                newIndexes[i + shiftIndex] = changeSet.indexes[i];
-            }
-        }
-        this.indexedOperations = newOps;
-        changeSet.indexes = newIndexes;
-
-        changeSet.operations = changeSet.operations.map((index) => index + shiftIndex);
-
-        // Dual-write: mirror the shift in the recorder.
         this.recorder.shift(shiftIndex);
     }
 
     shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0) {
         //
-        // Used only during:
+        // Used only during ArraySchema#splice()
         //
-        // - ArraySchema#splice()
-        //
-        if (this.filteredChanges !== undefined) {
-            this._shiftAllChangeIndexes(shiftIndex, startIndex, this.allFilteredChanges);
-            this._shiftAllChangeIndexes(shiftIndex, startIndex, this.allChanges);
-
-        } else {
-            this._shiftAllChangeIndexes(shiftIndex, startIndex, this.allChanges);
-        }
-
-        // Dual-write: mirror the shift in the recorder.
         this.recorder.shiftCumulative(shiftIndex, startIndex);
-    }
-
-    private _shiftAllChangeIndexes(shiftIndex: number, startIndex: number = 0, changeSet: ChangeSet) {
-        const newIndexes: number[] = [];
-        let newKey = 0;
-        const indexes = changeSet.indexes;
-        for (let i = 0; i < indexes.length; i++) {
-            if (indexes[i] !== undefined) {
-                newIndexes[newKey++] = indexes[i];
-            }
-        }
-        changeSet.indexes = newIndexes;
-
-        for (let i = 0; i < changeSet.operations.length; i++) {
-            const index = changeSet.operations[i];
-            if (index > startIndex) {
-                changeSet.operations[i] = index + shiftIndex;
-            }
-        }
     }
 
     indexedOperation(index: number, operation: OPERATION, allChangesIndex: number = index) {
         if (this.paused) return;
 
-        this.indexedOperations[index] = operation;
+        // ArraySchema passes distinct current-tick (index) vs cumulative
+        // (allChangesIndex); other callers default both to the same index.
+        this.recorder.recordWithCumulativeIndex(index, allChangesIndex, operation, this.hasFilteredChanges);
 
-        // Dual-write to recorder. ArraySchema passes distinct current-tick
-        // (index) vs cumulative (allChangesIndex); other callers default
-        // both to the same index.
-        this.recorder.recordWithCumulativeIndex(index, allChangesIndex, operation, this.filteredChanges !== undefined);
-
-        if (this.filteredChanges !== undefined) {
-            setOperationAtIndex(this.allFilteredChanges, allChangesIndex);
-            setOperationAtIndex(this.filteredChanges, index);
+        if (this.hasFilteredChanges) {
             this.root?.enqueueChangeTree(this, 'filteredChanges');
-
         } else {
-            setOperationAtIndex(this.allChanges, allChangesIndex);
-            setOperationAtIndex(this.changes, index);
             this.root?.enqueueChangeTree(this, 'changes');
         }
     }
@@ -502,7 +344,7 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     getChange(index: number) {
-        return this.indexedOperations[index];
+        return this.recorder.operationAt(index);
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -588,17 +430,11 @@ export class ChangeTree<T extends Ref = any> {
             return this.getValue(index);
         }
 
-        const changeSet = (this.filteredChanges !== undefined)
-            ? this.filteredChanges
-            : this.changes;
-
-        this.indexedOperations[index] = operation ?? OPERATION.DELETE;
-        setOperationAtIndex(changeSet, index);
-        deleteOperationAtIndex(this.allChanges, allChangesIndex);
-
-        // Dual-write to recorder. recordDelete() adds to dirty but removes
-        // from cumulative — matching the legacy delete-from-allChanges behavior.
-        this.recorder.recordDelete(index, operation ?? OPERATION.DELETE, this.filteredChanges !== undefined);
+        // recordDelete adds to the dirty bucket (filtered if the tree has
+        // filtered storage) and removes from both `all` and `allFiltered`
+        // cumulative maps. For ArraySchema, `index` (tmpItems-position) may
+        // differ from `allChangesIndex` (items-position).
+        this.recorder.recordDelete(index, operation ?? OPERATION.DELETE, this.hasFilteredChanges, allChangesIndex);
 
         const previousValue = this.getValue(index);
 
@@ -617,27 +453,12 @@ export class ChangeTree<T extends Ref = any> {
             this.root?.remove(previousValue[$changes]);
         }
 
-        //
-        // FIXME: this is looking a ugly and repeated
-        //
-        if (this.filteredChanges !== undefined) {
-            deleteOperationAtIndex(this.allFilteredChanges, allChangesIndex);
-            this.root?.enqueueChangeTree(this, 'filteredChanges');
-
-        } else {
-            this.root?.enqueueChangeTree(this, 'changes');
-        }
+        this.root?.enqueueChangeTree(this, this.hasFilteredChanges ? 'filteredChanges' : 'changes');
 
         return previousValue;
     }
 
     endEncode(changeSetName: ChangeSetName) {
-        this.indexedOperations.length = 0;
-
-        // clear changeset in place
-        resetChangeSet(this[changeSetName]);
-
-        // Dual-write: also clear the recorder for this kind.
         this.recorder.reset(changeSetName);
 
         // clear queue node for this changeSet
@@ -658,21 +479,14 @@ export class ChangeTree<T extends Ref = any> {
         //
         (this.ref as any)[$onEncodeEnd]?.();
 
-        this.indexedOperations.length = 0;
-        resetChangeSet(this.changes);
         this.recorder.reset("changes");
-
-        if (this.filteredChanges !== undefined) {
-            resetChangeSet(this.filteredChanges);
+        if (this.hasFilteredChanges) {
             this.recorder.reset("filteredChanges");
         }
 
         if (discardAll) {
-            resetChangeSet(this.allChanges);
             this.recorder.reset("allChanges");
-
-            if (this.allFilteredChanges !== undefined) {
-                resetChangeSet(this.allFilteredChanges);
+            if (this.hasFilteredChanges) {
                 this.recorder.reset("allFilteredChanges");
             }
         }
@@ -683,25 +497,18 @@ export class ChangeTree<T extends Ref = any> {
      * (Used in tests only)
      */
     discardAll() {
-        const ops = this.indexedOperations;
-        for (let i = 0; i < ops.length; i++) {
-            if (ops[i] === undefined) { continue; }
-            const value = this.getValue(i);
-
+        this.recorder.forEach("changes", (index, _op) => {
+            if (index < 0) return; // skip pure ops
+            const value = this.getValue(index);
             if (value && value[$changes]) {
                 value[$changes].discardAll();
             }
-        }
-
+        });
         this.discard();
     }
 
     get changed() {
-        // Check if any entries exist in sparse array
-        for (let i = 0; i < this.indexedOperations.length; i++) {
-            if (this.indexedOperations[i] !== undefined) return true;
-        }
-        return false;
+        return this.recorder.has("changes");
     }
 
     protected checkIsFiltered(parent: Ref, parentIndex: number, isNewChangeTree: boolean) {
@@ -714,7 +521,7 @@ export class ChangeTree<T extends Ref = any> {
             //
             this._checkFilteredByParent(parent, parentIndex);
 
-            if (this.filteredChanges !== undefined) {
+            if (this.hasFilteredChanges) {
                 this.root?.enqueueChangeTree(this, 'filteredChanges');
 
                 if (isNewChangeTree) {
@@ -783,23 +590,10 @@ export class ChangeTree<T extends Ref = any> {
                 parentIsCollection
             );
 
-            if (!this.filteredChanges) {
-                this.filteredChanges = createChangeSet();
-                this.allFilteredChanges = createChangeSet();
-            }
+            this.hasFilteredChanges = true;
 
-            if (this.changes.operations.length > 0) {
-                this.changes.operations.forEach((index) =>
-                    setOperationAtIndex(this.filteredChanges, index));
-
-                this.allChanges.operations.forEach((index) =>
-                    setOperationAtIndex(this.allFilteredChanges, index));
-
-                resetChangeSet(this.changes);
-                resetChangeSet(this.allChanges);
-            }
-
-            // Mirror promotion in the recorder.
+            // Promote any current-tick/cumulative entries recorded before this
+            // tree was known to be filtered into the filtered buckets.
             this.recorder.promoteToFiltered();
         }
     }

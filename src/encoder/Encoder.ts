@@ -11,6 +11,40 @@ import { Root } from "./Root.js";
 import type { StateView } from "./StateView.js";
 import type { ChangeSetName, ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree.js";
 import { createChangeTreeList } from "./ChangeTree.js";
+import type { EncodeOperation } from "./EncodeOperation.js";
+
+/**
+ * Reusable context passed to the recorder's forEachWithCtx to iterate changes
+ * without allocating a closure per ChangeTree. All fields are (re)assigned
+ * inside the main encode loop before each `forEachWithCtx` call.
+ */
+interface EncodeCtx {
+    self: Encoder;
+    buffer: Uint8Array;
+    it: Iterator;
+    changeTree: ChangeTree;
+    ref: any;
+    encoder: EncodeOperation;
+    filter: ((ref: any, index: number, view?: StateView) => boolean) | undefined;
+    metadata: any;
+    view: StateView | undefined;
+    isEncodeAll: boolean;
+    hasView: boolean;
+}
+
+// Pure (non-capturing) callback for the recorder's forEachWithCtx. Module-
+// level so V8 never needs to allocate a fresh function per tree.
+function encodeChangeCb(ctx: EncodeCtx, fieldIndex: number, op: OPERATION): void {
+    if (fieldIndex < 0) {
+        // Pure op (CLEAR/REVERSE): encoded as a single byte.
+        ctx.buffer[ctx.it.offset++] = Math.abs(fieldIndex) & 255;
+        return;
+    }
+    const operation = ctx.isEncodeAll ? OPERATION.ADD : op;
+    if (operation === undefined) return;
+    if (ctx.filter !== undefined && !ctx.filter(ctx.ref, fieldIndex, ctx.view)) return;
+    ctx.encoder(ctx.self, ctx.buffer, ctx.changeTree, fieldIndex, operation, ctx.it, ctx.isEncodeAll, ctx.hasView, ctx.metadata);
+}
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
     const result = new Uint8Array(a.length + b.length);
@@ -51,6 +85,15 @@ export class Encoder<T extends Schema = any> {
         this.state[$changes].setRoot(this.root);
     }
 
+    // Reused context for encode iteration — avoids allocating a closure per
+    // ChangeTree in the hot encode path. Fields are reset inside each loop
+    // iteration before handing to recorder.forEachWithCtx.
+    private _encodeCtx: EncodeCtx = {
+        self: undefined!, buffer: undefined!, it: undefined!, changeTree: undefined!,
+        ref: undefined, encoder: undefined!, filter: undefined, metadata: undefined,
+        view: undefined, isEncodeAll: false, hasView: false,
+    };
+
     encode(
         it: Iterator = { offset: 0 },
         view?: StateView,
@@ -62,6 +105,14 @@ export class Encoder<T extends Schema = any> {
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
+        const ctx = this._encodeCtx;
+        ctx.self = this;
+        ctx.buffer = buffer;
+        ctx.it = it;
+        ctx.view = view;
+        ctx.isEncodeAll = isEncodeAll;
+        ctx.hasView = hasView;
+
         let current: ChangeTreeList | ChangeTreeNode = this.root[changeSetName];
 
         while (current = current.next) {
@@ -69,24 +120,18 @@ export class Encoder<T extends Schema = any> {
 
             if (hasView) {
                 if (!view.isChangeTreeVisible(changeTree)) {
-                    // console.log("MARK AS INVISIBLE:", { ref: changeTree.ref.constructor.name, refId: changeTree.ref[$refId], raw: changeTree.ref.toJSON() });
                     view.invisible.add(changeTree);
                     continue; // skip this change tree
                 }
                 view.invisible.delete(changeTree); // remove from invisible list
             }
 
-            const changeSet = changeTree[changeSetName];
             const ref = changeTree.ref;
+            const recorder = changeTree.recorder;
 
-            // TODO: avoid iterating over change tree if no changes were made
-            const numChanges = changeSet.operations.length;
-            if (numChanges === 0) { continue; }
+            if (!recorder.has(changeSetName)) { continue; }
 
             const ctor = ref.constructor;
-            const encoder = ctor[$encoder];
-            const filter = ctor[$filter];
-            const metadata = ctor[Symbol.metadata];
 
             // skip root `refId` if it's the first change tree
             // (unless it "hasView", which will need to revisit the root)
@@ -95,35 +140,13 @@ export class Encoder<T extends Schema = any> {
                 encode.number(buffer, ref[$refId], it);
             }
 
-            for (let j = 0; j < numChanges; j++) {
-                const fieldIndex = changeSet.operations[j];
+            ctx.changeTree = changeTree;
+            ctx.ref = ref;
+            ctx.encoder = ctor[$encoder];
+            ctx.filter = ctor[$filter];
+            ctx.metadata = ctor[Symbol.metadata];
 
-                if (fieldIndex < 0) {
-                    // "pure" operation without fieldIndex (e.g. CLEAR, REVERSE, etc.)
-                    // encode and continue early - no need to reach $filter check
-                    buffer[it.offset++] = Math.abs(fieldIndex) & 255;
-                    continue;
-                }
-
-                const operation = (isEncodeAll)
-                    ? OPERATION.ADD
-                    : changeTree.indexedOperations[fieldIndex];
-
-                //
-                // first pass (encodeAll), identify "filtered" operations without encoding them
-                // they will be encoded per client, based on their view.
-                //
-                // TODO: how can we optimize filtering out "encode all" operations?
-                // TODO: avoid checking if no view tags were defined
-                //
-                if (fieldIndex === undefined || operation === undefined || (filter && !filter(ref, fieldIndex, view))) {
-                    // console.log("ADD AS INVISIBLE:", fieldIndex, changeTree.ref.constructor.name)
-                    // view?.invisible.add(changeTree);
-                    continue;
-                }
-
-                encoder(this, buffer, changeTree, fieldIndex, operation, it, isEncodeAll, hasView, metadata);
-            }
+            recorder.forEachWithCtx(changeSetName, ctx, encodeChangeCb);
         }
 
         if (it.offset > buffer.byteLength) {

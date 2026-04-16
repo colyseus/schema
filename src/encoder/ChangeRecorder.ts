@@ -40,8 +40,12 @@ export interface ChangeRecorder {
      * Record a DELETE at the given index. Adds to current-tick dirty set
      * but REMOVES from cumulative set (a deleted item shouldn't reappear
      * in encodeAll snapshots).
+     *
+     * For ArraySchema, the current-tick `index` (position in tmpItems)
+     * may differ from `cumulativeIndex` (position in items). Defaults to
+     * `index` for callers that don't distinguish.
      */
-    recordDelete(index: number, op: OPERATION, filtered: boolean): void;
+    recordDelete(index: number, op: OPERATION, filtered: boolean, cumulativeIndex?: number): void;
 
     /**
      * Like record(), but allows distinct current-tick index and cumulative
@@ -96,6 +100,14 @@ export interface ChangeRecorder {
      * the existing wire-encoding convention).
      */
     forEach(kind: ChangeKind, cb: (index: number, op: OPERATION) => void): void;
+
+    /**
+     * Iterate with a reusable context object to avoid per-call closure
+     * allocation in the hot encode path. The callback is a pure module-level
+     * function that reads state from `ctx` — no captured variables, so V8
+     * can inline efficiently.
+     */
+    forEachWithCtx<T>(kind: ChangeKind, ctx: T, cb: (ctx: T, index: number, op: OPERATION) => void): void;
 
     /** Number of recorded entries for the given kind. */
     sizeOf(kind: ChangeKind): number;
@@ -190,25 +202,33 @@ export class SchemaChangeRecorder implements ChangeRecorder {
         }
     }
 
-    recordDelete(index: number, op: OPERATION, filtered: boolean): void {
+    recordDelete(index: number, op: OPERATION, filtered: boolean, cumulativeIndex: number = index): void {
         this.ops[index] = op;
 
-        const lowBit = (index < 32) ? (1 << index) : 0;
-        const highBit = (index >= 32) ? (1 << (index - 32)) : 0;
+        const dirtyLowBit = (index < 32) ? (1 << index) : 0;
+        const dirtyHighBit = (index >= 32) ? (1 << (index - 32)) : 0;
+        const cumLowBit = (cumulativeIndex < 32) ? (1 << cumulativeIndex) : 0;
+        const cumHighBit = (cumulativeIndex >= 32) ? (1 << (cumulativeIndex - 32)) : 0;
 
         if (filtered) {
             this._hasFiltered = true;
-            this.filteredLow |= lowBit;
-            this.filteredHigh |= highBit;
-            // Remove from cumulative — deleted items shouldn't appear in encodeAll
-            this.allFilteredLow &= ~lowBit;
-            this.allFilteredHigh &= ~highBit;
+            this.filteredLow |= dirtyLowBit;
+            this.filteredHigh |= dirtyHighBit;
         } else {
-            this.dirtyLow |= lowBit;
-            this.dirtyHigh |= highBit;
-            this.allLow &= ~lowBit;
-            this.allHigh &= ~highBit;
+            this.dirtyLow |= dirtyLowBit;
+            this.dirtyHigh |= dirtyHighBit;
         }
+
+        // Cumulative removal — ChangeTree.delete routes the dirty write to
+        // `filteredChanges` whenever the tree has filtered storage, even for
+        // non-filtered fields. But the cumulative entry may live in either
+        // `allChanges` or `allFilteredChanges` depending on whether the field
+        // was originally added with a @view tag. Clear the bit from both to
+        // match legacy deleteOperationAtIndex(allChanges, ...) + (allFiltered).
+        this.allLow &= ~cumLowBit;
+        this.allHigh &= ~cumHighBit;
+        this.allFilteredLow &= ~cumLowBit;
+        this.allFilteredHigh &= ~cumHighBit;
     }
 
     recordWithCumulativeIndex(index: number, _cumulativeIndex: number, op: OPERATION, filtered: boolean): void {
@@ -278,18 +298,43 @@ export class SchemaChangeRecorder implements ChangeRecorder {
             case "allFilteredChanges": low = this.allFilteredLow; high = this.allFilteredHigh; break;
         }
 
+        const ops = this.ops;
         // Iterate set bits using clz32 trick (CPU-instruction-level bit scan)
         while (low !== 0) {
             const bit = low & -low;
             const fieldIndex = 31 - Math.clz32(bit);
             low ^= bit;
-            cb(fieldIndex, this.ops[fieldIndex]);
+            cb(fieldIndex, ops[fieldIndex]);
         }
         while (high !== 0) {
             const bit = high & -high;
             const fieldIndex = 31 - Math.clz32(bit) + 32;
             high ^= bit;
-            cb(fieldIndex, this.ops[fieldIndex]);
+            cb(fieldIndex, ops[fieldIndex]);
+        }
+    }
+
+    forEachWithCtx<T>(kind: ChangeKind, ctx: T, cb: (ctx: T, index: number, op: OPERATION) => void): void {
+        let low: number, high: number;
+        switch (kind) {
+            case "changes": low = this.dirtyLow; high = this.dirtyHigh; break;
+            case "allChanges": low = this.allLow; high = this.allHigh; break;
+            case "filteredChanges": low = this.filteredLow; high = this.filteredHigh; break;
+            case "allFilteredChanges": low = this.allFilteredLow; high = this.allFilteredHigh; break;
+        }
+
+        const ops = this.ops;
+        while (low !== 0) {
+            const bit = low & -low;
+            const fieldIndex = 31 - Math.clz32(bit);
+            low ^= bit;
+            cb(ctx, fieldIndex, ops[fieldIndex]);
+        }
+        while (high !== 0) {
+            const bit = high & -high;
+            const fieldIndex = 31 - Math.clz32(bit) + 32;
+            high ^= bit;
+            cb(ctx, fieldIndex, ops[fieldIndex]);
         }
     }
 
@@ -363,15 +408,14 @@ export class CollectionChangeRecorder implements ChangeRecorder {
     private filteredDirty?: Map<number, OPERATION>;
     private allFiltered?: Map<number, OPERATION>;
 
-    /** Operation type per index. Single source of truth across all kinds. */
-    private ops: Map<number, OPERATION> = new Map();
-
     /**
-     * Pure ops (CLEAR/REVERSE), no index. Stored as negative pseudo-indexes
-     * for wire-format compat (encoder writes Math.abs(index) when fieldIndex < 0).
+     * Pure ops (CLEAR/REVERSE), no index. Each entry is `[position, op]` where
+     * `position` is the size of the corresponding dirty Map at record time.
+     * This preserves the interleaved insertion order of pure vs indexed ops
+     * (e.g. CLEAR must come BEFORE subsequent ADDs in the emitted sequence).
      */
-    private pureOps: OPERATION[] = [];
-    private filteredPureOps?: OPERATION[];
+    private pureOps: Array<[number, OPERATION]> = [];
+    private filteredPureOps?: Array<[number, OPERATION]>;
 
     get hasFilteredStorage(): boolean {
         return this.filteredDirty !== undefined;
@@ -386,43 +430,67 @@ export class CollectionChangeRecorder implements ChangeRecorder {
     }
 
     record(index: number, op: OPERATION, filtered: boolean): void {
-        // Op merge: DELETE followed by ADD becomes DELETE_AND_ADD
-        const prev = this.ops.get(index);
-        if (prev === undefined || prev === OPERATION.DELETE) {
-            this.ops.set(index, prev === OPERATION.DELETE ? OPERATION.DELETE_AND_ADD : op);
-        }
-
         if (filtered) {
             this.ensureFilteredStorage();
-            this.filteredDirty!.set(index, op);
-            this.allFiltered!.set(index, op);
+            // Op merge: DELETE followed by ADD becomes DELETE_AND_ADD. Other
+            // existing ops are preserved.
+            const prev = this.filteredDirty!.get(index);
+            const finalOp = (prev === undefined)
+                ? op
+                : (prev === OPERATION.DELETE ? OPERATION.DELETE_AND_ADD : prev);
+            this.filteredDirty!.set(index, finalOp);
+            this.allFiltered!.set(index, finalOp);
         } else {
-            this.dirty.set(index, op);
-            this.all.set(index, op);
+            const prev = this.dirty.get(index);
+            const finalOp = (prev === undefined)
+                ? op
+                : (prev === OPERATION.DELETE ? OPERATION.DELETE_AND_ADD : prev);
+            this.dirty.set(index, finalOp);
+            this.all.set(index, finalOp);
         }
     }
 
-    recordDelete(index: number, op: OPERATION, filtered: boolean): void {
-        this.ops.set(index, op);
-
+    recordDelete(index: number, op: OPERATION, filtered: boolean, cumulativeIndex: number = index): void {
+        // Dirty-bucket write — `filtered` indicates the bucket for the
+        // current-tick dirty entry.
         if (filtered) {
             this.ensureFilteredStorage();
             this.filteredDirty!.set(index, op);
-            // Remove from cumulative — deleted items shouldn't appear in encodeAll
-            this.allFiltered!.delete(index);
         } else {
             this.dirty.set(index, op);
-            this.all.delete(index);
+        }
+
+        // Cumulative removal — deleted entries shouldn't appear in encodeAll.
+        // Legacy ChangeTree.delete removes from BOTH allChanges and (if the
+        // tree has filtered storage) allFilteredChanges. The cumulative entry
+        // may live in either depending on whether it was originally filtered.
+        let removed = false;
+        if (this.all.has(cumulativeIndex)) {
+            this.all.delete(cumulativeIndex);
+            removed = true;
+        }
+        if (this.allFiltered?.has(cumulativeIndex)) {
+            this.allFiltered.delete(cumulativeIndex);
+            removed = true;
+        }
+
+        if (!removed) {
+            // Fallback for ArraySchema splice: the cumulative index was
+            // already shifted out of `all` by prior shiftCumulative calls,
+            // but we still need to decrement the cumulative set by one.
+            // Remove the last-inserted entry as the closest safe approximation.
+            if (this.all.size > 0) {
+                this.all.delete(lastKeyOf(this.all)!);
+            } else if (this.allFiltered && this.allFiltered.size > 0) {
+                this.allFiltered.delete(lastKeyOf(this.allFiltered)!);
+            }
         }
     }
 
     recordWithCumulativeIndex(index: number, cumulativeIndex: number, op: OPERATION, filtered: boolean): void {
-        // No merge — ArraySchema's positional indexes don't have the
-        // DELETE→ADD = DELETE_AND_ADD semantics that Schema field refs
-        // need. Matches legacy `indexedOperation` which just overwrites
-        // `indexedOperations[index] = operation` unconditionally.
-        this.ops.set(index, op);
-
+        // No merge — ArraySchema's positional indexes don't have DELETE→ADD
+        // merge semantics. Matches legacy `indexedOperation` which overwrites
+        // unconditionally.
         if (filtered) {
             this.ensureFilteredStorage();
             this.filteredDirty!.set(index, op);
@@ -436,14 +504,13 @@ export class CollectionChangeRecorder implements ChangeRecorder {
     recordPure(op: OPERATION, filtered: boolean): void {
         if (filtered) {
             this.ensureFilteredStorage();
-            this.filteredPureOps!.push(op);
+            this.filteredPureOps!.push([this.filteredDirty!.size, op]);
         } else {
-            this.pureOps.push(op);
+            this.pureOps.push([this.dirty.size, op]);
         }
     }
 
     recordInCurrentTick(index: number, op: OPERATION, filtered: boolean): void {
-        this.ops.set(index, op);
         if (filtered) {
             this.ensureFilteredStorage();
             this.filteredDirty!.set(index, op);
@@ -453,7 +520,6 @@ export class CollectionChangeRecorder implements ChangeRecorder {
     }
 
     recordInCumulative(index: number, op: OPERATION, filtered: boolean): void {
-        this.ops.set(index, op);
         if (filtered) {
             this.ensureFilteredStorage();
             this.allFiltered!.set(index, op);
@@ -463,16 +529,22 @@ export class CollectionChangeRecorder implements ChangeRecorder {
     }
 
     operationAt(index: number): OPERATION | undefined {
-        return this.ops.get(index);
+        // Current-tick only — matches legacy `ops` Map semantics (cleared
+        // in reset("changes")). ChangeTree.change relies on this returning
+        // undefined after endEncode so DELETE_AND_ADD merge logic works on
+        // re-sets of the same key across ticks.
+        return this.dirty.get(index) ?? this.filteredDirty?.get(index);
     }
 
     setOperationAt(index: number, op: OPERATION): void {
-        this.ops.set(index, op);
+        // Update current-tick buckets only (matches legacy ops semantics).
+        if (this.dirty.has(index)) this.dirty.set(index, op);
+        if (this.filteredDirty?.has(index)) this.filteredDirty.set(index, op);
     }
 
     forEach(kind: ChangeKind, cb: (index: number, op: OPERATION) => void): void {
         let map: Map<number, OPERATION> | undefined;
-        let pure: OPERATION[] | undefined;
+        let pure: Array<[number, OPERATION]> | undefined;
 
         switch (kind) {
             case "changes": map = this.dirty; pure = this.pureOps; break;
@@ -481,14 +553,66 @@ export class CollectionChangeRecorder implements ChangeRecorder {
             case "allFilteredChanges": map = this.allFiltered; pure = undefined; break;
         }
 
-        if (map !== undefined) {
+        if (map === undefined) return;
+
+        if (pure !== undefined && pure.length > 0) {
+            // Interleave pure ops with indexed ops based on recorded position.
+            let pureIdx = 0;
+            let i = 0;
+            for (const [index, op] of map) {
+                while (pureIdx < pure.length && pure[pureIdx][0] <= i) {
+                    const pureOp = pure[pureIdx][1];
+                    cb(-pureOp, pureOp);
+                    pureIdx++;
+                }
+                cb(index, op);
+                i++;
+            }
+            while (pureIdx < pure.length) {
+                const pureOp = pure[pureIdx][1];
+                cb(-pureOp, pureOp);
+                pureIdx++;
+            }
+        } else {
             for (const [index, op] of map) {
                 cb(index, op);
             }
         }
-        if (pure !== undefined) {
-            for (let i = 0; i < pure.length; i++) {
-                cb(-pure[i], pure[i]);
+    }
+
+    forEachWithCtx<T>(kind: ChangeKind, ctx: T, cb: (ctx: T, index: number, op: OPERATION) => void): void {
+        let map: Map<number, OPERATION> | undefined;
+        let pure: Array<[number, OPERATION]> | undefined;
+
+        switch (kind) {
+            case "changes": map = this.dirty; pure = this.pureOps; break;
+            case "allChanges": map = this.all; pure = undefined; break;
+            case "filteredChanges": map = this.filteredDirty; pure = this.filteredPureOps; break;
+            case "allFilteredChanges": map = this.allFiltered; pure = undefined; break;
+        }
+
+        if (map === undefined) return;
+
+        if (pure !== undefined && pure.length > 0) {
+            let pureIdx = 0;
+            let i = 0;
+            for (const [index, op] of map) {
+                while (pureIdx < pure.length && pure[pureIdx][0] <= i) {
+                    const pureOp = pure[pureIdx][1];
+                    cb(ctx, -pureOp, pureOp);
+                    pureIdx++;
+                }
+                cb(ctx, index, op);
+                i++;
+            }
+            while (pureIdx < pure.length) {
+                const pureOp = pure[pureIdx][1];
+                cb(ctx, -pureOp, pureOp);
+                pureIdx++;
+            }
+        } else {
+            for (const [index, op] of map) {
+                cb(ctx, index, op);
             }
         }
     }
@@ -511,18 +635,17 @@ export class CollectionChangeRecorder implements ChangeRecorder {
             case "changes":
                 this.dirty.clear();
                 this.pureOps.length = 0;
-                // Clear ops to match legacy endEncode's `indexedOperations.length = 0`.
-                // Prevents stale entries from being shifted by a subsequent shift() call
-                // (e.g., ArraySchema.unshift after encode).
-                this.ops.clear();
                 break;
-            case "allChanges": this.all.clear(); break;
+            case "allChanges":
+                this.all.clear();
+                break;
             case "filteredChanges":
                 this.filteredDirty?.clear();
                 if (this.filteredPureOps) this.filteredPureOps.length = 0;
-                this.ops.clear();
                 break;
-            case "allFilteredChanges": this.allFiltered?.clear(); break;
+            case "allFilteredChanges":
+                this.allFiltered?.clear();
+                break;
         }
     }
 
@@ -530,18 +653,17 @@ export class CollectionChangeRecorder implements ChangeRecorder {
         this.ensureFilteredStorage();
         for (const [idx, op] of this.dirty) this.filteredDirty!.set(idx, op);
         for (const [idx, op] of this.all) this.allFiltered!.set(idx, op);
-        for (const op of this.pureOps) this.filteredPureOps!.push(op);
+        for (const entry of this.pureOps) this.filteredPureOps!.push(entry);
         this.dirty.clear();
         this.all.clear();
         this.pureOps.length = 0;
     }
 
     shift(shiftIndex: number): void {
-        // Shift entries in current-tick dirty (and filtered variant, if present)
-        // plus the ops map. Cumulative (allChanges) is NOT shifted — matches
-        // the existing shiftChangeIndexes behavior.
+        // Shift entries in current-tick dirty (and filtered variant, if present).
+        // Cumulative (allChanges) is NOT shifted — matches the existing
+        // shiftChangeIndexes behavior.
         this.dirty = shiftMap(this.dirty, shiftIndex);
-        this.ops = shiftMap(this.ops, shiftIndex);
         if (this.filteredDirty !== undefined) {
             this.filteredDirty = shiftMap(this.filteredDirty, shiftIndex);
         }
@@ -580,4 +702,11 @@ function popcount32(n: number): number {
     n = n - ((n >>> 1) & 0x55555555);
     n = (n & 0x33333333) + ((n >>> 2) & 0x33333333);
     return (((n + (n >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+}
+
+/** Return the last-inserted key in a Map (insertion order). */
+function lastKeyOf<K>(m: Map<K, any>): K | undefined {
+    let last: K | undefined;
+    for (const k of m.keys()) last = k;
+    return last;
 }

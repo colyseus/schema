@@ -1,6 +1,6 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $refId } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
-import { type IRef, ChangeTree, setOperationAtIndex } from "../../encoder/ChangeTree.js";
+import { type IRef, ChangeTree } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
@@ -484,18 +484,12 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         //
         if (deleteCount > insertCount) {
             changeTree.shiftAllChangeIndexes(-(deleteCount - insertCount), indexes[start + insertCount]);
-            // debugChangeSet("AFTER SHIFT indexes", changeTree.allChanges);
         }
 
-        //
-        // FIXME: this code block is duplicated on ChangeTree
-        //
-        if (changeTree.filteredChanges !== undefined) {
-            changeTree.root?.enqueueChangeTree(changeTree, 'filteredChanges');
-
-        } else {
-            changeTree.root?.enqueueChangeTree(changeTree, 'changes');
-        }
+        changeTree.root?.enqueueChangeTree(
+            changeTree,
+            changeTree.hasFilteredChanges ? 'filteredChanges' : 'changes'
+        );
 
         return this.items.splice(start, deleteCount, ...insertItems);
     }

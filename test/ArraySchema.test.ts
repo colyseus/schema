@@ -113,29 +113,26 @@ describe("ArraySchema Tests", () => {
             decodedState.decode(state.encode())
 
             const entitiesChangeTree: ChangeTree = state.entities[$changes];
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[0], 0);
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[1], 1);
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[2], 2);
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[3], 3);
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[4], 4);
+            const collectAll = () => {
+                const out: number[] = [];
+                entitiesChangeTree.recorder.forEach("allChanges", (idx) => { if (idx >= 0) out.push(idx); });
+                return out;
+            };
+            // After each shift, the cumulative change set is shifted so its
+            // field indexes align with the current array positions.
+            assert.deepStrictEqual(collectAll(), [0, 1, 2, 3, 4]);
 
             state.entities.shift();
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[0], 1);
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[1], 2);
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[2], 3);
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[3], 4);
+            assert.deepStrictEqual(collectAll(), [0, 1, 2, 3]);
 
             state.entities.shift();
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[0], 2);
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[1], 3);
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[2], 4);
+            assert.deepStrictEqual(collectAll(), [0, 1, 2]);
 
             state.entities.shift();
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[0], 3);
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[1], 4);
+            assert.deepStrictEqual(collectAll(), [0, 1]);
 
             state.entities.shift();
-            assert.strictEqual(entitiesChangeTree.allChanges.indexes[0], 4);
+            assert.deepStrictEqual(collectAll(), [0]);
 
             assertDeepStrictEqualEncodeAll(state);
 
@@ -1078,14 +1075,14 @@ describe("ArraySchema Tests", () => {
 
             const itemsChangeTree = state.items[$changes];
             const checkItemsSameAsOperations = () => {
-                assert.strictEqual(state.items.length, itemsChangeTree.allChanges.operations.filter((op) => op !== undefined).length);
-                for (let i = 0; i < itemsChangeTree.allChanges.operations.length; i++) {
-                    const fieldIndex = itemsChangeTree.allChanges.operations[i];
-                    if (fieldIndex !== undefined) {
-                        const value = itemsChangeTree.getValue(fieldIndex, true);
-                        assert.ok(value);
-                    }
-                };
+                let count = 0;
+                itemsChangeTree.recorder.forEach("allChanges", (fieldIndex) => {
+                    if (fieldIndex < 0) return;
+                    count++;
+                    const value = itemsChangeTree.getValue(fieldIndex, true);
+                    assert.ok(value);
+                });
+                assert.strictEqual(state.items.length, count);
             }
 
             const decodedState = createInstanceFromReflection(state);
@@ -1130,15 +1127,14 @@ describe("ArraySchema Tests", () => {
 
             const itemsChangeTree = state.items[$changes];
             const checkItemsSameAsOperations = () => {
-                assert.strictEqual(state.items.length, itemsChangeTree.allChanges.operations.filter((op) => op !== undefined).length);
-                for (let i = 0; i < itemsChangeTree.allChanges.operations.length; i++) {
-                    const fieldIndex = itemsChangeTree.allChanges.operations[i];
-                    if (fieldIndex !== undefined) {
-                        const value = itemsChangeTree.getValue(fieldIndex, true);
-                        console.log("check...", { fieldIndex, value: value?.toJSON() });
-                        assert.ok(value);
-                    }
-                };
+                let count = 0;
+                itemsChangeTree.recorder.forEach("allChanges", (fieldIndex) => {
+                    if (fieldIndex < 0) return;
+                    count++;
+                    const value = itemsChangeTree.getValue(fieldIndex, true);
+                    assert.ok(value);
+                });
+                assert.strictEqual(state.items.length, count);
             }
 
             const decodedState = createInstanceFromReflection(state);

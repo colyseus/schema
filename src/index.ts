@@ -74,7 +74,7 @@ export { getRawChangesCallback } from "./decoder/strategy/RawChanges.js";
 export { Encoder } from "./encoder/Encoder.js";
 export { Root } from "./encoder/Root.js";
 export { encodeSchemaOperation, encodeArray, encodeKeyValueOperation } from "./encoder/EncodeOperation.js";
-export { ChangeTree, type Ref, type IRef, type ChangeSetName, type ChangeSet} from "./encoder/ChangeTree.js";
+export { ChangeTree, type Ref, type IRef, type ChangeSetName } from "./encoder/ChangeTree.js";
 export { StateView } from "./encoder/StateView.js";
 
 export { Decoder } from "./decoder/Decoder.js";

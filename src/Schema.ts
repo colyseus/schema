@@ -386,40 +386,23 @@ export class Schema<C = any> implements IRef {
     static debugChanges<T extends Ref>(instance: T, isEncodeAll: boolean = false) {
         const changeTree: ChangeTree = instance[$changes];
 
-        const changeSet = (isEncodeAll) ? changeTree.allChanges : changeTree.changes;
-        const changeSetName = (isEncodeAll) ? "allChanges" : "changes";
+        const primaryKind = (isEncodeAll) ? "allChanges" : "changes";
+        const filteredKind = (isEncodeAll) ? "allFilteredChanges" : "filteredChanges";
 
-        let output = `${instance.constructor.name} (${instance[$refId]}) -> .${changeSetName}:\n`;
+        let output = `${instance.constructor.name} (${instance[$refId]}) -> .${primaryKind}:\n`;
 
-        function dumpChangeSet(changeSet: { operations: number[] }) {
-            changeSet.operations
-                .filter(op => op)
-                .forEach((index) => {
-                    const operation = changeTree.indexedOperations[index];
-                    output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(Number(index), isEncodeAll))})\n`
-                });
-        }
+        const dumpKind = (kind: "changes" | "allChanges" | "filteredChanges" | "allFilteredChanges") => {
+            changeTree.recorder.forEach(kind, (index, op) => {
+                if (index < 0 || !op) return;
+                output += `- [${index}]: ${OPERATION[op]} (${JSON.stringify(changeTree.getValue(Number(index), isEncodeAll))})\n`;
+            });
+        };
 
-        dumpChangeSet(changeSet);
+        dumpKind(primaryKind);
 
-        // display filtered changes
-        if (
-            !isEncodeAll &&
-            changeTree.filteredChanges &&
-            (changeTree.filteredChanges.operations).filter(op => op).length > 0
-        ) {
-            output += `${instance.constructor.name} (${instance[$refId]}) -> .filteredChanges:\n`;
-            dumpChangeSet(changeTree.filteredChanges);
-        }
-
-        // display filtered changes
-        if (
-            isEncodeAll &&
-            changeTree.allFilteredChanges &&
-            (changeTree.allFilteredChanges.operations).filter(op => op).length > 0
-        ) {
-            output += `${instance.constructor.name} (${instance[$refId]}) -> .allFilteredChanges:\n`;
-            dumpChangeSet(changeTree.allFilteredChanges);
+        if (changeTree.recorder.hasFilteredStorage && changeTree.recorder.has(filteredKind)) {
+            output += `${instance.constructor.name} (${instance[$refId]}) -> .${filteredKind}:\n`;
+            dumpKind(filteredKind);
         }
 
         return output;
@@ -481,19 +464,17 @@ export class Schema<C = any> implements IRef {
                 }
             });
 
-            const changes = changeTree.indexedOperations;
             const level = parentChangeTrees.length;
             const indent = getIndent(level);
 
             const parentIndex = (level > 0) ? `(${changeTree.parentIndex}) ` : "";
-            let changeCount = 0;
-            for (let ci = 0; ci < changes.length; ci++) { if (changes[ci] !== undefined) changeCount++; }
+            const changeCount = changeTree.recorder.sizeOf("changes");
             output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${changeCount}\n`;
 
-            for (let ci = 0; ci < changes.length; ci++) {
-                if (changes[ci] === undefined) continue;
-                output += `${getIndent(level + 1)}${OPERATION[changes[ci]]}: ${ci}\n`;
-            }
+            changeTree.recorder.forEach("changes", (index, op) => {
+                if (index < 0 || !op) return;
+                output += `${getIndent(level + 1)}${OPERATION[op]}: ${index}\n`;
+            });
         }
 
         return `${output}`;

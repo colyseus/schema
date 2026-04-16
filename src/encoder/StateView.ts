@@ -133,30 +133,29 @@ export class StateView {
 
         } else if (!changeTree.isNew || isChildAdded) {
             // new structures will be added as part of .encode() call, no need to force it to .encodeView()
-            const changeSet = (changeTree.filteredChanges !== undefined)
-                ? changeTree.allFilteredChanges
-                : changeTree.allChanges;
+            const kind = (changeTree.hasFilteredChanges)
+                ? "allFilteredChanges"
+                : "allChanges";
 
             const isInvisible = this.invisible.has(changeTree);
 
-            for (let i = 0, len = changeSet.operations.length; i < len; i++) {
-                const index = changeSet.operations[i];
-                if (index === undefined) { continue; } // skip "undefined" indexes
+            changeTree.recorder.forEach(kind, (index, op) => {
+                if (index < 0) return; // skip pure ops (CLEAR/REVERSE)
 
-                const op = changeTree.indexedOperations[index] ?? OPERATION.ADD;
+                const resolvedOp = op || OPERATION.ADD;
                 const tagAtIndex = metadata?.[index].tag;
                 if (
-                    op !== OPERATION.DELETE &&
+                    resolvedOp !== OPERATION.DELETE &&
                     (
                         isInvisible || // if "invisible", include all
                         tagAtIndex === undefined || // "all change" with no tag
                         tagAtIndex === tag // tagged property
                     )
                 ) {
-                    changes[index] = op;
+                    changes[index] = resolvedOp;
                     isChildAdded = true; // FIXME: assign only once
                 }
-            }
+            });
         }
 
         return isChildAdded;
@@ -172,7 +171,7 @@ export class StateView {
 
             // add parent's parent
             const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
-            if (parentChangeTree && (parentChangeTree.filteredChanges !== undefined)) {
+            if (parentChangeTree && parentChangeTree.hasFilteredChanges) {
                 this.addParentOf(changeTree, tag);
             }
 
