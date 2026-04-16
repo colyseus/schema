@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $viewFieldIndexes, type $deleteByIndex } from "../types/symbols.js";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes, type $deleteByIndex } from "../types/symbols.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
@@ -63,6 +63,8 @@ export interface ParentChain {
 const IS_FILTERED = 1;
 const IS_VISIBILITY_SHARED = 2;
 const IS_NEW = 4;
+const IS_UNRELIABLE = 8;   // tree inherits unreliable classification from parent field
+const IS_TRANSIENT = 16;   // tree inherits transient classification from parent field
 
 export class ChangeTree<T extends Ref = any> {
     ref: T;
@@ -77,20 +79,26 @@ export class ChangeTree<T extends Ref = any> {
 
     /**
      * Packed boolean flags:
-     * bit 0: isFiltered (tree lives in a filtered subtree — all its fields
-     *        inherit the filtered classification regardless of per-field tags)
+     * bit 0: isFiltered (tree lives in a filtered subtree)
      * bit 1: isVisibilitySharedWithParent
      * bit 2: isNew
+     * bit 3: isUnreliable (tree inherits unreliable from parent field's @unreliable)
+     * bit 4: isTransient (tree inherits transient from parent field's @transient)
      */
     flags: number = IS_NEW;
 
     /**
-     * Unified change-tracking abstraction — the single source of truth for
-     * current-tick changes on this tree. Full-sync snapshots (encodeAll,
-     * StateView.add of an existing instance) are derived by walking the
-     * live ref structure via {@link forEachLive}, not from the recorder.
+     * Reliable dirty recorder — emitted by `Encoder.encode` on reliable
+     * transport. Always allocated.
      */
     recorder: ChangeRecorder;
+
+    /**
+     * Unreliable dirty recorder — emitted by `Encoder.encodeUnreliable` on
+     * the unreliable transport channel. Lazy-allocated when the first
+     * unreliable mutation is recorded.
+     */
+    unreliableRecorder?: ChangeRecorder;
 
     /**
      * When true, mutations on the associated ref are NOT tracked.
@@ -98,8 +106,11 @@ export class ChangeTree<T extends Ref = any> {
      */
     paused: boolean = false;
 
-    /** Queue node reference (set by Root.addToChangeTreeList, cleared by endEncode/remove). */
+    /** Reliable-queue node reference (Root.changes linked list). */
     changesNode?: ChangeTreeNode;
+
+    /** Unreliable-queue node reference (Root.unreliableChanges linked list). */
+    unreliableChangesNode?: ChangeTreeNode;
 
     // Accessor properties for flags
     get isFiltered(): boolean { return (this.flags & IS_FILTERED) !== 0; }
@@ -111,6 +122,12 @@ export class ChangeTree<T extends Ref = any> {
     get isNew(): boolean { return (this.flags & IS_NEW) !== 0; }
     set isNew(v: boolean) { this.flags = v ? (this.flags | IS_NEW) : (this.flags & ~IS_NEW); }
 
+    get isUnreliable(): boolean { return (this.flags & IS_UNRELIABLE) !== 0; }
+    set isUnreliable(v: boolean) { this.flags = v ? (this.flags | IS_UNRELIABLE) : (this.flags & ~IS_UNRELIABLE); }
+
+    get isTransient(): boolean { return (this.flags & IS_TRANSIENT) !== 0; }
+    set isTransient(v: boolean) { this.flags = v ? (this.flags | IS_TRANSIENT) : (this.flags & ~IS_TRANSIENT); }
+
     /**
      * True if this tree carries at least one filtered field — either it
      * inherits `isFiltered` from a filtered ancestor, OR its Schema class
@@ -119,6 +136,25 @@ export class ChangeTree<T extends Ref = any> {
      */
     get hasFilteredFields(): boolean {
         return this.isFiltered || (this.metadata?.[$viewFieldIndexes] !== undefined);
+    }
+
+    /** Lazy-allocate the unreliable recorder on first unreliable mutation. */
+    ensureUnreliableRecorder(): ChangeRecorder {
+        if (this.unreliableRecorder === undefined) {
+            const isSchema = Metadata.isValidInstance(this.ref);
+            this.unreliableRecorder = isSchema
+                ? new SchemaChangeRecorder((this.metadata?.[$numFields] ?? 0) as number)
+                : new CollectionChangeRecorder();
+        }
+        return this.unreliableRecorder;
+    }
+
+    /**
+     * Return true if the given (tree, index) pair is unreliable. Mirrors
+     * the routing rule used at record time.
+     */
+    isFieldUnreliable(index: number): boolean {
+        return this.isUnreliable || Metadata.hasUnreliableAtIndex(this.metadata, index);
     }
 
     constructor(ref: T) {
@@ -208,14 +244,21 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     /**
-     * Walk all currently-populated indexes on this tree, emitting each index
-     * once. Used by Root.add (re-stage), Encoder.encodeAll, and StateView.add
-     * to derive full-sync output from the live structure.
+     * Walk all currently-populated non-transient indexes on this tree,
+     * emitting each index once. Used by Root.add (re-stage), Encoder.encodeAll,
+     * and StateView.add to derive full-sync output from the live structure.
+     *
+     * Transient fields (`@transient`) are skipped — they're delivered only
+     * on tick patches and not persisted to snapshots. Collections whose
+     * parent field is @transient inherit the skip (`tree.isTransient`).
      */
     forEachLive(callback: (index: number) => void): void {
         const ref = this.ref as any;
 
         if (ref[$childType] !== undefined) {
+            // Collection inheriting @transient from parent field: skip entirely.
+            if (this.isTransient) return;
+
             // Collection types: dispatch by shape.
             if (Array.isArray(ref.items)) {
                 // ArraySchema
@@ -241,9 +284,11 @@ export class ChangeTree<T extends Ref = any> {
             const metadata = this.metadata;
             if (!metadata) return;
             const numFields = (metadata[$numFields] ?? -1) as number;
+            const transientIndexes = metadata[$transientFieldIndexes];
             for (let i = 0; i <= numFields; i++) {
                 const field = metadata[i as any];
                 if (field === undefined) continue;
+                if (transientIndexes && transientIndexes.includes(i)) continue;
                 const value = ref[field.name];
                 if (value !== undefined && value !== null) callback(i);
             }
@@ -252,35 +297,58 @@ export class ChangeTree<T extends Ref = any> {
 
     operation(op: OPERATION) {
         if (this.paused) return;
-        this.recorder.recordPure(op);
-        this.root?.enqueueChangeTree(this);
+        // Pure ops (CLEAR/REVERSE) apply to collections; collections inherit
+        // their channel at tree level via `isUnreliable`.
+        if (this.isUnreliable) {
+            this.ensureUnreliableRecorder().recordPure(op);
+            this.root?.enqueueUnreliable(this);
+        } else {
+            this.recorder.recordPure(op);
+            this.root?.enqueueChangeTree(this);
+        }
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
         if (this.paused) return;
 
-        const previousOperation = this.recorder.operationAt(index);
+        const unreliable = this.isFieldUnreliable(index);
+        const recorder = unreliable ? this.ensureUnreliableRecorder() : this.recorder;
+
+        const previousOperation = recorder.operationAt(index);
         const op = (!previousOperation)
             ? operation
             : (previousOperation === OPERATION.DELETE)
                 ? OPERATION.DELETE_AND_ADD
                 : previousOperation; // preserve existing op (e.g. already-ADD stays ADD)
 
-        this.recorder.record(index, op);
-        this.root?.enqueueChangeTree(this);
+        recorder.record(index, op);
+
+        if (unreliable) {
+            this.root?.enqueueUnreliable(this);
+        } else {
+            this.root?.enqueueChangeTree(this);
+        }
     }
 
     shiftChangeIndexes(shiftIndex: number) {
         //
-        // Used only during ArraySchema#unshift()
+        // Used only during ArraySchema#unshift().
+        // Array shifts apply to both channels if either has dirty entries.
         //
         this.recorder.shift(shiftIndex);
+        this.unreliableRecorder?.shift(shiftIndex);
     }
 
     indexedOperation(index: number, operation: OPERATION) {
         if (this.paused) return;
-        this.recorder.recordRaw(index, operation);
-        this.root?.enqueueChangeTree(this);
+
+        if (this.isFieldUnreliable(index)) {
+            this.ensureUnreliableRecorder().recordRaw(index, operation);
+            this.root?.enqueueUnreliable(this);
+        } else {
+            this.recorder.recordRaw(index, operation);
+            this.root?.enqueueChangeTree(this);
+        }
     }
 
     getType(index?: number) {
@@ -363,12 +431,15 @@ export class ChangeTree<T extends Ref = any> {
         }
 
         if (this.paused) {
-            // Still return the previous value so callers (e.g., MapSchema.delete
-            // via journal snapshot) get consistent semantics.
             return this.getValue(index);
         }
 
-        this.recorder.recordDelete(index, operation ?? OPERATION.DELETE);
+        const unreliable = this.isFieldUnreliable(index);
+        if (unreliable) {
+            this.ensureUnreliableRecorder().recordDelete(index, operation ?? OPERATION.DELETE);
+        } else {
+            this.recorder.recordDelete(index, operation ?? OPERATION.DELETE);
+        }
 
         const previousValue = this.getValue(index);
 
@@ -379,38 +450,40 @@ export class ChangeTree<T extends Ref = any> {
             //
             // This method is being called at decoding time when a DELETE operation is found.
             //
-            // - This is due to using the concrete Schema class at decoding time.
-            // - "Reflected" structures do not have this problem.
-            //
-            // (The property descriptors should NOT be used at decoding time. only at encoding time.)
-            //
             this.root?.remove(previousValue[$changes]);
         }
 
-        this.root?.enqueueChangeTree(this);
+        if (unreliable) {
+            this.root?.enqueueUnreliable(this);
+        } else {
+            this.root?.enqueueChangeTree(this);
+        }
 
         return previousValue;
     }
 
+    /** Clear the reliable dirty bucket after a reliable encode pass. */
     endEncode() {
         this.recorder.reset();
         this.changesNode = undefined;
 
-        // ArraySchema and MapSchema have a custom "encode end" method
         (this.ref as any)[$onEncodeEnd]?.();
 
-        // Not a new instance anymore
         this.isNew = false;
     }
 
+    /** Clear the unreliable dirty bucket after an unreliable encode pass. */
+    endEncodeUnreliable() {
+        this.unreliableRecorder?.reset();
+        this.unreliableChangesNode = undefined;
+
+        (this.ref as any)[$onEncodeEnd]?.();
+    }
+
     discard() {
-        //
-        // > MapSchema:
-        //      Remove cached key to ensure ADD operations is unsed instead of
-        //      REPLACE in case same key is used on next patches.
-        //
         (this.ref as any)[$onEncodeEnd]?.();
         this.recorder.reset();
+        this.unreliableRecorder?.reset();
     }
 
     /**
@@ -419,7 +492,14 @@ export class ChangeTree<T extends Ref = any> {
      */
     discardAll() {
         this.recorder.forEach((index, _op) => {
-            if (index < 0) return; // skip pure ops
+            if (index < 0) return;
+            const value = this.getValue(index);
+            if (value && value[$changes]) {
+                value[$changes].discardAll();
+            }
+        });
+        this.unreliableRecorder?.forEach((index, _op) => {
+            if (index < 0) return;
             const value = this.getValue(index);
             if (value && value[$changes]) {
                 value[$changes].discardAll();
@@ -429,25 +509,38 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     get changed() {
-        return this.recorder.has();
+        return this.recorder.has() || (this.unreliableRecorder?.has() ?? false);
     }
 
     protected checkIsFiltered(parent: Ref, parentIndex: number, _isNewChangeTree: boolean) {
-        if (this.root.types.hasFilters) {
-            //
-            // At Schema initialization, the "root" structure might not be available
-            // yet, as it only does once the "Encoder" has been set up.
-            //
-            // So the "parent" may be already set without a "root".
-            //
-            this._checkFilteredByParent(parent, parentIndex);
-        }
+        this._checkInheritedFlags(parent, parentIndex);
 
-        this.root?.enqueueChangeTree(this);
+        // Mutations that happened before setRoot (e.g. class-field initializers)
+        // recorded into the appropriate recorder but couldn't enqueue yet.
+        // Reconcile both queues now.
+        if (this.recorder.has()) {
+            this.root?.enqueueChangeTree(this);
+        }
+        if (this.unreliableRecorder?.has()) {
+            this.root?.enqueueUnreliable(this);
+        }
+        // Fresh tree with nothing recorded: still enqueue into its primary
+        // queue so the tree is reachable for its first mutation cycle.
+        if (!this.recorder.has() && !(this.unreliableRecorder?.has())) {
+            if (this.isUnreliable) {
+                this.root?.enqueueUnreliable(this);
+            } else {
+                this.root?.enqueueChangeTree(this);
+            }
+        }
     }
 
-    protected _checkFilteredByParent(parent: Ref, parentIndex: number) {
-        // skip if parent is not set
+    /**
+     * Inherit filter / unreliable / transient classification from the
+     * parent field's annotation. Collections (MapSchema / ArraySchema /
+     * etc.) inherit these from the Schema field that holds them.
+     */
+    protected _checkInheritedFlags(parent: Ref, parentIndex: number) {
         if (!parent) { return; }
 
         //
@@ -470,7 +563,34 @@ export class ChangeTree<T extends Ref = any> {
             parentChangeTree = parent[$changes]
         }
 
-        const parentConstructor = parent.constructor as typeof Schema;
+        const parentConstructor = parent?.constructor as typeof Schema;
+        const parentMetadata = parentConstructor?.[Symbol.metadata];
+
+        // Unreliable/transient inheritance — from parent schema's field annotation.
+        const fieldIsUnreliable = Metadata.hasUnreliableAtIndex(parentMetadata, parentIndex);
+        const fieldIsTransient = Metadata.hasTransientAtIndex(parentMetadata, parentIndex);
+        const becameUnreliable = !this.isUnreliable && (parentChangeTree.isUnreliable || fieldIsUnreliable);
+        this.isUnreliable = parentChangeTree.isUnreliable || fieldIsUnreliable;
+        this.isTransient = parentChangeTree.isTransient || fieldIsTransient;
+
+        // If this tree just became unreliable via inheritance AND it already
+        // has entries in the reliable recorder (recorded before the parent
+        // was assigned — e.g. `new Item().assign({...})` populates item's
+        // recorder before it's pushed into an unreliable collection),
+        // promote them to the unreliable recorder.
+        if (becameUnreliable && this.recorder.has()) {
+            const src = this.recorder;
+            const dst = this.ensureUnreliableRecorder();
+            src.forEach((index, op) => {
+                if (index < 0) dst.recordPure(op);
+                else dst.record(index, op);
+            });
+            src.reset();
+        }
+
+        // Filtered inheritance — only run the expensive lookup when the root
+        // context has filters at all.
+        if (!this.root?.types.hasFilters) return;
 
         let key = `${this.root.types.getTypeId(refType as typeof Schema)}`;
         if (parentConstructor) {
@@ -478,9 +598,9 @@ export class ChangeTree<T extends Ref = any> {
         }
         key += `-${parentIndex}`;
 
-        const fieldHasViewTag = Metadata.hasViewTagAtIndex(parentConstructor?.[Symbol.metadata], parentIndex);
+        const fieldHasViewTag = Metadata.hasViewTagAtIndex(parentMetadata, parentIndex);
 
-        this.isFiltered = parent[$changes].isFiltered
+        this.isFiltered = parentChangeTree.isFiltered
             || this.root.types.parentFiltered[key]
             || fieldHasViewTag;
 

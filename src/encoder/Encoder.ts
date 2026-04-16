@@ -149,6 +149,31 @@ export class Encoder<T extends Schema = any> {
         buffer: Uint8Array = this.sharedBuffer,
         initialOffset = it.offset
     ): Uint8Array {
+        return this._encodeChannel(it, view, buffer, initialOffset, /* unreliable */ false);
+    }
+
+    /**
+     * Per-tick encode of the UNRELIABLE channel. Walks `root.unreliableChanges`
+     * and emits each tree's `unreliableRecorder`. Safe to call at a different
+     * cadence than `encode()` (e.g. 60Hz vs 20Hz) — the two channels are
+     * fully independent.
+     */
+    encodeUnreliable(
+        it: Iterator = { offset: 0 },
+        view?: StateView,
+        buffer: Uint8Array = this.sharedBuffer,
+        initialOffset = it.offset
+    ): Uint8Array {
+        return this._encodeChannel(it, view, buffer, initialOffset, /* unreliable */ true);
+    }
+
+    private _encodeChannel(
+        it: Iterator,
+        view: StateView | undefined,
+        buffer: Uint8Array,
+        initialOffset: number,
+        unreliable: boolean,
+    ): Uint8Array {
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
@@ -164,7 +189,8 @@ export class Encoder<T extends Schema = any> {
         // skipped inside encodeChangeCb.
         ctx.emitFiltered = hasView;
 
-        let current: ChangeTreeList | ChangeTreeNode = this.root.changes;
+        const queue: ChangeTreeList = unreliable ? this.root.unreliableChanges : this.root.changes;
+        let current: ChangeTreeList | ChangeTreeNode = queue;
 
         while (current = current.next) {
             const changeTree = (current as ChangeTreeNode).changeTree;
@@ -172,13 +198,13 @@ export class Encoder<T extends Schema = any> {
             if (hasView) {
                 if (!view.isChangeTreeVisible(changeTree)) {
                     view.invisible.add(changeTree);
-                    continue; // skip this change tree
+                    continue;
                 }
                 view.invisible.delete(changeTree);
             }
 
-            const recorder = changeTree.recorder;
-            if (!recorder.has()) { continue; }
+            const recorder = unreliable ? changeTree.unreliableRecorder : changeTree.recorder;
+            if (!recorder || !recorder.has()) { continue; }
 
             const ref = changeTree.ref;
             const ctor = ref.constructor;
@@ -202,7 +228,7 @@ export class Encoder<T extends Schema = any> {
 
         if (it.offset > buffer.byteLength) {
             buffer = this._resizeBuffer(buffer, it.offset);
-            return this.encode({ offset: initialOffset }, view, buffer);
+            return this._encodeChannel({ offset: initialOffset }, view, buffer, initialOffset, unreliable);
         }
 
         return buffer.subarray(0, it.offset);
@@ -386,6 +412,29 @@ export class Encoder<T extends Schema = any> {
         );
     }
 
+    /**
+     * Per-view unreliable encode. Walks `root.unreliableChanges` and emits
+     * only filtered fields visible to this view. Unlike `encodeView`, this
+     * doesn't emit `view.changes` entries — those are used only for
+     * reliable view bootstrap (membership ADDs) and are consumed by
+     * `encodeView` on the reliable channel.
+     */
+    encodeUnreliableView(
+        view: StateView,
+        sharedOffset: number,
+        it: Iterator,
+        bytes: Uint8Array = this.sharedBuffer
+    ) {
+        const viewOffset = it.offset;
+
+        this.encodeUnreliable(it, view, bytes, viewOffset);
+
+        return concatBytes(
+            bytes.subarray(0, sharedOffset),
+            bytes.subarray(viewOffset, it.offset)
+        );
+    }
+
     discardChanges() {
         let current = this.root.changes.next;
         while (current) {
@@ -393,6 +442,15 @@ export class Encoder<T extends Schema = any> {
             current = current.next;
         }
         this.root.changes = createChangeTreeList();
+    }
+
+    discardUnreliableChanges() {
+        let current = this.root.unreliableChanges.next;
+        while (current) {
+            current.changeTree.endEncodeUnreliable();
+            current = current.next;
+        }
+        this.root.unreliableChanges = createChangeTreeList();
     }
 
     tryEncodeTypeId(
@@ -417,5 +475,9 @@ export class Encoder<T extends Schema = any> {
 
     get hasChanges() {
         return this.root.changes.next !== undefined;
+    }
+
+    get hasUnreliableChanges() {
+        return this.root.unreliableChanges.next !== undefined;
     }
 }

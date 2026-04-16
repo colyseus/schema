@@ -46,6 +46,7 @@ export {
     deprecated,
     owned,
     unreliable,
+    transient,
     view,
     schema,
     entity,

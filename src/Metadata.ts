@@ -1,7 +1,7 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
 import { getType, registeredTypes } from "./types/registry.js";
-import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $viewFieldIndexes } from "./types/symbols.js";
+import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
 
@@ -11,6 +11,7 @@ export type MetadataField = {
     index: number,
     tag?: number,
     unreliable?: boolean,
+    transient?: boolean,
     deprecated?: boolean,
     owned?: boolean,
     static?: boolean,
@@ -22,6 +23,8 @@ export type Metadata =
     { [$viewFieldIndexes]: number[]; } & // all field indexes with "view" tag
     { [$fieldIndexesByViewTag]: {[tag: number]: number[]}; } & // field indexes by "view" tag
     { [$refTypeFieldIndexes]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
+    { [$unreliableFieldIndexes]: number[]; } & // all field indexes tagged with @unreliable
+    { [$transientFieldIndexes]: number[]; } & // all field indexes tagged with @transient (not persisted to snapshots)
     { [$encoders]: Array<(bytes: Uint8Array, value: any, it: any) => void>; } & // pre-computed encoder fn per primitive field
     { [field: number]: MetadataField; } & // index => field name
     { [field: string]: number; } & // field name => field metadata
@@ -168,6 +171,36 @@ export const Metadata = {
         metadata[$fieldIndexesByViewTag][tag].push(index);
     },
 
+    setUnreliable(metadata: Metadata, fieldName: string) {
+        const index = metadata[fieldName];
+        metadata[index].unreliable = true;
+
+        if (!metadata[$unreliableFieldIndexes]) {
+            Object.defineProperty(metadata, $unreliableFieldIndexes, {
+                value: [],
+                enumerable: false,
+                configurable: true,
+                writable: true,
+            });
+        }
+        metadata[$unreliableFieldIndexes].push(index);
+    },
+
+    setTransient(metadata: Metadata, fieldName: string) {
+        const index = metadata[fieldName];
+        metadata[index].transient = true;
+
+        if (!metadata[$transientFieldIndexes]) {
+            Object.defineProperty(metadata, $transientFieldIndexes, {
+                value: [],
+                enumerable: false,
+                configurable: true,
+                writable: true,
+            });
+        }
+        metadata[$transientFieldIndexes].push(index);
+    },
+
     setFields<T extends { new (...args: any[]): InstanceType<T> } = any>(target: T, fields: { [field in keyof InstanceType<T>]?: DefinitionType }) {
         // for inheritance support
         const constructor = target.prototype.constructor;
@@ -304,6 +337,26 @@ export const Metadata = {
                     });
                 }
 
+                // $unreliableFieldIndexes
+                if (parentMetadata[$unreliableFieldIndexes] !== undefined) {
+                    Object.defineProperty(metadata, $unreliableFieldIndexes, {
+                        value: [...parentMetadata[$unreliableFieldIndexes]],
+                        enumerable: false,
+                        configurable: true,
+                        writable: true,
+                    });
+                }
+
+                // $transientFieldIndexes
+                if (parentMetadata[$transientFieldIndexes] !== undefined) {
+                    Object.defineProperty(metadata, $transientFieldIndexes, {
+                        value: [...parentMetadata[$transientFieldIndexes]],
+                        enumerable: false,
+                        configurable: true,
+                        writable: true,
+                    });
+                }
+
                 // $descriptors
                 Object.defineProperty(metadata, $descriptors, {
                     value: { ...parentMetadata[$descriptors] },
@@ -351,5 +404,13 @@ export const Metadata = {
 
     hasViewTagAtIndex(metadata: Metadata, index: number) {
         return metadata?.[$viewFieldIndexes]?.includes(index);
+    },
+
+    hasUnreliableAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$unreliableFieldIndexes]?.includes(index);
+    },
+
+    hasTransientAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$transientFieldIndexes]?.includes(index);
     }
 }

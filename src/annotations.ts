@@ -259,9 +259,6 @@ export function owned<T> (target: T, field: string) {
 }
 
 export function unreliable<T> (target: T, field: string) {
-    //
-    // FIXME: the following block of code is repeated across `@type()`, `@deprecated()` and `@unreliable()` decorators.
-    //
     const constructor = target.constructor as typeof Schema;
 
     const parentClass = Object.getPrototypeOf(constructor);
@@ -270,20 +267,26 @@ export function unreliable<T> (target: T, field: string) {
     // TODO: use Metadata.initialize()
     const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
 
-    // if (!metadata[field]) {
-    //     //
-    //     // detect index for this field, considering inheritance
-    //     //
-    //     metadata[field] = {
-    //         type: undefined,
-    //         index: (metadata[$numFields] // current structure already has fields defined
-    //             ?? (parentMetadata && parentMetadata[$numFields]) // parent structure has fields defined
-    //             ?? -1) + 1 // no fields defined
-    //     }
-    // }
+    Metadata.setUnreliable(metadata, field);
+}
 
-    // add owned flag to the field
-    metadata[metadata[field]].unreliable = true;
+/**
+ * @transient — mark a field as not persisted to snapshots (encodeAll /
+ * encodeAllView). Transient fields are still emitted on per-tick patches
+ * (reliable or unreliable), but late-joining clients won't see them until
+ * the next mutation.
+ *
+ * Orthogonal to @unreliable: a field can be either, both, or neither.
+ */
+export function transient<T> (target: T, field: string) {
+    const constructor = target.constructor as typeof Schema;
+
+    const parentClass = Object.getPrototypeOf(constructor);
+    const parentMetadata = parentClass[Symbol.metadata];
+
+    const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
+
+    Metadata.setTransient(metadata, field);
 }
 
 export function type (
@@ -606,6 +609,7 @@ export function schema<
     const viewTagFields: { [field: string]: number } = {};
     const ownedFields: string[] = [];
     const unreliableFields: string[] = [];
+    const transientFields: string[] = [];
     const deprecatedFields: { [field: string]: boolean } = {};
     const staticFields: string[] = [];
     const streamFields: string[] = [];
@@ -620,6 +624,7 @@ export function schema<
             if (def.view !== undefined) { viewTagFields[fieldName] = def.view; }
             if (def.owned) { ownedFields.push(fieldName); }
             if (def.unreliable) { unreliableFields.push(fieldName); }
+            if (def.transient) { transientFields.push(fieldName); }
             if (def.deprecated) { deprecatedFields[fieldName] = def.deprecatedThrows; }
             if (def.static) { staticFields.push(fieldName); }
             if (def.stream) { streamFields.push(fieldName); }
@@ -716,6 +721,9 @@ export function schema<
     }
     for (const fieldName of unreliableFields) {
         unreliable(klass.prototype, fieldName);
+    }
+    for (const fieldName of transientFields) {
+        transient(klass.prototype, fieldName);
     }
     for (const fieldName in deprecatedFields) {
         deprecated(deprecatedFields[fieldName])(klass.prototype, fieldName);

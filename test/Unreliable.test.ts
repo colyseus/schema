@@ -1,0 +1,259 @@
+import * as assert from "assert";
+import { Schema, type, unreliable, transient, view, ArraySchema, MapSchema, StateView } from "../src";
+import { Encoder } from "../src/encoder/Encoder";
+import { Decoder } from "../src/decoder/Decoder";
+import { createInstanceFromReflection, getEncoder, getDecoder } from "./Schema";
+
+describe("@unreliable and @transient", () => {
+
+    describe("@unreliable routing", () => {
+        it("unreliable field mutations do NOT appear in the reliable encode() output", () => {
+            class State extends Schema {
+                @type("string") reliable: string;
+                @unreliable @type("number") x: number;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const decoded = createInstanceFromReflection(state) as State;
+            const decoder = getDecoder(decoded);
+
+            state.reliable = "hello";
+            state.x = 7;
+
+            const reliableBytes = encoder.encode();
+            decoder.decode(reliableBytes);
+            assert.strictEqual((decoder.state as any).reliable, "hello");
+            assert.strictEqual((decoder.state as any).x, undefined,
+                "unreliable field must not appear on reliable channel");
+
+            // unreliable encode delivers it
+            const unreliableBytes = encoder.encodeUnreliable();
+            assert.ok(unreliableBytes.length > 0, "unreliable encode should have emitted the x field");
+            decoder.decode(unreliableBytes);
+            assert.strictEqual((decoder.state as any).x, 7);
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+        });
+
+        it("mixed reliable + unreliable mutations route to the correct channel", () => {
+            class State extends Schema {
+                @type("string") name: string;
+                @unreliable @type("number") x: number;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const decoded = createInstanceFromReflection(state) as State;
+            const decoder = getDecoder(decoded);
+
+            state.name = "Alice";
+            state.x = 42;
+
+            // Reliable only
+            decoder.decode(encoder.encode());
+            assert.strictEqual((decoder.state as any).name, "Alice");
+            assert.strictEqual((decoder.state as any).x, undefined);
+
+            // Unreliable only
+            decoder.decode(encoder.encodeUnreliable());
+            assert.strictEqual((decoder.state as any).x, 42);
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+        });
+
+        it("collections inherit unreliable from their parent field", () => {
+            class Position extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+            }
+            class State extends Schema {
+                @type("string") name: string;
+                @unreliable @type([Position]) positions = new ArraySchema<Position>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            state.name = "world";
+            state.positions.push(new Position().assign({ x: 1, y: 2 }));
+            state.positions.push(new Position().assign({ x: 3, y: 4 }));
+
+            // Reliable encode: only state's name, NOT positions
+            const decoded = createInstanceFromReflection(state) as State;
+            const decoder = getDecoder(decoded);
+            decoder.decode(encoder.encode());
+            assert.strictEqual((decoder.state as any).name, "world");
+            assert.strictEqual((decoder.state as any).positions?.length ?? 0, 0);
+
+            // Unreliable encode: positions + nested Position fields
+            decoder.decode(encoder.encodeUnreliable());
+            assert.strictEqual((decoder.state as any).positions.length, 2);
+            assert.strictEqual((decoder.state as any).positions[0].x, 1);
+            assert.strictEqual((decoder.state as any).positions[1].y, 4);
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+        });
+
+        it("unreliable encodes can run at a different cadence than reliable", () => {
+            class State extends Schema {
+                @type("string") name: string;
+                @unreliable @type("number") tick: number;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const decoded = createInstanceFromReflection(state) as State;
+            const decoder = getDecoder(decoded);
+
+            state.name = "game";
+            state.tick = 0;
+
+            // First reliable encode: carries name
+            decoder.decode(encoder.encode());
+            assert.strictEqual((decoder.state as any).name, "game");
+            encoder.discardChanges();
+
+            // Multiple unreliable encodes between reliable encodes
+            for (let i = 1; i <= 5; i++) {
+                state.tick = i;
+                decoder.decode(encoder.encodeUnreliable());
+                encoder.discardUnreliableChanges();
+                assert.strictEqual((decoder.state as any).tick, i);
+            }
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+        });
+    });
+
+    describe("@transient exclusion from full-sync", () => {
+        it("transient fields appear on tick patches but NOT in encodeAll output", () => {
+            class State extends Schema {
+                @type("string") persistent: string = "kept";
+                @transient @type("number") ephemeral: number = 99;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            // Late-joining client: only encodeAll
+            const fresh = createInstanceFromReflection(state);
+            fresh.decode(encoder.encodeAll());
+            assert.strictEqual((fresh as any).persistent, "kept");
+            assert.strictEqual((fresh as any).ephemeral, undefined,
+                "transient field must be absent from encodeAll snapshot");
+
+            // Tick-connected client: gets ephemeral via encode()
+            const tick = createInstanceFromReflection(state);
+            tick.decode(encoder.encode());
+            assert.strictEqual((tick as any).ephemeral, 99);
+
+            encoder.discardChanges();
+        });
+
+        it("transient + unreliable composes: tick-unreliable only, no full-sync", () => {
+            class State extends Schema {
+                @type("string") name: string;
+                @transient @unreliable @type("number") frame: number;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            state.name = "s";
+            state.frame = 42;
+
+            // encodeAll should omit `frame`
+            const fresh = createInstanceFromReflection(state);
+            fresh.decode(encoder.encodeAll());
+            assert.strictEqual((fresh as any).name, "s");
+            assert.strictEqual((fresh as any).frame, undefined);
+
+            // reliable encode should NOT have `frame` (it's unreliable)
+            fresh.decode(encoder.encode());
+            assert.strictEqual((fresh as any).frame, undefined);
+
+            // unreliable encode SHOULD have `frame`
+            fresh.decode(encoder.encodeUnreliable());
+            assert.strictEqual((fresh as any).frame, 42);
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+        });
+    });
+
+    describe("interaction with @view filtering", () => {
+        it("@unreliable + @view: emits via unreliable channel for visible views", () => {
+            class Entity extends Schema {
+                @type("string") id: string;
+                @unreliable @type("number") x: number = 0;
+            }
+            class State extends Schema {
+                @view() @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const e1 = new Entity().assign({ id: "one", x: 10 });
+            state.entities.set("one", e1);
+
+            const clientView = new StateView();
+            clientView.add(state.entities.get("one"));
+
+            // Reliable view pass: emits Entity's @view-tagged / inherited-filter
+            // fields EXCEPT @unreliable ones.
+            const sharedIt = { offset: 0 };
+            const sharedReliable = encoder.encode(sharedIt);
+            const sharedOffset = sharedIt.offset;
+            const reliableView = encoder.encodeView(clientView, sharedOffset, sharedIt);
+
+            const decoder = getDecoder(createInstanceFromReflection(state));
+            decoder.decode(reliableView);
+            assert.strictEqual((decoder.state as any).entities.get("one").id, "one");
+            assert.strictEqual((decoder.state as any).entities.get("one").x, undefined,
+                "unreliable field must not appear on reliable view pass");
+
+            // Unreliable view pass: emits the @unreliable field
+            const unreliableIt = { offset: 0 };
+            const unreliableShared = encoder.encodeUnreliable(unreliableIt);
+            const unreliableSharedOffset = unreliableIt.offset;
+            const unreliableView = encoder.encodeUnreliableView(clientView, unreliableSharedOffset, unreliableIt);
+            decoder.decode(unreliableView);
+            assert.strictEqual((decoder.state as any).entities.get("one").x, 10);
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+        });
+    });
+
+    describe("isFieldUnreliable classification", () => {
+        it("Schema field: unreliable iff metadata says so", () => {
+            class S extends Schema {
+                @type("string") a: string;
+                @unreliable @type("number") b: number;
+            }
+            const s = new S();
+            const ct = (s as any).constructor[Symbol.metadata];
+            assert.strictEqual(s['~changes'] ? s['~changes'].isFieldUnreliable(0) : false, false);
+            assert.strictEqual(s['~changes'] ? s['~changes'].isFieldUnreliable(1) : false, true);
+        });
+
+        it("collection inherits isUnreliable from parent field", () => {
+            class Pt extends Schema { @type("number") x: number; }
+            class S extends Schema {
+                @unreliable @type([Pt]) points = new ArraySchema<Pt>();
+            }
+            const s = new S();
+            // Attach to encoder to trigger checkIsFiltered plumbing.
+            const encoder = getEncoder(s);
+            void encoder;
+            assert.strictEqual((s.points as any)['~changes'].isUnreliable, true);
+        });
+    });
+
+});

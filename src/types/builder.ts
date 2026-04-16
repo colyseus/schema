@@ -19,6 +19,7 @@ export interface BuilderDefinition {
     view?: number;    // tag value; undefined = no view
     owned?: boolean;
     unreliable?: boolean;
+    transient?: boolean;
     deprecated?: boolean;
     deprecatedThrows?: boolean;
     static?: boolean;
@@ -48,6 +49,7 @@ export class FieldBuilder<T = unknown> {
     _view: number | undefined = undefined;
     _owned = false;
     _unreliable = false;
+    _transient = false;
     _deprecated = false;
     _deprecatedThrows = true;
     _static = false;
@@ -77,9 +79,24 @@ export class FieldBuilder<T = unknown> {
         return this;
     }
 
-    /** Mark this field as unreliable (flag-only; encoding semantics pending). */
+    /**
+     * Mark this field as unreliable — tick patches emit it on the unreliable
+     * transport channel. Still persisted to full-sync snapshots unless also
+     * tagged with `.transient()`.
+     */
     unreliable(): this {
         this._unreliable = true;
+        return this;
+    }
+
+    /**
+     * Mark this field as transient — NOT persisted to full-sync snapshots
+     * (`encodeAll` / `encodeAllView`). Late-joining clients see the field
+     * only after its next mutation is emitted on a tick patch. Orthogonal
+     * to `.unreliable()`.
+     */
+    transient(): this {
+        this._transient = true;
         return this;
     }
 
@@ -110,6 +127,7 @@ export class FieldBuilder<T = unknown> {
             view: this._view,
             owned: this._owned,
             unreliable: this._unreliable,
+            transient: this._transient,
             deprecated: this._deprecated,
             deprecatedThrows: this._deprecatedThrows,
             static: this._static,
