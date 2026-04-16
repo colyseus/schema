@@ -222,6 +222,12 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         return this.$items.size;
     }
 
+    // ────── Change tracking control (same API as Schema) ──────
+    pauseTracking(): void { this[$changes].pause(); }
+    resumeTracking(): void { this[$changes].resume(); }
+    untracked<T>(fn: () => T): T { return this[$changes].untracked(fn); }
+    get isTrackingPaused(): boolean { return this[$changes].paused; }
+
     protected setIndex(index: number, key: K) {
         this.journal.setIndex(index, key);
     }

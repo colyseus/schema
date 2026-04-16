@@ -218,6 +218,50 @@ export class Schema<C = any> implements IRef {
         );
     }
 
+    // ────────────────────────────────────────────────────────────────────
+    // Change-tracking control API
+    //
+    // By default, every mutation to a @type() property is automatically
+    // recorded as a change. These methods let you opt out for bulk-load
+    // scenarios or custom batching.
+    //
+    // @example
+    //   // Bulk-load without emitting changes:
+    //   player.untracked(() => {
+    //     player.hp = 100;
+    //     player.name = "alice";
+    //   });
+    //
+    //   // Pause / resume pattern:
+    //   player.pauseTracking();
+    //   player.hp = 100;   // not tracked
+    //   player.resumeTracking();
+    //   player.hp = 50;    // tracked
+    // ────────────────────────────────────────────────────────────────────
+
+    /** Stop recording mutations until resumeTracking() is called. */
+    public pauseTracking(): void {
+        this[$changes].pause();
+    }
+
+    /** Re-enable automatic change tracking. */
+    public resumeTracking(): void {
+        this[$changes].resume();
+    }
+
+    /**
+     * Run `fn` with change tracking paused, then resume.
+     * Returns the function's return value. Safe to nest.
+     */
+    public untracked<T>(fn: () => T): T {
+        return this[$changes].untracked(fn);
+    }
+
+    /** True while tracking is paused. */
+    public get isTrackingPaused(): boolean {
+        return this[$changes].paused;
+    }
+
     clone (): this {
         // Create instance without calling custom constructor
         const cloned = Object.create(this.constructor.prototype);

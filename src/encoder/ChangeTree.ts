@@ -182,6 +182,16 @@ export class ChangeTree<T extends Ref = any> {
      */
     recorder: ChangeRecorder;
 
+    /**
+     * When true, mutations on the associated ref are NOT tracked.
+     * See `pause()` / `resume()` / `untracked(fn)`.
+     *
+     * The public API lives on Schema (and collection classes) as
+     * `instance.pauseTracking()`, `instance.resumeTracking()`, and
+     * `instance.untracked(fn)` — all of which delegate here.
+     */
+    paused: boolean = false;
+
     // Direct queue-node refs (moved from ChangeSet).
     // Set by Root.addToChangeTreeList / cleared by endEncode / removeChangeFromChangeSet.
     changesNode?: ChangeTreeNode;
@@ -315,6 +325,8 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     operation(op: OPERATION) {
+        if (this.paused) return;
+
         // operations without index use negative values to represent them
         // this is checked during .encode() time.
         if (this.filteredChanges !== undefined) {
@@ -350,6 +362,8 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     change(index: number, operation: OPERATION = OPERATION.ADD) {
+        if (this.paused) return;
+
         const isFiltered = this.isFiltered || (this.metadata?.[index]?.tag !== undefined);
         const changeSet = (isFiltered)
             ? this.filteredChanges
@@ -453,6 +467,8 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     indexedOperation(index: number, operation: OPERATION, allChangesIndex: number = index) {
+        if (this.paused) return;
+
         this.indexedOperations[index] = operation;
 
         // Dual-write to recorder. ArraySchema passes distinct current-tick
@@ -489,6 +505,63 @@ export class ChangeTree<T extends Ref = any> {
         return this.indexedOperations[index];
     }
 
+    // ────────────────────────────────────────────────────────────────────
+    // Change-tracking control API
+    //
+    // By default, every mutation on a Schema / collection instance is
+    // automatically recorded as a change. These methods let the user opt
+    // out for bulk-load scenarios or custom batching.
+    // ────────────────────────────────────────────────────────────────────
+
+    /**
+     * Stop recording mutations until resume() is called.
+     *
+     * Mutations applied while paused are NOT emitted in the next encode()
+     * output. `allChanges` is also not updated for those mutations — if
+     * you pause, mutate, resume, then encode, the paused mutations will
+     * NOT appear in subsequent encodeAll() snapshots either.
+     *
+     * Use `markDirty(index)` after resuming to force specific fields into
+     * the next patch if needed.
+     */
+    pause(): void {
+        this.paused = true;
+    }
+
+    /** Re-enable automatic change tracking. See pause(). */
+    resume(): void {
+        this.paused = false;
+    }
+
+    /**
+     * Run `fn` with change tracking paused, then resume.
+     * Preserves the previous paused state (safe to nest).
+     */
+    untracked<T>(fn: () => T): T {
+        const wasPaused = this.paused;
+        this.paused = true;
+        try {
+            return fn();
+        } finally {
+            this.paused = wasPaused;
+        }
+    }
+
+    /**
+     * Manually mark a field/index as dirty so it gets emitted in the next
+     * encode(). Useful after paused mutations or when a nested object
+     * was mutated without triggering the schema setter.
+     */
+    markDirty(index: number, operation: OPERATION = OPERATION.ADD): void {
+        const wasPaused = this.paused;
+        this.paused = false;
+        try {
+            this.change(index, operation);
+        } finally {
+            this.paused = wasPaused;
+        }
+    }
+
     //
     // used during `.encode()`
     //
@@ -507,6 +580,12 @@ export class ChangeTree<T extends Ref = any> {
                 console.warn(e);
             }
             return;
+        }
+
+        if (this.paused) {
+            // Still return the previous value so callers (e.g., MapSchema.delete
+            // via journal snapshot) get consistent semantics.
+            return this.getValue(index);
         }
 
         const changeSet = (this.filteredChanges !== undefined)

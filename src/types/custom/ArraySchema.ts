@@ -186,6 +186,12 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         return this.items.length;
     }
 
+    // ────── Change tracking control (same API as Schema) ──────
+    pauseTracking(): void { this[$changes].pause(); }
+    resumeTracking(): void { this[$changes].resume(); }
+    untracked<T>(fn: () => T): T { return this[$changes].untracked(fn); }
+    get isTrackingPaused(): boolean { return this[$changes].paused; }
+
     push(...values: V[]) {
         let length = this.tmpItems.length;
 

@@ -150,6 +150,12 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         return this.$items.size;
     }
 
+    // ────── Change tracking control (same API as Schema) ──────
+    pauseTracking(): void { this[$changes].pause(); }
+    resumeTracking(): void { this[$changes].resume(); }
+    untracked<T>(fn: () => T): T { return this[$changes].untracked(fn); }
+    get isTrackingPaused(): boolean { return this[$changes].paused; }
+
     /** Iterator */
     [Symbol.iterator](): IterableIterator<V> {
         return this.$items.values();
