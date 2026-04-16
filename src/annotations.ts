@@ -3,7 +3,8 @@ import { Schema } from './Schema.js';
 import { ArraySchema } from './types/custom/ArraySchema.js';
 import { MapSchema } from './types/custom/MapSchema.js';
 import { getNormalizedType, Metadata } from "./Metadata.js";
-import { $changes, $childType, $descriptors, $numFields, $track, $values } from "./types/symbols.js";
+import { $changes, $childType, $descriptors, $encoders, $numFields, $track, $values } from "./types/symbols.js";
+import { encode } from "./encoding/encode.js";
 import { TypeDefinition, getType } from "./types/registry.js";
 import { OPERATION } from "./encoding/spec.js";
 import { TypeContext } from "./types/TypeContext.js";
@@ -371,6 +372,19 @@ export function type (
         // Install accessor descriptor on the prototype (once per class field).
         if (metadata[$descriptors][field]) {
             Object.defineProperty(target, field, metadata[$descriptors][field]);
+        }
+
+        // Pre-compute encoder function for primitive types.
+        if (typeof type === "string") {
+            if (!metadata[$encoders]) {
+                Object.defineProperty(metadata, $encoders, {
+                    value: [],
+                    enumerable: false,
+                    configurable: true,
+                    writable: true,
+                });
+            }
+            metadata[$encoders][fieldIndex] = (encode as any)[type];
         }
     }
 }

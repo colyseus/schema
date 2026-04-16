@@ -239,15 +239,8 @@ export class ChangeTree<T extends Ref = any> {
 
         // assign same parent on child structures
         if (isNewChangeTree) {
-            //
-            // assign same parent on child structures
-            //
             this.forEachChild((child, index) => {
                 if (child.root === root) {
-                    //
-                    // re-assigning a child of the same root, move it next to parent
-                    // so encoding order is preserved
-                    //
                     root.add(child);
                     root.moveNextToParent(child);
                     return;

@@ -1,7 +1,8 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
 import { getType, registeredTypes } from "./types/registry.js";
-import { $decoder, $descriptors, $encoder, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $viewFieldIndexes } from "./types/symbols.js";
+import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $viewFieldIndexes } from "./types/symbols.js";
+import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
 
 export type MetadataField = {
@@ -190,6 +191,16 @@ export const Metadata = {
 
         fieldIndex++;
 
+        // Pre-computed encoder function table: metadata[$encoders][fieldIndex] = encode.uint8 etc.
+        if (!metadata[$encoders]) {
+            Object.defineProperty(metadata, $encoders, {
+                value: parentMetadata?.[$encoders] ? [...parentMetadata[$encoders]] : [],
+                enumerable: false,
+                configurable: true,
+                writable: true,
+            });
+        }
+
         for (const field in fields) {
             const type = getNormalizedType(fields[field]);
 
@@ -211,6 +222,11 @@ export const Metadata = {
             // Install accessor descriptor on the prototype (once per class field).
             if (metadata[$descriptors][field]) {
                 Object.defineProperty(target.prototype, field, metadata[$descriptors][field]);
+            }
+
+            // Pre-compute encoder function for primitive types.
+            if (typeof type === "string") {
+                metadata[$encoders][fieldIndex] = (encode as any)[type];
             }
 
             fieldIndex++;
@@ -294,6 +310,16 @@ export const Metadata = {
                     configurable: true,
                     writable: true,
                 });
+
+                // $encoders
+                if (parentMetadata[$encoders] !== undefined) {
+                    Object.defineProperty(metadata, $encoders, {
+                        value: [...parentMetadata[$encoders]],
+                        enumerable: false,
+                        configurable: true,
+                        writable: true,
+                    });
+                }
             }
         }
 

@@ -45,6 +45,7 @@ export const $builder = "~builder";
  * Metadata
  */
 export const $descriptors = "~descriptors";
+export const $encoders = "~encoders";
 export const $numFields = "~__numFields";
 export const $refTypeFieldIndexes = "~__refTypeFieldIndexes";
 export const $viewFieldIndexes = "~__viewFieldIndexes";

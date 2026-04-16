@@ -1,5 +1,5 @@
 import { OPERATION } from "../encoding/spec.js";
-import { $changes, $childType, $getByIndex, $refId } from "../types/symbols.js";
+import { $changes, $childType, $encoders, $getByIndex, $refId, $values } from "../types/symbols.js";
 
 import { encode } from "../encoding/encode.js";
 
@@ -30,8 +30,14 @@ export function encodeValue(
     value: any,
     operation: OPERATION,
     it: Iterator,
+    encoderFn?: (bytes: Uint8Array, value: any, it: Iterator) => void,
 ) {
-    if (typeof (type) === "string") {
+    if (encoderFn !== undefined) {
+        // Fast path: pre-computed encoder for primitive types.
+        encoderFn(bytes, value, it);
+
+    } else if (typeof (type) === "string") {
+        // Fallback for types not pre-computed (e.g. runtime-constructed).
         (encode as any)[type]?.(bytes, value, it);
 
     } else if (type[Symbol.metadata] !== undefined) {
@@ -78,17 +84,18 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
         return;
     }
 
-    const ref = changeTree.ref;
-    const field = metadata[index];
+    // Direct $values[index] read — bypasses prototype getter + metadata name lookup.
+    // Falls back to named property for manual fields (which don't use $values).
+    const value = (changeTree.ref as any)[$values][index] ?? (changeTree.ref as any)[metadata[index].name];
 
-    // TODO: inline this function call small performance gain
     encodeValue(
         encoder,
         bytes,
         metadata[index].type,
-        ref[field.name as keyof T],
+        value,
         operation,
-        it
+        it,
+        metadata[$encoders]?.[index],
     );
 }
 
