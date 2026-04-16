@@ -14,11 +14,13 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
 
     protected [$childType]: string | typeof Schema;
 
+    /** The user-visible data, keyed directly by the wire-protocol index. */
     protected $items: Map<number, V> = new Map<number, V>();
-    protected $indexes: Map<number, number> = new Map<number, number>();
-    protected deletedItems: { [field: string]: V } = {};
-    _collectionIndexes: { [key: string]: any } = {};
 
+    /** Snapshots of values that were deleted this tick (for filter visibility). */
+    protected deletedItems: { [field: string]: V } = {};
+
+    /** Monotonic counter for assigning indexes to newly-added items. */
     protected $refId: number = 0;
 
     static [$encoder] = encodeKeyValueOperation;
@@ -67,21 +69,16 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         // immediatelly return false if value already added.
         if (this.has(value)) { return false; }
 
-        // set "index" for reference.
+        // assign the next wire-protocol index
         const index = this.$refId++;
 
         if ((value[$changes]) !== undefined) {
             value[$changes].setParent(this, this[$changes].root, index);
         }
 
-        const operation = this._collectionIndexes[index]?.op ?? OPERATION.ADD;
-
-        this._collectionIndexes[index] = index;
-
-        this.$indexes.set(index, index);
         this.$items.set(index, value);
 
-        this[$changes].change(index, operation);
+        this[$changes].change(index, OPERATION.ADD);
         return index;
     }
 
@@ -108,7 +105,6 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         }
 
         this.deletedItems[index] = this[$changes].delete(index);
-        this.$indexes.delete(index);
 
         return this.$items.delete(index);
     }
@@ -118,10 +114,6 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
 
         // discard previous operations.
         changeTree.discard(true);
-        this._collectionIndexes = {};
-
-        // clear previous indexes
-        this.$indexes.clear();
 
         // clear items
         this.$items.clear();
@@ -163,22 +155,26 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         return this.$items.values();
     }
 
-    protected setIndex(index: number, key: number) {
-        this.$indexes.set(index, key);
+    // ────────────────────────────────────────────────────────────────────
+    // Decoder-side index hooks. SetSchema's "key" IS the wire index, so
+    // these are identity operations. Kept for protocol symmetry with
+    // MapSchema (decoder calls them polymorphically).
+    // ────────────────────────────────────────────────────────────────────
+
+    protected setIndex(_index: number, _key: number) {
+        // no-op: indexes are identity
     }
 
-    protected getIndex(index: number) {
-        return this.$indexes.get(index);
+    protected getIndex(index: number): number {
+        return index;
     }
 
     [$getByIndex](index: number): any {
-        return this.$items.get(this.$indexes.get(index));
+        return this.$items.get(index);
     }
 
     [$deleteByIndex](index: number): void {
-        const key = this.$indexes.get(index);
-        this.$items.delete(key);
-        this.$indexes.delete(index);
+        this.$items.delete(index);
     }
 
     protected [$onEncodeEnd]() {
