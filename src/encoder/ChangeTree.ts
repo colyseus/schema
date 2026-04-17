@@ -126,6 +126,18 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     /** Unreliable-queue node reference (Root.unreliableChanges linked list). */
     unreliableChangesNode?: ChangeTreeNode;
 
+    /**
+     * Per-StateView visibility bitmaps. Bit `(viewId & 31)` in slot
+     * `(viewId >> 5)` of `visibleViews` is set iff that view can see this
+     * tree. Same encoding for `invisibleViews` (used to backfill on
+     * subsequent view.add() calls). Replaces per-StateView WeakSet
+     * lookups in the encode hot path with direct bitwise ops.
+     *
+     * Lazy: undefined for trees that have never participated in any view.
+     */
+    visibleViews?: number[];
+    invisibleViews?: number[];
+
     // Accessor properties for flags
     get isFiltered(): boolean { return (this.flags & IS_FILTERED) !== 0; }
     set isFiltered(v: boolean) { this.flags = v ? (this.flags | IS_FILTERED) : (this.flags & ~IS_FILTERED); }

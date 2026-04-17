@@ -5,10 +5,20 @@ import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
 import { spliceOne } from "../types/utils.js";
 import type { Schema } from "../Schema.js";
+import type { Root } from "./Root.js";
 
 export function createView(iterable: boolean = false) {
     return new StateView(iterable);
 }
+
+/**
+ * `FinalizationRegistry` returns a view's ID to its Root's freelist when
+ * the StateView is GC'd. Backstop for forgotten `view.dispose()` calls;
+ * timing is non-deterministic but bounded.
+ */
+const _disposeRegistry = new FinalizationRegistry<{ root: Root; id: number }>(
+    ({ root, id }) => root.releaseViewId(id),
+);
 
 export class StateView {
     /**
@@ -18,14 +28,17 @@ export class StateView {
     items: Ref[];
 
     /**
-     * List of ChangeTree's that are visible to this view
+     * Unique ID assigned by the Root that owns this view's encoder. Used
+     * to address per-StateView visibility bits stored on each ChangeTree.
+     * Lazily allocated on first `add()` because the StateView itself
+     * doesn't know its Root until then.
      */
-    visible: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
+    id: number = -1;
+    private _root?: Root;
 
-    /**
-     * List of ChangeTree's that are invisible to this view
-     */
-    invisible: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
+    /** Cached `id >> 5` and `1 << (id & 31)` for the hot encode-loop check. */
+    private _slot: number = 0;
+    private _bit: number = 0;
 
     tags?: WeakMap<ChangeTree, Set<number>>; // TODO: use bit manipulation instead of Set<number> ()
 
@@ -39,6 +52,91 @@ export class StateView {
         if (iterable) {
             this.items = [];
         }
+    }
+
+    /**
+     * Lazily bind this view to a Root and acquire a view ID. Called on
+     * the first add() because StateView is constructed before its target
+     * Root is known.
+     */
+    private _bindRoot(root: Root): void {
+        if (this._root !== undefined) return;
+        this._root = root;
+        this.id = root.acquireViewId();
+        this._slot = this.id >> 5;
+        this._bit = 1 << (this.id & 31);
+        _disposeRegistry.register(this, { root, id: this.id }, this);
+    }
+
+    /**
+     * Release this view's ID back to the Root for reuse. Optional —
+     * if the view is GC'd without dispose, FinalizationRegistry catches it.
+     * Calling explicitly avoids unbounded bitmap growth in long-running
+     * rooms with rapid view churn (e.g. join/leave loops).
+     */
+    public dispose(): void {
+        if (this._root === undefined) return;
+        this._root.releaseViewId(this.id);
+        _disposeRegistry.unregister(this);
+        this._root = undefined;
+        this.id = -1;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Per-tree visibility bitmap helpers. Replace the old WeakSet ops
+    // with O(1) bitwise ops on a chunked number[] stored on each tree.
+    // ──────────────────────────────────────────────────────────────────
+
+    /** True iff this view can see `tree`. */
+    public isVisible(tree: ChangeTree): boolean {
+        const arr = tree.visibleViews;
+        const slot = this._slot;
+        return arr !== undefined && slot < arr.length && (arr[slot] & this._bit) !== 0;
+    }
+
+    /** Mark `tree` as visible to this view. */
+    public markVisible(tree: ChangeTree): void {
+        const slot = this._slot;
+        let arr = tree.visibleViews;
+        if (arr === undefined) {
+            arr = tree.visibleViews = [];
+        }
+        while (arr.length <= slot) arr.push(0);
+        arr[slot] |= this._bit;
+    }
+
+    /** Clear visibility bit. */
+    public unmarkVisible(tree: ChangeTree): void {
+        const arr = tree.visibleViews;
+        if (arr === undefined) return;
+        const slot = this._slot;
+        if (slot < arr.length) arr[slot] &= ~this._bit;
+    }
+
+    /** True iff this view has previously marked `tree` as invisible. */
+    public isInvisible(tree: ChangeTree): boolean {
+        const arr = tree.invisibleViews;
+        const slot = this._slot;
+        return arr !== undefined && slot < arr.length && (arr[slot] & this._bit) !== 0;
+    }
+
+    /** Mark `tree` as invisible to this view (used by encode loop). */
+    public markInvisible(tree: ChangeTree): void {
+        const slot = this._slot;
+        let arr = tree.invisibleViews;
+        if (arr === undefined) {
+            arr = tree.invisibleViews = [];
+        }
+        while (arr.length <= slot) arr.push(0);
+        arr[slot] |= this._bit;
+    }
+
+    /** Clear invisible bit. */
+    public unmarkInvisible(tree: ChangeTree): void {
+        const arr = tree.invisibleViews;
+        if (arr === undefined) return;
+        const slot = this._slot;
+        if (slot < arr.length) arr[slot] &= ~this._bit;
     }
 
     // TODO: allow to set multiple tags at once
@@ -68,7 +166,13 @@ export class StateView {
 
         // FIXME: ArraySchema/MapSchema do not have metadata
         const metadata: Metadata = (obj.constructor as typeof Schema)[Symbol.metadata];
-        this.visible.add(changeTree);
+
+        // Bind to Root + acquire view ID on first add(). Until then, we have
+        // no per-tree bit position to write into.
+        if (this._root === undefined && changeTree.root !== undefined) {
+            this._bindRoot(changeTree.root);
+        }
+        this.markVisible(changeTree);
 
         // add to iterable list (only the explicitly added items)
         if (this.iterable && checkIncludeParent) {
@@ -133,7 +237,7 @@ export class StateView {
 
         } else if (!changeTree.isNew || isChildAdded) {
             // new structures will be added as part of .encode() call, no need to force it to .encodeView()
-            const isInvisible = this.invisible.has(changeTree);
+            const isInvisible = this.isInvisible(changeTree);
 
             // Full-sync snapshot: walk the live ref structurally instead of
             // iterating a cumulative recorder bucket. Every populated index
@@ -159,18 +263,15 @@ export class StateView {
         const changeTree = childChangeTree.parent[$changes];
         const parentIndex = childChangeTree.parentIndex;
 
-        if (!this.visible.has(changeTree)) {
+        if (!this.isVisible(changeTree)) {
             // view must have all "changeTree" parent tree
-            this.visible.add(changeTree);
+            this.markVisible(changeTree);
 
             // add parent's parent
             const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
             if (parentChangeTree && parentChangeTree.hasFilteredFields) {
                 this.addParentOf(changeTree, tag);
             }
-
-            // // parent is already available, no need to add it!
-            // if (!this.invisible.has(changeTree)) { return; }
         }
 
         // add parent's tag properties
@@ -207,7 +308,7 @@ export class StateView {
             return this;
         }
 
-        this.visible.delete(changeTree);
+        this.unmarkVisible(changeTree);
 
         // remove from iterable list
         if (
@@ -261,7 +362,7 @@ export class StateView {
                     // (They were added during view.add() via forEachChild)
                     const value = changeTree.ref[metadata[index].name as keyof Ref];
                     if (value?.[$changes]) {
-                        this.visible.delete(value[$changes]);
+                        this.unmarkVisible(value[$changes]);
                         this._recursiveDeleteVisibleChangeTree(value[$changes]);
                     }
                 });
@@ -275,7 +376,7 @@ export class StateView {
                 // Remove child structures from visible set
                 const value = changeTree.ref[metadata[index].name as keyof Ref];
                 if (value?.[$changes]) {
-                    this.visible.delete(value[$changes]);
+                    this.unmarkVisible(value[$changes]);
                     this._recursiveDeleteVisibleChangeTree(value[$changes]);
                 }
             });
@@ -302,7 +403,7 @@ export class StateView {
     }
 
     has(obj: Ref) {
-        return this.visible.has(obj[$changes]);
+        return this.isVisible(obj[$changes]);
     }
 
     hasTag(ob: Ref, tag: number = DEFAULT_VIEW_TAG) {
@@ -324,22 +425,15 @@ export class StateView {
     }
 
     isChangeTreeVisible(changeTree: ChangeTree) {
-        let isVisible = this.visible.has(changeTree);
+        let isVisible = this.isVisible(changeTree);
 
         //
         // TODO: avoid checking for parent visibility, most of the time it's not needed
         // See test case: 'should not be required to manually call view.add() items to child arrays without @view() tag'
         //
         if (!isVisible && changeTree.isVisibilitySharedWithParent){
-
-            // console.log("CHECK AGAINST PARENT...", {
-            //     ref: changeTree.ref.constructor.name,
-            //     refId: changeTree.ref[$refId],
-            //     parent: changeTree.parent.constructor.name,
-            // });
-
-            if (this.visible.has(changeTree.parent[$changes])) {
-                this.visible.add(changeTree);
+            if (this.isVisible(changeTree.parent[$changes])) {
+                this.markVisible(changeTree);
                 isVisible = true;
             }
         }
@@ -349,7 +443,7 @@ export class StateView {
 
     protected _recursiveDeleteVisibleChangeTree(changeTree: ChangeTree) {
         changeTree.forEachChild((childChangeTree) => {
-            this.visible.delete(childChangeTree);
+            this.unmarkVisible(childChangeTree);
             this._recursiveDeleteVisibleChangeTree(childChangeTree);
         });
     }

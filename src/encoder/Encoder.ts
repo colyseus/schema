@@ -229,10 +229,10 @@ export class Encoder<T extends Schema = any> {
 
             if (hasView) {
                 if (!view.isChangeTreeVisible(changeTree)) {
-                    view.invisible.add(changeTree);
+                    view.markInvisible(changeTree);
                     continue;
                 }
-                view.invisible.delete(changeTree);
+                view.unmarkInvisible(changeTree);
             }
 
             const recorder = unreliable ? changeTree.unreliableRecorder : changeTree.recorder;
@@ -309,10 +309,10 @@ export class Encoder<T extends Schema = any> {
             let visibleHere = true;
             if (hasView) {
                 if (!view.isChangeTreeVisible(changeTree)) {
-                    view.invisible.add(changeTree);
+                    view.markInvisible(changeTree);
                     visibleHere = false;
                 } else {
-                    view.invisible.delete(changeTree);
+                    view.unmarkInvisible(changeTree);
                 }
             }
 

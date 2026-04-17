@@ -31,6 +31,27 @@ export class Root {
      */
     private _nodePool: ChangeTreeNode[] = [];
 
+    /**
+     * View ID allocator for StateView visibility bitmaps on ChangeTree.
+     * Each new StateView claims the lowest free ID; releaseViewId() puts
+     * the ID back. Avoids unbounded bitmap growth across long-running rooms
+     * with view churn (clients joining/leaving).
+     */
+    private _nextViewId: number = 0;
+    private _freeViewIds: number[] = [];
+
+    /** Allocate a fresh view ID (lowest available). */
+    public acquireViewId(): number {
+        return this._freeViewIds.length > 0
+            ? this._freeViewIds.pop()!
+            : this._nextViewId++;
+    }
+
+    /** Return a view ID to the freelist for reuse. */
+    public releaseViewId(id: number): void {
+        this._freeViewIds.push(id);
+    }
+
     constructor(public types: TypeContext, startRefId: number = 0) {
         this.nextUniqueId = startRefId;
     }

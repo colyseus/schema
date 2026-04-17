@@ -3407,9 +3407,9 @@ describe("StateView", () => {
             client.view.remove(e1);
 
             // Both children should be gone from visible
-            assert.ok(!client.view.visible.has(e1.items[$changes]),
+            assert.ok(!client.view.isVisible(e1.items[$changes]),
                 "items should not be visible after remove");
-            assert.ok(!client.view.visible.has(e1.tags[$changes]),
+            assert.ok(!client.view.isVisible(e1.tags[$changes]),
                 "tags should not be visible after remove");
 
             encodeMultiple(encoder, state, [client]);
@@ -3454,13 +3454,13 @@ describe("StateView", () => {
             client.view.add(player, TAG_INVENTORY);
 
             const inventoryChangeTree = player.inventory[$changes];
-            assert.ok(client.view.visible.has(inventoryChangeTree),
+            assert.ok(client.view.isVisible(inventoryChangeTree),
                 "inventory ChangeTree should be in visible after add");
 
             // Remove with inventory tag — should remove ArraySchema child from visible
             client.view.remove(player, TAG_INVENTORY);
 
-            assert.ok(!client.view.visible.has(inventoryChangeTree),
+            assert.ok(!client.view.isVisible(inventoryChangeTree),
                 "inventory ChangeTree should NOT be in visible after tagged remove");
         });
     });

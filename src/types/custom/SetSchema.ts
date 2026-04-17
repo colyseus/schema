@@ -39,7 +39,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         return (
             !view ||
             typeof (ref[$childType]) === "string" ||
-            view.visible.has((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
+            view.isVisible((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
         );
     }
 
