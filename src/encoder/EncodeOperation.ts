@@ -216,8 +216,13 @@ export const encodeArray: EncodeOperation = function (
     isEncodeAll: boolean,
     hasView: boolean,
 ) {
-    const ref = changeTree.ref;
-    const useOperationByRefId = hasView && changeTree.isFiltered && (typeof (changeTree.getType(field)) !== "string");
+    const ref = changeTree.ref as any;
+    // Read $childType once and reuse — old code went through
+    // `changeTree.getType(field)` twice (once for the typeof check, once
+    // for `type`), each going through a method dispatch + dead Schema
+    // fallback (`metadata[index].type` is unreachable for arrays).
+    const type = ref[$childType];
+    const useOperationByRefId = hasView && changeTree.isFiltered && typeof type !== "string";
 
     let refOrIndex: number;
 
@@ -251,8 +256,9 @@ export const encodeArray: EncodeOperation = function (
         return;
     }
 
-    const type = changeTree.getType(field);
-    const value = changeTree.getValue(field, isEncodeAll);
+    // `type` was already read above. Direct $getByIndex call — skips
+    // ChangeTree.getValue's pass-through wrapper.
+    const value = ref[$getByIndex](field, isEncodeAll);
 
     // console.log({ type, field, value });
 
