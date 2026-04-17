@@ -1,7 +1,6 @@
 import type { Schema } from "../Schema.js";
 import { TypeContext } from "../types/TypeContext.js";
-import { Metadata } from "../Metadata.js";
-import { $changes, $encoder, $filter, $filterBitmask, $getByIndex, $refId, $viewFieldIndexes } from "../types/symbols.js";
+import { $changes, $getByIndex, $refId } from "../types/symbols.js";
 
 import { encode } from "../encoding/encode.js";
 import type { Iterator } from "../encoding/decode.js";
@@ -57,30 +56,6 @@ interface EncodeCtx {
     shouldEmitSwitch: boolean;
 }
 
-/**
- * Per-Schema-class bitmask of @view-tagged fields. Lazy-computed from
- * metadata[$viewFieldIndexes] the first time a tree of this class is
- * encoded; cached on the metadata object so subsequent encodes are O(1).
- */
-function getFilterBitmask(metadata: any): number {
-    if (metadata === undefined) return 0;
-    let bm: number | undefined = metadata[$filterBitmask];
-    if (bm !== undefined) return bm;
-    bm = 0;
-    const tagged = metadata[$viewFieldIndexes];
-    if (tagged !== undefined) {
-        for (let i = 0, len = tagged.length; i < len; i++) bm |= (1 << tagged[i]);
-    }
-    // Non-enumerable so `for (const k in metadata)` iteration in TypeContext
-    // and elsewhere doesn't mistake this cache for a real field index.
-    Object.defineProperty(metadata, $filterBitmask, {
-        value: bm,
-        enumerable: false,
-        writable: true,
-        configurable: true,
-    });
-    return bm;
-}
 
 /**
  * Emit the lazy structure-switch header (SWITCH_TO_STRUCTURE + refId) for
@@ -93,6 +68,15 @@ function ensureStructSwitch(ctx: EncodeCtx): void {
         encode.number(ctx.buffer, ctx.ref[$refId], ctx.it);
     }
     ctx.structSwitchEmitted = true;
+}
+
+/**
+ * Module-level adapter for `forEachLiveWithCtx`. Full-sync emits every live
+ * field as ADD, so we re-enter `encodeChangeCb` with that fixed op — keeps
+ * the callback closure-free across the entire DFS walk.
+ */
+function encodeFullSyncCb(ctx: EncodeCtx, fieldIndex: number): void {
+    encodeChangeCb(ctx, fieldIndex, OPERATION.ADD);
 }
 
 /**
@@ -238,18 +222,15 @@ export class Encoder<T extends Schema = any> {
             const recorder = unreliable ? changeTree.unreliableRecorder : changeTree;
             if (!recorder || !recorder.has()) { continue; }
 
-            const ref = changeTree.ref;
-            const ctor = ref.constructor;
-
+            const desc = changeTree.encDescriptor;
             ctx.changeTree = changeTree;
-            ctx.ref = ref;
-            ctx.encoder = ctor[$encoder];
-            ctx.filter = ctor[$filter];
-            const md = ctor[Symbol.metadata];
-            ctx.metadata = md;
+            ctx.ref = changeTree.ref;
+            ctx.encoder = desc.encoder;
+            ctx.filter = desc.filter;
+            ctx.metadata = desc.metadata;
             ctx.treeIsFiltered = changeTree.isFiltered;
-            ctx.isSchema = Metadata.isValidInstance(ref);
-            ctx.filterBitmask = ctx.isSchema ? getFilterBitmask(md) : 0;
+            ctx.isSchema = desc.isSchema;
+            ctx.filterBitmask = desc.filterBitmask;
             ctx.structSwitchEmitted = false;
             ctx.isRootTree = (changeTree === rootChangeTree);
             // Root's struct switch is skipped at the very start of the shared
@@ -300,9 +281,6 @@ export class Encoder<T extends Schema = any> {
             if (visited.has(changeTree)) return;
             visited.add(changeTree);
 
-            const ref = changeTree.ref;
-            const ctor = ref.constructor;
-
             // Visibility gate: when a view is active, a non-visible tree
             // contributes nothing itself but we still recurse so descendants
             // (which may have been explicitly view.add()-ed) are reachable.
@@ -317,21 +295,19 @@ export class Encoder<T extends Schema = any> {
             }
 
             if (visibleHere) {
+                const desc = changeTree.encDescriptor;
                 ctx.changeTree = changeTree;
-                ctx.ref = ref;
-                ctx.encoder = ctor[$encoder];
-                ctx.filter = ctor[$filter];
-                const md = ctor[Symbol.metadata];
-                ctx.metadata = md;
+                ctx.ref = changeTree.ref;
+                ctx.encoder = desc.encoder;
+                ctx.filter = desc.filter;
+                ctx.metadata = desc.metadata;
                 ctx.treeIsFiltered = changeTree.isFiltered;
-                ctx.isSchema = Metadata.isValidInstance(ref);
-                ctx.filterBitmask = ctx.isSchema ? getFilterBitmask(md) : 0;
+                ctx.isSchema = desc.isSchema;
+                ctx.filterBitmask = desc.filterBitmask;
                 ctx.structSwitchEmitted = false;
                 ctx.shouldEmitSwitch = (hasView || ctx.it.offset > initialOffset || changeTree !== rootChangeTree);
 
-                changeTree.forEachLive((index) => {
-                    encodeChangeCb(ctx, index, OPERATION.ADD);
-                });
+                changeTree.forEachLiveWithCtx(ctx, encodeFullSyncCb);
             }
 
             changeTree.forEachChild((child, _) => walk(child));
@@ -412,14 +388,12 @@ export class Encoder<T extends Schema = any> {
                 continue;
             }
 
-            const ref = changeTree.ref;
-
-            const ctor = ref.constructor;
-            const encoder = ctor[$encoder];
-            const metadata = ctor[Symbol.metadata];
+            const desc = changeTree.encDescriptor;
+            const encoder = desc.encoder;
+            const metadata = desc.metadata;
 
             bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-            encode.number(bytes, ref[$refId], it);
+            encode.number(bytes, changeTree.ref[$refId], it);
 
             for (let i = 0, numChanges = keys.length; i < numChanges; i++) {
                 const index = Number(keys[i]);

@@ -10,7 +10,19 @@
 import { $childType, $numFields, $transientFieldIndexes } from "../../types/symbols.js";
 import type { ChangeTree } from "../ChangeTree.js";
 
+// Adapter that lets `forEachLive(cb)` delegate to `forEachLiveWithCtx(cb, _invokeNoCtx)` —
+// keeps the no-ctx path closure-free and shares one walker implementation.
+const _invokeNoCtx = (cb: (index: number) => void, index: number) => cb(index);
+
 export function forEachLive(tree: ChangeTree, callback: (index: number) => void): void {
+    forEachLiveWithCtx(tree, callback, _invokeNoCtx);
+}
+
+export function forEachLiveWithCtx<C>(
+    tree: ChangeTree,
+    ctx: C,
+    cb: (ctx: C, index: number) => void,
+): void {
     const ref = tree.ref as any;
 
     if (ref[$childType] !== undefined) {
@@ -22,17 +34,17 @@ export function forEachLive(tree: ChangeTree, callback: (index: number) => void)
             // ArraySchema
             const items = ref.items as any[];
             for (let i = 0, len = items.length; i < len; i++) {
-                if (items[i] !== undefined) callback(i);
+                if (items[i] !== undefined) cb(ctx, i);
             }
         } else if (ref.journal !== undefined) {
             // MapSchema
             for (const [index, key] of ref.journal.keyByIndex as Map<number, any>) {
-                if (ref.$items.has(key)) callback(index);
+                if (ref.$items.has(key)) cb(ctx, index);
             }
         } else if (ref.$items !== undefined) {
             // SetSchema / CollectionSchema (key === wire index)
             for (const index of (ref.$items as Map<number, any>).keys()) {
-                callback(index);
+                cb(ctx, index);
             }
         }
     } else {
@@ -48,7 +60,7 @@ export function forEachLive(tree: ChangeTree, callback: (index: number) => void)
             if (field === undefined) continue;
             if (transientIndexes && transientIndexes.includes(i)) continue;
             const value = ref[field.name];
-            if (value !== undefined && value !== null) callback(i);
+            if (value !== undefined && value !== null) cb(ctx, i);
         }
     }
 }

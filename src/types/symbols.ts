@@ -68,6 +68,14 @@ export const $descriptors = "~descriptors";
  * Skips the per-field metadata[i].tag property chase in the hot encode loop.
  */
 export const $filterBitmask = "~__filterBitmask";
+
+/**
+ * Cached per-class encode descriptor: bundles encoder fn, filter fn,
+ * metadata, isSchema flag, and filterBitmask into one object stashed on
+ * the constructor. Replaces 5 separate per-tree property chases /
+ * function calls in the encode loop with a single property load.
+ */
+export const $encodeDescriptor = "~__encodeDescriptor";
 export const $encoders = "~encoders";
 export const $numFields = "~__numFields";
 export const $refTypeFieldIndexes = "~__refTypeFieldIndexes";

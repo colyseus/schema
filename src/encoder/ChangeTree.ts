@@ -28,6 +28,7 @@ import { Root } from "./Root.js";
 import { Metadata } from "../Metadata.js";
 import { type ChangeRecorder, type ICollectionChangeRecorder, SchemaChangeRecorder, CollectionChangeRecorder, popcount32 } from "./ChangeRecorder.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
+import { type EncodeDescriptor, getEncodeDescriptor } from "./EncodeDescriptor.js";
 import type { DecodeOperation } from "../decoder/DecodeOperation.js";
 
 import {
@@ -35,7 +36,7 @@ import {
     findParent as _findParent, hasParent as _hasParent,
     getAllParents as _getAllParents,
 } from "./changeTree/parentChain.js";
-import { forEachLive as _forEachLive } from "./changeTree/liveIteration.js";
+import { forEachLive as _forEachLive, forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import {
     setRoot as _setRoot, setParent as _setParent,
     forEachChild as _forEachChild, forEachChildWithCtx as _forEachChildWithCtx,
@@ -111,6 +112,14 @@ const IS_UNRELIABLE = 8, IS_TRANSIENT = 16, IS_STATIC = 32;
 export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     ref: T;
     metadata: Metadata;
+
+    /**
+     * Per-class cache of encoder fn / filter fn / isSchema / filterBitmask /
+     * metadata, looked up once at construction. The encode loop reads
+     * `tree.encDescriptor` and never touches `ref.constructor` again. See
+     * EncodeDescriptor.ts.
+     */
+    encDescriptor: EncodeDescriptor;
 
     root?: Root;
 
@@ -205,9 +214,15 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     constructor(ref: T) {
         this.ref = ref;
-        this.metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
 
-        const isSchema = Metadata.isValidInstance(ref);
+        // Single per-class lookup that subsumes Symbol.metadata,
+        // isValidInstance, $encoder, $filter, and the filter bitmask.
+        // After this, the encode loop never touches `ref.constructor`.
+        const desc = getEncodeDescriptor(ref);
+        this.encDescriptor = desc;
+        this.metadata = desc.metadata;
+
+        const isSchema = desc.isSchema;
         this._isSchema = isSchema;
 
         // Assign every optional slot so Schema and Collection trees share
@@ -415,6 +430,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         _forEachChildWithCtx(this, ctx, cb);
     }
     forEachLive(cb: (index: number) => void): void { _forEachLive(this, cb); }
+    forEachLiveWithCtx<C>(ctx: C, cb: (ctx: C, index: number) => void): void {
+        _forEachLiveWithCtx(this, ctx, cb);
+    }
 
     operation(op: OPERATION) {
         if (this.paused || this.isStatic) return;
