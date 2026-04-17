@@ -235,12 +235,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * Removes the last element from an array and returns it.
      */
     pop(): V | undefined {
+        // Unwrap Proxy once — see push() for rationale.
+        const self = this[$proxyTarget];
+        const tmpItems = self.tmpItems;
+        const deletedIndexes = self.deletedIndexes;
         let index: number = -1;
 
         // find last non-undefined index
-        for (let i = this.tmpItems.length - 1; i >= 0; i--) {
-            // if (this.tmpItems[i] !== undefined) {
-            if (this.deletedIndexes[i] !== true) {
+        for (let i = tmpItems.length - 1; i >= 0; i--) {
+            if (deletedIndexes[i] !== true) {
                 index = i;
                 break;
             }
@@ -250,11 +253,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             return undefined;
         }
 
-        this[$changes].delete(index);
+        self[$changes].delete(index);
+        deletedIndexes[index] = true;
 
-        this.deletedIndexes[index] = true;
-
-        return this.items.pop();
+        return self.items.pop();
     }
 
     at(index: number) {
@@ -316,13 +318,14 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     }
 
     clear() {
+        const self = this[$proxyTarget];
         // skip if already clear
-        if (this.items.length === 0) {
+        if (self.items.length === 0) {
             return;
         }
 
         // discard previous operations.
-        const changeTree = this[$changes];
+        const changeTree = self[$changes];
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {
@@ -332,8 +335,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         changeTree.discard();
         changeTree.operation(OPERATION.CLEAR);
 
-        this.items.length = 0;
-        this.tmpItems.length = 0;
+        self.items.length = 0;
+        self.tmpItems.length = 0;
     }
 
     /**
@@ -358,9 +361,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      */
     // @ts-ignore
     reverse(): ArraySchema<V> {
-        this[$changes].operation(OPERATION.REVERSE);
-        this.items.reverse();
-        this.tmpItems.reverse();
+        const self = this[$proxyTarget];
+        self[$changes].operation(OPERATION.REVERSE);
+        self.items.reverse();
+        self.tmpItems.reverse();
         return this;
     }
 
@@ -368,15 +372,17 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * Removes the first element from an array and returns it.
      */
     shift(): V | undefined {
-        if (this.items.length === 0) { return undefined; }
+        const self = this[$proxyTarget];
+        const items = self.items;
+        if (items.length === 0) { return undefined; }
 
-        const changeTree = this[$changes];
-
-        const index = this.tmpItems.findIndex(item => item === this.items[0]);
+        const changeTree = self[$changes];
+        const first = items[0];
+        const index = self.tmpItems.findIndex(item => item === first);
         changeTree.delete(index, OPERATION.DELETE);
-        this.deletedIndexes[index] = true;
+        self.deletedIndexes[index] = true;
 
-        return this.items.shift();
+        return items.shift();
     }
 
     /**
@@ -400,17 +406,18 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * ```
      */
     sort(compareFn: (a: V, b: V) => number = DEFAULT_SORT): this {
-        this.isMovingItems = true;
+        const self = this[$proxyTarget];
+        self.isMovingItems = true;
 
-        const changeTree = this[$changes];
-        const sortedItems = this.items.sort(compareFn);
+        const changeTree = self[$changes];
+        const sortedItems = self.items.sort(compareFn);
 
         // wouldn't OPERATION.MOVE make more sense here?
         sortedItems.forEach((_, i) => changeTree.change(i, OPERATION.REPLACE));
 
-        this.tmpItems.sort(compareFn);
+        self.tmpItems.sort(compareFn);
 
-        this.isMovingItems = false;
+        self.isMovingItems = false;
         return this;
     }
 
@@ -425,16 +432,20 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         deleteCount?: number,
         ...insertItems: V[]
     ): V[] {
-        const changeTree = this[$changes];
+        const self = this[$proxyTarget];
+        const changeTree = self[$changes];
+        const items = self.items;
+        const tmpItems = self.tmpItems;
+        const deletedIndexes = self.deletedIndexes;
 
-        const itemsLength = this.items.length;
-        const tmpItemsLength = this.tmpItems.length;
+        const itemsLength = items.length;
+        const tmpItemsLength = tmpItems.length;
         const insertCount = insertItems.length;
 
         // build up-to-date list of indexes, excluding removed values.
         const indexes: number[] = [];
         for (let i = 0; i < tmpItemsLength; i++) {
-            if (this.deletedIndexes[i] !== true) {
+            if (deletedIndexes[i] !== true) {
                 indexes.push(i);
             }
         }
@@ -451,7 +462,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             for (let i = start; i < start + deleteCount; i++) {
                 const index = indexes[i];
                 changeTree.delete(index, OPERATION.DELETE);
-                this.deletedIndexes[index] = true;
+                deletedIndexes[index] = true;
             }
 
         } else {
@@ -471,19 +482,19 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
                 changeTree.indexedOperation(
                     addIndex,
-                    (this.deletedIndexes[addIndex])
+                    (deletedIndexes[addIndex])
                         ? OPERATION.DELETE_AND_ADD
                         : OPERATION.ADD
                 );
 
-                // set value's parent/root
+                // set value's parent/root — use `this` (Proxy) as parent.
                 insertItems[i][$changes]?.setParent(this, changeTree.root, addIndex);
             }
         }
 
         changeTree.root?.enqueueChangeTree(changeTree);
 
-        return this.items.splice(start, deleteCount, ...insertItems);
+        return items.splice(start, deleteCount, ...insertItems);
     }
 
     /**
@@ -491,7 +502,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * @param items  Elements to insert at the start of the Array.
      */
     unshift(...items: V[]): number {
-        const changeTree = this[$changes];
+        const self = this[$proxyTarget];
+        const changeTree = self[$changes];
 
         // shift indexes
         changeTree.shiftChangeIndexes(items.length);
@@ -501,9 +513,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             changeTree.change(index, OPERATION.ADD)
         });
 
-        this.tmpItems.unshift(...items);
+        self.tmpItems.unshift(...items);
 
-        return this.items.unshift(...items);
+        return self.items.unshift(...items);
     }
 
     /**
