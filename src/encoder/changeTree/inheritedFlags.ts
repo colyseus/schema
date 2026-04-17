@@ -7,6 +7,7 @@ import { Metadata } from "../../Metadata.js";
 import { $changes, $childType } from "../../types/symbols.js";
 import type { Schema } from "../../Schema.js";
 import type { ChangeTree, Ref } from "../ChangeTree.js";
+import type { ICollectionChangeRecorder } from "../ChangeRecorder.js";
 
 /**
  * Reconcile queue membership + inherited flags for a tree that just had
@@ -102,7 +103,9 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
     // recorder before it's pushed into an unreliable collection),
     // promote them to the unreliable recorder.
     else if (becameUnreliable && tree.has()) {
-        const dst = tree.ensureUnreliableRecorder();
+        // Pure ops (index < 0) only come from collection trees — and a
+        // collection tree's unreliable recorder is a CollectionChangeRecorder.
+        const dst = tree.ensureUnreliableRecorder() as ICollectionChangeRecorder;
         tree.forEach((index, op) => {
             if (index < 0) dst.recordPure(op);
             else dst.record(index, op);

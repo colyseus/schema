@@ -1,21 +1,25 @@
 import { OPERATION } from "../encoding/spec.js";
 
 /**
- * ChangeRecorder is the unifying abstraction for "what changed this tick"
- * across Schema and Collection types. Two implementations:
+ * ChangeRecorder — "what changed this tick" for a single ref.
  *
- *   - {@link SchemaChangeRecorder}: fixed fields (≤64), bitmask + Uint8Array
- *   - {@link CollectionChangeRecorder}: dynamic indexes, Map
+ * This file holds the two standalone recorder classes used for the
+ * unreliable channel (lazy, opt-in). The reliable channel is inlined on
+ * `ChangeTree` for perf; see `ChangeTree._isSchema` dispatch.
  *
- * A single `dirty` bucket per tree. The per-field filter/visibility decision
- * (untagged vs @view-tagged, unfiltered vs inherited-filtered subtree) is
- * made at encode time, not at record time. Full-sync output is derived
- * structurally via {@link ChangeTree.forEachLive}.
+ * Interface design (ISP):
+ *   - {@link ChangeRecorder}: common ops, implemented by both Schema and
+ *     Collection recorders.
+ *   - {@link ICollectionChangeRecorder}: extends with `recordPure` +
+ *     `shift` — collection-only. Schema recorders do NOT carry these.
+ *
+ * Per-field filter/visibility is decided at encode time, not record time.
+ * Full-sync output is derived structurally via `ChangeTree.forEachLive`.
  */
 export interface ChangeRecorder {
     /**
-     * Record a change at the given index with the given operation type.
-     * Handles op merge (e.g. DELETE followed by ADD becomes DELETE_AND_ADD).
+     * Record a change at the given index. Handles op merge
+     * (DELETE followed by ADD becomes DELETE_AND_ADD).
      */
     record(index: number, op: OPERATION): void;
 
@@ -28,61 +32,64 @@ export interface ChangeRecorder {
      */
     recordRaw(index: number, op: OPERATION): void;
 
-    /**
-     * Record a pure operation (CLEAR, REVERSE) that has no index.
-     * Only collections use this. Schema implementations may throw.
-     */
-    recordPure(op: OPERATION): void;
-
-    /** Get the current operation type recorded at index, or undefined if none. */
+    /** Current operation at index, or undefined if none. */
     operationAt(index: number): OPERATION | undefined;
 
-    /** Overwrite the operation type at index. */
+    /** Overwrite the operation at index. */
     setOperationAt(index: number, op: OPERATION): void;
 
     /**
      * Iterate (index, op) pairs in record order.
-     * Pure operations (CLEAR/REVERSE) are emitted with index = -op (matching
-     * the existing wire-encoding convention).
+     * Pure operations emit with index = -op (wire convention).
      */
     forEach(cb: (index: number, op: OPERATION) => void): void;
 
-    /**
-     * Iterate with a reusable context object to avoid per-call closure
-     * allocation in the hot encode path.
-     */
+    /** Closure-free forEach variant for the hot encode path. */
     forEachWithCtx<T>(ctx: T, cb: (ctx: T, index: number, op: OPERATION) => void): void;
 
-    /** Number of recorded entries. */
     size(): number;
-
-    /** True if there are any changes recorded. */
     has(): boolean;
-
-    /** Clear all recorded changes. */
     reset(): void;
+}
 
+/**
+ * Extended recorder for collection types — adds `recordPure` (CLEAR /
+ * REVERSE) and `shift` (ArraySchema.unshift support).
+ */
+export interface ICollectionChangeRecorder extends ChangeRecorder {
     /**
-     * Shift current-tick dirty indexes by `shiftIndex`. Used by ArraySchema.unshift.
+     * Record a pure operation (CLEAR / REVERSE) with no index.
+     * Interleaves with indexed ops at record order.
      */
+    recordPure(op: OPERATION): void;
+
+    /** Shift current-tick dirty indexes by `shiftIndex`. */
     shift(shiftIndex: number): void;
 }
 
+// Module-scope adapter: lets `forEach(cb)` delegate to `forEachWithCtx`
+// by passing the user's callback as ctx. No per-call allocation.
+const _invokeNoCtx = (
+    cb: (index: number, op: OPERATION) => void,
+    index: number,
+    op: OPERATION,
+) => cb(index, op);
+
 // ──────────────────────────────────────────────────────────────────────────
-// SchemaChangeRecorder — bitmask-based, for Schema types (≤64 fields)
+// SchemaChangeRecorder — bitmask + Uint8Array, for Schema types (≤64 fields)
 // ──────────────────────────────────────────────────────────────────────────
 
 /**
  * Schema field operations are limited to ADD(128), DELETE(64), and
- * DELETE_AND_ADD(192). REPLACE(0) is collection-only. So `ops[i] === 0`
- * is a safe "no operation" sentinel for Schema instances.
+ * DELETE_AND_ADD(192). REPLACE(0) is collection-only, so `ops[i] === 0`
+ * is a safe "no operation" sentinel.
  */
 export class SchemaChangeRecorder implements ChangeRecorder {
-    // Bitmask storage for fields 0-31 (low) and 32-63 (high)
+    // Bitmask storage for fields 0-31 (low) and 32-63 (high).
     private dirtyLow = 0;
     private dirtyHigh = 0;
 
-    /** ops[fieldIndex] = OPERATION value. Pre-sized to numFields+1. */
+    // ops[fieldIndex] = OPERATION value. Pre-sized to numFields+1.
     private readonly ops: Uint8Array;
 
     constructor(numFields: number) {
@@ -90,11 +97,10 @@ export class SchemaChangeRecorder implements ChangeRecorder {
     }
 
     record(index: number, op: OPERATION): void {
-        // Op merge: DELETE followed by ADD becomes DELETE_AND_ADD
         const prev = this.ops[index];
-        if (prev === 0 || prev === OPERATION.DELETE) {
-            this.ops[index] = (prev === OPERATION.DELETE) ? OPERATION.DELETE_AND_ADD : op;
-        }
+        if (prev === 0) this.ops[index] = op;
+        else if (prev === OPERATION.DELETE) this.ops[index] = OPERATION.DELETE_AND_ADD;
+        // else preserve existing ADD / DELETE_AND_ADD.
 
         if (index < 32) this.dirtyLow |= (1 << index);
         else this.dirtyHigh |= (1 << (index - 32));
@@ -110,14 +116,6 @@ export class SchemaChangeRecorder implements ChangeRecorder {
         this.record(index, op);
     }
 
-    recordPure(_op: OPERATION): void {
-        throw new Error("SchemaChangeRecorder: pure operations are not supported");
-    }
-
-    shift(_shiftIndex: number): void {
-        throw new Error("SchemaChangeRecorder: shift is not supported");
-    }
-
     operationAt(index: number): OPERATION | undefined {
         const op = this.ops[index];
         return op === 0 ? undefined : op;
@@ -128,28 +126,14 @@ export class SchemaChangeRecorder implements ChangeRecorder {
     }
 
     forEach(cb: (index: number, op: OPERATION) => void): void {
-        let low = this.dirtyLow;
-        let high = this.dirtyHigh;
-        const ops = this.ops;
-        // Iterate set bits using clz32 (CPU-instruction-level bit scan).
-        while (low !== 0) {
-            const bit = low & -low;
-            const fieldIndex = 31 - Math.clz32(bit);
-            low ^= bit;
-            cb(fieldIndex, ops[fieldIndex]);
-        }
-        while (high !== 0) {
-            const bit = high & -high;
-            const fieldIndex = 31 - Math.clz32(bit) + 32;
-            high ^= bit;
-            cb(fieldIndex, ops[fieldIndex]);
-        }
+        this.forEachWithCtx(cb, _invokeNoCtx);
     }
 
     forEachWithCtx<T>(ctx: T, cb: (ctx: T, index: number, op: OPERATION) => void): void {
         let low = this.dirtyLow;
         let high = this.dirtyHigh;
         const ops = this.ops;
+        // Iterate set bits via clz32 (CPU-level bit scan).
         while (low !== 0) {
             const bit = low & -low;
             const fieldIndex = 31 - Math.clz32(bit);
@@ -184,29 +168,24 @@ export class SchemaChangeRecorder implements ChangeRecorder {
 // ──────────────────────────────────────────────────────────────────────────
 
 /**
- * Collection items can have sparse indexes (e.g. 0, 7, 1024) far exceeding
- * the 64-field cap that Schema imposes. Map-based storage handles arbitrary
- * indexes; the value at each entry is the OPERATION type itself.
+ * Collection items have sparse indexes (e.g. 0, 7, 1024) exceeding the
+ * 64-field cap Schema imposes. Map-based storage handles arbitrary
+ * indexes; the value at each entry is the OPERATION.
  *
- * Pure operations (CLEAR, REVERSE) are stored as parallel `[position, op]`
- * entries to preserve insertion order interleaving with indexed ops.
+ * Pure operations (CLEAR, REVERSE) live in `pureOps` as `[position, op]`
+ * entries where `position` is `dirty.size` at record time — preserves
+ * insertion-order interleaving with indexed ops (e.g. CLEAR must emit
+ * BEFORE subsequent ADDs).
  */
-export class CollectionChangeRecorder implements ChangeRecorder {
+export class CollectionChangeRecorder implements ICollectionChangeRecorder {
     private dirty: Map<number, OPERATION> = new Map();
-    /**
-     * Pure ops (CLEAR/REVERSE), no index. Each entry is `[position, op]` where
-     * `position` is the size of the dirty Map at record time. Preserves the
-     * interleaved insertion order of pure vs indexed ops (e.g. CLEAR must
-     * come BEFORE subsequent ADDs in the emitted sequence).
-     */
     private pureOps: Array<[number, OPERATION]> = [];
 
     record(index: number, op: OPERATION): void {
         const prev = this.dirty.get(index);
-        const finalOp = (prev === undefined)
-            ? op
-            : (prev === OPERATION.DELETE ? OPERATION.DELETE_AND_ADD : prev);
-        this.dirty.set(index, finalOp);
+        if (prev === undefined) this.dirty.set(index, op);
+        else if (prev === OPERATION.DELETE) this.dirty.set(index, OPERATION.DELETE_AND_ADD);
+        // else preserve existing op.
     }
 
     recordDelete(index: number, op: OPERATION): void {
@@ -230,54 +209,27 @@ export class CollectionChangeRecorder implements ChangeRecorder {
     }
 
     forEach(cb: (index: number, op: OPERATION) => void): void {
-        const pure = this.pureOps;
-        if (pure.length > 0) {
-            let pureIdx = 0;
-            let i = 0;
-            for (const [index, op] of this.dirty) {
-                while (pureIdx < pure.length && pure[pureIdx][0] <= i) {
-                    const pureOp = pure[pureIdx][1];
-                    cb(-pureOp, pureOp);
-                    pureIdx++;
-                }
-                cb(index, op);
-                i++;
-            }
-            while (pureIdx < pure.length) {
-                const pureOp = pure[pureIdx][1];
-                cb(-pureOp, pureOp);
-                pureIdx++;
-            }
-        } else {
-            for (const [index, op] of this.dirty) {
-                cb(index, op);
-            }
-        }
+        this.forEachWithCtx(cb, _invokeNoCtx);
     }
 
     forEachWithCtx<T>(ctx: T, cb: (ctx: T, index: number, op: OPERATION) => void): void {
         const pure = this.pureOps;
         if (pure.length > 0) {
-            let pureIdx = 0;
-            let i = 0;
+            let pureIdx = 0, i = 0;
             for (const [index, op] of this.dirty) {
                 while (pureIdx < pure.length && pure[pureIdx][0] <= i) {
-                    const pureOp = pure[pureIdx][1];
+                    const pureOp = pure[pureIdx++][1];
                     cb(ctx, -pureOp, pureOp);
-                    pureIdx++;
                 }
                 cb(ctx, index, op);
                 i++;
             }
             while (pureIdx < pure.length) {
-                const pureOp = pure[pureIdx][1];
+                const pureOp = pure[pureIdx++][1];
                 cb(ctx, -pureOp, pureOp);
-                pureIdx++;
             }
         } else {
-            for (const [index, op] of this.dirty) {
-                cb(ctx, index, op);
-            }
+            for (const [index, op] of this.dirty) cb(ctx, index, op);
         }
     }
 
@@ -296,9 +248,7 @@ export class CollectionChangeRecorder implements ChangeRecorder {
 
     shift(shiftIndex: number): void {
         const dst = new Map<number, OPERATION>();
-        for (const [idx, val] of this.dirty) {
-            dst.set(idx + shiftIndex, val);
-        }
+        for (const [idx, val] of this.dirty) dst.set(idx + shiftIndex, val);
         this.dirty = dst;
     }
 }
@@ -307,7 +257,7 @@ export class CollectionChangeRecorder implements ChangeRecorder {
 // Helpers
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Population count for 32-bit integer (Hamming weight). */
+/** 32-bit Hamming weight (popcount). */
 export function popcount32(n: number): number {
     n = n - ((n >>> 1) & 0x55555555);
     n = (n & 0x33333333) + ((n >>> 2) & 0x33333333);

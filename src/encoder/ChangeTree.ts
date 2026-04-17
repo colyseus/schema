@@ -26,7 +26,7 @@ import type { SetSchema } from "../types/custom/SetSchema.js";
 
 import { Root } from "./Root.js";
 import { Metadata } from "../Metadata.js";
-import { type ChangeRecorder, SchemaChangeRecorder, CollectionChangeRecorder, popcount32 } from "./ChangeRecorder.js";
+import { type ChangeRecorder, type ICollectionChangeRecorder, SchemaChangeRecorder, CollectionChangeRecorder, popcount32 } from "./ChangeRecorder.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 import type { DecodeOperation } from "../decoder/DecodeOperation.js";
 
@@ -456,9 +456,10 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     operation(op: OPERATION) {
         if (this.paused || this.isStatic) return;
-        // Pure ops (CLEAR/REVERSE) — collections inherit channel via `isUnreliable`.
+        // Pure ops (CLEAR/REVERSE) only emit from collection trees — the
+        // recorder here is always a CollectionChangeRecorder by construction.
         if (this.isUnreliable) {
-            this.ensureUnreliableRecorder().recordPure(op);
+            (this.ensureUnreliableRecorder() as ICollectionChangeRecorder).recordPure(op);
             this.root?.enqueueUnreliable(this);
         } else {
             this.recordPure(op);
@@ -485,9 +486,10 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     // ArraySchema#unshift(): apply shift to both channels.
+    // Unreliable recorder on an array is always a CollectionChangeRecorder.
     shiftChangeIndexes(shiftIndex: number) {
         this.shift(shiftIndex);
-        this.unreliableRecorder?.shift(shiftIndex);
+        (this.unreliableRecorder as ICollectionChangeRecorder | undefined)?.shift(shiftIndex);
     }
 
     indexedOperation(index: number, operation: OPERATION) {
