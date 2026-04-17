@@ -60,6 +60,14 @@ function readInlineOpByte(low: number, high: number, index: number): number {
         : (high >>> shift) & 0xFF;
 }
 
+// Adapter that lets `forEach(cb)` delegate to `forEachWithCtx(cb, _invokeNoCtx)` —
+// no per-call closure allocation. See ChangeRecorder.ts for the same pattern.
+const _invokeNoCtx = (
+    cb: (index: number, op: OPERATION) => void,
+    index: number,
+    op: OPERATION,
+) => cb(index, op);
+
 export interface IRef {
     // FIXME: we only commented this out to allow mixing @colyseus/schema bundled types with server types in Cocos Creator
     // [$changes]?: ChangeTree;
@@ -310,58 +318,12 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         }
     }
 
+    // Cold-path delegate: all `forEach` callers are debug/dump utilities
+    // (Schema.ts debug output, utils.ts change dump, discardAll in tests).
+    // The hot encode loop uses `forEachWithCtx` directly. See ChangeRecorder.ts
+    // for the same adapter pattern.
     forEach(cb: (index: number, op: OPERATION) => void): void {
-        if (this._isSchema) {
-            let low = this.dirtyLow;
-            let high = this.dirtyHigh;
-            const ops = this.ops;
-            if (ops !== undefined) {
-                while (low !== 0) {
-                    const bit = low & -low;
-                    const fieldIndex = 31 - Math.clz32(bit);
-                    low ^= bit;
-                    cb(fieldIndex, ops[fieldIndex]);
-                }
-                while (high !== 0) {
-                    const bit = high & -high;
-                    const fieldIndex = 31 - Math.clz32(bit) + 32;
-                    high ^= bit;
-                    cb(fieldIndex, ops[fieldIndex]);
-                }
-            } else {
-                // Inline path: fields 0..7 only (dirtyHigh stays 0).
-                const ol = this.opsLow;
-                const oh = this.opsHigh;
-                while (low !== 0) {
-                    const bit = low & -low;
-                    const fieldIndex = 31 - Math.clz32(bit);
-                    low ^= bit;
-                    cb(fieldIndex, readInlineOpByte(ol, oh, fieldIndex));
-                }
-            }
-            return;
-        }
-        // Collection path: interleave pure ops (CLEAR/REVERSE) with indexed
-        // ops via `[position, op]` entries. Pure ops emit with index=-op.
-        const dirty = this.collDirty!;
-        const pure = this.collPureOps;
-        if (pure !== undefined && pure.length > 0) {
-            let pureIdx = 0, i = 0;
-            for (const [index, op] of dirty) {
-                while (pureIdx < pure.length && pure[pureIdx][0] <= i) {
-                    const pureOp = pure[pureIdx++][1];
-                    cb(-pureOp, pureOp);
-                }
-                cb(index, op);
-                i++;
-            }
-            while (pureIdx < pure.length) {
-                const pureOp = pure[pureIdx++][1];
-                cb(-pureOp, pureOp);
-            }
-        } else {
-            for (const [index, op] of dirty) cb(index, op);
-        }
+        this.forEachWithCtx(cb, _invokeNoCtx);
     }
 
     forEachWithCtx<C>(ctx: C, cb: (ctx: C, index: number, op: OPERATION) => void): void {
