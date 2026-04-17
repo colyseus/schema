@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $refId } from "../symbols.js";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $proxyTarget, $refId } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
 import { type IRef, ChangeTree } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
@@ -22,6 +22,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     [n: number]: V;
     [$changes]: ChangeTree;
     [$refId]?: number;
+    [$proxyTarget]: this;
 
     protected [$childType]: string | typeof Schema;
 
@@ -66,6 +67,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
     constructor (...items: V[]) {
         this[$childType] = undefined as any;
+        // Self-reference so methods called via the Proxy can recover the
+        // underlying instance and access fields directly. See $proxyTarget.
+        this[$proxyTarget] = this;
 
         const proxy = new Proxy(this, {
             get: (obj, prop) => {
@@ -188,9 +192,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     get isTrackingPaused(): boolean { return this[$changes].paused; }
 
     push(...values: V[]) {
-        let length = this.tmpItems.length;
-
-        const changeTree = this[$changes];
+        // `this` is the Proxy when called from user code. Grab the underlying
+        // instance once so the body's field reads (items, tmpItems, $changes,
+        // $childType) skip the Proxy.get trap on every iteration.
+        const self = this[$proxyTarget];
+        const items = self.items;
+        const tmpItems = self.tmpItems;
+        const changeTree = self[$changes];
+        const childType = self[$childType];
+        let length = tmpItems.length;
 
         for (let i = 0, l = values.length; i < l; i++, length++) {
             const value = values[i];
@@ -199,19 +209,21 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
                 // skip null values
                 return;
 
-            } else if (typeof (value) === "object" && this[$childType]) {
-                assertInstanceType(value as any, this[$childType] as typeof Schema, this, i);
+            } else if (typeof (value) === "object" && childType) {
+                assertInstanceType(value as any, childType as typeof Schema, self, i);
                 // TODO: move value[$changes]?.setParent() to this block.
             }
 
             changeTree.indexedOperation(length, OPERATION.ADD);
 
-            this.items.push(value);
-            this.tmpItems.push(value);
+            items.push(value);
+            tmpItems.push(value);
 
             //
             // set value's parent after the value is set
             // (to avoid encoding "refId" operations before parent's "ADD" operation)
+            // Pass `this` (the Proxy) as parent — the Proxy is the public
+            // identity of the array; ChangeTree.parentRef compares by identity.
             //
             value[$changes]?.setParent(this, changeTree.root, length);
         }

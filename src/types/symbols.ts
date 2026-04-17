@@ -22,6 +22,15 @@ export const $changes: unique symbol = Symbol("$changes");
 export const $childType: unique symbol = Symbol("$childType");
 
 /**
+ * Self-reference an instance sets on `this` so its own methods can recover
+ * the underlying object even when `this` is a Proxy wrapper. Used by
+ * ArraySchema (whose public API is a Proxy) to grab the underlying instance
+ * once at the top of hot methods and then access fields directly without
+ * paying the Proxy.get cost on every read.
+ */
+export const $proxyTarget: unique symbol = Symbol("$proxyTarget");
+
+/**
  * Optional "discard" method for custom types (ArraySchema)
  * (Discards changes for next serialization)
  */
