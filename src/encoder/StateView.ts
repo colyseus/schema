@@ -29,6 +29,12 @@ function _clearViewBitFromAllTrees(root: Root, slot: number, bit: number): void 
         if (v !== undefined && slot < v.length) v[slot] &= clearMask;
         const i = tree.invisibleViews;
         if (i !== undefined && slot < i.length) i[slot] &= clearMask;
+        const t = tree.tagViews;
+        if (t !== undefined) {
+            t.forEach((bitmap) => {
+                if (slot < bitmap.length) bitmap[slot] &= clearMask;
+            });
+        }
     }
 }
 
@@ -64,7 +70,12 @@ export class StateView {
     private _slot: number = 0;
     private _bit: number = 0;
 
-    tags?: WeakMap<ChangeTree, Set<number>>; // TODO: use bit manipulation instead of Set<number> ()
+    /**
+     * Per-tree custom-tag membership lives on each ChangeTree's `tagViews`
+     * map (keyed by tag, value is a per-view bitmap). The StateView only
+     * needs its slot/bit pair to read/write it. Replaces the legacy
+     * `tags: WeakMap<ChangeTree, Set<number>>` allocation per (view, tree).
+     */
 
     /**
      * Manual "ADD" operations for changes per ChangeTree, specific to this view.
@@ -172,6 +183,58 @@ export class StateView {
         if (slot < arr.length) arr[slot] &= ~this._bit;
     }
 
+    // ──────────────────────────────────────────────────────────────────
+    // Per-tag, per-view bitmap. Replaces the legacy
+    // `tags: WeakMap<ChangeTree, Set<number>>` storage. Hot read site is
+    // `Schema.ts` filter check — `hasTagOnTree` is O(1) bitwise.
+    // ──────────────────────────────────────────────────────────────────
+
+    /** True iff this view has `tag` associated with `tree`. */
+    public hasTagOnTree(tree: ChangeTree, tag: number): boolean {
+        const map = tree.tagViews;
+        if (map === undefined) return false;
+        const arr = map.get(tag);
+        const slot = this._slot;
+        return arr !== undefined && slot < arr.length && (arr[slot] & this._bit) !== 0;
+    }
+
+    /** Mark `tree` as carrying `tag` for this view. */
+    public addTag(tree: ChangeTree, tag: number): void {
+        let map = tree.tagViews;
+        if (map === undefined) {
+            map = tree.tagViews = new Map();
+        }
+        let arr = map.get(tag);
+        if (arr === undefined) {
+            arr = [];
+            map.set(tag, arr);
+        }
+        const slot = this._slot;
+        while (arr.length <= slot) arr.push(0);
+        arr[slot] |= this._bit;
+    }
+
+    /** Clear this view's `tag` bit on `tree`. */
+    public removeTag(tree: ChangeTree, tag: number): void {
+        const map = tree.tagViews;
+        if (map === undefined) return;
+        const arr = map.get(tag);
+        if (arr === undefined) return;
+        const slot = this._slot;
+        if (slot < arr.length) arr[slot] &= ~this._bit;
+    }
+
+    /** Clear ALL tag bits this view holds on `tree` (used when the per-tag isn't known). */
+    public removeAllTagsOnTree(tree: ChangeTree): void {
+        const map = tree.tagViews;
+        if (map === undefined) return;
+        const slot = this._slot;
+        const clearMask = ~this._bit;
+        map.forEach((arr) => {
+            if (slot < arr.length) arr[slot] &= clearMask;
+        });
+    }
+
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
         const changeTree: ChangeTree = obj?.[$changes];
@@ -249,17 +312,7 @@ export class StateView {
 
         // set tag
         if (tag !== DEFAULT_VIEW_TAG) {
-            if (!this.tags) {
-                this.tags = new WeakMap<ChangeTree, Set<number>>();
-            }
-            let tags: Set<number>;
-            if (!this.tags.has(changeTree)) {
-                tags = new Set<number>();
-                this.tags.set(changeTree, tags);
-            } else {
-                tags = this.tags.get(changeTree);
-            }
-            tags.add(tag);
+            this.addTag(changeTree, tag);
 
             // Ref: add tagged properties
             metadata?.[$fieldIndexesByViewTag]?.[tag]?.forEach((index) => {
@@ -315,18 +368,7 @@ export class StateView {
                 this.changes.set(changeTree.ref[$refId], changes);
             }
 
-            if (!this.tags) {
-                this.tags = new WeakMap<ChangeTree, Set<number>>();
-            }
-
-            let tags: Set<number>;
-            if (!this.tags.has(changeTree)) {
-                tags = new Set<number>();
-                this.tags.set(changeTree, tags);
-            } else {
-                tags = this.tags.get(changeTree);
-            }
-            tags.add(tag);
+            this.addTag(changeTree, tag);
 
             changes[parentIndex] = OPERATION.ADD;
         }
@@ -415,21 +457,11 @@ export class StateView {
             });
         }
 
-        // remove tag
-        if (this.tags && this.tags.has(changeTree)) {
-            const tags = this.tags.get(changeTree);
-            if (tag === undefined) {
-                // delete all tags
-                this.tags.delete(changeTree);
-            } else {
-                // delete specific tag
-                tags.delete(tag);
-
-                // if tag set is empty, delete it entirely
-                if (tags.size === 0) {
-                    this.tags.delete(changeTree);
-                }
-            }
+        // remove tag bit for this view
+        if (tag === undefined) {
+            this.removeAllTagsOnTree(changeTree);
+        } else {
+            this.removeTag(changeTree, tag);
         }
 
         return this;
@@ -440,8 +472,7 @@ export class StateView {
     }
 
     hasTag(ob: Ref, tag: number = DEFAULT_VIEW_TAG) {
-        const tags = this.tags?.get(ob[$changes]);
-        return tags?.has(tag) ?? false;
+        return this.hasTagOnTree(ob[$changes], tag);
     }
 
     clear() {

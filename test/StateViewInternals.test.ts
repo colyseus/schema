@@ -254,6 +254,80 @@ describe("StateView internals", () => {
         });
     });
 
+    describe("ChangeTree tag bitmap (per-view, per-tag)", () => {
+        function bindView(): { view: StateView; state: State } {
+            const state = new State();
+            getEncoder(state);
+            const view = new StateView();
+            view.add(state);
+            return { view, state };
+        }
+
+        it("addTag / hasTagOnTree round-trips the bit", () => {
+            const { view, state } = bindView();
+            const tree = state[$changes]!;
+
+            assert.strictEqual(view.hasTagOnTree(tree, 1), false, "no bit before addTag");
+            view.addTag(tree, 1);
+            assert.strictEqual(view.hasTagOnTree(tree, 1), true);
+            assert.strictEqual(view.hasTagOnTree(tree, 2), false, "different tag is independent");
+        });
+
+        it("removeTag clears only the targeted tag bit for this view", () => {
+            const { view, state } = bindView();
+            const tree = state[$changes]!;
+
+            view.addTag(tree, 1);
+            view.addTag(tree, 2);
+            view.removeTag(tree, 1);
+
+            assert.strictEqual(view.hasTagOnTree(tree, 1), false);
+            assert.strictEqual(view.hasTagOnTree(tree, 2), true);
+        });
+
+        it("two views with same tag write to different bits", () => {
+            const state = new State();
+            getEncoder(state);
+            const v0 = new StateView();
+            const v1 = new StateView();
+            v0.add(state);
+            v1.add(state);
+            const tree = state[$changes]!;
+
+            v0.addTag(tree, 7);
+            assert.strictEqual(v0.hasTagOnTree(tree, 7), true);
+            assert.strictEqual(v1.hasTagOnTree(tree, 7), false, "v1's bit untouched by v0.addTag");
+
+            v0.removeTag(tree, 7);
+            v1.addTag(tree, 7);
+            assert.strictEqual(v1.hasTagOnTree(tree, 7), true);
+        });
+
+        it("dispose clears tag bits so a recycled view ID does not inherit them", () => {
+            const state = new State();
+            getEncoder(state);
+            const tree = state[$changes]!;
+
+            const v1 = new StateView();
+            v1.add(state);
+            v1.addTag(tree, 5);
+            assert.strictEqual(v1.hasTagOnTree(tree, 5), true);
+
+            const reusedId = v1.id;
+            v1.dispose();
+
+            const v2 = new StateView();
+            // @ts-ignore — bind without add() to observe pre-add state
+            v2["_bindRoot"]((state as any)[$changes].root);
+            assert.strictEqual(v2.id, reusedId, "ID was reused");
+            assert.strictEqual(
+                v2.hasTagOnTree(tree, 5),
+                false,
+                "v2 must NOT inherit v1's tag bit after dispose",
+            );
+        });
+    });
+
     describe("ID reuse: dispose() must clear leftover bits", () => {
         // Hard contract: when a view is disposed, all bits it set on
         // ChangeTrees are cleared. A future view that acquires the same

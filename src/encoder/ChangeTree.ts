@@ -138,6 +138,18 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     visibleViews?: number[];
     invisibleViews?: number[];
 
+    /**
+     * Per-(view, tag) bitmap. `tagViews.get(tag)[viewSlot] & viewBit` is set
+     * iff the view has this tree associated with `tag`. Mirrors the
+     * `visibleViews` shape but indexed by tag because the read site
+     * (Schema filter check) already has `(tree, tag, view)` in hand.
+     *
+     * Lazy: undefined for trees that have never participated in a tagged
+     * view.add() call. Custom tags only — DEFAULT_VIEW_TAG visibility lives
+     * in `visibleViews`.
+     */
+    tagViews?: Map<number, number[]>;
+
     // Accessor properties for flags
     get isFiltered(): boolean { return (this.flags & IS_FILTERED) !== 0; }
     set isFiltered(v: boolean) { this.flags = v ? (this.flags | IS_FILTERED) : (this.flags & ~IS_FILTERED); }

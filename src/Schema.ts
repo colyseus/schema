@@ -95,8 +95,7 @@ export class Schema<C = any> implements IRef {
 
         } else {
             // view pass: custom tag
-            const tags = view.tags?.get(ref[$changes]);
-            return tags && tags.has(tag);
+            return view.hasTagOnTree(ref[$changes], tag);
         }
     }
 
