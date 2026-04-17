@@ -1,7 +1,7 @@
 import type { Schema } from "../Schema.js";
 import { TypeContext } from "../types/TypeContext.js";
 import { Metadata } from "../Metadata.js";
-import { $changes, $encoder, $filter, $getByIndex, $refId } from "../types/symbols.js";
+import { $changes, $encoder, $filter, $filterBitmask, $getByIndex, $refId, $viewFieldIndexes } from "../types/symbols.js";
 
 import { encode } from "../encoding/encode.js";
 import type { Iterator } from "../encoding/decode.js";
@@ -41,6 +41,13 @@ interface EncodeCtx {
     emitFiltered: boolean;
 
     /**
+     * Bitmask: bit i set iff field i has a @view tag. Lets the per-field
+     * filter check be a single bitwise op instead of a metadata[i]?.tag chase.
+     * Always 0 for collection trees.
+     */
+    filterBitmask: number;
+
+    /**
      * Lazy structure-switch state. The switch header is emitted right before
      * the first field of a tree actually passes the filter, so trees that
      * contribute zero bytes in a given pass don't leave orphaned headers.
@@ -48,6 +55,31 @@ interface EncodeCtx {
     structSwitchEmitted: boolean;
     isRootTree: boolean;
     shouldEmitSwitch: boolean;
+}
+
+/**
+ * Per-Schema-class bitmask of @view-tagged fields. Lazy-computed from
+ * metadata[$viewFieldIndexes] the first time a tree of this class is
+ * encoded; cached on the metadata object so subsequent encodes are O(1).
+ */
+function getFilterBitmask(metadata: any): number {
+    if (metadata === undefined) return 0;
+    let bm: number | undefined = metadata[$filterBitmask];
+    if (bm !== undefined) return bm;
+    bm = 0;
+    const tagged = metadata[$viewFieldIndexes];
+    if (tagged !== undefined) {
+        for (let i = 0, len = tagged.length; i < len; i++) bm |= (1 << tagged[i]);
+    }
+    // Non-enumerable so `for (const k in metadata)` iteration in TypeContext
+    // and elsewhere doesn't mistake this cache for a real field index.
+    Object.defineProperty(metadata, $filterBitmask, {
+        value: bm,
+        enumerable: false,
+        writable: true,
+        configurable: true,
+    });
+    return bm;
 }
 
 /**
@@ -82,10 +114,10 @@ function encodeChangeCb(ctx: EncodeCtx, fieldIndex: number, op: OPERATION): void
 
     // Per-field filter decision (same rule as ChangeTree.change()):
     // a field is filtered iff the tree inherits isFiltered OR the field
-    // itself carries a @view tag. Schema trees check per-field; collection
-    // trees inherit tree-level.
+    // itself carries a @view tag. Schema trees check via the precomputed
+    // bitmask; collection trees inherit tree-level (bitmask is 0).
     const fieldFiltered = ctx.isSchema
-        ? (ctx.treeIsFiltered || ctx.metadata?.[fieldIndex]?.tag !== undefined)
+        ? (ctx.treeIsFiltered || (ctx.filterBitmask & (1 << fieldIndex)) !== 0)
         : ctx.treeIsFiltered;
     if (fieldFiltered !== ctx.emitFiltered) return;
 
@@ -136,6 +168,7 @@ export class Encoder<T extends Schema = any> {
         ref: undefined, encoder: undefined!, filter: undefined, metadata: undefined,
         view: undefined, isEncodeAll: false, hasView: false,
         treeIsFiltered: false, isSchema: false, emitFiltered: false,
+        filterBitmask: 0,
         structSwitchEmitted: false, isRootTree: false, shouldEmitSwitch: false,
     };
 
@@ -212,9 +245,11 @@ export class Encoder<T extends Schema = any> {
             ctx.ref = ref;
             ctx.encoder = ctor[$encoder];
             ctx.filter = ctor[$filter];
-            ctx.metadata = ctor[Symbol.metadata];
+            const md = ctor[Symbol.metadata];
+            ctx.metadata = md;
             ctx.treeIsFiltered = changeTree.isFiltered;
             ctx.isSchema = Metadata.isValidInstance(ref);
+            ctx.filterBitmask = ctx.isSchema ? getFilterBitmask(md) : 0;
             ctx.structSwitchEmitted = false;
             ctx.isRootTree = (changeTree === rootChangeTree);
             // Root's struct switch is skipped at the very start of the shared
@@ -286,9 +321,11 @@ export class Encoder<T extends Schema = any> {
                 ctx.ref = ref;
                 ctx.encoder = ctor[$encoder];
                 ctx.filter = ctor[$filter];
-                ctx.metadata = ctor[Symbol.metadata];
+                const md = ctor[Symbol.metadata];
+                ctx.metadata = md;
                 ctx.treeIsFiltered = changeTree.isFiltered;
                 ctx.isSchema = Metadata.isValidInstance(ref);
+                ctx.filterBitmask = ctx.isSchema ? getFilterBitmask(md) : 0;
                 ctx.structSwitchEmitted = false;
                 ctx.shouldEmitSwitch = (hasView || ctx.it.offset > initialOffset || changeTree !== rootChangeTree);
 

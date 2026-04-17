@@ -52,6 +52,13 @@ export const $builder = "~builder";
  * Metadata
  */
 export const $descriptors = "~descriptors";
+
+/**
+ * Per-class bitmask: bit i set iff field i carries a @view tag.
+ * Lazily computed from $viewFieldIndexes on first encode pass.
+ * Skips the per-field metadata[i].tag property chase in the hot encode loop.
+ */
+export const $filterBitmask = "~__filterBitmask";
 export const $encoders = "~encoders";
 export const $numFields = "~__numFields";
 export const $refTypeFieldIndexes = "~__refTypeFieldIndexes";

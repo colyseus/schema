@@ -84,14 +84,19 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
         return;
     }
 
+    // Single metadata[index] read instead of three chases (was: name, type,
+    // and encoders[index] — each a separate property load on the field obj).
+    const field = metadata[index];
+    const ref = changeTree.ref as any;
+
     // Direct $values[index] read — bypasses prototype getter + metadata name lookup.
     // Falls back to named property for manual fields (which don't use $values).
-    const value = (changeTree.ref as any)[$values][index] ?? (changeTree.ref as any)[metadata[index].name];
+    const value = ref[$values][index] ?? ref[field.name];
 
     encodeValue(
         encoder,
         bytes,
-        metadata[index].type,
+        field.type,
         value,
         operation,
         it,
