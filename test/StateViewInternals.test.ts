@@ -1,10 +1,10 @@
 import * as assert from "assert";
 
-import { Schema, type, MapSchema, StateView, $changes } from "../src";
+import { Schema, type, view, ArraySchema, MapSchema, StateView, $changes } from "../src";
 import { Root } from "../src/encoder/Root";
 import { TypeContext } from "../src/types/TypeContext";
 import { ChangeTree } from "../src/encoder/ChangeTree";
-import { getEncoder } from "./Schema";
+import { createClientWithView, encodeMultiple, getEncoder } from "./Schema";
 
 /**
  * Internal-mechanics tests for StateView. Complements StateView.test.ts
@@ -254,48 +254,36 @@ describe("StateView internals", () => {
         });
     });
 
-    describe("ID reuse stale-bit hazard", () => {
-        // Documented design tradeoff: when a view is disposed, any
-        // visibility bits it set on ChangeTrees are NOT cleared. If a
-        // new view acquires the same ID, those stale bits make the new
-        // view think it can already see those trees.
-        //
-        // These tests pin the current behavior so a future change to the
-        // contract is intentional, not accidental.
-        it("a freshly-acquired ID can inherit stale bits from the previous owner", () => {
+    describe("ID reuse: dispose() must clear leftover bits", () => {
+        // Hard contract: when a view is disposed, all bits it set on
+        // ChangeTrees are cleared. A future view that acquires the same
+        // ID starts with a clean slate. (Not a tradeoff — a privacy
+        // requirement, see end-to-end test below.)
+        it("a freshly-acquired ID does NOT inherit stale visible bits from the previous owner", () => {
             const state = new State();
             getEncoder(state);
 
             const v1 = new StateView();
             v1.add(state);
             const tree = state[$changes];
-            // (state was already markVisible'd by v1.add(); leave it.)
             assert.strictEqual(v1.isVisible(tree), true);
 
-            const reusedId = v1.id; // capture BEFORE dispose nulls it
+            const reusedId = v1.id;
             v1.dispose();
 
-            // v2 takes the same ID — the bit on `state` from v1 is still
-            // set in the bitmap. v2.isVisible(state) returns true even
-            // though v2 never explicitly added it.
             const v2 = new StateView();
-            // Bind v2 manually (without calling add) so we can observe
-            // the pre-add visibility state inherited from v1's leftover bits.
+            // Bind without calling add() so we can observe pre-add state.
             // @ts-ignore — private
             v2["_bindRoot"]((state as any)[$changes].root);
             assert.strictEqual(v2.id, reusedId, "ID was reused");
             assert.strictEqual(
                 v2.isVisible(tree),
-                true,
-                "stale-bit hazard: v2 sees v1's old marks. Documented tradeoff.",
+                false,
+                "v2 must NOT inherit v1's visible bit after dispose",
             );
         });
 
-        it("calling v2.add() on a tree that has stale bits is still correct (idempotent)", () => {
-            // The hazard is only that v2 might SKIP an explicit add or
-            // emit nothing because it thinks the tree is already visible.
-            // For the encode loop the consequence is missed re-bootstrap;
-            // for view.add() the markVisible is idempotent.
+        it("re-add after dispose works (idempotent markVisible)", () => {
             const state = new State();
             getEncoder(state);
 
@@ -305,8 +293,107 @@ describe("StateView internals", () => {
             v1.dispose();
 
             const v2 = new StateView();
-            v2.add(state); // re-marks visible, no error
+            v2.add(state);
             assert.strictEqual(v2.isVisible(tree), true);
+        });
+    });
+
+    describe("privacy: dispose must clear prior view's bits", () => {
+        // End-to-end repro of the stale-bit-on-ID-reuse hazard at the
+        // encoded-bytes level. Custom-tagged fields (@view(N)) are gated
+        // by view.tags (a WeakMap on the live view, correctly GC'd with
+        // the disposed view), so they don't leak. Plain @view() fields
+        // ARE gated by the bitmap — that's where the hazard lives.
+
+        // We use a CUSTOM-tag @view(N) so view.add(parent) does NOT
+        // auto-recurse into the field. That gives us a window where B's
+        // setup does not re-mark the bit, exposing the stale-bit leak.
+        const TAG_A_ONLY = 1;
+        class Room extends Schema {
+            @type("string") code: string = "";
+        }
+        class World extends Schema {
+            @type("string") name: string = "";
+            @view(TAG_A_ONLY) @type(Room) restricted = new Room();
+        }
+
+        it("a recycled view ID must NOT inherit visibility of a tagged sibling tree", () => {
+            // PRIVACY-CRITICAL repro:
+            //   1. Client A opts into the @view(TAG_A_ONLY) Room (custom tag
+            //      so it isn't auto-recursed by view.add(world)).
+            //   2. Client A leaves (dispose).
+            //   3. Client B joins, gets A's recycled view ID. B subscribes
+            //      to the world only — never to the restricted room.
+            //   4. The restricted room mutates.
+            //   5. Encode runs — the restricted room's ChangeTree is dirty.
+            //   6. Encode loop checks visibility. Stale bit (without fix)
+            //      ⇒ B's encode visits the room and emits its untagged
+            //      child fields.
+            const world = new World().assign({ name: "lobby" });
+            world.restricted.code = "INITIAL";
+            const encoder = getEncoder(world);
+
+            // Step 1–2: A subscribes to the restricted room via custom tag.
+            const clientA = createClientWithView(world);
+            clientA.view.add(world);
+            clientA.view.add(world.restricted, TAG_A_ONLY);
+            encodeMultiple(encoder, world, [clientA]);
+            const aId = clientA.view.id;
+
+            // Step 3: A leaves.
+            clientA.view.dispose();
+
+            // Step 4: B joins, only subscribes to world. Never opts into
+            // the restricted room (no add() with TAG_A_ONLY).
+            const clientB = createClientWithView(world);
+            clientB.view.add(world);
+            assert.strictEqual(clientB.view.id, aId, "precondition: B reuses A's view ID");
+
+            // Step 5: server rotates the restricted code with a sentinel
+            // string that's unlikely to collide with any other content on
+            // the wire. We check the encoded bytes for this sentinel —
+            // the decoder's conservatism may drop unknown refs, but any
+            // attacker-controlled decoder will happily parse leaked bytes.
+            const SENTINEL = "LEAKED_SENTINEL_ZQJX";
+            world.restricted.code = SENTINEL;
+            const encodedViews = encodeMultiple(encoder, world, [clientB]);
+            const bBytes = encodedViews[0];
+
+            // Step 6: Wire-level privacy contract — the sentinel must not
+            // appear in B's encoded bytes at all.
+            const bStr = new TextDecoder().decode(bBytes);
+            assert.ok(
+                !bStr.includes(SENTINEL),
+                `PRIVACY LEAK: B's encoded bytes contain restricted (custom-tag) data. Sentinel '${SENTINEL}' found on wire.`,
+            );
+        });
+
+        it("invisible bits must be cleared on dispose (bitmap level)", () => {
+            // Lower-level mirror of the privacy test: the invisibleViews
+            // bitmap must also be cleared at dispose. (isVisible is covered
+            // by the earlier test; here we pin the parallel invariant.)
+            const state = new State();
+            getEncoder(state);
+            const tree = state[$changes]!;
+
+            const v1 = new StateView();
+            v1.add(state);
+            v1.markInvisible(tree);
+            assert.strictEqual(v1.isInvisible(tree), true, "sanity");
+
+            const v1Id = v1.id;
+            v1.dispose();
+
+            const v2 = new StateView();
+            // @ts-ignore — bind without calling add() to observe pre-add state
+            v2["_bindRoot"]((state as any)[$changes].root);
+            assert.strictEqual(v2.id, v1Id, "ID reused");
+
+            assert.strictEqual(
+                v2.isInvisible(tree!),
+                false,
+                "v2 must NOT inherit v1's invisible mark after dispose",
+            );
         });
     });
 });

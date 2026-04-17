@@ -12,12 +12,36 @@ export function createView(iterable: boolean = false) {
 }
 
 /**
- * `FinalizationRegistry` returns a view's ID to its Root's freelist when
- * the StateView is GC'd. Backstop for forgotten `view.dispose()` calls;
- * timing is non-deterministic but bounded.
+ * Clear the bit for `(slot, bit)` on every ChangeTree in `root`. Called
+ * from `dispose()` and from the FinalizationRegistry callback so a view's
+ * leftover visibility bits don't leak to whoever next acquires its ID.
+ *
+ * Cost: O(N trees) per dispose. dispose is rare (once per view lifecycle,
+ * typically once per client disconnect), so the per-tick encode hot path
+ * is unaffected.
  */
-const _disposeRegistry = new FinalizationRegistry<{ root: Root; id: number }>(
-    ({ root, id }) => root.releaseViewId(id),
+function _clearViewBitFromAllTrees(root: Root, slot: number, bit: number): void {
+    const clearMask = ~bit;
+    const trees = root.changeTrees;
+    for (const refId in trees) {
+        const tree = trees[refId];
+        const v = tree.visibleViews;
+        if (v !== undefined && slot < v.length) v[slot] &= clearMask;
+        const i = tree.invisibleViews;
+        if (i !== undefined && slot < i.length) i[slot] &= clearMask;
+    }
+}
+
+/**
+ * `FinalizationRegistry` returns a view's ID to its Root's freelist AND
+ * clears the view's leftover bits from every ChangeTree. Backstop for
+ * forgotten `view.dispose()` calls; timing is non-deterministic but bounded.
+ */
+const _disposeRegistry = new FinalizationRegistry<{ root: Root; id: number; slot: number; bit: number }>(
+    ({ root, id, slot, bit }) => {
+        _clearViewBitFromAllTrees(root, slot, bit);
+        root.releaseViewId(id);
+    },
 );
 
 export class StateView {
@@ -65,17 +89,26 @@ export class StateView {
         this.id = root.acquireViewId();
         this._slot = this.id >> 5;
         this._bit = 1 << (this.id & 31);
-        _disposeRegistry.register(this, { root, id: this.id }, this);
+        _disposeRegistry.register(
+            this,
+            { root, id: this.id, slot: this._slot, bit: this._bit },
+            this,
+        );
     }
 
     /**
-     * Release this view's ID back to the Root for reuse. Optional —
-     * if the view is GC'd without dispose, FinalizationRegistry catches it.
-     * Calling explicitly avoids unbounded bitmap growth in long-running
-     * rooms with rapid view churn (e.g. join/leave loops).
+     * Release this view's ID back to the Root for reuse, AND clear all
+     * visibility bits this view set on any ChangeTree. The clear is
+     * essential — without it, a future view that acquires this same ID
+     * would inherit our visibility state and see things it shouldn't
+     * (privacy bug). Documented in StateViewInternals.test.ts.
+     *
+     * Optional API but strongly recommended on client-leave; otherwise
+     * the FinalizationRegistry backstop runs at GC (non-deterministic).
      */
     public dispose(): void {
         if (this._root === undefined) return;
+        _clearViewBitFromAllTrees(this._root, this._slot, this._bit);
         this._root.releaseViewId(this.id);
         _disposeRegistry.unregister(this);
         this._root = undefined;
