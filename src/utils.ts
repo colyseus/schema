@@ -36,7 +36,7 @@ export function dumpChanges(schema: Schema) {
         }
 
         dump.refs.push(`refId#${changeTree.ref[$refId]}`);
-        changeTree.recorder.forEach((index, op) => {
+        changeTree.forEach((index, op) => {
             if (index < 0 || !op) return;
             const opName = OPERATION[op];
             if (!dump.ops[opName as keyof ChangeDump['ops']]) { dump.ops[opName as keyof ChangeDump['ops']] = 0; }

@@ -21,7 +21,7 @@ describe("ChangeTree", () => {
             const changeTree = new ChangeTree(state);
             const collect = () => {
                 const out: Array<[number, number]> = [];
-                changeTree.recorder.forEach((i, op) => { if (i >= 0) out.push([i, op]); });
+                changeTree.forEach((i, op) => { if (i >= 0) out.push([i, op]); });
                 return out;
             };
 
@@ -148,7 +148,7 @@ describe("ChangeTree", () => {
         const changes: ChangeTree = state.game[$changes];
         const collectDirty = () => {
             const out: number[] = [];
-            changes.recorder.forEach((i) => { if (i >= 0) out.push(i); });
+            changes.forEach((i) => { if (i >= 0) out.push(i); });
             return out;
         };
         const collectLive = () => {

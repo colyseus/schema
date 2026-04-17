@@ -235,7 +235,7 @@ export class Encoder<T extends Schema = any> {
                 view.unmarkInvisible(changeTree);
             }
 
-            const recorder = unreliable ? changeTree.unreliableRecorder : changeTree.recorder;
+            const recorder = unreliable ? changeTree.unreliableRecorder : changeTree;
             if (!recorder || !recorder.has()) { continue; }
 
             const ref = changeTree.ref;

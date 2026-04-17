@@ -425,7 +425,7 @@ export class Schema<C = any> implements IRef {
                 output += `- [${index}]: ADD (${JSON.stringify(changeTree.getValue(Number(index), true))})\n`;
             });
         } else {
-            changeTree.recorder.forEach((index, op) => {
+            changeTree.forEach((index, op) => {
                 if (index < 0 || !op) return;
                 output += `- [${index}]: ${OPERATION[op]} (${JSON.stringify(changeTree.getValue(Number(index), false))})\n`;
             });
@@ -494,10 +494,10 @@ export class Schema<C = any> implements IRef {
             const indent = getIndent(level);
 
             const parentIndex = (level > 0) ? `(${changeTree.parentIndex}) ` : "";
-            const changeCount = changeTree.recorder.size();
+            const changeCount = changeTree.size();
             output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${changeCount}\n`;
 
-            changeTree.recorder.forEach((index, op) => {
+            changeTree.forEach((index, op) => {
                 if (index < 0 || !op) return;
                 output += `${getIndent(level + 1)}${OPERATION[op]}: ${index}\n`;
             });

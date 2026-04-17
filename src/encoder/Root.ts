@@ -92,7 +92,7 @@ export class Root {
                 if (changeTree.isFieldUnreliable(fieldIndex)) {
                     changeTree.ensureUnreliableRecorder().record(fieldIndex, OPERATION.ADD);
                 } else {
-                    changeTree.recorder.record(fieldIndex, OPERATION.ADD);
+                    changeTree.record(fieldIndex, OPERATION.ADD);
                 }
             });
         }
