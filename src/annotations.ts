@@ -8,7 +8,7 @@ import { encode } from "./encoding/encode.js";
 import { TypeDefinition, getType } from "./types/registry.js";
 import { OPERATION } from "./encoding/spec.js";
 import { TypeContext } from "./types/TypeContext.js";
-import { assertInstanceType, assertType } from "./encoding/assert.js";
+import { assertInstanceType, assertType, EncodeSchemaError } from "./encoding/assert.js";
 import type { InferValueType, InferSchemaInstanceType, AssignableProps, IsNever } from "./types/HelperTypes.js";
 import { CollectionSchema } from "./types/custom/CollectionSchema.js";
 import { SetSchema } from "./types/custom/SetSchema.js";
@@ -392,75 +392,148 @@ export function type (
     }
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Per-field-shape specialized setters.
+//
+// Single shared closure used to handle all three shapes (primitive /
+// schema-ref / collection) in one body with many branches. V8's inliner
+// gave up on it because of the size + polymorphism. Splitting into three
+// dedicated factories yields smaller, monomorphic bodies that the JIT can
+// inline into hot setters like `position.x = 100`.
+// ────────────────────────────────────────────────────────────────────────
+
+/** typeof target per primitive type. Cached once, looked up O(1) at decoration. */
+const PRIMITIVE_TYPEOF: Record<string, "number" | "string" | "boolean" | "bigint"> = {
+    number: "number",
+    int8: "number", uint8: "number",
+    int16: "number", uint16: "number",
+    int32: "number", uint32: "number",
+    int64: "number", uint64: "number",
+    float32: "number", float64: "number",
+    bigint64: "bigint", biguint64: "bigint",
+    string: "string",
+    boolean: "boolean",
+};
+
+function makePrimitiveSetter(fieldName: string, fieldIndex: number, type: string) {
+    const typeofTarget = PRIMITIVE_TYPEOF[type]; // undefined for custom types
+    const allowNull = type === "string";
+    const isBool = type === "boolean";
+    return function (this: Schema, value: any) {
+        const values = this[$values];
+        const previousValue = values[fieldIndex];
+        if (value === previousValue) return;
+
+        if (value !== undefined && value !== null) {
+            // Inlined assertType primitive check.
+            if (
+                !isBool &&
+                typeofTarget !== undefined &&
+                typeof value !== typeofTarget &&
+                !(allowNull && value === null)
+            ) {
+                const ctorSuffix = (value && value.constructor) ? ` (${value.constructor.name})` : '';
+                throw new EncodeSchemaError(
+                    `a '${typeofTarget}' was expected, but '${JSON.stringify(value)}'${ctorSuffix} was provided in ${this.constructor.name}#${fieldName}`
+                );
+            }
+            (this.constructor as typeof Schema)[$track](this[$changes], fieldIndex, OPERATION.ADD);
+        } else if (previousValue !== undefined && previousValue !== null) {
+            this[$changes].delete(fieldIndex);
+        }
+        values[fieldIndex] = value;
+    };
+}
+
+function makeSchemaRefSetter(fieldName: string, fieldIndex: number, type: typeof Schema) {
+    return function (this: Schema, value: any) {
+        const values = this[$values];
+        const previousValue = values[fieldIndex];
+        if (value === previousValue) return;
+
+        if (value !== undefined && value !== null) {
+            assertInstanceType(value, type, this, fieldName);
+
+            const changeTree = this[$changes];
+            const ctor = this.constructor as typeof Schema;
+
+            if (previousValue !== undefined && previousValue !== null && previousValue[$changes]) {
+                changeTree.root?.remove(previousValue[$changes]);
+                ctor[$track](changeTree, fieldIndex, OPERATION.DELETE_AND_ADD);
+            } else {
+                ctor[$track](changeTree, fieldIndex, OPERATION.ADD);
+            }
+
+            // External Schema-like instances may not carry a ChangeTree.
+            value[$changes]?.setParent(this, changeTree.root, fieldIndex);
+
+        } else if (previousValue !== undefined && previousValue !== null) {
+            this[$changes].delete(fieldIndex);
+        }
+        values[fieldIndex] = value;
+    };
+}
+
+function makeCollectionSetter(
+    _fieldName: string,
+    fieldIndex: number,
+    type: DefinitionType,
+    complexTypeKlass: TypeDefinition,
+) {
+    const isArrayKlass = complexTypeKlass.constructor === ArraySchema;
+    const isMapKlass = complexTypeKlass.constructor === MapSchema;
+    return function (this: Schema, value: any) {
+        const values = this[$values];
+        const previousValue = values[fieldIndex];
+        if (value === previousValue) return;
+
+        if (value !== undefined && value !== null) {
+            // automatic Array → ArraySchema / Map → MapSchema conversion.
+            if (isArrayKlass && !(value instanceof ArraySchema)) {
+                value = new ArraySchema(...value);
+            } else if (isMapKlass && !(value instanceof MapSchema)) {
+                value = new MapSchema(value);
+            }
+            value[$childType] = type;
+
+            const changeTree = this[$changes];
+            const ctor = this.constructor as typeof Schema;
+
+            if (previousValue !== undefined && previousValue !== null && previousValue[$changes]) {
+                changeTree.root?.remove(previousValue[$changes]);
+                ctor[$track](changeTree, fieldIndex, OPERATION.DELETE_AND_ADD);
+            } else {
+                ctor[$track](changeTree, fieldIndex, OPERATION.ADD);
+            }
+
+            value[$changes]?.setParent(this, changeTree.root, fieldIndex);
+
+        } else if (previousValue !== undefined && previousValue !== null) {
+            this[$changes].delete(fieldIndex);
+        }
+        values[fieldIndex] = value;
+    };
+}
+
 export function getPropertyDescriptor(
     fieldName: string,
     fieldIndex: number,
     type: DefinitionType,
     complexTypeKlass: TypeDefinition,
 ) {
+    let setter: (this: Schema, value: any) => void;
+    if (complexTypeKlass) {
+        setter = makeCollectionSetter(fieldName, fieldIndex, type, complexTypeKlass);
+    } else if (typeof type === "string") {
+        setter = makePrimitiveSetter(fieldName, fieldIndex, type);
+    } else {
+        setter = makeSchemaRefSetter(fieldName, fieldIndex, type as typeof Schema);
+    }
     return {
         get: function (this: Schema) { return this[$values][fieldIndex]; },
-        set: function (this: Schema, value: any) {
-            const previousValue = this[$values][fieldIndex] ?? undefined;
-
-            // skip if value is the same as cached.
-            if (value === previousValue) { return; }
-
-            if (
-                value !== undefined &&
-                value !== null
-            ) {
-                if (complexTypeKlass) {
-                    // automaticallty transform Array into ArraySchema
-                    if (complexTypeKlass.constructor === ArraySchema && !(value instanceof ArraySchema)) {
-                        value = new ArraySchema(...value);
-                    }
-
-                    // automaticallty transform Map into MapSchema
-                    if (complexTypeKlass.constructor === MapSchema && !(value instanceof MapSchema)) {
-                        value = new MapSchema(value);
-                    }
-
-                    value[$childType] = type;
-
-                } else if (typeof (type) !== "string") {
-                    assertInstanceType(value, type as typeof Schema, this, fieldName);
-
-                } else {
-                    assertType(value, type, this, fieldName);
-                }
-
-                const changeTree = this[$changes];
-
-                //
-                // Replacing existing "ref", remove it from root.
-                //
-                if (previousValue !== undefined && previousValue[$changes]) {
-                    changeTree.root?.remove(previousValue[$changes]);
-                    (this.constructor as typeof Schema)[$track](changeTree, fieldIndex, OPERATION.DELETE_AND_ADD);
-
-                } else {
-                    (this.constructor as typeof Schema)[$track](changeTree, fieldIndex, OPERATION.ADD);
-                }
-
-                //
-                // call setParent() recursively for this and its child
-                // structures.
-                //
-                value[$changes]?.setParent(this, changeTree.root, fieldIndex);
-
-            } else if (previousValue !== undefined) {
-                //
-                // Setting a field to `null` or `undefined` will delete it.
-                //
-                this[$changes].delete(fieldIndex);
-            }
-
-            this[$values][fieldIndex] = value;
-        },
-
+        set: setter,
         enumerable: true,
-        configurable: true
+        configurable: true,
     };
 }
 
@@ -499,7 +572,7 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
             metadata[$descriptors] ??= {};
             metadata[$descriptors][field] = {
                 get: function () { throw new Error(`${field} is deprecated.`); },
-                set: function (this: Schema, value: any) { /* throw new Error(`${field} is deprecated.`); */ },
+                set: function (this: Schema, _value: any) { /* throw new Error(`${field} is deprecated.`); */ },
                 enumerable: false,
                 configurable: true
             };
