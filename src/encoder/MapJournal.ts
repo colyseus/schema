@@ -32,12 +32,13 @@ export class MapJournal<K = any> {
     private nextIndex: number = 0;
 
     /**
-     * Snapshot of values at the moment they were deleted.
-     * Used by `MapSchema[$filter]` to check view visibility of a value
-     * that's already been removed from `$items` but whose DELETE op is
-     * still in the encode queue.
+     * Snapshot of values at the moment they were deleted. Lazy — only
+     * allocated on first delete, since most maps are pure-grow and never
+     * touch this. Used by `MapSchema[$filter]` to check view visibility
+     * of a value that's already been removed from `$items` but whose
+     * DELETE op is still in the encode queue.
      */
-    snapshots: Map<number, any> = new Map();
+    snapshots?: Map<number, any>;
 
     // ──────────────────────────────────────────────────────────────────
     // Server-side: recording mutations
@@ -59,17 +60,17 @@ export class MapJournal<K = any> {
 
     /** Stash a value at the moment it's deleted (for filter visibility checks). */
     snapshot(index: number, value: any): void {
-        this.snapshots.set(index, value);
+        (this.snapshots ??= new Map()).set(index, value);
     }
 
     /** Discard a snapshot — called when a deleted slot is being re-set. */
     forgetSnapshot(index: number): void {
-        this.snapshots.delete(index);
+        this.snapshots?.delete(index);
     }
 
     /** Look up a snapshot. Returns undefined if no DELETE is pending for this index. */
     snapshotAt(index: number): any {
-        return this.snapshots.get(index);
+        return this.snapshots?.get(index);
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -102,6 +103,7 @@ export class MapJournal<K = any> {
      * Cleans up index/key mappings for entries that were deleted in this tick.
      */
     cleanupAfterEncode(): void {
+        if (this.snapshots === undefined) return;
         for (const [index] of this.snapshots) {
             const key = this.keyByIndex.get(index);
             if (key !== undefined) {
@@ -116,7 +118,7 @@ export class MapJournal<K = any> {
     reset(): void {
         this.indexByKey = {};
         this.keyByIndex.clear();
-        this.snapshots.clear();
+        this.snapshots?.clear();
         this.nextIndex = 0;
     }
 }
