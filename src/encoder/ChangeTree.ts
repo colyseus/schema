@@ -9,7 +9,7 @@ import type { SetSchema } from "../types/custom/SetSchema.js";
 
 import { Root } from "./Root.js";
 import { Metadata } from "../Metadata.js";
-import { type ChangeRecorder, SchemaChangeRecorder, CollectionChangeRecorder } from "./ChangeRecorder.js";
+import { type ChangeRecorder, SchemaChangeRecorder, CollectionChangeRecorder, popcount32 } from "./ChangeRecorder.js";
 import { $numFields } from "../types/symbols.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 import type { DecodeOperation } from "../decoder/DecodeOperation.js";
@@ -67,7 +67,7 @@ const IS_UNRELIABLE = 8;   // tree inherits unreliable classification from paren
 const IS_TRANSIENT = 16;   // tree inherits transient classification from parent field
 const IS_STATIC = 32;      // tree inherits static classification from parent field (skip change tracking)
 
-export class ChangeTree<T extends Ref = any> {
+export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     ref: T;
     metadata: Metadata;
 
@@ -89,8 +89,21 @@ export class ChangeTree<T extends Ref = any> {
     flags: number = IS_NEW;
 
     /**
+     * Inline reliable-channel SchemaChangeRecorder state. For Schema-wrapping
+     * trees, `this.recorder === this` — saves one object allocation per
+     * Schema instance and removes a hidden-class deref on every mutation.
+     * For Collection-wrapping trees, `recorder` points at a separately
+     * allocated CollectionChangeRecorder; the `dirtyLow/dirtyHigh/ops`
+     * fields below remain at their default values and are unused.
+     */
+    dirtyLow: number = 0;
+    dirtyHigh: number = 0;
+    ops!: Uint8Array; // assigned in ctor for Schema; never accessed for Collection
+
+    /**
      * Reliable dirty recorder — emitted by `Encoder.encode` on reliable
-     * transport. Always allocated.
+     * transport. Always set: `this` for Schema, a CollectionChangeRecorder
+     * for collections.
      */
     recorder: ChangeRecorder;
 
@@ -178,11 +191,109 @@ export class ChangeTree<T extends Ref = any> {
         const isSchema = Metadata.isValidInstance(ref);
         if (isSchema) {
             const numFields = (this.metadata?.[$numFields] ?? 0) as number;
-            this.recorder = new SchemaChangeRecorder(numFields);
+            this.ops = new Uint8Array(Math.max(numFields + 1, 1));
+            this.recorder = this; // inline self as the reliable-channel recorder
         } else {
             this.recorder = new CollectionChangeRecorder();
         }
     }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Inline SchemaChangeRecorder implementation (only valid when Schema).
+    // The same methods on CollectionChangeRecorder are still used through
+    // `this.recorder` for Collection-wrapping trees.
+    // ────────────────────────────────────────────────────────────────────
+
+    record(index: number, op: OPERATION): void {
+        const prev = this.ops[index];
+        if (prev === 0 || prev === OPERATION.DELETE) {
+            this.ops[index] = (prev === OPERATION.DELETE) ? OPERATION.DELETE_AND_ADD : op;
+        }
+        if (index < 32) this.dirtyLow |= (1 << index);
+        else this.dirtyHigh |= (1 << (index - 32));
+    }
+
+    recordDelete(index: number, op: OPERATION): void {
+        this.ops[index] = op;
+        if (index < 32) this.dirtyLow |= (1 << index);
+        else this.dirtyHigh |= (1 << (index - 32));
+    }
+
+    recordRaw(index: number, op: OPERATION): void {
+        this.record(index, op);
+    }
+
+    recordPure(_op: OPERATION): void {
+        throw new Error("ChangeTree (Schema): pure operations are not supported");
+    }
+
+    operationAt(index: number): OPERATION | undefined {
+        const op = this.ops[index];
+        return op === 0 ? undefined : op;
+    }
+
+    setOperationAt(index: number, op: OPERATION): void {
+        this.ops[index] = op;
+    }
+
+    forEach(cb: (index: number, op: OPERATION) => void): void {
+        let low = this.dirtyLow;
+        let high = this.dirtyHigh;
+        const ops = this.ops;
+        while (low !== 0) {
+            const bit = low & -low;
+            const fieldIndex = 31 - Math.clz32(bit);
+            low ^= bit;
+            cb(fieldIndex, ops[fieldIndex]);
+        }
+        while (high !== 0) {
+            const bit = high & -high;
+            const fieldIndex = 31 - Math.clz32(bit) + 32;
+            high ^= bit;
+            cb(fieldIndex, ops[fieldIndex]);
+        }
+    }
+
+    forEachWithCtx<C>(ctx: C, cb: (ctx: C, index: number, op: OPERATION) => void): void {
+        let low = this.dirtyLow;
+        let high = this.dirtyHigh;
+        const ops = this.ops;
+        while (low !== 0) {
+            const bit = low & -low;
+            const fieldIndex = 31 - Math.clz32(bit);
+            low ^= bit;
+            cb(ctx, fieldIndex, ops[fieldIndex]);
+        }
+        while (high !== 0) {
+            const bit = high & -high;
+            const fieldIndex = 31 - Math.clz32(bit) + 32;
+            high ^= bit;
+            cb(ctx, fieldIndex, ops[fieldIndex]);
+        }
+    }
+
+    size(): number {
+        return popcount32(this.dirtyLow) + popcount32(this.dirtyHigh);
+    }
+
+    has(): boolean {
+        return (this.dirtyLow | this.dirtyHigh) !== 0;
+    }
+
+    reset(): void {
+        this.dirtyLow = 0;
+        this.dirtyHigh = 0;
+        this.ops.fill(0);
+    }
+
+    shift(_shiftIndex: number): void {
+        throw new Error("ChangeTree (Schema): shift is not supported");
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Hot-path setRoot / setParent recursion. forEachChildWithCtx + a
+    // hoisted callback avoids one closure allocation per attached child.
+    // ────────────────────────────────────────────────────────────────────
 
     setRoot(root: Root) {
         this.root = root;
@@ -191,15 +302,9 @@ export class ChangeTree<T extends Ref = any> {
 
         this.checkIsFiltered(this.parent, this.parentIndex, isNewChangeTree);
 
-        // Recursively set root on child structures
+        // Recursively set root on child structures (closure-free hot path).
         if (isNewChangeTree) {
-            this.forEachChild((child, _) => {
-                if (child.root !== root) {
-                    child.setRoot(root);
-                } else {
-                    root.add(child); // increment refCount
-                }
-            });
+            this.forEachChildWithCtx(root, _setRootChildCb);
         }
     }
 
@@ -221,16 +326,20 @@ export class ChangeTree<T extends Ref = any> {
             this.checkIsFiltered(parent, parentIndex, isNewChangeTree);
         }
 
-        // assign same parent on child structures
+        // assign same parent on child structures (closure-free hot path).
+        // setParent recurses, so each depth gets its own ctx from a pool
+        // that grows to the recursion depth (typically tree height = 3-5).
         if (isNewChangeTree) {
-            this.forEachChild((child, index) => {
-                if (child.root === root) {
-                    root.add(child);
-                    root.moveNextToParent(child);
-                    return;
-                }
-                child.setParent(this.ref, root, index);
-            });
+            let ctx = _setParentCtxPool[_setParentDepth];
+            if (ctx === undefined) {
+                ctx = { parentRef: undefined!, root: undefined! };
+                _setParentCtxPool[_setParentDepth] = ctx;
+            }
+            ctx.parentRef = this.ref;
+            ctx.root = root;
+            _setParentDepth++;
+            this.forEachChildWithCtx(ctx, _setParentChildCb);
+            _setParentDepth--;
         }
     }
 
@@ -253,6 +362,37 @@ export class ChangeTree<T extends Ref = any> {
                 const value = this.ref[field.name as keyof Ref];
                 if (!value) { continue; }
                 callback(value[$changes], index);
+            }
+        }
+    }
+
+    /**
+     * Closure-free variant of {@link forEachChild}. Hot setRoot / setParent
+     * recursion called this once per new Schema instance attached to the
+     * tree — the per-call closure was the #1 JS hotspot in profile-baseline.
+     * Pass an explicit `ctx` so callers can hoist the callback to module
+     * scope and avoid the allocation.
+     */
+    forEachChildWithCtx<C>(ctx: C, callback: (ctx: C, change: ChangeTree, at: any) => void) {
+        const ref = this.ref as any;
+        if (ref[$childType]) {
+            if (typeof ref[$childType] !== "string") {
+                const collectionIndexes = ref._collectionIndexes;
+                for (const [key, value] of (ref as MapSchema).entries()) {
+                    if (!value) { continue; }
+                    callback(ctx, value[$changes], collectionIndexes?.[key] ?? key);
+                }
+            }
+        } else {
+            const metadata = this.metadata;
+            const indexes = metadata?.[$refTypeFieldIndexes];
+            if (!indexes) return;
+            for (let i = 0, len = indexes.length; i < len; i++) {
+                const index = indexes[i];
+                const field = metadata[index];
+                const value = (this.ref as any)[field.name];
+                if (!value) { continue; }
+                callback(ctx, value[$changes], index);
             }
         }
     }
@@ -325,23 +465,41 @@ export class ChangeTree<T extends Ref = any> {
     change(index: number, operation: OPERATION = OPERATION.ADD) {
         if (this.paused || this.isFieldStatic(index)) return;
 
-        const unreliable = this.isFieldUnreliable(index);
-        const recorder = unreliable ? this.ensureUnreliableRecorder() : this.recorder;
-
-        const previousOperation = recorder.operationAt(index);
-        const op = (!previousOperation)
-            ? operation
-            : (previousOperation === OPERATION.DELETE)
-                ? OPERATION.DELETE_AND_ADD
-                : previousOperation; // preserve existing op (e.g. already-ADD stays ADD)
-
-        recorder.record(index, op);
-
-        if (unreliable) {
+        if (this.isFieldUnreliable(index)) {
+            // unreliable channel — rare; falls through to generic dispatch
+            const r = this.ensureUnreliableRecorder();
+            const prev = r.operationAt(index);
+            const op = (!prev) ? operation
+                     : (prev === OPERATION.DELETE) ? OPERATION.DELETE_AND_ADD
+                     : prev;
+            r.record(index, op);
             this.root?.enqueueUnreliable(this);
-        } else {
-            this.root?.enqueueChangeTree(this);
+            return;
         }
+
+        // Reliable path: split into Schema-inline vs Collection so each call
+        // site is monomorphic in its inline cache (drops bimorphic
+        // recorder.record dispatch from the hot setter path).
+        if (this.recorder === this) {
+            // SCHEMA fast-path — operate directly on inline state.
+            const prev = this.ops[index];
+            const op = (prev === 0) ? operation
+                     : (prev === OPERATION.DELETE) ? OPERATION.DELETE_AND_ADD
+                     : prev;
+            this.ops[index] = op;
+            if (index < 32) this.dirtyLow |= (1 << index);
+            else this.dirtyHigh |= (1 << (index - 32));
+        } else {
+            // COLLECTION path — recorder is always CollectionChangeRecorder here.
+            const r = this.recorder;
+            const prev = r.operationAt(index);
+            const op = (!prev) ? operation
+                     : (prev === OPERATION.DELETE) ? OPERATION.DELETE_AND_ADD
+                     : prev;
+            r.record(index, op);
+        }
+
+        this.root?.enqueueChangeTree(this);
     }
 
     shiftChangeIndexes(shiftIndex: number) {
@@ -359,10 +517,19 @@ export class ChangeTree<T extends Ref = any> {
         if (this.isFieldUnreliable(index)) {
             this.ensureUnreliableRecorder().recordRaw(index, operation);
             this.root?.enqueueUnreliable(this);
+            return;
+        }
+
+        // Monomorphic split: Schema fast-path inline; Collection path keeps
+        // a stable single-shape call site.
+        if (this.recorder === this) {
+            this.ops[index] = operation;
+            if (index < 32) this.dirtyLow |= (1 << index);
+            else this.dirtyHigh |= (1 << (index - 32));
         } else {
             this.recorder.recordRaw(index, operation);
-            this.root?.enqueueChangeTree(this);
         }
+        this.root?.enqueueChangeTree(this);
     }
 
     getType(index?: number) {
@@ -778,4 +945,30 @@ export class ChangeTree<T extends Ref = any> {
         return parents;
     }
 
+}
+
+// Hoisted callbacks used by ChangeTree.setRoot / setParent to avoid
+// per-call closure allocation in the recursive attach path.
+
+function _setRootChildCb(root: Root, child: ChangeTree, _index: any): void {
+    if (child.root !== root) {
+        child.setRoot(root);
+    } else {
+        root.add(child); // increment refCount
+    }
+}
+
+interface SetParentCtx { parentRef: Ref; root: Root; }
+// Pool of ctx objects, indexed by setParent recursion depth. Grows to
+// max depth seen (typically tree height = 3-5 in bench), then stays put.
+const _setParentCtxPool: SetParentCtx[] = [];
+let _setParentDepth = 0;
+
+function _setParentChildCb(ctx: SetParentCtx, child: ChangeTree, index: any): void {
+    if (child.root === ctx.root) {
+        ctx.root.add(child);
+        ctx.root.moveNextToParent(child);
+        return;
+    }
+    child.setParent(ctx.parentRef, ctx.root, index);
 }

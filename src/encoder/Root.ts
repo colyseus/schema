@@ -24,6 +24,13 @@ export class Root {
      */
     unreliableChanges: ChangeTreeList = createChangeTreeList();
 
+    /**
+     * Free-list of ChangeTreeNode objects. Both queues share this pool —
+     * a node carries no queue affinity, only `{ changeTree, prev, next, position }`.
+     * Reusing nodes turns ~1,250 per-tick allocations (in bench) into 0.
+     */
+    private _nodePool: ChangeTreeNode[] = [];
+
     constructor(public types: TypeContext, startRefId: number = 0) {
         this.nextUniqueId = startRefId;
     }
@@ -36,6 +43,9 @@ export class Root {
         const ref = changeTree.ref;
 
         // Assign unique `refId` to ref if it doesn't have one yet.
+        // $refId is a Symbol but assert.deepStrictEqual still walks
+        // *enumerable* own Symbols, so we keep defineProperty(enumerable:false)
+        // to keep $refId hidden from deep-equal comparisons in tests.
         if (ref[$refId] === undefined) {
             Object.defineProperty(ref, $refId, {
                 value: this.getNextUniqueId(),
@@ -197,12 +207,17 @@ export class Root {
     }
 
     private _appendToList(list: ChangeTreeList, changeTree: ChangeTree): ChangeTreeNode {
-        const node: ChangeTreeNode = {
-            changeTree,
-            next: undefined,
-            prev: undefined,
-            position: 0,
-        };
+        const pool = this._nodePool;
+        let node: ChangeTreeNode;
+        if (pool.length > 0) {
+            node = pool.pop()!;
+            node.changeTree = changeTree;
+            node.next = undefined;
+            node.prev = undefined;
+            node.position = 0;
+        } else {
+            node = { changeTree, next: undefined, prev: undefined, position: 0 };
+        }
         if (!list.next) {
             list.next = node;
             list.tail = node;
@@ -212,6 +227,19 @@ export class Root {
             list.tail = node;
         }
         return node;
+    }
+
+    /**
+     * Release a detached node back to the free-list. Caller must have
+     * already unlinked it from any list and cleared the changeTree's
+     * pointer to it. Clears `changeTree`/`prev`/`next` so the pool
+     * doesn't retain references through the GC root.
+     */
+    public releaseNode(node: ChangeTreeNode): void {
+        node.changeTree = undefined!;
+        node.prev = undefined;
+        node.next = undefined;
+        this._nodePool.push(node);
     }
 
     public removeFromQueue(changeTree: ChangeTree): boolean {
@@ -243,6 +271,7 @@ export class Root {
         }
 
         changeTree[nodeField] = undefined;
+        this.releaseNode(node);
         return true;
     }
 }

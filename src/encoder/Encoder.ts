@@ -11,7 +11,6 @@ import { Root } from "./Root.js";
 
 import type { StateView } from "./StateView.js";
 import type { ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree.js";
-import { createChangeTreeList } from "./ChangeTree.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 
 /**
@@ -436,21 +435,31 @@ export class Encoder<T extends Schema = any> {
     }
 
     discardChanges() {
-        let current = this.root.changes.next;
+        const list = this.root.changes;
+        let current = list.next;
+        const root = this.root;
         while (current) {
-            current.changeTree.endEncode();
-            current = current.next;
+            const next = current.next;
+            current.changeTree.endEncode(); // clears changesNode internally
+            root.releaseNode(current);
+            current = next;
         }
-        this.root.changes = createChangeTreeList();
+        list.next = undefined;
+        list.tail = undefined;
     }
 
     discardUnreliableChanges() {
-        let current = this.root.unreliableChanges.next;
+        const list = this.root.unreliableChanges;
+        let current = list.next;
+        const root = this.root;
         while (current) {
-            current.changeTree.endEncodeUnreliable();
-            current = current.next;
+            const next = current.next;
+            current.changeTree.endEncodeUnreliable(); // clears unreliableChangesNode internally
+            root.releaseNode(current);
+            current = next;
         }
-        this.root.unreliableChanges = createChangeTreeList();
+        list.next = undefined;
+        list.tail = undefined;
     }
 
     tryEncodeTypeId(
