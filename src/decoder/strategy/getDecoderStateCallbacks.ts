@@ -5,7 +5,7 @@ import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { Schema } from "../../Schema.js";
-import { $names, $refId, $types } from "../../types/symbols.js";
+import { $refId } from "../../types/symbols.js";
 import type { DefinitionType } from "../../annotations.js";
 import type { CollectionSchema } from "../../types/custom/CollectionSchema.js";
 
@@ -290,8 +290,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 //
                 bindTo: function bindTo(targetObject: any, properties?: string[]) {
                     if (!properties) {
-                        // SoA: walk names array; filter out sparse holes.
-                        properties = (metadata[$names] ?? []).filter((n: any) => n !== undefined);
+                        properties = Object.keys(metadata).map((index) => metadata[index as any as number].name);
                     }
                     return $root.addCallback(
                         context.instance[$refId],
@@ -304,11 +303,8 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 }
             }, {
                 get(target, prop: string) {
-                    // SoA: name → index reverse lookup is `metadata[prop]`;
-                    // type for that index lives in `metadata[$types][index]`.
-                    const fieldIndex = metadata[prop];
-                    const fieldType = (fieldIndex !== undefined) ? metadata[$types]?.[fieldIndex] : undefined;
-                    if (fieldType !== undefined) {
+                    const metadataField = metadata[metadata[prop]];
+                    if (metadataField) {
                         const instance = context.instance?.[prop];
                         const onInstanceAvailable: OnInstanceAvailableCallback = (
                             (callback: (ref: Ref, existing: boolean) => void) => {
@@ -329,7 +325,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                             }
                         );
 
-                        return getProxy(fieldType, {
+                        return getProxy(metadataField.type, {
                             // make sure refId is available, otherwise need to wait for the instance to be available.
                             instance: (instance?.[$refId] !== undefined && instance),
                             parentInstance: context.instance,

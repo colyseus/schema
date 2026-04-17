@@ -15,7 +15,7 @@ import {
     view,
     SchemaType,
 } from "../src";
-import { $changes, $deprecated, $owned, $staticFieldIndexes, $stream, $tags, $unreliableFieldIndexes } from "../src/types/symbols";
+import { $changes } from "../src/types/symbols";
 
 describe("Zod-style schema() API", () => {
     describe("primitive factories", () => {
@@ -110,8 +110,8 @@ describe("Zod-style schema() API", () => {
                 b: t.string().view(),
             }, "S");
             const meta = (S as any)[Symbol.metadata];
-            assert.strictEqual(meta[$tags][0], undefined);
-            assert.strictEqual(meta[$tags][1], -1); // DEFAULT_VIEW_TAG
+            assert.strictEqual(meta[0].tag, undefined);
+            assert.strictEqual(meta[1].tag, -1); // DEFAULT_VIEW_TAG
         });
 
         it(".view(tag) records numeric tag", () => {
@@ -119,19 +119,19 @@ describe("Zod-style schema() API", () => {
                 a: t.number().view(2),
             }, "S");
             const meta = (S as any)[Symbol.metadata];
-            assert.strictEqual(meta[$tags][0], 2);
+            assert.strictEqual(meta[0].tag, 2);
         });
 
         it(".owned() sets owned flag", () => {
             const S = schema({ hp: t.uint8().owned() }, "S");
             const meta = (S as any)[Symbol.metadata];
-            assert.strictEqual(meta[$owned][0], true);
+            assert.strictEqual(meta[0].owned, true);
         });
 
         it(".unreliable() sets unreliable flag", () => {
             const S = schema({ ping: t.uint16().unreliable() }, "S");
             const meta = (S as any)[Symbol.metadata];
-            assert.ok(meta[$unreliableFieldIndexes].includes(0));
+            assert.strictEqual(meta[0].unreliable, true);
         });
 
         it(".static() and .stream() set flags", () => {
@@ -140,8 +140,8 @@ describe("Zod-style schema() API", () => {
                 events: t.array("string").stream(),
             }, "S");
             const meta = (S as any)[Symbol.metadata];
-            assert.ok(meta[$staticFieldIndexes].includes(0));
-            assert.strictEqual(meta[$stream][1], true);
+            assert.strictEqual(meta[0].static, true);
+            assert.strictEqual(meta[1].stream, true);
         });
 
         it(".deprecated() marks field and throws on access by default", () => {
@@ -150,7 +150,7 @@ describe("Zod-style schema() API", () => {
                 old: t.string().deprecated(),
             }, "S");
             const meta = (S as any)[Symbol.metadata];
-            assert.strictEqual(meta[$deprecated][1], true);
+            assert.strictEqual(meta[1].deprecated, true);
 
             const s = new S();
             s.kept = 1;
@@ -162,7 +162,7 @@ describe("Zod-style schema() API", () => {
                 old: t.string().deprecated(false),
             }, "S");
             const meta = (S as any)[Symbol.metadata];
-            assert.strictEqual(meta[$deprecated][0], true);
+            assert.strictEqual(meta[0].deprecated, true);
 
             const s = new S();
             assert.doesNotThrow(() => { (s as any).old; });
@@ -178,10 +178,10 @@ describe("Zod-style schema() API", () => {
 
             assert.strictEqual(a.x, 5);
             assert.strictEqual(b.x, 5);
-            assert.strictEqual(aMeta[$tags][0], 1);
-            assert.strictEqual(bMeta[$tags][0], 1);
-            assert.strictEqual(aMeta[$owned][0], true);
-            assert.strictEqual(bMeta[$owned][0], true);
+            assert.strictEqual(aMeta[0].tag, 1);
+            assert.strictEqual(bMeta[0].tag, 1);
+            assert.strictEqual(aMeta[0].owned, true);
+            assert.strictEqual(bMeta[0].owned, true);
         });
     });
 

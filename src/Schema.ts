@@ -4,14 +4,14 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
 import { ChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
-import { $changes, $decoder, $deleteByIndex, $deprecated, $encoder, $filter, $getByIndex, $names, $numFields, $refId, $tags, $track, $types, $values } from './types/symbols.js';
+import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $numFields, $refId, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation.js';
 import { decodeSchemaOperation } from './decoder/DecodeOperation.js';
 
 import type { Decoder } from './decoder/Decoder.js';
-import type { Metadata } from './Metadata.js';
+import type { Metadata, MetadataField } from './Metadata.js';
 import { getIndent } from './utils.js';
 
 /**
@@ -79,7 +79,7 @@ export class Schema<C = any> implements IRef {
      */
     static [$filter] (ref: Schema, index: number, view: StateView) {
         const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
-        const tag = metadata[$tags]?.[index];
+        const tag = metadata[index]?.tag;
 
         if (view === undefined) {
             // shared pass/encode: encode if doesn't have a tag
@@ -125,13 +125,12 @@ export class Schema<C = any> implements IRef {
     protected static assignProps(target: any, source: any) {
         const metadata: Metadata = target.constructor[Symbol.metadata];
         if (metadata && metadata[$numFields] !== undefined) {
-            const names = metadata[$names];
             for (let i = 0; i <= metadata[$numFields]; i++) {
-                const name = names[i];
-                if (!name) { continue; }
-                const value = source[name];
+                const field = metadata[i];
+                if (!field) { continue; }
+                const value = source[field.name];
                 if (value !== undefined) {
-                    target[name] = value;
+                    target[field.name] = value;
                 }
             }
         }
@@ -151,14 +150,11 @@ export class Schema<C = any> implements IRef {
      */
     public restore(jsonData: ToJSON<this>): this {
         const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
-        const names = metadata[$names];
-        const types = metadata[$types];
-        const numFields = metadata[$numFields];
 
-        for (let i = 0; i <= numFields; i++) {
-            const fieldName = names[i] as keyof this;
-            if (fieldName === undefined) continue;
-            const fieldType = types[i];
+        for (const fieldIndex in metadata) {
+            const field = metadata[fieldIndex as any as number];
+            const fieldName = field.name as keyof this;
+            const fieldType = field.type;
             const value = (jsonData as any)[fieldName];
 
             if (value === undefined || value === null) {
@@ -218,11 +214,10 @@ export class Schema<C = any> implements IRef {
      */
     public setDirty<K extends NonFunctionPropNames<this>>(property: K | number, operation?: OPERATION) {
         const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
-        // SoA: name → index reverse lookup is still `metadata[name]`. The
-        // `metadata[index].index` round-trip in the legacy form was just
-        // returning the index back; SoA can use it directly.
-        const index = (typeof property === "number") ? property : metadata[property as string];
-        this[$changes].change(index, operation);
+        this[$changes].change(
+            metadata[metadata[property as string]].index,
+            operation
+        );
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -280,11 +275,8 @@ export class Schema<C = any> implements IRef {
         // TODO: clone all properties, not only annotated ones
         //
         // for (const field in this) {
-        const names = metadata[$names];
-        const numFields = metadata[$numFields];
-        for (let i = 0; i <= numFields; i++) {
-            const field = names[i] as keyof this;
-            if (field === undefined) continue;
+        for (const fieldIndex in metadata) {
+            const field = metadata[fieldIndex as any as number].name as keyof this;
 
             if (
                 typeof (this[field]) === "object" &&
@@ -305,13 +297,10 @@ export class Schema<C = any> implements IRef {
     toJSON (this: any): ToJSON<this> {
         const obj: any = {};
         const metadata = this.constructor[Symbol.metadata];
-        const names = metadata[$names];
-        const deprecated = metadata[$deprecated];
-        const numFields = metadata[$numFields];
-        for (let i = 0; i <= numFields; i++) {
-            const fieldName = names[i];
-            if (fieldName === undefined) continue;
-            if (!deprecated?.[i] && this[fieldName] !== null && typeof (this[fieldName]) !== "undefined") {
+        for (const index in metadata) {
+            const field = metadata[index] as MetadataField;
+            const fieldName = field.name;
+            if (!field.deprecated && this[fieldName] !== null && typeof (this[fieldName]) !== "undefined") {
                 obj[fieldName] = (typeof (this[fieldName]['toJSON']) === "function")
                     ? this[fieldName]['toJSON']()
                     : this[fieldName];
@@ -330,12 +319,12 @@ export class Schema<C = any> implements IRef {
 
     [$getByIndex](index: number): any {
         const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
-        return this[metadata[$names][index] as keyof this];
+        return this[metadata[index].name as keyof this];
     }
 
     [$deleteByIndex](index: number): void {
         const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
-        this[metadata[$names][index] as keyof this] = undefined;
+        this[metadata[index].name as keyof this] = undefined;
     }
 
     /**

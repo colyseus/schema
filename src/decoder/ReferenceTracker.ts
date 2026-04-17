@@ -1,5 +1,5 @@
 import { Metadata } from "../Metadata.js";
-import { $childType, $names, $numFields, $refId } from "../types/symbols.js";
+import { $childType, $refId } from "../types/symbols.js";
 import type { IRef } from "../encoder/ChangeTree.js";
 import { spliceOne } from "../types/utils.js";
 import { OPERATION } from "../encoding/spec.js";
@@ -106,18 +106,13 @@ export class ReferenceTracker {
             //
             if ((ref.constructor as typeof Schema)[Symbol.metadata] !== undefined) {
                 const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
-                const names = metadata[$names];
-                const numFields = metadata[$numFields];
-                if (names !== undefined && numFields !== undefined) {
-                    for (let index = 0; index <= numFields; index++) {
-                        const field = names[index];
-                        if (field === undefined) continue;
-                        const child = ref[field as keyof IRef];
-                        if (typeof(child) === "object" && child) {
-                            const childRefId = (child as any)[$refId];
-                            if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
-                                this.removeRef(childRefId);
-                            }
+                for (const index in metadata) {
+                    const field = metadata[index as any as number].name;
+                    const child = ref[field as keyof IRef];
+                    if (typeof(child) === "object" && child) {
+                        const childRefId = (child as any)[$refId];
+                        if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
+                            this.removeRef(childRefId);
                         }
                     }
                 }

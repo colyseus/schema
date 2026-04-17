@@ -3,7 +3,7 @@ import * as assert from "assert";
 import { Schema, type, MapSchema, ArraySchema, t } from "../src";
 import { schema, SchemaType } from "../src/annotations";
 import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
-import { $names, $numFields, $types } from "../src/types/symbols";
+import { $numFields } from "../src/types/symbols";
 
 describe("Definition Tests", () => {
 
@@ -74,11 +74,11 @@ describe("Definition Tests", () => {
             }
 
             assert.ok(Props[Symbol.metadata] !== ExtendedProps[Symbol.metadata]);
-            assert.strictEqual(ExtendedProps[Symbol.metadata][$names][0], Props[Symbol.metadata][$names][0]);
+            assert.strictEqual(ExtendedProps[Symbol.metadata][0], Props[Symbol.metadata][0]);
 
-            assert.strictEqual("str", ExtendedProps[Symbol.metadata][$names][0]);
-            assert.strictEqual("id", ExtendedProps[Symbol.metadata][$names][1]);
-            assert.strictEqual("value", ExtendedProps[Symbol.metadata][$names][2]);
+            assert.strictEqual("str", ExtendedProps[Symbol.metadata][0].name);
+            assert.strictEqual("id", ExtendedProps[Symbol.metadata][1].name);
+            assert.strictEqual("value", ExtendedProps[Symbol.metadata][2].name);
 
             assert.strictEqual(0, Props[Symbol.metadata][$numFields]);
             assert.strictEqual(2, ExtendedProps[Symbol.metadata][$numFields]);
@@ -89,25 +89,22 @@ describe("Definition Tests", () => {
             const reflectedState = createInstanceFromReflection(state);
             const reflectedContext = getDecoder(reflectedState).context;
 
-            // SoA: indexes are positions in the parallel `names` array.
-            // The legacy `metadata[i].index` was redundant (always equaled
-            // `i`), so we just compare names instead.
             assert.strictEqual(
                 // state.extendedProps -> props.str
-                (originalContext.types[0][Symbol.metadata][$types][1] as typeof Schema)[Symbol.metadata][$names][0],
-                (reflectedContext.types[0][Symbol.metadata][$types][1] as typeof Schema)[Symbol.metadata][$names][0]
+                (originalContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][0].index,
+                (reflectedContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][0].index
             );
 
             assert.strictEqual(
                 // state.extendedProps -> props.id
-                (originalContext.types[0][Symbol.metadata][$types][1] as typeof Schema)[Symbol.metadata][$names][1],
-                (reflectedContext.types[0][Symbol.metadata][$types][1] as typeof Schema)[Symbol.metadata][$names][1]
+                (originalContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][1].index,
+                (reflectedContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][1].index
             );
 
             assert.strictEqual(
                 // state.extendedProps -> props.value
-                (originalContext.types[0][Symbol.metadata][$types][1] as typeof Schema)[Symbol.metadata][$names][2],
-                (reflectedContext.types[0][Symbol.metadata][$types][1] as typeof Schema)[Symbol.metadata][$names][2]
+                (originalContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][2].index,
+                (reflectedContext.types[0][Symbol.metadata][1].type as typeof Schema)[Symbol.metadata][2].index
             );
         });
     });

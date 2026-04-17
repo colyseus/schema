@@ -1,5 +1,5 @@
 import { ChangeTree, Ref } from "./ChangeTree.js";
-import { $changes, $fieldIndexesByViewTag, $names, $refId, $tags, $viewFieldIndexes } from "../types/symbols.js";
+import { $changes, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
@@ -301,11 +301,10 @@ export class StateView {
         //
         changeTree.forEachChild((change, index) => {
             // Do not ADD children that don't have the same tag
-            const tagAtIndex = metadata?.[$tags]?.[index];
             if (
                 metadata &&
-                tagAtIndex !== undefined &&
-                tagAtIndex !== tag
+                metadata[index].tag !== undefined &&
+                metadata[index].tag !== tag
             ) {
                 return;
             }
@@ -335,7 +334,7 @@ export class StateView {
             // is emitted as ADD (matching the op-coercion previously done
             // at encode time).
             changeTree.forEachLive((index) => {
-                const tagAtIndex = metadata?.[$tags]?.[index];
+                const tagAtIndex = metadata?.[index]?.tag;
                 if (
                     isInvisible || // if "invisible", include all
                     tagAtIndex === undefined || // "all change" with no tag
@@ -440,7 +439,7 @@ export class StateView {
 
                     // Remove child structures of @view() fields from visible set.
                     // (They were added during view.add() via forEachChild)
-                    const value = changeTree.ref[metadata[$names][index] as keyof Ref];
+                    const value = changeTree.ref[metadata[index].name as keyof Ref];
                     if (value?.[$changes]) {
                         this.unmarkVisible(value[$changes]);
                         this._recursiveDeleteVisibleChangeTree(value[$changes]);
@@ -454,7 +453,7 @@ export class StateView {
                 changes.set(index, OPERATION.DELETE);
 
                 // Remove child structures from visible set
-                const value = changeTree.ref[metadata[$names][index] as keyof Ref];
+                const value = changeTree.ref[metadata[index].name as keyof Ref];
                 if (value?.[$changes]) {
                     this.unmarkVisible(value[$changes]);
                     this._recursiveDeleteVisibleChangeTree(value[$changes]);

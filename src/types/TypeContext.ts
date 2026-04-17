@@ -1,6 +1,6 @@
 import { Metadata } from "../Metadata.js";
 import { Schema } from "../Schema.js";
-import { $names, $numFields, $tags, $types, $viewFieldIndexes } from "./symbols.js";
+import { $viewFieldIndexes } from "./symbols.js";
 
 export class TypeContext {
     types: { [id: number]: typeof Schema; } = {};
@@ -104,17 +104,11 @@ export class TypeContext {
             this.hasFilters = true;
         }
 
-        // SoA iteration: walk indexes 0..numFields. `for (const i in metadata)`
-        // no longer yields field indexes since the per-field obj is gone.
-        const numFields = metadata[$numFields];
-        if (numFields === undefined) return;
-        const types = metadata[$names] ? metadata[$types] : undefined;
-        const tags = metadata[$tags];
-        for (let index = 0; index <= numFields; index++) {
-            if (!types || types[index] === undefined) continue;
+        for (const fieldIndex in metadata) {
+            const index = fieldIndex as any as number;
 
-            const fieldType = types[index];
-            const fieldHasViewTag = (tags?.[index] !== undefined);
+            const fieldType = metadata[index].type;
+            const fieldHasViewTag = (metadata[index].tag !== undefined);
 
             if (typeof (fieldType) === "string") {
                 continue;
@@ -162,7 +156,7 @@ export class TypeContext {
                 const klass = this.types[id];
                 const metadata: Metadata = klass[Symbol.metadata];
                 let txt = klass.name;
-                if (i === 0) { txt += `[${metadata[$names][fieldIndex]}]`; }
+                if (i === 0) { txt += `[${metadata[fieldIndex].name}]`; }
                 return `${txt}`;
             }).join(" -> ")}`;
         }

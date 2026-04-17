@@ -17,7 +17,7 @@
  */
 import { OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $types, $viewFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $viewFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
@@ -486,9 +486,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     // Collection: child type from ref (["string"] | {map:"string"} | …).
-    // Schema: field type from metadata SoA array.
+    // Schema: field type from metadata.
     getType(index?: number) {
-        return (this.ref as any)[$childType] || this.metadata[$types][index];
+        return (this.ref as any)[$childType] || this.metadata[index].type;
     }
 
     getChange(index: number) {
