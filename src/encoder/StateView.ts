@@ -79,9 +79,13 @@ export class StateView {
 
     /**
      * Manual "ADD" operations for changes per ChangeTree, specific to this view.
-     * (This is used to force encoding a property, even if it was not changed)
+     * (Used to force encoding a property even if it was not changed.)
+     *
+     * Inner storage is a Map so the encode loop in `encodeView` can iterate
+     * directly with numeric keys — the legacy `{[index]: OPERATION}` shape
+     * forced an `Object.keys(...)` allocation + `Number(key)` parse per ref.
      */
-    changes = new Map<number, { [index: number]: OPERATION }>();
+    changes = new Map<number, Map<number, OPERATION>>();
 
     constructor(public iterable: boolean = false) {
         if (iterable) {
@@ -284,7 +288,7 @@ export class StateView {
 
         let changes = this.changes.get(obj[$refId]);
         if (changes === undefined) {
-            changes = {};
+            changes = new Map<number, OPERATION>();
             // FIXME / OPTIMIZE: do not add if no changes are needed
             this.changes.set(obj[$refId], changes);
         }
@@ -317,7 +321,7 @@ export class StateView {
             // Ref: add tagged properties
             metadata?.[$fieldIndexesByViewTag]?.[tag]?.forEach((index) => {
                 if (changeTree.getChange(index) !== OPERATION.DELETE) {
-                    changes[index] = OPERATION.ADD;
+                    changes.set(index, OPERATION.ADD);
                 }
             });
 
@@ -336,7 +340,7 @@ export class StateView {
                     tagAtIndex === undefined || // "all change" with no tag
                     tagAtIndex === tag // tagged property
                 ) {
-                    changes[index] = OPERATION.ADD;
+                    changes.set(index, OPERATION.ADD);
                     isChildAdded = true; // FIXME: assign only once
                 }
             });
@@ -364,13 +368,13 @@ export class StateView {
         if (changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
             let changes = this.changes.get(changeTree.ref[$refId]);
             if (changes === undefined) {
-                changes = {};
+                changes = new Map<number, OPERATION>();
                 this.changes.set(changeTree.ref[$refId], changes);
             }
 
             this.addTag(changeTree, tag);
 
-            changes[parentIndex] = OPERATION.ADD;
+            changes.set(parentIndex, OPERATION.ADD);
         }
     }
 
@@ -400,7 +404,7 @@ export class StateView {
 
         let changes = this.changes.get(refId);
         if (changes === undefined) {
-            changes = {};
+            changes = new Map<number, OPERATION>();
             this.changes.set(refId, changes);
         }
 
@@ -411,10 +415,10 @@ export class StateView {
                 const parentRefId = parent[$refId];
                 let changes = this.changes.get(parentRefId);
                 if (changes === undefined) {
-                    changes = {};
+                    changes = new Map<number, OPERATION>();
                     this.changes.set(parentRefId, changes);
 
-                } else if (changes[changeTree.parentIndex] === OPERATION.ADD) {
+                } else if (changes.get(changeTree.parentIndex) === OPERATION.ADD) {
                     //
                     // SAME PATCH ADD + REMOVE:
                     // The 'changes' of deleted structure should be ignored.
@@ -423,7 +427,7 @@ export class StateView {
                 }
 
                 // DELETE / DELETE BY REF ID
-                changes[changeTree.parentIndex] = OPERATION.DELETE;
+                changes.set(changeTree.parentIndex, OPERATION.DELETE);
 
                 // Remove child schema from visible set
                 this._recursiveDeleteVisibleChangeTree(changeTree);
@@ -431,7 +435,7 @@ export class StateView {
             } else {
                 // delete all "tagged" properties.
                 metadata?.[$viewFieldIndexes]?.forEach((index) => {
-                    changes[index] = OPERATION.DELETE;
+                    changes.set(index, OPERATION.DELETE);
 
                     // Remove child structures of @view() fields from visible set.
                     // (They were added during view.add() via forEachChild)
@@ -446,7 +450,7 @@ export class StateView {
         } else {
             // delete only tagged properties
             metadata?.[$fieldIndexesByViewTag][tag].forEach((index) => {
-                changes[index] = OPERATION.DELETE;
+                changes.set(index, OPERATION.DELETE);
 
                 // Remove child structures from visible set
                 const value = changeTree.ref[metadata[index].name as keyof Ref];

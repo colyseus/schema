@@ -383,23 +383,25 @@ export class Encoder<T extends Schema = any> {
                 continue;
             }
 
-            const keys = Object.keys(changes);
-            if (keys.length === 0) {
+            if (changes.size === 0) {
                 continue;
             }
 
             const desc = changeTree.encDescriptor;
             const encoder = desc.encoder;
             const metadata = desc.metadata;
+            const ref = changeTree.ref;
 
             bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-            encode.number(bytes, changeTree.ref[$refId], it);
+            encode.number(bytes, ref[$refId], it);
 
-            for (let i = 0, numChanges = keys.length; i < numChanges; i++) {
-                const index = Number(keys[i]);
-                // workaround when using view.add() on item that has been deleted from state (see test "adding to view item that has been removed from state")
-                const value = changeTree.ref[$getByIndex](index);
-                const operation = (value !== undefined && changes[index]) || OPERATION.DELETE;
+            // Iterate entries directly — the inner Map gives us the (index, op)
+            // pair without an intermediate keys array or Number() parse.
+            for (const [index, op] of changes) {
+                // workaround when using view.add() on item that has been deleted from state
+                // (see test "adding to view item that has been removed from state")
+                const value = ref[$getByIndex](index);
+                const operation = (value !== undefined && op) || OPERATION.DELETE;
 
                 // isEncodeAll = false, hasView = true
                 encoder(this, bytes, changeTree, index, operation, it, false, true, metadata);
