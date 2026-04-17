@@ -24,6 +24,19 @@ declare global {
     }
 }
 
+/**
+ * Read one packed op-byte from inline ops storage. Pure arithmetic, no
+ * `this`, so V8 inlines it into the encode-loop forEach without dispatch
+ * cost. Mirror of `ChangeTree._opAt` for the case where the typed-array
+ * branch was already excluded by the caller.
+ */
+function readInlineOpByte(low: number, high: number, index: number): number {
+    const shift = (index & 3) << 3;
+    return (index < 4)
+        ? (low >>> shift) & 0xFF
+        : (high >>> shift) & 0xFF;
+}
+
 export interface IRef {
     // FIXME: we only commented this out to allow mixing @colyseus/schema bundled types with server types in Cocos Creator
     // [$changes]?: ChangeTree;
@@ -98,7 +111,17 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      */
     dirtyLow: number = 0;
     dirtyHigh: number = 0;
-    ops!: Uint8Array; // assigned in ctor for Schema; never accessed for Collection
+
+    /**
+     * Inline ops storage for Schemas with ≤8 fields. Each number holds 4
+     * packed op-bytes (8 bits × 4 = 32 bits per number). `opsLow` covers
+     * fields 0..3, `opsHigh` covers fields 4..7. When set, `ops` is
+     * undefined and reads/writes go through the inline path. Saves one
+     * Uint8Array allocation per small Schema instance.
+     */
+    opsLow: number = 0;
+    opsHigh: number = 0;
+    ops?: Uint8Array; // only set for Schemas with >8 fields; undefined → inline path
 
     /**
      * Reliable dirty recorder — emitted by `Encoder.encode` on reliable
@@ -215,7 +238,11 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         const isSchema = Metadata.isValidInstance(ref);
         if (isSchema) {
             const numFields = (this.metadata?.[$numFields] ?? 0) as number;
-            this.ops = new Uint8Array(Math.max(numFields + 1, 1));
+            // POC: inline ops in opsLow/opsHigh for ≤8 fields. Only allocate
+            // Uint8Array for larger schemas (rare in practice).
+            if (numFields > 7) {
+                this.ops = new Uint8Array(numFields + 1);
+            }
             this.recorder = this; // inline self as the reliable-channel recorder
         } else {
             this.recorder = new CollectionChangeRecorder();
@@ -228,23 +255,60 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     // `this.recorder` for Collection-wrapping trees.
     // ────────────────────────────────────────────────────────────────────
 
-    record(index: number, op: OPERATION): void {
-        const prev = this.ops[index];
-        if (prev === 0 || prev === OPERATION.DELETE) {
-            this.ops[index] = (prev === OPERATION.DELETE) ? OPERATION.DELETE_AND_ADD : op;
+    // ────────────────────────────────────────────────────────────────────
+    // Three small helpers that own ALL the inline-vs-array dispatch and
+    // the dirty-mask update. The methods below compose them — no bitwise
+    // math is duplicated outside this trio.
+    // ────────────────────────────────────────────────────────────────────
+
+    /** Read the op-byte at `index`. Dispatches between Uint8Array and inline storage. */
+    private _opAt(index: number): number {
+        const ops = this.ops;
+        if (ops !== undefined) return ops[index];
+        const shift = (index & 3) << 3;
+        return (index < 4)
+            ? (this.opsLow >>> shift) & 0xFF
+            : (this.opsHigh >>> shift) & 0xFF;
+    }
+
+    /** Write the op-byte at `index` WITHOUT touching the dirty mask. */
+    private _opPut(index: number, op: OPERATION): void {
+        const ops = this.ops;
+        if (ops !== undefined) {
+            ops[index] = op;
+            return;
         }
+        const shift = (index & 3) << 3;
+        const mask = ~(0xFF << shift);
+        if (index < 4) this.opsLow = (this.opsLow & mask) | (op << shift);
+        else this.opsHigh = (this.opsHigh & mask) | (op << shift);
+    }
+
+    /** Mark `index` dirty in the per-tick mask. */
+    private _markDirty(index: number): void {
         if (index < 32) this.dirtyLow |= (1 << index);
         else this.dirtyHigh |= (1 << (index - 32));
+    }
+
+    record(index: number, op: OPERATION): void {
+        const prev = this._opAt(index);
+        if (prev === 0) {
+            this._opPut(index, op);
+        } else if (prev === OPERATION.DELETE) {
+            this._opPut(index, OPERATION.DELETE_AND_ADD);
+        }
+        // else: existing op (ADD / DELETE_AND_ADD) — preserve op-byte.
+        this._markDirty(index);
     }
 
     recordDelete(index: number, op: OPERATION): void {
-        this.ops[index] = op;
-        if (index < 32) this.dirtyLow |= (1 << index);
-        else this.dirtyHigh |= (1 << (index - 32));
+        this._opPut(index, op);
+        this._markDirty(index);
     }
 
     recordRaw(index: number, op: OPERATION): void {
-        this.record(index, op);
+        this._opPut(index, op);
+        this._markDirty(index);
     }
 
     recordPure(_op: OPERATION): void {
@@ -252,29 +316,43 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     operationAt(index: number): OPERATION | undefined {
-        const op = this.ops[index];
+        const op = this._opAt(index);
         return op === 0 ? undefined : op;
     }
 
     setOperationAt(index: number, op: OPERATION): void {
-        this.ops[index] = op;
+        // No dirty-mark side effect — overwrite only.
+        this._opPut(index, op);
     }
 
     forEach(cb: (index: number, op: OPERATION) => void): void {
         let low = this.dirtyLow;
         let high = this.dirtyHigh;
         const ops = this.ops;
-        while (low !== 0) {
-            const bit = low & -low;
-            const fieldIndex = 31 - Math.clz32(bit);
-            low ^= bit;
-            cb(fieldIndex, ops[fieldIndex]);
-        }
-        while (high !== 0) {
-            const bit = high & -high;
-            const fieldIndex = 31 - Math.clz32(bit) + 32;
-            high ^= bit;
-            cb(fieldIndex, ops[fieldIndex]);
+        if (ops !== undefined) {
+            while (low !== 0) {
+                const bit = low & -low;
+                const fieldIndex = 31 - Math.clz32(bit);
+                low ^= bit;
+                cb(fieldIndex, ops[fieldIndex]);
+            }
+            while (high !== 0) {
+                const bit = high & -high;
+                const fieldIndex = 31 - Math.clz32(bit) + 32;
+                high ^= bit;
+                cb(fieldIndex, ops[fieldIndex]);
+            }
+        } else {
+            // Inline path: only fields 0..7 possible (numFields ≤ 8 ⇒
+            // dirtyHigh stays 0).
+            const ol = this.opsLow;
+            const oh = this.opsHigh;
+            while (low !== 0) {
+                const bit = low & -low;
+                const fieldIndex = 31 - Math.clz32(bit);
+                low ^= bit;
+                cb(fieldIndex, readInlineOpByte(ol, oh, fieldIndex));
+            }
         }
     }
 
@@ -282,17 +360,28 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         let low = this.dirtyLow;
         let high = this.dirtyHigh;
         const ops = this.ops;
-        while (low !== 0) {
-            const bit = low & -low;
-            const fieldIndex = 31 - Math.clz32(bit);
-            low ^= bit;
-            cb(ctx, fieldIndex, ops[fieldIndex]);
-        }
-        while (high !== 0) {
-            const bit = high & -high;
-            const fieldIndex = 31 - Math.clz32(bit) + 32;
-            high ^= bit;
-            cb(ctx, fieldIndex, ops[fieldIndex]);
+        if (ops !== undefined) {
+            while (low !== 0) {
+                const bit = low & -low;
+                const fieldIndex = 31 - Math.clz32(bit);
+                low ^= bit;
+                cb(ctx, fieldIndex, ops[fieldIndex]);
+            }
+            while (high !== 0) {
+                const bit = high & -high;
+                const fieldIndex = 31 - Math.clz32(bit) + 32;
+                high ^= bit;
+                cb(ctx, fieldIndex, ops[fieldIndex]);
+            }
+        } else {
+            const ol = this.opsLow;
+            const oh = this.opsHigh;
+            while (low !== 0) {
+                const bit = low & -low;
+                const fieldIndex = 31 - Math.clz32(bit);
+                low ^= bit;
+                cb(ctx, fieldIndex, readInlineOpByte(ol, oh, fieldIndex));
+            }
         }
     }
 
@@ -307,7 +396,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     reset(): void {
         this.dirtyLow = 0;
         this.dirtyHigh = 0;
-        this.ops.fill(0);
+        if (this.ops !== undefined) this.ops.fill(0);
+        else { this.opsLow = 0; this.opsHigh = 0; }
     }
 
     shift(_shiftIndex: number): void {
@@ -505,14 +595,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // site is monomorphic in its inline cache (drops bimorphic
         // recorder.record dispatch from the hot setter path).
         if (this.recorder === this) {
-            // SCHEMA fast-path — operate directly on inline state.
-            const prev = this.ops[index];
-            const op = (prev === 0) ? operation
-                     : (prev === OPERATION.DELETE) ? OPERATION.DELETE_AND_ADD
-                     : prev;
-            this.ops[index] = op;
-            if (index < 32) this.dirtyLow |= (1 << index);
-            else this.dirtyHigh |= (1 << (index - 32));
+            // SCHEMA fast-path — direct call to our own `record` (monomorphic
+            // at this call site: only ChangeTree.prototype.record is ever seen).
+            this.record(index, operation);
         } else {
             // COLLECTION path — recorder is always CollectionChangeRecorder here.
             const r = this.recorder;
@@ -547,9 +632,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // Monomorphic split: Schema fast-path inline; Collection path keeps
         // a stable single-shape call site.
         if (this.recorder === this) {
-            this.ops[index] = operation;
-            if (index < 32) this.dirtyLow |= (1 << index);
-            else this.dirtyHigh |= (1 << (index - 32));
+            // SCHEMA fast-path — direct call (monomorphic).
+            this.recordRaw(index, operation);
         } else {
             this.recorder.recordRaw(index, operation);
         }
