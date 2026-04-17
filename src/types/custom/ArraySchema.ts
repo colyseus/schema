@@ -65,12 +65,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     }
 
     constructor (...items: V[]) {
-        Object.defineProperty(this, $childType, {
-            value: undefined,
-            enumerable: false,
-            writable: true,
-            configurable: true,
-        });
+        this[$childType] = undefined as any;
 
         const proxy = new Proxy(this, {
             get: (obj, prop) => {

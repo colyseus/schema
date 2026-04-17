@@ -60,17 +60,15 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     constructor (initialValues?: Map<K, V> | Record<K, V>) {
+        // $changes MUST be non-enumerable — see Schema.initialize comment.
+        // ChangeTree has circular refs (root→changeTrees→…) and would send
+        // `assert.deepStrictEqual` into exponential recursion.
         Object.defineProperty(this, $changes, {
             value: new ChangeTree(this),
             enumerable: false,
             writable: true,
         });
-        Object.defineProperty(this, $childType, {
-            value: undefined,
-            enumerable: false,
-            writable: true,
-            configurable: true,
-        });
+        this[$childType] = undefined as any;
 
         if (initialValues) {
             if (

@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, schema, t, type, ArraySchema, SchemaType } from "../src";
+import { $changes, Schema, schema, t, type, ArraySchema, SchemaType } from "../src";
 import { getEncoder, getDecoder, createInstanceFromReflection } from "./Schema";
 
 describe("@static modifier (sync-once, skip change tracking)", () => {
@@ -187,12 +187,12 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
         const cfg = new Config();
         state.c = cfg;
 
-        const changes: any = (state as any)["~changes"];
+        const changes: any = (state as any)[$changes];
         assert.strictEqual(changes.isFieldStatic(0), false);
         assert.strictEqual(changes.isFieldStatic(1), true);
         assert.strictEqual(changes.isFieldStatic(2), true);
         // child inherits isStatic
-        const cfgChanges: any = (cfg as any)["~changes"];
+        const cfgChanges: any = (cfg as any)[$changes];
         assert.strictEqual(cfgChanges.isStatic, true);
         assert.strictEqual(cfgChanges.isFieldStatic(0), true);
     });

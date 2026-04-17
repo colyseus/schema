@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type, unreliable, transient, view, ArraySchema, MapSchema, StateView } from "../src";
+import { $changes, Schema, type, unreliable, transient, view, ArraySchema, MapSchema, StateView } from "../src";
 import { Encoder } from "../src/encoder/Encoder";
 import { Decoder } from "../src/decoder/Decoder";
 import { createInstanceFromReflection, getEncoder, getDecoder } from "./Schema";
@@ -308,8 +308,8 @@ describe("@unreliable and @transient", () => {
             }
             const s = new S();
             const ct = (s as any).constructor[Symbol.metadata];
-            assert.strictEqual(s['~changes'] ? s['~changes'].isFieldUnreliable(0) : false, false);
-            assert.strictEqual(s['~changes'] ? s['~changes'].isFieldUnreliable(1) : false, true);
+            assert.strictEqual(s[$changes] ? s[$changes].isFieldUnreliable(0) : false, false);
+            assert.strictEqual(s[$changes] ? s[$changes].isFieldUnreliable(1) : false, true);
         });
 
         it("collection inherits isUnreliable from parent field", () => {
@@ -321,7 +321,7 @@ describe("@unreliable and @transient", () => {
             // Attach to encoder to trigger checkIsFiltered plumbing.
             const encoder = getEncoder(s);
             void encoder;
-            assert.strictEqual((s.points as any)['~changes'].isUnreliable, true);
+            assert.strictEqual((s.points as any)[$changes].isUnreliable, true);
         });
     });
 

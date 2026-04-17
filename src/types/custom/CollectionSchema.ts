@@ -50,17 +50,13 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
     }
 
     constructor (initialValues?: Array<V>) {
+        // $changes must be non-enumerable — see Schema.initialize.
         Object.defineProperty(this, $changes, {
             value: new ChangeTree(this),
             enumerable: false,
             writable: true,
         });
-        Object.defineProperty(this, $childType, {
-            value: undefined,
-            enumerable: false,
-            writable: true,
-            configurable: true,
-        });
+        this[$childType] = undefined as any;
 
         if (initialValues) {
             initialValues.forEach((v) => this.add(v));

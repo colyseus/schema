@@ -48,17 +48,14 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     }
 
     constructor (initialValues?: Array<V>) {
+        // $changes must be non-enumerable to avoid deepStrictEqual recursing
+        // into ChangeTree's circular refs.
         Object.defineProperty(this, $changes, {
             value: new ChangeTree(this),
             enumerable: false,
             writable: true,
         });
-        Object.defineProperty(this, $childType, {
-            value: undefined,
-            enumerable: false,
-            writable: true,
-            configurable: true,
-        });
+        this[$childType] = undefined as any;
 
         if (initialValues) {
             initialValues.forEach((v) => this.add(v));

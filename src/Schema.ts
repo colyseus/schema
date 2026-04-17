@@ -4,7 +4,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
 import { ChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
-import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $numFields, $refId, $track, $values } from './types/symbols.js';
+import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $numFields, $refId, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation.js';
@@ -32,16 +32,19 @@ export class Schema<C = any> implements IRef {
      * to allocating a ChangeTree and a values array.
      */
     static initialize(instance: any) {
+        // $changes MUST be non-enumerable: tests use assert.deepStrictEqual on
+        // Schema instances (e.g. arrayOfPlayers.toArray()), which walks
+        // enumerable own Symbol properties. ChangeTree has circular refs
+        // (root → changeTrees → other ChangeTrees), so a visible $changes
+        // would send deepStrictEqual into exponential recursion. Plain
+        // assignment of a Symbol key would be enumerable: true — hence we
+        // keep defineProperty here.
         Object.defineProperty(instance, $changes, {
             value: new ChangeTree(instance),
             enumerable: false,
             writable: true
         });
-        Object.defineProperty(instance, $values, {
-            value: [],
-            enumerable: false,
-            writable: true
-        });
+        instance[$values] = [];
     }
 
     static is(type: DefinitionType) {
