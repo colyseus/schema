@@ -4,7 +4,7 @@ import { Schema } from "../Schema.js";
 import type { IRef, Ref } from "../encoder/ChangeTree.js";
 import type { Decoder } from "./Decoder.js";
 import { Iterator, decode } from "../encoding/decode.js";
-import { $childType, $deleteByIndex, $getByIndex, $refId } from "../types/symbols.js";
+import { $childType, $deleteByIndex, $getByIndex, $names, $refId, $types } from "../types/symbols.js";
 
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
 
@@ -158,26 +158,29 @@ export const decodeSchemaOperation: DecodeOperation = function <T extends Schema
     const operation = (first_byte >> 6) << 6
     const index = first_byte % (operation || 255);
 
-    // skip early if field is not defined
-    const field = metadata[index];
-    if (field === undefined) {
+    // SoA: read name + type from parallel arrays. Sparse `names[index]
+    // === undefined` means the wire format references a field this
+    // decoder doesn't know about (definition mismatch).
+    const fieldName = metadata?.[$names]?.[index];
+    if (fieldName === undefined) {
         console.warn("@colyseus/schema: field not defined at", { index, ref: ref.constructor.name, metadata });
         return DEFINITION_MISMATCH;
     }
+    const fieldType = metadata[$types][index];
 
     const { value, previousValue } = decodeValue(
         decoder,
         operation,
         ref,
         index,
-        field.type,
+        fieldType,
         bytes,
         it,
         allChanges,
     );
 
     if (value !== null && value !== undefined) {
-        ref[field.name as keyof T] = value;
+        ref[fieldName as keyof T] = value;
     }
 
     // add change
@@ -186,7 +189,7 @@ export const decodeSchemaOperation: DecodeOperation = function <T extends Schema
             ref,
             refId: decoder.currentRefId,
             op: operation,
-            field: field.name,
+            field: fieldName,
             value,
             previousValue,
         });

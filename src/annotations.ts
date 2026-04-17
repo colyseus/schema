@@ -3,7 +3,7 @@ import { Schema } from './Schema.js';
 import { ArraySchema } from './types/custom/ArraySchema.js';
 import { MapSchema } from './types/custom/MapSchema.js';
 import { getNormalizedType, Metadata } from "./Metadata.js";
-import { $changes, $childType, $descriptors, $encoders, $numFields, $track, $values } from "./types/symbols.js";
+import { $changes, $childType, $deprecated, $descriptors, $encoders, $names, $numFields, $owned, $stream, $track, $types, $values } from "./types/symbols.js";
 import { encode } from "./encoding/encode.js";
 import { TypeDefinition, getType } from "./types/registry.js";
 import { OPERATION } from "./encoding/spec.js";
@@ -255,7 +255,7 @@ export function owned<T> (target: T, field: string) {
 
     const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
 
-    metadata[metadata[field]].owned = true;
+    (metadata[$owned] ??= [])[metadata[field]] = true;
 }
 
 export function unreliable<T> (target: T, field: string) {
@@ -315,12 +315,12 @@ export function type (
         /**
          * skip if descriptor already exists for this field (`@deprecated()`)
          */
-        if (metadata[fieldIndex] !== undefined) {
-            if (metadata[fieldIndex].deprecated) {
+        if (fieldIndex !== undefined && metadata[$names]?.[fieldIndex] !== undefined) {
+            if (metadata[$deprecated]?.[fieldIndex]) {
                 // do not create accessors for deprecated properties.
                 return;
 
-            } else if (metadata[fieldIndex].type !== undefined) {
+            } else if (metadata[$types][fieldIndex] !== undefined) {
                 // trying to define same property multiple times across inheritance.
                 // https://github.com/colyseus/colyseus-unity3d/issues/131#issuecomment-814308572
                 try {
@@ -566,7 +566,11 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
         //     }
         // }
 
-        metadata[fieldIndex].deprecated = true;
+        // SoA write — deprecated lives in metadata[$deprecated][index].
+        // Lazy-init the array since `@deprecated` can fire on a field that
+        // was added by `@type` (which initializes most arrays) or by some
+        // other path that only set $names.
+        (metadata[$deprecated] ??= [])[fieldIndex] = true;
 
         if (throws) {
             metadata[$descriptors] ??= {};
@@ -810,7 +814,7 @@ export function schema<
             Metadata.setStatic(metadata, fieldName);
         }
         for (const fieldName of streamFields) {
-            metadata[metadata[fieldName]].stream = true;
+            (metadata[$stream] ??= [])[metadata[fieldName]] = true;
         }
     }
 

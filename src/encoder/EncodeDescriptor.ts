@@ -17,7 +17,7 @@
  * during encode).
  */
 import { Metadata } from "../Metadata.js";
-import { $encodeDescriptor, $encoder, $encoders, $filter, $filterBitmask, $numFields, $viewFieldIndexes } from "../types/symbols.js";
+import { $encodeDescriptor, $encoder, $encoders, $filter, $filterBitmask, $names, $tags, $types, $viewFieldIndexes } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 
@@ -72,46 +72,8 @@ function computeFilterBitmask(metadata: any): number {
     return bm;
 }
 
-/**
- * Build the per-field parallel arrays once at descriptor construction.
- * For collection trees (no metadata or no $numFields) this returns empty
- * arrays — readers branch on `isSchema` before touching them anyway.
- */
-function buildFieldArrays(metadata: any): {
-    names: string[];
-    types: any[];
-    tags: (number | undefined)[];
-    encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
-} {
-    const names: string[] = [];
-    const types: any[] = [];
-    const tags: (number | undefined)[] = [];
-    const encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[] = [];
-
-    if (metadata === undefined) return { names, types, tags, encoders };
-
-    const numFields = metadata[$numFields];
-    if (numFields === undefined) return { names, types, tags, encoders };
-
-    const srcEncoders = metadata[$encoders];
-    for (let i = 0; i <= numFields; i++) {
-        const field = metadata[i];
-        if (field === undefined) {
-            // Holes are normal — inheritance can leave gaps. Fill with
-            // undefined so indexing is valid.
-            names[i] = undefined!;
-            types[i] = undefined;
-            tags[i] = undefined;
-            encoders[i] = undefined;
-            continue;
-        }
-        names[i] = field.name;
-        types[i] = field.type;
-        tags[i] = field.tag;
-        encoders[i] = srcEncoders?.[i];
-    }
-    return { names, types, tags, encoders };
-}
+/** Empty array used when a tree has no metadata (collection trees). */
+const EMPTY_ARRAY: readonly any[] = Object.freeze([]);
 
 export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     const ctor = ref.constructor;
@@ -126,17 +88,26 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
 
     const metadata = ctor[Symbol.metadata];
     const isSchema = Metadata.isValidInstance(ref);
-    const arrays = buildFieldArrays(metadata);
+
+    // SoA arrays live on metadata directly now — point at them. No copy,
+    // no conversion. For collection trees (no metadata or non-Schema)
+    // fall back to a frozen empty array so readers can index without
+    // extra null-checks.
+    const names    = metadata?.[$names]    ?? (EMPTY_ARRAY as string[]);
+    const types    = metadata?.[$types]    ?? (EMPTY_ARRAY as any[]);
+    const tags     = metadata?.[$tags]     ?? (EMPTY_ARRAY as (number | undefined)[]);
+    const encoders = metadata?.[$encoders] ?? (EMPTY_ARRAY as (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[]);
+
     const desc: EncodeDescriptor = {
         encoder: ctor[$encoder],
         filter: ctor[$filter],
         metadata,
         isSchema,
         filterBitmask: isSchema ? computeFilterBitmask(metadata) : 0,
-        names: arrays.names,
-        types: arrays.types,
-        tags: arrays.tags,
-        encoders: arrays.encoders,
+        names,
+        types,
+        tags,
+        encoders,
     };
     Object.defineProperty(ctor, $encodeDescriptor, {
         value: desc,

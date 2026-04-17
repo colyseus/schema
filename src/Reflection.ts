@@ -1,6 +1,7 @@
 import { PrimitiveType, schema, SchemaType } from "./annotations.js";
 import { TypeContext } from "./types/TypeContext.js";
 import { Metadata } from "./Metadata.js";
+import { $names, $numFields, $types } from "./types/symbols.js";
 import { Iterator } from "./encoding/decode.js";
 import { Encoder } from "./encoder/Encoder.js";
 import { Decoder } from "./decoder/Decoder.js";
@@ -110,9 +111,12 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
         // if metadata is the same reference as the parent class - it means the class has no own metadata
         //
         if (metadata !== inheritFrom[Symbol.metadata]) {
-            for (const fieldIndex in metadata) {
-                const index = Number(fieldIndex);
-                const fieldName = metadata[index].name;
+            const names = metadata[$names];
+            const types = metadata[$types];
+            const numFields = metadata[$numFields];
+            for (let index = 0; index <= numFields; index++) {
+                const fieldName = names?.[index];
+                if (fieldName === undefined) continue;
 
                 // skip fields from parent classes
                 if (!Object.prototype.hasOwnProperty.call(metadata, fieldName)) {
@@ -123,11 +127,10 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
                 reflectionField.name = fieldName;
 
                 let fieldType: string;
+                const fieldTypeDef = types[index];
 
-                const field = metadata[index];
-
-                if (typeof (field.type) === "string") {
-                    fieldType = field.type;
+                if (typeof (fieldTypeDef) === "string") {
+                    fieldType = fieldTypeDef;
 
                 } else {
                     let childTypeSchema: typeof Schema;
@@ -135,18 +138,18 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
                     //
                     // TODO: refactor below.
                     //
-                    if (Schema.is(field.type)) {
+                    if (Schema.is(fieldTypeDef)) {
                         fieldType = "ref";
-                        childTypeSchema = field.type as typeof Schema;
+                        childTypeSchema = fieldTypeDef as typeof Schema;
 
                     } else {
-                        fieldType = Object.keys(field.type)[0];
+                        fieldType = Object.keys(fieldTypeDef)[0];
 
-                        if (typeof (field.type[fieldType as keyof typeof field.type]) === "string") {
-                            fieldType += ":" + field.type[fieldType as keyof typeof field.type]; // array:string
+                        if (typeof (fieldTypeDef[fieldType as keyof typeof fieldTypeDef]) === "string") {
+                            fieldType += ":" + fieldTypeDef[fieldType as keyof typeof fieldTypeDef]; // array:string
 
                         } else {
-                            childTypeSchema = field.type[fieldType as keyof typeof field.type];
+                            childTypeSchema = fieldTypeDef[fieldType as keyof typeof fieldTypeDef];
                         }
                     }
 

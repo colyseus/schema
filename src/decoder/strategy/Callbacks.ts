@@ -5,7 +5,7 @@ import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { Schema } from "../../Schema.js";
-import { $refId } from "../../types/symbols.js";
+import { $names, $refId } from "../../types/symbols.js";
 import { MapSchema } from "../../types/custom/MapSchema.js";
 import { ArraySchema } from "../../types/custom/ArraySchema.js";
 import { getDecoderStateCallbacks, type SchemaCallbackProxy } from "./getDecoderStateCallbacks.js";
@@ -309,9 +309,8 @@ export class StateCallbackStrategy<TState extends IRef> {
 
         // If no properties specified, bind all properties
         if (!properties) {
-            properties = Object.keys(metadata)
-                .filter(key => !isNaN(Number(key)))
-                .map((index) => metadata[index as any as number].name);
+            // SoA: walk names array; sparse holes (undefined) are skipped.
+            properties = (metadata[$names] ?? []).filter((n: any) => n !== undefined);
         }
 
         const action = () => {

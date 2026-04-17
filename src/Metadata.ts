@@ -1,10 +1,18 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
 import { getType, registeredTypes } from "./types/registry.js";
-import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $staticFieldIndexes, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { $decoder, $deprecated, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $names, $numFields, $owned, $refTypeFieldIndexes, $staticFieldIndexes, $stream, $tags, $track, $transientFieldIndexes, $types, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
 
+/**
+ * Legacy per-field shape kept for type-import compatibility with downstream
+ * code. Internally, metadata stores fields in struct-of-arrays form
+ * (`metadata[$names][i]`, `metadata[$types][i]`, etc.) — see
+ * `Metadata.addField`. The legacy `metadata[i] = { name, type, ... }`
+ * object form was removed in the SoA migration; this type is no longer
+ * realized at runtime.
+ */
 export type MetadataField = {
     type: DefinitionType,
     name: string,
@@ -27,8 +35,15 @@ export type Metadata =
     { [$transientFieldIndexes]: number[]; } & // all field indexes tagged with @transient (not persisted to snapshots)
     { [$staticFieldIndexes]: number[]; } & // all field indexes tagged with @static (not tracked after assignment)
     { [$encoders]: Array<(bytes: Uint8Array, value: any, it: any) => void>; } & // pre-computed encoder fn per primitive field
-    { [field: number]: MetadataField; } & // index => field name
-    { [field: string]: number; } & // field name => field metadata
+    // SoA per-field storage. Indexed by field index. Sparse where natural —
+    // tags/deprecated/owned/stream are undefined unless set.
+    { [$names]: string[]; } &
+    { [$types]: DefinitionType[]; } &
+    { [$tags]: (number | undefined)[]; } &
+    { [$deprecated]: (boolean | undefined)[]; } &
+    { [$owned]: (boolean | undefined)[]; } &
+    { [$stream]: (boolean | undefined)[]; } &
+    { [field: string]: number; } & // field name => field index (reverse lookup)
     { [$descriptors]: { [field: string]: PropertyDescriptor } }  // property descriptors
 
 export function getNormalizedType(type: any): DefinitionType  {
@@ -53,6 +68,21 @@ export function getNormalizedType(type: any): DefinitionType  {
         }
     }
     return type;
+}
+
+/**
+ * Install the SoA backing arrays on `metadata` as non-enumerable, writable
+ * properties. `for (const k in metadata)` continues to yield nothing
+ * (legacy code may iterate metadata expecting numeric field-index keys —
+ * after the SoA migration there are none).
+ */
+function ensureSoAArrays(metadata: any): void {
+    Object.defineProperty(metadata, $names,      { value: [], enumerable: false, writable: true, configurable: true });
+    Object.defineProperty(metadata, $types,      { value: [], enumerable: false, writable: true, configurable: true });
+    Object.defineProperty(metadata, $tags,       { value: [], enumerable: false, writable: true, configurable: true });
+    Object.defineProperty(metadata, $deprecated, { value: [], enumerable: false, writable: true, configurable: true });
+    Object.defineProperty(metadata, $owned,      { value: [], enumerable: false, writable: true, configurable: true });
+    Object.defineProperty(metadata, $stream,     { value: [], enumerable: false, writable: true, configurable: true });
 }
 
 function isTSEnum(_enum: any) {
@@ -83,14 +113,14 @@ export const Metadata = {
             throw new Error(`Can't define field '${name}'.\nSchema instances may only have up to 64 fields.`);
         }
 
-        metadata[index] = Object.assign(
-            metadata[index] || {}, // avoid overwriting previous field metadata (@owned / @deprecated)
-            {
-                type: getNormalizedType(type),
-                index,
-                name,
-            }
-        );
+        // Lazy-init the SoA arrays (non-enumerable so for-in iteration over
+        // metadata yields nothing — every per-field property lives behind a
+        // symbol-like key now).
+        if (metadata[$names] === undefined) ensureSoAArrays(metadata);
+
+        const normalizedType = getNormalizedType(type);
+        metadata[$names][index] = name;
+        metadata[$types][index] = normalizedType;
 
         // create "descriptors" map
         Object.defineProperty(metadata, $descriptors, {
@@ -127,8 +157,8 @@ export const Metadata = {
             configurable: true,
         });
 
-        // if child Ref/complex type, add to -4
-        if (typeof (metadata[index].type) !== "string") {
+        // if child Ref/complex type, add to refTypeFieldIndexes
+        if (typeof normalizedType !== "string") {
             if (metadata[$refTypeFieldIndexes] === undefined) {
                 Object.defineProperty(metadata, $refTypeFieldIndexes, {
                     value: [],
@@ -142,10 +172,9 @@ export const Metadata = {
 
     setTag(metadata: Metadata, fieldName: string, tag: number) {
         const index = metadata[fieldName];
-        const field = metadata[index];
 
-        // add 'tag' to the field
-        field.tag = tag;
+        // SoA: tag goes into parallel array.
+        metadata[$tags][index] = tag;
 
         if (!metadata[$viewFieldIndexes]) {
             // -2: all field indexes with "view" tag
@@ -174,7 +203,6 @@ export const Metadata = {
 
     setUnreliable(metadata: Metadata, fieldName: string) {
         const index = metadata[fieldName];
-        metadata[index].unreliable = true;
 
         if (!metadata[$unreliableFieldIndexes]) {
             Object.defineProperty(metadata, $unreliableFieldIndexes, {
@@ -189,7 +217,6 @@ export const Metadata = {
 
     setTransient(metadata: Metadata, fieldName: string) {
         const index = metadata[fieldName];
-        metadata[index].transient = true;
 
         if (!metadata[$transientFieldIndexes]) {
             Object.defineProperty(metadata, $transientFieldIndexes, {
@@ -204,7 +231,6 @@ export const Metadata = {
 
     setStatic(metadata: Metadata, fieldName: string) {
         const index = metadata[fieldName];
-        metadata[index].static = true;
 
         if (!metadata[$staticFieldIndexes]) {
             Object.defineProperty(metadata, $staticFieldIndexes, {
@@ -286,7 +312,8 @@ export const Metadata = {
     },
 
     isDeprecated(metadata: any, field: string) {
-        return metadata[field].deprecated === true;
+        const index = metadata[field];
+        return metadata[$deprecated]?.[index] === true;
     },
 
     init(klass: any) {
@@ -391,6 +418,20 @@ export const Metadata = {
                     writable: true,
                 });
 
+                // SoA per-field arrays — copy from parent so subclass
+                // inherits all parent field info, then `addField` extends
+                // with subclass-specific fields. Inherited slots are kept
+                // even where the subclass adds nothing (sparse holes are
+                // expected at any inheritance step).
+                if (parentMetadata[$names] !== undefined) {
+                    Object.defineProperty(metadata, $names,      { value: [...parentMetadata[$names]],      enumerable: false, writable: true, configurable: true });
+                    Object.defineProperty(metadata, $types,      { value: [...parentMetadata[$types]],      enumerable: false, writable: true, configurable: true });
+                    Object.defineProperty(metadata, $tags,       { value: [...parentMetadata[$tags]],       enumerable: false, writable: true, configurable: true });
+                    Object.defineProperty(metadata, $deprecated, { value: [...parentMetadata[$deprecated]], enumerable: false, writable: true, configurable: true });
+                    Object.defineProperty(metadata, $owned,      { value: [...parentMetadata[$owned]],      enumerable: false, writable: true, configurable: true });
+                    Object.defineProperty(metadata, $stream,     { value: [...parentMetadata[$stream]],     enumerable: false, writable: true, configurable: true });
+                }
+
                 // $encoders
                 if (parentMetadata[$encoders] !== undefined) {
                     Object.defineProperty(metadata, $encoders, {
@@ -422,8 +463,12 @@ export const Metadata = {
     getFields(klass: any) {
         const metadata: Metadata = klass[Symbol.metadata];
         const fields: any = {};
+        const names = metadata[$names];
+        const types = metadata[$types];
         for (let i = 0; i <= metadata[$numFields]; i++) {
-            fields[metadata[i].name] = metadata[i].type;
+            const n = names[i];
+            if (n === undefined) continue; // sparse hole (inheritance gap)
+            fields[n] = types[i];
         }
         return fields;
     },

@@ -78,6 +78,22 @@ export const $filterBitmask = "~__filterBitmask";
 export const $encodeDescriptor = "~__encodeDescriptor";
 export const $encoders = "~encoders";
 export const $numFields = "~__numFields";
+
+/**
+ * Per-field SoA storage on metadata. Replaces the legacy per-field
+ * object (`metadata[i] = { name, type, tag, ... }`) with parallel arrays
+ * stashed via these symbol-like keys (non-enumerable so for-in iteration
+ * over metadata still treats it as having no own enumerable props).
+ *
+ * Hot encoder readers index `metadata[$names][i]` etc. directly; the
+ * descriptor's parallel-array fields point at these same arrays (no copy).
+ */
+export const $names = "~__names";
+export const $types = "~__types";
+export const $tags = "~__tags";
+export const $deprecated = "~__deprecated";
+export const $owned = "~__owned";
+export const $stream = "~__stream";
 export const $refTypeFieldIndexes = "~__refTypeFieldIndexes";
 export const $viewFieldIndexes = "~__viewFieldIndexes";
 export const $fieldIndexesByViewTag = "$__fieldIndexesByViewTag";
