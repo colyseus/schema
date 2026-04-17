@@ -17,7 +17,7 @@
  * during encode).
  */
 import { Metadata } from "../Metadata.js";
-import { $encodeDescriptor, $encoder, $filter, $filterBitmask, $viewFieldIndexes } from "../types/symbols.js";
+import { $encodeDescriptor, $encoder, $encoders, $filter, $filterBitmask, $numFields, $viewFieldIndexes } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 
@@ -32,6 +32,24 @@ export interface EncodeDescriptor {
      * per-field metadata[i]?.tag chase.
      */
     filterBitmask: number;
+
+    /**
+     * Per-field parallel arrays — Schemas only (empty arrays for
+     * collections). Replaces hot-path `metadata[i].name` / `metadata[i].type`
+     * / `metadata[i].tag` chains with direct array indexing on a small
+     * fixed-shape object.
+     *
+     * Sparse where natural: `tags[i]` is undefined unless field i carries
+     * a @view tag; readers should null-check before comparing.
+     *
+     * `encoders[i]` mirrors `metadata[$encoders]` — the pre-computed
+     * encoder fn for primitive-typed fields. Cached here so encode loops
+     * skip a `metadata[$encoders]?.[i]` symbol-chain per emission.
+     */
+    names: string[];
+    types: any[];
+    tags: (number | undefined)[];
+    encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
 }
 
 function computeFilterBitmask(metadata: any): number {
@@ -54,6 +72,47 @@ function computeFilterBitmask(metadata: any): number {
     return bm;
 }
 
+/**
+ * Build the per-field parallel arrays once at descriptor construction.
+ * For collection trees (no metadata or no $numFields) this returns empty
+ * arrays — readers branch on `isSchema` before touching them anyway.
+ */
+function buildFieldArrays(metadata: any): {
+    names: string[];
+    types: any[];
+    tags: (number | undefined)[];
+    encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
+} {
+    const names: string[] = [];
+    const types: any[] = [];
+    const tags: (number | undefined)[] = [];
+    const encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[] = [];
+
+    if (metadata === undefined) return { names, types, tags, encoders };
+
+    const numFields = metadata[$numFields];
+    if (numFields === undefined) return { names, types, tags, encoders };
+
+    const srcEncoders = metadata[$encoders];
+    for (let i = 0; i <= numFields; i++) {
+        const field = metadata[i];
+        if (field === undefined) {
+            // Holes are normal — inheritance can leave gaps. Fill with
+            // undefined so indexing is valid.
+            names[i] = undefined!;
+            types[i] = undefined;
+            tags[i] = undefined;
+            encoders[i] = undefined;
+            continue;
+        }
+        names[i] = field.name;
+        types[i] = field.type;
+        tags[i] = field.tag;
+        encoders[i] = srcEncoders?.[i];
+    }
+    return { names, types, tags, encoders };
+}
+
 export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     const ctor = ref.constructor;
 
@@ -67,12 +126,17 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
 
     const metadata = ctor[Symbol.metadata];
     const isSchema = Metadata.isValidInstance(ref);
+    const arrays = buildFieldArrays(metadata);
     const desc: EncodeDescriptor = {
         encoder: ctor[$encoder],
         filter: ctor[$filter],
         metadata,
         isSchema,
         filterBitmask: isSchema ? computeFilterBitmask(metadata) : 0,
+        names: arrays.names,
+        types: arrays.types,
+        tags: arrays.tags,
+        encoders: arrays.encoders,
     };
     Object.defineProperty(ctor, $encodeDescriptor, {
         value: desc,

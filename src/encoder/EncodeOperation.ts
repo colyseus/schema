@@ -74,7 +74,6 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
     it: Iterator,
     _: any,
     __: any,
-    metadata: Metadata,
 ) {
     // "compress" field index + operation
     bytes[it.offset++] = (index | operation) & 255;
@@ -84,23 +83,25 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
         return;
     }
 
-    // Single metadata[index] read instead of three chases (was: name, type,
-    // and encoders[index] — each a separate property load on the field obj).
-    const field = metadata[index];
+    // Read field info from the per-class descriptor's parallel arrays —
+    // replaces `metadata[index]` (returns a per-field obj) + `.name` /
+    // `.type` chains. The `encoders` array is also pre-baked here so we
+    // skip a `metadata[$encoders]?.[index]` symbol-keyed lookup per call.
+    const desc = changeTree.encDescriptor;
     const ref = changeTree.ref as any;
 
     // Direct $values[index] read — bypasses prototype getter + metadata name lookup.
     // Falls back to named property for manual fields (which don't use $values).
-    const value = ref[$values][index] ?? ref[field.name];
+    const value = ref[$values][index] ?? ref[desc.names[index]];
 
     encodeValue(
         encoder,
         bytes,
-        field.type,
+        desc.types[index],
         value,
         operation,
         it,
-        metadata[$encoders]?.[index],
+        desc.encoders[index],
     );
 }
 

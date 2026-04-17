@@ -76,9 +76,9 @@ export function forEachChild(
         }
 
     } else {
+        const names = tree.encDescriptor.names;
         for (const index of tree.metadata?.[$refTypeFieldIndexes] ?? []) {
-            const field = tree.metadata[index as any as number];
-            const value = tree.ref[field.name as keyof Ref];
+            const value = tree.ref[names[index] as keyof Ref];
             if (!value) { continue; }
             callback(value[$changes], index);
         }
@@ -110,10 +110,10 @@ export function forEachChildWithCtx<C>(
         const metadata = tree.metadata;
         const indexes = metadata?.[$refTypeFieldIndexes];
         if (!indexes) return;
+        const names = tree.encDescriptor.names;
         for (let i = 0, len = indexes.length; i < len; i++) {
             const index = indexes[i];
-            const field = metadata[index];
-            const value = (tree.ref as any)[field.name];
+            const value = (tree.ref as any)[names[index]];
             if (!value) { continue; }
             callback(ctx, value[$changes], index);
         }

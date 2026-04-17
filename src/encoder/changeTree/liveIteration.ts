@@ -51,15 +51,20 @@ export function forEachLiveWithCtx<C>(
         // Schema: walk declared fields. `null` is treated as absent —
         // the setter records a DELETE when a field is set to null or
         // undefined, so it should not appear in full-sync output.
+        //
+        // Read names from the per-class descriptor's parallel array —
+        // saves the `metadata[i]` (per-field obj) + `.name` chain on
+        // every iteration of the full-sync DFS.
         const metadata = tree.metadata;
         if (!metadata) return;
         const numFields = (metadata[$numFields] ?? -1) as number;
         const transientIndexes = metadata[$transientFieldIndexes];
+        const names = tree.encDescriptor.names;
         for (let i = 0; i <= numFields; i++) {
-            const field = metadata[i as any];
-            if (field === undefined) continue;
+            const name = names[i];
+            if (name === undefined) continue;
             if (transientIndexes && transientIndexes.includes(i)) continue;
-            const value = ref[field.name];
+            const value = ref[name];
             if (value !== undefined && value !== null) cb(ctx, i);
         }
     }
