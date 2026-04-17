@@ -467,22 +467,35 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         }
     }
 
-    change(index: number, operation: OPERATION = OPERATION.ADD) {
+    /**
+     * Route a field-level mutation to the reliable or unreliable channel
+     * and enqueue into the matching queue. Shared by `change` and
+     * `indexedOperation`; `raw=true` bypasses DELETE→ADD merge
+     * (ArraySchema positional writes), `raw=false` merges inside `record`.
+     *
+     * Note: record() on both channels handles DELETE→ADD merge internally,
+     * so callers do not need to pre-compute the merged op.
+     */
+    private _routeAndRecord(index: number, op: OPERATION, raw: boolean): void {
         if (this.paused || this.isFieldStatic(index)) return;
-
         if (this.isFieldUnreliable(index)) {
             const r = this.ensureUnreliableRecorder();
-            const prev = r.operationAt(index);
-            const op = (!prev) ? operation
-                     : (prev === OPERATION.DELETE) ? OPERATION.DELETE_AND_ADD
-                     : prev;
-            r.record(index, op);
+            if (raw) r.recordRaw(index, op);
+            else r.record(index, op);
             this.root?.enqueueUnreliable(this);
             return;
         }
-
-        this.record(index, operation);
+        if (raw) this.recordRaw(index, op);
+        else this.record(index, op);
         this.root?.enqueueChangeTree(this);
+    }
+
+    change(index: number, operation: OPERATION = OPERATION.ADD) {
+        this._routeAndRecord(index, operation, false);
+    }
+
+    indexedOperation(index: number, operation: OPERATION) {
+        this._routeAndRecord(index, operation, true);
     }
 
     // ArraySchema#unshift(): apply shift to both channels.
@@ -490,19 +503,6 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     shiftChangeIndexes(shiftIndex: number) {
         this.shift(shiftIndex);
         (this.unreliableRecorder as ICollectionChangeRecorder | undefined)?.shift(shiftIndex);
-    }
-
-    indexedOperation(index: number, operation: OPERATION) {
-        if (this.paused || this.isFieldStatic(index)) return;
-
-        if (this.isFieldUnreliable(index)) {
-            this.ensureUnreliableRecorder().recordRaw(index, operation);
-            this.root?.enqueueUnreliable(this);
-            return;
-        }
-
-        this.recordRaw(index, operation);
-        this.root?.enqueueChangeTree(this);
     }
 
     // Collection: child type from ref (["string"] | {map:"string"} | …).
