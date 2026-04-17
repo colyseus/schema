@@ -3,7 +3,7 @@ import { registerType } from "../registry.js";
 import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId } from "../symbols.js";
 import { Collection } from "../HelperTypes.js";
 import { ChangeTree, type IRef } from "../../encoder/ChangeTree.js";
-import { encodeKeyValueOperation } from "../../encoder/EncodeOperation.js";
+import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
 import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
@@ -23,7 +23,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     /** Monotonic counter for assigning indexes to newly-added items. */
     protected $refId: number = 0;
 
-    static [$encoder] = encodeKeyValueOperation;
+    static [$encoder] = encodeIndexedEntry;
     static [$decoder] = decodeKeyValueOperation;
 
     /**

@@ -105,8 +105,86 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
 }
 
 /**
- * Used for collections (MapSchema, CollectionSchema, SetSchema)
+ * Encode a single MapSchema entry. Splits the legacy
+ * `encodeKeyValueOperation` so the per-emission `typeof ref['set']` check
+ * is gone — MapSchema instances are routed here via their `[$encoder]`
+ * static, the dynamic-key string emission is unconditional on ADD.
+ *
  * @private
+ */
+export const encodeMapEntry: EncodeOperation = function (
+    encoder: Encoder,
+    bytes: Uint8Array,
+    changeTree: ChangeTree,
+    index: number,
+    operation: OPERATION,
+    it: Iterator,
+) {
+    bytes[it.offset++] = operation & 255;
+    encode.number(bytes, index, it);
+
+    if (operation === OPERATION.DELETE) return;
+
+    const ref = changeTree.ref;
+
+    // ADD or DELETE_AND_ADD: emit the user-facing string key for dynamic
+    // map fields. SetSchema/CollectionSchema use a different encoder and
+    // skip this entirely (no dynamic key).
+    if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+        const dynamicIndex = (ref as any)['$indexes'].get(index);
+        encode.string(bytes, dynamicIndex, it);
+    }
+
+    encodeValue(
+        encoder,
+        bytes,
+        (ref as any)[$childType],
+        (ref as any)[$getByIndex](index),
+        operation,
+        it,
+    );
+}
+
+/**
+ * Encode a single SetSchema / CollectionSchema entry. Wire format is the
+ * same as MapSchema minus the dynamic-key string, so this path skips the
+ * legacy `typeof ref['set']` check entirely.
+ *
+ * @private
+ */
+export const encodeIndexedEntry: EncodeOperation = function (
+    encoder: Encoder,
+    bytes: Uint8Array,
+    changeTree: ChangeTree,
+    index: number,
+    operation: OPERATION,
+    it: Iterator,
+) {
+    bytes[it.offset++] = operation & 255;
+    encode.number(bytes, index, it);
+
+    if (operation === OPERATION.DELETE) return;
+
+    const ref = changeTree.ref;
+    encodeValue(
+        encoder,
+        bytes,
+        (ref as any)[$childType],
+        (ref as any)[$getByIndex](index),
+        operation,
+        it,
+    );
+}
+
+/**
+ * Unified encoder kept for back-compat with external consumers that may
+ * have registered it directly via `static [$encoder] =
+ * encodeKeyValueOperation`. New code (and all internal collections)
+ * should use the split variants — `encodeMapEntry` for MapSchema and
+ * `encodeIndexedEntry` for SetSchema / CollectionSchema.
+ *
+ * The runtime `typeof ref['set']` check below is the per-emission cost
+ * the split is designed to remove.
  */
 export const encodeKeyValueOperation: EncodeOperation = function (
     encoder: Encoder,
@@ -116,57 +194,12 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     operation: OPERATION,
     it: Iterator,
 ) {
-    // encode operation
-    bytes[it.offset++] = operation & 255;
-
-    // encode index
-    encode.number(bytes, index, it);
-
-    // Do not encode value for DELETE operations
-    if (operation === OPERATION.DELETE) {
-        return;
+    const ref = changeTree.ref as any;
+    if ((operation & OPERATION.ADD) === OPERATION.ADD && typeof ref['set'] === "function") {
+        encodeMapEntry(encoder, bytes, changeTree, index, operation, it, false, false);
+    } else {
+        encodeIndexedEntry(encoder, bytes, changeTree, index, operation, it, false, false);
     }
-
-    const ref = changeTree.ref;
-
-    //
-    // encode "alias" for dynamic fields (maps)
-    //
-    if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
-        if (typeof(ref['set']) === "function") {
-            //
-            // MapSchema dynamic key
-            //
-            const dynamicIndex = changeTree.ref['$indexes'].get(index);
-            encode.string(bytes, dynamicIndex, it);
-        }
-    }
-
-    const type = ref[$childType];
-    const value = ref[$getByIndex](index);
-
-    // try { throw new Error(); } catch (e) {
-    //     // only print if not coming from Reflection.ts
-    //     if (!e.stack.includes("src/Reflection.ts")) {
-    //         console.log("encodeKeyValueOperation -> ", {
-    //             ref: changeTree.ref.constructor.name,
-    //             field,
-    //             operation: OPERATION[operation],
-    //             value: value?.toJSON(),
-    //             items: ref.toJSON(),
-    //         });
-    //     }
-    // }
-
-    // TODO: inline this function call small performance gain
-    encodeValue(
-        encoder,
-        bytes,
-        type,
-        value,
-        operation,
-        it
-    );
 }
 
 /**

@@ -4,7 +4,7 @@ import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
-import { encodeKeyValueOperation } from "../../encoder/EncodeOperation.js";
+import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
 import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
 
@@ -25,7 +25,7 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
     /** Monotonic counter for assigning indexes to newly-added items. */
     protected $refId: number = 0;
 
-    static [$encoder] = encodeKeyValueOperation;
+    static [$encoder] = encodeIndexedEntry;
     static [$decoder] = decodeKeyValueOperation;
 
     /**

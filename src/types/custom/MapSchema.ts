@@ -4,7 +4,7 @@ import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
-import { encodeKeyValueOperation } from "../../encoder/EncodeOperation.js";
+import { encodeMapEntry } from "../../encoder/EncodeOperation.js";
 import { MapJournal } from "../../encoder/MapJournal.js";
 import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
@@ -37,7 +37,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      */
     get _collectionIndexes(): { [key: string]: number } { return this.journal.indexByKey; }
 
-    static [$encoder] = encodeKeyValueOperation;
+    static [$encoder] = encodeMapEntry;
     static [$decoder] = decodeKeyValueOperation;
 
     /**
