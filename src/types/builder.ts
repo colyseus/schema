@@ -112,6 +112,21 @@ export class FieldBuilder<T = unknown> {
         return this;
     }
 
+    /**
+     * Opt a collection field into priority-batched streaming delivery —
+     * ADDs drain at most `maxPerTick` per tick per view (or per broadcast
+     * tick without a view). Applies to `t.map(X)` and `t.set(X)` /
+     * `t.collection(X)`. Redundant on `t.stream(X)` (the factory already
+     * sets this flag).
+     *
+     * Array streaming is not currently supported — positional operations
+     * (splice / unshift / reverse) make mid-tick budget holds unsafe.
+     */
+    stream(): this {
+        this._stream = true;
+        return this;
+    }
+
     /** Mark this field as deprecated. Pass `false` to silence the access error. */
     deprecated(throws = true): this {
         this._deprecated = true;

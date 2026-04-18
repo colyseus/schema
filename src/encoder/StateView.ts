@@ -297,16 +297,14 @@ export class StateView {
             this.addParentOf(changeTree, tag);
         }
 
-        // StreamSchema short-circuit: seed `_pendingByView` with every live
-        // position and stop — per-view priority/budget emit takes over from
-        // `Encoder.encodeView`. The normal forEachChild recursion below
-        // would force-add every element immediately, bypassing the budget.
-        if ((obj.constructor as any)?.$isStream === true) {
+        // Streamable-collection short-circuit: seed `_pendingByView` with
+        // every live position/index and stop — per-view priority/budget
+        // emit takes over from `Encoder.encodeView`. Covers `StreamSchema`
+        // and any `.stream()`-opted collection (e.g. MapSchema.stream()).
+        // The normal forEachChild recursion below would force-add every
+        // element immediately, bypassing the budget.
+        if (changeTree.isStreamCollection) {
             (obj as any)._seedViewPending(this.id);
-            // Stream field emit (position → refId link) is kicked off by
-            // the priority pass in encodeView, which calls view.add() on
-            // each selected element — that in turn seeds
-            // `view.changes[stream.refId]` via `addParentOf`.
             return true;
         }
 

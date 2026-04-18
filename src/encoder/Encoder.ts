@@ -484,9 +484,14 @@ export class Encoder<T extends Schema = any> {
             const streamRefId = s[$refId];
             if (streamRefId === undefined) continue;
 
-            const deletes: Set<number> = s._broadcastDeletes;
-            const pending: Set<number> = s._broadcastPending;
-            const sent: Set<number> = s._sentBroadcast;
+            // `inheritedFlags.ensureStreamState` allocates `_stream` the
+            // moment the tree picks up `isStreamCollection` — Root only
+            // tracks trees that reached that point, so `_stream` is
+            // guaranteed defined here.
+            const st = s._stream!;
+            const deletes: Set<number> = st.broadcastDeletes;
+            const pending: Set<number> = st.broadcastPending;
+            const sent: Set<number> = st.sentBroadcast;
             const hasDeletes = deletes.size > 0;
             const hasAdds = pending.size > 0;
 
@@ -508,13 +513,16 @@ export class Encoder<T extends Schema = any> {
                 }
 
                 // ADDs up to maxPerTick.
-                const max: number = s.maxPerTick;
+                const max: number = st.maxPerTick;
                 const emittedElements: any[] = [];
                 let count = 0;
                 const toDelete: number[] = [];
                 for (const pos of pending) {
                     if (count >= max) break;
-                    const element = s.$items.get(pos);
+                    // `$getByIndex` works for any streamable collection:
+                    // StreamSchema (Map<number, V>) and MapSchema (string-keyed
+                    // via journal index) both route through the same symbol.
+                    const element = s[$getByIndex](pos);
                     if (element === undefined) {
                         toDelete.push(pos);
                         continue;
@@ -558,7 +566,7 @@ export class Encoder<T extends Schema = any> {
             // so the main loop skips them. We pick up their dirty state
             // here so broadcast mode sees post-send field mutations.
             for (const pos of sent) {
-                const element = s.$items.get(pos);
+                const element = s[$getByIndex](pos);
                 if (element === undefined) continue;
                 const elTree: ChangeTree | undefined = element[$changes];
                 if (elTree === undefined || !elTree.has()) continue;
@@ -600,7 +608,10 @@ export class Encoder<T extends Schema = any> {
 
         for (const stream of streams) {
             const s: any = stream;
-            const pending: Set<number> | undefined = s._pendingByView.get(viewId);
+            // Guaranteed non-undefined: `inheritedFlags.ensureStreamState`
+            // runs before Root.registerStream.
+            const st = s._stream!;
+            const pending: Set<number> | undefined = st.pendingByView.get(viewId);
             if (pending === undefined || pending.size === 0) continue;
 
             // Materialize pending into an array so we can sort + slice.
@@ -610,25 +621,25 @@ export class Encoder<T extends Schema = any> {
             for (const p of pending) positions.push(p);
 
             if (priority !== undefined) {
-                const items: Map<number, any> = s.$items;
+                // Use the symbol-keyed accessor so Map/Set/Stream all route
+                // through the same lookup regardless of $items layout.
                 positions.sort(
-                    (a: number, b: number) => priority(stream, items.get(b)) - priority(stream, items.get(a)),
+                    (a: number, b: number) => priority(stream, s[$getByIndex](b)) - priority(stream, s[$getByIndex](a)),
                 );
             }
 
-            const max = s.maxPerTick as number;
+            const max = st.maxPerTick;
             const count = Math.min(positions.length, max);
 
-            let sent: Set<number> | undefined = s._sentByView.get(viewId);
+            let sent: Set<number> | undefined = st.sentByView.get(viewId);
             if (sent === undefined) {
                 sent = new Set();
-                s._sentByView.set(viewId, sent);
+                st.sentByView.set(viewId, sent);
             }
 
-            const items: Map<number, any> = s.$items;
             for (let i = 0; i < count; i++) {
                 const pos = positions[i];
-                const element = items.get(pos);
+                const element = s[$getByIndex](pos);
                 if (element === undefined) {
                     // Element was removed after being queued but before emit.
                     pending.delete(pos);

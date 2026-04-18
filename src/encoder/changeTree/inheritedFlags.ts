@@ -8,6 +8,8 @@ import { $changes, $childType } from "../../types/symbols.js";
 import type { Schema } from "../../Schema.js";
 import type { ChangeTree, Ref } from "../ChangeTree.js";
 import type { ICollectionChangeRecorder } from "../ChangeRecorder.js";
+import type { Streamable } from "../Root.js";
+import { ensureStreamState } from "../streaming.js";
 
 /**
  * Reconcile queue membership + inherited flags for a tree that just had
@@ -134,6 +136,27 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
         || tree.root.types.parentFiltered[key]
         || fieldHasViewTag
         || fieldHasStream;
+
+    // Flag collection trees attached to a `.stream()` field so the encoder
+    // routes their emission through the priority/broadcast pass. Applies
+    // when the tree IS the collection (not the collection's parent
+    // structure walk above). `parentIsCollection` was true at entry iff
+    // `tree.ref` is a child-of-collection (e.g. stream element) — we only
+    // set the flag on the collection itself, not its elements.
+    if (fieldHasStream && !parentIsCollection) {
+        tree.isStreamCollection = true;
+        // Allocate the lazy `_stream` slot once, here — so downstream
+        // helpers (`streamRouteAdd`, `_emitStreamPriority`, …) never need
+        // a null-check. `_stream` was always declared on the class at
+        // `undefined`, so this is a value write, not a shape transition.
+        ensureStreamState(tree.ref as unknown as Streamable);
+        // Auto-register with `root.streamTrees` so the encoder's priority /
+        // broadcast pass picks it up. Covers both `StreamSchema` and any
+        // `.stream()`-opted collection (e.g. MapSchema.stream()).
+        if (tree.root !== undefined) {
+            tree.root.registerStream(tree.ref as any);
+        }
+    }
 
     if (tree.isFiltered) {
         tree.isVisibilitySharedWithParent = (

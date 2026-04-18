@@ -14,6 +14,15 @@ import {
 import { ChangeTree, type IRef } from "../../encoder/ChangeTree.js";
 import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
+import {
+    createStreamableState,
+    streamDropView,
+    streamRouteAdd,
+    streamRouteClear,
+    streamRouteRemove,
+    streamSeedView,
+    type StreamableState,
+} from "../../encoder/streaming.js";
 import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
 
@@ -50,38 +59,26 @@ export class StreamSchema<V = any> implements IRef {
     protected _itemIndex: Map<V, number> = new Map();
 
     /**
-     * Per-view ADD backlog: positions never sent to that view yet.
-     * Populated on `add()` for every currently-active view, and on
-     * StateView join via the bootstrap seed.
+     * Streamable state — holds per-view and broadcast bookkeeping. Lazily
+     * allocated when the stream is attached to a Root (or when the user
+     * touches `maxPerTick`). `undefined` on detached streams so
+     * construction is cheap.
      */
-    _pendingByView: Map<number, Set<number>> = new Map();
+    _stream?: StreamableState;
 
-    /** Per-view SENT set, used to decide whether `remove()` emits a DELETE. */
-    _sentByView: Map<number, Set<number>> = new Map();
-
-    /**
-     * Broadcast-mode backlog. Used only when no StateView is registered on
-     * the Root — `Encoder.encode()` drains up to `maxPerTick` entries per
-     * shared tick. `_sentBroadcast` tracks already-emitted positions so
-     * `remove()` can decide between silent-drop and forced DELETE.
-     *
-     * Broadcast and view modes are mutually exclusive over a stream's
-     * lifetime — switching modes mid-room drops any unsent pending for
-     * the outgoing mode.
-     */
-    _broadcastPending: Set<number> = new Set();
-    _sentBroadcast: Set<number> = new Set();
-    _broadcastDeletes: Set<number> = new Set();
-
-    /** Per-view max element ADDs emitted per encode tick. */
-    maxPerTick: number = 32;
-
-    /** Registered with Root's stream set once attached to a parent. */
-    private _registered: boolean = false;
+    /** Max element ADDs emitted per encode tick (per view, or broadcast). */
+    get maxPerTick(): number {
+        return this._stream?.maxPerTick ?? 32;
+    }
+    set maxPerTick(n: number) {
+        (this._stream ??= createStreamableState()).maxPerTick = n;
+    }
 
     /**
      * Brand used by Root / StateView to detect stream trees without
-     * importing this class (avoids circular deps).
+     * importing this class (avoids circular deps). The `isStreamCollection`
+     * ChangeTree flag (set via `inheritedFlags`) is the preferred runtime
+     * check — this brand is kept for back-compat.
      */
     static readonly $isStream: true = true;
 
@@ -110,12 +107,10 @@ export class StreamSchema<V = any> implements IRef {
             enumerable: false,
             writable: true,
         });
-        this[$childType] = undefined as any;
-
-        // Streams are inherently view-scoped — elements must never emit on
-        // the shared (unfiltered) channel. Child element trees inherit
-        // `isFiltered` through the normal parent-chain flag inheritance.
-        this[$changes].isFiltered = true;
+        this[$childType] = undefined;
+        // `isFiltered` / `isStreamCollection` are set via `inheritedFlags`
+        // when this stream is attached to a parent field — no constructor-
+        // time init needed (the stream tree is inert until assignment).
     }
 
     /**
@@ -134,31 +129,11 @@ export class StreamSchema<V = any> implements IRef {
 
         // Attach element as a child — assigns $refId and wires the parent
         // chain so the element's own ChangeTree participates in encoding.
-        if ((value as any)[$changes] !== undefined) {
-            (value as any)[$changes].setParent(this, root, position);
+        if (value[$changes] !== undefined) {
+            value[$changes].setParent(this, root, position);
         }
 
-        if (root !== undefined) {
-            this._ensureRegistered(root);
-
-            if (root.activeViews.size === 0) {
-                // Broadcast mode — `Encoder.encode()` drains this set.
-                this._broadcastPending.add(position);
-            } else {
-                // Per-view mode — priority pass drains per-view pending.
-                const pendingByView = this._pendingByView;
-                root.forEachActiveView((view) => {
-                    const viewId = view.id;
-                    let pending = pendingByView.get(viewId);
-                    if (pending === undefined) {
-                        pending = new Set();
-                        pendingByView.set(viewId, pending);
-                    }
-                    pending.add(position);
-                });
-            }
-        }
-
+        if (root !== undefined) streamRouteAdd(this, root, position);
         return position;
     }
 
@@ -174,40 +149,10 @@ export class StreamSchema<V = any> implements IRef {
         this._itemIndex.delete(value);
         this.$items.delete(position);
 
-        const tree = this[$changes];
-        const root = tree.root;
+        const root = this[$changes].root;
         if (root !== undefined) {
-            // Broadcast-mode handling.
-            if (this._broadcastPending.delete(position)) {
-                // never sent — drop silently
-            } else if (this._sentBroadcast.delete(position)) {
-                this._broadcastDeletes.add(position);
-            }
-
-            // Per-view handling.
-            const myRefId = (this as any)[$refId];
-            root.forEachActiveView((view) => {
-                const viewId = view.id;
-                const pending = this._pendingByView.get(viewId);
-                if (pending?.has(position)) {
-                    pending.delete(position);
-                    return; // never sent — drop silently
-                }
-                const sent = this._sentByView.get(viewId);
-                if (sent?.has(position)) {
-                    sent.delete(position);
-                    // Force DELETE via view.changes (drained first in encodeView).
-                    let changes = view.changes.get(myRefId);
-                    if (changes === undefined) {
-                        changes = new Map();
-                        view.changes.set(myRefId, changes);
-                    }
-                    changes.set(position, OPERATION.DELETE);
-                }
-            });
-
-            // Release the element's changeTree reference.
-            if ((value as any)[$changes] !== undefined) {
+            streamRouteRemove(this, root, (this as any)[$refId], position);
+            if (value[$changes] !== undefined) {
                 root.remove((value as any)[$changes]);
             }
         }
@@ -221,38 +166,15 @@ export class StreamSchema<V = any> implements IRef {
 
     /** Remove every element; queue DELETE wire ops for already-sent items. */
     clear(): void {
-        const tree = this[$changes];
-        const root = tree.root;
+        const root = this[$changes].root;
         if (root !== undefined) {
-            // Broadcast mode: drop never-sent pending; force DELETE for sent.
-            this._broadcastPending.clear();
-            for (const pos of this._sentBroadcast) this._broadcastDeletes.add(pos);
-            this._sentBroadcast.clear();
-
-            // Per-view mode.
-            const myRefId = (this as any)[$refId];
-            root.forEachActiveView((view) => {
-                const viewId = view.id;
-                this._pendingByView.get(viewId)?.clear();
-
-                const sent = this._sentByView.get(viewId);
-                if (sent !== undefined && sent.size > 0) {
-                    let changes = view.changes.get(myRefId);
-                    if (changes === undefined) {
-                        changes = new Map();
-                        view.changes.set(myRefId, changes);
-                    }
-                    for (const pos of sent) changes.set(pos, OPERATION.DELETE);
-                    sent.clear();
-                }
-            });
+            streamRouteClear(this, root, (this as any)[$refId]);
             for (const el of this.$items.values()) {
-                if ((el as any)[$changes] !== undefined) {
+                if (el[$changes] !== undefined) {
                     root.remove((el as any)[$changes]);
                 }
             }
         }
-
         this.$items.clear();
         this._itemIndex.clear();
     }
@@ -343,42 +265,19 @@ export class StreamSchema<V = any> implements IRef {
         return cloned;
     }
 
-    // ────────────────────────────────────────────────────────────────────
-    // Internal
-    // ────────────────────────────────────────────────────────────────────
+    // ─── Streamable interface (Encoder priority / broadcast pass) ──────
 
-    /**
-     * Seed `_pendingByView[view.id]` with every live position. Called by
-     * StateView when the stream first becomes visible to a view — ensures
-     * late-joining clients pick up the existing backlog.
-     */
     _seedViewPending(viewId: number): void {
-        let pending = this._pendingByView.get(viewId);
-        if (pending === undefined) {
-            pending = new Set();
-            this._pendingByView.set(viewId, pending);
-        }
-        for (const position of this.$items.keys()) pending.add(position);
+        streamSeedView(this, viewId, this.$items.keys());
     }
 
-    /**
-     * Drop all per-view state for a view (on `view.dispose()`). Keeps
-     * stream memory bounded in long-running rooms with client churn.
-     */
     _dropView(viewId: number): void {
-        this._pendingByView.delete(viewId);
-        this._sentByView.delete(viewId);
-    }
-
-    private _ensureRegistered(root: any): void {
-        if (this._registered) return;
-        this._registered = true;
-        root.registerStream(this);
+        streamDropView(this, viewId);
     }
 
     /** Called by Root.remove when the stream's refcount hits zero. */
     _unregister(): void {
-        this._registered = false;
+        // no-op — `Root.unregisterStream` handles the Set removal.
     }
 }
 

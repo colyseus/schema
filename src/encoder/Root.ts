@@ -4,6 +4,24 @@ import { ChangeTree, ChangeTreeList, createChangeTreeList, type ChangeTreeNode }
 import { $changes, $refId } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { StreamSchema } from "../types/custom/StreamSchema.js";
+import type { StreamableState } from "./streaming.js";
+
+/**
+ * Minimal shape the encoder needs from a streamable collection. Both
+ * `StreamSchema` and `.stream()`-decorated `MapSchema`/`SetSchema` etc.
+ * satisfy this via a single lazily-allocated `_stream` slot — the
+ * per-view / broadcast bookkeeping lives on that object, not directly
+ * on the collection, so non-streaming instances pay zero Map/Set
+ * allocation cost.
+ */
+export interface Streamable {
+    [$refId]?: number;
+    [$changes]: ChangeTree;
+    _stream?: StreamableState;
+    _seedViewPending(viewId: number): void;
+    _dropView(viewId: number): void;
+    _unregister(): void;
+}
 
 export class Root {
     protected nextUniqueId: number = 0;
@@ -63,12 +81,12 @@ export class Root {
     public activeViews: Map<number, WeakRef<StateView>> = new Map();
 
     /**
-     * StreamSchema instances attached under this Root. Encoder.encodeView
-     * iterates this set to dispatch per-view priority/budget gates. Keyed
-     * by identity — streams self-register on first `add()` once their
-     * changeTree's root is set.
+     * Streamable collections attached under this Root — `StreamSchema`
+     * plus any collection opted into streaming via `.stream()` on the
+     * builder. Encoder.encodeView / broadcast pass iterates this set to
+     * dispatch per-view / per-tick budget gates.
      */
-    public streamTrees: Set<StreamSchema> = new Set();
+    public streamTrees: Set<Streamable> = new Set();
 
     public registerView(view: StateView): void {
         this.activeViews.set(view.id, new WeakRef(view));
@@ -103,11 +121,11 @@ export class Root {
         }
     }
 
-    public registerStream(stream: StreamSchema): void {
+    public registerStream(stream: Streamable): void {
         this.streamTrees.add(stream);
     }
 
-    public unregisterStream(stream: StreamSchema): void {
+    public unregisterStream(stream: Streamable): void {
         this.streamTrees.delete(stream);
     }
 
@@ -172,12 +190,13 @@ export class Root {
             changeTree.root = undefined;
             delete this.changeTrees[refId];
 
-            // Duck-typed stream detach — class-level brand avoids the
-            // circular import vs. `instanceof StreamSchema`.
-            const ctor = changeTree.ref?.constructor as any;
-            if (ctor?.$isStream === true) {
-                (changeTree.ref as StreamSchema)._unregister();
-                this.unregisterStream(changeTree.ref as StreamSchema);
+            // Streamable-collection detach (StreamSchema + any `.stream()`
+            // collection). Tree flag is cheaper than the class-level
+            // brand and covers both cases uniformly.
+            if (changeTree.isStreamCollection) {
+                const streamable = changeTree.ref as unknown as Streamable;
+                streamable._unregister?.();
+                this.unregisterStream(streamable);
             }
 
             this.removeFromQueue(changeTree);

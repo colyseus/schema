@@ -130,7 +130,10 @@ console.log(`Heap for ${UNIT_COUNT} units × 4 components: ${((heapAfter - heapB
     const tickTimes: number[] = [];
     const tickBytes: number[] = [];
     let tick = 0;
-    while ((s.units as any)._broadcastPending.size > 0 || (s.units as any)._broadcastDeletes.size > 0) {
+    while (
+        ((s.units as any)._stream?.broadcastPending.size ?? 0) > 0 ||
+        ((s.units as any)._stream?.broadcastDeletes.size ?? 0) > 0
+    ) {
         tick++;
         const t = performance.now();
         const bytes = enc.encode();
@@ -177,7 +180,7 @@ console.log(`Heap for ${UNIT_COUNT} units × 4 components: ${((heapAfter - heapB
     const tickBytes: number[] = [];
     let tick = 0;
     while (true) {
-        const pending = (s.units as any)._pendingByView.get(view.id);
+        const pending = (s.units as any)._stream?.pendingByView.get(view.id);
         if (!pending || pending.size === 0) break;
         tick++;
         const t = performance.now();

@@ -6,6 +6,14 @@ import { Collection } from "../HelperTypes.js";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
 import { encodeMapEntry } from "../../encoder/EncodeOperation.js";
 import { MapJournal } from "../../encoder/MapJournal.js";
+import {
+    createStreamableState,
+    streamDropView,
+    streamRouteAdd,
+    streamRouteRemove,
+    streamSeedView,
+    type StreamableState,
+} from "../../encoder/streaming.js";
 import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
 import { assertInstanceType } from "../../encoding/assert.js";
@@ -27,6 +35,23 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      * separate fields on this class ($indexes, _collectionIndexes, deletedItems).
      */
     protected journal: MapJournal<K> = new MapJournal<K>();
+
+    /**
+     * Streamable state — lazily allocated by `inheritedFlags` (or the
+     * `maxPerTick` setter) when streaming actually activates. `undefined`
+     * on every non-streaming MapSchema so the common case pays zero
+     * Map/Set allocation. Single slot → hidden-class shape stays stable
+     * across streaming and non-streaming instances.
+     */
+    _stream?: StreamableState;
+
+    /** Max ADD ops emitted per tick per view. Ignored outside streaming mode. */
+    get maxPerTick(): number {
+        return this._stream?.maxPerTick ?? 32;
+    }
+    set maxPerTick(n: number) {
+        (this._stream ??= createStreamableState()).maxPerTick = n;
+    }
 
     /** Backwards-compat alias for `journal.keyByIndex`. */
     get $indexes(): Map<number, K> { return this.journal.keyByIndex; }
@@ -142,7 +167,18 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         this.$items.set(key, value);
 
-        changeTree.change(index, operation);
+        // Streaming-mode ADD: route the new entry into per-view or broadcast
+        // pending instead of recording on the tree. The encoder's priority /
+        // broadcast pass will drain up to `maxPerTick` per tick. REPLACE
+        // and DELETE_AND_ADD fall through to the normal recorder path — the
+        // old value is already being emitted, so the swap just mutates.
+        if (operation === OPERATION.ADD && changeTree.isStreamCollection) {
+            if (changeTree.root !== undefined) {
+                streamRouteAdd(this, changeTree.root, index);
+            }
+        } else {
+            changeTree.change(index, operation);
+        }
 
         //
         // set value's parent after the value is set
@@ -166,12 +202,34 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         const index = this.journal.indexOf(key)!;
         const previousValue = this.$items.get(key)!;
+        const changeTree = this[$changes];
+
+        // Streaming-mode: silent-drop if the entry never made it out to any
+        // client (still in pending). Otherwise force DELETE on the channels
+        // where it was already sent — bypasses the normal recorder so the
+        // emission path stays symmetric with StreamSchema.
+        if (changeTree.isStreamCollection) {
+            const root = changeTree.root;
+            let neverSent = false;
+            if (root !== undefined) {
+                neverSent = streamRouteRemove(this, root, this[$refId], index);
+            }
+            if ((previousValue as any)?.[$changes] !== undefined) {
+                root?.remove(previousValue[$changes]);
+            }
+            this.$items.delete(key);
+            // Only snapshot if we actually need a DELETE op (already-sent):
+            // filter visibility checks look up the snapshot until the next
+            // encode end. Never-sent entries can skip the snapshot work.
+            if (!neverSent) this.journal.snapshot(index, previousValue);
+            return true;
+        }
 
         // Snapshot the deleted value (used by [$filter] for visibility checks
         // until $onEncodeEnd cleans it up).
         this.journal.snapshot(index, previousValue);
 
-        this[$changes].delete(index);
+        changeTree.delete(index);
 
         return this.$items.delete(key);
     }
@@ -249,6 +307,20 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     protected [$onEncodeEnd]() {
         this.journal.cleanupAfterEncode();
+    }
+
+    // ─── Streamable interface (Encoder priority / broadcast pass) ──────
+
+    _seedViewPending(viewId: number): void {
+        streamSeedView(this, viewId, this.journal.keyByIndex.keys());
+    }
+
+    _dropView(viewId: number): void {
+        streamDropView(this, viewId);
+    }
+
+    _unregister(): void {
+        // no-op — `Root.unregisterStream` handles the Set removal.
     }
 
     toJSON() {

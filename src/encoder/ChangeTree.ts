@@ -109,6 +109,12 @@ export interface ParentChain {
 // field's annotation — inherited at setParent/setRoot time.
 const IS_FILTERED = 1, IS_VISIBILITY_SHARED = 2, IS_NEW = 4;
 const IS_UNRELIABLE = 8, IS_TRANSIENT = 16, IS_STATIC = 32;
+// Collection tree attached to a parent field annotated `.stream()` —
+// drives the encoder's priority/broadcast pass. Set in inheritedFlags
+// so both `t.stream(X)` (via StreamSchema's `$isStream` brand) and
+// `t.map(X).stream()` / `t.set(X).stream()` route through the same
+// emission machinery.
+const IS_STREAM_COLLECTION = 64;
 
 export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     ref: T;
@@ -185,6 +191,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     set isTransient(v: boolean) { this.flags = v ? (this.flags | IS_TRANSIENT) : (this.flags & ~IS_TRANSIENT); }
     get isStatic() { return (this.flags & IS_STATIC) !== 0; }
     set isStatic(v: boolean) { this.flags = v ? (this.flags | IS_STATIC) : (this.flags & ~IS_STATIC); }
+    get isStreamCollection() { return (this.flags & IS_STREAM_COLLECTION) !== 0; }
+    set isStreamCollection(v: boolean) { this.flags = v ? (this.flags | IS_STREAM_COLLECTION) : (this.flags & ~IS_STREAM_COLLECTION); }
 
     // True iff tree inherits `isFiltered` OR its Schema class declares any
     // @view-tagged fields. StateView.addParentOf uses this to decide whether
