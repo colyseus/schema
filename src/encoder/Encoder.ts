@@ -603,7 +603,6 @@ export class Encoder<T extends Schema = any> {
         const streams = this.root.streamTrees;
         if (streams.size === 0) return;
 
-        const priority = view.streamPriority;
         const viewId = view.id;
 
         for (const stream of streams) {
@@ -613,6 +612,12 @@ export class Encoder<T extends Schema = any> {
             const st = s._stream!;
             const pending: Set<number> | undefined = st.pendingByView.get(viewId);
             if (pending === undefined || pending.size === 0) continue;
+
+            // Per-stream priority callback: declared at schema time (via
+            // `t.stream(X).priority(fn)` or the decorator form) and seeded
+            // into `_stream.priority` when the stream was attached. Users
+            // can also override per-instance by assigning to the setter.
+            const priority = st.priority;
 
             // Materialize pending into an array so we can sort + slice.
             // Small sets (typical: tens to low hundreds) — allocation is
@@ -624,7 +629,7 @@ export class Encoder<T extends Schema = any> {
                 // Use the symbol-keyed accessor so Map/Set/Stream all route
                 // through the same lookup regardless of $items layout.
                 positions.sort(
-                    (a: number, b: number) => priority(stream, s[$getByIndex](b)) - priority(stream, s[$getByIndex](a)),
+                    (a: number, b: number) => priority(view, s[$getByIndex](b)) - priority(view, s[$getByIndex](a)),
                 );
             }
 

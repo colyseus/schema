@@ -25,6 +25,8 @@ export interface BuilderDefinition {
     deprecatedThrows?: boolean;
     static?: boolean;
     stream?: boolean;
+    /** Declaration-scope priority callback for `.stream()` fields. */
+    streamPriority?: (view: any, element: any) => number;
 }
 
 /**
@@ -55,6 +57,7 @@ export class FieldBuilder<T = unknown> {
     _deprecatedThrows = true;
     _static = false;
     _stream = false;
+    _streamPriority: ((view: any, element: any) => number) | undefined = undefined;
 
     constructor(type: DefinitionType) {
         this._type = type;
@@ -127,6 +130,23 @@ export class FieldBuilder<T = unknown> {
         return this;
     }
 
+    /**
+     * Attach a priority callback for per-view `encodeView` delivery. The
+     * callback receives the client's StateView and the candidate element;
+     * higher return values emit first. Does nothing in broadcast mode
+     * (shared `encode()` drains FIFO). Only meaningful on stream fields.
+     *
+     * ```ts
+     * t.stream(Enemy).priority((view, enemy) =>
+     *     -dist2(view.anchor, enemy)
+     * )
+     * ```
+     */
+    priority<V = any>(fn: (view: any, element: V) => number): this {
+        this._streamPriority = fn as (view: any, element: any) => number;
+        return this;
+    }
+
     /** Mark this field as deprecated. Pass `false` to silence the access error. */
     deprecated(throws = true): this {
         this._deprecated = true;
@@ -147,6 +167,7 @@ export class FieldBuilder<T = unknown> {
             deprecatedThrows: this._deprecatedThrows,
             static: this._static,
             stream: this._stream,
+            streamPriority: this._streamPriority,
         };
     }
 }

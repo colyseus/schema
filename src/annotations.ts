@@ -41,7 +41,7 @@ export type DefinitionType<T extends PrimitiveType = PrimitiveType> = T
     | { map: T, default?: MapSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
     | { collection: T, default?: CollectionSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
     | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
-    | { stream: T, default?: StreamSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean };
+    | { stream: T, default?: StreamSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean, priority?: (view: any, element: InferValueType<T>) => number };
 
 export type Definition = { [field: string]: DefinitionType };
 
@@ -688,6 +688,7 @@ export function schema<
     const deprecatedFields: { [field: string]: boolean } = {};
     const staticFields: string[] = [];
     const streamFields: string[] = [];
+    const streamPriorityFields: { [field: string]: (view: any, element: any) => number } = {};
 
     for (const fieldName in fieldsAndMethods) {
         const value: any = (fieldsAndMethods as any)[fieldName];
@@ -703,6 +704,7 @@ export function schema<
             if (def.deprecated) { deprecatedFields[fieldName] = def.deprecatedThrows; }
             if (def.static) { staticFields.push(fieldName); }
             if (def.stream) { streamFields.push(fieldName); }
+            if (def.streamPriority !== undefined) { streamPriorityFields[fieldName] = def.streamPriority; }
 
             if (def.hasDefault) {
                 defaultValues[fieldName] = def.default;
@@ -813,6 +815,9 @@ export function schema<
         }
         for (const fieldName of streamFields) {
             Metadata.setStream(metadata, fieldName);
+        }
+        for (const fieldName in streamPriorityFields) {
+            Metadata.setStreamPriority(metadata, fieldName, streamPriorityFields[fieldName]);
         }
     }
 

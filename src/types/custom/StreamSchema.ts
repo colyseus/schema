@@ -75,6 +75,19 @@ export class StreamSchema<V = any> implements IRef {
     }
 
     /**
+     * Per-view priority callback. Initialized from the schema declaration
+     * (`.priority(fn)` or `@type({ stream, priority })`); assigning here
+     * overrides the class-level default for this instance. Only fires
+     * during `encodeView` — broadcast mode drains FIFO.
+     */
+    get priority(): ((view: any, element: V) => number) | undefined {
+        return this._stream?.priority as ((view: any, element: V) => number) | undefined;
+    }
+    set priority(fn: ((view: any, element: V) => number) | undefined) {
+        (this._stream ??= createStreamableState()).priority = fn;
+    }
+
+    /**
      * Brand used by Root / StateView to detect stream trees without
      * importing this class (avoids circular deps). The `isStreamCollection`
      * ChangeTree flag (set via `inheritedFlags`) is the preferred runtime

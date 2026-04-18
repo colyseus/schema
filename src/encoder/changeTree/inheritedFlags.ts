@@ -149,7 +149,15 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
         // helpers (`streamRouteAdd`, `_emitStreamPriority`, …) never need
         // a null-check. `_stream` was always declared on the class at
         // `undefined`, so this is a value write, not a shape transition.
-        ensureStreamState(tree.ref as unknown as Streamable);
+        const state = ensureStreamState(tree.ref as unknown as Streamable);
+        // Seed the priority callback from the schema declaration (builder's
+        // `.priority(fn)` or decorator's `{ stream: X, priority: fn }`).
+        // Instance-level overrides via `stream.priority = ...` win — only
+        // assign if the instance slot hasn't already been set.
+        if (state.priority === undefined) {
+            const declared = Metadata.getStreamPriority(parentMetadata, parentIndex);
+            if (declared !== undefined) state.priority = declared;
+        }
         // Auto-register with `root.streamTrees` so the encoder's priority /
         // broadcast pass picks it up. Covers both `StreamSchema` and any
         // `.stream()`-opted collection (e.g. MapSchema.stream()).

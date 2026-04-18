@@ -161,13 +161,15 @@ console.log(`Heap for ${UNIT_COUNT} units × 4 components: ${((heapAfter - heapB
         s.units.add(mkUnit(i));
     }
 
-    const view = new StateView();
-    view.add(s);
-    // Priority: higher id first (arbitrary — exercises the sort path).
-    view.streamPriority = (_stream, el: Unit) => {
+    // Set a declaration-scope priority via instance override (easier than
+    // redefining the schema class mid-file — exercises the same sort path).
+    s.units.priority = (_view: any, el: Unit) => {
         const pos = el.components[2] as Position;
         return -(pos?.value?.x ?? 0);
     };
+
+    const view = new StateView();
+    view.add(s);
 
     // Bootstrap.
     const bootIt = { offset: 0 };

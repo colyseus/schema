@@ -37,15 +37,18 @@ describe("Streamable MapSchema (t.map(X).stream())", () => {
 
     it("priority sort per StateView", () => {
         const Entity = schema({ id: t.number() }, "Entity");
-        const State = schema({ entities: t.map(Entity).stream() }, "State");
+        // Builder form: `.stream().priority((view, el) => ...)`. Prioritizes
+        // higher-id entities first.
+        const State = schema({
+            entities: t.map(Entity).stream()
+                .priority((_view: any, el: SchemaType<typeof Entity>) => el.id),
+        }, "State");
 
         const state: SchemaType<typeof State> = new State();
         state.entities.maxPerTick = 2;
         const encoder = getEncoder(state);
 
         const client = createClientWithView(state);
-        // prioritize higher-id entities
-        client.view.streamPriority = (_stream, el: SchemaType<typeof Entity>) => el.id;
         client.view.add(state);
 
         const ids = [1, 50, 10, 99];

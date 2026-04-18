@@ -75,7 +75,10 @@ describe("Type: StreamSchema", () => {
             @type("number") id: number = 0;
         }
         class State extends Schema {
-            @type({ stream: Entity }) entities = new StreamSchema<Entity>();
+            // Prioritize higher-id entities first. Declared at schema scope
+            // via the decorator shorthand.
+            @type({ stream: Entity, priority: (_view: any, el: Entity) => el.id })
+            entities = new StreamSchema<Entity>();
         }
 
         const state = new State();
@@ -83,8 +86,6 @@ describe("Type: StreamSchema", () => {
         const encoder = getEncoder(state);
 
         const client = createClientWithView(state);
-        // Prioritize higher-id entities first.
-        client.view.streamPriority = (_stream, el: Entity) => el.id;
         client.view.add(state);
 
         state.entities.add(new Entity().assign({ id: 1 }));
@@ -254,7 +255,17 @@ describe("Type: StreamSchema", () => {
                 @type("float32") y: number = 0;
             }
             class State extends Schema {
-                @type({ stream: Entity }) entities = new StreamSchema<Entity>();
+                // Priority declared at schema scope — closure over `view`
+                // (expected to carry an `anchor` position set per client).
+                @type({
+                    stream: Entity,
+                    priority: (view: any, el: Entity) => {
+                        const dx = el.x - view.anchor.x;
+                        const dy = el.y - view.anchor.y;
+                        return -(dx * dx + dy * dy);
+                    },
+                })
+                entities = new StreamSchema<Entity>();
             }
 
             const state = new State();
@@ -278,12 +289,7 @@ describe("Type: StreamSchema", () => {
             const clientY = 97.5;
 
             const client = createClientWithView(state);
-            client.view.streamPriority = (_stream, el: Entity) => {
-                const dx = el.x - clientX;
-                const dy = el.y - clientY;
-                // Negative squared distance — larger (closer) ranks first.
-                return -(dx * dx + dy * dy);
-            };
+            (client.view as any).anchor = { x: clientX, y: clientY };
             client.view.add(state);
 
             // Ground truth: server-side entities sorted by squared distance
@@ -334,7 +340,17 @@ describe("Type: StreamSchema", () => {
                 @type("float32") y: number = 0;
             }
             class State extends Schema {
-                @type({ stream: Entity }) entities = new StreamSchema<Entity>();
+                // Declaration-scope priority — the closure reads
+                // `view.anchor`, which the test mutates between ticks.
+                @type({
+                    stream: Entity,
+                    priority: (view: any, el: Entity) => {
+                        const dx = el.x - view.anchor.x;
+                        const dy = el.y - view.anchor.y;
+                        return -(dx * dx + dy * dy);
+                    },
+                })
+                entities = new StreamSchema<Entity>();
             }
 
             const state = new State();
@@ -351,15 +367,9 @@ describe("Type: StreamSchema", () => {
                 state.entities.add(e);
             }
 
-            // Mutable viewer coordinates captured by the priority closure.
-            const viewer = { x: 0, y: 0 };
-
             const client = createClientWithView(state);
-            client.view.streamPriority = (_stream, el: Entity) => {
-                const dx = el.x - viewer.x;
-                const dy = el.y - viewer.y;
-                return -(dx * dx + dy * dy);
-            };
+            const anchor = { x: 0, y: 0 };
+            (client.view as any).anchor = anchor;
             client.view.add(state);
 
             // Viewer at (0, 0): ticks 1–2 drain 40 entities closest to origin.
@@ -368,8 +378,8 @@ describe("Type: StreamSchema", () => {
             assert.strictEqual(client.state.entities.length, 40);
 
             // Teleport the viewer to the far corner.
-            viewer.x = 190;
-            viewer.y = 90;
+            anchor.x = 190;
+            anchor.y = 90;
 
             // Tick 3: 20 more entities arrive — these should be the 20
             // closest to (190, 90) among the 160 still pending.
@@ -778,12 +788,19 @@ describe("Type: StreamSchema", () => {
 
     });
 
-    it("two views with different priority callbacks see different orderings", () => {
+    it("two views with different per-view state see different orderings", () => {
         class Entity extends Schema {
             @type("number") id: number = 0;
         }
         class State extends Schema {
-            @type({ stream: Entity }) entities = new StreamSchema<Entity>();
+            // Single declaration-scope callback — each view drives its own
+            // ordering by exposing per-client state on the view itself.
+            @type({
+                stream: Entity,
+                priority: (view: any, el: Entity) =>
+                    view.sortAscending ? -el.id : el.id,
+            })
+            entities = new StreamSchema<Entity>();
         }
 
         const state = new State();
@@ -791,11 +808,11 @@ describe("Type: StreamSchema", () => {
         const encoder = getEncoder(state);
 
         const clientA = createClientWithView(state);
-        clientA.view.streamPriority = (_s, el: Entity) => el.id; // highest id first
+        (clientA.view as any).sortAscending = false; // highest id first
         clientA.view.add(state);
 
         const clientB = createClientWithView(state);
-        clientB.view.streamPriority = (_s, el: Entity) => -el.id; // lowest id first
+        (clientB.view as any).sortAscending = true;  // lowest id first
         clientB.view.add(state);
 
         state.entities.add(new Entity().assign({ id: 1 }));

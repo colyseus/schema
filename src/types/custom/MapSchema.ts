@@ -53,6 +53,19 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         (this._stream ??= createStreamableState()).maxPerTick = n;
     }
 
+    /**
+     * Per-view priority callback for `.stream()` maps. Initialized from the
+     * schema declaration (`t.map(X).stream().priority(fn)` or `@type({ map,
+     * priority })`); assigning here overrides for this instance. Only fires
+     * during `encodeView` — broadcast mode drains FIFO.
+     */
+    get priority(): ((view: any, element: V) => number) | undefined {
+        return this._stream?.priority as ((view: any, element: V) => number) | undefined;
+    }
+    set priority(fn: ((view: any, element: V) => number) | undefined) {
+        (this._stream ??= createStreamableState()).priority = fn;
+    }
+
     /** Backwards-compat alias for `journal.keyByIndex`. */
     get $indexes(): Map<number, K> { return this.journal.keyByIndex; }
 

@@ -87,15 +87,6 @@ export class StateView {
      */
     changes = new Map<number, Map<number, OPERATION>>();
 
-    /**
-     * Per-view priority callback for `t.stream(...)` collections. Returning
-     * a higher number prioritizes that element for earlier emission when
-     * the stream's `maxPerTick` cap can't fit the full backlog.
-     *
-     * Called once per pending element per tick. Leave undefined for FIFO.
-     */
-    streamPriority?: (stream: any, element: any) => number;
-
     constructor(public iterable: boolean = false) {
         if (iterable) {
             this.items = [];

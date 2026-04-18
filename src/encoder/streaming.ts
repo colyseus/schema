@@ -34,6 +34,13 @@ export interface StreamableState {
     broadcastDeletes: Set<number>;
     /** Max ADD ops emitted per tick per view (or per shared tick). */
     maxPerTick: number;
+    /**
+     * Priority callback seeded from the schema declaration. Receives the
+     * client's StateView and the candidate element; higher return values
+     * emit first. Broadcast `encode()` ignores this and drains FIFO.
+     * Instance-level override: assign to `stream.priority`.
+     */
+    priority?: (view: any, element: any) => number;
 }
 
 export function createStreamableState(): StreamableState {

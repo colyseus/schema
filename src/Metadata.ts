@@ -1,7 +1,7 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
 import { getType, registeredTypes } from "./types/registry.js";
-import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $staticFieldIndexes, $streamFieldIndexes, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $staticFieldIndexes, $streamFieldIndexes, $streamPriorities, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
 
@@ -27,6 +27,7 @@ export type Metadata =
     { [$transientFieldIndexes]: number[]; } & // all field indexes tagged with @transient (not persisted to snapshots)
     { [$staticFieldIndexes]: number[]; } & // all field indexes tagged with @static (not tracked after assignment)
     { [$streamFieldIndexes]: number[]; } & // all field indexes holding a t.stream(...) collection
+    { [$streamPriorities]: { [field: number]: (view: any, element: any) => number }; } & // per-stream-field priority callback declared at schema definition time
     { [$encoders]: Array<(bytes: Uint8Array, value: any, it: any) => void>; } & // pre-computed encoder fn per primitive field
     { [field: number]: MetadataField; } & // index => field name
     { [field: string]: number; } & // field name => field metadata
@@ -158,6 +159,12 @@ export const Metadata = {
             if (!metadata[$streamFieldIndexes].includes(index)) {
                 metadata[$streamFieldIndexes].push(index);
             }
+            // Pick up the declaration-scope priority callback if present in
+            // the `@type({ stream: X, priority: fn })` shorthand.
+            const priorityFn = (type as any)?.priority;
+            if (typeof priorityFn === "function") {
+                Metadata.setStreamPriority(metadata as any, name, priorityFn);
+            }
         }
     },
 
@@ -268,6 +275,35 @@ export const Metadata = {
             });
         }
         metadata[$streamFieldIndexes].push(index);
+    },
+
+    /**
+     * Attach a declaration-scope priority callback to a stream field.
+     * Called at schema definition time (via `t.stream(X).priority(fn)` or
+     * `@type({ stream: X, priority: fn })`), looked up at stream-attach
+     * time to seed the instance's `_stream.priority` slot. The callback
+     * signature is `(view: StateView, element: V) => number` — only fires
+     * during `encodeView`, broadcast mode emits FIFO regardless.
+     */
+    setStreamPriority(
+        metadata: Metadata,
+        fieldName: string,
+        fn: (view: any, element: any) => number,
+    ) {
+        const index = metadata[fieldName];
+        if (!metadata[$streamPriorities]) {
+            Object.defineProperty(metadata, $streamPriorities, {
+                value: {},
+                enumerable: false,
+                configurable: true,
+                writable: true,
+            });
+        }
+        metadata[$streamPriorities][index] = fn;
+    },
+
+    getStreamPriority(metadata: Metadata | undefined, index: number) {
+        return metadata?.[$streamPriorities]?.[index];
     },
 
     setFields<T extends { new (...args: any[]): InstanceType<T> } = any>(target: T, fields: { [field in keyof InstanceType<T>]?: DefinitionType }) {

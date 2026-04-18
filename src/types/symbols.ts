@@ -85,3 +85,4 @@ export const $unreliableFieldIndexes = "~__unreliableFieldIndexes";
 export const $transientFieldIndexes = "~__transientFieldIndexes";
 export const $staticFieldIndexes = "~__staticFieldIndexes";
 export const $streamFieldIndexes = "~__streamFieldIndexes";
+export const $streamPriorities = "~__streamPriorities";
