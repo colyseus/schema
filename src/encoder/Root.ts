@@ -2,6 +2,8 @@ import { OPERATION } from "../encoding/spec.js";
 import { TypeContext } from "../types/TypeContext.js";
 import { ChangeTree, ChangeTreeList, createChangeTreeList, type ChangeTreeNode } from "./ChangeTree.js";
 import { $changes, $refId } from "../types/symbols.js";
+import type { StateView } from "./StateView.js";
+import type { StreamSchema } from "../types/custom/StreamSchema.js";
 
 export class Root {
     protected nextUniqueId: number = 0;
@@ -50,6 +52,63 @@ export class Root {
     /** Return a view ID to the freelist for reuse. */
     public releaseViewId(id: number): void {
         this._freeViewIds.push(id);
+    }
+
+    /**
+     * Currently-bound StateViews, keyed by view ID and held via `WeakRef`
+     * so the FinalizationRegistry backstop in StateView still works when
+     * the user forgets `dispose()`. Callers must iterate via
+     * `forEachActiveView`, which prunes dead entries.
+     */
+    public activeViews: Map<number, WeakRef<StateView>> = new Map();
+
+    /**
+     * StreamSchema instances attached under this Root. Encoder.encodeView
+     * iterates this set to dispatch per-view priority/budget gates. Keyed
+     * by identity — streams self-register on first `add()` once their
+     * changeTree's root is set.
+     */
+    public streamTrees: Set<StreamSchema> = new Set();
+
+    public registerView(view: StateView): void {
+        this.activeViews.set(view.id, new WeakRef(view));
+    }
+
+    public unregisterView(view: StateView): void {
+        this.activeViews.delete(view.id);
+        // Clear per-view state on every registered stream so dispose()ing
+        // a view doesn't leak its `_pendingByView` / `_sentByView` entries
+        // indefinitely. O(streams) on dispose, acceptable since dispose is
+        // rare (once per client disconnect).
+        const id = view.id;
+        for (const stream of this.streamTrees) {
+            stream._dropView(id);
+        }
+    }
+
+    /**
+     * Iterate all live StateViews bound to this Root. Prunes entries
+     * whose underlying view has been garbage collected without an
+     * explicit `dispose()`.
+     */
+    public forEachActiveView(cb: (view: StateView) => void): void {
+        for (const [id, ref] of this.activeViews) {
+            const view = ref.deref();
+            if (view === undefined) {
+                this.activeViews.delete(id);
+                for (const stream of this.streamTrees) stream._dropView(id);
+                continue;
+            }
+            cb(view);
+        }
+    }
+
+    public registerStream(stream: StreamSchema): void {
+        this.streamTrees.add(stream);
+    }
+
+    public unregisterStream(stream: StreamSchema): void {
+        this.streamTrees.delete(stream);
     }
 
     constructor(public types: TypeContext, startRefId: number = 0) {
@@ -112,6 +171,14 @@ export class Root {
             //
             changeTree.root = undefined;
             delete this.changeTrees[refId];
+
+            // Duck-typed stream detach — class-level brand avoids the
+            // circular import vs. `instanceof StreamSchema`.
+            const ctor = changeTree.ref?.constructor as any;
+            if (ctor?.$isStream === true) {
+                (changeTree.ref as StreamSchema)._unregister();
+                this.unregisterStream(changeTree.ref as StreamSchema);
+            }
 
             this.removeFromQueue(changeTree);
             this.removeFromUnreliableQueue(changeTree);

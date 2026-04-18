@@ -1,7 +1,7 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
 import { getType, registeredTypes } from "./types/registry.js";
-import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $staticFieldIndexes, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $staticFieldIndexes, $streamFieldIndexes, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
 
@@ -26,6 +26,7 @@ export type Metadata =
     { [$unreliableFieldIndexes]: number[]; } & // all field indexes tagged with @unreliable
     { [$transientFieldIndexes]: number[]; } & // all field indexes tagged with @transient (not persisted to snapshots)
     { [$staticFieldIndexes]: number[]; } & // all field indexes tagged with @static (not tracked after assignment)
+    { [$streamFieldIndexes]: number[]; } & // all field indexes holding a t.stream(...) collection
     { [$encoders]: Array<(bytes: Uint8Array, value: any, it: any) => void>; } & // pre-computed encoder fn per primitive field
     { [field: number]: MetadataField; } & // index => field name
     { [field: string]: number; } & // field name => field metadata
@@ -138,6 +139,26 @@ export const Metadata = {
             }
             metadata[$refTypeFieldIndexes].push(index);
         }
+
+        // `{ stream: ... }` collections are always view-scoped (priority-
+        // batched emit). Auto-flag here so both `@type({stream: ...})` and
+        // the `t.stream(...)` builder route into the same filter / encoder
+        // dispatch without the caller needing an extra setStream() call.
+        const t = metadata[index].type;
+        if (t && typeof t === "object" && (t as any)["stream"] !== undefined) {
+            metadata[index].stream = true;
+            if (!metadata[$streamFieldIndexes]) {
+                Object.defineProperty(metadata, $streamFieldIndexes, {
+                    value: [],
+                    enumerable: false,
+                    configurable: true,
+                    writable: true,
+                });
+            }
+            if (!metadata[$streamFieldIndexes].includes(index)) {
+                metadata[$streamFieldIndexes].push(index);
+            }
+        }
     },
 
     setTag(metadata: Metadata, fieldName: string, tag: number) {
@@ -232,6 +253,21 @@ export const Metadata = {
             });
         }
         metadata[$staticFieldIndexes].push(index);
+    },
+
+    setStream(metadata: Metadata, fieldName: string) {
+        const index = metadata[fieldName];
+        metadata[index].stream = true;
+
+        if (!metadata[$streamFieldIndexes]) {
+            Object.defineProperty(metadata, $streamFieldIndexes, {
+                value: [],
+                enumerable: false,
+                configurable: true,
+                writable: true,
+            });
+        }
+        metadata[$streamFieldIndexes].push(index);
     },
 
     setFields<T extends { new (...args: any[]): InstanceType<T> } = any>(target: T, fields: { [field in keyof InstanceType<T>]?: DefinitionType }) {
@@ -400,6 +436,16 @@ export const Metadata = {
                     });
                 }
 
+                // $streamFieldIndexes
+                if (parentMetadata[$streamFieldIndexes] !== undefined) {
+                    Object.defineProperty(metadata, $streamFieldIndexes, {
+                        value: [...parentMetadata[$streamFieldIndexes]],
+                        enumerable: false,
+                        configurable: true,
+                        writable: true,
+                    });
+                }
+
                 // $descriptors
                 Object.defineProperty(metadata, $descriptors, {
                     value: { ...parentMetadata[$descriptors] },
@@ -459,5 +505,9 @@ export const Metadata = {
 
     hasStaticAtIndex(metadata: Metadata, index: number) {
         return metadata?.[$staticFieldIndexes]?.includes(index);
+    },
+
+    hasStreamAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$streamFieldIndexes]?.includes(index);
     }
 }

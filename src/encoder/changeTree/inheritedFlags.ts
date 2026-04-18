@@ -124,16 +124,23 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
     key += `-${parentIndex}`;
 
     const fieldHasViewTag = Metadata.hasViewTagAtIndex(parentMetadata, parentIndex);
+    // Stream fields are always view-scoped: the stream itself and its
+    // child elements must behave as filtered trees. Elements must NOT
+    // share visibility with the parent stream — `encodeView`'s priority
+    // pass is the only way elements become visible to a view.
+    const fieldHasStream = Metadata.hasStreamAtIndex(parentMetadata, parentIndex);
 
     tree.isFiltered = parentChangeTree.isFiltered
         || tree.root.types.parentFiltered[key]
-        || fieldHasViewTag;
+        || fieldHasViewTag
+        || fieldHasStream;
 
     if (tree.isFiltered) {
         tree.isVisibilitySharedWithParent = (
             parentChangeTree.isFiltered &&
             typeof (refType) !== "string" &&
             !fieldHasViewTag &&
+            !fieldHasStream &&
             parentIsCollection
         );
     }

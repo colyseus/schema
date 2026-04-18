@@ -1,6 +1,6 @@
 import { Metadata } from "../Metadata.js";
 import { Schema } from "../Schema.js";
-import { $viewFieldIndexes } from "./symbols.js";
+import { $streamFieldIndexes, $viewFieldIndexes } from "./symbols.js";
 
 export class TypeContext {
     types: { [id: number]: typeof Schema; } = {};
@@ -100,7 +100,9 @@ export class TypeContext {
         const metadata: Metadata = (klass[Symbol.metadata] ??= {} as Metadata);
 
         // if any schema/field has filters, mark "context" as having filters.
-        if (metadata[$viewFieldIndexes]) {
+        // Stream fields are always view-scoped — treat like @view tags for
+        // filter inheritance.
+        if (metadata[$viewFieldIndexes] || metadata[$streamFieldIndexes]) {
             this.hasFilters = true;
         }
 

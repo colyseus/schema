@@ -17,7 +17,7 @@
  * during encode).
  */
 import { Metadata } from "../Metadata.js";
-import { $encodeDescriptor, $encoder, $encoders, $filter, $filterBitmask, $numFields, $staticFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
+import { $encodeDescriptor, $encoder, $encoders, $filter, $filterBitmask, $numFields, $staticFieldIndexes, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 
@@ -48,8 +48,15 @@ export interface EncodeDescriptor {
      */
     hasAnyStatic: boolean;
     hasAnyUnreliable: boolean;
+    hasAnyStream: boolean;
     staticBitmask: number;
     unreliableBitmask: number;
+    /**
+     * Bit i set iff field i holds a `t.stream(...)` collection. Hot encode
+     * path reads this to dispatch stream fields into the priority/budget
+     * gate instead of the normal recorder iteration.
+     */
+    streamBitmask: number;
 
     /**
      * Per-field parallel arrays — Schemas only (empty arrays for
@@ -167,8 +174,10 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         filterBitmask: isSchema ? computeFilterBitmask(metadata) : 0,
         hasAnyStatic: (metadata?.[$staticFieldIndexes]?.length ?? 0) > 0,
         hasAnyUnreliable: (metadata?.[$unreliableFieldIndexes]?.length ?? 0) > 0,
+        hasAnyStream: (metadata?.[$streamFieldIndexes]?.length ?? 0) > 0,
         staticBitmask: indexesToBitmask(metadata?.[$staticFieldIndexes]),
         unreliableBitmask: indexesToBitmask(metadata?.[$unreliableFieldIndexes]),
+        streamBitmask: indexesToBitmask(metadata?.[$streamFieldIndexes]),
         names: arrays.names,
         types: arrays.types,
         tags: arrays.tags,

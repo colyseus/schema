@@ -23,6 +23,7 @@ import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
 import type { CollectionSchema } from "../types/custom/CollectionSchema.js";
 import type { SetSchema } from "../types/custom/SetSchema.js";
+import type { StreamSchema } from "../types/custom/StreamSchema.js";
 
 import { Root } from "./Root.js";
 import { Metadata } from "../Metadata.js";
@@ -77,7 +78,7 @@ export interface IRef {
     [$deleteByIndex]?: (index: number) => void;
 }
 
-export type Ref = Schema | ArraySchema | MapSchema | CollectionSchema | SetSchema;
+export type Ref = Schema | ArraySchema | MapSchema | CollectionSchema | SetSchema | StreamSchema;
 
 // Linked list node for change trees
 export interface ChangeTreeNode {
@@ -224,6 +225,16 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         if (!desc.hasAnyStatic) return false;
         if (index < 32) return (desc.staticBitmask & (1 << index)) !== 0;
         return Metadata.hasStaticAtIndex(this.metadata, index);
+    }
+
+    // `t.stream(...)` collection fields — encoded via per-view priority/budget
+    // gate instead of emitting all dirty ADDs in one tick. Class-level short
+    // circuit avoids the metadata chase on schemas that carry no stream fields.
+    isFieldStream(index: number): boolean {
+        const desc = this.encDescriptor;
+        if (!desc.hasAnyStream) return false;
+        if (index < 32) return (desc.streamBitmask & (1 << index)) !== 0;
+        return Metadata.hasStreamAtIndex(this.metadata, index);
     }
 
     constructor(ref: T) {

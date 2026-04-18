@@ -1,6 +1,7 @@
 import type { Schema } from "../Schema.js";
 import { TypeContext } from "../types/TypeContext.js";
 import { $changes, $getByIndex, $refId } from "../types/symbols.js";
+import { Metadata } from "../Metadata.js";
 
 import { encode } from "../encoding/encode.js";
 import type { Iterator } from "../encoding/decode.js";
@@ -241,6 +242,15 @@ export class Encoder<T extends Schema = any> {
             recorder.forEachWithCtx(ctx, encodeChangeCb);
         }
 
+        // Broadcast-mode stream emission runs after the main loop (state /
+        // parent refs are already on the wire, so stream ADD ops can
+        // reference element refIds safely). Reliable shared pass only;
+        // skipped when any StateView is registered (priority pass in
+        // `encodeView` owns emission in that mode).
+        if (!unreliable && !hasView && this.root.activeViews.size === 0 && this.root.streamTrees.size > 0) {
+            this._emitStreamBroadcast(buffer, it);
+        }
+
         if (it.offset > buffer.byteLength) {
             buffer = this._resizeBuffer(buffer, it.offset);
             return this._encodeChannel({ offset: initialOffset }, view, buffer, initialOffset, unreliable);
@@ -373,6 +383,12 @@ export class Encoder<T extends Schema = any> {
     ) {
         const viewOffset = it.offset;
 
+        // Stream priority pass: drain up to `maxPerTick` per-view entries
+        // from every registered stream before draining view.changes. Each
+        // selected element is passed to `view.add()` which populates
+        // view.changes with the stream-link ADD + element-field ADDs.
+        this._emitStreamPriority(view);
+
         // encode visibility-triggered changes collected by view.add()
         for (const [refId, changes] of view.changes) {
             const changeTree: ChangeTree = this.root.changeTrees[refId];
@@ -445,6 +461,213 @@ export class Encoder<T extends Schema = any> {
             bytes.subarray(0, sharedOffset),
             bytes.subarray(viewOffset, it.offset)
         );
+    }
+
+    /**
+     * Broadcast-mode counterpart to `_emitStreamPriority`. Runs when NO
+     * StateViews are registered — streams fall back to broadcast mode
+     * where up to `maxPerTick` pending ADDs per stream emit to ALL clients
+     * each shared tick. DELETEs always flush (no cap).
+     *
+     * Emits directly to the shared-encode buffer: stream & element trees
+     * are `isFiltered=true` so the main loop would otherwise skip them.
+     * Runs AFTER the main loop so state / parent refs are already encoded
+     * — stream ADD ops reference element refIds, which must be decodable.
+     */
+    private _emitStreamBroadcast(buffer: Uint8Array, it: Iterator): void {
+        const streams = this.root.streamTrees;
+        for (const stream of streams) {
+            const s: any = stream;
+            const tree: ChangeTree = s[$changes];
+            // Stream is registered with Root but not yet assigned a refId
+            // (e.g. created but never attached to state). Skip.
+            const streamRefId = s[$refId];
+            if (streamRefId === undefined) continue;
+
+            const deletes: Set<number> = s._broadcastDeletes;
+            const pending: Set<number> = s._broadcastPending;
+            const sent: Set<number> = s._sentBroadcast;
+            const hasDeletes = deletes.size > 0;
+            const hasAdds = pending.size > 0;
+
+            const desc = tree.encDescriptor;
+            const streamEncoder = desc.encoder;
+            const streamMetadata = desc.metadata;
+
+            // Emit stream ADD/DELETE ops for this tick, if any.
+            if (hasDeletes || hasAdds) {
+                buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
+                encode.number(buffer, streamRefId, it);
+
+                // DELETEs first (flush all).
+                if (hasDeletes) {
+                    for (const pos of deletes) {
+                        streamEncoder(this, buffer, tree, pos, OPERATION.DELETE, it, false, false, streamMetadata);
+                    }
+                    deletes.clear();
+                }
+
+                // ADDs up to maxPerTick.
+                const max: number = s.maxPerTick;
+                const emittedElements: any[] = [];
+                let count = 0;
+                const toDelete: number[] = [];
+                for (const pos of pending) {
+                    if (count >= max) break;
+                    const element = s.$items.get(pos);
+                    if (element === undefined) {
+                        toDelete.push(pos);
+                        continue;
+                    }
+                    streamEncoder(this, buffer, tree, pos, OPERATION.ADD, it, false, false, streamMetadata);
+                    sent.add(pos);
+                    emittedElements.push(element);
+                    toDelete.push(pos);
+                    count++;
+                }
+                for (const pos of toDelete) pending.delete(pos);
+
+                // Emit each element's full state — forEachLive walks populated
+                // fields structurally, mirroring encodeAllView's bootstrap.
+                // Covers both static elements (dirty state was reset by
+                // inheritedFlags' becameStatic branch) and non-static (still
+                // has dirty state but the main loop skipped them because
+                // they're filtered).
+                for (const element of emittedElements) {
+                    const elTree: ChangeTree | undefined = element[$changes];
+                    if (elTree === undefined) continue;
+                    const elRefId = element[$refId];
+                    if (elRefId === undefined) continue;
+
+                    buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
+                    encode.number(buffer, elRefId, it);
+
+                    const elDesc = elTree.encDescriptor;
+                    const elEncoder = elDesc.encoder;
+                    const elMetadata = elDesc.metadata;
+                    elTree.forEachLive((idx: number) => {
+                        // @unreliable fields ship on the unreliable channel only.
+                        if (Metadata.hasUnreliableAtIndex(elMetadata, idx)) return;
+                        elEncoder(this, buffer, elTree, idx, OPERATION.ADD, it, false, false, elMetadata);
+                    });
+                }
+            }
+
+            // Emit mutation updates for already-sent elements. Element
+            // trees are `isFiltered=true` (inherited from stream field),
+            // so the main loop skips them. We pick up their dirty state
+            // here so broadcast mode sees post-send field mutations.
+            for (const pos of sent) {
+                const element = s.$items.get(pos);
+                if (element === undefined) continue;
+                const elTree: ChangeTree | undefined = element[$changes];
+                if (elTree === undefined || !elTree.has()) continue;
+
+                const elRefId = element[$refId];
+                if (elRefId === undefined) continue;
+
+                buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
+                encode.number(buffer, elRefId, it);
+
+                const elDesc = elTree.encDescriptor;
+                const elEncoder = elDesc.encoder;
+                const elMetadata = elDesc.metadata;
+                elTree.forEach((idx: number, op: OPERATION) => {
+                    if (idx < 0) return; // pure ops (collection only)
+                    if (Metadata.hasUnreliableAtIndex(elMetadata, idx)) return;
+                    elEncoder(this, buffer, elTree, idx, op, it, false, false, elMetadata);
+                });
+            }
+        }
+    }
+
+    /**
+     * Walk every registered stream, pick up to `maxPerTick` positions from
+     * this view's pending backlog (priority-sorted when the view supplies a
+     * `streamPriority` callback), and hand each element to `view.add()`.
+     * `view.add()` seeds `view.changes` so the subsequent drain emits both
+     * the stream-link (position → refId) and the element's field data.
+     *
+     * Designed to run at the very top of `encodeView`, BEFORE the
+     * view.changes drain loop.
+     */
+    private _emitStreamPriority(view: StateView): void {
+        const streams = this.root.streamTrees;
+        if (streams.size === 0) return;
+
+        const priority = view.streamPriority;
+        const viewId = view.id;
+
+        for (const stream of streams) {
+            const s: any = stream;
+            const pending: Set<number> | undefined = s._pendingByView.get(viewId);
+            if (pending === undefined || pending.size === 0) continue;
+
+            // Materialize pending into an array so we can sort + slice.
+            // Small sets (typical: tens to low hundreds) — allocation is
+            // negligible compared to the priority sort and element walk.
+            const positions: number[] = [];
+            for (const p of pending) positions.push(p);
+
+            if (priority !== undefined) {
+                const items: Map<number, any> = s.$items;
+                positions.sort(
+                    (a: number, b: number) => priority(stream, items.get(b)) - priority(stream, items.get(a)),
+                );
+            }
+
+            const max = s.maxPerTick as number;
+            const count = Math.min(positions.length, max);
+
+            let sent: Set<number> | undefined = s._sentByView.get(viewId);
+            if (sent === undefined) {
+                sent = new Set();
+                s._sentByView.set(viewId, sent);
+            }
+
+            const items: Map<number, any> = s.$items;
+            for (let i = 0; i < count; i++) {
+                const pos = positions[i];
+                const element = items.get(pos);
+                if (element === undefined) {
+                    // Element was removed after being queued but before emit.
+                    pending.delete(pos);
+                    continue;
+                }
+                // view.add() handles: markVisible(element), addParentOf
+                // (sets stream.refId[pos] = ADD in view.changes), and
+                // forEachLive seeding of element-field ADDs — but only
+                // when the element is NOT marked `isNew` (heuristic that
+                // assumes shared encode will emit it). Stream elements
+                // are filtered, so shared encode skips them; we must
+                // force a full-sync seed ourselves. Uses `forEachLive`
+                // to emit every live field as ADD, identical to what
+                // encodeAllView does for view bootstrap.
+                view.add(element);
+                // Force-seed element fields even when view.add skipped
+                // forEachLive (isNew && !isChildAdded). Matches the
+                // bootstrap emission encodeAllView does for filtered
+                // refs. `@unreliable` fields are excluded — they ship
+                // on the unreliable channel and force-seeding here
+                // would leak onto the reliable view pass.
+                const elTree = element[$changes];
+                if (elTree !== undefined) {
+                    const elRefId = element[$refId];
+                    let elChanges = view.changes.get(elRefId);
+                    if (elChanges === undefined) {
+                        elChanges = new Map();
+                        view.changes.set(elRefId, elChanges);
+                    }
+                    const elMetadata = elTree.metadata;
+                    elTree.forEachLive((index: number) => {
+                        if (Metadata.hasUnreliableAtIndex(elMetadata, index)) return;
+                        elChanges!.set(index, OPERATION.ADD);
+                    });
+                }
+                pending.delete(pos);
+                sent.add(pos);
+            }
+        }
     }
 
     discardChanges() {

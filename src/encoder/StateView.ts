@@ -87,6 +87,15 @@ export class StateView {
      */
     changes = new Map<number, Map<number, OPERATION>>();
 
+    /**
+     * Per-view priority callback for `t.stream(...)` collections. Returning
+     * a higher number prioritizes that element for earlier emission when
+     * the stream's `maxPerTick` cap can't fit the full backlog.
+     *
+     * Called once per pending element per tick. Leave undefined for FIFO.
+     */
+    streamPriority?: (stream: any, element: any) => number;
+
     constructor(public iterable: boolean = false) {
         if (iterable) {
             this.items = [];
@@ -104,6 +113,7 @@ export class StateView {
         this.id = root.acquireViewId();
         this._slot = this.id >> 5;
         this._bit = 1 << (this.id & 31);
+        root.registerView(this);
         _disposeRegistry.register(
             this,
             { root, id: this.id, slot: this._slot, bit: this._bit },
@@ -123,6 +133,7 @@ export class StateView {
      */
     public dispose(): void {
         if (this._root === undefined) return;
+        this._root.unregisterView(this);
         _clearViewBitFromAllTrees(this._root, this._slot, this._bit);
         this._root.releaseViewId(this.id);
         _disposeRegistry.unregister(this);
@@ -284,6 +295,19 @@ export class StateView {
         // - if it were previously filtered out
         if (checkIncludeParent && parentChangeTree) {
             this.addParentOf(changeTree, tag);
+        }
+
+        // StreamSchema short-circuit: seed `_pendingByView` with every live
+        // position and stop — per-view priority/budget emit takes over from
+        // `Encoder.encodeView`. The normal forEachChild recursion below
+        // would force-add every element immediately, bypassing the budget.
+        if ((obj.constructor as any)?.$isStream === true) {
+            (obj as any)._seedViewPending(this.id);
+            // Stream field emit (position → refId link) is kicked off by
+            // the priority pass in encodeView, which calls view.add() on
+            // each selected element — that in turn seeds
+            // `view.changes[stream.refId]` via `addParentOf`.
+            return true;
         }
 
         let changes = this.changes.get(obj[$refId]);

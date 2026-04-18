@@ -14,6 +14,9 @@ export { CollectionSchema };
 import { SetSchema } from "./types/custom/SetSchema.js";
 export { SetSchema };
 
+import { StreamSchema } from "./types/custom/StreamSchema.js";
+export { StreamSchema };
+
 import { registerType, defineCustomTypes } from "./types/registry.js";
 export { registerType, defineCustomTypes };
 
@@ -21,6 +24,8 @@ registerType("map", { constructor: MapSchema });
 registerType("array", { constructor: ArraySchema });
 registerType("set", { constructor: SetSchema });
 registerType("collection", { constructor: CollectionSchema, });
+// "stream" is registered inside StreamSchema.ts (same pattern as others
+// that co-locate registerType with the class for side-effect safety).
 
 // Utils
 export { dumpChanges } from "./utils.js";

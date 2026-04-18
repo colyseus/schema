@@ -84,3 +84,4 @@ export const $fieldIndexesByViewTag = "$__fieldIndexesByViewTag";
 export const $unreliableFieldIndexes = "~__unreliableFieldIndexes";
 export const $transientFieldIndexes = "~__transientFieldIndexes";
 export const $staticFieldIndexes = "~__staticFieldIndexes";
+export const $streamFieldIndexes = "~__streamFieldIndexes";

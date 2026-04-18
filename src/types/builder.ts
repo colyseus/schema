@@ -2,6 +2,7 @@ import type { ArraySchema } from "./custom/ArraySchema.js";
 import type { MapSchema } from "./custom/MapSchema.js";
 import type { SetSchema } from "./custom/SetSchema.js";
 import type { CollectionSchema } from "./custom/CollectionSchema.js";
+import type { StreamSchema } from "./custom/StreamSchema.js";
 import type { Schema } from "../Schema.js";
 import type { DefinitionType, RawPrimitiveType } from "../annotations.js";
 import type { InferValueType, Constructor } from "./HelperTypes.js";
@@ -100,15 +101,14 @@ export class FieldBuilder<T = unknown> {
         return this;
     }
 
-    /** Mark this field as static — synchronized once, skips change tracking (flag-only for now). */
+    /**
+     * Mark this field as static.
+     * - Primitive / Schema fields: synchronized once, skips change tracking.
+     * - Stream fields (`t.stream(X).static()`): child elements are frozen
+     *   after add — post-add field mutations on elements become no-ops.
+     */
     static(): this {
         this._static = true;
-        return this;
-    }
-
-    /** Mark this field as streamed — all intermediate values synchronized (flag-only for now). */
-    stream(): this {
-        this._stream = true;
         return this;
     }
 
@@ -187,6 +187,12 @@ interface CollectionFactory {
     <P extends RawPrimitiveType>(child: P): FieldBuilder<CollectionSchema<InferValueType<P>>>;
     <V>(child: FieldBuilder<V>): FieldBuilder<CollectionSchema<V>>;
 }
+// t.stream(Entity) — priority-batched collection of Schema instances.
+// Element type is restricted to Schema subclasses (no primitives) because
+// priority batching relies on stable refIds, which primitives don't carry.
+interface StreamFactory {
+    <C extends Constructor<Schema>>(child: C): FieldBuilder<StreamSchema<InstanceType<C>>>;
+}
 
 const arrayFactory: ArrayFactory = ((child: ChildType) =>
     new FieldBuilder({ array: resolveChild(child) } as DefinitionType)) as ArrayFactory;
@@ -196,6 +202,11 @@ const setFactory: SetFactory = ((child: ChildType) =>
     new FieldBuilder({ set: resolveChild(child) } as DefinitionType)) as SetFactory;
 const collectionFactory: CollectionFactory = ((child: ChildType) =>
     new FieldBuilder({ collection: resolveChild(child) } as DefinitionType)) as CollectionFactory;
+const streamFactory: StreamFactory = ((child: ChildType) => {
+    const b = new FieldBuilder({ stream: resolveChild(child) } as DefinitionType);
+    b._stream = true;
+    return b;
+}) as StreamFactory;
 
 function refFactory<C extends Constructor<Schema>>(ctor: C): FieldBuilder<InstanceType<C>> {
     return new FieldBuilder<InstanceType<C>>(ctor as unknown as DefinitionType);
@@ -225,4 +236,5 @@ export const t = Object.freeze({
     map: mapFactory,
     set: setFactory,
     collection: collectionFactory,
+    stream: streamFactory,
 });

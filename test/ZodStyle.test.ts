@@ -134,10 +134,11 @@ describe("Zod-style schema() API", () => {
             assert.strictEqual(meta[0].unreliable, true);
         });
 
-        it(".static() and .stream() set flags", () => {
+        it(".static() and t.stream() set flags", () => {
+            const Entity = schema({ name: t.string() }, "Entity");
             const S = schema({
                 level: t.array("number").static(),
-                events: t.array("string").stream(),
+                events: t.stream(Entity),
             }, "S");
             const meta = (S as any)[Symbol.metadata];
             assert.strictEqual(meta[0].static, true);

@@ -4,6 +4,7 @@ import type { ArraySchema } from "./custom/ArraySchema.js";
 import type { CollectionSchema } from "./custom/CollectionSchema.js";
 import type { MapSchema } from "./custom/MapSchema.js";
 import type { SetSchema } from "./custom/SetSchema.js";
+import type { StreamSchema } from "./custom/StreamSchema.js";
 import type { FieldBuilder } from "./builder.js";
 
 export type Constructor<T = {}> = new (...args: any[]) => T;
@@ -46,6 +47,8 @@ export type InferValueType<T> =
     : T extends { type: { map: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType]> : MapSchema<ChildType>) // TS ENUM
     : T extends { type: { set: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? SetSchema<ChildType[keyof ChildType]> : SetSchema<ChildType>) // TS ENUM
     : T extends { type: { collection: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? CollectionSchema<ChildType[keyof ChildType]> : CollectionSchema<ChildType>) // TS ENUM
+    : T extends { type: { stream: infer ChildType extends Constructor } } ? StreamSchema<InstanceType<ChildType>>
+    : T extends { type: { stream: infer ChildType } } ? StreamSchema<ChildType>
     : T extends { type: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType] : ChildType) // TS ENUM
 
     // Handle direct array patterns
@@ -66,6 +69,9 @@ export type InferValueType<T> =
     : T extends { collection: infer ChildType extends Constructor } ? CollectionSchema<InstanceType<ChildType>>
     : T extends { collection: infer ChildType extends RawPrimitiveType } ? CollectionSchema<InferValueType<ChildType>> // primitive types
     : T extends { collection: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? CollectionSchema<ChildType[keyof ChildType]> : CollectionSchema<ChildType>) // TS ENUM
+
+    : T extends { stream: infer ChildType extends Constructor } ? StreamSchema<InstanceType<ChildType>>
+    : T extends { stream: infer ChildType } ? StreamSchema<ChildType>
 
     // Handle direct types
     : T extends Constructor ? InstanceType<T>

@@ -12,6 +12,7 @@ import { assertInstanceType, assertType, EncodeSchemaError } from "./encoding/as
 import type { InferValueType, InferSchemaInstanceType, AssignableProps, IsNever } from "./types/HelperTypes.js";
 import { CollectionSchema } from "./types/custom/CollectionSchema.js";
 import { SetSchema } from "./types/custom/SetSchema.js";
+import { StreamSchema } from "./types/custom/StreamSchema.js";
 import { FieldBuilder, isBuilder } from "./types/builder.js";
 
 export type RawPrimitiveType = "string" |
@@ -39,7 +40,8 @@ export type DefinitionType<T extends PrimitiveType = PrimitiveType> = T
     | { array: T, default?: ArraySchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
     | { map: T, default?: MapSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
     | { collection: T, default?: CollectionSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
-    | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean };
+    | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
+    | { stream: T, default?: StreamSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean };
 
 export type Definition = { [field: string]: DefinitionType };
 
@@ -716,6 +718,8 @@ export function schema<
                         defaultValues[fieldName] = new SetSchema();
                     } else if (rawType.collection !== undefined) {
                         defaultValues[fieldName] = new CollectionSchema();
+                    } else if (rawType.stream !== undefined) {
+                        defaultValues[fieldName] = new StreamSchema();
                     }
                 } else if (typeof rawType === "function" && Schema.is(rawType)) {
                     if (!rawType.prototype.initialize || rawType.prototype.initialize.length === 0) {
@@ -802,15 +806,13 @@ export function schema<
         deprecated(deprecatedFields[fieldName])(klass.prototype, fieldName);
     }
 
-    // `.static()` wires into the encoder via Metadata.setStatic; `.stream()`
-    // remains flag-only until that work lands.
     if (staticFields.length > 0 || streamFields.length > 0) {
         const metadata = (klass as any)[Symbol.metadata] as Metadata;
         for (const fieldName of staticFields) {
             Metadata.setStatic(metadata, fieldName);
         }
         for (const fieldName of streamFields) {
-            metadata[metadata[fieldName]].stream = true;
+            Metadata.setStream(metadata, fieldName);
         }
     }
 
