@@ -64,14 +64,19 @@ describe("@unreliable and @transient", () => {
             encoder.discardUnreliableChanges();
         });
 
-        it("collections inherit unreliable from their parent field", () => {
+        it("per-field @unreliable on collection items routes their values via the unreliable channel", () => {
+            // The strict rule (@unreliable on primitives only) means the
+            // ARRAY itself and its STRUCTURAL push entries flow on the
+            // reliable channel — the decoder always learns the items'
+            // refIds. Each item's x/y mutations route unreliable per the
+            // per-field @unreliable annotation on Position.
             class Position extends Schema {
-                @type("number") x: number;
-                @type("number") y: number;
+                @unreliable @type("number") x: number;
+                @unreliable @type("number") y: number;
             }
             class State extends Schema {
                 @type("string") name: string;
-                @unreliable @type([Position]) positions = new ArraySchema<Position>();
+                @type([Position]) positions = new ArraySchema<Position>();
             }
 
             const state = new State();
@@ -81,17 +86,22 @@ describe("@unreliable and @transient", () => {
             state.positions.push(new Position().assign({ x: 1, y: 2 }));
             state.positions.push(new Position().assign({ x: 3, y: 4 }));
 
-            // Reliable encode: only state's name, NOT positions
+            // Reliable encode: name + array structure (length 2, item refIds
+            // established) but the @unreliable x/y values are NOT here.
             const decoded = createInstanceFromReflection(state) as State;
             const decoder = getDecoder(decoded);
             decoder.decode(encoder.encode());
             assert.strictEqual((decoder.state as any).name, "world");
-            assert.strictEqual((decoder.state as any).positions?.length ?? 0, 0);
+            assert.strictEqual((decoder.state as any).positions.length, 2,
+                "structural push must arrive on reliable channel");
+            assert.strictEqual((decoder.state as any).positions[0].x, undefined,
+                "@unreliable x must NOT have arrived via reliable channel");
 
-            // Unreliable encode: positions + nested Position fields
+            // Unreliable encode: x/y values for the already-established items.
             decoder.decode(encoder.encodeUnreliable());
-            assert.strictEqual((decoder.state as any).positions.length, 2);
             assert.strictEqual((decoder.state as any).positions[0].x, 1);
+            assert.strictEqual((decoder.state as any).positions[0].y, 2);
+            assert.strictEqual((decoder.state as any).positions[1].x, 3);
             assert.strictEqual((decoder.state as any).positions[1].y, 4);
 
             encoder.discardChanges();
@@ -300,6 +310,95 @@ describe("@unreliable and @transient", () => {
         });
     });
 
+    describe("strict ref-type validation + packet loss safety", () => {
+        // `@unreliable` is rejected at decoration time on ref-type fields
+        // (Schema sub-classes, MapSchema, ArraySchema, SetSchema,
+        // CollectionSchema). The structural ADD of a ref must arrive so
+        // the decoder learns the refId; allowing it on the unreliable
+        // channel would leave the decoder permanently desynced after a
+        // dropped packet. Users mark each primitive sub-field instead.
+        it("rejects @unreliable on a Schema ref-type field at decoration time", () => {
+            class Position extends Schema {
+                @type("number") x: number;
+                @type("number") y: number;
+            }
+            assert.throws(() => {
+                class _State extends Schema {
+                    @unreliable @type(Position) position: Position;
+                }
+                void _State;
+            }, /@unreliable cannot be applied to ref-type field/);
+        });
+
+        it("rejects @unreliable on an ArraySchema field at decoration time", () => {
+            class Item extends Schema { @type("number") n: number; }
+            assert.throws(() => {
+                class _State extends Schema {
+                    @unreliable @type([Item]) items: ArraySchema<Item>;
+                }
+                void _State;
+            }, /@unreliable cannot be applied to ref-type field/);
+        });
+
+        it("rejects @unreliable on a MapSchema field at decoration time", () => {
+            class Item extends Schema { @type("number") n: number; }
+            assert.throws(() => {
+                class _State extends Schema {
+                    @unreliable @type({ map: Item }) items: MapSchema<Item>;
+                }
+                void _State;
+            }, /@unreliable cannot be applied to ref-type field/);
+        });
+
+        // Verifies the reason the strict rule exists: with primitive-only
+        // @unreliable, the structural ADDs always arrive on the reliable
+        // channel, so dropping any unreliable packet only loses values —
+        // the decoder remains in a consistent state.
+        it("dropping unreliable packets only loses field values, never desyncs the structure", () => {
+            class Position extends Schema {
+                @unreliable @type("number") x: number;
+                @unreliable @type("number") y: number;
+            }
+            class State extends Schema {
+                @type(Position) position: Position;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const decoded = createInstanceFromReflection(state) as State;
+            const decoder = getDecoder(decoded);
+
+            // Tick 1: structural ADD arrives reliable; x/y queued unreliable.
+            state.position = new Position();
+            state.position.x = 10;
+            state.position.y = 20;
+
+            decoder.decode(encoder.encode());
+            assert.notStrictEqual((decoded as any).position, undefined,
+                "Position refId established via reliable channel");
+            assert.strictEqual((decoded as any).position.x, undefined,
+                "x must NOT be on reliable channel (it's @unreliable)");
+
+            // Drop tick 1's unreliable packet entirely.
+            void encoder.encodeUnreliable();
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            // Tick 2: more x/y mutations.
+            state.position.x = 30;
+            state.position.y = 40;
+            const reliableBytes2 = encoder.encode();
+            if (reliableBytes2.length > 0) decoder.decode(reliableBytes2);
+            decoder.decode(encoder.encodeUnreliable());
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            assert.strictEqual((decoded as any).position.x, 30,
+                "decoder applies tick 2 values without ever seeing tick 1");
+            assert.strictEqual((decoded as any).position.y, 40);
+        });
+    });
+
     describe("isFieldUnreliable classification", () => {
         it("Schema field: unreliable iff metadata says so", () => {
             class S extends Schema {
@@ -312,17 +411,12 @@ describe("@unreliable and @transient", () => {
             assert.strictEqual(s[$changes] ? s[$changes].isFieldUnreliable(1) : false, true);
         });
 
-        it("collection inherits isUnreliable from parent field", () => {
-            class Pt extends Schema { @type("number") x: number; }
-            class S extends Schema {
-                @unreliable @type([Pt]) points = new ArraySchema<Pt>();
-            }
-            const s = new S();
-            // Attach to encoder to trigger checkIsFiltered plumbing.
-            const encoder = getEncoder(s);
-            void encoder;
-            assert.strictEqual((s.points as any)[$changes].isUnreliable, true);
-        });
+        // The previous "collection inherits isUnreliable from parent field"
+        // test exercised `@unreliable @type([Pt])`. The strict rule forbids
+        // that pattern at decoration time — see the "strict ref-type
+        // validation" describe block above. The inheritance code remains
+        // for defense-in-depth but is no longer reachable from the public
+        // decorator/builder API.
 
         // The encoder caches a per-class `unreliableBitmask` that covers
         // field indexes 0–31 only (matches the existing filterBitmask

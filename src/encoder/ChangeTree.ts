@@ -469,6 +469,11 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      *
      * Note: record() on both channels handles DELETE→ADD merge internally,
      * so callers do not need to pre-compute the merged op.
+     *
+     * `@unreliable` is decoration-time-validated to apply only to primitive
+     * fields (see annotations.ts), so the per-field unreliable flag here
+     * always means "primitive value updates" — the structural-ADD-routes-
+     * reliable footgun for ref-type fields can't reach this code path.
      */
     private _routeAndRecord(index: number, op: OPERATION, raw: boolean): void {
         if (this.paused || this.isFieldStatic(index)) return;

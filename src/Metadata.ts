@@ -174,6 +174,23 @@ export const Metadata = {
 
     setUnreliable(metadata: Metadata, fieldName: string) {
         const index = metadata[fieldName];
+        const fieldType = metadata[index].type;
+        // `@unreliable` is only valid on primitive fields. Ref-type fields
+        // (Schema sub-classes, MapSchema, ArraySchema, SetSchema,
+        // CollectionSchema) carry refIds whose ADD/DELETE must arrive
+        // on the reliable channel — otherwise a dropped unreliable packet
+        // would leave the decoder unable to interpret subsequent packets
+        // referencing the orphan refId. Primitive types are encoded as
+        // strings ("number", "string", "int32", ...); anything else is a
+        // ref. Reject at decoration time so the bug surfaces in dev, not
+        // under packet loss in prod.
+        if (typeof fieldType !== "string") {
+            throw new Error(
+                `@unreliable cannot be applied to ref-type field "${fieldName}". ` +
+                `For ref-type fields, mark each primitive sub-field with @unreliable instead. ` +
+                `See README "Limitations and best practices".`
+            );
+        }
         metadata[index].unreliable = true;
 
         if (!metadata[$unreliableFieldIndexes]) {
