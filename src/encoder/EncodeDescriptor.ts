@@ -34,15 +34,22 @@ export interface EncodeDescriptor {
     filterBitmask: number;
 
     /**
-     * Class-level "any field has the flag" booleans. Hot path: per-mutation
-     * `_routeAndRecord` calls `isFieldStatic` and `isFieldUnreliable`. The
-     * common case is "no static/unreliable fields anywhere on this class",
-     * which lets the check short-circuit before the symbol-keyed metadata
-     * lookup. Caches the `metadata[$staticFieldIndexes]?.length > 0` result
-     * once at descriptor build.
+     * Class-level "any field has the flag" booleans + per-field bitmasks.
+     * Hot path: per-mutation `_routeAndRecord` calls `isFieldStatic` and
+     * `isFieldUnreliable`. The common case is "no static/unreliable fields
+     * anywhere on this class" (booleans short-circuit before the symbol-keyed
+     * metadata lookup); the secondary common case is "this class has some
+     * such fields and we need to know if THIS field is one" — the bitmask
+     * answers in one bitwise op instead of an `Array.includes` linear scan.
+     *
+     * Bitmasks cover fields 0–31 only (matches the `filterBitmask` limitation).
+     * Fields ≥32 fall back to `Metadata.hasXAtIndex` — same handling as the
+     * filter-bitmask path.
      */
     hasAnyStatic: boolean;
     hasAnyUnreliable: boolean;
+    staticBitmask: number;
+    unreliableBitmask: number;
 
     /**
      * Per-field parallel arrays — Schemas only (empty arrays for
@@ -80,6 +87,20 @@ function computeFilterBitmask(metadata: any): number {
         writable: true,
         configurable: true,
     });
+    return bm;
+}
+
+/**
+ * Bitmask of field indexes 0–31 in `indexes`. For fields ≥32 callers must
+ * fall back to the array lookup (same as `filterBitmask`).
+ */
+function indexesToBitmask(indexes: number[] | undefined): number {
+    if (indexes === undefined) return 0;
+    let bm = 0;
+    for (let i = 0, len = indexes.length; i < len; i++) {
+        const idx = indexes[i];
+        if (idx < 32) bm |= (1 << idx);
+    }
     return bm;
 }
 
@@ -146,6 +167,8 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         filterBitmask: isSchema ? computeFilterBitmask(metadata) : 0,
         hasAnyStatic: (metadata?.[$staticFieldIndexes]?.length ?? 0) > 0,
         hasAnyUnreliable: (metadata?.[$unreliableFieldIndexes]?.length ?? 0) > 0,
+        staticBitmask: indexesToBitmask(metadata?.[$staticFieldIndexes]),
+        unreliableBitmask: indexesToBitmask(metadata?.[$unreliableFieldIndexes]),
         names: arrays.names,
         types: arrays.types,
         tags: arrays.tags,

@@ -206,9 +206,13 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         if (this.isUnreliable) return true;
         // Class-level fast path: most schemas have zero unreliable fields,
         // so the per-mutation check resolves without the symbol-keyed
-        // metadata lookup. See PERF_PROFILE_PHASE2.md — this short-circuit
-        // is worth ~15% perTick on workloads with no unreliable/static.
-        if (!this.encDescriptor.hasAnyUnreliable) return false;
+        // metadata lookup. For schemas that DO have unreliable fields, the
+        // bitmask answers fields 0-31 in one bitwise op (no Array.includes
+        // linear scan). Fields ≥32 always fall back to the metadata lookup
+        // (same limitation as filterBitmask — bitmask only covers low 32).
+        const desc = this.encDescriptor;
+        if (!desc.hasAnyUnreliable) return false;
+        if (index < 32) return (desc.unreliableBitmask & (1 << index)) !== 0;
         return Metadata.hasUnreliableAtIndex(this.metadata, index);
     }
 
@@ -216,7 +220,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     // by the tracker (the value still lives on the instance).
     isFieldStatic(index: number): boolean {
         if (this.isStatic) return true;
-        if (!this.encDescriptor.hasAnyStatic) return false;
+        const desc = this.encDescriptor;
+        if (!desc.hasAnyStatic) return false;
+        if (index < 32) return (desc.staticBitmask & (1 << index)) !== 0;
         return Metadata.hasStaticAtIndex(this.metadata, index);
     }
 
