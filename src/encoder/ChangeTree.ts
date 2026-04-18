@@ -203,13 +203,21 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     isFieldUnreliable(index: number): boolean {
-        return this.isUnreliable || Metadata.hasUnreliableAtIndex(this.metadata, index);
+        if (this.isUnreliable) return true;
+        // Class-level fast path: most schemas have zero unreliable fields,
+        // so the per-mutation check resolves without the symbol-keyed
+        // metadata lookup. See PERF_PROFILE_PHASE2.md — this short-circuit
+        // is worth ~15% perTick on workloads with no unreliable/static.
+        if (!this.encDescriptor.hasAnyUnreliable) return false;
+        return Metadata.hasUnreliableAtIndex(this.metadata, index);
     }
 
     // @static fields sync once via full-sync; post-init mutations are ignored
     // by the tracker (the value still lives on the instance).
     isFieldStatic(index: number): boolean {
-        return this.isStatic || Metadata.hasStaticAtIndex(this.metadata, index);
+        if (this.isStatic) return true;
+        if (!this.encDescriptor.hasAnyStatic) return false;
+        return Metadata.hasStaticAtIndex(this.metadata, index);
     }
 
     constructor(ref: T) {

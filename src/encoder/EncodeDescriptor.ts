@@ -17,7 +17,7 @@
  * during encode).
  */
 import { Metadata } from "../Metadata.js";
-import { $encodeDescriptor, $encoder, $encoders, $filter, $filterBitmask, $numFields, $viewFieldIndexes } from "../types/symbols.js";
+import { $encodeDescriptor, $encoder, $encoders, $filter, $filterBitmask, $numFields, $staticFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 
@@ -32,6 +32,17 @@ export interface EncodeDescriptor {
      * per-field metadata[i]?.tag chase.
      */
     filterBitmask: number;
+
+    /**
+     * Class-level "any field has the flag" booleans. Hot path: per-mutation
+     * `_routeAndRecord` calls `isFieldStatic` and `isFieldUnreliable`. The
+     * common case is "no static/unreliable fields anywhere on this class",
+     * which lets the check short-circuit before the symbol-keyed metadata
+     * lookup. Caches the `metadata[$staticFieldIndexes]?.length > 0` result
+     * once at descriptor build.
+     */
+    hasAnyStatic: boolean;
+    hasAnyUnreliable: boolean;
 
     /**
      * Per-field parallel arrays — Schemas only (empty arrays for
@@ -133,6 +144,8 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         metadata,
         isSchema,
         filterBitmask: isSchema ? computeFilterBitmask(metadata) : 0,
+        hasAnyStatic: (metadata?.[$staticFieldIndexes]?.length ?? 0) > 0,
+        hasAnyUnreliable: (metadata?.[$unreliableFieldIndexes]?.length ?? 0) > 0,
         names: arrays.names,
         types: arrays.types,
         tags: arrays.tags,
