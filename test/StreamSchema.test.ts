@@ -241,6 +241,162 @@ describe("Type: StreamSchema", () => {
         assert.strictEqual(client.state.entities.length, 5);
     });
 
+    describe("streamPriority real-world use cases", () => {
+
+        it("distance-based priority: 500 entities stream to a client closest-first", () => {
+            // Simulates an MMO / RTS client receiving entities nearest to its
+            // camera/character first. Server has many more entities than
+            // `maxPerTick` can fit per tick; the priority callback ensures
+            // the client's immediate surroundings populate before the fringe.
+            class Entity extends Schema {
+                @type("uint16") id: number = 0;
+                @type("float32") x: number = 0;
+                @type("float32") y: number = 0;
+            }
+            class State extends Schema {
+                @type({ stream: Entity }) entities = new StreamSchema<Entity>();
+            }
+
+            const state = new State();
+            state.entities.maxPerTick = 50;
+            const encoder = getEncoder(state);
+
+            // 500 entities on a 25 × 20 grid with 10-unit spacing.
+            const GRID_W = 25, GRID_H = 20, SPACING = 10;
+            const TOTAL = GRID_W * GRID_H; // 500
+            for (let i = 0; i < TOTAL; i++) {
+                const e = new Entity();
+                e.id = i;
+                e.x = (i % GRID_W) * SPACING;
+                e.y = Math.floor(i / GRID_W) * SPACING;
+                state.entities.add(e);
+            }
+
+            // Client anchored near grid centroid (asymmetric offset avoids
+            // distance ties across the grid-point reflections).
+            const clientX = 123.5;
+            const clientY = 97.5;
+
+            const client = createClientWithView(state);
+            client.view.streamPriority = (_stream, el: Entity) => {
+                const dx = el.x - clientX;
+                const dy = el.y - clientY;
+                // Negative squared distance — larger (closer) ranks first.
+                return -(dx * dx + dy * dy);
+            };
+            client.view.add(state);
+
+            // Ground truth: server-side entities sorted by squared distance
+            // to the client position (stable sort preserves insertion order
+            // on ties, matching the stream's stable priority sort).
+            const allEntities = state.entities.toArray();
+            const sqDist = (e: Entity) =>
+                (e.x - clientX) * (e.x - clientX) + (e.y - clientY) * (e.y - clientY);
+            const sortedByDist = allEntities.slice().sort((a, b) => sqDist(a) - sqDist(b));
+
+            // Tick 1: the 50 closest entities should arrive.
+            encodeMultiple(encoder, state, [client]);
+            const received1 = client.state.entities.toArray().map((e) => e.id).sort((a, b) => a - b);
+            const expected1 = sortedByDist.slice(0, 50).map((e) => e.id).sort((a, b) => a - b);
+            assert.deepStrictEqual(received1, expected1,
+                "tick 1 should deliver the 50 entities closest to the client");
+
+            // The first entity on the wire should be the absolute closest.
+            assert.strictEqual(
+                client.state.entities.toArray()[0].id,
+                sortedByDist[0].id,
+                "the very first delivered entity should be the closest one",
+            );
+
+            // Tick 2: next 50 closest layer arrives.
+            encodeMultiple(encoder, state, [client]);
+            const received2 = client.state.entities.toArray().map((e) => e.id).sort((a, b) => a - b);
+            const expected2 = sortedByDist.slice(0, 100).map((e) => e.id).sort((a, b) => a - b);
+            assert.deepStrictEqual(received2, expected2,
+                "tick 2 should deliver the next 50 closest entities");
+
+            // Drain remaining. 500 / 50 = 10 ticks total.
+            for (let tick = 3; tick <= 10; tick++) {
+                encodeMultiple(encoder, state, [client]);
+            }
+            assert.strictEqual(client.state.entities.length, TOTAL);
+        });
+
+        it("priority re-evaluates each tick — viewer that moves changes delivery order", () => {
+            // The priority callback runs on every pending element every tick,
+            // so a moving camera/character causes the remaining backlog to
+            // re-rank. Here the viewer starts at one corner, teleports to
+            // the opposite corner mid-drain, and entities near the NEW
+            // position start arriving preferentially.
+            class Entity extends Schema {
+                @type("uint16") id: number = 0;
+                @type("float32") x: number = 0;
+                @type("float32") y: number = 0;
+            }
+            class State extends Schema {
+                @type({ stream: Entity }) entities = new StreamSchema<Entity>();
+            }
+
+            const state = new State();
+            state.entities.maxPerTick = 20;
+            const encoder = getEncoder(state);
+
+            // 200 entities on a 20 × 10 grid.
+            const GRID_W = 20, SPACING = 10;
+            for (let i = 0; i < 200; i++) {
+                const e = new Entity();
+                e.id = i;
+                e.x = (i % GRID_W) * SPACING;
+                e.y = Math.floor(i / GRID_W) * SPACING;
+                state.entities.add(e);
+            }
+
+            // Mutable viewer coordinates captured by the priority closure.
+            const viewer = { x: 0, y: 0 };
+
+            const client = createClientWithView(state);
+            client.view.streamPriority = (_stream, el: Entity) => {
+                const dx = el.x - viewer.x;
+                const dy = el.y - viewer.y;
+                return -(dx * dx + dy * dy);
+            };
+            client.view.add(state);
+
+            // Viewer at (0, 0): ticks 1–2 drain 40 entities closest to origin.
+            encodeMultiple(encoder, state, [client]);
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.entities.length, 40);
+
+            // Teleport the viewer to the far corner.
+            viewer.x = 190;
+            viewer.y = 90;
+
+            // Tick 3: 20 more entities arrive — these should be the 20
+            // closest to (190, 90) among the 160 still pending.
+            encodeMultiple(encoder, state, [client]);
+            const tick3Batch = client.state.entities.toArray().slice(40);
+            assert.strictEqual(tick3Batch.length, 20);
+
+            // Every entity in the tick-3 batch should be closer to the NEW
+            // viewer position than any of the remaining 140 pending ones.
+            const tick3MaxSqDist = Math.max(
+                ...tick3Batch.map((e) => (e.x - 190) ** 2 + (e.y - 90) ** 2),
+            );
+            const deliveredIds = new Set(client.state.entities.toArray().map((e) => e.id));
+            const stillPendingMinSqDist = Math.min(
+                ...state.entities.toArray()
+                    .filter((e) => !deliveredIds.has(e.id))
+                    .map((e) => (e.x - 190) ** 2 + (e.y - 90) ** 2),
+            );
+            assert.ok(
+                tick3MaxSqDist <= stillPendingMinSqDist,
+                `tick-3 batch (max sqDist=${tick3MaxSqDist}) should be closer to new ` +
+                `viewer than any still-pending entity (min sqDist=${stillPendingMinSqDist})`,
+            );
+        });
+
+    });
+
     describe("ECS structure", () => {
 
         it("entity stream → components array → polymorphic component schemas → nested schemas/primitives", () => {
