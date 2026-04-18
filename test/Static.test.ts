@@ -197,4 +197,67 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
         assert.strictEqual(cfgChanges.isFieldStatic(0), true);
     });
 
+    // The encoder caches a per-class `staticBitmask` covering field indexes
+    // 0–31 only (matches the existing filterBitmask limitation). Fields ≥32
+    // fall back to `Metadata.hasStaticAtIndex`. This test exercises both
+    // paths and verifies the per-tick / encodeAll routing still works
+    // end-to-end.
+    it("classification + routing works for @static fields at index ≥32 (bitmask fallback)", () => {
+        // 34 fields. Index 5 (low — bitmask) and index 33 (high — fallback)
+        // are @static; the rest are dynamic.
+        const fields: Record<string, any> = {};
+        for (let i = 0; i < 34; i++) {
+            if (i === 5 || i === 33) {
+                fields[`f${i}`] = t.number().static();
+            } else {
+                fields[`f${i}`] = t.number();
+            }
+        }
+        const State = schema(fields, "WideStatic");
+
+        const state = new State() as any;
+        const encoder = getEncoder(state);
+        const ct: any = state[$changes];
+
+        // Spot-check classification across both paths.
+        assert.strictEqual(ct.isFieldStatic(0), false, "dynamic field 0");
+        assert.strictEqual(ct.isFieldStatic(5), true, "bitmask path: index 5");
+        assert.strictEqual(ct.isFieldStatic(31), false, "bitmask boundary (31): dynamic");
+        assert.strictEqual(ct.isFieldStatic(32), false, "fallback boundary (32): dynamic");
+        assert.strictEqual(ct.isFieldStatic(33), true, "fallback path: index 33");
+
+        // Routing: set initial values for everyone, encode tick + full sync.
+        state.f0 = 100;   // dynamic
+        state.f5 = 50;    // static via bitmask
+        state.f33 = 33;   // static via fallback
+
+        // Per-tick: only the dynamic field appears.
+        const tickDecoded = createInstanceFromReflection(state) as any;
+        getDecoder(tickDecoded).decode(encoder.encode());
+        assert.strictEqual(tickDecoded.f0, 100, "dynamic field on tick");
+        assert.strictEqual(tickDecoded.f5, undefined, "static (bitmask) NOT on tick");
+        assert.strictEqual(tickDecoded.f33, undefined, "static (fallback) NOT on tick");
+
+        // Full-sync: all three appear.
+        const fullDecoded = createInstanceFromReflection(state) as any;
+        getDecoder(fullDecoded).decode(encoder.encodeAll());
+        assert.strictEqual(fullDecoded.f0, 100, "dynamic field on encodeAll");
+        assert.strictEqual(fullDecoded.f5, 50, "static (bitmask) on encodeAll");
+        assert.strictEqual(fullDecoded.f33, 33, "static (fallback) on encodeAll");
+
+        // Post-init mutations on @static fields are silently dropped — verify
+        // both bitmask + fallback paths obey this rule.
+        encoder.discardChanges();
+        state.f0 = 999;
+        state.f5 = 999;
+        state.f33 = 999;
+        const tickAfterMutation = createInstanceFromReflection(state) as any;
+        getDecoder(tickAfterMutation).decode(encoder.encode());
+        assert.strictEqual(tickAfterMutation.f0, 999, "dynamic mutation appears");
+        assert.strictEqual(tickAfterMutation.f5, undefined, "static (bitmask) mutation dropped");
+        assert.strictEqual(tickAfterMutation.f33, undefined, "static (fallback) mutation dropped");
+
+        encoder.discardChanges();
+    });
+
 });

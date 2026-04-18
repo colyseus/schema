@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { $changes, Schema, type, unreliable, transient, view, ArraySchema, MapSchema, StateView } from "../src";
+import { $changes, Schema, schema, t, type, unreliable, transient, view, ArraySchema, MapSchema, StateView } from "../src";
 import { Encoder } from "../src/encoder/Encoder";
 import { Decoder } from "../src/decoder/Decoder";
 import { createInstanceFromReflection, getEncoder, getDecoder } from "./Schema";
@@ -322,6 +322,58 @@ describe("@unreliable and @transient", () => {
             const encoder = getEncoder(s);
             void encoder;
             assert.strictEqual((s.points as any)[$changes].isUnreliable, true);
+        });
+
+        // The encoder caches a per-class `unreliableBitmask` that covers
+        // field indexes 0–31 only (matches the existing filterBitmask
+        // limitation). Fields ≥32 must fall back to the slower
+        // `Metadata.hasUnreliableAtIndex` linear scan; this test exercises
+        // both code paths and verifies routing still works end-to-end.
+        it("classification + routing works for @unreliable fields at index ≥32 (bitmask fallback)", () => {
+            // Build 34 fields. Index 5 (low — bitmask) and index 33 (high —
+            // fallback) carry @unreliable; everything else is reliable.
+            const fields: Record<string, any> = {};
+            for (let i = 0; i < 34; i++) {
+                if (i === 5 || i === 33) {
+                    fields[`f${i}`] = t.number().unreliable();
+                } else {
+                    fields[`f${i}`] = t.number();
+                }
+            }
+            const State = schema(fields, "WideUnreliable");
+
+            const state = new State() as any;
+            const encoder = getEncoder(state);
+            const ct: any = state[$changes];
+
+            // Spot-check classification across both paths.
+            assert.strictEqual(ct.isFieldUnreliable(0), false, "plain field 0");
+            assert.strictEqual(ct.isFieldUnreliable(5), true, "bitmask path: index 5");
+            assert.strictEqual(ct.isFieldUnreliable(31), false, "bitmask boundary (31): plain");
+            assert.strictEqual(ct.isFieldUnreliable(32), false, "fallback boundary (32): plain");
+            assert.strictEqual(ct.isFieldUnreliable(33), true, "fallback path: index 33");
+
+            // End-to-end routing: mutate a low-index (bitmask) and a
+            // high-index (fallback) unreliable field plus a reliable field;
+            // assert each appears on the correct channel.
+            const decoded = createInstanceFromReflection(state) as any;
+            const decoder = getDecoder(decoded);
+
+            state.f0 = 100;   // reliable
+            state.f5 = 50;    // unreliable via bitmask
+            state.f33 = 33;   // unreliable via fallback
+
+            decoder.decode(encoder.encode());
+            assert.strictEqual(decoded.f0, 100, "reliable field decoded");
+            assert.strictEqual(decoded.f5, undefined, "unreliable (bitmask) NOT on reliable channel");
+            assert.strictEqual(decoded.f33, undefined, "unreliable (fallback) NOT on reliable channel");
+
+            decoder.decode(encoder.encodeUnreliable());
+            assert.strictEqual(decoded.f5, 50, "unreliable (bitmask) decoded via unreliable channel");
+            assert.strictEqual(decoded.f33, 33, "unreliable (fallback) decoded via unreliable channel");
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
         });
     });
 

@@ -260,6 +260,7 @@ up-to-date version of the schema definitions.
 ## Limitations and best practices
 
 - Each `Schema` structure can hold up to `64` fields. If you need more fields, use nested structures.
+- Fields tagged with `@view`, `@unreliable`, or `@static` at field indexes `≥ 32` use a slower per-mutation classification path (linear scan over the tagged-field list instead of a single bitwise op). For schemas with more than 32 fields, declare frequently-mutated tagged fields earlier so they fall in the bitmask fast path.
 - `NaN` or `null` numbers are encoded as `0`
 - `null` strings are encoded as `""`
 - `Infinity` numbers are encoded as `Number.MAX_SAFE_INTEGER`
