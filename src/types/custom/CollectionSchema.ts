@@ -5,6 +5,13 @@ import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
 import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
+import {
+    createStreamableState,
+    streamDropView,
+    streamRouteAdd,
+    streamRouteRemove,
+    type StreamableState,
+} from "../../encoder/streaming.js";
 import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
 
@@ -24,6 +31,27 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
 
     /** Monotonic counter for assigning indexes to newly-added items. */
     protected $refId: number = 0;
+
+    /**
+     * Streamable state — lazily allocated when the field is opted into
+     * streaming via `t.collection(X).stream()`. See MapSchema for the
+     * same pattern / rationale.
+     */
+    _stream?: StreamableState;
+
+    get maxPerTick(): number {
+        return this._stream?.maxPerTick ?? 32;
+    }
+    set maxPerTick(n: number) {
+        (this._stream ??= createStreamableState()).maxPerTick = n;
+    }
+
+    get priority(): ((view: any, element: V) => number) | undefined {
+        return this._stream?.priority as ((view: any, element: V) => number) | undefined;
+    }
+    set priority(fn: ((view: any, element: V) => number) | undefined) {
+        (this._stream ??= createStreamableState()).priority = fn;
+    }
 
     static [$encoder] = encodeIndexedEntry;
     static [$decoder] = decodeKeyValueOperation;
@@ -67,14 +95,21 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
         // assign the next wire-protocol index
         const index = this.$refId++;
 
+        const changeTree = this[$changes];
         const isRef = (value[$changes]) !== undefined;
         if (isRef) {
-            value[$changes].setParent(this, this[$changes].root, index);
+            value[$changes].setParent(this, changeTree.root, index);
         }
 
         this.$items.set(index, value);
 
-        this[$changes].change(index);
+        if (changeTree.isStreamCollection) {
+            if (changeTree.root !== undefined) {
+                streamRouteAdd(this, changeTree.root, index);
+            }
+        } else {
+            changeTree.change(index);
+        }
 
         return index;
     }
@@ -106,7 +141,21 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
             return false;
         }
 
-        this.deletedItems[index] = this[$changes].delete(index);
+        const changeTree = this[$changes];
+        if (changeTree.isStreamCollection) {
+            const root = changeTree.root;
+            const previousValue = this.$items.get(index);
+            if (root !== undefined) {
+                streamRouteRemove(this, root, (this as any)[$refId], index);
+            }
+            if ((previousValue as any)?.[$changes] !== undefined) {
+                root?.remove((previousValue as any)[$changes]);
+            }
+            this.deletedItems[index] = previousValue as V;
+            return this.$items.delete(index);
+        }
+
+        this.deletedItems[index] = changeTree.delete(index);
 
         return this.$items.delete(index);
     }
@@ -179,6 +228,16 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
 
     protected [$onEncodeEnd]() {
         for (const key in this.deletedItems) { delete this.deletedItems[key]; }
+    }
+
+    // ─── Streamable interface (Encoder priority / broadcast pass) ──────
+
+    _dropView(viewId: number): void {
+        streamDropView(this, viewId);
+    }
+
+    _unregister(): void {
+        // no-op — `Root.unregisterStream` handles the Set removal.
     }
 
     toArray() {
