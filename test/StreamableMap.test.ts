@@ -56,6 +56,7 @@ describe("Streamable MapSchema (t.map(X).stream())", () => {
             const e: SchemaType<typeof Entity> = new Entity();
             e.id = id;
             state.entities.set(`e${id}`, e);
+            client.view.add(e);
         }
 
         encodeMultiple(encoder, state, [client]);
@@ -99,7 +100,7 @@ describe("Streamable MapSchema (t.map(X).stream())", () => {
         assert.strictEqual(decoded.entities.size, 0);
     });
 
-    it("late-joining view receives existing entries, batched", () => {
+    it("late-joining view explicitly subscribes to existing entries", () => {
         const Entity = schema({ id: t.number() }, "Entity");
         const State = schema({ entities: t.map(Entity).stream() }, "State");
 
@@ -107,16 +108,22 @@ describe("Streamable MapSchema (t.map(X).stream())", () => {
         state.entities.maxPerTick = 2;
         const encoder = getEncoder(state);
 
-        // Populate before any client subscribes.
+        // Stream was populated in view mode (placeholder view keeps
+        // `activeViews.size > 0` so stream.set doesn't seed broadcast).
+        const placeholder = new StateView();
+        placeholder.add(state);
         for (let i = 0; i < 4; i++) {
             const e: SchemaType<typeof Entity> = new Entity();
             e.id = i;
             state.entities.set(`e${i}`, e);
         }
         encoder.discardChanges();
+        placeholder.dispose();
 
         const client = createClientWithView(state);
         client.view.add(state);
+        // Game-loop responsibility: bulk-subscribe.
+        state.entities.forEach((e) => client.view.add(e));
 
         encodeMultiple(encoder, state, [client]);
         assert.strictEqual(client.state.entities.size, 2);

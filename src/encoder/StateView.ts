@@ -4,8 +4,9 @@ import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
 import { spliceOne } from "../types/utils.js";
+import { streamDequeueForView, streamEnqueueForView } from "./streaming.js";
 import type { Schema } from "../Schema.js";
-import type { Root } from "./Root.js";
+import type { Root, Streamable } from "./Root.js";
 
 export function createView(iterable: boolean = false) {
     return new StateView(iterable);
@@ -243,6 +244,21 @@ export class StateView {
 
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
+        return this._add(obj, tag, checkIncludeParent, /* _skipStreamRouting */ false);
+    }
+
+    /**
+     * Internal: force-ship an object through `view.changes` without
+     * applying stream-element routing. Called by `Encoder._emitStreamPriority`
+     * when it's draining `_pendingByView` — the element is already out of
+     * pending at that point, so re-routing back into pending would be a
+     * loop. User code should always call `add()`.
+     */
+    _addImmediate(obj: Ref, tag: number = DEFAULT_VIEW_TAG): void {
+        this._add(obj, tag, /* checkIncludeParent */ true, /* _skipStreamRouting */ true);
+    }
+
+    private _add(obj: Ref, tag: number, checkIncludeParent: boolean, _skipStreamRouting: boolean) {
         const changeTree: ChangeTree = obj?.[$changes];
         const parentChangeTree = changeTree.parent;
 
@@ -266,14 +282,40 @@ export class StateView {
             );
         }
 
-        // FIXME: ArraySchema/MapSchema do not have metadata
-        const metadata: Metadata = (obj.constructor as typeof Schema)[Symbol.metadata];
-
         // Bind to Root + acquire view ID on first add(). Until then, we have
         // no per-tree bit position to write into.
         if (this._root === undefined && changeTree.root !== undefined) {
             this._bindRoot(changeTree.root);
         }
+
+        // Streamable-element routing: when `obj` is a child of a streamable
+        // collection (StreamSchema element, or an entry in a .stream()
+        // MapSchema), subscribe this element to the stream's per-view
+        // pending. The element is NOT marked visible here — visibility is
+        // flipped on by the encoder's priority pass (`_addImmediate`) when
+        // it actually ships the element. This is load-bearing: if the
+        // element were visible before the priority pass, `encodeAllView`
+        // would full-sync-emit it on bootstrap and `encodeView`'s normal
+        // pass would emit its dirty state — both bypass `maxPerTick`.
+        //
+        // StateView mode is imperative by design — users call
+        // `view.add(entity)` per-entity as the game loop's AOI / interest
+        // logic discovers visibility. This matches the rationale that led
+        // to StateView in the first place: per-client visibility as a
+        // game-loop-cadence operation, not an encode-time predicate.
+        const parentStreamTree = parentChangeTree?.[$changes];
+        if (!_skipStreamRouting && parentStreamTree?.isStreamCollection) {
+            streamEnqueueForView(
+                parentChangeTree as unknown as Streamable,
+                this.id,
+                changeTree.parentIndex!,
+            );
+            return true;
+        }
+
+        // FIXME: ArraySchema/MapSchema do not have metadata
+        const metadata: Metadata = (obj.constructor as typeof Schema)[Symbol.metadata];
+
         this.markVisible(changeTree);
 
         // add to iterable list (only the explicitly added items)
@@ -288,14 +330,10 @@ export class StateView {
             this.addParentOf(changeTree, tag);
         }
 
-        // Streamable-collection short-circuit: seed `_pendingByView` with
-        // every live position/index and stop — per-view priority/budget
-        // emit takes over from `Encoder.encodeView`. Covers `StreamSchema`
-        // and any `.stream()`-opted collection (e.g. MapSchema.stream()).
-        // The normal forEachChild recursion below would force-add every
-        // element immediately, bypassing the budget.
-        if (changeTree.isStreamCollection) {
-            (obj as any)._seedViewPending(this.id);
+        // Streamable-collection (the stream itself, not an element): mark
+        // visible only. No auto-seed of elements — users must explicitly
+        // `view.add(entity)` per element (see rationale above).
+        if (!_skipStreamRouting && changeTree.isStreamCollection) {
             return true;
         }
 
@@ -397,6 +435,57 @@ export class StateView {
         const changeTree: ChangeTree = obj[$changes];
         if (!changeTree) {
             console.warn("StateView#remove(), invalid object:", obj);
+            return this;
+        }
+
+        // ── Streamable-element unsubscribe ─────────────────────────────
+        // Symmetric to the `add(streamElement)` routing: pull the element
+        // out of the stream's per-view state. If it never made it to the
+        // wire (still in pending), silent drop; if already sent, queue
+        // DELETE via `view.changes` for the next encodeView drain.
+        const parentStreamTree = changeTree.parent?.[$changes];
+        if (parentStreamTree?.isStreamCollection) {
+            this.unmarkVisible(changeTree);
+            if (this.iterable && !_isClear) {
+                spliceOne(this.items, this.items.indexOf(obj));
+            }
+            streamDequeueForView(
+                changeTree.parent as unknown as Streamable,
+                this.id,
+                (changeTree.parent as any)[$refId],
+                changeTree.parentIndex!,
+                this.changes,
+            );
+            this._recursiveDeleteVisibleChangeTree(changeTree);
+            return this;
+        }
+
+        // ── Streamable-collection unsubscribe (the stream itself) ─────
+        // Flush DELETE for every sent position and drop pending. After
+        // this, the stream is marked invisible to this view — any future
+        // `stream.add()` would still seed broadcast pending (if no views)
+        // but would NOT re-seed per-view pending (user must re-subscribe).
+        if (changeTree.isStreamCollection) {
+            this.unmarkVisible(changeTree);
+            if (this.iterable && !_isClear) {
+                spliceOne(this.items, this.items.indexOf(obj));
+            }
+            const streamRef: any = changeTree.ref;
+            const st = streamRef._stream;
+            if (st !== undefined) {
+                st.pendingByView.get(this.id)?.clear();
+                const sent = st.sentByView.get(this.id);
+                if (sent !== undefined && sent.size > 0) {
+                    const streamRefId = streamRef[$refId];
+                    let changes = this.changes.get(streamRefId);
+                    if (changes === undefined) {
+                        changes = new Map();
+                        this.changes.set(streamRefId, changes);
+                    }
+                    for (const pos of sent) changes.set(pos, OPERATION.DELETE);
+                    sent.clear();
+                }
+            }
             return this;
         }
 

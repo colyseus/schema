@@ -66,21 +66,17 @@ export function ensureStreamState(s: Streamable): StreamableState {
  * - With views: push into per-view pending for every currently-bound view.
  */
 export function streamRouteAdd(s: Streamable, root: Root, index: number): void {
-    const st = ensureStreamState(s);
+    // Broadcast mode (no views registered): seed broadcast pending so
+    // the shared `encode()` pass drains it up to `maxPerTick` per tick.
+    // View mode: do nothing — users must call `view.add(element)` per
+    // entity to subscribe it for that view. This matches the StateView
+    // design philosophy: per-client visibility is imperative, not
+    // declarative. An encode-time predicate would be O(views × entities)
+    // each tick — the whole reason StateView exists is to push that
+    // bookkeeping to game-loop cadence.
     if (root.activeViews.size === 0) {
-        st.broadcastPending.add(index);
-        return;
+        ensureStreamState(s).broadcastPending.add(index);
     }
-    const pendingByView = st.pendingByView;
-    root.forEachActiveView((view) => {
-        const viewId = view.id;
-        let pending = pendingByView.get(viewId);
-        if (pending === undefined) {
-            pending = new Set();
-            pendingByView.set(viewId, pending);
-        }
-        pending.add(index);
-    });
 }
 
 /**
@@ -164,22 +160,52 @@ export function streamRouteClear(s: Streamable, root: Root, refId: number): void
 }
 
 /**
- * Seed `_pendingByView[viewId]` with every live wire-index. Called by
- * `StateView.add` when a streamable collection first becomes visible to
- * a view — ensures late-joining clients pick up the existing backlog.
+ * Push a single position into `_pendingByView[viewId]` — the building
+ * block for `StateView.add(element)` when the element lives under a
+ * streamable collection. Idempotent for already-pending positions.
  */
-export function streamSeedView(
-    s: Streamable,
-    viewId: number,
-    liveIndexes: Iterable<number>,
-): void {
+export function streamEnqueueForView(s: Streamable, viewId: number, index: number): void {
     const st = ensureStreamState(s);
     let pending = st.pendingByView.get(viewId);
     if (pending === undefined) {
         pending = new Set();
         st.pendingByView.set(viewId, pending);
     }
-    for (const index of liveIndexes) pending.add(index);
+    pending.add(index);
+}
+
+/**
+ * Unsubscribe a single position from a view. Returns true iff the
+ * element had already been sent and a DELETE op was queued on
+ * `view.changes`; false if it was only pending (silent drop) or not
+ * present at all.
+ */
+export function streamDequeueForView(
+    s: Streamable,
+    viewId: number,
+    refId: number,
+    index: number,
+    viewChanges: Map<number, Map<number, number>>,
+): boolean {
+    const st = s._stream;
+    if (st === undefined) return false;
+    const pending = st.pendingByView.get(viewId);
+    if (pending?.has(index)) {
+        pending.delete(index);
+        return false;
+    }
+    const sent = st.sentByView.get(viewId);
+    if (sent?.has(index)) {
+        sent.delete(index);
+        let changes = viewChanges.get(refId);
+        if (changes === undefined) {
+            changes = new Map();
+            viewChanges.set(refId, changes);
+        }
+        changes.set(index, OPERATION.DELETE);
+        return true;
+    }
+    return false;
 }
 
 /**

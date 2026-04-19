@@ -650,16 +650,13 @@ export class Encoder<T extends Schema = any> {
                     pending.delete(pos);
                     continue;
                 }
-                // view.add() handles: markVisible(element), addParentOf
-                // (sets stream.refId[pos] = ADD in view.changes), and
-                // forEachLive seeding of element-field ADDs — but only
-                // when the element is NOT marked `isNew` (heuristic that
-                // assumes shared encode will emit it). Stream elements
-                // are filtered, so shared encode skips them; we must
-                // force a full-sync seed ourselves. Uses `forEachLive`
-                // to emit every live field as ADD, identical to what
-                // encodeAllView does for view bootstrap.
-                view.add(element);
+                // `_addImmediate` force-ships the element through view.changes
+                // (markVisible + addParentOf + forEachChild recursion) WITHOUT
+                // routing stream elements back into pending — we're already
+                // draining pending here, so the normal `add()` path would
+                // infinite-loop. addParentOf seeds
+                // `view.changes[stream.refId][pos] = ADD` (stream-link emit).
+                view._addImmediate(element);
                 // Force-seed element fields even when view.add skipped
                 // forEachLive (isNew && !isChildAdded). Matches the
                 // bootstrap emission encodeAllView does for filtered

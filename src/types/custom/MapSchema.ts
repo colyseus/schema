@@ -11,7 +11,6 @@ import {
     streamDropView,
     streamRouteAdd,
     streamRouteRemove,
-    streamSeedView,
     type StreamableState,
 } from "../../encoder/streaming.js";
 import type { StateView } from "../../encoder/StateView.js";
@@ -323,10 +322,6 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     // ─── Streamable interface (Encoder priority / broadcast pass) ──────
-
-    _seedViewPending(viewId: number): void {
-        streamSeedView(this, viewId, this.journal.keyByIndex.keys());
-    }
 
     _dropView(viewId: number): void {
         streamDropView(this, viewId);

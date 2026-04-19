@@ -157,19 +157,22 @@ console.log(`Heap for ${UNIT_COUNT} units × 4 components: ${((heapAfter - heapB
     s.units.maxPerTick = 50;
     const enc = new Encoder(s);
 
-    for (let i = 0; i < UNIT_COUNT; i++) {
-        s.units.add(mkUnit(i));
-    }
-
-    // Set a declaration-scope priority via instance override (easier than
-    // redefining the schema class mid-file — exercises the same sort path).
+    // Instance-level priority override (same sort path exercised).
     s.units.priority = (_view: any, el: Unit) => {
         const pos = el.components[2] as Position;
         return -(pos?.value?.x ?? 0);
     };
 
+    // Create view BEFORE adding units so stream.add doesn't seed
+    // broadcast pending (view mode = no auto-seed, explicit subscribe).
     const view = new StateView();
     view.add(s);
+
+    for (let i = 0; i < UNIT_COUNT; i++) {
+        const u = mkUnit(i);
+        s.units.add(u);
+        view.add(u);
+    }
 
     // Bootstrap.
     const bootIt = { offset: 0 };
@@ -248,15 +251,17 @@ console.log(`Heap for ${UNIT_COUNT} units × 4 components: ${((heapAfter - heapB
     s.units.maxPerTick = Number.MAX_SAFE_INTEGER;
     const enc = new Encoder(s);
 
+    // View must exist before units so stream.add doesn't seed broadcast.
+    const view = new StateView();
+    view.add(s);
+
     const units: Unit[] = [];
     for (let i = 0; i < UNIT_COUNT; i++) {
         const u = mkUnit(i);
         units.push(u);
         s.units.add(u);
+        view.add(u);
     }
-
-    const view = new StateView();
-    view.add(s);
 
     const bootIt = { offset: 0 };
     enc.encodeAll(bootIt);

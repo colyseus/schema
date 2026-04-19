@@ -23,8 +23,12 @@ describe("Type: StreamSchema", () => {
         const client = createClientWithView(state);
         client.view.add(state);
 
-        state.entities.add(new Entity().assign({ x: 1, y: 1 }));
-        state.entities.add(new Entity().assign({ x: 2, y: 2 }));
+        const e1 = new Entity().assign({ x: 1, y: 1 });
+        const e2 = new Entity().assign({ x: 2, y: 2 });
+        state.entities.add(e1);
+        state.entities.add(e2);
+        client.view.add(e1);
+        client.view.add(e2);
 
         encodeMultiple(encoder, state, [client]);
 
@@ -50,7 +54,9 @@ describe("Type: StreamSchema", () => {
         client.view.add(state);
 
         for (let i = 0; i < 10; i++) {
-            state.entities.add(new Entity().assign({ id: i }));
+            const e = new Entity().assign({ id: i });
+            state.entities.add(e);
+            client.view.add(e);
         }
 
         // Tick 1: 3 added
@@ -88,10 +94,11 @@ describe("Type: StreamSchema", () => {
         const client = createClientWithView(state);
         client.view.add(state);
 
-        state.entities.add(new Entity().assign({ id: 1 }));
-        state.entities.add(new Entity().assign({ id: 50 }));
-        state.entities.add(new Entity().assign({ id: 10 }));
-        state.entities.add(new Entity().assign({ id: 99 }));
+        for (const id of [1, 50, 10, 99]) {
+            const e = new Entity().assign({ id });
+            state.entities.add(e);
+            client.view.add(e);
+        }
 
         encodeMultiple(encoder, state, [client]);
 
@@ -119,6 +126,8 @@ describe("Type: StreamSchema", () => {
         const e2 = new Entity().assign({ id: 2 });
         state.entities.add(e1);
         state.entities.add(e2);
+        client.view.add(e1);
+        client.view.add(e2);
 
         // Remove e2 BEFORE any encode — it was in pending, never sent.
         state.entities.remove(e2);
@@ -147,6 +156,7 @@ describe("Type: StreamSchema", () => {
 
         const e1 = new Entity().assign({ id: 1 });
         state.entities.add(e1);
+        client.view.add(e1);
 
         encodeMultiple(encoder, state, [client]);
         assert.strictEqual(client.state.entities.length, 1);
@@ -173,6 +183,7 @@ describe("Type: StreamSchema", () => {
 
         const e = new Entity().assign({ x: 0 });
         state.entities.add(e);
+        client.view.add(e);
 
         encodeMultiple(encoder, state, [client]);
         assert.strictEqual(client.state.entities.toArray()[0].x, 0);
@@ -198,6 +209,7 @@ describe("Type: StreamSchema", () => {
         const e: EntityT = new Entity();
         e.x = 7;
         state.entities.add(e);
+        client.view.add(e);
 
         encodeMultiple(encoder, state, [client]);
         assert.strictEqual(client.state.entities.toArray()[0].x, 7);
@@ -208,7 +220,12 @@ describe("Type: StreamSchema", () => {
         assert.strictEqual(client.state.entities.toArray()[0].x, 7);
     });
 
-    it("late-joining view receives current backlog spread over ticks", () => {
+    it("late-joining view explicitly subscribes to existing entities", () => {
+        // Under the "explicit membership" rule, a late-joining client
+        // doesn't auto-receive the current backlog. The game loop
+        // iterates and calls `view.add(entity)` for whichever entities
+        // the view should care about — then the priority/maxPerTick
+        // system drains them batch-by-batch like any other subscription.
         class Entity extends Schema {
             @type("number") id: number = 0;
         }
@@ -220,17 +237,23 @@ describe("Type: StreamSchema", () => {
         state.entities.maxPerTick = 2;
         const encoder = getEncoder(state);
 
-        // Populate the stream BEFORE the view exists.
+        // Populate the stream BEFORE the view exists. (A view exists
+        // conceptually for the first client; the second client joins
+        // later. Use a placeholder view to put the stream into view
+        // mode so stream.add doesn't seed broadcast pending.)
+        const placeholder = new StateView();
+        placeholder.add(state);
         for (let i = 0; i < 5; i++) {
             state.entities.add(new Entity().assign({ id: i }));
         }
-
-        // Some initial "warmup" encode so the state is serialized.
         encoder.discardChanges();
+        placeholder.dispose();
 
         // New client joins mid-session.
         const client = createClientWithView(state);
         client.view.add(state);
+        // Game-loop responsibility: iterate + subscribe.
+        state.entities.forEach((e) => client.view.add(e));
 
         encodeMultiple(encoder, state, [client]);
         assert.strictEqual(client.state.entities.length, 2);
@@ -272,6 +295,15 @@ describe("Type: StreamSchema", () => {
             state.entities.maxPerTick = 50;
             const encoder = getEncoder(state);
 
+            const client = createClientWithView(state);
+
+            // Client anchored near grid centroid (asymmetric offset avoids
+            // distance ties across the grid-point reflections).
+            const clientX = 123.5;
+            const clientY = 97.5;
+            (client.view as any).anchor = { x: clientX, y: clientY };
+            client.view.add(state);
+
             // 500 entities on a 25 × 20 grid with 10-unit spacing.
             const GRID_W = 25, GRID_H = 20, SPACING = 10;
             const TOTAL = GRID_W * GRID_H; // 500
@@ -281,16 +313,10 @@ describe("Type: StreamSchema", () => {
                 e.x = (i % GRID_W) * SPACING;
                 e.y = Math.floor(i / GRID_W) * SPACING;
                 state.entities.add(e);
+                // Game-loop subscribes all entities to the view (this
+                // test's "AOI" is the whole world).
+                client.view.add(e);
             }
-
-            // Client anchored near grid centroid (asymmetric offset avoids
-            // distance ties across the grid-point reflections).
-            const clientX = 123.5;
-            const clientY = 97.5;
-
-            const client = createClientWithView(state);
-            (client.view as any).anchor = { x: clientX, y: clientY };
-            client.view.add(state);
 
             // Ground truth: server-side entities sorted by squared distance
             // to the client position (stable sort preserves insertion order
@@ -357,6 +383,11 @@ describe("Type: StreamSchema", () => {
             state.entities.maxPerTick = 20;
             const encoder = getEncoder(state);
 
+            const client = createClientWithView(state);
+            const anchor = { x: 0, y: 0 };
+            (client.view as any).anchor = anchor;
+            client.view.add(state);
+
             // 200 entities on a 20 × 10 grid.
             const GRID_W = 20, SPACING = 10;
             for (let i = 0; i < 200; i++) {
@@ -365,12 +396,8 @@ describe("Type: StreamSchema", () => {
                 e.x = (i % GRID_W) * SPACING;
                 e.y = Math.floor(i / GRID_W) * SPACING;
                 state.entities.add(e);
+                client.view.add(e);
             }
-
-            const client = createClientWithView(state);
-            const anchor = { x: 0, y: 0 };
-            (client.view as any).anchor = anchor;
-            client.view.add(state);
 
             // Viewer at (0, 0): ticks 1–2 drain 40 entities closest to origin.
             encodeMultiple(encoder, state, [client]);
@@ -453,11 +480,13 @@ describe("Type: StreamSchema", () => {
             sprite.offset.assign({ x: 5, y: 7 });
             player.components.push(sprite);
             state.entities.add(player);
+            client.view.add(player);
 
             // Entity 2: enemy with just a Position.
             const enemy = new Entity().assign({ name: "enemy" });
             enemy.components.push(new Position().assign({ kind: "position", x: 100, y: 50 }));
             state.entities.add(enemy);
+            client.view.add(enemy);
 
             encodeMultiple(encoder, state, [client]);
 
@@ -542,6 +571,7 @@ describe("Type: StreamSchema", () => {
                 const e = makeEntity(`e${i}`, `t${i}.png`, i * 10);
                 entities.push(e);
                 state.entities.add(e);
+                client.view.add(e);
             }
 
             // Tick 1: 2 emitted (positions 0, 1).
@@ -604,6 +634,7 @@ describe("Type: StreamSchema", () => {
             sprite.offset.assign({ x: 1, y: 2 });
             e.components.push(sprite);
             state.entities.add(e);
+            client.view.add(e);
 
             encodeMultiple(encoder, state, [client]);
             {
@@ -815,10 +846,12 @@ describe("Type: StreamSchema", () => {
         (clientB.view as any).sortAscending = true;  // lowest id first
         clientB.view.add(state);
 
-        state.entities.add(new Entity().assign({ id: 1 }));
-        state.entities.add(new Entity().assign({ id: 2 }));
-        state.entities.add(new Entity().assign({ id: 3 }));
-        state.entities.add(new Entity().assign({ id: 4 }));
+        for (const id of [1, 2, 3, 4]) {
+            const e = new Entity().assign({ id });
+            state.entities.add(e);
+            clientA.view.add(e);
+            clientB.view.add(e);
+        }
 
         encodeMultiple(encoder, state, [clientA, clientB]);
 

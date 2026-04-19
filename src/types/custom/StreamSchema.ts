@@ -20,7 +20,6 @@ import {
     streamRouteAdd,
     streamRouteClear,
     streamRouteRemove,
-    streamSeedView,
     type StreamableState,
 } from "../../encoder/streaming.js";
 import type { StateView } from "../../encoder/StateView.js";
@@ -279,10 +278,6 @@ export class StreamSchema<V = any> implements IRef {
     }
 
     // ─── Streamable interface (Encoder priority / broadcast pass) ──────
-
-    _seedViewPending(viewId: number): void {
-        streamSeedView(this, viewId, this.$items.keys());
-    }
 
     _dropView(viewId: number): void {
         streamDropView(this, viewId);

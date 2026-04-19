@@ -18,7 +18,6 @@ export interface Streamable {
     [$refId]?: number;
     [$changes]: ChangeTree;
     _stream?: StreamableState;
-    _seedViewPending(viewId: number): void;
     _dropView(viewId: number): void;
     _unregister(): void;
 }
