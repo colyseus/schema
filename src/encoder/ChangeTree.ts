@@ -178,6 +178,17 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     // DEFAULT_VIEW_TAG visibility lives in `visibleViews`.
     tagViews?: Map<number, number[]>;
 
+    /**
+     * Per-view subscription bitmap — same layout as `visibleViews`. Set by
+     * `StateView.subscribe(collection)` to mark the view as persistently
+     * interested in this collection's contents. When a new child is
+     * attached to a subscribed collection (setParent hook), it's
+     * auto-propagated to every subscribed view (force-shipped for
+     * Array/Map/Set/Collection; enqueued into per-view pending for
+     * streams). Undefined until the first subscribe.
+     */
+    subscribedViews?: number[];
+
     // Accessor properties for flags
     get isFiltered() { return (this.flags & IS_FILTERED) !== 0; }
     set isFiltered(v: boolean) { this.flags = v ? (this.flags | IS_FILTERED) : (this.flags & ~IS_FILTERED); }

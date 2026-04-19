@@ -9,6 +9,7 @@ import { $changes, $childType, $refTypeFieldIndexes } from "../../types/symbols.
 import { Root } from "../Root.js";
 import type { ChangeTree, Ref } from "../ChangeTree.js";
 import { checkIsFiltered } from "./inheritedFlags.js";
+import { propagateNewChildToSubscribers } from "../subscriptions.js";
 
 export function setRoot(tree: ChangeTree, root: Root): void {
     tree.root = root;
@@ -40,6 +41,23 @@ export function setParent(
     if (root !== tree.root) {
         tree.root = root;
         checkIsFiltered(tree, parent, parentIndex, isNewChangeTree);
+    }
+
+    // Persistent-subscription propagation — when this new child is being
+    // attached to a collection that has one or more subscribed views,
+    // force-ship (or enqueue, for streams) the new child to each of them.
+    // Gated by `parent` being a collection (not a Schema) and the parent
+    // tree having a non-empty `subscribedViews` bitmap; both common-case
+    // short circuits are cheap.
+    const parentTree = parent?.[$changes];
+    if (
+        parentTree !== undefined &&
+        parentTree.subscribedViews !== undefined &&
+        // Collection check: `$childType` on the ref identifies Array/Map/
+        // Set/Collection/Stream. Schema-field parents don't have it.
+        (parent as any)[$childType] !== undefined
+    ) {
+        propagateNewChildToSubscribers(parentTree, parentIndex!, tree.ref, root);
     }
 
     // assign same parent on child structures (closure-free hot path).

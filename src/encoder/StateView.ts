@@ -30,6 +30,8 @@ function _clearViewBitFromAllTrees(root: Root, slot: number, bit: number): void 
         if (v !== undefined && slot < v.length) v[slot] &= clearMask;
         const i = tree.invisibleViews;
         if (i !== undefined && slot < i.length) i[slot] &= clearMask;
+        const s = tree.subscribedViews;
+        if (s !== undefined && slot < s.length) s[slot] &= clearMask;
         const t = tree.tagViews;
         if (t !== undefined) {
             t.forEach((bitmap) => {
@@ -159,6 +161,32 @@ export class StateView {
     /** Clear visibility bit. */
     public unmarkVisible(tree: ChangeTree): void {
         const arr = tree.visibleViews;
+        if (arr === undefined) return;
+        const slot = this._slot;
+        if (slot < arr.length) arr[slot] &= ~this._bit;
+    }
+
+    /** True iff this view is subscribed to `tree`. */
+    public isSubscribed(tree: ChangeTree): boolean {
+        const arr = tree.subscribedViews;
+        const slot = this._slot;
+        return arr !== undefined && slot < arr.length && (arr[slot] & this._bit) !== 0;
+    }
+
+    /** Set the subscription bit on `tree`. */
+    private _setSubscribed(tree: ChangeTree): void {
+        const slot = this._slot;
+        let arr = tree.subscribedViews;
+        if (arr === undefined) {
+            arr = tree.subscribedViews = [];
+        }
+        while (arr.length <= slot) arr.push(0);
+        arr[slot] |= this._bit;
+    }
+
+    /** Clear the subscription bit on `tree`. */
+    private _clearSubscribed(tree: ChangeTree): void {
+        const arr = tree.subscribedViews;
         if (arr === undefined) return;
         const slot = this._slot;
         if (slot < arr.length) arr[slot] &= ~this._bit;
@@ -579,6 +607,125 @@ export class StateView {
 
     hasTag(ob: Ref, tag: number = DEFAULT_VIEW_TAG) {
         return this.hasTagOnTree(ob[$changes], tag);
+    }
+
+    /**
+     * Persistent subscription to a collection's contents. Unlike `add()`,
+     * which is a one-shot bootstrap, `subscribe()` enrolls this view in
+     * future content changes — every subsequent push / set / add to the
+     * collection automatically flows to this view, and every removal
+     * queues a DELETE op. Works on every collection type:
+     *
+     * - `ArraySchema` / `MapSchema` / `SetSchema` / `CollectionSchema`:
+     *   new children are force-shipped immediately (equivalent to
+     *   `view.add(child)` per item).
+     * - `StreamSchema` (or `.stream()` maps/sets): new positions are
+     *   enqueued into `_pendingByView` so the priority pass drains them
+     *   respecting `maxPerTick`.
+     *
+     * Idempotent on re-subscribe. Subscribing to an already-subscribed
+     * collection is a no-op.
+     */
+    subscribe(collection: Ref): this {
+        const tree: ChangeTree = collection?.[$changes];
+        if (!tree) {
+            console.warn("StateView#subscribe(), invalid collection:", collection);
+            return this;
+        }
+        if (this._root === undefined && tree.root !== undefined) {
+            this._bindRoot(tree.root);
+        }
+        if (this.isSubscribed(tree)) return this;
+
+        // Mark collection visible so its own ADD/DELETE ops emit in the
+        // view pass. Also flip on the subscription bit.
+        this.markVisible(tree);
+        this._setSubscribed(tree);
+
+        // Bootstrap: walk current children and mark them visible to this
+        // view. We DO NOT force-seed via `_addImmediate` / view.changes
+        // — the encoder's natural emission paths handle it:
+        //
+        //   - `encodeAllView` (first-tick bootstrap): walks the tree
+        //     structurally and emits every visible child.
+        //   - Normal `encodeView` pass: walks `root.changes` and emits
+        //     dirty children + parent collection's ADD ops.
+        //
+        // Seeding view.changes ourselves would cause duplicate emission,
+        // fine for idempotent collections (Array/Map/Set dedup by index
+        // or value), but breaks `CollectionSchema` which appends on
+        // every decode-side ADD (no dedup).
+        //
+        // Streams are the exception — they bypass the recorder flow, so
+        // subscription must enqueue positions into `_pendingByView`
+        // where the priority pass drains them per `maxPerTick`.
+        if (tree.isStreamCollection) {
+            const streamable = collection as unknown as Streamable;
+            tree.forEachChild((_child, index) => {
+                streamEnqueueForView(streamable, this.id, index);
+            });
+        } else {
+            tree.forEachChild((child) => {
+                this.markVisible(child);
+            });
+        }
+
+        return this;
+    }
+
+    /**
+     * End a persistent subscription. Queues DELETE for every already-sent
+     * child and clears any pending. After this call, future content
+     * changes on the collection no longer auto-flow to this view (though
+     * direct `view.add(element)` calls still work for per-entity use).
+     */
+    unsubscribe(collection: Ref): this {
+        const tree: ChangeTree = collection?.[$changes];
+        if (!tree) {
+            console.warn("StateView#unsubscribe(), invalid collection:", collection);
+            return this;
+        }
+        if (!this.isSubscribed(tree)) return this;
+        this._clearSubscribed(tree);
+
+        const collectionRefId = tree.ref[$refId];
+
+        if (tree.isStreamCollection) {
+            // Streams: clear pending + queue DELETE for everything in sent.
+            const st = (collection as any)._stream;
+            if (st !== undefined) {
+                st.pendingByView.get(this.id)?.clear();
+                const sent: Set<number> | undefined = st.sentByView.get(this.id);
+                if (sent !== undefined && sent.size > 0) {
+                    let changes = this.changes.get(collectionRefId);
+                    if (changes === undefined) {
+                        changes = new Map();
+                        this.changes.set(collectionRefId, changes);
+                    }
+                    for (const pos of sent) changes.set(pos, OPERATION.DELETE);
+                    sent.clear();
+                }
+            }
+        } else {
+            // Non-streams: queue DELETE for every current child and
+            // unmark their visibility so subsequent mutations stop
+            // reaching this view.
+            let changes = this.changes.get(collectionRefId);
+            tree.forEachChild((childTree, index) => {
+                if (changes === undefined) {
+                    changes = new Map();
+                    this.changes.set(collectionRefId, changes);
+                }
+                changes.set(index, OPERATION.DELETE);
+                this.unmarkVisible(childTree);
+            });
+        }
+
+        // Unmark the collection itself so future ops don't emit to this
+        // view (add() / subscribe() again re-marks it).
+        this.unmarkVisible(tree);
+
+        return this;
     }
 
     clear() {
