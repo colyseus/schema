@@ -253,11 +253,25 @@ export const decodeKeyValueOperation: DecodeOperation = function (
             (ref as any)['$setAt'](index, value, operation);
 
         } else if (typeof((ref as any)['add']) === "function") {
-            // CollectionSchema && SetSchema
-            const index = (ref as any).add(value);
-
-            if (typeof(index) === "number") {
-                (ref as any)['setIndex'](index, index);
+            // CollectionSchema && SetSchema — use the wire-index we
+            // decoded above so server/client `$items` stay in sync
+            // regardless of duplicate emission (e.g. a bootstrap that
+            // walks both `encodeAll` and the shared recorder emits the
+            // same ADD op twice). Previous implementation called
+            // `ref.add(value)` and let the decoder-side `$refId++`
+            // allocate a new index per call — which for CollectionSchema
+            // (no value-dedup) turned duplicate wire ADDs into duplicate
+            // client-side entries.
+            const r = ref as any;
+            if (!r.$items.has(index)) {
+                r.$items.set(index, value);
+                // Keep the decoder's monotonic counter ahead of any
+                // wire-index we've seen so future server-side `.add()`
+                // allocations don't collide with ones already decoded.
+                if (typeof r.$refId === "number" && index >= r.$refId) {
+                    r.$refId = index + 1;
+                }
+                r["setIndex"]?.(index, index);
             }
         }
     }

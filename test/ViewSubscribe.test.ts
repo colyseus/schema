@@ -155,17 +155,7 @@ describe("StateView#subscribe", () => {
     });
 
     describe("CollectionSchema", () => {
-        // CollectionSchema's decoder (`decodeKeyValueOperation` → `ref.add`)
-        // appends without dedup on every ADD op it receives. The standard
-        // Colyseus bootstrap path emits each item on both `encodeAllView`
-        // (structural walk) AND `encodeView`'s normal pass (recorder walk)
-        // — harmless for position-indexed Array/Map or value-deduped Set,
-        // but produces duplicates in CollectionSchema. That's a decoder
-        // quirk orthogonal to `subscribe()`; subscription itself works.
-        //
-        // TODO: revisit once CollectionSchema dedupes on wire-index
-        // (or once the bootstrap duplicate-emit is fixed upstream).
-        xit("new items auto-flow to subscribed views (pending: decoder quirk)", () => {
+        it("new items auto-flow to subscribed views", () => {
             class Notice extends Schema { @type("string") msg: string = ""; }
             class State extends Schema {
                 @view() @type({ collection: Notice })
@@ -181,6 +171,10 @@ describe("StateView#subscribe", () => {
             state.notices.add(new Notice().assign({ msg: "hello" }));
             encodeMultiple(encoder, state, [client]);
             assert.strictEqual(client.state.notices.size, 2);
+
+            state.notices.add(new Notice().assign({ msg: "world" }));
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.notices.size, 3);
         });
     });
 
