@@ -2,6 +2,7 @@ import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
 import { getType, registeredTypes } from "./types/registry.js";
 import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $staticFieldIndexes, $streamFieldIndexes, $streamPriorities, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
 
@@ -147,18 +148,11 @@ export const Metadata = {
         // dispatch without the caller needing an extra setStream() call.
         const t = metadata[index].type;
         if (t && typeof t === "object" && (t as any)["stream"] !== undefined) {
-            // ArraySchema streaming is unsafe — positional ops (splice /
-            // unshift / reverse) shift indexes mid-tick, and holding ADDs
-            // back for a later tick under `maxPerTick` would desync the
-            // decoder. Reject the combined shorthand `@type({ array: X,
-            // stream: true })` at decoration time.
+            // Reject the combined shorthand `@type({ array: X, stream:
+            // true })` at decoration time — same diagnostic as the
+            // builder chainable throws for `t.array(X).stream()`.
             if ((t as any).array !== undefined) {
-                throw new Error(
-                    `@type({ array, stream }) is not supported on '${name}'. ` +
-                    `ArraySchema positional ops make streaming unsafe. Use ` +
-                    `@type({ stream: X }) or @type({ map: X, stream: true }) ` +
-                    `instead.`,
-                );
+                throw new Error(ARRAY_STREAM_NOT_SUPPORTED);
             }
             metadata[index].stream = true;
             if (!metadata[$streamFieldIndexes]) {

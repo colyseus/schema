@@ -274,12 +274,14 @@ describe("StateView#subscribe", () => {
     });
 
     describe("ArraySchema streaming is rejected", () => {
+        // Both call sites throw the same diagnostic (ARRAY_STREAM_NOT_SUPPORTED).
+        const EXPECTED = /ArraySchema does not support streaming/;
+
         it("throws at builder time: t.array(X).stream()", () => {
             class Item extends Schema { @type("number") id: number = 0; }
             assert.throws(() => {
-                // eslint-disable-next-line @typescript-eslint/no-unused-expressions
                 t.array(Item).stream();
-            }, /ArraySchema does not support \.stream\(\)/);
+            }, EXPECTED);
         });
 
         it("throws at decoration time: @type({ array, stream: true })", () => {
@@ -291,9 +293,8 @@ describe("StateView#subscribe", () => {
                     @type({ array: Item, stream: true } as any)
                     items: any;
                 }
-                // Reference `Bad` so TypeScript doesn't strip the class.
                 return Bad;
-            }, /@type\(\{ array, stream \}\) is not supported/);
+            }, EXPECTED);
         });
     });
 

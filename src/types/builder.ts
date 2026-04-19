@@ -7,6 +7,7 @@ import type { Schema } from "../Schema.js";
 import type { DefinitionType, RawPrimitiveType } from "../annotations.js";
 import type { InferValueType, Constructor } from "./HelperTypes.js";
 import { $builder } from "./symbols.js";
+import { ARRAY_STREAM_NOT_SUPPORTED } from "../encoder/streaming.js";
 
 type CollectionKind = "array" | "map" | "set" | "collection";
 
@@ -132,11 +133,7 @@ export class FieldBuilder<T = unknown> {
     stream(): this {
         const t = this._type as any;
         if (t && typeof t === "object" && t.array !== undefined) {
-            throw new Error(
-                "ArraySchema does not support .stream() — positional ops " +
-                "(splice/unshift/reverse) make mid-tick budget holds unsafe. " +
-                "Use t.stream(X) or t.map(X).stream() instead.",
-            );
+            throw new Error(ARRAY_STREAM_NOT_SUPPORTED);
         }
         this._stream = true;
         return this;

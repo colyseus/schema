@@ -17,6 +17,18 @@ import { OPERATION } from "../encoding/spec.js";
 import type { Root, Streamable } from "./Root.js";
 
 /**
+ * Thrown (from both the `FieldBuilder` chainable and the decorator's
+ * `addField` auto-flag) when a user attempts to stream an ArraySchema.
+ * Centralized so the two callsites emit the same diagnostic.
+ */
+export const ARRAY_STREAM_NOT_SUPPORTED =
+    "ArraySchema does not support streaming — positional ops " +
+    "(splice / unshift / reverse) shift subsequent indexes, so holding " +
+    "ADDs back for a later tick under `maxPerTick` would desync the " +
+    "decoder. Use `t.stream(X)` (stable monotonic positions) or " +
+    "`t.map(X).stream()` (stable keys) instead.";
+
+/**
  * Per-instance bookkeeping for a streamable collection. Lazily allocated
  * by `ensureStreamState` when the collection's ChangeTree picks up the
  * `isStreamCollection` flag (or when the user touches `maxPerTick`).
