@@ -118,14 +118,26 @@ export class FieldBuilder<T = unknown> {
     /**
      * Opt a collection field into priority-batched streaming delivery —
      * ADDs drain at most `maxPerTick` per tick per view (or per broadcast
-     * tick without a view). Applies to `t.map(X)` and `t.set(X)` /
+     * tick without a view). Applies to `t.map(X)` / `t.set(X)` /
      * `t.collection(X)`. Redundant on `t.stream(X)` (the factory already
      * sets this flag).
      *
-     * Array streaming is not currently supported — positional operations
-     * (splice / unshift / reverse) make mid-tick budget holds unsafe.
+     * **Not supported on `t.array(X)`.** Array positional operations
+     * (`splice`, `unshift`, `reverse`) shift every subsequent index —
+     * holding some ADDs back for a later tick while indexes mutate
+     * underneath would produce a decoder-side state that doesn't match
+     * the server. Use `t.stream(X)` (stable monotonic positions) or
+     * `t.map(X).stream()` (keys never shift) instead.
      */
     stream(): this {
+        const t = this._type as any;
+        if (t && typeof t === "object" && t.array !== undefined) {
+            throw new Error(
+                "ArraySchema does not support .stream() — positional ops " +
+                "(splice/unshift/reverse) make mid-tick budget holds unsafe. " +
+                "Use t.stream(X) or t.map(X).stream() instead.",
+            );
+        }
         this._stream = true;
         return this;
     }

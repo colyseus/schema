@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import {
-    Schema, type, view,
+    Schema, type, view, t,
     ArraySchema, MapSchema, SetSchema, CollectionSchema, StreamSchema,
     StateView,
 } from "../src";
@@ -270,6 +270,30 @@ describe("StateView#subscribe", () => {
             state.entities.add(new Entity().assign({ id: 3 }));
             encodeMultiple(encoder, state, [client]);
             assert.strictEqual(client.state.entities.length, 0);
+        });
+    });
+
+    describe("ArraySchema streaming is rejected", () => {
+        it("throws at builder time: t.array(X).stream()", () => {
+            class Item extends Schema { @type("number") id: number = 0; }
+            assert.throws(() => {
+                // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+                t.array(Item).stream();
+            }, /ArraySchema does not support \.stream\(\)/);
+        });
+
+        it("throws at decoration time: @type({ array, stream: true })", () => {
+            assert.throws(() => {
+                class Item extends Schema { @type("number") id: number = 0; }
+                // Force-cast past the DefinitionType union to simulate a
+                // user hand-writing the discouraged shape.
+                class Bad extends Schema {
+                    @type({ array: Item, stream: true } as any)
+                    items: any;
+                }
+                // Reference `Bad` so TypeScript doesn't strip the class.
+                return Bad;
+            }, /@type\(\{ array, stream \}\) is not supported/);
         });
     });
 
