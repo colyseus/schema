@@ -100,6 +100,12 @@ export class SchemaChangeRecorder implements ChangeRecorder {
         const prev = this.ops[index];
         if (prev === 0) this.ops[index] = op;
         else if (prev === OPERATION.DELETE) this.ops[index] = OPERATION.DELETE_AND_ADD;
+        // Promote ADD → DELETE_AND_ADD when a ref is replaced in the same
+        // tick. See `ChangeTree.record` for rationale — same logic, this
+        // interface implementation is kept in sync.
+        else if (prev === OPERATION.ADD && op === OPERATION.DELETE_AND_ADD) {
+            this.ops[index] = OPERATION.DELETE_AND_ADD;
+        }
         // else preserve existing ADD / DELETE_AND_ADD.
 
         if (index < 32) this.dirtyLow |= (1 << index);
@@ -185,6 +191,11 @@ export class CollectionChangeRecorder implements ICollectionChangeRecorder {
         const prev = this.dirty.get(index);
         if (prev === undefined) this.dirty.set(index, op);
         else if (prev === OPERATION.DELETE) this.dirty.set(index, OPERATION.DELETE_AND_ADD);
+        // Promote ADD → DELETE_AND_ADD for same-tick replacement of a ref
+        // (see `SchemaChangeRecorder.record` for rationale).
+        else if (prev === OPERATION.ADD && op === OPERATION.DELETE_AND_ADD) {
+            this.dirty.set(index, OPERATION.DELETE_AND_ADD);
+        }
         // else preserve existing op.
     }
 

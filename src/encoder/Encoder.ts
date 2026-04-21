@@ -695,6 +695,11 @@ export class Encoder<T extends Schema = any> {
         }
         list.next = undefined;
         list.tail = undefined;
+
+        // End-of-tick: refIds released during this tick have now had their
+        // DELETEs emitted through `encode()` / `encodeView()`, so they are
+        // safe to recycle on the next tick.
+        root.refIds.flushReleases();
     }
 
     discardUnreliableChanges() {

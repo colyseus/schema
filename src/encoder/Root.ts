@@ -2,6 +2,7 @@ import { OPERATION } from "../encoding/spec.js";
 import { TypeContext } from "../types/TypeContext.js";
 import { ChangeTree, ChangeTreeList, createChangeTreeList, type ChangeTreeNode } from "./ChangeTree.js";
 import { $changes, $refId } from "../types/symbols.js";
+import { RefIdAllocator } from "./RefIdAllocator.js";
 import type { StateView } from "./StateView.js";
 import type { StreamSchema } from "../types/custom/StreamSchema.js";
 import type { StreamableState } from "./streaming.js";
@@ -23,7 +24,11 @@ export interface Streamable {
 }
 
 export class Root {
-    protected nextUniqueId: number = 0;
+    /**
+     * Allocates and recycles refIds. See `RefIdAllocator` for the reuse
+     * pool semantics (one-tick defer + resurrection).
+     */
+    public readonly refIds: RefIdAllocator;
 
     refCount: {[id: number]: number} = {};
     changeTrees: {[refId: number]: ChangeTree} = {};
@@ -129,11 +134,7 @@ export class Root {
     }
 
     constructor(public types: TypeContext, startRefId: number = 0) {
-        this.nextUniqueId = startRefId;
-    }
-
-    getNextUniqueId() {
-        return this.nextUniqueId++;
+        this.refIds = new RefIdAllocator(startRefId);
     }
 
     add(changeTree: ChangeTree) {
@@ -145,7 +146,7 @@ export class Root {
         // to keep $refId hidden from deep-equal comparisons in tests.
         if (ref[$refId] === undefined) {
             Object.defineProperty(ref, $refId, {
-                value: this.getNextUniqueId(),
+                value: this.refIds.acquire(),
                 enumerable: false,
                 writable: true
             });
@@ -155,6 +156,13 @@ export class Root {
 
         const isNewChangeTree = (this.changeTrees[refId] === undefined);
         if (isNewChangeTree) { this.changeTrees[refId] = changeTree; }
+
+        // Resurrection path: a ref whose refId is still queued for reuse
+        // is being re-added. Pull the refId out of the pool before it gets
+        // handed out to someone else.
+        if (this.refIds.isPooled(refId)) {
+            this.refIds.reclaim(refId);
+        }
 
         const previousRefCount = this.refCount[refId];
         if (previousRefCount === 0) {
@@ -202,6 +210,16 @@ export class Root {
             this.removeFromUnreliableQueue(changeTree);
 
             this.refCount[refId] = 0;
+
+            // Return refId to the reuse pool (deferred to end-of-tick via
+            // the allocator's pending set). Stream collections are excluded
+            // because their per-view delivery bookkeeping is harder to
+            // audit for reuse safety and the savings there are negligible.
+            // If the ref is later resurrected, `add()` evicts the refId
+            // from the pool before it's handed to another instance.
+            if (!changeTree.isStreamCollection) {
+                this.refIds.release(refId);
+            }
 
             changeTree.forEachChild((child, _) => {
                 if (child.removeParent(changeTree.ref)) {

@@ -322,14 +322,24 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
             const prev = this._opAt(index);
             if (prev === 0) this._opPut(index, op);
             else if (prev === OPERATION.DELETE) this._opPut(index, OPERATION.DELETE_AND_ADD);
+            // Promote ADD → DELETE_AND_ADD when a ref is replaced in the
+            // same tick. Otherwise the on-wire op collapses to plain ADD
+            // and the decoder's `refs` map leaks the displaced refId —
+            // harmless on its own, but refId pooling turns that leak into
+            // a catastrophic rebinding when the refId is later reused.
+            else if (prev === OPERATION.ADD && op === OPERATION.DELETE_AND_ADD) {
+                this._opPut(index, OPERATION.DELETE_AND_ADD);
+            }
             // else: existing ADD / DELETE_AND_ADD — preserve op-byte.
             this._markDirty(index);
         } else {
             const dirty = this.collDirty!;
             const prev = dirty.get(index);
-            const finalOp = (prev === undefined)
-                ? op
-                : (prev === OPERATION.DELETE ? OPERATION.DELETE_AND_ADD : prev);
+            let finalOp: OPERATION;
+            if (prev === undefined) finalOp = op;
+            else if (prev === OPERATION.DELETE) finalOp = OPERATION.DELETE_AND_ADD;
+            else if (prev === OPERATION.ADD && op === OPERATION.DELETE_AND_ADD) finalOp = OPERATION.DELETE_AND_ADD;
+            else finalOp = prev;
             dirty.set(index, finalOp);
         }
     }
