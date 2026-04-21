@@ -1,6 +1,6 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $proxyTarget, $refId } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
-import { type IRef, ChangeTree } from "../../encoder/ChangeTree.js";
+import { type IRef, ChangeTree, createUntrackedChangeTree } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
@@ -17,6 +17,96 @@ const DEFAULT_SORT = (a: any, b: any) => {
     else if (A > B) return 1;
     else return 0
 }
+
+/**
+ * Module-level Proxy handler shared by every `ArraySchema` instance. Hoisted
+ * out of the ctor so per-instance Proxy setup stops allocating ~6 arrow
+ * closures (the `__name` wrappers around those closures dominated one slice
+ * of the decoder profile). The handlers reference the target via the trap's
+ * `obj` arg — they don't need a captured `this`. Both `new ArraySchema()`
+ * and `ArraySchema.initializeForDecoder()` plug into it.
+ */
+const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
+    get: (obj, prop) => {
+        if (
+            typeof (prop) !== "symbol" &&
+            // FIXME: d8 accuses this as low performance
+            !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
+        ) {
+            return obj.items[prop as unknown as number];
+        }
+        return Reflect.get(obj, prop);
+    },
+
+    set: (obj, key, setValue) => {
+        if (typeof (key) !== "symbol" && !isNaN(key as any)) {
+            if (setValue === undefined || setValue === null) {
+                obj.$deleteAt(key as unknown as number);
+
+            } else {
+                if (setValue[$changes]) {
+                    assertInstanceType(setValue, obj[$childType] as typeof Schema, obj, key);
+
+                    const previousValue = obj.items[key as unknown as number];
+
+                    if (!obj.isMovingItems) {
+                        obj.$changeAt(Number(key), setValue);
+
+                    } else {
+                        if (previousValue !== undefined) {
+                            if (setValue[$changes].isNew) {
+                                obj[$changes].indexedOperation(Number(key), OPERATION.MOVE_AND_ADD);
+
+                            } else {
+                                if ((obj[$changes].getChange(Number(key)) & OPERATION.DELETE) === OPERATION.DELETE) {
+                                    obj[$changes].indexedOperation(Number(key), OPERATION.DELETE_AND_MOVE);
+
+                                } else {
+                                    obj[$changes].indexedOperation(Number(key), OPERATION.MOVE);
+                                }
+                            }
+
+                        } else if (setValue[$changes].isNew) {
+                            obj[$changes].indexedOperation(Number(key), OPERATION.ADD);
+                        }
+
+                        setValue[$changes].setParent(obj, obj[$changes].root, key);
+                    }
+
+                    if (previousValue !== undefined) {
+                        // remove root reference from previous value
+                        previousValue[$changes].root?.remove(previousValue[$changes]);
+                    }
+
+                } else {
+                    obj.$changeAt(Number(key), setValue);
+                }
+
+                obj.items[key as unknown as number] = setValue;
+                obj.tmpItems[key as unknown as number] = setValue;
+            }
+
+            return true;
+        }
+        return Reflect.set(obj, key, setValue);
+    },
+
+    deleteProperty: (obj, prop) => {
+        if (typeof (prop) === "number") {
+            obj.$deleteAt(prop);
+        } else {
+            delete obj[prop as unknown as number];
+        }
+        return true;
+    },
+
+    has: (obj, key) => {
+        if (typeof (key) !== "symbol" && !isNaN(Number(key))) {
+            return Reflect.has(obj.items, key);
+        }
+        return Reflect.has(obj, key);
+    },
+};
 
 export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IRef {
     [n: number]: V;
@@ -71,92 +161,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         // underlying instance and access fields directly. See $proxyTarget.
         this[$proxyTarget] = this;
 
-        const proxy = new Proxy(this, {
-            get: (obj, prop) => {
-                if (
-                    typeof (prop) !== "symbol" &&
-                    // FIXME: d8 accuses this as low performance
-                    !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
-                ) {
-                    return this.items[prop as unknown as number];
-
-                } else {
-                    return Reflect.get(obj, prop);
-                }
-            },
-
-            set: (obj, key, setValue) => {
-                if (typeof (key) !== "symbol" && !isNaN(key as any)) {
-                    if (setValue === undefined || setValue === null) {
-                        obj.$deleteAt(key as unknown as number);
-
-                    } else {
-                        if (setValue[$changes]) {
-                            assertInstanceType(setValue, obj[$childType] as typeof Schema, obj, key);
-
-                            const previousValue = obj.items[key as unknown as number];
-
-                            if (!obj.isMovingItems) {
-                                obj.$changeAt(Number(key), setValue);
-
-                            } else {
-                                if (previousValue !== undefined) {
-                                    if (setValue[$changes].isNew) {
-                                        obj[$changes].indexedOperation(Number(key), OPERATION.MOVE_AND_ADD);
-
-                                    } else {
-                                        if ((obj[$changes].getChange(Number(key)) & OPERATION.DELETE) === OPERATION.DELETE) {
-                                            obj[$changes].indexedOperation(Number(key), OPERATION.DELETE_AND_MOVE);
-
-                                        } else {
-                                            obj[$changes].indexedOperation(Number(key), OPERATION.MOVE);
-                                        }
-                                    }
-
-                                } else if (setValue[$changes].isNew) {
-                                    obj[$changes].indexedOperation(Number(key), OPERATION.ADD);
-                                }
-
-                                setValue[$changes].setParent(this, obj[$changes].root, key);
-                            }
-
-                            if (previousValue !== undefined) {
-                                // remove root reference from previous value
-                                previousValue[$changes].root?.remove(previousValue[$changes]);
-                            }
-
-                        } else {
-                            obj.$changeAt(Number(key), setValue);
-                        }
-
-                        obj.items[key as unknown as number] = setValue;
-                        obj.tmpItems[key as unknown as number] = setValue;
-                    }
-
-                    return true;
-                } else {
-                    return Reflect.set(obj, key, setValue);
-                }
-            },
-
-            deleteProperty: (obj, prop) => {
-                if (typeof (prop) === "number") {
-                    obj.$deleteAt(prop);
-
-                } else {
-                    delete obj[prop as unknown as number];
-                }
-
-                return true;
-            },
-
-            has: (obj, key) => {
-                if (typeof (key) !== "symbol" && !isNaN(Number(key))) {
-                    return Reflect.has(this.items, key);
-                }
-                return Reflect.has(obj, key)
-            }
-        });
+        const proxy = new Proxy(this, ARRAY_PROXY_HANDLER);
 
         Object.defineProperty(this, $changes, {
             value: new ChangeTree(proxy),
@@ -167,6 +172,32 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         if (items.length > 0) {
             this.push(...items);
         }
+
+        return proxy;
+    }
+
+    /**
+     * Decoder-side factory. Skips the `ChangeTree` allocation and
+     * replicates the class-field initializers by hand (since `Object.create`
+     * bypasses them). Must stay in sync with the class-field declarations
+     * and the constructor body above.
+     */
+    static initializeForDecoder<V = any>(): ArraySchema<V> {
+        const self = Object.create(ArraySchema.prototype) as ArraySchema<V>;
+        (self as any).items = [];
+        (self as any).tmpItems = [];
+        (self as any).deletedIndexes = [];
+        (self as any).isMovingItems = false;
+        (self as any)[$childType] = undefined;
+        (self as any)[$proxyTarget] = self;
+
+        const proxy = new Proxy(self, ARRAY_PROXY_HANDLER);
+
+        Object.defineProperty(self, $changes, {
+            value: createUntrackedChangeTree(proxy),
+            enumerable: false,
+            writable: true,
+        });
 
         return proxy;
     }

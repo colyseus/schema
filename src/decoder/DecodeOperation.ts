@@ -97,9 +97,13 @@ export function decodeValue<T extends Ref>(
         const typeDef = getType(Object.keys(type)[0]);
         const refId = decode.number(bytes, it);
 
+        // `initializeForDecoder` is a static on every registered collection
+        // class — it does `Object.create(Class.prototype)` + the class-
+        // field init + assigns an untracked `$changes` directly. Keeps
+        // the decoder free of collection-type internals.
         const valueRef: Ref = ($root.refs.has(refId))
             ? previousValue || $root.refs.get(refId)
-            : new typeDef.constructor();
+            : (typeDef.constructor as any).initializeForDecoder();
 
         value = valueRef.clone(true);
         value[$childType] = Object.values(type)[0]; // cache childType for ArraySchema and MapSchema

@@ -2,7 +2,7 @@ import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId } from "../symbols.js";
 import { Collection } from "../HelperTypes.js";
-import { ChangeTree, type IRef } from "../../encoder/ChangeTree.js";
+import { ChangeTree, createUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
 import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
 import {
@@ -90,6 +90,26 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         if (initialValues) {
             initialValues.forEach((v) => this.add(v));
         }
+    }
+
+    /**
+     * Decoder-side factory. Skips the tracking `ChangeTree` allocation and
+     * replicates the class-field initializers by hand (since `Object.create`
+     * bypasses them). Must stay in sync with the class-field declarations
+     * above.
+     */
+    static initializeForDecoder<V = any>(): SetSchema<V> {
+        const self = Object.create(SetSchema.prototype) as SetSchema<V>;
+        (self as any).$items = new Map<number, V>();
+        (self as any).deletedItems = {};
+        (self as any).$refId = 0;
+        Object.defineProperty(self, $changes, {
+            value: createUntrackedChangeTree(self),
+            enumerable: false,
+            writable: true,
+        });
+        (self as any)[$childType] = undefined;
+        return self;
     }
 
     add(value: V) {

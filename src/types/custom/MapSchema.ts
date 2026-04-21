@@ -1,5 +1,5 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $refId } from "../symbols.js";
-import { ChangeTree, IRef } from "../../encoder/ChangeTree.js";
+import { ChangeTree, createUntrackedChangeTree, IRef } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
@@ -120,6 +120,25 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
                 }
             }
         }
+    }
+
+    /**
+     * Decoder-side factory. Skips the tracking `ChangeTree` allocation and
+     * the class-field initializers aren't re-run through `new` — we
+     * replicate the minimum slot init here. Must stay in sync with the
+     * class-field initializers above and with the constructor body.
+     */
+    static initializeForDecoder<V = any, K extends string = string>(): MapSchema<V, K> {
+        const self = Object.create(MapSchema.prototype) as MapSchema<V, K>;
+        (self as any).$items = new Map<K, V>();
+        (self as any).journal = new MapJournal<K>();
+        Object.defineProperty(self, $changes, {
+            value: createUntrackedChangeTree(self),
+            enumerable: false,
+            writable: true,
+        });
+        (self as any)[$childType] = undefined;
+        return self;
     }
 
     /** Iterator */

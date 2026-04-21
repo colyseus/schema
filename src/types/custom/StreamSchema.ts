@@ -11,7 +11,7 @@ import {
     $onEncodeEnd,
     $refId,
 } from "../symbols.js";
-import { ChangeTree, type IRef } from "../../encoder/ChangeTree.js";
+import { ChangeTree, createUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
 import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
 import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
 import {
@@ -123,6 +123,25 @@ export class StreamSchema<V = any> implements IRef {
         // `isFiltered` / `isStreamCollection` are set via `inheritedFlags`
         // when this stream is attached to a parent field — no constructor-
         // time init needed (the stream tree is inert until assignment).
+    }
+
+    /**
+     * Decoder-side factory. Skips the tracking `ChangeTree` allocation and
+     * replicates the class-field initializers by hand. Must stay in sync
+     * with the class-field declarations above.
+     */
+    static initializeForDecoder<V = any>(): StreamSchema<V> {
+        const self = Object.create(StreamSchema.prototype) as StreamSchema<V>;
+        (self as any).$items = new Map<number, V>();
+        (self as any).$nextPosition = 0;
+        (self as any)._itemIndex = new Map();
+        Object.defineProperty(self, $changes, {
+            value: createUntrackedChangeTree(self),
+            enumerable: false,
+            writable: true,
+        });
+        (self as any)[$childType] = undefined;
+        return self;
     }
 
     /**

@@ -3,7 +3,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
-import { ChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
+import { ChangeTree, createUntrackedChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
 import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $numFields, $refId, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
@@ -47,6 +47,26 @@ export class Schema<C = any> implements IRef {
         instance[$values] = [];
     }
 
+    /**
+     * Decoder-side factory. Skips the user subclass ctor entirely —
+     * decoder-built instances are passive mirrors of server state, so any
+     * field initializer / ctor body work would be overwritten by the
+     * decoded ADDs immediately after. Assignment order matches
+     * {@link Schema.initialize} so V8 assigns the same hidden class
+     * ($changes, then $values), keeping decode-path ICs monomorphic even
+     * when tracked and untracked instances coexist.
+     */
+    static initializeForDecoder<T extends Schema = Schema>(this: { prototype: T } & typeof Schema): T {
+        const inst = Object.create(this.prototype) as T;
+        Object.defineProperty(inst, $changes, {
+            value: createUntrackedChangeTree(inst),
+            enumerable: false,
+            writable: true,
+        });
+        (inst as any)[$values] = [];
+        return inst;
+    }
+
     static is(type: DefinitionType) {
         return typeof((type as typeof Schema)[Symbol.metadata]) === "object";
     }
@@ -62,7 +82,11 @@ export class Schema<C = any> implements IRef {
     }
 
     /**
-     * Track property changes
+     * Track property changes. Exposed as an override point so downstream
+     * tools (debuggers, transparent proxies, custom instrumentation) can
+     * intercept per-field writes. Hot-path code in `annotations.ts` calls
+     * `(this.constructor as typeof Schema)[$track](...)` rather than
+     * `changeTree.change(...)` directly so any subclass override wins.
      */
     static [$track] (changeTree: ChangeTree, index: number, operation: OPERATION = OPERATION.ADD) {
         changeTree.change(index, operation);

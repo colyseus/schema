@@ -17,7 +17,7 @@
  */
 import { OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $viewFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $viewFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
@@ -669,4 +669,93 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     getAllParents(): Array<{ ref: Ref, index: number }> { return _getAllParents(this); }
 
+}
+
+/**
+ * Lightweight per-instance no-op ChangeTree used for instances the decoder
+ * builds. Those instances never feed back into an Encoder, so the full
+ * `ChangeTree` machinery (EncodeDescriptor lookup, recorder state, Maps /
+ * Uint8Arrays for change slots) is pure overhead — this stub carries only a
+ * `ref` back-pointer and no-op methods, so tree walkers and debug tooling
+ * continue to work.
+ *
+ * Plug-in contract: each collection class and the `Decoder` pick between
+ * `new ChangeTree(ref)` and `createUntrackedChangeTree(ref)` explicitly via
+ * dedicated factories (`initializeForDecoder` on collections,
+ * `createInstanceOfType` on the `Decoder`). There is no global state — every
+ * decision is local to the call site.
+ */
+export class UntrackedChangeTree {
+    ref: Ref;
+
+    // Mirror the subset of ChangeTree state that decoder-path readers touch.
+    // Everything else is deliberately undefined (matches the shape of a
+    // freshly-constructed tree that never participated in a Root).
+    root: undefined = undefined;
+    parentRef: undefined = undefined;
+    paused: boolean = false;
+    isNew: boolean = false;
+    flags: number = 0;
+
+    constructor(ref: Ref) {
+        this.ref = ref;
+    }
+
+    // Mutation surface — all no-ops.
+    change(): void {}
+    delete(): void {}
+    indexedOperation(): void {}
+    operation(): void {}
+    setParent(): void {}
+    addParent(): void {}
+    removeParent(): boolean { return false; }
+    getChange(): number { return 0; }
+    discard(): void {}
+    discardAll(): void {}
+    pause(): void {}
+    resume(): void {}
+    untracked<T>(fn: () => T): T { return fn(); }
+    markDirty(): void {}
+
+    // Tree-walk surface. Mirrors `treeAttachment.forEachChild` so debug tools
+    // and `ArraySchema.clear()` can still descend from a tracked root into
+    // decoder-built subtrees and read each child's `$changes` (which is
+    // itself an UntrackedChangeTree carrying the right `ref`).
+    forEachChild(callback: (change: any, at: any) => void): void {
+        const ref = this.ref as any;
+        if (ref[$childType]) {
+            if (typeof ref[$childType] !== "string") {
+                for (const [key, value] of ref.entries()) {
+                    if (!value) continue;
+                    callback(value[$changes], ref._collectionIndexes?.[key] ?? key);
+                }
+            }
+            return;
+        }
+        const ctor = ref.constructor as any;
+        const metadata = ctor?.[Symbol.metadata];
+        if (!metadata) return;
+        const refFieldIndexes: number[] = metadata[$refTypeFieldIndexes] ?? [];
+        for (let i = 0; i < refFieldIndexes.length; i++) {
+            const index = refFieldIndexes[i];
+            const value = ref[metadata[index].name];
+            if (!value) continue;
+            callback(value[$changes], index);
+        }
+    }
+
+    forEachChildWithCtx<C>(ctx: C, callback: (ctx: C, change: any, at: any) => void): void {
+        this.forEachChild((change, at) => callback(ctx, change, at));
+    }
+
+    forEachLive(): void {}
+    forEachLiveWithCtx(): void {}
+    forEach(): void {}
+}
+
+// Factory, cast to ChangeTree so call sites that type `$changes` as
+// `ChangeTree` accept it. The surface overlap above covers every read/write
+// the decoder path reaches.
+export function createUntrackedChangeTree(ref: Ref): ChangeTree {
+    return new UntrackedChangeTree(ref) as unknown as ChangeTree;
 }
