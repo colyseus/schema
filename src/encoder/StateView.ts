@@ -370,10 +370,16 @@ export class StateView {
             return true;
         }
 
+        // Insertion order here is load-bearing: the encoder drains
+        // `view.changes` in Map iteration order, and the decoder needs the
+        // parent's SWITCH_TO_STRUCTURE to register its refId before any
+        // entries for nested refs arrive. `forEachChild` below recurses
+        // into `this.add(child, ...)`, which inserts child refIds — if we
+        // deferred this insert past that point, children would be emitted
+        // first and the decoder would see "refId not found".
         let changes = this.changes.get(obj[$refId]);
         if (changes === undefined) {
             changes = new Map<number, OPERATION>();
-            // FIXME / OPTIMIZE: do not add if no changes are needed
             this.changes.set(obj[$refId], changes);
         }
 
