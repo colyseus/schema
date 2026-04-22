@@ -217,7 +217,10 @@ export const encodeArray: EncodeOperation = function (
     isEncodeAll: boolean,
     hasView: boolean,
 ) {
-    const ref = changeTree.ref as any;
+    // Read through `refTarget` so every property access below skips the
+    // ArraySchema Proxy `get` trap. `refTarget` points at the raw backing
+    // instance; `ref` (the Proxy) stays the user-facing identity.
+    const ref = changeTree.refTarget as any;
     // Read $childType once and reuse — old code went through
     // `changeTree.getType(field)` twice (once for the typeof check, once
     // for `type`), each going through a method dispatch + dead Schema
@@ -228,7 +231,7 @@ export const encodeArray: EncodeOperation = function (
     let refOrIndex: number;
 
     if (useOperationByRefId) {
-        const item = ref['tmpItems'][field];
+        const item = ref.tmpItems[field];
 
         // Skip encoding if item is undefined (e.g. when clear() is called)
         if (!item) { return; }

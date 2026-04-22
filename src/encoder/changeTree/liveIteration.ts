@@ -23,7 +23,10 @@ export function forEachLiveWithCtx<C>(
     ctx: C,
     cb: (ctx: C, index: number) => void,
 ): void {
-    const ref = tree.ref as any;
+    // `refTarget` skips the ArraySchema Proxy on every `.items` / `.$items`
+    // / `[$childType]` read below. Same reference as `ref` for non-proxied
+    // types. See `ChangeTree.refTarget` doc.
+    const ref = tree.refTarget as any;
 
     if (ref[$childType] !== undefined) {
         // Collection inheriting @transient from parent field: skip entirely.

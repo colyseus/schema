@@ -17,7 +17,7 @@
  */
 import { OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $viewFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $proxyTarget, $refId, $refTypeFieldIndexes, $viewFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
@@ -122,6 +122,22 @@ const IS_STREAM_COLLECTION = 64;
 
 export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     ref: T;
+
+    /**
+     * Non-Proxy target of `ref` for encoder hot-path reads. For
+     * `ArraySchema`, `ref` is the Proxy users interact with; every property
+     * access on it runs through the `get` trap (even for symbol keys, which
+     * fall through to `Reflect.get` — one extra hop per lookup). The encoder
+     * loop reads `[$getByIndex]`, `[$childType]`, `.items`, `.tmpItems` at
+     * high frequency during `encode()` / `encodeAll()`; going through
+     * `refTarget` skips all of those traps.
+     *
+     * For non-proxied types (Schema, MapSchema, SetSchema, CollectionSchema,
+     * StreamSchema), `refTarget === ref`. Consumers that need the user-
+     * facing identity (debug output, callback parents) keep using `ref`.
+     */
+    refTarget: T;
+
     metadata: Metadata;
 
     /**
@@ -262,6 +278,10 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     constructor(ref: T) {
         this.ref = ref;
+        // `$proxyTarget` is a self-reference set by ArraySchema on the raw
+        // target; for non-proxied refs it's undefined and we fall back to
+        // `ref`. Cached here so hot-path reads skip the Proxy `get` trap.
+        this.refTarget = ((ref as any)[$proxyTarget] ?? ref) as T;
 
         // Single per-class lookup that subsumes Symbol.metadata,
         // isValidInstance, $encoder, $filter, and the filter bitmask.
@@ -582,8 +602,10 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     // used during `.encode()` — `isEncodeAll` is only consumed by ArraySchema.
+    // Reads via `refTarget` so ArraySchema's Proxy trap is bypassed on the
+    // hot per-field encode path.
     getValue(index: number, isEncodeAll: boolean = false) {
-        return this.ref[$getByIndex](index, isEncodeAll);
+        return this.refTarget[$getByIndex](index, isEncodeAll);
     }
 
     delete(index: number, operation?: OPERATION) {

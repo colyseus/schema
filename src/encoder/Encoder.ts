@@ -406,7 +406,11 @@ export class Encoder<T extends Schema = any> {
             const desc = changeTree.encDescriptor;
             const encoder = desc.encoder;
             const metadata = desc.metadata;
+            // `ref` → user-facing identity (Proxy on ArraySchema), used for
+            // `[$refId]`. `refTarget` → raw instance, used for the hot
+            // `[$getByIndex]` lookup that runs once per change.
             const ref = changeTree.ref;
+            const refTarget = changeTree.refTarget;
 
             bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
             encode.number(bytes, ref[$refId], it);
@@ -416,7 +420,7 @@ export class Encoder<T extends Schema = any> {
             for (const [index, op] of changes) {
                 // workaround when using view.add() on item that has been deleted from state
                 // (see test "adding to view item that has been removed from state")
-                const value = ref[$getByIndex](index);
+                const value = refTarget[$getByIndex](index);
                 const operation = (value !== undefined && op) || OPERATION.DELETE;
 
                 // isEncodeAll = false, hasView = true
