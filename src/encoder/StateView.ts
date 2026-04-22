@@ -378,13 +378,14 @@ export class StateView {
         // Add children of this ChangeTree first.
         // If successful, we must link the current ChangeTree to the child.
         //
+        // Read per-field tags from the class's precomputed `tags[]` array
+        // rather than chasing `metadata[index].tag` — same source, but a
+        // direct array index instead of a per-field-object hop.
+        const tags = changeTree.encDescriptor.tags;
         changeTree.forEachChild((change, index) => {
             // Do not ADD children that don't have the same tag
-            if (
-                metadata &&
-                metadata[index].tag !== undefined &&
-                metadata[index].tag !== tag
-            ) {
+            const fieldTag = tags[index];
+            if (fieldTag !== undefined && fieldTag !== tag) {
                 return;
             }
 
@@ -564,12 +565,13 @@ export class StateView {
 
             } else {
                 // delete all "tagged" properties.
+                const names = changeTree.encDescriptor.names;
                 metadata?.[$viewFieldIndexes]?.forEach((index) => {
                     changes.set(index, OPERATION.DELETE);
 
                     // Remove child structures of @view() fields from visible set.
                     // (They were added during view.add() via forEachChild)
-                    const value = changeTree.ref[metadata[index].name as keyof Ref];
+                    const value = changeTree.ref[names[index] as keyof Ref];
                     if (value?.[$changes]) {
                         this.unmarkVisible(value[$changes]);
                         this._recursiveDeleteVisibleChangeTree(value[$changes]);
@@ -579,11 +581,12 @@ export class StateView {
 
         } else {
             // delete only tagged properties
+            const names = changeTree.encDescriptor.names;
             metadata?.[$fieldIndexesByViewTag][tag].forEach((index) => {
                 changes.set(index, OPERATION.DELETE);
 
                 // Remove child structures from visible set
-                const value = changeTree.ref[metadata[index].name as keyof Ref];
+                const value = changeTree.ref[names[index] as keyof Ref];
                 if (value?.[$changes]) {
                     this.unmarkVisible(value[$changes]);
                     this._recursiveDeleteVisibleChangeTree(value[$changes]);

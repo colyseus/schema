@@ -221,10 +221,8 @@ export const encodeArray: EncodeOperation = function (
     // ArraySchema Proxy `get` trap. `refTarget` points at the raw backing
     // instance; `ref` (the Proxy) stays the user-facing identity.
     const ref = changeTree.refTarget as any;
-    // Read $childType once and reuse — old code went through
-    // `changeTree.getType(field)` twice (once for the typeof check, once
-    // for `type`), each going through a method dispatch + dead Schema
-    // fallback (`metadata[index].type` is unreachable for arrays).
+    // ArraySchema stores its per-instance child type at `$childType`.
+    // This encoder is array-only — there's no Schema fallback to consider.
     const type = ref[$childType];
     const useOperationByRefId = hasView && changeTree.isFiltered && typeof type !== "string";
 

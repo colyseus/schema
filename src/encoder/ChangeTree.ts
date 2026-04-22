@@ -570,12 +570,6 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         (this.unreliableRecorder as ICollectionChangeRecorder | undefined)?.shift(shiftIndex);
     }
 
-    // Collection: child type from ref (["string"] | {map:"string"} | …).
-    // Schema: field type from metadata.
-    getType(index?: number) {
-        return (this.ref as any)[$childType] || this.metadata[index].type;
-    }
-
     getChange(index: number) {
         return this.operationAt(index);
     }
