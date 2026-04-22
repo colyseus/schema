@@ -385,20 +385,6 @@ export const Metadata = {
         return metadata[field].deprecated === true;
     },
 
-    init(klass: any) {
-        //
-        // Used only to initialize an empty Schema (Encoder#constructor)
-        // TODO: remove/refactor this...
-        //
-        const metadata = {};
-        klass[Symbol.metadata] = metadata;
-        Object.defineProperty(metadata, $numFields, {
-            value: 0,
-            enumerable: false,
-            configurable: true,
-        });
-    },
-
     initialize(constructor: any) {
         const parentClass = Object.getPrototypeOf(constructor);
         const parentMetadata: Metadata = parentClass[Symbol.metadata];
