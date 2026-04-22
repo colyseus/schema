@@ -1,5 +1,11 @@
 import { Encoder, Schema, type, MapSchema, ArraySchema } from "./index";
 
+// Must be set before constructing any Encoder — static BUFFER_SIZE is
+// read at Encoder construction time. Default 8KB overflows on the first
+// full-state encode (1000 entities), which used to skew measurements 2/3/6
+// by leaving the initial ADD wave half-encoded.
+Encoder.BUFFER_SIZE = 4 * 1024 * 1024;
+
 class Position extends Schema {
     @type("number") x: number;
     @type("number") y: number;
@@ -85,7 +91,6 @@ const createElapsed = performance.now() - createStart;
 console.log(`Create 5000 entities: ${createElapsed.toFixed(1)}ms`);
 
 // --- Measure 5: encodeAll speed ---
-Encoder.BUFFER_SIZE = 4096 * 4096;
 const encoder3 = new Encoder(state2);
 const encodeAllStart = performance.now();
 for (let i = 0; i < 100; i++) {
