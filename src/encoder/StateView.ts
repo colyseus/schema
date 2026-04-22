@@ -341,7 +341,10 @@ export class StateView {
             return true;
         }
 
-        // FIXME: ArraySchema/MapSchema do not have metadata
+        // Collection types (ArraySchema / MapSchema / etc.) have no
+        // `Symbol.metadata` — `metadata` is undefined here and consumers
+        // below use `metadata?.[...]` null-safe access. Only Schema
+        // subclasses yield a real Metadata object.
         const metadata: Metadata = (obj.constructor as typeof Schema)[Symbol.metadata];
 
         this.markVisible(changeTree);
