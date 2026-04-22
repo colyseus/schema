@@ -15,7 +15,8 @@ export interface DataChange<T = any, F = string> {
     ref: IRef,
     refId: number,
     op: OPERATION,
-    field: F;
+    /** Set for Schema field changes; omitted for collection item changes (which carry a `dynamicIndex` instead). */
+    field?: F;
     dynamicIndex?: number | string;
     value: T;
     previousValue: T;
@@ -368,7 +369,6 @@ export const decodeKeyValueOperation: DecodeOperation = function (
             ref,
             refId: decoder.currentRefId,
             op: operation,
-            field: "", // FIXME: remove this
             dynamicIndex,
             value,
             previousValue,
@@ -414,7 +414,6 @@ export const decodeArray: DecodeOperation = function (
             ref,
             refId: decoder.currentRefId,
             op: OPERATION.DELETE,
-            field: "", // FIXME: remove this
             dynamicIndex: index,
             value: undefined,
             previousValue,
@@ -470,7 +469,6 @@ export const decodeArray: DecodeOperation = function (
             ref,
             refId: decoder.currentRefId,
             op: operation,
-            field: "", // FIXME: remove this
             dynamicIndex,
             value,
             previousValue,
