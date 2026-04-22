@@ -673,13 +673,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * length+end.
      */
     fill(value: V, start?: number, end?: number): this {
-        //
-        // TODO
-        //
         throw new Error("ArraySchema#fill() not implemented");
-        // this.$items.fill(value, start, end);
-
-        return this;
     }
 
     /**
@@ -692,11 +686,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * @param end If not specified, length of the this object is used as its default value.
      */
     copyWithin(target: number, start: number, end?: number): this {
-        //
-        // TODO
-        //
         throw new Error("ArraySchema#copyWithin() not implemented");
-        return this;
     }
 
     /**
