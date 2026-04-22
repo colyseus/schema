@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import * as util from "util";
-import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION, SetSchema, CollectionSchema } from "../src";
+import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, $refId, OPERATION, SetSchema, CollectionSchema } from "../src";
 import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts } from "./Schema";
 import { nanoid } from "nanoid";
 
@@ -3462,6 +3462,97 @@ describe("StateView", () => {
 
             assert.ok(!client.view.isVisible(inventoryChangeTree),
                 "inventory ChangeTree should NOT be in visible after tagged remove");
+        });
+    });
+
+    describe("isNew fast path", () => {
+        // Regression guard for the StateView._add fast path that skips
+        // `view.changes` Map allocations when bootstrapping a fresh
+        // (isNew) subtree. Without the fast path each descendant of a
+        // freshly-added tree allocates an empty Map in `view.changes`;
+        // with it, only the parent collection's entry (seeded by
+        // addParentOf) should appear.
+
+        it("view.add(freshPlayer) seeds view.changes only with the parent collection entry", () => {
+            class Attribute extends Schema {
+                @type("string") name: string;
+                @type("number") value: number;
+            }
+            class Item extends Schema {
+                @type("number") price: number;
+                @type([Attribute]) attributes = new ArraySchema<Attribute>();
+            }
+            class Player extends Schema {
+                @type("string") name: string;
+                @type({ map: Item }) items = new MapSchema<Item>();
+            }
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+
+            const player = new Player().assign({ name: "p1" });
+            for (let k = 0; k < 3; k++) {
+                const item = new Item().assign({ price: k });
+                for (let l = 0; l < 2; l++) {
+                    item.attributes.push(new Attribute().assign({ name: `a${l}`, value: l }));
+                }
+                player.items.set(`item-${k}`, item);
+            }
+            state.players.set("p1", player);
+
+            client.view.add(player);
+
+            assert.strictEqual(client.view.changes.size, 1,
+                "fast path should only seed the parent collection entry");
+            assert.ok(client.view.changes.has(state.players[$changes].ref[$refId]),
+                "the one entry should belong to the parent players MapSchema");
+
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.players.get("p1").name, "p1");
+            assert.strictEqual(client.state.players.get("p1").items.size, 3);
+            assert.strictEqual(client.state.players.get("p1").items.get("item-0").attributes.length, 2);
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("fast path gates non-default-tag child schemas behind the correct tag", () => {
+            // A @view(TAG) field holding a Schema subtree: default-tag add
+            // should NOT mark the tagged child subtree visible. Without the
+            // fieldTag filter in _markSubtreeVisible, the tagged subtree
+            // would leak into the default-tag view.
+            enum Tag { SECRET = 1 }
+
+            class SecretStash extends Schema {
+                @type("string") code: string;
+            }
+            class Player extends Schema {
+                @type("string") name: string;
+                @view(Tag.SECRET) @type(SecretStash) stash = new SecretStash();
+            }
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+
+            const player = new Player().assign({ name: "p1" });
+            player.stash.code = "xyzzy";
+            state.players.set("p1", player);
+
+            client.view.add(player);
+            encodeMultiple(encoder, state, [client]);
+
+            const clientPlayer = client.state.players.get("p1");
+            assert.strictEqual(clientPlayer.name, "p1");
+            assert.strictEqual(clientPlayer.stash?.code, undefined,
+                "@view(TAG)-gated subtree should NOT leak through a default-tag add");
+            assertEncodeAllMultiple(encoder, state, [client]);
         });
     });
 

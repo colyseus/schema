@@ -370,6 +370,21 @@ export class StateView {
             return true;
         }
 
+        // Fast path: fresh (isNew) subtree added with default tag. The
+        // shared encode pass walks the whole subtree and emits ADDs for
+        // every field, so the view pass only needs visibility bits — no
+        // `view.changes` entries are needed for this subtree itself.
+        // `addParentOf` above already emitted the parent collection's
+        // ADD. Skipping the full `_add` cascade avoids ~N empty Map
+        // allocations per bootstrap where N = descendant count.
+        //
+        // Safe against the insertion-order invariant below because this
+        // path performs no writes — there is no order to preserve.
+        if (tag === DEFAULT_VIEW_TAG && changeTree.isNew) {
+            this._markSubtreeVisible(changeTree, tag);
+            return false;
+        }
+
         // Insertion order here is load-bearing: the encoder drains
         // `view.changes` in Map iteration order, and the decoder needs the
         // parent's SWITCH_TO_STRUCTURE to register its refId before any
@@ -441,6 +456,38 @@ export class StateView {
         }
 
         return isChildAdded;
+    }
+
+    /**
+     * Walk an isNew subtree marking each descendant visible. Counterpart
+     * to the `_add()` fast path: skips `view.changes` allocations because
+     * the shared encode pass emits the whole fresh subtree structurally
+     * — the view pass just needs visibility bits to let those emissions
+     * through the per-tree filter.
+     *
+     * Preserves the `@view()`-tag filter from `_add`'s forEachChild: a
+     * Schema descendant behind a non-matching field tag is skipped so
+     * tagged fields don't leak into a default-tag view. Collections have
+     * no per-field tags (`encDescriptor.tags` is empty), so the filter
+     * is a no-op for collection children.
+     *
+     * If a descendant has `isNew=false` (rare: a detached sub-collection
+     * was re-attached to a fresh parent), fall back to the full `_add`
+     * path for that branch so its cumulative state is emitted correctly.
+     */
+    private _markSubtreeVisible(tree: ChangeTree, tag: number): void {
+        const tags = tree.encDescriptor.tags;
+        tree.forEachChild((child, index) => {
+            const fieldTag = tags[index];
+            if (fieldTag !== undefined && fieldTag !== tag) return;
+
+            if (child.isNew) {
+                this.markVisible(child);
+                this._markSubtreeVisible(child, tag);
+            } else {
+                this._add(child.ref, tag, false, false);
+            }
+        });
     }
 
     protected addParentOf(childChangeTree: ChangeTree, tag: number) {
