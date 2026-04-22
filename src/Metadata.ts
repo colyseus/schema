@@ -1,6 +1,6 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
-import { getType, registeredTypes } from "./types/registry.js";
+import { getType, registeredTypes, TypeDefinition } from "./types/registry.js";
 import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $staticFieldIndexes, $streamFieldIndexes, $streamPriorities, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
@@ -33,6 +33,21 @@ export type Metadata =
     { [field: number]: MetadataField; } & // index => field name
     { [field: string]: number; } & // field name => field metadata
     { [$descriptors]: { [field: string]: PropertyDescriptor } }  // property descriptors
+
+/**
+ * Given a normalized field type (`"number"`, `{ map: Foo }`, `Player`,
+ * etc.), split into the collection-type descriptor (`{ constructor:
+ * MapSchema, ... }`) if applicable and the inner child type. Shared by
+ * `@type()` decoration and `Metadata.setFields` — both need to build a
+ * property accessor that knows whether the slot holds a collection.
+ */
+export function resolveFieldType(type: any): { complexTypeKlass: TypeDefinition | false, childType: any } {
+    const complexTypeKlass = typeof (Object.keys(type)[0]) === "string" && getType(Object.keys(type)[0]);
+    return {
+        complexTypeKlass,
+        childType: complexTypeKlass ? Object.values(type)[0] : type,
+    };
+}
 
 export function getNormalizedType(type: any): DefinitionType  {
     if (Array.isArray(type)) {
@@ -350,12 +365,7 @@ export const Metadata = {
         for (const field in fields) {
             const type = getNormalizedType(fields[field]);
 
-            // FIXME: this code is duplicated from @type() annotation
-            const complexTypeKlass = typeof(Object.keys(type)[0]) === "string" && getType(Object.keys(type)[0]);
-
-            const childType = (complexTypeKlass)
-                ? Object.values(type)[0]
-                : type;
+            const { complexTypeKlass, childType } = resolveFieldType(type);
 
             Metadata.addField(
                 metadata,

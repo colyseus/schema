@@ -2,7 +2,7 @@ import "./symbol.shim.js";
 import { Schema } from './Schema.js';
 import { ArraySchema } from './types/custom/ArraySchema.js';
 import { MapSchema } from './types/custom/MapSchema.js';
-import { getNormalizedType, Metadata } from "./Metadata.js";
+import { getNormalizedType, Metadata, resolveFieldType } from "./Metadata.js";
 import { $changes, $childType, $descriptors, $encoders, $numFields, $track, $values } from "./types/symbols.js";
 import { encode } from "./encoding/encode.js";
 import { TypeDefinition, getType } from "./types/registry.js";
@@ -320,11 +320,7 @@ export function type (
             );
 
         } else {
-            const complexTypeKlass = typeof(Object.keys(type)[0]) === "string" && getType(Object.keys(type)[0]);
-
-            const childType = (complexTypeKlass)
-                ? Object.values(type)[0]
-                : type;
+            const { complexTypeKlass, childType } = resolveFieldType(type);
 
             Metadata.addField(
                 metadata,
@@ -482,7 +478,7 @@ export function getPropertyDescriptor(
     fieldName: string,
     fieldIndex: number,
     type: DefinitionType,
-    complexTypeKlass: TypeDefinition,
+    complexTypeKlass: TypeDefinition | false,
 ) {
     let setter: (this: Schema, value: any) => void;
     if (complexTypeKlass) {
