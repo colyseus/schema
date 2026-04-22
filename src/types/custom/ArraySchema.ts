@@ -535,10 +535,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         const self = this[$proxyTarget];
         const changeTree = self[$changes];
 
-        // shift indexes
+        // Existing items shift up — `shiftChangeIndexes` handles their
+        // relocation bookkeeping. The prepended `items` are genuinely new
+        // (no prior existence to MOVE), so each records an ADD.
         changeTree.shiftChangeIndexes(items.length);
-
-        // FIXME: should we use OPERATION.MOVE here instead?
         items.forEach((_, index) => {
             changeTree.change(index, OPERATION.ADD)
         });
