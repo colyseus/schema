@@ -630,7 +630,10 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
         const previousValue = this.getValue(index);
 
-        // FIXME: `this.root` is "undefined" when called at decode time.
+        // `this.root` is always undefined on decoder-side instances
+        // (they're built via `initializeForDecoder`, which skips Root
+        // attachment). The optional chain handles both sides; this is
+        // an intentional invariant, not a bug.
         if (previousValue && previousValue[$changes]) this.root?.remove(previousValue[$changes]);
 
         if (unreliable) this.root?.enqueueUnreliable(this);
