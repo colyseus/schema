@@ -155,10 +155,6 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     const replaceCallbacks = $callbacks?.[OPERATION.REPLACE];
                     for (let i = replaceCallbacks?.length - 1; i >= 0; i--) {
                         replaceCallbacks[i]();
-                        // try {
-                        // } catch (e) {
-                        //     console.error(e);
-                        // }
                     }
                 }
 
@@ -166,10 +162,6 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     const fieldCallbacks = $callbacks[change.field];
                     for (let i = fieldCallbacks?.length - 1; i >= 0; i--) {
                         fieldCallbacks[i](change.value, change.previousValue);
-                        // try {
-                        // } catch (e) {
-                        //     console.error(e);
-                        // }
                     }
                 }
 
