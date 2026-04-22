@@ -443,7 +443,10 @@ export const decodeArray: DecodeOperation = function (
 
     let dynamicIndex: number | string = index;
 
-    const previousValue = tgt[$getByIndex](index);
+    // Direct `items[index]` read — ArraySchema's `$getByIndex` is encoder-only
+    // (it consults `tmpItems`/`deletedIndexes`, which the decoder doesn't
+    // maintain). The decoder's authoritative state is `items`.
+    const previousValue = tgt.items[index];
     const value = decodeValue(
         decoder,
         operation,

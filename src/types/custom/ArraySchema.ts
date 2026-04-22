@@ -190,8 +190,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     static initializeForDecoder<V = any>(): ArraySchema<V> {
         const self: any = Object.create(ArraySchema.prototype);
         self.items = [];
-        self.tmpItems = [];
-        self.deletedIndexes = [];
+        // `tmpItems` / `deletedIndexes` are encoder-only (consulted by the
+        // staged-snapshot path in `$getByIndex`, `$onEncodeEnd`, etc.). The
+        // decoder reads from `items` directly and never maintains them.
         self.isMovingItems = false;
         self[$childType] = undefined;
         self[$proxyTarget] = self;
@@ -839,14 +840,13 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         return this;
     }
 
+    /**
+     * Encoder-only. Reads the staged-snapshot (`tmpItems`) so the encoder can
+     * resolve a wire-index even after the user has mutated `items` mid-tick.
+     * The decoder reads `items[index]` directly — see `decodeArray` and
+     * `$deleteByIndex` below.
+     */
     [$getByIndex](index: number, isEncodeAll: boolean = false): any {
-        //
-        // TODO: avoid unecessary `this.tmpItems` check during decoding.
-        //
-        //    ENCODING uses `this.tmpItems` (or `this.items` if `isEncodeAll` is true)
-        //    DECODING uses `this.items`
-        //
-
         return (isEncodeAll)
             ? this.items[index]
             : this.deletedIndexes[index]
@@ -856,7 +856,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
     [$deleteByIndex](index: number): void {
         this.items[index] = undefined;
-        this.tmpItems[index] = undefined; // TODO: do not try to get "tmpItems" at decoding time.
     }
 
     protected [$onEncodeEnd]() {
@@ -866,7 +865,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
     protected [$onDecodeEnd]() {
         this.items = this.items.filter((item) => item !== undefined);
-        this.tmpItems = this.items.slice(); // TODO: do no use "tmpItems" at decoding time.
     }
 
     toArray() {
