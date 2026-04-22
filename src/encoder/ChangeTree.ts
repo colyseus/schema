@@ -76,8 +76,11 @@ const _invokeNoCtx = (
 ) => cb(index, op);
 
 export interface IRef {
-    // FIXME: we only commented this out to allow mixing @colyseus/schema bundled types with server types in Cocos Creator
-    // [$changes]?: ChangeTree;
+    // `[$changes]?: ChangeTree;` is intentionally omitted here — see the
+    // `declare global` augmentation above. Narrowing to IRef would break
+    // cross-version interop (Cocos Creator bundles server- and client-
+    // side schema types together; a strict declaration here would reject
+    // one side's instances at compile time).
     [$refId]?: number;
     // `$getByIndex` / `$deleteByIndex` are required on every actual ref
     // the decoder / encoder ever touches (Schema + every collection
