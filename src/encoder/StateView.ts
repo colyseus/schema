@@ -412,16 +412,19 @@ export class StateView {
             // Full-sync snapshot: walk the live ref structurally instead of
             // iterating a cumulative recorder bucket. Every populated index
             // is emitted as ADD (matching the op-coercion previously done
-            // at encode time).
+            // at encode time). Per-field tags come from the descriptor's
+            // precomputed `tags[]` array — direct index vs a metadata[i].tag
+            // object hop.
+            const tags = changeTree.encDescriptor.tags;
             changeTree.forEachLive((index) => {
-                const tagAtIndex = metadata?.[index]?.tag;
+                const tagAtIndex = tags[index];
                 if (
                     isInvisible || // if "invisible", include all
                     tagAtIndex === undefined || // "all change" with no tag
                     tagAtIndex === tag // tagged property
                 ) {
                     changes.set(index, OPERATION.ADD);
-                    isChildAdded = true; // FIXME: assign only once
+                    isChildAdded = true;
                 }
             });
         }
