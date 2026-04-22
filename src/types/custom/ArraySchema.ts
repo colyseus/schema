@@ -1,12 +1,12 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $proxyTarget, $refId } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
-import { type IRef, ChangeTree, createUntrackedChangeTree } from "../../encoder/ChangeTree.js";
+import { type IRef, ChangeTree, installUntrackedChangeTree } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
 
 import { encodeArray } from "../../encoder/EncodeOperation.js";
-import { decodeArray } from "../../decoder/DecodeOperation.js";
+import { CollectionKind, decodeArray } from "../../decoder/DecodeOperation.js";
 import type { StateView } from "../../encoder/StateView.js";
 import { assertInstanceType } from "../../encoding/assert.js";
 
@@ -123,6 +123,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
     static [$encoder] = encodeArray;
     static [$decoder] = decodeArray;
+    /** Integer tag read by `decodeKeyValueOperation` — see `CollectionKind`. */
+    static readonly COLLECTION_KIND = CollectionKind.Array;
 
     /**
      * Determine if a property must be filtered.
@@ -181,24 +183,21 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * replicates the class-field initializers by hand (since `Object.create`
      * bypasses them). Must stay in sync with the class-field declarations
      * and the constructor body above.
+     *
+     * Pass the Proxy to `installUntrackedChangeTree` as the public identity
+     * so children set their parent to the Proxy, not the raw target.
      */
     static initializeForDecoder<V = any>(): ArraySchema<V> {
-        const self = Object.create(ArraySchema.prototype) as ArraySchema<V>;
-        (self as any).items = [];
-        (self as any).tmpItems = [];
-        (self as any).deletedIndexes = [];
-        (self as any).isMovingItems = false;
-        (self as any)[$childType] = undefined;
-        (self as any)[$proxyTarget] = self;
+        const self: any = Object.create(ArraySchema.prototype);
+        self.items = [];
+        self.tmpItems = [];
+        self.deletedIndexes = [];
+        self.isMovingItems = false;
+        self[$childType] = undefined;
+        self[$proxyTarget] = self;
 
         const proxy = new Proxy(self, ARRAY_PROXY_HANDLER);
-
-        Object.defineProperty(self, $changes, {
-            value: createUntrackedChangeTree(proxy),
-            enumerable: false,
-            writable: true,
-        });
-
+        installUntrackedChangeTree(self, proxy);
         return proxy;
     }
 

@@ -74,8 +74,12 @@ export interface IRef {
     // FIXME: we only commented this out to allow mixing @colyseus/schema bundled types with server types in Cocos Creator
     // [$changes]?: ChangeTree;
     [$refId]?: number;
-    [$getByIndex]?: (index: number, isEncodeAll?: boolean) => any;
-    [$deleteByIndex]?: (index: number) => void;
+    // `$getByIndex` / `$deleteByIndex` are required on every actual ref
+    // the decoder / encoder ever touches (Schema + every collection
+    // implements both). Keeping them non-optional lets hot-path call
+    // sites skip the `(ref as any)` cast.
+    [$getByIndex](index: number, isEncodeAll?: boolean): any;
+    [$deleteByIndex](index: number): void;
 }
 
 export type Ref = Schema | ArraySchema | MapSchema | CollectionSchema | SetSchema | StreamSchema;
@@ -579,7 +583,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     // used during `.encode()` — `isEncodeAll` is only consumed by ArraySchema.
     getValue(index: number, isEncodeAll: boolean = false) {
-        return (this.ref as any)[$getByIndex](index, isEncodeAll);
+        return this.ref[$getByIndex](index, isEncodeAll);
     }
 
     delete(index: number, operation?: OPERATION) {
@@ -758,4 +762,24 @@ export class UntrackedChangeTree {
 // the decoder path reaches.
 export function createUntrackedChangeTree(ref: Ref): ChangeTree {
     return new UntrackedChangeTree(ref) as unknown as ChangeTree;
+}
+
+/**
+ * Install a non-enumerable `$changes: UntrackedChangeTree` on `target`.
+ * Shared by `Schema.initializeForDecoder` and every collection's
+ * `initializeForDecoder`. `publicRef` defaults to `target` — pass a Proxy
+ * instead (ArraySchema) so children attached to this tree see the Proxy
+ * as their parent, not the raw target.
+ *
+ * `enumerable: false` is load-bearing — tests use `deepStrictEqual` on
+ * decoded instances and walking into `$changes` would recurse through
+ * circular refs. Same descriptor shape as the tracked `Schema.initialize`
+ * + collection ctors.
+ */
+export function installUntrackedChangeTree(target: object, publicRef: object = target): void {
+    Object.defineProperty(target, $changes, {
+        value: createUntrackedChangeTree(publicRef as Ref),
+        enumerable: false,
+        writable: true,
+    });
 }

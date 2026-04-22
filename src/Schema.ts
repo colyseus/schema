@@ -3,7 +3,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
-import { ChangeTree, createUntrackedChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
+import { ChangeTree, installUntrackedChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
 import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $numFields, $refId, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
@@ -55,25 +55,39 @@ export class Schema<C = any> implements IRef {
      * {@link Schema.initialize} so V8 assigns the same hidden class
      * ($changes, then $values), keeping decode-path ICs monomorphic even
      * when tracked and untracked instances coexist.
+     *
+     * The `this:` constraint pins the return type to the concrete subclass
+     * when called as `Player.initializeForDecoder()`, not the base Schema.
      */
     static initializeForDecoder<T extends Schema = Schema>(this: { prototype: T } & typeof Schema): T {
-        const inst = Object.create(this.prototype) as T;
-        Object.defineProperty(inst, $changes, {
-            value: createUntrackedChangeTree(inst),
-            enumerable: false,
-            writable: true,
-        });
-        (inst as any)[$values] = [];
+        const inst: any = Object.create(this.prototype);
+        installUntrackedChangeTree(inst);
+        inst[$values] = [];
         return inst;
     }
 
+    /**
+     * Check whether `type` describes a Schema *class* (a subclass
+     * constructor carrying `Symbol.metadata`, as installed by `@type`).
+     * Returns false for primitive type strings like `"number"`, descriptor
+     * objects like `{ map: Player }`, and Schema *instances*.
+     *
+     * For the instance-level check — "is this value a Schema instance?" —
+     * see {@link Schema.isSchema}.
+     */
     static is(type: DefinitionType) {
         return typeof((type as typeof Schema)[Symbol.metadata]) === "object";
     }
 
     /**
-     * Check if a value is an instance of Schema.
-     * This method uses duck-typing to avoid issues with multiple @colyseus/schema versions.
+     * Check if a value is an *instance* of Schema. Uses duck-typing on
+     * `.assign` to work across multiple `@colyseus/schema` versions that
+     * may be loaded in the same process (e.g. bundled server types vs.
+     * client types in a p2p setup).
+     *
+     * For the class-level check — "is this type a Schema subclass?" —
+     * see {@link Schema.is}.
+     *
      * @param obj Value to check
      * @returns true if the value is a Schema instance
      */

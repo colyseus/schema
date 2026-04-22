@@ -41,7 +41,13 @@ export class Decoder<T extends IRef = any> {
         it: Iterator = { offset: 0 },
         ref: IRef = this.state,
     ) {
-        const allChanges: DataChange[] = [];
+        // Only allocate a collection array when there's a subscriber. Every
+        // decode-op push site uses `allChanges?.push(...)` — optional
+        // chaining short-circuits the object literal too, so a listener-
+        // free decoder does zero per-field allocation.
+        const allChanges: DataChange[] | null = (this.triggerChanges !== undefined)
+            ? []
+            : null;
 
         const $root = this.root;
         const totalBytes = bytes.byteLength;
@@ -93,7 +99,7 @@ export class Decoder<T extends IRef = any> {
         (ref as any)[$onDecodeEnd]?.()
 
         // trigger changes
-        this.triggerChanges?.(allChanges);
+        if (allChanges !== null) this.triggerChanges?.(allChanges);
 
         // drop references of unused schemas
         $root.garbageCollectDeletedRefs();
@@ -134,12 +140,12 @@ export class Decoder<T extends IRef = any> {
         return type.initializeForDecoder();
     }
 
-    removeChildRefs(ref: Collection, allChanges: DataChange[]) {
+    removeChildRefs(ref: Collection, allChanges: DataChange[] | null) {
         const needRemoveRef = typeof ((ref as any)[$childType]) !== "string";
         const refId = (ref as Ref)[$refId];
 
         ref.forEach((value: any, key: any) => {
-            allChanges.push({
+            allChanges?.push({
                 ref: ref as Ref,
                 refId,
                 op: OPERATION.DELETE,

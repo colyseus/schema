@@ -41,6 +41,10 @@ export class ReferenceTracker {
     addRef(refId: number, ref: IRef, incrementCount: boolean = true) {
         this.refs.set(refId, ref);
 
+        // `enumerable: false` is load-bearing: tests use `deepStrictEqual`
+        // on decoded instances, which WOULD walk enumerable Symbol-keyed
+        // properties and include `$refId` in the comparison. Keep the
+        // descriptor dance for semantic compatibility.
         Object.defineProperty(ref, $refId, {
             value: refId,
             enumerable: false,

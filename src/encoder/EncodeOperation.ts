@@ -140,7 +140,7 @@ export const encodeMapEntry: EncodeOperation = function (
         encoder,
         bytes,
         (ref as any)[$childType],
-        (ref as any)[$getByIndex](index),
+        ref[$getByIndex](index),
         operation,
         it,
     );
@@ -171,7 +171,7 @@ export const encodeIndexedEntry: EncodeOperation = function (
         encoder,
         bytes,
         (ref as any)[$childType],
-        (ref as any)[$getByIndex](index),
+        ref[$getByIndex](index),
         operation,
         it,
     );

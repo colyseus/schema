@@ -2,9 +2,9 @@ import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId } from "../symbols.js";
 import { Collection } from "../HelperTypes.js";
-import { ChangeTree, createUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
+import { ChangeTree, installUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
 import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
-import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
+import { CollectionKind, decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
 import {
     createStreamableState,
     streamDropView,
@@ -55,6 +55,8 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
 
     static [$encoder] = encodeIndexedEntry;
     static [$decoder] = decodeKeyValueOperation;
+    /** Integer tag read by `decodeKeyValueOperation` — see `CollectionKind`. */
+    static readonly COLLECTION_KIND = CollectionKind.Set;
 
     /**
      * Determine if a property must be filtered.
@@ -93,22 +95,18 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     }
 
     /**
-     * Decoder-side factory. Skips the tracking `ChangeTree` allocation and
-     * replicates the class-field initializers by hand (since `Object.create`
-     * bypasses them). Must stay in sync with the class-field declarations
-     * above.
+     * Decoder-side factory. Skips the tracking `ChangeTree` allocation;
+     * `Object.create` also bypasses the class-field initializers, so we
+     * replicate the minimum slot init here. Must stay in sync with the
+     * class-field declarations above.
      */
     static initializeForDecoder<V = any>(): SetSchema<V> {
-        const self = Object.create(SetSchema.prototype) as SetSchema<V>;
-        (self as any).$items = new Map<number, V>();
-        (self as any).deletedItems = {};
-        (self as any).$refId = 0;
-        Object.defineProperty(self, $changes, {
-            value: createUntrackedChangeTree(self),
-            enumerable: false,
-            writable: true,
-        });
-        (self as any)[$childType] = undefined;
+        const self: any = Object.create(SetSchema.prototype);
+        self.$items = new Map<number, V>();
+        self.deletedItems = {};
+        self.$refId = 0;
+        self[$childType] = undefined;
+        installUntrackedChangeTree(self);
         return self;
     }
 
