@@ -12,6 +12,8 @@ import { Root } from "./Root.js";
 import type { StateView } from "./StateView.js";
 import type { ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
+import { forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
+import { forEachChildWithCtx as _forEachChildWithCtx } from "./changeTree/treeAttachment.js";
 
 /**
  * Reusable context passed to the recorder's forEachWithCtx to iterate changes
@@ -48,6 +50,18 @@ interface EncodeCtx {
     filterBitmask: number;
 
     /**
+     * Current walk's visit stamp. `_fullSyncWalk` compares it against each
+     * tree's `_fullSyncGen` on entry: match means "already visited by
+     * this walk, skip"; mismatch means "first visit, stamp and recurse".
+     * Rewritten per walk by `encodeFullSync` before kicking off the DFS.
+     */
+    gen: number;
+    /** Initial buffer offset at encodeFullSync entry — used by the walker to
+     *  decide whether to emit SWITCH_TO_STRUCTURE for the root tree. */
+    initialOffset: number;
+    rootChangeTree: ChangeTree;
+
+    /**
      * Lazy structure-switch state. The switch header is emitted right before
      * the first field of a tree actually passes the filter, so trees that
      * contribute zero bytes in a given pass don't leave orphaned headers.
@@ -78,6 +92,70 @@ function ensureStructSwitch(ctx: EncodeCtx): void {
  */
 function encodeFullSyncCb(ctx: EncodeCtx, fieldIndex: number): void {
     encodeChangeCb(ctx, fieldIndex, OPERATION.ADD);
+}
+
+/**
+ * Structural DFS walker for `encodeFullSync`. Hoisted to module scope so
+ * the recursion allocates no per-tree closures — `_fullSyncWalkChildCb`
+ * captures nothing and is handed to `forEachChildWithCtx` once.
+ *
+ * The stamp check at the top (`tree._fullSyncGen === ctx.gen`) is how we
+ * skip shared refs that are reachable through more than one parent. On
+ * first visit the tree's stamp differs from the walk's current `ctx.gen`;
+ * we write `ctx.gen` onto the tree and recurse. Any later reach of the
+ * same tree during the SAME walk will find matching stamps and bail.
+ * Next walk bumps `ctx.gen`, so every tree starts out stale again.
+ */
+function _fullSyncWalk(ctx: EncodeCtx, changeTree: ChangeTree): void {
+    if (changeTree._fullSyncGen === ctx.gen) return;
+    changeTree._fullSyncGen = ctx.gen;
+
+    // Visibility gate: when a view is active, a non-visible tree contributes
+    // nothing itself but we still recurse so descendants (possibly added to
+    // the view explicitly) are reachable.
+    let visibleHere = true;
+    if (ctx.hasView) {
+        const view = ctx.view!;
+        if (!view.isChangeTreeVisible(changeTree)) {
+            view.markInvisible(changeTree);
+            visibleHere = false;
+        } else {
+            view.unmarkInvisible(changeTree);
+        }
+    }
+
+    if (visibleHere) {
+        const desc = changeTree.encDescriptor;
+        ctx.changeTree = changeTree;
+        ctx.ref = changeTree.ref;
+        ctx.encoder = desc.encoder;
+        ctx.filter = desc.filter;
+        ctx.metadata = desc.metadata;
+        ctx.treeIsFiltered = changeTree.isFiltered;
+        ctx.isSchema = desc.isSchema;
+        ctx.filterBitmask = desc.filterBitmask;
+        ctx.structSwitchEmitted = false;
+        ctx.shouldEmitSwitch = (ctx.hasView || ctx.it.offset > ctx.initialOffset || changeTree !== ctx.rootChangeTree);
+
+        // Call the module function directly — the `forEachLiveWithCtx`
+        // method on ChangeTree is a pass-through that V8 doesn't inline
+        // under the polymorphism the encoder sees (Schema + every
+        // collection class share the method slot). Direct call saves the
+        // dispatched frame.
+        _forEachLiveWithCtx(changeTree, ctx, encodeFullSyncCb);
+    }
+
+    _forEachChildWithCtx(changeTree, ctx, _fullSyncWalkChildCb);
+}
+
+/**
+ * Child-iteration callback for `_fullSyncWalk`. Module-level + closure-free:
+ * just re-enters `_fullSyncWalk` on each child. Replaces a per-tree
+ * `(child, _) => walk(child)` closure that used to allocate 2.5M times in
+ * `encodeAll(5000 entities) x 500 iterations`.
+ */
+function _fullSyncWalkChildCb(ctx: EncodeCtx, child: ChangeTree, _index: any): void {
+    _fullSyncWalk(ctx, child);
 }
 
 /**
@@ -155,10 +233,16 @@ export class Encoder<T extends Schema = any> {
         treeIsFiltered: false, isSchema: false, emitFiltered: false,
         filterBitmask: 0,
         structSwitchEmitted: false, isRootTree: false, shouldEmitSwitch: false,
+        gen: 0, initialOffset: 0, rootChangeTree: undefined!,
     };
 
-    /** Dedupe set reused across full-sync walks to avoid allocation. */
-    private _fullSyncVisited: Set<ChangeTree> = new Set();
+    /**
+     * Monotonic counter bumped at the start of every `encodeFullSync`
+     * call. The new value is copied to `ctx.gen` and stamped into every
+     * tree the walk touches (`tree._fullSyncGen = ctx.gen`); subsequent
+     * revisits of the same tree detect the equality and return early.
+     */
+    private _fullSyncGen: number = 0;
 
     encode(
         it: Iterator = { offset: 0 },
@@ -284,46 +368,15 @@ export class Encoder<T extends Schema = any> {
         ctx.hasView = hasView;
         ctx.emitFiltered = emitFiltered;
 
-        const visited = this._fullSyncVisited;
-        visited.clear();
-
-        const walk = (changeTree: ChangeTree): void => {
-            if (visited.has(changeTree)) return;
-            visited.add(changeTree);
-
-            // Visibility gate: when a view is active, a non-visible tree
-            // contributes nothing itself but we still recurse so descendants
-            // (which may have been explicitly view.add()-ed) are reachable.
-            let visibleHere = true;
-            if (hasView) {
-                if (!view.isChangeTreeVisible(changeTree)) {
-                    view.markInvisible(changeTree);
-                    visibleHere = false;
-                } else {
-                    view.unmarkInvisible(changeTree);
-                }
-            }
-
-            if (visibleHere) {
-                const desc = changeTree.encDescriptor;
-                ctx.changeTree = changeTree;
-                ctx.ref = changeTree.ref;
-                ctx.encoder = desc.encoder;
-                ctx.filter = desc.filter;
-                ctx.metadata = desc.metadata;
-                ctx.treeIsFiltered = changeTree.isFiltered;
-                ctx.isSchema = desc.isSchema;
-                ctx.filterBitmask = desc.filterBitmask;
-                ctx.structSwitchEmitted = false;
-                ctx.shouldEmitSwitch = (hasView || ctx.it.offset > initialOffset || changeTree !== rootChangeTree);
-
-                changeTree.forEachLiveWithCtx(ctx, encodeFullSyncCb);
-            }
-
-            changeTree.forEachChild((child, _) => walk(child));
-        };
-
-        walk(rootChangeTree);
+        // Bump the generation counter and carry the new value on `ctx` so
+        // the recursive walker can stamp every tree it visits. Any tree
+        // still holding the previous walk's stamp is treated as unvisited
+        // on first reach, and stamped; a second reach (shared ref via
+        // multiple parents) sees the match and bails.
+        ctx.gen = ++this._fullSyncGen;
+        ctx.initialOffset = initialOffset;
+        ctx.rootChangeTree = rootChangeTree;
+        _fullSyncWalk(ctx, rootChangeTree);
 
         if (it.offset > buffer.byteLength) {
             buffer = this._resizeBuffer(buffer, it.offset);

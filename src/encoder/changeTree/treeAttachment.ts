@@ -115,7 +115,13 @@ export function forEachChildWithCtx<C>(
     ctx: C,
     callback: (ctx: C, change: ChangeTree, at: any) => void,
 ): void {
-    const ref = tree.ref as any;
+    // `refTarget` is the raw backing instance — identical to `ref` for all
+    // non-Proxy types (Schema / Map / Set / Collection / Stream), and the
+    // un-wrapped `$proxyTarget` for ArraySchema. Reading through it here
+    // skips the ArraySchema Proxy `get` trap on every `$childType`,
+    // `_collectionIndexes`, `.entries()`, `.items` lookup below — hot during
+    // the encodeAll DFS walk which touches every ArraySchema in the tree.
+    const ref = tree.refTarget as any;
     if (ref[$childType]) {
         if (typeof ref[$childType] !== "string") {
             const collectionIndexes = ref._collectionIndexes;
@@ -131,7 +137,7 @@ export function forEachChildWithCtx<C>(
         const names = tree.encDescriptor.names;
         for (let i = 0, len = indexes.length; i < len; i++) {
             const index = indexes[i];
-            const value = (tree.ref as any)[names[index]];
+            const value = ref[names[index]];
             if (!value) { continue; }
             callback(ctx, value[$changes], index);
         }

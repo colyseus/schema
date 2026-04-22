@@ -181,6 +181,17 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     // Packed boolean flags. See IS_* constants above for bit layout.
     flags: number = IS_NEW;
 
+    /**
+     * Per-walk visit stamp written by `Encoder.encodeFullSync`'s DFS. A
+     * tree is considered "already visited by the current walk" iff
+     * `tree._fullSyncGen === ctx.gen` — the encoder bumps its generation
+     * counter once per walk, then stamps each tree with that value on
+     * first visit; any later encounter of the same tree (shared refs
+     * reachable through multiple parents) short-circuits on the equality
+     * check instead of recursing again.
+     */
+    _fullSyncGen: number = 0;
+
     // Schema vs Collection discriminator. Set once in ctor, never changes —
     // per-tree-stable branch for inline ChangeRecorder dispatch.
     _isSchema: boolean = false;
