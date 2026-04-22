@@ -2322,8 +2322,6 @@ describe("ArraySchema Tests", () => {
                 [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
             });
 
-            console.log(Schema.debugChangesDeep(state));
-
             assert.strictEqual(1, encoder.root.refCount[state.cards[0][$refId]]);
             assert.strictEqual(1, encoder.root.refCount[state.cards[1][$refId]]);
             assert.strictEqual(1, encoder.root.refCount[state.cards[2][$refId]]);
