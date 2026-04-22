@@ -8,6 +8,15 @@ export class TypeContext {
 
     hasFilters: boolean = false;
     parentFiltered: {[typeIdAndParentIndex: string]: boolean} = {};
+    /**
+     * True iff `parentFiltered` has at least one entry. Flipped on by
+     * `registerFilteredByParent` and read in `checkInheritedFlags` as a
+     * cheap gate to skip the string-keyed `parentFiltered[key]` lookup
+     * when no class has registered filter inheritance via ancestry — the
+     * common case when @view tags exist only on sibling fields, not
+     * along any attachment chain.
+     */
+    hasParentFilteredEntries: boolean = false;
 
     /**
      * For inheritance support
@@ -144,6 +153,7 @@ export class TypeContext {
 
         key += `-${parentIndex}`;
         this.parentFiltered[key] = true;
+        this.hasParentFilteredEntries = true;
     }
 
     debug() {

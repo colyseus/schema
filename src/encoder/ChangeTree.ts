@@ -119,14 +119,29 @@ export interface ParentChain {
 
 // Flags bitfield. *_UNRELIABLE / _TRANSIENT / _STATIC mirror the parent
 // field's annotation — inherited at setParent/setRoot time.
-const IS_FILTERED = 1, IS_VISIBILITY_SHARED = 2, IS_NEW = 4;
-const IS_UNRELIABLE = 8, IS_TRANSIENT = 16, IS_STATIC = 32;
+export const IS_FILTERED = 1, IS_VISIBILITY_SHARED = 2, IS_NEW = 4;
+export const IS_UNRELIABLE = 8, IS_TRANSIENT = 16, IS_STATIC = 32;
 // Collection tree attached to a parent field annotated `.stream()` —
 // drives the encoder's priority/broadcast pass. Set in inheritedFlags
 // so both `t.stream(X)` (via StreamSchema's `$isStream` brand) and
 // `t.map(X).stream()` / `t.set(X).stream()` route through the same
 // emission machinery.
-const IS_STREAM_COLLECTION = 64;
+export const IS_STREAM_COLLECTION = 64;
+/**
+ * Flags a child inherits from its parent's own transitive state via
+ * `checkInheritedFlags`. Read as a bitwise mask so the inheritance step
+ * is a single OR instead of three getter/setter pairs.
+ *
+ * `IS_UNRELIABLE` is intentionally excluded: `@unreliable` is rejected
+ * at decoration time for ref-type fields (see `Metadata.setUnreliable`)
+ * because an unreliable ADD/DELETE could leave the decoder unable to
+ * interpret later packets referencing an orphan refId. Tree-level
+ * unreliable is therefore dead on every Schema/Collection tree today;
+ * the bit and its machinery are kept in place so this can be
+ * reconsidered if a safe semantics (e.g. reliable ADD + unreliable
+ * field mutations only) is designed later.
+ */
+export const INHERITABLE_FLAGS = IS_TRANSIENT | IS_STATIC;
 
 export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     ref: T;
@@ -253,7 +268,11 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     isFieldUnreliable(index: number): boolean {
-        if (this.isUnreliable) return true;
+        // Tree-level `isUnreliable` is disabled — @unreliable is rejected
+        // on ref-type fields at decoration time, so no tree ever carries
+        // the flag. Kept as a comment in case a safe semantics is added
+        // later (see INHERITABLE_FLAGS rationale).
+        // if (this.isUnreliable) return true;
         // Class-level fast path: most schemas have zero unreliable fields,
         // so the per-mutation check resolves without the symbol-keyed
         // metadata lookup. For schemas that DO have unreliable fields, the
@@ -526,13 +545,18 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         if (this.paused || this.isStatic) return;
         // Pure ops (CLEAR/REVERSE) only emit from collection trees — the
         // recorder here is always a CollectionChangeRecorder by construction.
-        if (this.isUnreliable) {
-            (this.ensureUnreliableRecorder() as ICollectionChangeRecorder).recordPure(op);
-            this.root?.enqueueUnreliable(this);
-        } else {
+        //
+        // Tree-level `isUnreliable` is disabled (see INHERITABLE_FLAGS):
+        // no collection tree can be marked unreliable as a whole under the
+        // ref-field rejection rule in `Metadata.setUnreliable`. The branch
+        // is kept as a comment for re-enablement.
+        // if (this.isUnreliable) {
+        //     (this.ensureUnreliableRecorder() as ICollectionChangeRecorder).recordPure(op);
+        //     this.root?.enqueueUnreliable(this);
+        // } else {
             this.recordPure(op);
             this.root?.enqueueChangeTree(this);
-        }
+        // }
     }
 
     /**
