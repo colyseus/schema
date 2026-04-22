@@ -172,17 +172,29 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
 
     const metadata = ctor[Symbol.metadata];
     const isSchema = Metadata.isValidInstance(ref);
+    const hasAnyView = (metadata?.[$viewFieldIndexes]?.length ?? 0) > 0;
     const arrays = buildFieldArrays(metadata);
+    // For Schema classes with no `@view`-tagged fields, the per-field
+    // `ctx.filter(ref, index, view)` call on the encode hot path is a
+    // provable no-op: `Schema[$filter]` does `metadata[index]?.tag === undefined`
+    // which is always true when no field carries a tag. Setting filter to
+    // `undefined` here lets the `ctx.filter !== undefined && …` short-circuit
+    // in `encodeChangeCb` skip the call entirely — the metadata lookup +
+    // comparison adds up across 10k+ field encodes/tick.
+    // Collection classes keep their filter — their `[$filter]` does
+    // instance-level `ref[$childType]` / view-visibility checks that can't
+    // be decided class-wide.
+    const filter = (isSchema && !hasAnyView) ? undefined : ctor[$filter];
     const desc: EncodeDescriptor = {
         encoder: ctor[$encoder],
-        filter: ctor[$filter],
+        filter,
         metadata,
         isSchema,
         filterBitmask: isSchema ? computeFilterBitmask(metadata) : 0,
         hasAnyStatic: (metadata?.[$staticFieldIndexes]?.length ?? 0) > 0,
         hasAnyUnreliable: (metadata?.[$unreliableFieldIndexes]?.length ?? 0) > 0,
         hasAnyStream: (metadata?.[$streamFieldIndexes]?.length ?? 0) > 0,
-        hasAnyView: (metadata?.[$viewFieldIndexes]?.length ?? 0) > 0,
+        hasAnyView,
         staticBitmask: indexesToBitmask(metadata?.[$staticFieldIndexes]),
         unreliableBitmask: indexesToBitmask(metadata?.[$unreliableFieldIndexes]),
         streamBitmask: indexesToBitmask(metadata?.[$streamFieldIndexes]),
