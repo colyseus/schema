@@ -224,51 +224,18 @@ export function entity(constructor: any): any {
 
 export function view<T> (tag: number = DEFAULT_VIEW_TAG) {
     return function(target: T, fieldName: string) {
-        const constructor = target.constructor as typeof Schema;
-
-        const parentClass = Object.getPrototypeOf(constructor);
-        const parentMetadata = parentClass[Symbol.metadata];
-
-        // TODO: use Metadata.initialize()
-        const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
-        // const fieldIndex = metadata[fieldName];
-
-        // if (!metadata[fieldIndex]) {
-        //     //
-        //     // detect index for this field, considering inheritance
-        //     //
-        //     metadata[fieldIndex] = {
-        //         type: undefined,
-        //         index: (metadata[$numFields] // current structure already has fields defined
-        //             ?? (parentMetadata && parentMetadata[$numFields]) // parent structure has fields defined
-        //             ?? -1) + 1 // no fields defined
-        //     }
-        // }
-
+        const metadata = Metadata.initialize(target.constructor as typeof Schema);
         Metadata.setTag(metadata, fieldName, tag);
     }
 }
 
 export function owned<T> (target: T, field: string) {
-    const constructor = target.constructor as typeof Schema;
-
-    const parentClass = Object.getPrototypeOf(constructor);
-    const parentMetadata = parentClass[Symbol.metadata];
-
-    const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
-
+    const metadata = Metadata.initialize(target.constructor as typeof Schema);
     metadata[metadata[field]].owned = true;
 }
 
 export function unreliable<T> (target: T, field: string) {
-    const constructor = target.constructor as typeof Schema;
-
-    const parentClass = Object.getPrototypeOf(constructor);
-    const parentMetadata = parentClass[Symbol.metadata];
-
-    // TODO: use Metadata.initialize()
-    const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
-
+    const metadata = Metadata.initialize(target.constructor as typeof Schema);
     Metadata.setUnreliable(metadata, field);
 }
 
@@ -281,13 +248,7 @@ export function unreliable<T> (target: T, field: string) {
  * Orthogonal to @unreliable: a field can be either, both, or neither.
  */
 export function transient<T> (target: T, field: string) {
-    const constructor = target.constructor as typeof Schema;
-
-    const parentClass = Object.getPrototypeOf(constructor);
-    const parentMetadata = parentClass[Symbol.metadata];
-
-    const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
-
+    const metadata = Metadata.initialize(target.constructor as typeof Schema);
     Metadata.setTransient(metadata, field);
 }
 
@@ -546,27 +507,8 @@ export function getPropertyDescriptor(
 
 export function deprecated(throws: boolean = true): PropertyDecorator {
     return function (klass: typeof Schema, field: string) {
-        //
-        // FIXME: the following block of code is repeated across `@type()`, `@deprecated()` and `@unreliable()` decorators.
-        //
-        const constructor = klass.constructor as typeof Schema;
-
-        const parentClass = Object.getPrototypeOf(constructor);
-        const parentMetadata = parentClass[Symbol.metadata];
-        const metadata: Metadata = (constructor[Symbol.metadata] ??= Object.assign({}, constructor[Symbol.metadata], parentMetadata ?? Object.create(null)));
+        const metadata = Metadata.initialize(klass.constructor as typeof Schema);
         const fieldIndex = metadata[field];
-
-        // if (!metadata[field]) {
-        //     //
-        //     // detect index for this field, considering inheritance
-        //     //
-        //     metadata[field] = {
-        //         type: undefined,
-        //         index: (metadata[$numFields] // current structure already has fields defined
-        //             ?? (parentMetadata && parentMetadata[$numFields]) // parent structure has fields defined
-        //             ?? -1) + 1 // no fields defined
-        //     }
-        // }
 
         metadata[fieldIndex].deprecated = true;
 
