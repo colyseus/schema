@@ -17,7 +17,7 @@
  */
 import { OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $proxyTarget, $refId, $refTypeFieldIndexes, $viewFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $proxyTarget, $refId, $refTypeFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
@@ -227,9 +227,11 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     // True iff tree inherits `isFiltered` OR its Schema class declares any
     // @view-tagged fields. StateView.addParentOf uses this to decide whether
-    // a parent must be included in a view's bootstrap.
+    // a parent must be included in a view's bootstrap. Reads the class-level
+    // "any viewed field" flag that `EncodeDescriptor` precomputes — same
+    // pattern as `hasAnyStatic` / `hasAnyUnreliable` / `hasAnyStream`.
     get hasFilteredFields(): boolean {
-        return this.isFiltered || (this.metadata?.[$viewFieldIndexes] !== undefined);
+        return this.isFiltered || this.encDescriptor.hasAnyView;
     }
 
     ensureUnreliableRecorder(): ChangeRecorder {

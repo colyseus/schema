@@ -49,6 +49,13 @@ export interface EncodeDescriptor {
     hasAnyStatic: boolean;
     hasAnyUnreliable: boolean;
     hasAnyStream: boolean;
+    /**
+     * Class-level "any field carries a `@view` tag" — covers fields both
+     * within and beyond index 31 (unlike `filterBitmask`, which only
+     * captures the low 32). Read by `ChangeTree.hasFilteredFields` to
+     * decide whether a parent tree must be included in a view's bootstrap.
+     */
+    hasAnyView: boolean;
     staticBitmask: number;
     unreliableBitmask: number;
     /**
@@ -175,6 +182,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         hasAnyStatic: (metadata?.[$staticFieldIndexes]?.length ?? 0) > 0,
         hasAnyUnreliable: (metadata?.[$unreliableFieldIndexes]?.length ?? 0) > 0,
         hasAnyStream: (metadata?.[$streamFieldIndexes]?.length ?? 0) > 0,
+        hasAnyView: (metadata?.[$viewFieldIndexes]?.length ?? 0) > 0,
         staticBitmask: indexesToBitmask(metadata?.[$staticFieldIndexes]),
         unreliableBitmask: indexesToBitmask(metadata?.[$unreliableFieldIndexes]),
         streamBitmask: indexesToBitmask(metadata?.[$streamFieldIndexes]),
