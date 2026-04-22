@@ -753,10 +753,13 @@ export class StateView {
     isChangeTreeVisible(changeTree: ChangeTree) {
         let isVisible = this.isVisible(changeTree);
 
-        //
-        // TODO: avoid checking for parent visibility, most of the time it's not needed
-        // See test case: 'should not be required to manually call view.add() items to child arrays without @view() tag'
-        //
+        // The parent-visibility fallback handles child collections without
+        // their own @view tag (see StateView.test.ts "should not be required
+        // to manually call view.add() items to child arrays..."). The
+        // `isVisibilitySharedWithParent` flag — precomputed at attach-time in
+        // inheritedFlags.ts — short-circuits for the common case, and
+        // `markVisible` memoizes so the branch fires at most once per
+        // (tree, view) pair.
         if (!isVisible && changeTree.isVisibilitySharedWithParent){
             if (this.isVisible(changeTree.parent[$changes])) {
                 this.markVisible(changeTree);
