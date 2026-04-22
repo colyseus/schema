@@ -95,7 +95,12 @@ export class Decoder<T extends IRef = any> {
             }
         }
 
-        // FIXME: DRY with SWITCH_TO_STRUCTURE block.
+        // Close out the last ref's decode session — mirrors the
+        // SWITCH_TO_STRUCTURE block above, which fires it at every
+        // intra-loop structure transition. ArraySchema uses this to
+        // compact `items` after a tick's deletes. No other consumer
+        // currently hooks it; the dual call sites stay as-is rather
+        // than being extracted into a helper for a one-line body.
         (ref as any)[$onDecodeEnd]?.()
 
         // trigger changes
