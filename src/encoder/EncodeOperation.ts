@@ -262,17 +262,6 @@ export const encodeArray: EncodeOperation = function (
     // ChangeTree.getValue's pass-through wrapper.
     const value = ref[$getByIndex](field, isEncodeAll);
 
-    // console.log({ type, field, value });
-
-    // console.log("encodeArray -> ", {
-    //     ref: changeTree.ref.constructor.name,
-    //     field,
-    //     operation: OPERATION[operation],
-    //     value: value?.toJSON(),
-    //     items: ref.toJSON(),
-    // });
-
-    // TODO: inline this function call small performance gain
     encodeValue(
         encoder,
         bytes,
