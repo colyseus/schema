@@ -43,9 +43,14 @@ import {
     forEachChild as _forEachChild, forEachChildWithCtx as _forEachChildWithCtx,
 } from "./changeTree/treeAttachment.js";
 
+// Augmenting the global `Object` interface is a deliberate trade-off:
+// any Schema / collection instance — regardless of which bundled
+// `@colyseus/schema` version created it — can be duck-typed against
+// these Symbol-keyed slots. Narrower shapes (e.g. on `IRef`) would break
+// cross-version interop where server-bundled types coexist with client-
+// bundled ones in the same process.
 declare global {
     interface Object {
-        // FIXME: not a good practice to extend globals here
         [$changes]?: ChangeTree;
         // [$refId]?: number;
         [$encoder]?: EncodeOperation,
