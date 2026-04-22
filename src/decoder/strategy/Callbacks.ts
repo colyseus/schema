@@ -396,9 +396,19 @@ export class StateCallbackStrategy<TState extends IRef> {
                 const dynamicIndex = change.dynamicIndex ?? change.field;
 
                 if ((change.op & OPERATION.DELETE) === OPERATION.DELETE) {
-                    //
-                    // FIXME: `previousValue` should always be available.
-                    //
+                    // DELETE can arrive with `previousValue === undefined` in two
+                    // legitimate cases — neither is fixable decoder-side:
+                    //   1. DELETE_AND_ADD (op byte 192) for an index/refId the
+                    //      decoder never held — e.g. a client whose @view
+                    //      subscription just began sees the replacement op
+                    //      first. `previousValue` is undefined; `value` is the
+                    //      newly-decoded instance. The ADD half still fires below.
+                    //   2. DELETE_BY_REFID (decodeArray, DecodeOperation.ts) for
+                    //      a filtered ArraySchema ref that was never ADDed on
+                    //      this decoder. That push site is unconditional because
+                    //      `removeRef` has already run; raw-change observers
+                    //      still want the event even with unknown previousValue.
+                    // The guard prevents `onRemove(undefined, key)` from firing.
                     if (change.previousValue !== undefined) {
                         // trigger onRemove (value, key)
                         const deleteCallbacks = $callbacks[OPERATION.DELETE];

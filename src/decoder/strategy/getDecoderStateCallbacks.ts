@@ -172,9 +172,16 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 //
 
                 if ((change.op & OPERATION.DELETE) === OPERATION.DELETE) {
-                    //
-                    // FIXME: `previousValue` should always be available.
-                    //
+                    // DELETE can arrive with `previousValue === undefined` in
+                    // two legitimate cases — neither is fixable decoder-side:
+                    //   1. DELETE_AND_ADD (op byte 192) for an index/refId the
+                    //      decoder never held (e.g. a client whose @view
+                    //      subscription just began sees the replacement op
+                    //      first). The ADD half still fires below.
+                    //   2. DELETE_BY_REFID (decodeArray) for a filtered
+                    //      ArraySchema ref that was never ADDed on this
+                    //      decoder; that push site is unconditional.
+                    // The guard prevents `onRemove(undefined, key)` from firing.
                     if (change.previousValue !== undefined) {
                         // triger onRemove
                         const deleteCallbacks = $callbacks[OPERATION.DELETE];
@@ -203,10 +210,14 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 }
 
                 // trigger onChange
+                // The `value !== undefined || previousValue !== undefined` half
+                // suppresses spurious onChange calls for DELETEs the decoder
+                // never had context for — same two cases documented above
+                // (DELETE_AND_ADD post-view-grant, DELETE_BY_REFID for unseen
+                // refIds), plus the historical "ADD+DELETE collapsed to DELETE
+                // on the wire" path now neutralized at the push site.
                 if (
                     change.value !== change.previousValue &&
-                    // FIXME: see "should not encode item if added and removed at the same patch" test case.
-                    // some "ADD" + "DELETE" operations on same patch are being encoded as "DELETE"
                     (change.value !== undefined || change.previousValue !== undefined)
                 ) {
                     const replaceCallbacks = $callbacks[OPERATION.REPLACE];
