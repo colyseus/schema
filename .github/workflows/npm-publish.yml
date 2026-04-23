@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - master
+      - "5.0"
 
 jobs:
   npm-publish:
@@ -33,9 +34,21 @@ jobs:
         file-name: package.json
         diff-search: true
 
+    # master → @latest, stable GitHub release.
+    # 5.0    → @next,   pre-release GitHub release.
+    - id: release
+      run: |
+        if [ "${{ github.ref_name }}" = "master" ]; then
+          echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+          echo "prerelease=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "npm_tag=next" >> "$GITHUB_OUTPUT"
+          echo "prerelease=true" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Publish package on NPM 📦
       if: steps.check.outputs.changed == 'true'
-      run: npm publish
+      run: npm publish --tag ${{ steps.release.outputs.npm_tag }}
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -44,5 +57,5 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.check.outputs.version }}
-        prerelease: false
+        prerelease: ${{ steps.release.outputs.prerelease }}
 
