@@ -43,6 +43,12 @@
       "import": "./build/index.mjs",
       "require": "./build/index.cjs",
       "types": "./build/index.d.ts"
+    },
+    "./input": {
+      "browser": "./build/input/index.mjs",
+      "import": "./build/input/index.mjs",
+      "require": "./build/input/index.cjs",
+      "types": "./build/input/index.d.ts"
     }
   },
   "repository": {
