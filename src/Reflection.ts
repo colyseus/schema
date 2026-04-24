@@ -52,8 +52,8 @@ export const Reflection = schema({
     types: t.array(ReflectionType),
     rootType: t.number(),
 }, "Reflection") as ReturnType<typeof schema<{
-    types: FieldBuilder<ArraySchema<ReflectionType>>;
-    rootType: FieldBuilder<number>;
+    types: FieldBuilder<ArraySchema<ReflectionType>, true, false>;
+    rootType: FieldBuilder<number, false, false>;
 }>> & ReflectionStatic;
 
 export type Reflection = SchemaType<typeof Reflection>;

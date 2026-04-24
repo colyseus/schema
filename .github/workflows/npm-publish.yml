@@ -52,10 +52,28 @@ jobs:
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+    # Extract the latest CHANGELOG section (everything after the first
+    # `## [x.y.z]` header, up to — but not including — the next `## [`
+    # header) into RELEASE_NOTES.md so the GitHub release body mirrors it.
+    - name: Extract CHANGELOG entry
+      if: steps.check.outputs.changed == 'true'
+      run: |
+        awk '
+          /^## \[/ {
+            if (found) { exit }
+            found = 1
+            next
+          }
+          found { print }
+        ' CHANGELOG.md > RELEASE_NOTES.md
+        echo "--- RELEASE_NOTES.md ---"
+        cat RELEASE_NOTES.md
+
     - name: Release
       if: steps.check.outputs.changed == 'true'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.check.outputs.version }}
         prerelease: ${{ steps.release.outputs.prerelease }}
+        body_path: RELEASE_NOTES.md
 

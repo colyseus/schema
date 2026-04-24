@@ -271,7 +271,9 @@ describe("Zod-style schema() API", () => {
             }, "Parent");
             const Child = Parent.extend({ y: t.number() }, "Child");
 
-            new Child({ x: 1, y: 2 });
+            // Zero-arg initialize on Parent propagates through ExtractInitProps,
+            // so Child() accepts no init-props either.
+            new Child();
             assert.strictEqual(parentCalls, 0);
         });
     });
@@ -345,6 +347,152 @@ describe("Zod-style schema() API", () => {
             const s: SInstance = new S({ x: 1, name: "hi" });
             assert.strictEqual(s.x, 1);
             assert.strictEqual(s.name, "hi");
+        });
+    });
+
+    describe(".optional()", () => {
+        it("records the optional flag on builder metadata", () => {
+            const S = schema({
+                must: t.string(),
+                maybe: t.string().optional(),
+            }, "S");
+            const meta = (S as any)[Symbol.metadata];
+            assert.ok(!meta[0].optional);
+            assert.strictEqual(meta[1].optional, true);
+        });
+
+        it("optional primitive field is undefined at runtime when not provided", () => {
+            const S = schema({
+                name: t.string(),
+                nickname: t.string().optional(),
+            }, "S");
+            const s = new S();
+            assert.strictEqual(s.nickname, undefined);
+        });
+
+        it("optional collection skips auto-instantiation", () => {
+            const Item = schema({ qty: t.uint8() }, "Item");
+            const Inv = schema({
+                must: t.array(Item),
+                maybe: t.array(Item).optional(),
+            }, "Inv");
+
+            const inv = new Inv();
+            assert.ok(inv.must instanceof ArraySchema);
+            assert.strictEqual(inv.maybe, undefined);
+        });
+
+        it("optional Schema ref skips auto-instantiation", () => {
+            const Pos = schema({ x: t.number(), y: t.number() }, "Pos");
+            const Entity = schema({
+                must: Pos,
+                maybe: t.ref(Pos).optional(),
+            }, "Entity");
+
+            const e = new Entity();
+            assert.ok(e.must instanceof (Pos as any));
+            assert.strictEqual(e.maybe, undefined);
+        });
+
+        it(".default() on an optional field takes precedence over skip-auto-default", () => {
+            const S = schema({
+                name: t.string().optional().default("fallback"),
+            }, "S");
+            const s = new S();
+            assert.strictEqual(s.name, "fallback");
+        });
+
+        it("TypeScript: required fields are mandatory in instance type", () => {
+            const S = schema({
+                must: t.string(),
+                maybe: t.string().optional(),
+            }, "S");
+            type SInstance = SchemaType<typeof S>;
+
+            // Required property: type assignable to string, NOT string | undefined.
+            const s = new S({ must: "hi" });
+            const mustValue: string = s.must;
+            assert.strictEqual(mustValue, "hi");
+
+            // Optional property: type is `string | undefined`.
+            const maybeValue: string | undefined = s.maybe;
+            assert.strictEqual(maybeValue, undefined);
+
+            // Compile-time shape: Pick should produce an omittable key for `maybe`.
+            type PickedMaybe = Pick<SInstance, "maybe">;
+            const ok: PickedMaybe = {};
+            assert.ok(ok);
+        });
+
+        it("can chain .optional() with other modifiers in any order", () => {
+            const A = schema({ x: t.number().optional().view(1).owned() }, "A");
+            const B = schema({ x: t.number().owned().view(1).optional() }, "B");
+            const aMeta = (A as any)[Symbol.metadata];
+            const bMeta = (B as any)[Symbol.metadata];
+            assert.strictEqual(aMeta[0].optional, true);
+            assert.strictEqual(aMeta[0].owned, true);
+            assert.strictEqual(aMeta[0].tag, 1);
+            assert.strictEqual(bMeta[0].optional, true);
+            assert.strictEqual(bMeta[0].owned, true);
+            assert.strictEqual(bMeta[0].tag, 1);
+        });
+
+        it("required init-props must be provided; optional may be omitted", () => {
+            const Pair = schema({
+                name: t.string(),                       // required
+                hp: t.uint8().default(100),             // optional — default
+                nickname: t.string().optional(),        // optional — explicit
+                tags: t.array("string"),                // optional — auto-default
+            }, "Pair");
+
+            // Compiles — name is required and provided; rest may be omitted.
+            const a = new Pair({ name: "Jake" });
+            assert.strictEqual(a.name, "Jake");
+            assert.strictEqual(a.hp, 100);
+            assert.strictEqual(a.nickname, undefined);
+            assert.ok(a.tags instanceof ArraySchema);
+
+            // Compiles — all fields provided.
+            const b = new Pair({ name: "Kat", hp: 50, nickname: "K", tags: ["x"] });
+            assert.strictEqual(b.hp, 50);
+            assert.strictEqual(b.nickname, "K");
+
+            // @ts-expect-error — name is required.
+            const _bad = new Pair({ hp: 1 });
+            void _bad;
+        });
+
+        it("extend() merges parent+child fields into init-props when no initialize is declared", () => {
+            const A = schema({ x: t.number() }, "A");
+            const B = A.extend({ y: t.number() }, "B");
+            const C = B.extend({ z: t.number().default(3) }, "C");
+
+            const c = new C({ x: 1, y: 2 });  // z omittable — has default
+            assert.strictEqual(c.x, 1);
+            assert.strictEqual(c.y, 2);
+            assert.strictEqual(c.z, 3);
+
+            // @ts-expect-error — missing required parent field `y`.
+            const _bad = new C({ x: 1 });
+            void _bad;
+        });
+
+        it("optional fields round-trip through encoder when set", () => {
+            const S = schema({
+                required: t.string(),
+                optional: t.string().optional(),
+            }, "S");
+
+            const encoder = new Encoder(new S());
+            const state = encoder.state as InstanceType<typeof S>;
+            state.required = "hello";
+            state.optional = "world";
+
+            const decoder = new Decoder<InstanceType<typeof S>>(new S());
+            decoder.decode(encoder.encode());
+
+            assert.strictEqual(decoder.state.required, "hello");
+            assert.strictEqual(decoder.state.optional, "world");
         });
     });
 });

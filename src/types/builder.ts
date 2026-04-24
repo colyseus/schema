@@ -26,6 +26,7 @@ export interface BuilderDefinition {
     deprecatedThrows?: boolean;
     static?: boolean;
     stream?: boolean;
+    optional?: boolean;
     /** Declaration-scope priority callback for `.stream()` fields. */
     streamPriority?: (view: any, element: any) => number;
 }
@@ -38,11 +39,29 @@ export type BuilderOf<T> = FieldBuilder<T>;
 /**
  * Chainable field builder. Instances are produced by `t.*()` factories.
  *
- * The generic parameter T is the runtime/JS type of the field (e.g. `number`,
- * `string`, `ArraySchema<Item>`). schema() reads the internal configuration
- * via `toDefinition()` and wires up metadata through the existing pipeline.
+ * Generics:
+ *  - `T` is the runtime/JS type of the field (e.g. `number`, `string`,
+ *    `ArraySchema<Item>`). `.optional()` widens it to `T | undefined`
+ *    so the inferred instance/toJSON shapes reflect absence.
+ *  - `HasDefault` is a compile-time flag that the field carries a
+ *    construction-time default — either an explicit `.default(v)` or an
+ *    auto-default from a collection factory (`t.array`, `t.map`, …) or a
+ *    Schema ref whose `initialize` takes zero args.
+ *  - `IsOptional` is a compile-time brand for `.optional()`. Both
+ *    `HasDefault` and `IsOptional` make the field omittable in
+ *    `BuilderInitProps<T>`. A separate brand (rather than reading
+ *    `undefined extends V`) sidesteps a TypeScript quirk where
+ *    class-generic-inferred `V` resolves `undefined extends V` as `true`
+ *    even for non-undefined types.
+ *
+ * schema() reads the internal configuration via `toDefinition()` and wires
+ * up metadata through the existing pipeline.
  */
-export class FieldBuilder<T = unknown> {
+export class FieldBuilder<
+    T = unknown,
+    HasDefault extends boolean = false,
+    IsOptional extends boolean = false,
+> {
     readonly [$builder]: true = true;
 
     // Internal configuration. Public so schema() and tests can read it, but not
@@ -58,6 +77,7 @@ export class FieldBuilder<T = unknown> {
     _deprecatedThrows = true;
     _static = false;
     _stream = false;
+    _optional = false;
     _streamPriority: ((view: any, element: any) => number) | undefined = undefined;
 
     constructor(type: DefinitionType) {
@@ -65,10 +85,10 @@ export class FieldBuilder<T = unknown> {
     }
 
     /** Provide a default value for this field. */
-    default(value: T): this {
+    default(value: T): FieldBuilder<T, true, IsOptional> {
         this._default = value;
         this._hasDefault = true;
-        return this;
+        return this as unknown as FieldBuilder<T, true, IsOptional>;
     }
 
     /** Tag this field with a view tag (DEFAULT_VIEW_TAG when called without arg). */
@@ -163,6 +183,17 @@ export class FieldBuilder<T = unknown> {
         return this;
     }
 
+    /**
+     * Mark this field as optional — inferred instance type becomes
+     * `T | undefined` and the property becomes omittable in initialization
+     * props. Skips the auto-instantiation of collection / Schema-ref
+     * defaults, so the field starts as `undefined` at runtime.
+     */
+    optional(): FieldBuilder<T | undefined, HasDefault, true> {
+        this._optional = true;
+        return this as unknown as FieldBuilder<T | undefined, HasDefault, true>;
+    }
+
     toDefinition(): BuilderDefinition {
         return {
             type: this._type,
@@ -176,6 +207,7 @@ export class FieldBuilder<T = unknown> {
             deprecatedThrows: this._deprecatedThrows,
             static: this._static,
             stream: this._stream,
+            optional: this._optional,
             streamPriority: this._streamPriority,
         };
     }
@@ -212,31 +244,33 @@ function resolveChild(child: ChildType): DefinitionType {
 
 // Overloaded factories for collections. Implementation lives in a single function;
 // overloads narrow the return type for Schema/primitive/builder children.
+// All collection factories tag `HasDefault = true` because schema() auto-
+// instantiates an empty collection when no explicit default is given.
 interface ArrayFactory {
-    <C extends Constructor<Schema>>(child: C): FieldBuilder<ArraySchema<InstanceType<C>>>;
-    <P extends RawPrimitiveType>(child: P): FieldBuilder<ArraySchema<InferValueType<P>>>;
-    <V>(child: FieldBuilder<V>): FieldBuilder<ArraySchema<V>>;
+    <C extends Constructor<Schema>>(child: C): FieldBuilder<ArraySchema<InstanceType<C>>, true, false>;
+    <P extends RawPrimitiveType>(child: P): FieldBuilder<ArraySchema<InferValueType<P>>, true, false>;
+    <V>(child: FieldBuilder<V>): FieldBuilder<ArraySchema<V>, true, false>;
 }
 interface MapFactory {
-    <C extends Constructor<Schema>>(child: C): FieldBuilder<MapSchema<InstanceType<C>>>;
-    <P extends RawPrimitiveType>(child: P): FieldBuilder<MapSchema<InferValueType<P>>>;
-    <V>(child: FieldBuilder<V>): FieldBuilder<MapSchema<V>>;
+    <C extends Constructor<Schema>>(child: C): FieldBuilder<MapSchema<InstanceType<C>>, true, false>;
+    <P extends RawPrimitiveType>(child: P): FieldBuilder<MapSchema<InferValueType<P>>, true, false>;
+    <V>(child: FieldBuilder<V>): FieldBuilder<MapSchema<V>, true, false>;
 }
 interface SetFactory {
-    <C extends Constructor<Schema>>(child: C): FieldBuilder<SetSchema<InstanceType<C>>>;
-    <P extends RawPrimitiveType>(child: P): FieldBuilder<SetSchema<InferValueType<P>>>;
-    <V>(child: FieldBuilder<V>): FieldBuilder<SetSchema<V>>;
+    <C extends Constructor<Schema>>(child: C): FieldBuilder<SetSchema<InstanceType<C>>, true, false>;
+    <P extends RawPrimitiveType>(child: P): FieldBuilder<SetSchema<InferValueType<P>>, true, false>;
+    <V>(child: FieldBuilder<V>): FieldBuilder<SetSchema<V>, true, false>;
 }
 interface CollectionFactory {
-    <C extends Constructor<Schema>>(child: C): FieldBuilder<CollectionSchema<InstanceType<C>>>;
-    <P extends RawPrimitiveType>(child: P): FieldBuilder<CollectionSchema<InferValueType<P>>>;
-    <V>(child: FieldBuilder<V>): FieldBuilder<CollectionSchema<V>>;
+    <C extends Constructor<Schema>>(child: C): FieldBuilder<CollectionSchema<InstanceType<C>>, true, false>;
+    <P extends RawPrimitiveType>(child: P): FieldBuilder<CollectionSchema<InferValueType<P>>, true, false>;
+    <V>(child: FieldBuilder<V>): FieldBuilder<CollectionSchema<V>, true, false>;
 }
 // t.stream(Entity) — priority-batched collection of Schema instances.
 // Element type is restricted to Schema subclasses (no primitives) because
 // priority batching relies on stable refIds, which primitives don't carry.
 interface StreamFactory {
-    <C extends Constructor<Schema>>(child: C): FieldBuilder<StreamSchema<InstanceType<C>>>;
+    <C extends Constructor<Schema>>(child: C): FieldBuilder<StreamSchema<InstanceType<C>>, true, false>;
 }
 
 const arrayFactory: ArrayFactory = ((child: ChildType) =>
@@ -253,9 +287,21 @@ const streamFactory: StreamFactory = ((child: ChildType) => {
     return b;
 }) as StreamFactory;
 
-function refFactory<C extends Constructor<Schema>>(ctor: C): FieldBuilder<InstanceType<C>> {
-    return new FieldBuilder<InstanceType<C>>(ctor as unknown as DefinitionType);
+// Compile-time: does this Schema subclass need arguments at construction?
+// A zero-arg or absent `initialize(...)` means schema() will auto-default the
+// field to `new X()`, so `HasDefault = true`. A non-zero-arg initialize means
+// the user has to provide the ref explicitly.
+type RefHasDefault<C> =
+    C extends { prototype: { initialize(...args: infer P): any } }
+        ? (P extends readonly [] ? true : false)
+        : true;
+
+interface RefFactory {
+    <C extends Constructor<Schema>>(ctor: C): FieldBuilder<InstanceType<C>, RefHasDefault<C>, false>;
 }
+
+const refFactory: RefFactory = (<C extends Constructor<Schema>>(ctor: C) =>
+    new FieldBuilder<InstanceType<C>>(ctor as unknown as DefinitionType)) as RefFactory;
 
 export const t = Object.freeze({
     // Primitives

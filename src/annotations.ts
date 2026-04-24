@@ -9,7 +9,7 @@ import { TypeDefinition, getType } from "./types/registry.js";
 import { OPERATION } from "./encoding/spec.js";
 import { TypeContext } from "./types/TypeContext.js";
 import { assertInstanceType, assertType, EncodeSchemaError } from "./encoding/assert.js";
-import type { InferValueType, InferSchemaInstanceType, AssignableProps, IsNever } from "./types/HelperTypes.js";
+import type { InferValueType, InferSchemaInstanceType, AssignableProps, BuilderInitProps, IsNever } from "./types/HelperTypes.js";
 import { CollectionSchema } from "./types/custom/CollectionSchema.js";
 import { SetSchema } from "./types/custom/SetSchema.js";
 import { StreamSchema } from "./types/custom/StreamSchema.js";
@@ -529,9 +529,13 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
     }
 }
 
-// Helper type to extract InitProps from initialize method
-// Supports both single object parameter and multiple parameters
-// If no initialize method is specified, use AssignableProps for field initialization
+// Helper type to extract InitProps from initialize method.
+// - Non-empty initialize params: use them directly.
+// - Zero-arg initialize: no args accepted (`never`) — user-supplied field
+//   values would be dropped at runtime (parent's initialize is skipped
+//   during child construction via the `new.target === klass` guard, and
+//   own-field auto-assignment happens only inside initialize).
+// - No initialize at all: derive from fields map.
 type ExtractInitProps<T> = T extends { initialize: (...args: infer P) => void }
     ? P extends readonly []
         ? never
@@ -540,28 +544,40 @@ type ExtractInitProps<T> = T extends { initialize: (...args: infer P) => void }
                 ? First
                 : P
             : P
-    : AssignableProps<InferSchemaInstanceType<T>>;
+    : BuilderInitProps<T>;
 
-// Helper type to determine if InitProps should be required
-type IsInitPropsRequired<T> = T extends { initialize: (props: any) => void }
-    ? true
-    : T extends { initialize: (...args: infer P) => void }
-        ? P extends readonly []
-            ? false
-            : true
-        : false;
+// Does the init-props shape have at least one required property?
+type HasRequiredKeys<X> = {} extends X ? false : true;
+
+// Whether the constructor's init-props argument must be supplied.
+// Mirrors the cases inside ExtractInitProps: non-empty initialize params
+// are required; zero-arg initialize accepts nothing; no initialize
+// depends on whether the derived BuilderInitProps has any required keys.
+type IsInitPropsRequired<T> = T extends { initialize: (...args: infer P) => void }
+    ? P extends readonly []
+        ? false
+        : true
+    : HasRequiredKeys<BuilderInitProps<T>>;
+
+// Whether T declares any non-empty `initialize` method. Used to tighten
+// the constructor signature: authors who write an explicit `initialize()`
+// with args opt into strict required args. Without an initialize the sig
+// also allows `[]` so the common `new X(); x.field = ...` pattern works.
+type HasExplicitInit<T> = T extends { initialize: (...args: infer P) => void }
+    ? P extends readonly [] ? false : true
+    : false;
 
 /**
  * A `schema()` field definition accepts a FieldBuilder, a Schema subclass
  * (shorthand for `t.ref(Class)`), or a method (attached to the prototype).
  */
-export type FieldsAndMethods = Record<string, FieldBuilder<any> | (new (...args: any[]) => Schema) | Function>;
+export type FieldsAndMethods = Record<string, FieldBuilder<any, boolean, boolean> | (new (...args: any[]) => Schema) | Function>;
 
 export interface SchemaWithExtends<T, P extends typeof Schema> {
     extend: <T2 extends FieldsAndMethods = FieldsAndMethods>(
         fields: T2 & ThisType<InferSchemaInstanceType<T & T2>>,
         name?: string,
-    ) => SchemaWithExtendsConstructor<T & T2, ExtractInitProps<T2>, P>;
+    ) => SchemaWithExtendsConstructor<T & T2, ExtractInitProps<T & T2>, P>;
 }
 
 /**
@@ -582,7 +598,22 @@ export interface SchemaWithExtendsConstructor<
     P extends typeof Schema
 > extends SchemaWithExtends<T, P> {
     '~type': InferSchemaInstanceType<T>;
-    new (...args: [InitProps] extends [never] ? [] : InitProps extends readonly any[] ? InitProps : IsInitPropsRequired<T> extends true ? [InitProps] : [InitProps?]): InferSchemaInstanceType<T> & InstanceType<P>;
+    // Constructor signature:
+    //  - InitProps = never (zero-arg initialize): no args.
+    //  - InitProps is a tuple (multi-arg initialize): spread it.
+    //  - Explicit `initialize(arg)` with required args: strict [InitProps]
+    //    — the author opted into requiring them.
+    //  - No initialize, but required builder fields: allow `[]` or
+    //    `[InitProps]`. Preserves `new X(); x.field = ...` while still
+    //    flagging incomplete-object mistakes like `new X({ hp: 1 })`.
+    //  - Otherwise: optional single-arg.
+    new (...args:
+        [InitProps] extends [never] ? []
+        : InitProps extends readonly any[] ? InitProps
+        : HasExplicitInit<T> extends true ? [InitProps]
+        : IsInitPropsRequired<T> extends true ? ([] | [InitProps])
+        : [InitProps?]
+    ): InferSchemaInstanceType<T> & InstanceType<P>;
     prototype: InferSchemaInstanceType<T> & InstanceType<P> & {
         initialize(...args: [InitProps] extends [never] ? [] : InitProps extends readonly any[] ? InitProps : [InitProps]): void;
     };
@@ -627,6 +658,7 @@ export function schema<
     const staticFields: string[] = [];
     const streamFields: string[] = [];
     const streamPriorityFields: { [field: string]: (view: any, element: any) => number } = {};
+    const optionalFields: string[] = [];
 
     for (const fieldName in fieldsAndMethods) {
         const value: any = (fieldsAndMethods as any)[fieldName];
@@ -643,11 +675,13 @@ export function schema<
             if (def.static) { staticFields.push(fieldName); }
             if (def.stream) { streamFields.push(fieldName); }
             if (def.streamPriority !== undefined) { streamPriorityFields[fieldName] = def.streamPriority; }
+            if (def.optional) { optionalFields.push(fieldName); }
 
             if (def.hasDefault) {
                 defaultValues[fieldName] = def.default;
-            } else {
+            } else if (!def.optional) {
                 // Auto-instantiate collection/Schema defaults when none is provided.
+                // `.optional()` opts out — field starts as undefined.
                 const rawType: any = def.type;
                 if (rawType && typeof rawType === "object") {
                     if (rawType.array !== undefined) {
@@ -756,6 +790,13 @@ export function schema<
         }
         for (const fieldName in streamPriorityFields) {
             Metadata.setStreamPriority(metadata, fieldName, streamPriorityFields[fieldName]);
+        }
+    }
+
+    if (optionalFields.length > 0) {
+        const metadata = (klass as any)[Symbol.metadata] as Metadata;
+        for (const fieldName of optionalFields) {
+            metadata[metadata[fieldName]].optional = true;
         }
     }
 

@@ -80,12 +80,25 @@ export type InferValueType<T> =
 
     : never;
 
+// Keys whose FieldBuilder generic admits `undefined` (i.e. `.optional()` was chained).
+type OptionalBuilderKeys<T> = {
+    [K in keyof T]: T[K] extends FieldBuilder<infer V>
+        ? (undefined extends V ? K : never)
+        : never
+}[keyof T];
+
+type RequiredBuilderKeys<T> = Exclude<keyof T, OptionalBuilderKeys<T>>;
+
 export type InferSchemaInstanceType<T> = {
-    [K in keyof T]: T[K] extends FieldBuilder<any>
+    [K in RequiredBuilderKeys<T>]: T[K] extends FieldBuilder<any>
         ? InferValueType<T[K]>
         : T[K] extends (...args: any[]) => any
             ? (T[K] extends new (...args: any[]) => any ? InferValueType<T[K]> : T[K])
             : InferValueType<T[K]>
+} & {
+    [K in OptionalBuilderKeys<T>]?: T[K] extends FieldBuilder<infer V>
+        ? V
+        : never
 } & Schema;
 
 export type NonFunctionProps<T> = Omit<T, {
@@ -107,16 +120,28 @@ export type NonFunctionNonPrimitivePropNames<T> = {
 // Helper to recursively convert Schema instances to their JSON representation
 type ToJSONValue<U> = U extends Schema ? ToJSON<U> : PrimitiveStringToType<U>;
 
-export type ToJSON<T> = NonFunctionProps<{
-    [K in keyof T]:
-        T[K] extends MapSchema<infer U> ? Record<string, ToJSONValue<U>>
-        : T[K] extends Map<string, infer U> ? Record<string, ToJSONValue<U>>
-        : T[K] extends ArraySchema<infer U> ? ToJSONValue<U>[]
-        : T[K] extends SetSchema<infer U> ? ToJSONValue<U>[]
-        : T[K] extends CollectionSchema<infer U> ? ToJSONValue<U>[]
-        : T[K] extends Schema ? ToJSON<T[K]>
-        : T[K]
-}>;
+type ToJSONField<X> =
+    X extends MapSchema<infer U> ? Record<string, ToJSONValue<U>>
+    : X extends Map<string, infer U> ? Record<string, ToJSONValue<U>>
+    : X extends ArraySchema<infer U> ? ToJSONValue<U>[]
+    : X extends SetSchema<infer U> ? ToJSONValue<U>[]
+    : X extends CollectionSchema<infer U> ? ToJSONValue<U>[]
+    : X extends Schema ? ToJSON<X>
+    : X;
+
+// Keys whose value type admits `undefined` — runtime `toJSON()` omits those,
+// so they surface as `?:` on the JSON shape.
+type ToJSONRequiredKeys<T> = {
+    [K in keyof T]-?: undefined extends T[K] ? never : K
+}[keyof T];
+type ToJSONOptionalKeys<T> = {
+    [K in keyof T]-?: undefined extends T[K] ? K : never
+}[keyof T];
+
+export type ToJSON<T> = NonFunctionProps<
+    & { [K in ToJSONRequiredKeys<T>]: ToJSONField<T[K]> }
+    & { [K in ToJSONOptionalKeys<T>]?: ToJSONField<Exclude<T[K], undefined>> }
+>;
 
 // Helper type to check if T is exactly 'never' (meaning no InitProps was provided)
 export type IsNever<T> = [T] extends [never] ? true : false;
@@ -128,15 +153,75 @@ export type IsNever<T> = [T] extends [never] ? true : false;
  * - Collections can be assigned from their JSON representations
  */
 export type AssignableProps<T> = {
-    [K in NonFunctionPropNames<T>]?: T[K] extends MapSchema<infer U>
-        ? MapSchema<U> | Record<string, U extends Schema ? (U | AssignableProps<U>) : U>
-        : T[K] extends ArraySchema<infer U>
-            ? ArraySchema<U> | (U extends Schema ? (U | AssignableProps<U>)[] : U[])
-            : T[K] extends SetSchema<infer U>
-                ? SetSchema<U> | Set<U> | (U extends Schema ? (U | AssignableProps<U>)[] : U[])
-                : T[K] extends CollectionSchema<infer U>
-                    ? CollectionSchema<U> | (U extends Schema ? (U | AssignableProps<U>)[] : U[])
-                    : T[K] extends Schema
-                        ? T[K] | AssignableProps<T[K]>
-                        : T[K]
+    [K in NonFunctionPropNames<T>]?: AssignableValue<T[K]>
 };
+
+/**
+ * Value-level assignment shape shared by `AssignableProps` and
+ * `BuilderInitProps`. Captures the "you can pass the real instance, or the
+ * plain-object / array shape" pattern.
+ */
+export type AssignableValue<V> =
+    V extends MapSchema<infer U>
+        ? MapSchema<U> | Record<string, U extends Schema ? (U | AssignableProps<U>) : U>
+        : V extends ArraySchema<infer U>
+            ? ArraySchema<U> | (U extends Schema ? (U | AssignableProps<U>)[] : U[])
+            : V extends SetSchema<infer U>
+                ? SetSchema<U> | Set<U> | (U extends Schema ? (U | AssignableProps<U>)[] : U[])
+                : V extends CollectionSchema<infer U>
+                    ? CollectionSchema<U> | (U extends Schema ? (U | AssignableProps<U>)[] : U[])
+                    : V extends Schema
+                        ? V | AssignableProps<V>
+                        : V;
+
+// ---------------------------------------------------------------------------
+// BuilderInitProps<T> — init-props shape derived from a schema() fields map.
+// Unlike AssignableProps (fully partial, for `.assign()` updates), this type
+// enforces required vs optional based on per-field `HasDefault` + `undefined`.
+// ---------------------------------------------------------------------------
+
+// Compile-time analogue of schema()'s Schema-ref auto-default rule:
+// if the ref has no `initialize`, or a zero-arg `initialize`, schema()
+// auto-instantiates it — so the field is omittable at construction.
+export type RefHasDefault<C> =
+    C extends { prototype: { initialize(...args: infer P): any } }
+        ? (P extends readonly [] ? true : false)
+        : true;
+
+// Resolve a fields-map entry to its runtime value type.
+type FieldValue<F> =
+    F extends FieldBuilder<infer V, boolean, boolean> ? V
+    : F extends new (...args: any[]) => infer I ? (I extends Schema ? I : never)
+    : never;
+
+// Classify each key of a fields map as "required" / "optional" / "none"
+// (methods). Both `HasDefault = true` and the explicit `.optional()` brand
+// `IsOptional = true` mark the field omittable at construction. The brand
+// sidesteps a TypeScript quirk where `undefined extends V` returned `true`
+// for non-undefined V when V was inferred from a class with T in
+// contravariant + covariant positions.
+type KeyClass<T, K extends keyof T> =
+    T[K] extends FieldBuilder<unknown, infer D extends boolean, infer O extends boolean>
+        ? (D extends true
+            ? "optional"
+            : O extends true ? "optional" : "required")
+        : T[K] extends new (...args: any[]) => Schema
+            ? (RefHasDefault<T[K]> extends true ? "optional" : "required")
+            : "none";
+
+export type BuilderRequiredKeys<T> = {
+    [K in keyof T]-?: KeyClass<T, K> extends "required" ? K : never
+}[keyof T];
+
+export type BuilderOptionalKeys<T> = {
+    [K in keyof T]-?: KeyClass<T, K> extends "optional" ? K : never
+}[keyof T];
+
+/**
+ * Constructor/init-props type for a schema() fields map. Required fields
+ * (primitives without `.default()` or `.optional()`, and Schema refs with
+ * non-zero-arg `initialize()`) are `:`; everything else is `?:`.
+ */
+export type BuilderInitProps<T> =
+    & { [K in BuilderRequiredKeys<T>]: AssignableValue<FieldValue<T[K]>> }
+    & { [K in BuilderOptionalKeys<T>]?: AssignableValue<Exclude<FieldValue<T[K]>, undefined>> };

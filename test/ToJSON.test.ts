@@ -48,4 +48,30 @@ describe("toJSON", () => {
         assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
     });
 
+    it("toJSON() return type marks .optional() fields as omittable", () => {
+        const S = schema({
+            required: t.string(),
+            maybe: t.string().optional(),
+        }, "OptS");
+
+        const s = new S();
+        s.required = "hi";
+        const json = s.toJSON();
+
+        // Runtime: optional field with no value is omitted.
+        assert.strictEqual(json.required, "hi");
+        assert.ok(!("maybe" in json));
+
+        // Compile-time: required is mandatory, maybe is omittable.
+        const mustValue: string = json.required;
+        const maybeValue: string | undefined = json.maybe;
+        assert.strictEqual(mustValue, "hi");
+        assert.strictEqual(maybeValue, undefined);
+
+        // Pick over the optional key must permit an empty object.
+        type Shape = ReturnType<typeof s.toJSON>;
+        const picked: Pick<Shape, "maybe"> = {};
+        assert.ok(picked);
+    });
+
 });

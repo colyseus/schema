@@ -17,6 +17,7 @@ export type MetadataField = {
     owned?: boolean,
     static?: boolean,
     stream?: boolean,
+    optional?: boolean,
 };
 
 export type Metadata =
