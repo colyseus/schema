@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   non-zero-arg `initialize()`) must now be provided at construction;
   optional fields remain omittable.
 
+### Fixed
+- Internal symbols (`$refId`, `$changes`, `$childType`, `$proxyTarget`,
+  `$values`) now use `Symbol.for(...)` so duplicate copies of
+  `@colyseus/schema` loaded into the same JS realm — for example, the
+  `./input` subpath bundle alongside the main bundle — share identity and
+  can read each other's tagged instances. Previously, each copy created
+  its own `Symbol(...)`, breaking cross-bundle property access. A small
+  polyfill installs at module load for runtimes lacking `Symbol.for`,
+  using a `globalThis`-anchored registry so cross-copy sharing still
+  works there.
+
 ### Changed
 - `InferSchemaInstanceType<T>` now marks `.optional()` fields as `?:`,
   preserving the mandatory-by-default typing for every other field.

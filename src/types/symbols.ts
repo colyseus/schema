@@ -1,4 +1,43 @@
-export const $refId: unique symbol = Symbol("$refId");
+//
+// Cross-bundle symbol sharing.
+//
+// When @colyseus/schema is loaded more than once into the same JS realm
+// (e.g. main bundle + ./input subpath bundle), plain `Symbol("$x")` calls
+// in each copy produce distinct values — breaking identity checks like
+// `instance[$values]` when the reader and the writer come from different
+// copies.
+//
+// `Symbol.for(key)` resolves to the engine's process-wide Symbol Registry,
+// so every copy gets the same symbol regardless of which one created it.
+//
+// Fallback: runtimes that lack `Symbol.for` get a polyfill anchored on
+// globalThis (also shared across module copies).
+//
+declare const self: any;
+declare const window: any;
+
+const _g: any = (function () {
+    if (typeof globalThis !== "undefined") return globalThis;
+    if (typeof global !== "undefined") return global;
+    if (typeof self !== "undefined") return self;
+    if (typeof window !== "undefined") return window;
+    return {};
+})();
+
+if (typeof Symbol === "function" && typeof (Symbol as any).for !== "function") {
+    const REGISTRY_KEY = "colyseus.symbolRegistry";
+    const registry: { [k: string]: symbol } =
+        _g[REGISTRY_KEY] || (_g[REGISTRY_KEY] = Object.create(null));
+    (Symbol as any).for = function (key: string): symbol {
+        return registry[key] || (registry[key] = Symbol(key));
+    };
+    (Symbol as any).keyFor = function (sym: symbol): string | undefined {
+        for (const k in registry) if (registry[k] === sym) return k;
+        return undefined;
+    };
+}
+
+export const $refId: unique symbol = Symbol.for("$refId");
 export const $track = "~track";
 export const $encoder = "~encoder";
 export const $decoder = "~decoder";
@@ -13,13 +52,13 @@ export const $deleteByIndex = "~deleteByIndex";
  *
  * Real JS Symbol — see the `$values` comment for rationale.
  */
-export const $changes: unique symbol = Symbol("$changes");
+export const $changes: unique symbol = Symbol.for("$changes");
 
 /**
  * Used to keep track of the type of the child elements of a collection
  * (MapSchema, ArraySchema, etc.). Real Symbol — same rationale as $values.
  */
-export const $childType: unique symbol = Symbol("$childType");
+export const $childType: unique symbol = Symbol.for("$childType");
 
 /**
  * Self-reference an instance sets on `this` so its own methods can recover
@@ -28,7 +67,7 @@ export const $childType: unique symbol = Symbol("$childType");
  * once at the top of hot methods and then access fields directly without
  * paying the Proxy.get cost on every read.
  */
-export const $proxyTarget: unique symbol = Symbol("$proxyTarget");
+export const $proxyTarget: unique symbol = Symbol.for("$proxyTarget");
 
 /**
  * Optional "discard" method for custom types (ArraySchema)
@@ -50,7 +89,7 @@ export const $onDecodeEnd = "~onDecodeEnd";
  * which means we can drop Object.defineProperty(...{ enumerable: false })
  * and avoid the slow-path / dictionary-mode hazards that come with it.
  */
-export const $values: unique symbol = Symbol("$values");
+export const $values: unique symbol = Symbol.for("$values");
 
 /**
  * Brand for FieldBuilder instances so schema() can detect them.
