@@ -14,6 +14,7 @@ import { CollectionSchema } from "./types/custom/CollectionSchema.js";
 import { SetSchema } from "./types/custom/SetSchema.js";
 import { StreamSchema } from "./types/custom/StreamSchema.js";
 import { FieldBuilder, isBuilder } from "./types/builder.js";
+import { BitfieldValue, isBitfieldType, type BitfieldLayout } from "./types/custom/BitfieldValue.js";
 
 export type RawPrimitiveType = "string" |
     "number" |
@@ -253,7 +254,7 @@ export function transient<T> (target: T, field: string) {
 }
 
 export function type (
-    type: DefinitionType,
+    type: DefinitionType | FieldBuilder<any, any, any>,
     options?: TypeOptions
 ): PropertyDecorator {
     return function (target: typeof Schema, field: string) {
@@ -261,6 +262,15 @@ export function type (
 
         if (!type) {
             throw new Error(`${constructor.name}: @type() reference provided for "${field}" is undefined. Make sure you don't have any circular dependencies.`);
+        }
+
+        // Accept a FieldBuilder for ergonomic shorthand (e.g.
+        // `@type(t.bitfield({ ... }))`). Only the `_type` is consumed —
+        // builder chains like `.view()` / `.default()` / `.optional()` are
+        // ignored on the decorator path; users should keep using the
+        // dedicated decorators (@view, @owned, @unreliable, ...) instead.
+        if (isBuilder(type)) {
+            type = (type as FieldBuilder<any, any, any>)._type;
         }
 
         // Normalize type (enum/collection/etc)
@@ -336,8 +346,11 @@ export function type (
             Object.defineProperty(target, field, metadata[$descriptors][field]);
         }
 
-        // Pre-compute encoder function for primitive types.
-        if (typeof type === "string") {
+        // Pre-compute encoder function for primitive / bitfield types.
+        const encoderFn = typeof type === "string"
+            ? (encode as any)[type]
+            : isBitfieldType(type) ? type.bitfield.encode : undefined;
+        if (encoderFn !== undefined) {
             if (!metadata[$encoders]) {
                 Object.defineProperty(metadata, $encoders, {
                     value: [],
@@ -346,7 +359,7 @@ export function type (
                     writable: true,
                 });
             }
-            metadata[$encoders][fieldIndex] = (encode as any)[type];
+            metadata[$encoders][fieldIndex] = encoderFn;
         }
     }
 }
@@ -474,20 +487,93 @@ function makeCollectionSetter(
     };
 }
 
+function makeBitfieldSetter(fieldIndex: number, layout: BitfieldLayout) {
+    return function (this: Schema, value: any) {
+        const values = this[$values];
+        const previousBf = values[fieldIndex] as BitfieldValue | undefined;
+        const ctor = this.constructor as typeof Schema;
+
+        if (value === undefined || value === null) {
+            if (previousBf !== undefined) {
+                this[$changes].delete(fieldIndex);
+                values[fieldIndex] = undefined;
+            }
+            return;
+        }
+
+        if (value instanceof BitfieldValue) {
+            // Decoder + builder-default path. Take ownership of the
+            // already-constructed BitfieldValue. Replacing — not mutating —
+            // preserves distinct (previous, current) snapshots for callbacks.
+            value._parent = this;
+            value._parentIndex = fieldIndex;
+            values[fieldIndex] = value;
+            if (previousBf === undefined || previousBf._packed !== value._packed) {
+                ctor[$track](this[$changes], fieldIndex, OPERATION.ADD);
+            }
+            return;
+        }
+
+        // Plain object (partial). Mutate the existing slot in place so
+        // user-cached `const f = player.flags` references remain valid.
+        if (!(previousBf instanceof BitfieldValue)) {
+            const fresh = new (layout.Class)(this, fieldIndex);
+            values[fieldIndex] = fresh;
+            const before = fresh._packed;
+            fresh.assign(value);
+            if (fresh._packed === before) {
+                // First-init no-op (e.g. all-zero default) — still mark
+                // dirty so the field is emitted on the first encode pass.
+                ctor[$track](this[$changes], fieldIndex, OPERATION.ADD);
+            }
+        } else {
+            previousBf.assign(value); // marks dirty internally if changed
+        }
+    };
+}
+
 export function getPropertyDescriptor(
     fieldName: string,
     fieldIndex: number,
     type: DefinitionType,
     complexTypeKlass: TypeDefinition | false,
 ) {
+    // `type` here is the unwrapped childType from resolveFieldType — for a
+    // bitfield slot, it's the BitfieldLayout (with `Class` populated).
+    const layout =
+        complexTypeKlass && (complexTypeKlass.constructor === BitfieldValue)
+            ? (type as unknown as BitfieldLayout)
+            : undefined;
+
     let setter: (this: Schema, value: any) => void;
-    if (complexTypeKlass) {
+    if (layout !== undefined) {
+        setter = makeBitfieldSetter(fieldIndex, layout);
+    } else if (complexTypeKlass) {
         setter = makeCollectionSetter(fieldName, fieldIndex, type, complexTypeKlass);
     } else if (typeof type === "string") {
         setter = makePrimitiveSetter(fieldName, fieldIndex, type);
     } else {
         setter = makeSchemaRefSetter(fieldName, fieldIndex, type as typeof Schema);
     }
+
+    if (layout !== undefined) {
+        return {
+            // Lazy getter so `player.flags.isAlive = true` works without
+            // first writing `player.flags`.
+            get: function (this: Schema) {
+                let bf = this[$values][fieldIndex] as BitfieldValue | undefined;
+                if (bf === undefined) {
+                    bf = new (layout.Class)(this, fieldIndex);
+                    this[$values][fieldIndex] = bf;
+                }
+                return bf;
+            },
+            set: setter,
+            enumerable: true,
+            configurable: true,
+        };
+    }
+
     return {
         get: function (this: Schema) { return this[$values][fieldIndex]; },
         set: setter,
@@ -694,6 +780,10 @@ export function schema<
                         defaultValues[fieldName] = new CollectionSchema();
                     } else if (rawType.stream !== undefined) {
                         defaultValues[fieldName] = new StreamSchema();
+                    } else if (isBitfieldType(rawType)) {
+                        // Detached BitfieldValue — the setter re-links to the
+                        // owning Schema instance per construction.
+                        defaultValues[fieldName] = new rawType.bitfield.Class();
                     }
                 } else if (typeof rawType === "function" && Schema.is(rawType)) {
                     if (!rawType.prototype.initialize || rawType.prototype.initialize.length === 0) {

@@ -8,6 +8,11 @@ import type { DefinitionType, RawPrimitiveType } from "../annotations.js";
 import type { InferValueType, Constructor } from "./HelperTypes.js";
 import { $builder } from "./symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "../encoder/streaming.js";
+import {
+    BitfieldValue,
+    buildBitfieldLayout,
+    createBitfieldClass,
+} from "./custom/BitfieldValue.js";
 
 type CollectionKind = "array" | "map" | "set" | "collection";
 
@@ -303,11 +308,83 @@ interface RefFactory {
 const refFactory: RefFactory = (<C extends Constructor<Schema>>(ctor: C) =>
     new FieldBuilder<InstanceType<C>>(ctor as unknown as DefinitionType)) as RefFactory;
 
+// ---------------------------------------------------------------------------
+// Bitfield factories
+// ---------------------------------------------------------------------------
+
+/**
+ * Marker shape carried by `t.uint(n)` builders. Only legal as a sub-field
+ * inside `t.bitfield({ ... })` — `t.bitfield` reads `_type.uint` to resolve
+ * the bit width. Used at the top level of a schema, decoration throws.
+ */
+export type BitfieldUintType = { uint: number };
+
+/**
+ * Map a layout record to the runtime instance shape. Each `t.bool()` becomes
+ * `boolean`, each `t.uint(n)` becomes `number`.
+ */
+export type BitfieldOf<L> = {
+    [K in keyof L]: L[K] extends FieldBuilder<infer V, any, any> ? V : never;
+};
+
+/**
+ * `t.uint(n)` — narrow unsigned int sub-field. Only valid inside
+ * `t.bitfield({ ... })`. Decoration throws if used at the top level.
+ */
+function uintFactory(bits: number): FieldBuilder<number> {
+    if (typeof bits !== "number" || (bits | 0) !== bits || bits < 1 || bits > 32) {
+        throw new Error(`t.uint(bits): bits must be an integer in 1..32 (got ${bits})`);
+    }
+    return new FieldBuilder<number>({ uint: bits } as DefinitionType);
+}
+
+/**
+ * `t.bitfield({ ... })` — group narrow fields (booleans, sub-byte uints)
+ * into one packed wire slot. Total bits must fit in 32. Backing wire type is
+ * uint8 / uint16 / uint32 chosen by the total bit width.
+ */
+function bitfieldFactory<
+    L extends Record<string, FieldBuilder<any, any, any>>,
+>(layout: L): FieldBuilder<BitfieldOf<L>, true, false> {
+    const layoutSpec: { [name: string]: { kind: "bool" | "uint"; bits?: number } } = {};
+
+    for (const name in layout) {
+        const sub = layout[name];
+        if (!isBuilder(sub)) {
+            throw new Error(`t.bitfield: '${name}' must be t.bool() or t.uint(n)`);
+        }
+        const innerType: any = sub._type;
+        if (innerType === "boolean") {
+            layoutSpec[name] = { kind: "bool" };
+        } else if (innerType && typeof innerType === "object" && typeof innerType.uint === "number") {
+            layoutSpec[name] = { kind: "uint", bits: innerType.uint };
+        } else {
+            throw new Error(
+                `t.bitfield: '${name}' must be t.bool() or t.uint(n) ` +
+                `(got ${typeof innerType === "object" ? JSON.stringify(innerType) : String(innerType)})`,
+            );
+        }
+    }
+
+    const built = buildBitfieldLayout(layoutSpec);
+    createBitfieldClass(built);
+
+    // HasDefault=true at the type level (omittable in init props); runtime
+    // _hasDefault stays false so schema() auto-creates per instance — same
+    // convention as t.array/t.map/t.set.
+    const b = new FieldBuilder<any>({ bitfield: built } as DefinitionType);
+    return b as FieldBuilder<BitfieldOf<L>, true, false>;
+}
+
+export { BitfieldValue } from "./custom/BitfieldValue.js";
+
 export const t = Object.freeze({
     // Primitives
     string: primitive<string>("string"),
     number: primitive<number>("number"),
     boolean: primitive<boolean>("boolean"),
+    /** Alias of `t.boolean()` — also serves as the bool sub-field inside `t.bitfield(...)`. */
+    bool: primitive<boolean>("boolean"),
     int8: primitive<number>("int8"),
     uint8: primitive<number>("uint8"),
     int16: primitive<number>("int16"),
@@ -320,6 +397,18 @@ export const t = Object.freeze({
     float64: primitive<number>("float64"),
     bigint64: primitive<bigint>("bigint64"),
     biguint64: primitive<bigint>("biguint64"),
+
+    /**
+     * Narrow unsigned int sub-field for use inside `t.bitfield({ ... })`.
+     * Width is in bits (1..32). Throws at decoration time outside a bitfield.
+     */
+    uint: uintFactory,
+
+    /**
+     * Group narrow fields into one packed wire slot. 8 booleans → 1 byte.
+     * Sub-fields must be `t.bool()` or `t.uint(n)`; total bits ≤ 32.
+     */
+    bitfield: bitfieldFactory,
 
     /** Reference to a Schema subtype. `t.array(Item)` usually reads better, but this is available when a plain ref is needed. */
     ref: refFactory,

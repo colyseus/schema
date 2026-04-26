@@ -1,6 +1,7 @@
 import { Metadata } from "../Metadata.js";
 import { Schema } from "../Schema.js";
 import { $streamFieldIndexes, $viewFieldIndexes } from "./symbols.js";
+import { isBitfieldType } from "./custom/BitfieldValue.js";
 
 export class TypeContext {
     types: { [id: number]: typeof Schema; } = {};
@@ -129,6 +130,11 @@ export class TypeContext {
                 this.discoverTypes(fieldType as typeof Schema, klass, index, parentHasViewTag || fieldHasViewTag);
 
             } else {
+                // Bitfield: child is a BitfieldLayout, not a Schema. Skip.
+                if (isBitfieldType(fieldType)) {
+                    continue;
+                }
+
                 const type = Object.values(fieldType)[0];
 
                 // skip primitive types

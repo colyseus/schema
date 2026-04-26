@@ -17,6 +17,9 @@ export { SetSchema };
 import { StreamSchema } from "./types/custom/StreamSchema.js";
 export { StreamSchema };
 
+import { BitfieldValue } from "./types/custom/BitfieldValue.js";
+export { BitfieldValue };
+
 import { registerType, defineCustomTypes } from "./types/registry.js";
 export { registerType, defineCustomTypes };
 
@@ -24,8 +27,8 @@ registerType("map", { constructor: MapSchema });
 registerType("array", { constructor: ArraySchema });
 registerType("set", { constructor: SetSchema });
 registerType("collection", { constructor: CollectionSchema, });
-// "stream" is registered inside StreamSchema.ts (same pattern as others
-// that co-locate registerType with the class for side-effect safety).
+// "stream" / "bitfield" are registered as side-effects of their own modules
+// (StreamSchema.ts / BitfieldValue.ts) — co-located with the class.
 
 // Utils
 export { dumpChanges } from "./utils.js";

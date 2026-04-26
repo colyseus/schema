@@ -10,6 +10,7 @@ import type { ArraySchema } from "../types/custom/ArraySchema.js";
 
 import { getType } from "../types/registry.js";
 import { Collection } from "../types/HelperTypes.js";
+import { isBitfieldType } from "../types/custom/BitfieldValue.js";
 
 export interface DataChange<T = any, F = string> {
     ref: IRef,
@@ -123,6 +124,13 @@ export function decodeValue<T extends Ref>(
         // Symbol-metadata lookup via `Schema.is`.
         //
         value = (decode as any)[type](bytes, it);
+
+    } else if (isBitfieldType(type)) {
+        // Always allocate a fresh BitfieldValue so callbacks see distinct
+        // (previous, current) instances — reusing previousValue would
+        // defeat the `previousValue !== value` change-push gate in
+        // decodeSchemaOperation.
+        value = type.bitfield.decode(bytes, it);
 
     } else if (Schema.is(type)) {
         const refId = decode.number(bytes, it);

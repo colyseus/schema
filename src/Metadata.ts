@@ -5,6 +5,7 @@ import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $n
 import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
+import { isBitfieldType } from "./types/custom/BitfieldValue.js";
 
 export type MetadataField = {
     type: DefinitionType,
@@ -102,6 +103,20 @@ export const Metadata = {
             throw new Error(`Can't define field '${name}'.\nSchema instances may only have up to 64 fields.`);
         }
 
+        // `t.uint(n)` only makes sense as a sub-field inside `t.bitfield(...)`.
+        if (
+            typeof type === "object" &&
+            type !== null &&
+            !Array.isArray(type) &&
+            typeof (type as any).uint === "number" &&
+            (type as any).bitfield === undefined
+        ) {
+            throw new Error(
+                `Field '${name}' uses t.uint(${(type as any).uint}) at the top level — ` +
+                `t.uint() is only valid as a sub-field inside t.bitfield({ ... }).`,
+            );
+        }
+
         metadata[index] = Object.assign(
             metadata[index] || {}, // avoid overwriting previous field metadata (@owned / @deprecated)
             {
@@ -146,8 +161,11 @@ export const Metadata = {
             configurable: true,
         });
 
-        // if child Ref/complex type, add to -4
-        if (typeof (metadata[index].type) !== "string") {
+        // if child Ref/complex type, add to -4. Bitfield fields are leaf
+        // values (no $changes, no refId) — exclude so the tree-attachment
+        // recursion (forEachChildWithCtx) doesn't try to walk into them.
+        const fieldTypeForRef = metadata[index].type;
+        if (typeof fieldTypeForRef !== "string" && !isBitfieldType(fieldTypeForRef)) {
             if (metadata[$refTypeFieldIndexes] === undefined) {
                 Object.defineProperty(metadata, $refTypeFieldIndexes, {
                     value: [],
@@ -381,9 +399,11 @@ export const Metadata = {
                 Object.defineProperty(target.prototype, field, metadata[$descriptors][field]);
             }
 
-            // Pre-compute encoder function for primitive types.
+            // Pre-compute encoder function for primitive / bitfield types.
             if (typeof type === "string") {
                 metadata[$encoders][fieldIndex] = (encode as any)[type];
+            } else if (isBitfieldType(type)) {
+                metadata[$encoders][fieldIndex] = type.bitfield.encode;
             }
 
             fieldIndex++;

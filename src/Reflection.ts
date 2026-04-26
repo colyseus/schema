@@ -7,6 +7,7 @@ import { Decoder } from "./decoder/Decoder.js";
 import { Schema } from "./Schema.js";
 import { t, FieldBuilder } from "./types/builder.js";
 import { ArraySchema } from "./types/custom/ArraySchema.js";
+import { buildBitfieldLayout, createBitfieldClass, isBitfieldType } from "./types/custom/BitfieldValue.js";
 
 /**
  * Static methods available on Reflection
@@ -34,10 +35,24 @@ interface ReflectionStatic {
 /**
  * Reflection
  */
+export const ReflectionBitfieldSubField = schema({
+    name: t.string(),
+    width: t.uint8(),       // 1..32
+    kind: t.uint8(),        // 0 = bool, 1 = uint
+}, "ReflectionBitfieldSubField");
+export type ReflectionBitfieldSubField = SchemaType<typeof ReflectionBitfieldSubField>;
+
 export const ReflectionField = schema({
     name: t.string(),
     type: t.string(),
     referencedType: t.number(),
+    /**
+     * Sub-field layout for `t.bitfield(...)` fields. Undefined for all
+     * other field types. Carries the ordered list of sub-fields with their
+     * widths and kinds so reflection-decoded clients can reconstruct the
+     * bit layout.
+     */
+    bitfield: t.array(ReflectionBitfieldSubField).optional(),
 }, "ReflectionField");
 export type ReflectionField = SchemaType<typeof ReflectionField>;
 
@@ -129,6 +144,22 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
                 if (typeof (field.type) === "string") {
                     fieldType = field.type;
 
+                } else if (isBitfieldType(field.type)) {
+                    // Serialize sub-field layout so reflection-decoded
+                    // clients can reconstruct the bit packing.
+                    fieldType = "bitfield";
+                    const layout = field.type.bitfield;
+                    const subFields = new ArraySchema<typeof ReflectionBitfieldSubField extends new (...a: any) => infer R ? R : never>();
+                    for (let i = 0; i < layout.fields.length; i++) {
+                        const f = layout.fields[i];
+                        const sub = new ReflectionBitfieldSubField();
+                        sub.name = f.name;
+                        sub.width = f.width;
+                        sub.kind = f.kind === "bool" ? 0 : 1;
+                        subFields.push(sub);
+                    }
+                    reflectionField.bitfield = subFields;
+
                 } else {
                     let childTypeSchema: typeof Schema;
 
@@ -197,7 +228,20 @@ Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it?:
         reflectionType.fields.forEach((field, i) => {
             const fieldIndex = parentFieldIndex + i;
 
-            if (field.referencedType !== undefined) {
+            if (field.bitfield !== undefined && field.bitfield.length > 0) {
+                // Reconstruct a bitfield layout from the wire-shipped sub-field list.
+                const spec: { [name: string]: { kind: "bool" | "uint"; bits?: number } } = {};
+                for (let j = 0; j < field.bitfield.length; j++) {
+                    const sub = field.bitfield[j];
+                    spec[sub.name] = sub.kind === 0
+                        ? { kind: "bool" }
+                        : { kind: "uint", bits: sub.width };
+                }
+                const layout = buildBitfieldLayout(spec);
+                createBitfieldClass(layout);
+                Metadata.addField(metadata, fieldIndex, field.name, { bitfield: layout } as any);
+
+            } else if (field.referencedType !== undefined) {
                 let fieldType = field.type;
                 let refType: PrimitiveType = typeContext.get(field.referencedType);
 
