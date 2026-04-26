@@ -71,7 +71,7 @@ export { t, FieldBuilder, isBuilder, type BuilderDefinition, type ChildType } fr
 export { TypeContext } from "./types/TypeContext.js";
 
 // Helper types for type inference
-export type { InferValueType, InferSchemaInstanceType, AssignableProps } from "./types/HelperTypes.js";
+export type { InferValueType, InferSchemaInstanceType, AssignableProps, BuilderInitProps } from "./types/HelperTypes.js";
 
 export { getDecoderStateCallbacks, type CallbackProxy, type SchemaCallback, type CollectionCallback, type SchemaCallbackProxy } from "./decoder/strategy/getDecoderStateCallbacks.js";
 export { Callbacks, StateCallbackStrategy } from "./decoder/strategy/Callbacks.js";

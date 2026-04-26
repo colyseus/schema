@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.2]
+
+### Fixed
+- Re-export `BuilderInitProps` from the package entry. Without it,
+  consumers using `schema()` could hit ts(2883) — `The inferred type of
+  'X' cannot be named without a reference to 'BuilderInitProps' from
+  '../node_modules/@colyseus/schema/build/types/HelperTypes.js'` — when
+  TypeScript emitted declarations for inferred schema types.
+
 ## [5.0.1]
 
 ### Added
