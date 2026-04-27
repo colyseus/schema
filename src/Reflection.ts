@@ -7,6 +7,7 @@ import { Decoder } from "./decoder/Decoder.js";
 import { Schema } from "./Schema.js";
 import { t, FieldBuilder } from "./types/builder.js";
 import { ArraySchema } from "./types/custom/ArraySchema.js";
+import { $encodeDescriptor, $numFields } from "./types/symbols.js";
 
 /**
  * Static methods available on Reflection
@@ -29,6 +30,23 @@ interface ReflectionStatic {
      * @returns Decoder instance
      */
     decode: <T extends Schema = Schema>(bytes: Uint8Array, it?: Iterator) => Decoder<T>;
+
+    /**
+     * Upgrade a class produced by `Reflection.decode` so its instances
+     * can be used as encode sources (for `InputEncoder` or `Encoder`).
+     *
+     * `Reflection.decode` reconstructs classes with decoder-only field
+     * slots — `inst.x = 7` lands as a direct own property and bypasses
+     * the change-tracking + `$values` plumbing that encoders rely on.
+     * Calling `makeEncodable(ctor)` installs the same prototype accessor
+     * descriptors and `metadata[$encoders]` lookup table that the
+     * `schema(...)` / `@type` builders install at class-definition time.
+     *
+     * Idempotent. Pay-as-you-go: callers that only decode never invoke
+     * this and pay nothing extra. Must be called BEFORE any instance of
+     * the class is constructed and assigned to.
+     */
+    makeEncodable: (ctor: typeof Schema) => typeof Schema;
 }
 
 /**
@@ -250,3 +268,30 @@ Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it?:
 
     return new Decoder<T>(state, typeContext);
 }
+
+Reflection.makeEncodable = function (ctor: typeof Schema): typeof Schema {
+    const metadata: any = (ctor as any)[Symbol.metadata];
+    if (!metadata) return ctor;
+
+    const numFields = metadata[$numFields];
+    if (numFields === undefined) return ctor;
+
+    // Walk every field index across the inheritance chain. Repeat calls
+    // are cheap: defineField overwrites the same descriptor and re-stamps
+    // the same `metadata[$encoders]` slot (idempotent).
+    for (let i = 0; i <= numFields; i++) {
+        const field = metadata[i];
+        if (!field) continue;
+        Metadata.defineField(ctor, metadata, i, field.name, field.type);
+    }
+
+    // Invalidate any cached encode descriptor — `getEncodeDescriptor`
+    // memoizes on the constructor. If something already constructed it
+    // (e.g. a prior `InputEncoder(...)` call that threw), drop the stale
+    // entry so the next read sees the upgraded metadata.
+    if (Object.prototype.hasOwnProperty.call(ctor, $encodeDescriptor)) {
+        delete (ctor as any)[$encodeDescriptor];
+    }
+
+    return ctor;
+};

@@ -329,6 +329,49 @@ export const Metadata = {
         return metadata?.[$streamPriorities]?.[index];
     },
 
+    /**
+     * Install a single field with full encoder wiring: accessor descriptor
+     * on the prototype + `metadata[$encoders]` slot for primitives. Shared
+     * between `Metadata.setFields` (build path) and
+     * `Reflection.makeEncodable` (Reflection upgrade path).
+     */
+    defineField(
+        target: any,
+        metadata: any,
+        fieldIndex: number,
+        fieldName: string,
+        type: DefinitionType,
+    ) {
+        const normalized = getNormalizedType(type);
+        const { complexTypeKlass, childType } = resolveFieldType(normalized);
+
+        Metadata.addField(
+            metadata,
+            fieldIndex,
+            fieldName,
+            normalized,
+            getPropertyDescriptor(fieldName, fieldIndex, childType, complexTypeKlass),
+        );
+
+        // Install accessor descriptor on the prototype (once per class field).
+        if (metadata[$descriptors][fieldName]) {
+            Object.defineProperty(target.prototype, fieldName, metadata[$descriptors][fieldName]);
+        }
+
+        // Pre-compute encoder function for primitive types.
+        if (typeof normalized === "string") {
+            if (!metadata[$encoders]) {
+                Object.defineProperty(metadata, $encoders, {
+                    value: [],
+                    enumerable: false,
+                    configurable: true,
+                    writable: true,
+                });
+            }
+            metadata[$encoders][fieldIndex] = (encode as any)[normalized];
+        }
+    },
+
     setFields<T extends { new (...args: any[]): InstanceType<T> } = any>(target: T, fields: { [field in keyof InstanceType<T>]?: DefinitionType }) {
         // for inheritance support
         const constructor = target.prototype.constructor;
@@ -364,28 +407,7 @@ export const Metadata = {
         }
 
         for (const field in fields) {
-            const type = getNormalizedType(fields[field]);
-
-            const { complexTypeKlass, childType } = resolveFieldType(type);
-
-            Metadata.addField(
-                metadata,
-                fieldIndex,
-                field,
-                type,
-                getPropertyDescriptor(field, fieldIndex, childType, complexTypeKlass)
-            );
-
-            // Install accessor descriptor on the prototype (once per class field).
-            if (metadata[$descriptors][field]) {
-                Object.defineProperty(target.prototype, field, metadata[$descriptors][field]);
-            }
-
-            // Pre-compute encoder function for primitive types.
-            if (typeof type === "string") {
-                metadata[$encoders][fieldIndex] = (encode as any)[type];
-            }
-
+            Metadata.defineField(constructor, metadata, fieldIndex, field, fields[field] as DefinitionType);
             fieldIndex++;
         }
 

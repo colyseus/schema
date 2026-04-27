@@ -1,7 +1,12 @@
 import * as util from "util";
 import * as assert from "assert";
-import { Reflection, Schema, type, MapSchema, ArraySchema, $changes, TypeContext, Decoder, entity } from "../src";
+import { Reflection, Schema, type, MapSchema, ArraySchema, $changes, TypeContext, Decoder, entity, schema, t, Encoder } from "../src";
+import { InputEncoder, InputDecoder } from "../src/input";
 import { createInstanceFromReflection, getEncoder } from "./Schema";
+
+// `$values` is shared cross-bundle via Symbol.for. Re-derive locally
+// for the white-box assertion in the encode-source tests below.
+const $values = Symbol.for("$values");
 
 /**
  * No filters example
@@ -327,4 +332,141 @@ describe("Reflection", () => {
             }
         });
     });
+
+    describe("encode source compatibility (makeEncodable)", () => {
+
+        it("makeEncodable + InputEncoder reliable+full mode round-trips into the original class", () => {
+            const MoveInput = schema({
+                seq: t.number(),
+                x: t.number(),
+                y: t.number(),
+                jump: t.boolean(),
+            });
+
+            const bytes = Reflection.encode(new Encoder(new MoveInput()));
+            const Reconstructed = Reflection.decode(bytes).state.constructor as any;
+
+            Reflection.makeEncodable(Reconstructed);
+
+            const inst = new Reconstructed();
+            inst.seq = 1;
+            inst.x = 7;
+            inst.y = 8;
+            inst.jump = true;
+
+            const ie = new InputEncoder(inst);
+            const out = ie.encode();
+            assert.ok(out.length > 0, "encoder must produce non-empty output");
+
+            // Decode against the ORIGINAL class — what a Colyseus server does.
+            const target = new MoveInput();
+            new InputDecoder(target).decode(out);
+
+            assert.strictEqual(target.seq, 1);
+            assert.strictEqual(target.x, 7);
+            assert.strictEqual(target.y, 8);
+            assert.strictEqual(target.jump, true);
+        });
+
+        it("makeEncodable + InputEncoder unreliable+delta+ring delivers latest values", () => {
+            const Inp = schema({ seq: t.number(), x: t.number() });
+
+            const bytes = Reflection.encode(new Encoder(new Inp()));
+            const Reconstructed = Reflection.decode(bytes).state.constructor as any;
+
+            Reflection.makeEncodable(Reconstructed);
+
+            const inst = new Reconstructed();
+            const ie = new InputEncoder(inst, { mode: "unreliable", delta: true, historySize: 4 });
+
+            inst.seq = 1; inst.x = 10; ie.encode();
+            inst.seq = 2; inst.x = 20; ie.encode();
+            const last = ie.encode(); // empty tick — ring still re-emits
+
+            const target = new Inp();
+            const dec = new InputDecoder(target);
+            const seqs: number[] = [];
+            dec.decodeAll(last, (s: any) => seqs.push(s.seq));
+
+            // After draining the framed packet, target reflects the latest applied tick.
+            assert.strictEqual(target.seq, 2);
+            assert.strictEqual(target.x, 20);
+            assert.ok(seqs.length >= 1);
+        });
+
+        it("makeEncodable lets reconstructed class drive a regular Encoder as state", () => {
+            const State = schema({ tick: t.number(), name: t.string() });
+
+            const bytes = Reflection.encode(new Encoder(new State()));
+            const Reconstructed = Reflection.decode(bytes).state.constructor as any;
+
+            Reflection.makeEncodable(Reconstructed);
+
+            const enc = new Encoder(new Reconstructed());
+            (enc.state as any).tick = 42;
+            (enc.state as any).name = "alice";
+            const patch = enc.encodeAll();
+
+            const target = new State();
+            new Decoder(target).decode(patch);
+            assert.strictEqual(target.tick, 42);
+            assert.strictEqual(target.name, "alice");
+        });
+
+        it("without makeEncodable, InputEncoder rejects the reconstructed class", () => {
+            const Inp = schema({ x: t.number() });
+
+            const bytes = Reflection.encode(new Encoder(new Inp()));
+            const Reconstructed = Reflection.decode(bytes).state.constructor as any;
+
+            // Decoder-only Reflection.decode path: no $encoders, no prototype
+            // accessors. InputEncoder's primitive-only guard must throw.
+            assert.throws(
+                () => new InputEncoder(new Reconstructed()),
+                /non-primitive field/,
+            );
+        });
+
+        it("after makeEncodable, primitive setters route through $values and $encoders is populated", () => {
+            const Inp = schema({ x: t.number() });
+
+            const bytes = Reflection.encode(new Encoder(new Inp()));
+            const Reconstructed = Reflection.decode(bytes).state.constructor as any;
+
+            Reflection.makeEncodable(Reconstructed);
+
+            const meta: any = Reconstructed[Symbol.metadata];
+            // $encoders populated for the primitive field at index 0.
+            const encodersKey = Object.getOwnPropertyNames(meta).find((k: string) => k.includes("encoders"));
+            assert.ok(encodersKey, "metadata should expose an $encoders slot");
+            assert.strictEqual(typeof meta[encodersKey!][0], "function");
+
+            // Setter routes the assignment into instance[$values][0].
+            const inst = new Reconstructed();
+            inst.x = 99;
+            assert.strictEqual((inst as any)[$values][0], 99);
+        });
+
+        it("makeEncodable is idempotent", () => {
+            const Inp = schema({ x: t.number(), y: t.number() });
+
+            const bytes = Reflection.encode(new Encoder(new Inp()));
+            const Reconstructed = Reflection.decode(bytes).state.constructor as any;
+
+            Reflection.makeEncodable(Reconstructed);
+            Reflection.makeEncodable(Reconstructed); // second call must not throw
+
+            const inst = new Reconstructed();
+            inst.x = 3;
+            inst.y = 4;
+
+            const out = new InputEncoder(inst).encode();
+            const target = new Inp();
+            new InputDecoder(target).decode(out);
+            assert.strictEqual(target.x, 3);
+            assert.strictEqual(target.y, 4);
+        });
+
+    });
+
 });

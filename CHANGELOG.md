@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.3]
+
+### Added
+- `Reflection.makeEncodable(ctor)` — opt-in upgrade for classes
+  reconstructed via `Reflection.decode`. Installs the same prototype
+  accessor descriptors and `metadata[$encoders]` lookup table that the
+  `schema(...)` / `@type` builders install at class-definition time, so
+  the reconstructed class becomes usable as an encode source for
+  `InputEncoder` and `Encoder`. Idempotent. `Reflection.decode` itself
+  is unchanged — decoder-only callers (the dominant case) pay nothing
+  extra; only code that explicitly opts in pays the descriptor + encoder
+  install cost. This unblocks Colyseus 0.18's reflection-based input
+  schema discovery, where the SDK reconstructs the input class from the
+  server's JOIN_ROOM handshake bytes and then needs to encode against
+  it.
+- `Metadata.defineField(target, metadata, fieldIndex, fieldName, type)`
+  — internal helper that folds the per-field install logic (descriptor
+  build, prototype install, `$encoders` slot) into a single shared path.
+  Called by both `Metadata.setFields` (build path) and
+  `Reflection.makeEncodable` (Reflection upgrade path) to keep the
+  field-installation logic in one place.
+
 ## [5.0.2]
 
 ### Fixed
