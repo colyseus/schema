@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.0.21
+
+### `@view`: nested Schema fields inherit parent visibility
+
+Previously, when a `@view`-gated field held a nested `Schema`, the nested
+instance was encoded but its fields were not — clients would see the reference
+but every property came through as `undefined`. The only workaround was to wrap
+the nested instance in an `ArraySchema`, which propagated visibility from the
+parent.
+
+Nested `Schema` fields now inherit visibility from a `@view`-gated parent
+regardless of whether the parent is a collection. Nested fields decorated with
+their own `@view` continue to opt out, so explicit per-field gating is
+preserved.
+
+Thanks to @FTWinston for the contribution (#218).
+
 ## 4.0.20
 
 ### C# codegen: emit native `enum` for positive-int enums
