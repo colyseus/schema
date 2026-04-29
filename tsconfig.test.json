@@ -1,9 +1,10 @@
 {
   "extends": "./tsconfig/tsconfig.all.json",
   "compilerOptions": {
-    "module": "NodeNext",
+    "module": "Preserve",
     "target": "ES2022",
     "noEmit": true,
+    "skipLibCheck": true,
     "experimentalDecorators": true,
     "useDefineForClassFields": false
   },

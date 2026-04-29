@@ -206,12 +206,16 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
         const refType = Metadata.isValidInstance(tree.ref)
             ? tree.ref.constructor
             : (tree.ref as any)[$childType];
+        // #218: nested Schema fields inherit visibility from a @view-gated
+        // parent regardless of whether the parent is a collection. The
+        // `parentIsCollection` constraint that used to live here blocked
+        // nested-Schema-field-of-@view-tagged-Schema from sharing visibility,
+        // forcing users to wrap the child in an ArraySchema as a workaround.
         tree.isVisibilitySharedWithParent = (
             parentChangeTree.isFiltered
             && typeof refType !== "string"
             && !fieldHasViewTag
             && !fieldHasStream
-            && parentIsCollection
         );
     }
 }

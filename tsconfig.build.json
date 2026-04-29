@@ -6,6 +6,7 @@
     "target": "ESNext",
     // "target": "es5",
     "outDir": "build",
+    "rootDir": "./src",
 
     "declaration": true,
     "emitDeclarationOnly": true,

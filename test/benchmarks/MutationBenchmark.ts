@@ -31,7 +31,7 @@ suite.add("manual mutation", () => {
     playerManual.setDirty("y");
 });
 
-suite.on('cycle', (event) => console.log(String(event.target)));
+suite.on('cycle', (event: any) => console.log(String(event.target)));
 suite.on('complete', () => console.log('Fastest is ' + suite.filter('fastest').map('name')));
 
 suite.run();
