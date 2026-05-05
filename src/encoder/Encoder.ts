@@ -443,24 +443,17 @@ export class Encoder<T extends Schema = any> {
         this._emitStreamPriority(view);
 
         //
-        // Iterate `view.changes` in topological order so a refId is never
-        // SWITCH_TO_STRUCTURE'd before an earlier op has introduced it on
-        // the decoder. Map insertion order alone isn't sufficient: a
-        // sequence like view.remove(child) → view.add(child) on a child
-        // whose ancestor wasn't yet visible can put the child entry into
-        // the Map before its newly-visible ancestor.
+        // `view.changes` Map insertion order IS topological order:
+        //   - `view.add` walks the parent chain to root via `addParentOf`
+        //     (depth-first ancestor-first), inserting every ancestor's
+        //     entry before the descendant's.
+        //   - `view.remove` calls `_touchAncestorsOf` before its own
+        //     write to insert any missing ancestors at the front of the
+        //     chain — empty entries that get skipped by the size==0
+        //     check below but establish Map position.
+        // No per-encode topo sort needed.
         //
-        // Hot-path optimization: `view.add` preserves topo order by
-        // construction (addParentOf walks deepest-ancestor-first before
-        // touching the obj's own entry). Only `view.remove` can leave the
-        // Map dirty. `StateView.changesOutOfOrder` tracks this so most
-        // encodes can iterate `view.changes` directly, paying nothing.
-        //
-        const orderedRefIds: Iterable<number> = view.changesOutOfOrder
-            ? this.topoOrderViewChanges(view)
-            : view.changes.keys();
-
-        for (const refId of orderedRefIds) {
+        for (const refId of view.changes.keys()) {
             const changes = view.changes.get(refId);
             const changeTree: ChangeTree = this.root.changeTrees[refId];
 
@@ -504,7 +497,6 @@ export class Encoder<T extends Schema = any> {
         // (to allow re-using StateView's for multiple clients)
         //
         view.changes.clear();
-        view.changesOutOfOrder = false;
 
         // per-tick view-scoped pass: walks the same `changes` queue as the
         // shared pass, but `encodeChangeCb` emits only filtered fields.
@@ -514,61 +506,6 @@ export class Encoder<T extends Schema = any> {
             bytes.subarray(0, sharedOffset),
             bytes.subarray(viewOffset, it.offset)
         );
-    }
-
-    /**
-     * Produce a topological ordering of `view.changes` keys so each refId
-     * is preceded by any ancestor that's also in the same view's changeset.
-     *
-     * The wire stream uses SWITCH_TO_STRUCTURE pointers; if a child is
-     * encoded before any earlier op has introduced its refId on the
-     * decoder, decode fails with "refId not found". An entry's refId can
-     * only be introduced by an ADD on one of its ancestors — so any
-     * ancestor that itself appears in this view's pending changes must
-     * be encoded first.
-     *
-     * Implementation: DFS post-order over the parent chain. The `visited`
-     * Set guards against duplicates; cycles are not expected in a
-     * well-formed parent chain but the visited check is a cheap safety
-     * net. Cost is O(n × d) for n entries with parent-chain depth d.
-     */
-    protected topoOrderViewChanges(view: StateView): number[] {
-        const result: number[] = [];
-        const visited = new Set<number>();
-
-        const visit = (refId: number) => {
-            if (visited.has(refId)) { return; }
-            visited.add(refId);
-
-            const changeTree = this.root.changeTrees[refId];
-            if (changeTree !== undefined) {
-                // Primary parent
-                const primary = changeTree.parentRef;
-                if (primary !== undefined) {
-                    const parentRefId = primary[$refId];
-                    if (parentRefId !== undefined && view.changes.has(parentRefId)) {
-                        visit(parentRefId);
-                    }
-                }
-                // Extra parents linked list (rare: instance sharing)
-                let chain = changeTree.extraParents;
-                while (chain) {
-                    const parentRefId = chain.ref[$refId];
-                    if (parentRefId !== undefined && view.changes.has(parentRefId)) {
-                        visit(parentRefId);
-                    }
-                    chain = chain.next;
-                }
-            }
-
-            result.push(refId);
-        };
-
-        for (const refId of view.changes.keys()) {
-            visit(refId);
-        }
-
-        return result;
     }
 
     /**

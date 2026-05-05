@@ -90,22 +90,6 @@ export class StateView {
      */
     changes = new Map<number, Map<number, OPERATION>>();
 
-    /**
-     * Set when an operation may have left `changes` out of topological
-     * order (a parent that needs to be encoded before its descendants is
-     * positioned after them in the Map). `Encoder.encodeView` consults
-     * this flag and only runs the topo-ordering pass when it's true,
-     * skipping the work in the common case where insertion order already
-     * coincides with topo order.
-     *
-     * Only `remove()` can break the invariant: it writes entries that
-     * bypass `addParentOf`'s deepest-ancestor-first ordering. Everything
-     * else (including multi-parent re-adds) preserves order by
-     * construction. Reset to false at the end of each encodeView pass
-     * (when `changes` is cleared).
-     */
-    changesOutOfOrder: boolean = false;
-
     constructor(public iterable: boolean = false) {
         if (iterable) {
             this.items = [];
@@ -514,12 +498,27 @@ export class StateView {
             // view must have all "changeTree" parent tree
             this.markVisible(changeTree);
 
-            // add parent's parent
+            // Recurse all the way to the root regardless of whether the
+            // parent is filtered. Walking the full chain is what makes
+            // `view.changes` topologically ordered by construction — any
+            // filtered ancestor up the chain is touched here, before the
+            // descendant's entry. The actual entry-write below is gated
+            // on `hasFilteredFields` so non-filtered ancestors don't
+            // emit redundant wire bytes (the decoder already knows them
+            // via the shared encode pass). Marking them visible is
+            // still useful: it makes this short-circuit fire on the next
+            // `view.add` instead of re-walking the chain.
             const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
-            if (parentChangeTree && parentChangeTree.hasFilteredFields) {
+            if (parentChangeTree) {
                 this.addParentOf(changeTree, tag);
             }
         }
+
+        // Skip the entry-write for non-filtered ancestors: their refIds
+        // are already known to the decoder through the shared pass, and
+        // an extra ADD on a non-filtered field's index would only emit
+        // bytes for a no-op (`value === previousValue` on the decoder).
+        if (!changeTree.hasFilteredFields) return;
 
         // add parent's tag properties
         if (changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
@@ -535,6 +534,46 @@ export class StateView {
         }
     }
 
+    /**
+     * Walk `tree`'s parent chain to root and insert an empty entry into
+     * `view.changes` for any ancestor not already present. Empty entries
+     * are skipped by `encodeView` (`changes.size === 0` continue), so no
+     * wire bytes are emitted — but the Map's insertion order now puts
+     * each ancestor BEFORE the descendant entry that the caller is about
+     * to write. Combined with `addParentOf`'s full-recursion walk on
+     * `view.add`, this preserves the global invariant that
+     * `view.changes` iteration order is topological.
+     *
+     * Iterative (not recursive) so the stack is bounded by tree depth
+     * regardless of call patterns. Stops the walk as soon as it hits an
+     * ancestor that's already in `view.changes` — at that point the
+     * remainder of the chain is guaranteed to also be present (invariant
+     * upheld by every prior caller).
+     */
+    private _touchAncestorsOf(tree: ChangeTree): void {
+        let cursor = tree.parent?.[$changes] as ChangeTree | undefined;
+        if (cursor === undefined) return;
+
+        // Collect the missing prefix of the chain, deepest-first. Only
+        // FILTERED ancestors need entries — non-filtered ones never
+        // appear in `view.changes` (mirrors the addParentOf gate), so
+        // they don't need a Map slot reserved either.
+        const stack: ChangeTree[] = [];
+        while (cursor !== undefined) {
+            if (cursor.hasFilteredFields) {
+                const refId = cursor.ref[$refId];
+                if (this.changes.has(refId)) break;
+                stack.push(cursor);
+            }
+            cursor = cursor.parent?.[$changes] as ChangeTree | undefined;
+        }
+
+        // Insert root-first so Map order is topological.
+        for (let i = stack.length - 1; i >= 0; i--) {
+            this.changes.set(stack[i].ref[$refId], new Map());
+        }
+    }
+
     remove(obj: Ref, tag?: number): this; // hide _isClear parameter from public API
     remove(obj: Ref, tag?: number, _isClear?: boolean): this;
     remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG, _isClear: boolean = false): this {
@@ -543,10 +582,6 @@ export class StateView {
             console.warn("StateView#remove(), invalid object:", obj);
             return this;
         }
-
-        // remove() bypasses addParentOf's ordering guarantee — flag the
-        // changeset as potentially out of topological order.
-        this.changesOutOfOrder = true;
 
         // ── Streamable-element unsubscribe ─────────────────────────────
         // Symmetric to the `add(streamElement)` routing: pull the element
@@ -613,6 +648,12 @@ export class StateView {
         const metadata: Metadata = ref.constructor[Symbol.metadata]; // ArraySchema/MapSchema do not have metadata
 
         const refId = ref[$refId];
+
+        // Pre-insert any missing ancestors into view.changes so the Map's
+        // iteration order stays topological — the entries we're about to
+        // write (either on this obj, or on its parent collection below)
+        // must come AFTER every ancestor in the chain on the wire.
+        this._touchAncestorsOf(changeTree);
 
         let changes = this.changes.get(refId);
         if (changes === undefined) {

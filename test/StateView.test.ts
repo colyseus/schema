@@ -339,16 +339,19 @@ describe("StateView", () => {
             client1.view.add(state.item, Tag.TWO);
             const encodedTag2 = encodeMultiple(encoder, state, [client1])[0];
 
-            // TODO: can we reduce the amount of bytes here?
-            // assert.strictEqual(4, Array.from(encodedTag1).length, "should encode only the new field");
-
-            // compare encode1 with encode2
-            assert.strictEqual(8, Array.from(encodedTag1).length, "should encode only the new field");
+            // With addParentOf gating its entry-write on hasFilteredFields,
+            // a non-filtered ancestor (here: `state` itself, the immediate
+            // parent of `item`) no longer emits a duplicate ADD on its
+            // `item` index. The view pass now emits only the new tagged
+            // scalar — 4 bytes total instead of the previous 8:
+            //   [SWITCH_TO_STRUCTURE, item_refId, OP|field_index, value]
+            // Bytes [0] (SWITCH) and [1] (item refId) are stable across
+            // encodes; bytes [2] and [3] differ because Tag.ONE and
+            // Tag.TWO route to different field indices/values.
+            assert.strictEqual(4, Array.from(encodedTag1).length, "should encode only the new field");
             assert.strictEqual(Array.from(encodedTag1).length, Array.from(encodedTag2).length, "encode size should be the same");
             assert.strictEqual(Array.from(encodedTag1)[0], Array.from(encodedTag2)[0]);
             assert.strictEqual(Array.from(encodedTag1)[1], Array.from(encodedTag2)[1]);
-            assert.strictEqual(Array.from(encodedTag1)[2], Array.from(encodedTag2)[2]);
-            assert.strictEqual(Array.from(encodedTag1)[3], Array.from(encodedTag2)[3]);
 
             assert.strictEqual(10, client1.state.item.amount);
             assert.strictEqual(20, client1.state.item.fov1);
@@ -3506,10 +3509,15 @@ describe("StateView", () => {
 
             client.view.add(player);
 
-            assert.strictEqual(client.view.changes.size, 1,
-                "fast path should only seed the parent collection entry");
-            assert.ok(client.view.changes.has(state.players[$changes].ref[$refId]),
-                "the one entry should belong to the parent players MapSchema");
+            // Non-filtered ancestors get marked visible by the
+            // addParentOf walk to root, but the entry-write is gated on
+            // `hasFilteredFields` — `players` (no @view fields) and
+            // `state` (no @view fields) are both non-filtered, so the
+            // shared encode pass alone is responsible for introducing
+            // the player to the decoder. `view.changes` ends up empty
+            // for this fast path.
+            assert.strictEqual(client.view.changes.size, 0,
+                "fast path on a non-filtered chain should write no view.changes entries");
 
             encodeMultiple(encoder, state, [client]);
 
