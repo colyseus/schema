@@ -90,6 +90,22 @@ export class StateView {
      */
     changes = new Map<number, Map<number, OPERATION>>();
 
+    /**
+     * Set when an operation may have left `changes` out of topological
+     * order (a parent that needs to be encoded before its descendants is
+     * positioned after them in the Map). `Encoder.encodeView` consults
+     * this flag and only runs the topo-ordering pass when it's true,
+     * skipping the work in the common case where insertion order already
+     * coincides with topo order.
+     *
+     * Only `remove()` can break the invariant: it writes entries that
+     * bypass `addParentOf`'s deepest-ancestor-first ordering. Everything
+     * else (including multi-parent re-adds) preserves order by
+     * construction. Reset to false at the end of each encodeView pass
+     * (when `changes` is cleared).
+     */
+    changesOutOfOrder: boolean = false;
+
     constructor(public iterable: boolean = false) {
         if (iterable) {
             this.items = [];
@@ -527,6 +543,10 @@ export class StateView {
             console.warn("StateView#remove(), invalid object:", obj);
             return this;
         }
+
+        // remove() bypasses addParentOf's ordering guarantee — flag the
+        // changeset as potentially out of topological order.
+        this.changesOutOfOrder = true;
 
         // ── Streamable-element unsubscribe ─────────────────────────────
         // Symmetric to the `add(streamElement)` routing: pull the element
