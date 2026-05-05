@@ -35,10 +35,45 @@ export class StateView {
      */
     changes = new Map<number, IndexedOperations>();
 
+    /**
+     * Set when an operation may have left `changes` out of topological
+     * order (a parent that needs to be encoded before its descendants is
+     * positioned after them in the Map). `Encoder.encodeView` consults
+     * this flag and only runs the topo-ordering pass when it's true,
+     * skipping the work in the common case where insertion order already
+     * coincides with topo order.
+     *
+     * Only `remove()` can break the invariant: it writes entries that
+     * bypass `addParentOf`'s deepest-ancestor-first ordering. Everything
+     * else (including multi-parent re-adds) preserves order by
+     * construction. Reset to false at the end of each encodeView pass
+     * (when `changes` is cleared).
+     */
+    changesOutOfOrder: boolean = false;
+
     constructor(public iterable: boolean = false) {
         if (iterable) {
             this.items = [];
         }
+    }
+
+    /**
+     * Get the IndexedOperations entry for `refId`, creating one if missing.
+     *
+     * Map insertion order alone doesn't guarantee parent-before-child
+     * iteration in all cases (a `view.remove()` followed by `view.add()`
+     * can put a child entry into the Map before its newly-visible
+     * ancestor). The wire-order invariant (parent SWITCH_TO_STRUCTURE
+     * before any of its children's) is enforced at encode time by
+     * `Encoder.encodeView` via a topological pass over `view.changes`.
+     */
+    protected touchChanges(refId: number): IndexedOperations {
+        let entry = this.changes.get(refId);
+        if (entry === undefined) {
+            entry = {};
+            this.changes.set(refId, entry);
+        }
+        return entry;
     }
 
     // TODO: allow to set multiple tags at once
@@ -82,12 +117,8 @@ export class StateView {
             this.addParentOf(changeTree, tag);
         }
 
-        let changes = this.changes.get(obj[$refId]);
-        if (changes === undefined) {
-            changes = {};
-            // FIXME / OPTIMIZE: do not add if no changes are needed
-            this.changes.set(obj[$refId], changes);
-        }
+        // FIXME / OPTIMIZE: do not add if no changes are needed
+        const changes = this.touchChanges(obj[$refId]);
 
         let isChildAdded = false;
 
@@ -182,11 +213,7 @@ export class StateView {
 
         // add parent's tag properties
         if (changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
-            let changes = this.changes.get(changeTree.ref[$refId]);
-            if (changes === undefined) {
-                changes = {};
-                this.changes.set(changeTree.ref[$refId], changes);
-            }
+            const changes = this.touchChanges(changeTree.ref[$refId]);
 
             if (!this.tags) {
                 this.tags = new WeakMap<ChangeTree, Set<number>>();
@@ -214,6 +241,10 @@ export class StateView {
             return this;
         }
 
+        // remove() bypasses addParentOf's ordering guarantee — flag the
+        // changeset as potentially out of topological order.
+        this.changesOutOfOrder = true;
+
         this.visible.delete(changeTree);
 
         // remove from iterable list
@@ -229,23 +260,13 @@ export class StateView {
 
         const refId = ref[$refId];
 
-        let changes = this.changes.get(refId);
-        if (changes === undefined) {
-            changes = {};
-            this.changes.set(refId, changes);
-        }
-
         if (tag === DEFAULT_VIEW_TAG) {
             // parent is collection (Map/Array)
             const parent = changeTree.parent;
             if (parent && !Metadata.isValidInstance(parent) && changeTree.isFiltered) {
-                const parentRefId = parent[$refId];
-                let changes = this.changes.get(parentRefId);
-                if (changes === undefined) {
-                    changes = {};
-                    this.changes.set(parentRefId, changes);
+                const parentChanges = this.touchChanges(parent[$refId]);
 
-                } else if (changes[changeTree.parentIndex] === OPERATION.ADD) {
+                if (parentChanges[changeTree.parentIndex] === OPERATION.ADD) {
                     //
                     // SAME PATCH ADD + REMOVE:
                     // The 'changes' of deleted structure should be ignored.
@@ -254,13 +275,14 @@ export class StateView {
                 }
 
                 // DELETE / DELETE BY REF ID
-                changes[changeTree.parentIndex] = OPERATION.DELETE;
+                parentChanges[changeTree.parentIndex] = OPERATION.DELETE;
 
                 // Remove child schema from visible set
                 this._recursiveDeleteVisibleChangeTree(changeTree);
 
             } else {
                 // delete all "tagged" properties.
+                const changes = this.touchChanges(refId);
                 metadata?.[$viewFieldIndexes]?.forEach((index) => {
                     changes[index] = OPERATION.DELETE;
 
@@ -276,6 +298,7 @@ export class StateView {
 
         } else {
             // delete only tagged properties
+            const changes = this.touchChanges(refId);
             metadata?.[$fieldIndexesByViewTag][tag].forEach((index) => {
                 changes[index] = OPERATION.DELETE;
 

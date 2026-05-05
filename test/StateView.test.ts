@@ -3546,4 +3546,265 @@ describe("StateView", () => {
         assert.strictEqual(client.state.parent.arrayChild[0].z, 3);
     });
 
+    describe("view.changes encoding order (refId not found)", () => {
+        /**
+         * Repro from https://github.com/Gabixel/colyseus-test-stateview-repo
+         *
+         * Same class of bug as colyseus/colyseus#936: the wire stream
+         * SWITCH_TO_STRUCTURE's into a refId before the decoder has been
+         * told that refId exists.
+         *
+         * Here it surfaces purely on the schema side: a Schema instance
+         * accumulates several parents (cardHand → pickingCard → publicCards),
+         * then `view.remove()` followed by `view.add()` re-runs `addParentOf`
+         * and inserts the newly-visible parent entries (publicCards, gameData)
+         * into `view.changes` *after* the existing entry for the obj itself.
+         * `Encoder.encodeView` iterates the Map in insertion order, so the
+         * stream tries to switch to publicCards' refId before gameData's ADD
+         * has registered it on the decoder.
+         */
+        class Card extends Schema {
+            @type("string") cardId: string;
+        }
+
+        class PlayingUser extends Schema {
+            @type("string") playerId: string;
+            @view() @type(Card) pickingCard: Card;
+            @view() @type([Card]) cardHand = new ArraySchema<Card>();
+        }
+
+        class GameData extends Schema {
+            @view() @type([Card]) publicCards = new ArraySchema<Card>();
+            @type([PlayingUser]) playingUsers = new ArraySchema<PlayingUser>();
+        }
+
+        class TestState extends Schema {
+            @type(GameData) gameData = new GameData();
+        }
+
+        /**
+         * Stripped-down variant of the same root cause: the obj's own
+         * entry in `view.changes` is created *before* its parent chain
+         * has any entries, so when `addParentOf` later inserts the
+         * parent entries they land at the tail of the Map and the wire
+         * stream tries to switch into the obj before its parent has
+         * been introduced.
+         *
+         * Reproducer: a `view.remove()` on a filtered Schema child
+         * (whose immediate parent is another Schema, not a collection,
+         * so the remove only writes an entry for the child's refId),
+         * followed by `view.add()` on the same child. The subsequent
+         * `addParentOf` walk inserts the wrapper's entry *after* the
+         * already-existing child entry.
+         */
+        it("view.remove() + view.add() on a never-visible nested @view Schema should preserve parent-before-child wire order", () => {
+            class Child extends Schema {
+                @view() @type("string") secret: string = "";
+            }
+
+            class Wrapper extends Schema {
+                @view() @type(Child) child: Child;
+            }
+
+            class State extends Schema {
+                @type(Wrapper) wrapper = new Wrapper();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            state.wrapper.child = new Child().assign({ secret: "shh" });
+
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            // child is filtered out; the decoder has no record of its refId.
+            assert.strictEqual(client.state.wrapper.child, undefined);
+
+            // remove + add on the child without introducing its parent first.
+            client.view.remove(state.wrapper.child);
+            client.view.add(state.wrapper.child);
+
+            const originalConsoleError = console.error;
+            const errors: string[] = [];
+            console.error = (...args: any[]) => { errors.push(args.map(String).join(" ")); };
+            try {
+                encodeMultiple(encoder, state, [client]);
+            } finally {
+                console.error = originalConsoleError;
+            }
+
+            assert.deepStrictEqual(
+                errors.filter((line) => line.includes('"refId" not found')),
+                [],
+                "decoder should not log 'refId not found' for this view encoding",
+            );
+
+            assert.strictEqual(client.state.wrapper.child?.secret, "shh");
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("should not emit out-of-order refIds when re-adding a card after pushing it to a view-tagged collection", () => {
+            const state = new TestState();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+
+            // 1. user joins; create their PlayingUser
+            const playingUser = new PlayingUser().assign({ playerId: "p1" });
+            state.gameData.playingUsers.push(playingUser);
+            encodeMultiple(encoder, state, [client1]);
+
+            // 2. deal 5 cards into the player's hand and add each to their view
+            for (let i = 0; i < 5; i++) {
+                const card = new Card().assign({ cardId: i.toString() });
+                playingUser.cardHand.push(card);
+                client1.view.add(card);
+            }
+            encodeMultiple(encoder, state, [client1]);
+            assert.strictEqual(client1.state.gameData.playingUsers[0].cardHand.length, 5);
+
+            // 3. pick the first card -> assign to pickingCard, remove from hand.
+            //    The card now has *two* parents in its parent chain (pickingCard field, cardHand).
+            playingUser.pickingCard = playingUser.cardHand[0];
+            playingUser.cardHand.shift();
+            encodeMultiple(encoder, state, [client1]);
+            assert.strictEqual(client1.state.gameData.playingUsers[0].cardHand.length, 4);
+            assert.strictEqual(client1.state.gameData.playingUsers[0].pickingCard.cardId, "0");
+
+            // 4. the "quirky" sequence the original repro describes:
+            //    push the card to a view-tagged public collection, then
+            //    remove + re-add the card to this client's view.
+            const card = playingUser.pickingCard;
+            state.gameData.publicCards.push(card);
+            client1.view.remove(card);
+            client1.view.add(card);
+
+            // capture decoder errors — the bug surfaces as `console.error("refId not found: …")`
+            // from Decoder.decode, not as a thrown exception.
+            const originalConsoleError = console.error;
+            const errors: string[] = [];
+            console.error = (...args: any[]) => { errors.push(args.map(String).join(" ")); };
+            try {
+                encodeMultiple(encoder, state, [client1]);
+            } finally {
+                console.error = originalConsoleError;
+            }
+
+            assert.deepStrictEqual(
+                errors.filter((line) => line.includes('"refId" not found')),
+                [],
+                "decoder should not log 'refId not found' for this view encoding",
+            );
+
+            // re-adding the card should leave the client's view consistent:
+            // the card is visible, and reachable via publicCards now that
+            // gameData.publicCards itself is visible to this client.
+            assert.strictEqual(client1.state.gameData.publicCards.length, 1);
+            assert.strictEqual(client1.state.gameData.publicCards[0].cardId, "0");
+
+            assertEncodeAllMultiple(encoder, state, [client1]);
+        });
+
+        //
+        // The next three tests are ports of regression tests from
+        // colyseus/colyseus#936 (`bundles/colyseus/test/Room.test.ts`).
+        // The PR fixed a wire-order bug in SchemaSerializer's
+        // getFullState() stitching; the same wire-order class can be
+        // exercised at the schema layer to confirm encodeView holds the
+        // invariant on its own.
+        //
+
+        class FilteredEntity extends Schema {
+            @type("string") label: string = "";
+            @view() @type("string") note: string = "";
+        }
+
+        class PublicNested extends Schema {
+            @type("string") mode: string = "";
+            @type("uint16") tickCount: number = 0;
+        }
+
+        class FilteredState extends Schema {
+            @view() @type({ map: FilteredEntity }) entities = new MapSchema<FilteredEntity>();
+            @type(PublicNested) nested = new PublicNested();
+        }
+
+        it("encodes newly visible filtered structures together with non-@view shared mutations", () => {
+            const state = new FilteredState();
+            const encoder = getEncoder(state);
+
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            // mid-tick: add a new entity, view.add it, mutate non-@view nested
+            const entity = new FilteredEntity().assign({ label: "new entity", note: "view scalar" });
+            state.entities.set("entity", entity);
+            client.view.add(entity);
+            state.nested.mode = "shared change";
+            state.nested.tickCount++;
+
+            const originalConsoleError = console.error;
+            const errors: string[] = [];
+            console.error = (...args: any[]) => { errors.push(args.map(String).join(" ")); };
+            try {
+                encodeMultiple(encoder, state, [client]);
+            } finally {
+                console.error = originalConsoleError;
+            }
+
+            assert.deepStrictEqual(
+                errors.filter((line) => line.includes('"refId" not found')),
+                [],
+                "decoder should not log 'refId not found'",
+            );
+
+            assert.strictEqual(client.state.nested.mode, "shared change");
+            assert.strictEqual(client.state.nested.tickCount, 1);
+            assert.strictEqual(client.state.entities.get("entity")?.label, "new entity");
+            assert.strictEqual(client.state.entities.get("entity")?.note, "view scalar");
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("preserves @view scalar fields when structural introductions share the same patch", () => {
+            const state = new FilteredState();
+
+            // entity exists in state *before* the client bootstraps
+            const entity = new FilteredEntity().assign({ label: "existing entity", note: "initial note" });
+            state.entities.set("entity", entity);
+
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            // mid-tick: view.add an existing entity, mutate non-@view nested
+            client.view.add(entity);
+            state.nested.mode = "shared change";
+
+            const originalConsoleError = console.error;
+            const errors: string[] = [];
+            console.error = (...args: any[]) => { errors.push(args.map(String).join(" ")); };
+            try {
+                encodeMultiple(encoder, state, [client]);
+            } finally {
+                console.error = originalConsoleError;
+            }
+
+            assert.deepStrictEqual(
+                errors.filter((line) => line.includes('"refId" not found')),
+                [],
+                "decoder should not log 'refId not found'",
+            );
+
+            assert.strictEqual(client.state.nested.mode, "shared change");
+            assert.strictEqual(client.state.entities.get("entity")?.label, "existing entity");
+            assert.strictEqual(client.state.entities.get("entity")?.note, "initial note");
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+    });
+
 });
