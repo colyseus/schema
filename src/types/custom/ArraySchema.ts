@@ -286,12 +286,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     // decoding only
     protected $setAt(index: number, value: V, operation: OPERATION) {
         if (
-            index === 0 &&
             operation === OPERATION.ADD &&
             this.items[index] !== undefined
         ) {
-            // handle decoding unshift
-            this.items.unshift(value);
+            // handle decoding unshift / insert at position
+            this.items.splice(index, 0, value);
 
         } else if (operation === OPERATION.DELETE_AND_MOVE) {
             this.items.splice(index, 1);
@@ -519,6 +518,18 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         });
 
         this.tmpItems.unshift(...items);
+
+        // Sort operations by ascending index to ensure correct encoding order.
+        // When consecutive unshifts occur, the decoder uses splice to insert at
+        // each index — this only works if lower indices are processed first.
+        // (See test "consecutive unshift calls should not break 'encodeAll'")
+        const changeSet = changeTree.isFiltered ? changeTree.filteredChanges : changeTree.changes;
+        changeSet.operations.sort((a, b) => a - b);
+        const newIndexes: { [index: number]: number } = {};
+        for (let i = 0; i < changeSet.operations.length; i++) {
+            newIndexes[changeSet.operations[i]] = i;
+        }
+        changeSet.indexes = newIndexes;
 
         return this.items.unshift(...items);
     }
