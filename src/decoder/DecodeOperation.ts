@@ -302,11 +302,22 @@ export const decodeArray: DecodeOperation = function (
         return;
 
     } else if (operation === OPERATION.DELETE_BY_REFID) {
-        // TODO: refactor here, try to follow same flow as below
         const refId = decode.number(bytes, it);
         const previousValue = decoder.root.refs.get(refId);
+
+        // Skip stale DELETE operations (item not known to this decoder)
+        if (!previousValue) { return; }
+
         index = ref.findIndex((value) => value === previousValue);
+
+        // Skip if item is not in the array
+        if (index === -1) { return; }
+
         ref[$deleteByIndex](index);
+
+        // Flag refId for garbage collection
+        decoder.root.removeRef(refId);
+
         allChanges.push({
             ref,
             refId: decoder.currentRefId,
