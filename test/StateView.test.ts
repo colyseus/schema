@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import * as util from "util";
-import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, OPERATION, SetSchema, CollectionSchema } from "../src";
+import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, $refId, OPERATION, SetSchema, CollectionSchema } from "../src";
 import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts, InheritanceRoot, Position } from "./Schema";
 import { nanoid } from "nanoid";
 
@@ -28,6 +28,70 @@ describe("StateView", () => {
         assert.strictEqual(client2.state.prop2, undefined);
 
         assertEncodeAllMultiple(encoder, state, [client1, client2])
+    });
+
+    it("should encode pending view additions during encodeAllView snapshots", () => {
+        const VIEW_TAG = 1;
+
+        class Entity extends Schema {
+            @view(VIEW_TAG) @type("string") id: string = "";
+            @view(VIEW_TAG) @type("uint16") itemId: number = 0;
+        }
+
+        class State extends Schema {
+            @view(VIEW_TAG) @type({ map: Entity }) entities = new MapSchema<Entity>();
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+        const entity = new Entity().assign({ id: "drop-1", itemId: 2 });
+
+        state.entities.set(entity.id, entity);
+        encoder.discardChanges();
+
+        // Simulate a full-state snapshot whose filtered baseline no longer
+        // carries the original ADDs. The pending StateView.add() changes must
+        // still be enough to introduce the entity and its tagged fields.
+        for (const ref of [state, state.entities, entity]) {
+            const allFilteredChanges = ref[$changes]?.allFilteredChanges;
+            if (allFilteredChanges) {
+                allFilteredChanges.operations = [];
+                allFilteredChanges.indexes = {};
+            }
+        }
+
+        const client = createClientWithView(state);
+        client.view.add(entity, VIEW_TAG);
+
+        encodeAllForView(encoder, client);
+
+        assert.strictEqual(client.state.entities.get("drop-1")?.itemId, 2);
+    });
+
+    it("should skip stale invalid StateView field changes", () => {
+        class Player extends Schema {
+            @view() @type("string") name: string = "Player";
+        }
+
+        class State extends Schema {
+            @view() @type({ map: Player }) players = new MapSchema<Player>();
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+        const player = new Player();
+        state.players.set("one", player);
+
+        const client = createClientWithView(state);
+        client.view.add(player);
+        encodeMultiple(encoder, state, [client]);
+
+        const playerRefId = player[$refId];
+        client.view.changes.set(playerRefId, { 999: OPERATION.ADD });
+        client.view.changes.set(999999, { 0: OPERATION.ADD });
+
+        assert.doesNotThrow(() => encodeMultiple(encoder, state, [client]));
+        assert.strictEqual(client.view.changes.size, 0);
     });
 
     it("should not be required to add parent structure", () => {

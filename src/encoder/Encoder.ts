@@ -173,6 +173,8 @@ export class Encoder<T extends Schema = any> {
     ) {
         const viewOffset = it.offset;
 
+        this.encodeViewChanges(view, it, bytes);
+
         // try to encode "filtered" changes
         this.encode(it, view, bytes, "allFilteredChanges", true, viewOffset);
 
@@ -190,6 +192,22 @@ export class Encoder<T extends Schema = any> {
     ) {
         const viewOffset = it.offset;
 
+        this.encodeViewChanges(view, it, bytes);
+
+        // try to encode "filtered" changes
+        this.encode(it, view, bytes, "filteredChanges", false, viewOffset);
+
+        return concatBytes(
+            bytes.subarray(0, sharedOffset),
+            bytes.subarray(viewOffset, it.offset)
+        );
+    }
+
+    protected encodeViewChanges(
+        view: StateView,
+        it: Iterator,
+        bytes: Uint8Array = this.sharedBuffer
+    ) {
         //
         // Iterate `view.changes` in topological order so a refId is never
         // SWITCH_TO_STRUCTURE'd before an earlier op has introduced it on
@@ -219,18 +237,25 @@ export class Encoder<T extends Schema = any> {
                 continue;
             }
 
-            const keys = Object.keys(changes);
-            if (keys.length === 0) {
-                // FIXME: avoid having empty changes if no changes were made
-                // console.log("changes.size === 0, skip", refId, changeTree.ref.constructor.name);
-                continue;
-            }
-
             const ref = changeTree.ref;
-
             const ctor = ref.constructor;
             const encoder = ctor[$encoder];
             const metadata = ctor[Symbol.metadata];
+            const keys = Object.keys(changes).filter((index) => {
+                if (metadata && metadata[Number(index)] === undefined) {
+                    delete changes[Number(index)];
+                    return false;
+                }
+
+                return true;
+            });
+
+            if (keys.length === 0) {
+                // FIXME: avoid having empty changes if no changes were made
+                // console.log("changes.size === 0, skip", refId, changeTree.ref.constructor.name);
+                view.changes.delete(refId);
+                continue;
+            }
 
             bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
             encode.number(bytes, ref[$refId], it);
@@ -254,14 +279,6 @@ export class Encoder<T extends Schema = any> {
         // clear "view" changes after encoding
         view.changes.clear();
         view.changesOutOfOrder = false;
-
-        // try to encode "filtered" changes
-        this.encode(it, view, bytes, "filteredChanges", false, viewOffset);
-
-        return concatBytes(
-            bytes.subarray(0, sharedOffset),
-            bytes.subarray(viewOffset, it.offset)
-        );
     }
 
     /**
