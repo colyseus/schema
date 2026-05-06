@@ -88,13 +88,13 @@ export class StateCallbackStrategy<TState extends IRef> {
         if (!collection || collection[$refId] === undefined) {
             let removePropertyCallback: () => void;
             removePropertyCallback = this.addCallback(
-                instance[$refId],
+                instance[$refId]!,
                 propertyName,
                 (value: TReturn, _: TReturn) => {
                     if (value !== null && value !== undefined) {
                         // Remove the property listener now that collection is available
                         removePropertyCallback();
-                        removeHandler = this.addCallback(value[$refId], operation, handler);
+                        removeHandler = this.addCallback(value[$refId]!, operation, handler);
                     }
                 }
             );
@@ -113,7 +113,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 });
             }
 
-            return this.addCallback(collection[$refId], operation, handler);
+            return this.addCallback(collection[$refId]!, operation, handler);
         }
     }
 
@@ -162,13 +162,13 @@ export class StateCallbackStrategy<TState extends IRef> {
             handler(currentValue, undefined as any);
         }
 
-        return this.addCallback(instance[$refId], propertyName, handler);
+        return this.addCallback(instance[$refId]!, propertyName, handler);
     }
 
     /**
      * Listen to any property change on an instance.
      */
-    onChange<TInstance extends Schema>(
+    onChange<TInstance extends object>(
         instance: TInstance,
         handler: InstanceChangeCallback
     ): () => void;
@@ -184,7 +184,7 @@ export class StateCallbackStrategy<TState extends IRef> {
     /**
      * Listen to item changes in a nested collection.
      */
-    onChange<TInstance extends Schema, K extends CollectionPropNames<TInstance>>(
+    onChange<TInstance extends object, K extends CollectionPropNames<TInstance>>(
         instance: TInstance,
         property: K,
         handler: KeyValueCallback<CollectionKeyType<TInstance, K>, CollectionValueType<TInstance, K>>
@@ -195,7 +195,7 @@ export class StateCallbackStrategy<TState extends IRef> {
             // onChange(instance, handler) - instance change
             const instance = args[0] as Schema;
             const handler = args[1] as InstanceChangeCallback;
-            return this.addCallback(instance[$refId], OPERATION.REPLACE, handler);
+            return this.addCallback(instance[$refId]!, OPERATION.REPLACE, handler);
         }
 
         if (typeof args[0] === 'string') {
@@ -229,7 +229,7 @@ export class StateCallbackStrategy<TState extends IRef> {
     /**
      * Listen to items added to a nested collection.
      */
-    onAdd<TInstance extends Schema, K extends CollectionPropNames<TInstance>>(
+    onAdd<TInstance, K extends CollectionPropNames<TInstance>>(
         instance: TInstance,
         property: K,
         handler: ValueKeyCallback<CollectionValueType<TInstance, K>, CollectionKeyType<TInstance, K>>,
@@ -269,7 +269,7 @@ export class StateCallbackStrategy<TState extends IRef> {
     /**
      * Listen to items removed from a nested collection.
      */
-    onRemove<TInstance extends Schema, K extends CollectionPropNames<TInstance>>(
+    onRemove<TInstance, K extends CollectionPropNames<TInstance>>(
         instance: TInstance,
         property: K,
         handler: ValueKeyCallback<CollectionValueType<TInstance, K>, CollectionKeyType<TInstance, K>>
@@ -299,7 +299,7 @@ export class StateCallbackStrategy<TState extends IRef> {
      * Bind properties from a Schema instance to a target object.
      * Changes will be automatically reflected on the target object.
      */
-    bindTo<TInstance extends Schema, TTarget>(
+    bindTo<TInstance, TTarget>(
         from: TInstance,
         to: TTarget,
         properties?: string[],
@@ -327,7 +327,7 @@ export class StateCallbackStrategy<TState extends IRef> {
             action();
         }
 
-        return this.addCallback(from[$refId], OPERATION.REPLACE, action);
+        return this.addCallback((from as IRef)[$refId]!, OPERATION.REPLACE, action);
     }
 
     protected triggerChanges(allChanges: DataChange[]): void {
@@ -350,7 +350,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
                 Schema.isSchema(change.previousValue)
             ) {
-                const childRefId = (change.previousValue as Ref)[$refId];
+                const childRefId = (change.previousValue as Ref)[$refId]!;
                 const deleteCallbacks = this.callbacks[childRefId]?.[OPERATION.DELETE];
                 if (deleteCallbacks) {
                     for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
@@ -518,8 +518,10 @@ export const Callbacks = {
             return getDecoderStateCallbacks(roomOrDecoder);
 
         } else if ('decoder' in roomOrDecoder.serializer) {
-            return getDecoderStateCallbacks(roomOrDecoder.serializer.decoder);
+            return getDecoderStateCallbacks((roomOrDecoder.serializer as { decoder: Decoder<T> }).decoder);
         }
+
+        throw new Error('Invalid room or decoder');
     },
 
     getRawChanges(decoder: Decoder, callback: (changes: DataChange[]) => void) {

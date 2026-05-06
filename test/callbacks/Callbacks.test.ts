@@ -591,5 +591,133 @@ describe("Callbacks (new API)", () => {
             decodedState.decode(state.encode());
         });
     });
+
+    //
+    // Simulates the situation where two distinct copies of @colyseus/schema
+    // are installed in node_modules. When that happens, the user's `data`
+    // is no longer typed as the *local* Schema subclass — TypeScript infers
+    // a structural shape that doesn't extend the local Schema class, because
+    // the underlying ref came from a different copy of the package.
+    //
+    // Before the constraint relaxation on the callbacks API, the nested
+    // overloads were declared as `<TInstance extends Schema, ...>`. A
+    // structural type that doesn't extend the local Schema fails the
+    // constraint, so `TInstance` collapses to `Schema<any>`,
+    // `CollectionPropNames<TInstance>` evaluates to `never`, and
+    // `_.onAdd(data, "playingUsers", ...)` fails with the famous
+    // "is not assignable to parameter of type 'never'" error.
+    //
+    // We reproduce that exact shape with a structural-only interface. If the
+    // API ever re-tightens its constraints to `extends Schema`, this file
+    // will fail to compile.
+    //
+    describe("cross-version Schema (multiple @colyseus/schema in node_modules)", () => {
+        // The shape TS infers for `data` when the ref was constructed by a
+        // different copy of @colyseus/schema. It has the on-wire `~refId`
+        // property and the user's own fields, but does NOT structurally
+        // match the local `Schema` class (no `assign`, `toJSON`, etc).
+        interface DualVersionRef {
+            ["~refId"]?: number;
+        }
+
+        it("should accept a structurally-typed cross-version ref", () => {
+            class Player extends Schema {
+                @type("string") sessionId: string;
+                @type("number") hp: number;
+            }
+
+            class State extends Schema {
+                @type({ array: Player }) players = new ArraySchema<Player>();
+                @type({ map: Player }) byId = new MapSchema<Player>();
+                @type(Player) leader: Player;
+            }
+
+            const state = new State();
+            state.players.push(new Player().assign({ sessionId: "a", hp: 100 }));
+            state.byId.set("a", state.players[0]);
+            state.leader = state.players[0];
+
+            const decodedState = createInstanceFromReflection(state);
+            const decoder = getDecoder(decodedState);
+            const callbacks = Callbacks.get(decoder);
+
+            // Same identity as `decodedState`, but typed as it would be under
+            // a dual-install: a structural shape that doesn't extend Schema.
+            type DualState = {
+                players: ArraySchema<Player>;
+                byId: MapSchema<Player>;
+                leader: Player;
+            } & DualVersionRef;
+            const dualState = decodedState as unknown as DualState;
+
+            let collectionAdds = 0;
+            let mapAdds = 0;
+            let leaderChanges = 0;
+            let leaderListenFired = false;
+
+            // onAdd on a nested array — the original failing pattern
+            callbacks.onAdd(dualState, "players", () => { collectionAdds++; });
+
+            // onAdd on a nested map
+            callbacks.onAdd(dualState, "byId", (_player, key) => {
+                mapAdds++;
+                assert.ok(typeof key === "string");
+            });
+
+            // onChange on a nested instance (no property — the 2-arg overload
+            // that needs `extends object` to disambiguate from a string property)
+            callbacks.onChange(dualState, () => { leaderChanges++; });
+
+            // onRemove on a nested collection
+            callbacks.onRemove(dualState, "players", () => { /* type-check only */ });
+
+            // listen on a nested property
+            callbacks.listen(dualState, "leader", () => { leaderListenFired = true; });
+
+            // bindTo with a dual-version-typed source
+            const visual: any = {};
+            callbacks.bindTo(dualState, visual);
+
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(collectionAdds, 1, "onAdd(array) should fire");
+            assert.strictEqual(mapAdds, 1, "onAdd(map) should fire");
+            assert.ok(leaderChanges >= 1, "onChange(instance) should fire");
+            assert.ok(leaderListenFired, "listen(instance, prop) should fire");
+        });
+
+        it("should preserve property-name autocompletion on cross-version refs", () => {
+            class State extends Schema {
+                @type("string") name: string;
+                @type({ array: "string" }) tags = new ArraySchema<string>();
+            }
+
+            const state = new State();
+            const decodedState = createInstanceFromReflection(state);
+            const decoder = getDecoder(decodedState);
+            const callbacks = Callbacks.get(decoder);
+
+            type DualState = {
+                name: string;
+                tags: ArraySchema<string>;
+            } & DualVersionRef;
+            const dualState = decodedState as unknown as DualState;
+
+            // Valid property and collection still work
+            callbacks.listen(dualState, "name", () => {});
+            callbacks.onAdd(dualState, "tags", () => {});
+
+            // The lines below are commented out because they SHOULD fail to
+            // type-check. Uncomment to manually verify the property/collection
+            // constraints are still doing their job:
+            //
+            // @ts-expect-error — "missing" is not a property of DualState
+            callbacks.listen(dualState, "missing", () => {});
+            // @ts-expect-error — "name" is not a collection
+            callbacks.onAdd(dualState, "name", () => {});
+
+            assert.ok(true);
+        });
+    });
 });
 
