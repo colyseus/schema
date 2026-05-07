@@ -403,13 +403,27 @@ export class ChangeTree<T extends Ref = any> {
             return;
         }
 
-        const changeSet = (this.filteredChanges !== undefined)
+        // Mirror `change()`: a field's add/delete must target the same
+        // changeset family (filtered vs non-filtered). Otherwise
+        // `deleteOperationAtIndex` falls through to its "find last
+        // operation" branch and evicts an unrelated sibling field —
+        // surfaced as encodeAll() dropping a non-@view field after a
+        // sibling @view field is set to undefined on a Schema with
+        // mixed @view / non-@view fields (filteredChanges defined,
+        // isFiltered false).
+        const isFiltered = this.isFiltered || (this.metadata?.[index]?.tag !== undefined);
+        const changeSet = (isFiltered)
             ? this.filteredChanges
             : this.changes;
 
         this.indexedOperations[index] = operation ?? OPERATION.DELETE;
         setOperationAtIndex(changeSet, index);
-        deleteOperationAtIndex(this.allChanges, allChangesIndex);
+
+        if (isFiltered) {
+            deleteOperationAtIndex(this.allFilteredChanges, allChangesIndex);
+        } else {
+            deleteOperationAtIndex(this.allChanges, allChangesIndex);
+        }
 
         const previousValue = this.getValue(index);
 
@@ -428,13 +442,8 @@ export class ChangeTree<T extends Ref = any> {
             this.root?.remove(previousValue[$changes]);
         }
 
-        //
-        // FIXME: this is looking a ugly and repeated
-        //
-        if (this.filteredChanges !== undefined) {
-            deleteOperationAtIndex(this.allFilteredChanges, allChangesIndex);
+        if (isFiltered) {
             this.root?.enqueueChangeTree(this, 'filteredChanges');
-
         } else {
             this.root?.enqueueChangeTree(this, 'changes');
         }

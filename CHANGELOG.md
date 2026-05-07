@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.0.24
+
+### `ChangeTree.delete`: fix `encodeAll` dropping sibling fields after `undefined` assignment to a `@view()` field
+
+Thanks to [@Gabixel](https://github.com/Gabixel) for the follow-up
+report after 4.0.22.
+
+On a Schema with both `@view()` and non-`@view()` fields, assigning
+`undefined` to the `@view()` field evicted an unrelated sibling from
+`allChanges`. Incremental clients were fine; a fresh client joining via
+`encodeAll()` saw the sibling field silently missing.
+
+`delete()` was picking its target changeset by `filteredChanges !== undefined`
+instead of mirroring `change()`'s per-field `isFiltered` test, so the
+matching `deleteOperationAtIndex` ran on the wrong side and its
+"find last operation" fallback removed a neighbor. Now symmetric with
+`change()` across both the `*Changes` and `*allChanges` pairs.
+
 ## 4.0.23
 
 ### `Callbacks`: accept Schema instances across multiple `@colyseus/schema` copies

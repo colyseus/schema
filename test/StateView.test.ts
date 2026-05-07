@@ -3707,6 +3707,57 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client1]);
         });
 
+        /**
+         * Follow-up from @Gabixel's Discord note on the same repro:
+         *
+         * > "I was having issue re-assigning `undefined` to a property in my
+         * > schema, but here it works completely fine (even in previous
+         * > schema versions) and I know for a fact that this is supported."
+         *
+         * His TestRoom has a commented-out `playingUser.pickingCard = undefined`.
+         * Triggering it on this exact schema corrupts `allChanges` on the
+         * PlayingUser instance, so a fresh client joining via `encodeAll()`
+         * loses the non-@view `playerId` field. Incremental clients are fine.
+         *
+         * Root cause: `ChangeTree.delete()` unconditionally calls
+         *   deleteOperationAtIndex(this.allChanges, allChangesIndex)
+         * for a @view() field whose op lives in `allFilteredChanges`. The
+         * lookup misses and falls through to `deleteOperationAtIndex`'s
+         * "find last operation" branch — evicting the non-@view field's
+         * entry instead.
+         */
+        it("re-assigning undefined to @view Schema field should not drop sibling non-@view fields from encodeAll", () => {
+            const state = new TestState();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+
+            const playingUser = new PlayingUser().assign({ playerId: "p1" });
+            state.gameData.playingUsers.push(playingUser);
+
+            for (let i = 0; i < 5; i++) {
+                const card = new Card().assign({ cardId: i.toString() });
+                playingUser.cardHand.push(card);
+                client1.view.add(card);
+            }
+            encodeMultiple(encoder, state, [client1]);
+
+            playingUser.pickingCard = playingUser.cardHand[0];
+            playingUser.cardHand.shift();
+            encodeMultiple(encoder, state, [client1]);
+
+            // re-assign undefined to the @view() Schema field
+            (playingUser as any).pickingCard = undefined;
+            encodeMultiple(encoder, state, [client1]);
+
+            // incremental client still has playerId
+            assert.strictEqual(client1.state.gameData.playingUsers[0].playerId, "p1");
+            assert.strictEqual(client1.state.gameData.playingUsers[0].pickingCard, undefined);
+
+            // encodeAll path (used by fresh joiners) must also preserve playerId
+            assertEncodeAllMultiple(encoder, state, [client1]);
+        });
+
         //
         // The next three tests are ports of regression tests from
         // colyseus/colyseus#936 (`bundles/colyseus/test/Room.test.ts`).
