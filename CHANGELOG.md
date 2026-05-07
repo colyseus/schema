@@ -76,6 +76,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   init-props derivation can distinguish required vs. omittable fields
   without runtime cost.
 
+## 4.0.24
+
+### `ChangeTree.delete`: fix `encodeAll` dropping sibling fields after `undefined` assignment to a `@view()` field
+
+Thanks to [@Gabixel](https://github.com/Gabixel) for the follow-up
+report after 4.0.22.
+
+On a Schema with both `@view()` and non-`@view()` fields, assigning
+`undefined` to the `@view()` field evicted an unrelated sibling from
+`allChanges`. Incremental clients were fine; a fresh client joining via
+`encodeAll()` saw the sibling field silently missing.
+
+`delete()` was picking its target changeset by `filteredChanges !== undefined`
+instead of mirroring `change()`'s per-field `isFiltered` test, so the
+matching `deleteOperationAtIndex` ran on the wrong side and its
+"find last operation" fallback removed a neighbor. Now symmetric with
+`change()` across both the `*Changes` and `*allChanges` pairs.
+
+## 4.0.23
+
+### `Callbacks`: accept Schema instances across multiple `@colyseus/schema` copies
+
+The nested-instance overloads of `onAdd`, `onChange`, `onRemove`, and `bindTo`
+previously declared `<TInstance extends Schema, ...>`. When two copies of
+`@colyseus/schema` end up in `node_modules` (e.g. one in the consuming app and
+one transitively pulled in by an SDK), TypeScript infers `data` parameters
+with a structural shape that doesn't extend the *local* `Schema` class, and
+`TInstance` collapses to the base `Schema`. That made
+`CollectionPropNames<TInstance>` evaluate to `never`, surfacing as the
+infamous *"Argument of type '"playingUsers"' is not assignable to parameter
+of type 'never'"* on otherwise-correct code like:
+
+```ts
+callbacks.listen("gameData", (data) => {
+    callbacks.onAdd(data, "playingUsers", (user) => { /* ... */ });
+});
+```
+
+The constraint is now relaxed to match the same pattern already in `listen`:
+
+- `onAdd`, `onRemove`, `bindTo`: `<TInstance, ...>` (no constraint)
+- `onChange`: `<TInstance extends object, ...>` — `extends object` is kept
+  here only to disambiguate the 2-arg `onChange(instance, handler)` overload
+  from the 2-arg `onChange(property, handler)` overload, so a string property
+  name still routes to the root-collection form.
+
+Misspelled property names and non-collection properties continue to be
+rejected, since `K extends CollectionPropNames<TInstance>` /
+`K extends PublicPropNames<TInstance>` still gates them.
+
+Also fixed: `Callbacks.getLegacy()` previously fell through to `undefined`
+when the input matched neither `Decoder` nor `{ serializer: { decoder } }`;
+it now throws `Invalid room or decoder` to match `Callbacks.get()`.
+
 ## 4.0.22
 
 ### `StateView`: fix `"refId" not found` from out-of-order `view.changes`
