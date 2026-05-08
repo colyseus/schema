@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.0.25
+
+### `@view(N)` collections: items pushed after `view.add` are now visible
+
+Items added to a non-default-tag collection (e.g.
+`@view(1) @type([Item]) items`) *after* the client called
+`view.add(state, 1)` were silently invisible — the array's `ADD` op
+was emitted but the new item's fields didn't share visibility with the
+parent.
+
+Children of `@view(N)` collections now inherit parent visibility.
+Default-tag `@view()` collections keep per-item gating unchanged —
+`view.add(item)` is still required to opt each one in.
+
+Thanks to [@FTWinston](https://github.com/FTWinston) for the report
+and fix (#226).
+
 ## 4.0.24
 
 ### `ChangeTree.delete`: fix `encodeAll` dropping sibling fields after `undefined` assignment to a `@view()` field

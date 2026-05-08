@@ -571,7 +571,8 @@ export class ChangeTree<T extends Ref = any> {
         }
         key += `-${parentIndex}`;
 
-        const fieldHasViewTag = Metadata.hasViewTagAtIndex(parentConstructor?.[Symbol.metadata], parentIndex);
+        const parentMetadata = parentConstructor?.[Symbol.metadata];
+        const fieldHasViewTag = Metadata.hasViewTagAtIndex(parentMetadata, parentIndex);
 
         this.isFiltered = parent[$changes].isFiltered // in case parent is already filtered
             || this.root.types.parentFiltered[key]
@@ -582,13 +583,23 @@ export class ChangeTree<T extends Ref = any> {
         // when it's available, we need to enqueue the "changes" changeset into the "filteredChanges" changeset.
         //
         if (this.isFiltered) {
-            const fieldViewTag: number | undefined = parentConstructor?.[Symbol.metadata]?.[parentIndex]?.tag;
-            const fieldHasNonDefaultViewTag = fieldViewTag !== DEFAULT_VIEW_TAG;
-
+            //
+            // Children of a `@view(N)` collection (non-default tag) inherit
+            // visibility from their parent, so items pushed/set after the
+            // initial `view.add(state, N)` show up automatically.
+            //
+            // Default-tag `@view()` collections deliberately keep per-item
+            // gating — `view.add(item)` is required to opt each one in.
+            //
+            // The `parentMetadata[parentIndex].tag` access is safe inside
+            // this branch: the OR's short-circuit means we only reach it
+            // when `fieldHasViewTag` is true, which guarantees the metadata
+            // entry and its `tag` property exist.
+            //
             this.isVisibilitySharedWithParent = (
                 parentChangeTree.isFiltered &&
                 typeof (refType) !== "string" &&
-                (!fieldHasViewTag || (parentIsCollection && fieldHasNonDefaultViewTag))
+                (!fieldHasViewTag || (parentIsCollection && parentMetadata[parentIndex].tag !== DEFAULT_VIEW_TAG))
             );
 
             if (!this.filteredChanges) {
