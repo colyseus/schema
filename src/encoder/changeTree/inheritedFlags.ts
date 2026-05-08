@@ -4,6 +4,7 @@
  * the parent field's annotation + the parent tree's own state.
  */
 import { Metadata } from "../../Metadata.js";
+import { DEFAULT_VIEW_TAG } from "../../annotations.js";
 import {
     $changes, $childType,
     $staticFieldIndexes, $streamFieldIndexes,
@@ -211,11 +212,20 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
         // `parentIsCollection` constraint that used to live here blocked
         // nested-Schema-field-of-@view-tagged-Schema from sharing visibility,
         // forcing users to wrap the child in an ArraySchema as a workaround.
+        //
+        // #226 (4.0.25): items inside a non-default-tag `@view(N)` collection
+        // also inherit visibility from the parent collection, so items
+        // pushed/set after `view.add(state, N)` show up automatically.
+        // Default-tag `@view()` collections keep per-item gating —
+        // `view.add(item)` is still required to opt each one in.
+        // The `parentMetadata[parentIndex].tag` access is safe inside the
+        // `fieldHasViewTag` short-circuit (the metadata entry and its `tag`
+        // are guaranteed to exist when that flag is set).
         tree.isVisibilitySharedWithParent = (
             parentChangeTree.isFiltered
             && typeof refType !== "string"
-            && !fieldHasViewTag
             && !fieldHasStream
+            && (!fieldHasViewTag || (parentIsCollection && parentMetadata[parentIndex].tag !== DEFAULT_VIEW_TAG))
         );
     }
 }
