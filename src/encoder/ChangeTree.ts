@@ -1,4 +1,5 @@
 import { OPERATION } from "../encoding/spec.js";
+import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { Schema } from "../Schema.js";
 import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $viewFieldIndexes, type $deleteByIndex } from "../types/symbols.js";
 
@@ -581,11 +582,13 @@ export class ChangeTree<T extends Ref = any> {
         // when it's available, we need to enqueue the "changes" changeset into the "filteredChanges" changeset.
         //
         if (this.isFiltered) {
+            const fieldViewTag: number | undefined = parentConstructor?.[Symbol.metadata]?.[parentIndex]?.tag;
+            const fieldHasNonDefaultViewTag = fieldViewTag !== DEFAULT_VIEW_TAG;
 
             this.isVisibilitySharedWithParent = (
                 parentChangeTree.isFiltered &&
                 typeof (refType) !== "string" &&
-                !fieldHasViewTag
+                (!fieldHasViewTag || (parentIsCollection && fieldHasNonDefaultViewTag))
             );
 
             if (!this.filteredChanges) {

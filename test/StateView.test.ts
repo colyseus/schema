@@ -500,6 +500,153 @@ describe("StateView", () => {
             encodeMultiple(encoder, state, [client2]);
             assert.deepStrictEqual({ pub: 1, priv: 2, tagged: 3 }, client2.state.players.get("1").toJSON());
         });
+
+        it("having parent @view(1) ArraySchema: new items added after initial encode should be visible", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type("string") pub: string = "public";
+                @view(1) @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+
+            // Add initial items before view.add
+            state.items.push(new Item().assign({ amount: 1 }));
+            state.items.push(new Item().assign({ amount: 2 }));
+
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            client.view.add(state, 1);
+
+            encodeMultiple(encoder, state, [client]);
+
+            // Existing items should be visible
+            assert.strictEqual(client.state.items.length, 2);
+            assert.strictEqual(client.state.items[0].amount, 1);
+            assert.strictEqual(client.state.items[1].amount, 2);
+
+            // Add new items after initial encode
+            state.items.push(new Item().assign({ amount: 3 }));
+            state.items.push(new Item().assign({ amount: 4 }));
+
+            encodeMultiple(encoder, state, [client]);
+
+            // New items should also be visible
+            assert.strictEqual(client.state.items.length, 4);
+            assert.strictEqual(client.state.items[2].amount, 3);
+            assert.strictEqual(client.state.items[3].amount, 4);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("having parent @view(1) ArraySchema: items added before view.add should be visible", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type("string") pub: string = "public";
+                @view(1) @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            // Add items AFTER encoder but BEFORE view.add
+            state.items.push(new Item().assign({ amount: 10 }));
+            state.items.push(new Item().assign({ amount: 20 }));
+
+            const client = createClientWithView(state);
+            client.view.add(state, 1);
+
+            // Add more items AFTER view.add but before first encode
+            state.items.push(new Item().assign({ amount: 30 }));
+            state.items.push(new Item().assign({ amount: 40 }));
+
+            encodeMultiple(encoder, state, [client]);
+
+            // All items should be visible
+            assert.strictEqual(client.state.items.length, 4);
+            assert.strictEqual(client.state.items[0].amount, 10);
+            assert.strictEqual(client.state.items[1].amount, 20);
+            assert.strictEqual(client.state.items[2].amount, 30);
+            assert.strictEqual(client.state.items[3].amount, 40);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("having parent @view(1) MapSchema: new items added after initial encode should be visible", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type("string") pub: string = "public";
+                @view(1) @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            state.items.set("a", new Item().assign({ amount: 1 }));
+            state.items.set("b", new Item().assign({ amount: 2 }));
+
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            client.view.add(state, 1);
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.items.size, 2);
+
+            state.items.set("c", new Item().assign({ amount: 3 }));
+            state.items.set("d", new Item().assign({ amount: 4 }));
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.items.size, 4);
+            assert.strictEqual(client.state.items.get("c").amount, 3);
+            assert.strictEqual(client.state.items.get("d").amount, 4);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("having parent @view(1) ArraySchema: only the tagged client sees new items", () => {
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type("string") pub: string = "public";
+                @view(1) @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            state.items.push(new Item().assign({ amount: 1 }));
+
+            const encoder = getEncoder(state);
+
+            // client1 has tag 1 — should see all items
+            const client1 = createClientWithView(state);
+            client1.view.add(state, 1);
+
+            // client2 has default tag — @view(1) array should not be visible at all
+            const client2 = createClientWithView(state);
+            client2.view.add(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.items.length, 1);
+            assert.strictEqual(client2.state.items, undefined);
+
+            state.items.push(new Item().assign({ amount: 2 }));
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.items.length, 2);
+            assert.strictEqual(client2.state.items, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
     });
 
     describe("MapSchema", () => {
