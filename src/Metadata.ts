@@ -161,11 +161,24 @@ export const Metadata = {
 
         metadata[$viewFieldIndexes].push(index);
 
-        if (!metadata[$fieldIndexesByViewTag][tag]) {
-            metadata[$fieldIndexesByViewTag][tag] = [];
+        // Populate $fieldIndexesByViewTag: for a bitmask tag, register the field
+        // index under each individual set bit so that view.add(obj, Tag.ONE) finds
+        // fields tagged @view(Tag.ONE|Tag.TWO).
+        // Negative tags (i.e. DEFAULT_VIEW_TAG = -1) are stored as-is.
+        if (tag < 0) {
+            if (!metadata[$fieldIndexesByViewTag][tag]) {
+                metadata[$fieldIndexesByViewTag][tag] = [];
+            }
+            metadata[$fieldIndexesByViewTag][tag].push(index);
+        } else {
+            for (let bits = tag; bits > 0; bits &= bits - 1) {
+                const bit = bits & (-bits); // isolate lowest set bit
+                if (!metadata[$fieldIndexesByViewTag][bit]) {
+                    metadata[$fieldIndexesByViewTag][bit] = [];
+                }
+                metadata[$fieldIndexesByViewTag][bit].push(index);
+            }
         }
-
-        metadata[$fieldIndexesByViewTag][tag].push(index);
     },
 
     setFields<T extends { new (...args: any[]): InstanceType<T> } = any>(target: T, fields: { [field in keyof InstanceType<T>]?: DefinitionType }) {

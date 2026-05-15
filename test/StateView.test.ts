@@ -127,16 +127,20 @@ describe("StateView", () => {
 
     describe("tagged properties", () => {
         it("filter properties by tag", () => {
-            enum Tag { ZERO = 0, ONE = 1 };
+            // Bitwise tags must be powers of 2.
+            enum Tag {
+                FIRST = 1 << 0, // 1
+                SECOND = 1 << 1 // 2
+            }
 
             class Player extends Schema {
                 @view()
                 @type("number") tag_default: number;
 
-                @view(Tag.ZERO)
+                @view(Tag.FIRST)
                 @type("number") tag_0: number;
 
-                @view(Tag.ONE)
+                @view(Tag.SECOND)
                 @type("number") tag_1: number;
             }
 
@@ -158,8 +162,8 @@ describe("StateView", () => {
 
             const client1 = createClientWithView(state);
             client1.view.add(state.players.get("0"));
-            client1.view.add(state.players.get("1"), Tag.ZERO);
-            client1.view.add(state.players.get("2"), Tag.ONE);
+            client1.view.add(state.players.get("1"), Tag.FIRST);
+            client1.view.add(state.players.get("2"), Tag.SECOND);
             client1.view.add(state.players.get("3"));
             client1.view.add(state.players.get("4"));
 
@@ -194,6 +198,114 @@ describe("StateView", () => {
             }
 
             assertEncodeAllMultiple(encoder, state, [client1, client2])
+        });
+
+        it("@view() with bitwise tags: field visible to any client whose add-tag shares a bit", () => {
+            // Tags must be powers of 2 with the bitwise approach.
+            // @view(Tag.A | Tag.B) determines a client's visibility by (fieldMask & clientTag) !== 0.
+            const Tag = { A: 1 << 0, B: 1 << 1, C: 1 << 2 };
+
+            class Player extends Schema {
+                @view() @type("number") tag_default: number;
+
+                // visible to clients added with Tag.A OR Tag.B (stored as mask 3)
+                @view(Tag.A | Tag.B) @type("number") shared: number;
+
+                @view(Tag.A) @type("number") only_a: number;
+                @view(Tag.B) @type("number") only_b: number;
+            }
+
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            const player = new Player().assign({
+                tag_default: 1,
+                shared: 2,
+                only_a: 3,
+                only_b: 4,
+            });
+            state.players.set("p", player);
+
+            const encoder = getEncoder(state);
+
+            // clientA: added with Tag.A — should see shared + only_a
+            const clientA = createClientWithView(state);
+            clientA.view.add(player, Tag.A);
+
+            // clientB: added with Tag.B — should see shared + only_b
+            const clientB = createClientWithView(state);
+            clientB.view.add(player, Tag.B);
+
+            // clientC: added with Tag.C — should NOT see shared, only_a or only_b
+            const clientC = createClientWithView(state);
+            clientC.view.add(player, Tag.C);
+
+            // clientDefault: added with default tag — should see tag_default only
+            const clientDefault = createClientWithView(state);
+            clientDefault.view.add(player);
+
+            // clientAB: added with Tag.A|Tag.B combined bitmask — sees all three tagged fields
+            const clientAB = createClientWithView(state);
+            clientAB.view.add(player, Tag.A | Tag.B);
+
+            encodeMultiple(encoder, state, [clientA, clientB, clientC, clientDefault, clientAB]);
+
+            // clientA sees tag_default, shared and only_a
+            assert.strictEqual(clientA.state.players.get("p").tag_default, 1);
+            assert.strictEqual(clientA.state.players.get("p").shared, 2);
+            assert.strictEqual(clientA.state.players.get("p").only_a, 3);
+            assert.strictEqual(clientA.state.players.get("p").only_b, undefined);
+
+            // clientB sees tag_default, shared and only_b
+            assert.strictEqual(clientB.state.players.get("p").tag_default, 1);
+            assert.strictEqual(clientB.state.players.get("p").shared, 2);
+            assert.strictEqual(clientB.state.players.get("p").only_a, undefined);
+            assert.strictEqual(clientB.state.players.get("p").only_b, 4);
+
+            // clientC sees tag_default only (Tag.C=4 shares no bits with mask 3)
+            assert.strictEqual(clientC.state.players.get("p").tag_default, 1);
+            assert.strictEqual(clientC.state.players.get("p").shared, undefined);
+            assert.strictEqual(clientC.state.players.get("p").only_a, undefined);
+            assert.strictEqual(clientC.state.players.get("p").only_b, undefined);
+
+            // clientDefault sees tag_default only
+            assert.strictEqual(clientDefault.state.players.get("p").tag_default, 1);
+            assert.strictEqual(clientDefault.state.players.get("p").shared, undefined);
+            assert.strictEqual(clientDefault.state.players.get("p").only_a, undefined);
+            assert.strictEqual(clientDefault.state.players.get("p").only_b, undefined);
+
+            // clientAB (added with Tag.A|Tag.B) sees shared, only_a AND only_b
+            assert.strictEqual(clientAB.state.players.get("p").tag_default, 1);
+            assert.strictEqual(clientAB.state.players.get("p").shared, 2);
+            assert.strictEqual(clientAB.state.players.get("p").only_a, 3);
+            assert.strictEqual(clientAB.state.players.get("p").only_b, 4);
+
+            // Mutate tag_default — @view() fields must propagate to ALL clients,
+            // including those added with a custom tag (the fix in forEachChild / changes block).
+            player.tag_default = 99;
+            encodeMultiple(encoder, state, [clientA, clientB, clientC, clientDefault, clientAB]);
+
+            assert.strictEqual(clientA.state.players.get("p").tag_default, 99, "custom-tag client A must receive @view() field update");
+            assert.strictEqual(clientB.state.players.get("p").tag_default, 99, "custom-tag client B must receive @view() field update");
+            assert.strictEqual(clientC.state.players.get("p").tag_default, 99, "custom-tag client C must receive @view() field update");
+            assert.strictEqual(clientDefault.state.players.get("p").tag_default, 99, "default-tag client must receive @view() field update");
+            assert.strictEqual(clientAB.state.players.get("p").tag_default, 99, "combined-tag client must receive @view() field update");
+
+            // Custom-tagged fields must still only reach their respective clients after mutation.
+            player.only_a = 30;
+            player.only_b = 40;
+            encodeMultiple(encoder, state, [clientA, clientB, clientC, clientDefault, clientAB]);
+
+            assert.strictEqual(clientA.state.players.get("p").only_a, 30);
+            assert.strictEqual(clientA.state.players.get("p").only_b, undefined);
+            assert.strictEqual(clientB.state.players.get("p").only_a, undefined);
+            assert.strictEqual(clientB.state.players.get("p").only_b, 40);
+            assert.strictEqual(clientDefault.state.players.get("p").only_a, undefined);
+            assert.strictEqual(clientDefault.state.players.get("p").only_b, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [clientA, clientB, clientC, clientDefault, clientAB])
         });
 
         it("view.remove() change should assign property to undefined", () => {

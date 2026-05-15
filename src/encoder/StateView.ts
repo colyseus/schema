@@ -27,7 +27,7 @@ export class StateView {
      */
     invisible: WeakSet<ChangeTree> = new WeakSet<ChangeTree>();
 
-    tags?: WeakMap<ChangeTree, Set<number>>; // TODO: use bit manipulation instead of Set<number> ()
+    tags?: WeakMap<ChangeTree, number>; // bitmask of tags used to add each ChangeTree
 
     /**
      * Manual "ADD" operations for changes per ChangeTree, specific to this view.
@@ -130,10 +130,18 @@ export class StateView {
             // Do not ADD children that don't have the same tag
             if (
                 metadata &&
-                metadata[index].tag !== undefined &&
-                metadata[index].tag !== tag
+                metadata[index].tag !== undefined
             ) {
-                return;
+                const fieldTag = metadata[index].tag;
+                // DEFAULT_VIEW_TAG fields are visible to all clients.
+                // Custom-tagged fields are only visible when bits overlap,
+                // and never to default-tag clients.
+                const tagMatch = fieldTag === DEFAULT_VIEW_TAG ||
+                    (tag !== DEFAULT_VIEW_TAG && (fieldTag & tag) !== 0);
+                
+                if (!tagMatch) {
+                    return;
+                }
             }
 
             if (this.add(change.ref, tag, false)) {
@@ -144,16 +152,11 @@ export class StateView {
         // set tag
         if (tag !== DEFAULT_VIEW_TAG) {
             if (!this.tags) {
-                this.tags = new WeakMap<ChangeTree, Set<number>>();
+                this.tags = new WeakMap<ChangeTree, number>();
             }
-            let tags: Set<number>;
-            if (!this.tags.has(changeTree)) {
-                tags = new Set<number>();
-                this.tags.set(changeTree, tags);
-            } else {
-                tags = this.tags.get(changeTree);
-            }
-            tags.add(tag);
+            // Add tag bits into the bitmask stored for this ChangeTree.
+            const currentMask = this.tags.get(changeTree) ?? 0;
+            this.tags.set(changeTree, currentMask | tag);
 
             // Ref: add tagged properties
             metadata?.[$fieldIndexesByViewTag]?.[tag]?.forEach((index) => {
@@ -181,7 +184,7 @@ export class StateView {
                     (
                         isInvisible || // if "invisible", include all
                         tagAtIndex === undefined || // "all change" with no tag
-                        tagAtIndex === tag // tagged property
+                        (tagAtIndex === DEFAULT_VIEW_TAG || (tag !== DEFAULT_VIEW_TAG && (tagAtIndex & tag) !== 0)) // tagged property
                     )
                 ) {
                     changes[index] = op;
@@ -215,18 +218,16 @@ export class StateView {
         if (changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
             const changes = this.touchChanges(changeTree.ref[$refId]);
 
-            if (!this.tags) {
-                this.tags = new WeakMap<ChangeTree, Set<number>>();
+            // Only accumulate positive (custom) tags in the bitmask.
+            // DEFAULT_VIEW_TAG = -1 has all bits set and must not be OR'd in,
+            // as it would make every custom-tagged field appear visible.
+            if (tag !== DEFAULT_VIEW_TAG) {
+                if (!this.tags) {
+                    this.tags = new WeakMap<ChangeTree, number>();
+                }
+                const currentMask = this.tags.has(changeTree) ? this.tags.get(changeTree) : 0;
+                this.tags.set(changeTree, currentMask | tag);
             }
-
-            let tags: Set<number>;
-            if (!this.tags.has(changeTree)) {
-                tags = new Set<number>();
-                this.tags.set(changeTree, tags);
-            } else {
-                tags = this.tags.get(changeTree);
-            }
-            tags.add(tag);
 
             changes[parentIndex] = OPERATION.ADD;
         }
@@ -313,17 +314,16 @@ export class StateView {
 
         // remove tag
         if (this.tags && this.tags.has(changeTree)) {
-            const tags = this.tags.get(changeTree);
             if (tag === undefined) {
                 // delete all tags
                 this.tags.delete(changeTree);
             } else {
-                // delete specific tag
-                tags.delete(tag);
-
-                // if tag set is empty, delete it entirely
-                if (tags.size === 0) {
+                // clear the tag's bits from the bitmask
+                const newMask = this.tags.get(changeTree) & ~tag;
+                if (newMask === 0) {
                     this.tags.delete(changeTree);
+                } else {
+                    this.tags.set(changeTree, newMask);
                 }
             }
         }
@@ -337,7 +337,7 @@ export class StateView {
 
     hasTag(ob: Ref, tag: number = DEFAULT_VIEW_TAG) {
         const tags = this.tags?.get(ob[$changes]);
-        return tags?.has(tag) ?? false;
+        return tags != null && (tags & tag) !== 0;
     }
 
     clear() {

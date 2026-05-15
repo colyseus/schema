@@ -85,9 +85,10 @@ export class Schema<C = any> implements IRef {
             return view.isChangeTreeVisible(ref[$changes]);
 
         } else {
-            // view pass: custom tag
+            // view pass: custom tag (bitmask)
+            // tag is the field's stored bitmask; view.tags stores the accumulated bitmask of tags used in view.add().
             const tags = view.tags?.get(ref[$changes]);
-            return tags && tags.has(tag);
+            return tags != null && (tag & tags) !== 0;
         }
     }
 
