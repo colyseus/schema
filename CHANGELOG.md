@@ -18,6 +18,20 @@ collection's own refId when the replacement op isn't tagged `DELETE` (e.g. an
 
 Thanks to [@beemdvp](https://github.com/beemdvp) for the report.
 
+### `@view()` now accepts bitwise tags
+
+The `@view()` decorator can now be given a bitmask of tags
+(`@view(Tag.A | Tag.B)`). A field becomes visible to any client whose
+`view.add(obj, tag)` call shares at least one bit with the field's mask, so a
+single field can be exposed to multiple tag audiences at once.
+
+Internally, per-`ChangeTree` tag storage moved from `WeakMap<ChangeTree,
+Set<number>>` to a single integer bitmask, with membership resolved via bitwise
+`&` instead of `Set` lookups. Custom tags must therefore be powers of two
+(`1 << 0`, `1 << 1`, ...). The default `@view()` tag is unaffected.
+
+Thanks to [@FTWinston](https://github.com/FTWinston) for the contribution.
+
 ## 4.0.25
 
 ### `@view(N)` collections: items pushed after `view.add` are now visible
