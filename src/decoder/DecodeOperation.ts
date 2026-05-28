@@ -108,18 +108,27 @@ export function decodeValue<T extends Ref>(
             let previousRefId = previousValue[$refId];
 
             if (previousRefId !== undefined && refId !== previousRefId) {
+                // Collection field replaced by a different instance.
                 //
-                // enqueue onRemove if structure has been replaced.
-                //
+                // Don't decrement children here: GC (`garbageCollectDeletedRefs`)
+                // removes them once the previous collection's refId hits zero.
+                // Doing it here too would double-decrement a *shared* child and
+                // drop it while still referenced ("refId not found").
+                if ((operation & OPERATION.DELETE) !== OPERATION.DELETE) {
+                    // Replacement not tagged DELETE (e.g. pending ADD not upgraded
+                    // to DELETE_AND_ADD), so the previous refId wasn't decremented
+                    // above. Release it here, else it never gets GC'd (leak).
+                    $root.removeRef(previousRefId);
+                }
+
+                // enqueue onRemove callbacks for the previous collection's children.
                 const entries: IterableIterator<[any, any]> = (previousValue as any).entries();
                 let iter: IteratorResult<[any, any]>;
                 while ((iter = entries.next()) && !iter.done) {
                     const [key, value] = iter.value;
 
-                    // if value is a schema, remove its reference
                     if (typeof(value) === "object") {
                         previousRefId = value[$refId];
-                        $root.removeRef(previousRefId);
                     }
 
                     allChanges.push({

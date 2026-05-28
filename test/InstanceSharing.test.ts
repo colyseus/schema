@@ -1,6 +1,6 @@
 import * as util from "util";
 import * as assert from "assert";
-import { Schema, type, ArraySchema, MapSchema, Reflection } from "../src";
+import { Schema, type, ArraySchema, MapSchema, SetSchema, CollectionSchema, Reflection } from "../src";
 import { $changes, $refId } from "../src/types/symbols";
 import { assertDeepStrictEqualEncodeAll, assertRefIdCounts, createInstanceFromReflection, getCallbacks, getDecoder, getEncoder } from "./Schema";
 
@@ -779,6 +779,324 @@ describe("Instance sharing", () => {
         assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
 
         assertDeepStrictEqualEncodeAll(state, false);
+    });
+
+    describe("shared child reference counting", () => {
+        class Point extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+            constructor(x?: number, y?: number) { super(); this.x = x; this.y = y; }
+        }
+
+        // Capture decoder warnings ("trying to remove refId..." / "refId not
+        // found") for the whole block — these must never be emitted.
+        let decoderWarnings: string[] = [];
+        const originalWarn = console.warn;
+        beforeEach(() => {
+            decoderWarnings = [];
+            console.warn = (...args: any[]) => decoderWarnings.push(args.map(String).join(" "));
+        });
+        afterEach(() => { console.warn = originalWarn; });
+
+        // No decoder warnings + encoder/decoder ref agreement (counts and no
+        // orphans — `assertRefIdCounts` covers both).
+        function assertNoLeak(state: Schema, decoded: Schema) {
+            assert.deepStrictEqual(decoderWarnings, [], `decoder emitted warning(s): ${decoderWarnings.join(" | ")}`);
+            assertRefIdCounts(state, decoded);
+        }
+
+        it("array element shared into a field, then shifted out and array replaced", () => {
+            class Mover extends Schema {
+                @type([Point]) moves = new ArraySchema<Point>();
+                @type(Point) targetMove: Point;
+            }
+            class State extends Schema {
+                @type({ map: Mover }) movers = new MapSchema<Mover>();
+            }
+
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            const mover = new Mover();
+            state.movers.set("p", mover);
+            const a = new Point(1, 1), b = new Point(2, 2);
+            mover.moves.push(a, b);
+            mover.targetMove = b; // SHARE: `b` is both moves[1] and targetMove
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            // single patch: shift `a` out, then replace the array; `b` survives via targetMove
+            mover.moves.shift();
+            mover.moves = new ArraySchema<Point>(new Point(3, 3));
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.deepStrictEqual(state.toJSON(), decoded.toJSON());
+
+            // `b` must still be live & mutable
+            mover.targetMove.x = 99;
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.strictEqual(decoded.movers.get("p").targetMove.x, 99);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("map value shared into a field, then map replaced (value survives)", () => {
+            class Holder extends Schema {
+                @type({ map: Point }) map = new MapSchema<Point>();
+                @type(Point) ref: Point;
+            }
+            class State extends Schema {
+                @type(Holder) holder = new Holder();
+            }
+
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            const c = new Point(1, 1);
+            state.holder.map.set("x", new Point(0, 0));
+            state.holder.map.set("y", c);
+            state.holder.ref = c; // share `c`
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            state.holder.map = new MapSchema<Point>(); // replace whole map
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            state.holder.ref = undefined; // drop survivor -> `c` fully collected
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("shared container replaced while still referenced by another field", () => {
+            class State extends Schema {
+                @type([Point]) a = new ArraySchema<Point>();
+                @type([Point]) b = new ArraySchema<Point>();
+            }
+
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            const shared = new ArraySchema<Point>(new Point(1, 1), new Point(2, 2));
+            state.a = shared;
+            state.b = shared; // same array instance in two fields
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            // replace one field; the container survives via the other -> its children must stay
+            state.a = new ArraySchema<Point>(new Point(3, 3));
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.deepStrictEqual(state.toJSON(), decoded.toJSON());
+
+            // drop the last reference -> container + children collected
+            state.b = new ArraySchema<Point>();
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("repeated shift + replace with a shared survivor (per-patch discard)", () => {
+            class Mover extends Schema {
+                @type([Point]) moves = new ArraySchema<Point>();
+                @type(Point) targetMove: Point;
+            }
+            class State extends Schema {
+                @type(Mover) mover = new Mover();
+            }
+
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+            decoded.decode(state.encodeAll());
+            getEncoder(state).discardChanges();
+
+            state.mover.moves.push(new Point(0, 0));
+            state.mover.targetMove = state.mover.moves[0];
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            for (let i = 0; i < 50; i++) {
+                state.mover.moves.shift();
+                state.mover.moves = new ArraySchema<Point>(new Point(i, i), new Point(i + 1, i + 1));
+                state.mover.targetMove = state.mover.moves[0]; // share the new survivor
+                decoded.decode(state.encode());
+                assertNoLeak(state, decoded);
+            }
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("encodeAll() without discardChanges() then replace must not leak", () => {
+            //
+            // `SchemaSerializer.getFullState()` calls `encodeAll()` WITHOUT
+            // `discardChanges()`. A subsequent collection-field replacement
+            // can arrive as a plain ADD (a pending ADD not upgraded to
+            // DELETE_AND_ADD), so the decoder must still release the old
+            // container instead of leaking it (and its children).
+            //
+            class State extends Schema {
+                @type([Point]) arr = new ArraySchema<Point>();
+            }
+
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            state.arr.push(new Point(1, 1), new Point(2, 2));
+            decoded.decode(state.encodeAll()); // NO discardChanges()
+
+            state.arr = new ArraySchema<Point>(new Point(3, 3));
+            decoded.decode(state.encode());
+
+            assertNoLeak(state, decoded);
+            assert.deepStrictEqual(state.toJSON(), decoded.toJSON());
+        });
+
+        it("SetSchema field replaced (shared element survives)", () => {
+            class State extends Schema {
+                @type({ set: Point }) s = new SetSchema<Point>();
+                @type(Point) ref: Point;
+            }
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            const shared = new Point(1, 1);
+            state.s.add(new Point(0, 0));
+            state.s.add(shared);
+            state.ref = shared; // share a set element into a field
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            state.s = new SetSchema<Point>([new Point(9, 9)]); // replace whole set
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            state.ref = undefined; // drop survivor
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("CollectionSchema field replaced (shared element survives)", () => {
+            class State extends Schema {
+                @type({ collection: Point }) c = new CollectionSchema<Point>();
+                @type(Point) ref: Point;
+            }
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            const shared = new Point(1, 1);
+            state.c.add(new Point(0, 0));
+            state.c.add(shared);
+            state.ref = shared;
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            state.c = new CollectionSchema<Point>(); // replace whole collection
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            state.ref = undefined;
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("replace a collection field on a Schema nested in a MapSchema (shared child survives)", () => {
+            class Inner extends Schema { @type([Point]) items = new ArraySchema<Point>(); }
+            class State extends Schema {
+                @type({ map: Inner }) m = new MapSchema<Inner>();
+                @type(Point) ref: Point;
+            }
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            const inner = new Inner();
+            state.m.set("k", inner);
+            inner.items.push(new Point(1, 1), new Point(2, 2));
+            state.ref = inner.items[1]; // share a deeply-nested element into a top-level field
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            inner.items = new ArraySchema<Point>(new Point(3, 3)); // replace the nested collection field
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.deepStrictEqual(state.toJSON(), decoded.toJSON());
+
+            state.ref = undefined;
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("delete the containing Map entry while a nested child is shared into a field", () => {
+            class Inner extends Schema { @type([Point]) items = new ArraySchema<Point>(); }
+            class State extends Schema {
+                @type({ map: Inner }) m = new MapSchema<Inner>();
+                @type(Point) ref: Point;
+            }
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            const inner = new Inner();
+            state.m.set("k", inner);
+            inner.items.push(new Point(1, 1), new Point(2, 2));
+            state.ref = inner.items[0];
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            state.m.delete("k"); // destroy the whole subtree; `ref` still holds one child
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.deepStrictEqual(state.toJSON(), decoded.toJSON());
+
+            state.ref = undefined; // now the survivor is fully collected
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("re-reference (resurrect) a still-alive shared instance after its collection is replaced", () => {
+            class State extends Schema {
+                @type([Point]) arr = new ArraySchema<Point>();
+                @type(Point) held: Point;
+            }
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            const shared = new Point(1, 1);
+            state.arr.push(shared);
+            state.held = shared; // keep `shared` alive independently of the array
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            // replace the array; `shared` survives via `held`
+            state.arr = new ArraySchema<Point>(new Point(9, 9));
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            // resurrect: push the still-alive instance back into the (new) array
+            state.arr.push(shared);
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.deepStrictEqual(state.toJSON(), decoded.toJSON());
+
+            // mutate it to prove it's still a valid, decodable reference
+            shared.x = 42;
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.strictEqual(decoded.held.x, 42);
+            assert.strictEqual(decoded.arr[decoded.arr.length - 1].x, 42);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
     });
 
 });

@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.0.26
+
+### Decoder: fix "refId not found" when replacing a collection that holds a shared child
+
+A `Schema` instance shared between a collection and another holder (e.g. an
+array element also assigned to a sibling field) could be dropped on the client
+when that collection was replaced in the same patch, surfacing as
+`"refId" not found` / `trying to remove refId that doesn't exist` decode errors.
+
+The collection-replace path in `decodeValue` was decrementing each previous
+child's refId, then `garbageCollectDeletedRefs()` decremented them again — a
+*shared* child got double-counted and dropped while still referenced. Child
+reference-counting is now left to GC. A guard also releases the previous
+collection's own refId when the replacement op isn't tagged `DELETE` (e.g. an
+`encodeAll()` not followed by `discardChanges()`), preventing a leak.
+
+Thanks to [@beemdvp](https://github.com/beemdvp) for the report.
+
 ## 4.0.25
 
 ### `@view(N)` collections: items pushed after `view.add` are now visible

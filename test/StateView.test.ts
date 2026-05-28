@@ -4117,4 +4117,46 @@ describe("StateView", () => {
 
     });
 
+    it("replacing a @view collection whose child is shared into another @view field", () => {
+        //
+        // Regression guard for the collection-replace refId bookkeeping under
+        // a filtered (StateView) encode: a child shared between a filtered
+        // array and a filtered field must survive the array's replacement
+        // without being dropped / leaked on the per-client decoder.
+        //
+        class Item extends Schema {
+            @type("number") amount: number;
+            constructor(amount?: number) { super(); this.amount = amount; }
+        }
+        class State extends Schema {
+            @view() @type([Item]) items = new ArraySchema<Item>();
+            @view() @type(Item) featured: Item;
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+
+        const shared = new Item(1);
+        state.items.push(new Item(0), shared);
+        state.featured = shared; // shared between the filtered array and the filtered field
+
+        const client = createClientWithView(state);
+        client.view.add(state.items);
+        client.view.add(shared);
+
+        encodeMultiple(encoder, state, [client]);
+        assert.strictEqual(client.state.items.length, 2);
+        assert.strictEqual(client.state.featured?.amount, 1);
+
+        // replace the filtered array; the shared item survives via `featured`
+        state.items = new ArraySchema<Item>(new Item(9));
+        client.view.add(state.items);
+        encodeMultiple(encoder, state, [client]);
+
+        assert.strictEqual(client.state.featured?.amount, 1, "shared item survives the array replacement");
+        assert.strictEqual(client.state.items.length, 1);
+
+        assertEncodeAllMultiple(encoder, state, [client]);
+    });
+
 });
