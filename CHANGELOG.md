@@ -4,6 +4,33 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.5]
+
+### Added
+- Generic type narrowing on the primitive field factories. Pass an explicit
+  type argument to `t.int8()` / `t.string()` / etc. to refine the inferred
+  field type, while the wire encoding is unchanged:
+
+  ```ts
+  const MoveInput = schema({
+      moveX: t.int8<-1 | 0 | 1>(),         // typed -1 | 0 | 1, still a 1-byte int8
+      team:  t.string<"red" | "blue">(),   // typed "red" | "blue", still a string
+  });
+  ```
+
+  Each `t.<primitive>()` now has two call signatures: the bare call returns the
+  natural type for the codec (`t.int8()` → `number`), and an explicit type
+  argument returns `FieldBuilder<T>`. This is an overload pair rather than a
+  defaulted generic (`<T extends TBase = TBase>()`): a defaulted free type
+  parameter gets captured as `any` during `schema()`'s self-referential field
+  inference (and `undefined extends any` then flips every field optional), so
+  the bare form must stay a concrete `FieldBuilder<TBase>`.
+
+  The refinement is a **type-level assertion only** — the wire still carries the
+  codec's full range and the decoder writes whatever bytes arrive. Sound for
+  server-authored state; for input schemas (untrusted client) keep validating /
+  clamping on receipt.
+
 ## [5.0.4]
 
 ### Added

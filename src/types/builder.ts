@@ -257,8 +257,33 @@ export function isBuilder(value: any): value is FieldBuilder<any> {
 // Factory helpers
 // ---------------------------------------------------------------------------
 
-function primitive<T>(name: RawPrimitiveType): () => FieldBuilder<T> {
-    return () => new FieldBuilder<T>(name);
+/**
+ * Primitive field factory. Calling it bare (`t.int8()`) yields the natural type
+ * for the wire codec (`number` for the int/float formats, plus `string` /
+ * `boolean` / `bigint`). Pass an explicit type argument to refine the inferred
+ * value at the TYPE level, while the wire encoding is unchanged:
+ *
+ *     moveX: t.int8<-1 | 0 | 1>(),       // typed -1|0|1, still encoded as int8
+ *     team:  t.string<"red" | "blue">(),
+ *
+ * Two call signatures, NOT a defaulted generic `<T extends TBase = TBase>`: the
+ * bare form must return a CONCRETE `FieldBuilder<TBase>` so `schema({ x:
+ * t.number() })` still infers `x: number`. A defaulted free type parameter gets
+ * captured as `any` during `schema()`'s self-referential field inference (and
+ * `undefined extends any` then flips every field optional).
+ *
+ * NOTE: the refinement is a TYPE-LEVEL assertion, not a runtime guarantee — the
+ * wire still carries the codec's full range and the DECODER writes whatever
+ * bytes arrive. Sound for server-authored state; for INPUT schemas the value
+ * comes from an untrusted client (the type reads `-1|0|1` while a peer can send
+ * any int8), so keep validating/clamping on the receiving side.
+ */
+interface PrimitiveFactory<TBase> {
+    (): FieldBuilder<TBase>;
+    <T extends TBase>(): FieldBuilder<T>;
+}
+function primitive<TBase>(name: RawPrimitiveType): PrimitiveFactory<TBase> {
+    return (() => new FieldBuilder<TBase>(name)) as PrimitiveFactory<TBase>;
 }
 
 // Accepts a Schema class, a primitive string, or another FieldBuilder as a child type.
