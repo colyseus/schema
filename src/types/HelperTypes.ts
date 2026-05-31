@@ -143,6 +143,29 @@ export type ToJSON<T> = NonFunctionProps<
     & { [K in ToJSONOptionalKeys<T>]?: ToJSONField<Exclude<T[K], undefined>> }
 >;
 
+/**
+ * The plain DATA shape of a Schema instance type `T`: its synchronized fields
+ * with all `Schema` machinery stripped (`assign`, `clone`, `toJSON`, the
+ * change-tracking state, the internal symbol keys, …), so a plain object literal
+ * satisfies it. Field types — including narrowed primitives like
+ * `t.int8<-1 | 0 | 1>()` — are preserved exactly.
+ *
+ * Use it to type code that operates on schema-shaped *plain objects* rather than
+ * decoded instances: deterministic simulation / physics steps, synthesized or
+ * buffered input commands, plain DTOs, etc.
+ *
+ * ```ts
+ * function applyInput(state: Player, cmd: Data<MoveInput>) { … }
+ * applyInput(player, { moveX: 1, jump: false, dt });   // plain literal — OK
+ * ```
+ *
+ * Unlike {@link ToJSON} (a recursive *serialization* shape), this is a flat
+ * structural projection: nested Schema / collection fields keep their instance
+ * types, and it does not retain the non-method `Schema` members that `ToJSON`'s
+ * `NonFunctionProps` pass leaves behind.
+ */
+export type Data<T> = Omit<T, keyof Schema>;
+
 // Helper type to check if T is exactly 'never' (meaning no InitProps was provided)
 export type IsNever<T> = [T] extends [never] ? true : false;
 

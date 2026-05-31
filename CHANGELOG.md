@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.6]
+
+### Added
+- `Data<T>` type helper — the plain DATA shape of a Schema instance type: its
+  synchronized fields with all `Schema` machinery stripped (`assign`, `clone`,
+  `toJSON`, change-tracking state, internal symbol keys, …), so a plain object
+  literal satisfies it while field types (including narrowed primitives like
+  `t.int8<-1 | 0 | 1>()`) are preserved.
+
+  ```ts
+  function applyInput(state: Player, cmd: Data<MoveInput>) { … }
+  applyInput(player, { moveX: 1, jump: false, dt });   // plain literal — OK
+  ```
+
+  For typing code that works on schema-shaped *plain objects* rather than
+  decoded instances: deterministic simulation steps, synthesized / buffered
+  input commands, plain DTOs. Unlike `ToJSON<T>` (a recursive serialization
+  shape that retains non-method `Schema` members), `Data<T>` is a flat
+  structural projection — `Omit<T, keyof Schema>` — that plain literals satisfy.
+
 ## [5.0.5]
 
 ### Added
