@@ -27,6 +27,8 @@ export interface BuilderDefinition {
     static?: boolean;
     stream?: boolean;
     optional?: boolean;
+    /** Local-only field: typed + initialized, but never registered for sync. */
+    noSync?: boolean;
     /** Declaration-scope priority callback for `.stream()` fields. */
     streamPriority?: (view: any, element: any) => number;
 }
@@ -64,21 +66,24 @@ export class FieldBuilder<
 > {
     readonly [$builder]: true = true;
 
-    // Internal configuration. Public so schema() and tests can read it, but not
-    // meant to be mutated by users directly.
-    _type: DefinitionType;
-    _default: any = undefined;
-    _hasDefault = false;
-    _view: number | undefined = undefined;
-    _owned = false;
-    _unreliable = false;
-    _transient = false;
-    _deprecated = false;
-    _deprecatedThrows = true;
-    _static = false;
-    _stream = false;
-    _optional = false;
-    _streamPriority: ((view: any, element: any) => number) | undefined = undefined;
+    // Internal configuration. Declared `private` (soft-private): hidden from
+    // editor autocomplete and from normal external `.field` access, but still
+    // reachable at runtime via element access (e.g. `builder['_noSync']`) for
+    // internal tooling/tests. Not meant to be mutated by end users.
+    private _type: DefinitionType;
+    private _default: any = undefined;
+    private _hasDefault = false;
+    private _view: number | undefined = undefined;
+    private _owned = false;
+    private _unreliable = false;
+    private _transient = false;
+    private _deprecated = false;
+    private _deprecatedThrows = true;
+    private _static = false;
+    private _stream = false;
+    private _optional = false;
+    private _noSync = false;
+    private _streamPriority: ((view: any, element: any) => number) | undefined = undefined;
 
     constructor(type: DefinitionType) {
         this._type = type;
@@ -133,6 +138,31 @@ export class FieldBuilder<
      */
     static(): this {
         this._static = true;
+        return this;
+    }
+
+    /**
+     * Mark this field as **local-only** — it is typed and initialized on the
+     * instance (so `.default()` and the inferred instance type still apply),
+     * but is never registered for synchronization: it never enters change
+     * tracking, never goes over the wire, and decoders never receive it.
+     *
+     * Useful for server-side scratch state, per-peer UI state, or values you
+     * want on the class for typing convenience without paying any sync cost.
+     *
+     * Mutually exclusive with the sync-only modifiers (`.view()`, `.owned()`,
+     * `.unreliable()`, `.transient()`, `.static()`, `.stream()`) — combining
+     * them throws at `schema()` time.
+     *
+     * ```ts
+     * const Player = schema({
+     *     hp: t.uint8().default(100),          // synchronized
+     *     lastInputTick: t.number().noSync(),  // local-only
+     * }, 'Player');
+     * ```
+     */
+    noSync(): this {
+        this._noSync = true;
         return this;
     }
 
@@ -194,7 +224,12 @@ export class FieldBuilder<
         return this as unknown as FieldBuilder<T | undefined, HasDefault, true>;
     }
 
-    toDefinition(): BuilderDefinition {
+    /**
+     * @internal — snapshot of the builder's configuration consumed by
+     * `schema()`. `private` keeps it out of autocomplete; internal callers
+     * reach it via element access (`builder['toDefinition']()`).
+     */
+    private toDefinition(): BuilderDefinition {
         return {
             type: this._type,
             default: this._default,
@@ -208,6 +243,7 @@ export class FieldBuilder<
             static: this._static,
             stream: this._stream,
             optional: this._optional,
+            noSync: this._noSync,
             streamPriority: this._streamPriority,
         };
     }
@@ -233,7 +269,8 @@ export type ChildType =
 
 function resolveChild(child: ChildType): DefinitionType {
     if (isBuilder(child)) {
-        return child._type;
+        // `_type` is private; element access bypasses the visibility check.
+        return child['_type'];
     }
     return child as DefinitionType;
 }
@@ -283,7 +320,7 @@ const collectionFactory: CollectionFactory = ((child: ChildType) =>
     new FieldBuilder({ collection: resolveChild(child) } as DefinitionType)) as CollectionFactory;
 const streamFactory: StreamFactory = ((child: ChildType) => {
     const b = new FieldBuilder({ stream: resolveChild(child) } as DefinitionType);
-    b._stream = true;
+    b['_stream'] = true; // element access bypasses `private`
     return b;
 }) as StreamFactory;
 

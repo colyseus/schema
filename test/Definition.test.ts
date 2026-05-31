@@ -805,8 +805,7 @@ describe("Definition Tests", () => {
 
         });
 
-        it("should allow to define a field as not synced", () => {
-            // NOTE: `sync: false` has no direct builder equivalent; field dropped from schema definition.
+        it("should allow to define a field as not synced (untyped own property)", () => {
             const State = schema({
                 x: t.number().default(10),
                 y: t.number().default(20),
@@ -823,6 +822,45 @@ describe("Definition Tests", () => {
             assert.strictEqual(decodedState.x, 10);
             assert.strictEqual(decodedState.y, 20);
             assert.strictEqual((decodedState as any).privateField, undefined);
+        });
+
+        it("should allow .noSync() for typed local-only fields", () => {
+            const State = schema({
+                x: t.number().default(10),
+                local: t.number().noSync().default(30),
+                scratch: t.array("number").noSync(),
+                maybe: t.number().noSync().optional(),
+            }, 'State');
+
+            const state = new State();
+
+            // typed + initialized on the instance
+            assert.strictEqual(state.x, 10);
+            assert.strictEqual((state as any).local, 30);
+            assert.strictEqual((state as any).scratch.length, 0, "noSync collection auto-instantiated");
+            assert.strictEqual((state as any).maybe, undefined, "optional noSync starts undefined");
+
+            // never registered for sync
+            const metadata = (State as any)[Symbol.metadata];
+            const fieldNames = Object.keys(metadata).map((k) => metadata[k]?.name).filter(Boolean);
+            assert.ok(fieldNames.includes("x"));
+            assert.ok(!fieldNames.includes("local"), "noSync field excluded from metadata");
+            assert.ok(!fieldNames.includes("scratch"), "noSync collection excluded from metadata");
+
+            // mutating a local field produces no extra wire data; decoder never sees it
+            state.x = 99;
+            (state as any).local = 12345;
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encodeAll());
+            assert.strictEqual(decodedState.x, 99);
+            assert.strictEqual((decodedState as any).local, undefined, "local field not transmitted");
+        });
+
+        it("should throw when .noSync() is combined with a sync-only modifier", () => {
+            assert.throws(() => schema({ a: t.number().noSync().view() }, 'BadView'), /local-only field cannot be synchronized/);
+            assert.throws(() => schema({ b: t.number().noSync().transient() }, 'BadTransient'), /local-only field cannot be synchronized/);
+            assert.throws(() => schema({ c: t.number().noSync().owned() }, 'BadOwned'), /local-only field cannot be synchronized/);
         });
 
     });

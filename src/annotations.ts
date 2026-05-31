@@ -620,6 +620,26 @@ export interface SchemaWithExtendsConstructor<
 }
 
 /**
+ * Produce the auto-instantiated construction default for a builder type
+ * (empty collection or zero-arg Schema ref), or `undefined` when the type
+ * has no auto-default. Shared by synced and `.noSync()` field handling.
+ */
+function autoInstantiateDefault(rawType: any): any {
+    if (rawType && typeof rawType === "object") {
+        if (rawType.array !== undefined) { return new ArraySchema(); }
+        if (rawType.map !== undefined) { return new MapSchema(); }
+        if (rawType.set !== undefined) { return new SetSchema(); }
+        if (rawType.collection !== undefined) { return new CollectionSchema(); }
+        if (rawType.stream !== undefined) { return new StreamSchema(); }
+    } else if (typeof rawType === "function" && Schema.is(rawType)) {
+        if (!rawType.prototype.initialize || rawType.prototype.initialize.length === 0) {
+            return new rawType();
+        }
+    }
+    return undefined;
+}
+
+/**
  * Define a Schema class declaratively.
  *
  * @example
@@ -664,7 +684,31 @@ export function schema<
         const value: any = (fieldsAndMethods as any)[fieldName];
 
         if (isBuilder(value)) {
-            const def = value.toDefinition();
+            const def = value['toDefinition'](); // private; element access bypasses visibility
+
+            if (def.noSync) {
+                // Local-only field: skip metadata registration entirely so it is
+                // never encoded/decoded, but still seed its construction default
+                // (honoring `.default()` and collection/ref auto-instantiation).
+                if (def.view !== undefined || def.owned || def.unreliable ||
+                    def.transient || def.static || def.stream) {
+                    throw new Error(
+                        `schema(${name ? `'${name}'` : ""}): field '${fieldName}' uses .noSync() ` +
+                        `together with a sync-only modifier (.view/.owned/.unreliable/.transient/.static/.stream). ` +
+                        `A local-only field cannot be synchronized.`
+                    );
+                }
+                if (def.hasDefault) {
+                    defaultValues[fieldName] = def.default;
+                } else if (!def.optional) {
+                    const autoDefault = autoInstantiateDefault(def.type);
+                    if (autoDefault !== undefined) {
+                        defaultValues[fieldName] = autoDefault;
+                    }
+                }
+                continue;
+            }
+
             fields[fieldName] = getNormalizedType(def.type);
 
             if (def.view !== undefined) { viewTagFields[fieldName] = def.view; }
@@ -682,23 +726,9 @@ export function schema<
             } else if (!def.optional) {
                 // Auto-instantiate collection/Schema defaults when none is provided.
                 // `.optional()` opts out — field starts as undefined.
-                const rawType: any = def.type;
-                if (rawType && typeof rawType === "object") {
-                    if (rawType.array !== undefined) {
-                        defaultValues[fieldName] = new ArraySchema();
-                    } else if (rawType.map !== undefined) {
-                        defaultValues[fieldName] = new MapSchema();
-                    } else if (rawType.set !== undefined) {
-                        defaultValues[fieldName] = new SetSchema();
-                    } else if (rawType.collection !== undefined) {
-                        defaultValues[fieldName] = new CollectionSchema();
-                    } else if (rawType.stream !== undefined) {
-                        defaultValues[fieldName] = new StreamSchema();
-                    }
-                } else if (typeof rawType === "function" && Schema.is(rawType)) {
-                    if (!rawType.prototype.initialize || rawType.prototype.initialize.length === 0) {
-                        defaultValues[fieldName] = new rawType();
-                    }
+                const autoDefault = autoInstantiateDefault(def.type);
+                if (autoDefault !== undefined) {
+                    defaultValues[fieldName] = autoDefault;
                 }
             }
 

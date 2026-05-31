@@ -4,6 +4,44 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.4]
+
+### Added
+- `FieldBuilder#noSync()` — chainable modifier that marks a field as
+  **local-only**. The field is still typed on the inferred instance and
+  still honors `.default()` / `.optional()` / collection auto-instantiation,
+  but it is never registered for synchronization: it skips change tracking,
+  is never encoded, and decoders never receive it. Useful for server-side
+  scratch state or per-peer UI state you want on the class for typing
+  convenience without paying any sync cost.
+
+  ```ts
+  const Player = schema({
+      hp: t.uint8().default(100),          // synchronized
+      lastInputTick: t.number().noSync(),  // local-only, never sent
+  }, 'Player');
+  ```
+
+  Combining `.noSync()` with a sync-only modifier (`.view()`, `.owned()`,
+  `.unreliable()`, `.transient()`, `.static()`, `.stream()`) throws at
+  `schema()` time, since a local-only field cannot be synchronized.
+
+### Changed
+- `FieldBuilder`'s internal configuration fields (`_type`, `_default`,
+  `_view`, `_noSync`, …) and `toDefinition()` are now declared `private`,
+  so editor autocomplete on `t.number().` surfaces only the chainable
+  fluent modifiers. The fields remain reachable at runtime via element
+  access (e.g. `builder['_noSync']`) for internal tooling, but are no
+  longer part of the intended public API.
+
+### Fixed
+- `npm test` now points at mocha's JS entry (`node_modules/mocha/bin/mocha.js`)
+  instead of the `.bin/mocha` shim. Under pnpm the shim is a POSIX shell
+  script, which `tsx` tried to parse as JavaScript and failed with
+  `SyntaxError: missing ) after argument list`.
+- Resolved a duplicate `typecheck` script key in `package.json`; the
+  build-config typecheck is now available as `typecheck:build`.
+
 ## [5.0.3]
 
 ### Added

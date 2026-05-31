@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "5.0.3",
+  "version": "5.0.4",
   "description": "Binary state serializer with delta encoding for games",
   "type": "module",
   "bin": {
@@ -10,8 +10,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && rollup -c rollup.config.mjs",
     "watch": "tsc -p tsconfig.build.json -w",
-    "typecheck": "tsc -p tsconfig.build.json --noEmit",
-    "test": "tsx --tsconfig tsconfig.test.json ./node_modules/.bin/mocha test/*.test.ts test/**/*.test.ts",
+    "typecheck:build": "tsc -p tsconfig.build.json --noEmit",
+    "test": "tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.test.ts\" \"test/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.test.json",
     "coverage": "c8 npm run test",
     "generate-test-1": "bin/schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/PrimitiveTypes",
