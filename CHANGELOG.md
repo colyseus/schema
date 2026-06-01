@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [5.0.6]
 
+### Fixed
+- `@colyseus/schema/input` no longer ships a second copy of
+  `Schema`/`Metadata`/`TypeContext`/`Encoder`/`Decoder`. The subpath was
+  previously built as a standalone bundle that statically inlined the entire
+  library, so a consumer importing both `@colyseus/schema` AND
+  `@colyseus/schema/input` (any colyseus server using `InputEncoder`/
+  `InputDecoder`) ended up with two distinct `Schema` class identities.
+  `TypeContext.discoverTypes`'s `parent !== Schema` walk crossed the bundle
+  boundary, ran `Metadata.initialize` on the *other* bundle's `Schema`, and
+  populated its `[Symbol.metadata]` slot. Subsequent `class extends Schema`
+  declarations then inherited that slot via prototype-chain lookup and
+  shared its mutable metadata object — under HMR re-evaluation, every
+  reload re-stacked fields on top of the previous ones until the 64-field
+  cap threw `Can't define field …`.
+
+  The input subpath is now built as a thin (~13 KB vs 310 KB) wrapper that
+  externalizes every relative parent import and resolves the identity-
+  bearing classes from the main bundle at runtime — one `Schema` per
+  process. The main bundle is unchanged for SDK / browser consumers; only
+  the input wrapper got smaller.
+
 ### Added
 - `Data<T>` type helper — the plain DATA shape of a Schema instance type: its
   synchronized fields with all `Schema` machinery stripped (`assign`, `clone`,
