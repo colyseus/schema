@@ -84,21 +84,20 @@ export class InputEncoder<T extends Schema = any> {
     private readonly _desc: EncodeDescriptor;
     private readonly _numFields: number;
 
-    // Reliable-mode output + its iterator. Auto-grown on overflow, so
-    // not `readonly` — `_encodeFull()` may swap in a larger buffer.
+    // Reliable-mode output; not `readonly` — auto-grown on overflow.
     private _buffer: Uint8Array;
     private readonly _it = { offset: 0 };
+    // Cached `_buffer` subarray from `_produceFull`; remade only when size changes or `_buffer` grows. Callers must copy if retaining — bytes change every encode.
+    private _fullView?: Uint8Array;
 
-    // Unreliable-mode ring state. `_outBuffer` is where the concatenated
-    // packet lives; `_slots` / `_slotLens` hold each snapshot's bytes.
+    // Unreliable-mode ring: `_slots`/`_slotLens` hold each snapshot; `_outBuffer` holds the concatenated packet.
     private _slots?: Uint8Array[];
     private readonly _slotLens?: number[];
     private _slotHead: number = 0;
     private _slotCount: number = 0;
     private _outBuffer?: Uint8Array;
 
-    // Delta-mode delegate. Setter `$track` calls populate its
-    // ChangeTree; `encode()` drains dirty fields into its buffer.
+    // Delta-mode delegate; setters populate its ChangeTree, `encode()` drains dirty fields.
     private readonly _encoder?: Encoder<T>;
 
     constructor(instance: T, options: InputEncoderOptions = {}) {
@@ -138,13 +137,10 @@ export class InputEncoder<T extends Schema = any> {
         }
 
         if (this.delta) {
-            // Delegate to the standard Encoder — it attaches a Root and
-            // drains the setter-populated dirty set on each encode().
-            // Tracking stays enabled so setters keep populating it.
+            // Keep tracking on so setters keep populating the dirty set.
             this._encoder = new Encoder<T>(instance);
         } else {
-            // Full mode reads `$values` directly; setter-side tracking
-            // is pure overhead, so pause it.
+            // Full mode reads `$values` directly; tracking is pure overhead.
             instance.pauseTracking();
         }
     }
@@ -193,9 +189,23 @@ export class InputEncoder<T extends Schema = any> {
         }
     }
 
+    /**
+     * Copy the bound instance's field values into `target` (a same-type instance)
+     * in place — no allocation, no `Object.keys` (cf. `Schema#assign`) and no
+     * `clone()`. For buffering a snapshot of the just-sent input into a reused
+     * slot (e.g. a client reconciliation/replay ring) without the transport
+     * having to reach into schema internals. The codec owns this because it owns
+     * the field representation. The in-place / alloc-free cousin of `clone()`,
+     * and the inverse direction of `Schema#assign(source)`.
+     */
+    copyInto(target: T): void {
+        const src = (this.instance as any)[$values];
+        const dst = (target as any)[$values];
+        for (let i = 0; i <= this._numFields; i++) dst[i] = src[i];
+    }
+
     // ────────────────────────────────────────────────────────────────────
-    // Blob producers — return a single snapshot (or delta) of the
-    // current instance. Caller routes by mode.
+    // Blob producers — one snapshot (or delta) of the instance; caller routes by mode.
     // ────────────────────────────────────────────────────────────────────
 
     /** Write every populated primitive field into `_buffer`. */
@@ -205,9 +215,14 @@ export class InputEncoder<T extends Schema = any> {
         this._writeFields(buf, it);
         if (it.offset > buf.byteLength) {
             buf = this._buffer = InputEncoder._grow(buf, it.offset, "reliable encode");
+            this._fullView = undefined;            // stale view points into the old buffer
             this._writeFields(buf, it);
         }
-        return buf.subarray(0, it.offset);
+        // Reuse the view when size is stable — no per-encode subarray alloc.
+        if (this._fullView === undefined || this._fullView.byteLength !== it.offset) {
+            this._fullView = buf.subarray(0, it.offset);
+        }
+        return this._fullView;
     }
 
     /** Delegate to the wrapped Encoder, then clear its dirty set. */
@@ -231,19 +246,17 @@ export class InputEncoder<T extends Schema = any> {
     }
 
     // ────────────────────────────────────────────────────────────────────
-    // Ring — push blob to the current slot, concat (oldest → newest)
-    // into the output buffer, return the framed packet.
+    // Ring — push blob to current slot, concat oldest→newest, return framed packet.
     // ────────────────────────────────────────────────────────────────────
 
     private _pushAndEmitRing(blob: Uint8Array): Uint8Array {
-        // Empty blob = no-change delta tick. Skip the push but re-emit
-        // the existing ring (redundancy). Empty ring → empty output.
+        // Empty blob = no-change delta tick: skip the push, re-emit ring for redundancy.
         if (blob.length === 0) {
             if (this._slotCount === 0) return this._outBuffer!.subarray(0, 0);
             return this._emitRing();
         }
 
-        // Copy blob into the current slot, growing it if needed.
+        // Copy blob into current slot, growing if needed.
         let slot = this._slots![this._slotHead];
         if (blob.length > slot.byteLength) {
             slot = this._slots![this._slotHead] = InputEncoder._grow(
@@ -283,9 +296,7 @@ export class InputEncoder<T extends Schema = any> {
     }
 
     // ────────────────────────────────────────────────────────────────────
-    // Buffer growth. Uint8Array writes past `byteLength` silently drop
-    // but `it.offset` still advances — callers detect overflow via the
-    // `offset > byteLength` check and re-encode into the grown buffer.
+    // Buffer growth. Writes past `byteLength` silently drop but `it.offset` still advances, so callers detect overflow via `offset > byteLength` and re-encode into the grown buffer.
     // ────────────────────────────────────────────────────────────────────
 
     private static _warned = false;
