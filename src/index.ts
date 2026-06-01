@@ -87,3 +87,12 @@ export { Decoder } from "./decoder/Decoder.js";
 export { decodeSchemaOperation, decodeKeyValueOperation } from "./decoder/DecodeOperation.js";
 
 export { OPERATION } from "./encoding/spec.js";
+
+// Re-exported for `@colyseus/schema/input` — that subpath bundle is built
+// as a thin wrapper that imports identity-bearing modules from here at
+// runtime, so it needs `getEncodeDescriptor` available on the public surface.
+export { getEncodeDescriptor, type EncodeDescriptor } from "./encoder/EncodeDescriptor.js";
+
+// Symbols used by InputEncoder/InputDecoder via the runtime-externalized
+// `@colyseus/schema` import in `build/input/index.mjs`.
+export { $numFields, $values } from "./types/symbols.js";
