@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [5.0.6]
+## [5.0.7]
 
 ### Fixed
 - `@colyseus/schema/input` no longer ships a second copy of
@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   bearing classes from the main bundle at runtime — one `Schema` per
   process. The main bundle is unchanged for SDK / browser consumers; only
   the input wrapper got smaller.
+
+## [5.0.6]
 
 ### Added
 - `Data<T>` type helper — the plain DATA shape of a Schema instance type: its
