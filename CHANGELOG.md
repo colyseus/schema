@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [5.0.7]
 
+### Changed
+- Default `Encoder.BUFFER_SIZE` raised from 8 KB to 16 KB. The previous
+  default fit ~100-item `MapSchema<{x,y,z}>` collections keyed by
+  `nanoid(9)` (~4.5 KB worst case) but with only ~3.5 KB of headroom for
+  surrounding state, so typical full-room snapshots were triggering the
+  auto-grow + one-time `buffer overflow` warning on first encode. 16 KB
+  comfortably fits that scenario plus surrounding state without
+  warnings; raise further per app via `Encoder.BUFFER_SIZE = N * 1024`.
+
 ### Fixed
 - `@colyseus/schema/input` no longer ships a second copy of
   `Schema`/`Metadata`/`TypeContext`/`Encoder`/`Decoder`. The subpath was

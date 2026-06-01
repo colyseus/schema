@@ -200,7 +200,18 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
 }
 
 export class Encoder<T extends Schema = any> {
-    static BUFFER_SIZE = 8 * 1024; // 8KB
+    /**
+     * Per-encoder shared output buffer size. The encoder auto-grows on
+     * overflow and logs a one-time warning suggesting a higher value, so
+     * the default just needs to comfortably cover typical room state.
+     *
+     * Sized to fit ~100 items in a `MapSchema<{x,y,z}>` keyed by
+     * `nanoid(9)` (~4.5 KB worst-case full encode, float64-heavy) with
+     * ~3-4× headroom for surrounding state (player list, world refs,
+     * etc.). Raise per app via `Encoder.BUFFER_SIZE = N * 1024` before
+     * constructing any Encoder.
+     */
+    static BUFFER_SIZE = 16 * 1024;
     sharedBuffer: Uint8Array = new Uint8Array(Encoder.BUFFER_SIZE);
 
     context: TypeContext;
