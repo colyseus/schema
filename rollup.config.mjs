@@ -29,13 +29,24 @@ function inputBundleConfig({ format, outputDir, entryFileExt, tsconfig, sourcema
                 name: 'rewrite-input-imports-to-main-bundle',
                 renderChunk(code) {
                     // Map every relative parent import the input source uses
-                    // to the package name. The main bundle re-exports
-                    // everything the input bundle needs from its public
-                    // surface, so the named imports keep working.
-                    return code.replace(
-                        /from\s*(['"])\.\.\/[^'"]+\1/g,
-                        'from "@colyseus/schema"',
-                    );
+                    // to the package name, for BOTH output formats. The main
+                    // bundle re-exports everything the input bundle needs from
+                    // its public surface, so the named accesses keep working.
+                    //   ESM  →  import … from "../foo.js"  →  from "@colyseus/schema"
+                    //   CJS  →  require("../foo.js")       →  require("@colyseus/schema")
+                    // The CJS arm is essential: without it the `require`
+                    // condition resolves `../encoding/spec.js` etc. — files the
+                    // bundle never emits — so any CommonJS consumer of
+                    // `@colyseus/schema/input` crashes with "Cannot find module".
+                    return code
+                        .replace(
+                            /from\s*(['"])\.\.\/[^'"]+\1/g,
+                            'from "@colyseus/schema"',
+                        )
+                        .replace(
+                            /require\(\s*(['"])\.\.\/[^'"]+\1\s*\)/g,
+                            'require("@colyseus/schema")',
+                        );
                 },
             },
         ],

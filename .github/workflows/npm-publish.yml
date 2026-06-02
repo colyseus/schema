@@ -28,6 +28,13 @@ jobs:
         npm ci
         npm run build
 
+    # Fail the release if any `exports` subpath can't load under both the
+    # `require` (CJS) and `import` (ESM) conditions — guards the missing
+    # `build/encoding/*.js` regression that broke `@colyseus/schema/input`
+    # for every CommonJS server.
+    - name: Verify export subpaths load (CJS + ESM)
+      run: npm run test:exports
+
     - id: check
       uses: EndBug/version-check@v2
       with:

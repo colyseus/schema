@@ -35,6 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   bearing classes from the main bundle at runtime — one `Schema` per
   process. The main bundle is unchanged for SDK / browser consumers; only
   the input wrapper got smaller.
+- `require('@colyseus/schema/input')` no longer crashes under CommonJS. The
+  wrapper above rewrote the input bundle's relative parent imports to
+  `@colyseus/schema`, but the rewrite only matched the ESM `from "../…"`
+  form — the CJS build kept emitting `require('../encoding/spec.js')` and
+  friends, files that bundle never ships, so any CommonJS server (the
+  default `create-colyseus` + `tsx` setup) died on boot with
+  `Cannot find module '../encoding/spec.js'`. The bundler now rewrites the
+  `require('../…')` form too, so both the `require` and `import` conditions
+  resolve to the main bundle. A packaging smoke test (`npm run test:exports`)
+  now loads every `exports` subpath under both conditions and gates publish.
 
 ## [5.0.6]
 
