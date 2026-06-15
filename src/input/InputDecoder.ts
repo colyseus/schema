@@ -34,21 +34,27 @@ export class InputDecoder<T extends Schema = any> {
     /**
      * Walk a multi-input (unreliable) packet, decoding each length-framed
      * input into the bound instance in order and invoking `onInput` after
-     * each decode. `onInput` receives the bound instance itself — reads
-     * must be synchronous; downstream code should apply the input to game
-     * state, not retain the reference.
+     * each decode. `onInput` receives the bound instance and the framework
+     * **seq** of that input (decoded from the packet's base seq + position) —
+     * the receiver dedupes the redundancy ring on it (monotonic: drop seq ≤
+     * last seen). Reads of the instance must be synchronous; downstream code
+     * should apply the input to game state, not retain the reference.
+     *
+     * Packet layout: `[baseSeq][len][body]…[len][body]` (oldest→newest);
+     * slot *i* has `seq = baseSeq + i`.
      *
      * Returns the number of inputs decoded.
      */
-    decodeAll(bytes: Uint8Array, onInput: (instance: T, index: number) => void): number {
+    decodeAll(bytes: Uint8Array, onInput: (instance: T, seq: number) => void): number {
         const it = this._it;
         it.offset = 0;
+        const baseSeq = decode.number(bytes, it);   // packet-level base seq (oldest slot)
         let count = 0;
         while (it.offset < bytes.length) {
             const len = decode.number(bytes, it);
             const end = it.offset + len;
             this._decoder.decode(bytes.subarray(it.offset, end));
-            onInput(this.instance, count);
+            onInput(this.instance, baseSeq + count);   // slot seq by position
             it.offset = end;
             count++;
         }

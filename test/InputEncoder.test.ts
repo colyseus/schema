@@ -185,9 +185,11 @@ describe("InputEncoder / InputDecoder", () => {
             const bR = reliable.encode();
             const bU = unreliable.encode();
 
-            // Unreliable output = [len][reliable bytes]. First byte = length.
-            assert.strictEqual(bU[0], bR.length);
-            assert.deepStrictEqual(Array.from(bU.slice(1)), Array.from(bR));
+            // Unreliable output = [baseSeq][len][reliable bytes].
+            // First encode → framework baseSeq = 1.
+            assert.strictEqual(bU[0], 1);            // base seq (varint, 1 byte)
+            assert.strictEqual(bU[1], bR.length);    // slot length
+            assert.deepStrictEqual(Array.from(bU.slice(2)), Array.from(bR));
         });
 
         it("accumulates inputs into the packet up to historySize", () => {
@@ -234,7 +236,7 @@ describe("InputEncoder / InputDecoder", () => {
             assert.deepStrictEqual(seqs, [3, 4, 5]);
         });
 
-        it("decodeAll preserves order (oldest → newest) and passes input index", () => {
+        it("decodeAll passes the framework seq (base seq + position) — monotonic, consecutive", () => {
             const src = new RingInput();
             const enc = new InputEncoder(src, { mode: "unreliable", historySize: 4 });
             const dst = new RingInput();
@@ -245,15 +247,47 @@ describe("InputEncoder / InputDecoder", () => {
                 enc.encode();
             }
             src.seq = 14; src.vx = 14; src.pressed = true;
-            const bytes = enc.encode();
+            const bytes = enc.encode();   // 5th encode → ring holds framework seqs 2,3,4,5
 
             const observed: Array<[number, number]> = [];
-            const count = dec.decodeAll(bytes, (inst, idx) => {
-                observed.push([idx, inst.seq]);
+            const count = dec.decodeAll(bytes, (inst, seq) => {
+                observed.push([seq, inst.seq]);   // [frameworkSeq, schemaSeq]
             });
 
             assert.strictEqual(count, 4);
-            assert.deepStrictEqual(observed, [[0, 11], [1, 12], [2, 13], [3, 14]]);
+            // Framework seq is independent of the schema field and consecutive across the window.
+            assert.deepStrictEqual(observed, [[2, 11], [3, 12], [4, 13], [5, 14]]);
+        });
+
+        it("framework seq enables receiver dedupe across the redundancy ring under loss", () => {
+            // historySize 3: each packet carries the last 3 inputs. Drop two packets;
+            // a receiver that accepts only strictly-increasing framework seqs must
+            // still apply every input exactly once, in order. Schema seq is set to
+            // i*100 to prove dedupe keys off the FRAMEWORK seq, not any schema field.
+            const src = new RingInput();
+            const enc = new InputEncoder(src, { mode: "unreliable", historySize: 3 });
+            const dst = new RingInput();
+            const dec = new InputDecoder(dst);
+
+            const packets: Uint8Array[] = [];
+            for (let i = 1; i <= 6; i++) {
+                src.seq = i * 100; src.vx = i; src.pressed = (i & 1) === 1;
+                packets.push(enc.encode().slice());   // copy — encoder reuses its buffer
+            }
+
+            // Drop packets #2 and #4 (0-indexed 1 and 3); dropped inputs survive in neighbors.
+            const arrived = [packets[0], packets[2], packets[4], packets[5]];
+
+            let lastSeq = 0;
+            const applied: number[] = [];
+            for (const pkt of arrived) {
+                dec.decodeAll(pkt, (inst, seq) => {
+                    if (seq <= lastSeq) return;   // dedupe on the framework seq
+                    lastSeq = seq;
+                    applied.push(inst.seq);
+                });
+            }
+            assert.deepStrictEqual(applied, [100, 200, 300, 400, 500, 600]);
         });
 
         it("reset() drops the ring so the next packet contains only the new input", () => {
@@ -753,16 +787,25 @@ describe("InputEncoder / InputDecoder", () => {
             assert.strictEqual(dst.fire, true);
         });
 
-        it("no-change tick doesn't push a new slot but still emits the ring", () => {
+        it("no-change tick still pushes a (carry-forward) slot — every tick gets a seq", () => {
             const src = new DeltaInput();
             const enc = new InputEncoder(src, { mode: "unreliable", delta: true, historySize: 3 });
+            const dst = new DeltaInput();
+            const dec = new InputDecoder(dst);
 
             src.seq = 1; src.vx = 0.5; src.fire = true;
-            const first = enc.encode();
+            enc.encode();                       // slot 0: full snapshot (framework seq 1)
 
-            // No mutation between encodes → no new slot pushed, but ring emitted again.
+            // No mutation: push-every-tick emits an EMPTY delta slot (carry-forward),
+            // framework seq advances. (One-input-per-tick rollback needs every tick.)
             const second = enc.encode();
-            assert.deepStrictEqual(Array.from(second), Array.from(first));
+            const observed: Array<[number, number, number, boolean]> = [];
+            dec.decodeAll(second, (inst, seq) => observed.push([seq, inst.seq, inst.vx, inst.fire]));
+
+            assert.deepStrictEqual(observed, [
+                [1, 1, 0.5, true],   // slot 0
+                [2, 1, 0.5, true],   // slot 1: empty delta → values carry forward
+            ]);
         });
 
         it("accumulates per-tick deltas into the ring", () => {
@@ -807,12 +850,18 @@ describe("InputEncoder / InputDecoder", () => {
             assert.deepStrictEqual(seqs, [3, 4]);
         });
 
-        it("returns empty Uint8Array if no changes have ever been pushed", () => {
-            // Fresh encoder, no field set → no baseline, nothing to emit.
+        it("a tick with no populated fields still pushes a slot (push-every-tick)", () => {
+            // Fresh encoder, no field set: push-every-tick emits [baseSeq][0-len slot]
+            // rather than nothing, so the tick still has a framework seq.
             const src = new DeltaInput();
             const enc = new InputEncoder(src, { mode: "unreliable", delta: true });
             const bytes = enc.encode();
-            assert.strictEqual(bytes.length, 0);
+            assert.ok(bytes.length > 0);
+
+            const dst = new DeltaInput();
+            const seqs: number[] = [];
+            new InputDecoder(dst).decodeAll(bytes, (_inst, seq) => seqs.push(seq));
+            assert.deepStrictEqual(seqs, [1]);
         });
 
         it("reset() drops both the ring and the delta baseline", () => {
@@ -837,10 +886,12 @@ describe("InputEncoder / InputDecoder", () => {
             assert.strictEqual(dst.vx, 0.5);
             assert.strictEqual(dst.fire, true);
 
-            // With the baseline now caught up, a no-change tick re-emits
-            // only that one slot (no new slot pushed).
-            const noMutation = enc.encode();
-            assert.deepStrictEqual(Array.from(noMutation), Array.from(afterReset));
+            // Push-every-tick: a no-mutation tick pushes an empty carry-forward
+            // slot, so the ring now holds 2 slots with consecutive framework seqs.
+            const dst2 = new DeltaInput();
+            const seqs2: number[] = [];
+            new InputDecoder(dst2).decodeAll(enc.encode(), (_inst, seq) => seqs2.push(seq));
+            assert.deepStrictEqual(seqs2, [3, 4]);
         });
 
     });

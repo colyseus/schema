@@ -96,6 +96,13 @@ export class InputEncoder<T extends Schema = any> {
     private _slotHead: number = 0;
     private _slotCount: number = 0;
     private _outBuffer?: Uint8Array;
+    // Monotonic per-tick input seq (unreliable only): ++ per pushed slot. The
+    // packet carries the OLDEST slot's seq once; the decoder derives each slot's
+    // seq by position (slots are consecutive — every tick pushes). This is the
+    // framework-owned seq that drives server-side dedupe of the redundancy ring
+    // WITHOUT the user adding a seq field. Monotonic across reset() so a
+    // reconnect that reuses the server buffer doesn't replay already-seen seqs.
+    private _seq: number = 0;
 
     // Delta-mode delegate; setters populate its ChangeTree, `encode()` drains dirty fields.
     private readonly _encoder?: Encoder<T>;
@@ -144,6 +151,15 @@ export class InputEncoder<T extends Schema = any> {
             instance.pauseTracking();
         }
     }
+
+    /**
+     * The framework input seq of the most recently encoded tick (unreliable
+     * mode): monotonic, ++ per `encode()`, kept across {@link reset}. `0` in
+     * reliable mode (which sequences inputs implicitly by message count). The
+     * client keys its reconciliation replay ring by this so the server's
+     * seq-value ack lines up across packet loss.
+     */
+    get seq(): number { return this._seq; }
 
     /**
      * Encode the bound instance. Returns a subarray of an internal
@@ -250,13 +266,12 @@ export class InputEncoder<T extends Schema = any> {
     // ────────────────────────────────────────────────────────────────────
 
     private _pushAndEmitRing(blob: Uint8Array): Uint8Array {
-        // Empty blob = no-change delta tick: skip the push, re-emit ring for redundancy.
-        if (blob.length === 0) {
-            if (this._slotCount === 0) return this._outBuffer!.subarray(0, 0);
-            return this._emitRing();
-        }
-
-        // Copy blob into current slot, growing if needed.
+        // Push a slot EVERY tick (even an empty delta) so ring seqs stay
+        // consecutive: the packet carries ONE base seq and the decoder derives
+        // each slot's seq by position. Full-per-slot is the rollback default —
+        // blobs are non-empty there; an empty slot only occurs in delta mode and
+        // decodes as carry-forward.
+        this._seq++;
         let slot = this._slots![this._slotHead];
         if (blob.length > slot.byteLength) {
             slot = this._slots![this._slotHead] = InputEncoder._grow(
@@ -272,8 +287,12 @@ export class InputEncoder<T extends Schema = any> {
     }
 
     private _emitRing(): Uint8Array {
-        // Upper bound: sum of slot byte counts + per-slot varint length.
-        let needed = 0;
+        // Packet layout: [baseSeq][len][slot]…[len][slot] (oldest→newest).
+        // baseSeq = the oldest slot's seq; consecutive slots ⇒ slot i has seq baseSeq + i.
+        const baseSeq = this._seq - this._slotCount + 1;
+
+        // Upper bound: baseSeq varint + sum of slot byte counts + per-slot varint length.
+        let needed = LENGTH_PREFIX_WORST_CASE;
         for (let i = 0; i < this._slotCount; i++) {
             needed += this._slotLens![i] + LENGTH_PREFIX_WORST_CASE;
         }
@@ -284,6 +303,7 @@ export class InputEncoder<T extends Schema = any> {
         }
 
         const outIt = { offset: 0 };
+        encode.number(out, baseSeq, outIt);   // packet-level base seq
         const oldest = (this._slotHead - this._slotCount + this.historySize) % this.historySize;
         for (let i = 0; i < this._slotCount; i++) {
             const idx = (oldest + i) % this.historySize;
