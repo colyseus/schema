@@ -13,7 +13,7 @@ import type { InferValueType, InferSchemaInstanceType, AssignableProps, BuilderI
 import { CollectionSchema } from "./types/custom/CollectionSchema.js";
 import { SetSchema } from "./types/custom/SetSchema.js";
 import { StreamSchema } from "./types/custom/StreamSchema.js";
-import { FieldBuilder, isBuilder } from "./types/builder.js";
+import { FieldBuilder, isBuilder, type BuilderDefinition } from "./types/builder.js";
 
 export type RawPrimitiveType = "string" |
     "number" |
@@ -51,8 +51,15 @@ export interface TypeOptions {
 
 export const DEFAULT_VIEW_TAG = -1;
 
-export function entity(constructor: any): any {
-    TypeContext.register(constructor as typeof Schema);
+/**
+ * Class decorator that registers a `@type`-style Schema class with the
+ * TypeContext (required for reflection / cross-language codegen).
+ *
+ *     @entity
+ *     class Player extends Schema { ... }
+ */
+export function entity<T extends Function>(constructor: T): T {
+    TypeContext.register(constructor as unknown as typeof Schema);
     return constructor;
 }
 
@@ -620,20 +627,21 @@ export interface SchemaWithExtendsConstructor<
 }
 
 /**
- * Produce the auto-instantiated construction default for a builder type
- * (empty collection or zero-arg Schema ref), or `undefined` when the type
- * has no auto-default. Shared by synced and `.noSync()` field handling.
+ * Build a per-construction factory for a builder type's auto-instantiated
+ * default (empty collection or zero-arg Schema ref), or `undefined` when the
+ * type has no auto-default. Returning a factory lets each construction `new` a
+ * fresh value directly instead of cloning a shared prototype instance.
  */
-function autoInstantiateDefault(rawType: any): any {
+function makeAutoDefaultFactory(rawType: any): (() => any) | undefined {
     if (rawType && typeof rawType === "object") {
-        if (rawType.array !== undefined) { return new ArraySchema(); }
-        if (rawType.map !== undefined) { return new MapSchema(); }
-        if (rawType.set !== undefined) { return new SetSchema(); }
-        if (rawType.collection !== undefined) { return new CollectionSchema(); }
-        if (rawType.stream !== undefined) { return new StreamSchema(); }
+        if (rawType.array !== undefined) { return () => new ArraySchema(); }
+        if (rawType.map !== undefined) { return () => new MapSchema(); }
+        if (rawType.set !== undefined) { return () => new SetSchema(); }
+        if (rawType.collection !== undefined) { return () => new CollectionSchema(); }
+        if (rawType.stream !== undefined) { return () => new StreamSchema(); }
     } else if (typeof rawType === "function" && Schema.is(rawType)) {
         if (!rawType.prototype.initialize || rawType.prototype.initialize.length === 0) {
-            return new rawType();
+            return () => new rawType();
         }
     }
     return undefined;
@@ -669,7 +677,37 @@ export function schema<
 
     const fields: any = {};
     const methods: any = {};
+    // Two buckets, both keyed by field name and applied at construction:
+    //  - `defaultValues`: static values copied as-is (shared reference).
+    //  - `defaultFactories`: invoked per construction for a fresh value —
+    //    `.default(fn)`, clone-able defaults, and auto-instantiated collections/refs.
     const defaultValues: any = {};
+    const defaultFactories: { [field: string]: () => any } = {};
+
+    // Decide once (at definition time) how each `.default(v)` materializes per
+    // construction: a function is a factory; a clone-able value clones fresh;
+    // anything else is a shared static value.
+    const assignDefault = (field: string, value: any) => {
+        if (typeof value === "function") {
+            defaultFactories[field] = value;
+        } else if (value && typeof value.clone === "function") {
+            defaultFactories[field] = () => value.clone();
+        } else {
+            defaultValues[field] = value;
+        }
+    };
+
+    // Seed a field's construction default: explicit `.default(v)`, else the
+    // auto-instantiated empty collection / zero-arg ref (skipped for `.optional()`).
+    const seedDefault = (field: string, def: BuilderDefinition) => {
+        if (def.hasDefault) {
+            assignDefault(field, def.default);
+        } else if (!def.optional) {
+            const factory = makeAutoDefaultFactory(def.type);
+            if (factory) { defaultFactories[field] = factory; }
+        }
+    };
+
     const viewTagFields: { [field: string]: number } = {};
     const ownedFields: string[] = [];
     const unreliableFields: string[] = [];
@@ -698,18 +736,19 @@ export function schema<
                         `A local-only field cannot be synchronized.`
                     );
                 }
-                if (def.hasDefault) {
-                    defaultValues[fieldName] = def.default;
-                } else if (!def.optional) {
-                    const autoDefault = autoInstantiateDefault(def.type);
-                    if (autoDefault !== undefined) {
-                        defaultValues[fieldName] = autoDefault;
-                    }
-                }
+                seedDefault(fieldName, def);
                 continue;
             }
 
-            fields[fieldName] = getNormalizedType(def.type);
+            const normalizedType = getNormalizedType(def.type);
+            // A synced ref must be encodable (a Schema, or Metadata.setFields()'d) — reject a bare class.
+            if (typeof normalizedType === "function" && !Schema.is(normalizedType)) {
+                throw new Error(
+                    `schema(${name ? `'${name}'` : ""}): field '${fieldName}' is a synced ref to non-Schema ` +
+                    `class '${normalizedType.name || "(anonymous)"}' — use .noSync(), or Metadata.setFields().`
+                );
+            }
+            fields[fieldName] = normalizedType;
 
             if (def.view !== undefined) { viewTagFields[fieldName] = def.view; }
             if (def.owned) { ownedFields.push(fieldName); }
@@ -721,23 +760,14 @@ export function schema<
             if (def.streamPriority !== undefined) { streamPriorityFields[fieldName] = def.streamPriority; }
             if (def.optional) { optionalFields.push(fieldName); }
 
-            if (def.hasDefault) {
-                defaultValues[fieldName] = def.default;
-            } else if (!def.optional) {
-                // Auto-instantiate collection/Schema defaults when none is provided.
-                // `.optional()` opts out — field starts as undefined.
-                const autoDefault = autoInstantiateDefault(def.type);
-                if (autoDefault !== undefined) {
-                    defaultValues[fieldName] = autoDefault;
-                }
-            }
+            seedDefault(fieldName, def);
 
         } else if (typeof value === "function") {
             if (Schema.is(value)) {
                 // Convenience: allow a bare Schema subclass (equivalent to `t.ref(Class)`).
                 fields[fieldName] = getNormalizedType(value);
                 if (!value.prototype.initialize || value.prototype.initialize.length === 0) {
-                    defaultValues[fieldName] = new value();
+                    defaultFactories[fieldName] = () => new (value as any)();
                 }
             } else {
                 methods[fieldName] = value;
@@ -751,16 +781,20 @@ export function schema<
         }
     }
 
+    // Write construction defaults onto `target` — either the instance directly
+    // (no-args fast path) or a throwaway object that gets merged with props.
+    const applyDefaults = (target: any) => {
+        for (const fieldName in defaultValues) {
+            target[fieldName] = defaultValues[fieldName];
+        }
+        for (const fieldName in defaultFactories) {
+            target[fieldName] = defaultFactories[fieldName]();
+        }
+    };
+
     const getDefaultValues = () => {
         const defaults: any = {};
-        for (const fieldName in defaultValues) {
-            const defaultValue = defaultValues[fieldName];
-            if (defaultValue && typeof defaultValue.clone === "function") {
-                defaults[fieldName] = defaultValue.clone();
-            } else {
-                defaults[fieldName] = defaultValue;
-            }
-        }
+        applyDefaults(defaults);
         return defaults;
     };
 
@@ -775,17 +809,26 @@ export function schema<
         return parentProps;
     };
 
+    const hasInitialize = typeof methods.initialize === "function";
+
     /** @codegen-ignore */
     const klass = Metadata.setFields<any>(class extends (inherits as any) {
         constructor(...args: any[]) {
-            if (methods.initialize && typeof methods.initialize === "function") {
-                super(Object.assign({}, getDefaultValues(), getParentProps(args[0] || {})));
-                // Only call initialize() on the exact target class, not parents.
-                if (new.target === klass) {
-                    methods.initialize.apply(this, args);
-                }
+            const props = args[0];
+            if (props === undefined) {
+                // No-args: write defaults straight onto the instance — skips the
+                // throwaway defaults object + Object.assign + assignProps walk.
+                super();
+                applyDefaults(this);
             } else {
-                super(Object.assign({}, getDefaultValues(), args[0] || {}));
+                // With props: merge into the fresh defaults object in place (no
+                // extra `{}` target); the super chain runs assignProps once. An
+                // `initialize()` owns the schema fields, so only parent props flow up.
+                super(Object.assign(getDefaultValues(), hasInitialize ? getParentProps(props) : props));
+            }
+            // Only call initialize() on the exact target class, not parents.
+            if (hasInitialize && new.target === klass) {
+                methods.initialize.apply(this, args);
             }
         }
     }, fields) as unknown as SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P>;
