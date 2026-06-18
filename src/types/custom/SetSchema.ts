@@ -1,6 +1,6 @@
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId } from "../symbols.js";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId, $reset } from "../symbols.js";
 import { Collection } from "../HelperTypes.js";
 import { ChangeTree, installUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
 import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
@@ -193,6 +193,25 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         this.$items.clear();
 
         changeTree.operation(OPERATION.CLEAR);
+    }
+
+    /**
+     * Pool reset: empty this set and recycle its ChangeTree WITHOUT recording
+     * any wire op (the parent field's ADD/DELETE owns the wire). Recurses into
+     * ref-type children. Called by Schema.reset when a pooled entity has a set
+     * field. The instance must already be detached from the encoder.
+     */
+    [$reset]() {
+        const changeTree = this[$changes];
+        if (changeTree.isStreamCollection) {
+            throw new Error(`@colyseus/schema: cannot reset a streamed SetSchema (pooling not supported).`);
+        }
+        this.$items.forEach((value: any) => value?.[$reset]?.());
+        this.$items.clear();
+        this.deletedItems = {};
+        this.$refId = 0; // reset the monotonic index counter (field, not the symbol)
+        changeTree.recycle();
+        this[$refId] = undefined; // drop encoder ref identity by assign (not delete: avoids dict-mode deopt)
     }
 
     has (value: V): boolean {

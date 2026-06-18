@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $proxyTarget, $refId } from "../symbols.js";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $proxyTarget, $refId, $reset } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
 import { type IRef, ChangeTree, installUntrackedChangeTree } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
@@ -368,6 +368,27 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
         self.items.length = 0;
         self.tmpItems.length = 0;
+    }
+
+    /**
+     * Pool reset: empty this array and recycle its ChangeTree WITHOUT recording
+     * any wire op (the parent field's ADD/DELETE owns the wire). Recurses into
+     * ref-type children. Called by Schema.reset when a pooled entity has an
+     * array field. The instance must already be detached from the encoder.
+     */
+    [$reset]() {
+        const self = this[$proxyTarget] ?? this;
+        const changeTree = self[$changes];
+        if (changeTree.isStreamCollection) {
+            throw new Error(`@colyseus/schema: cannot reset a streamed ArraySchema (pooling not supported).`);
+        }
+        const items = self.items;
+        for (let i = 0; i < items.length; i++) (items[i] as any)?.[$reset]?.();
+        self.items.length = 0;
+        self.tmpItems.length = 0;
+        self.deletedIndexes.length = 0;
+        changeTree.recycle();
+        self[$refId] = undefined; // assign (not delete) to avoid V8 dictionary-mode deopt
     }
 
     /**

@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $refId } from "../symbols.js";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $refId, $reset } from "../symbols.js";
 import { ChangeTree, installUntrackedChangeTree, IRef } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
@@ -281,6 +281,25 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         this.$items.clear();
 
         changeTree.operation(OPERATION.CLEAR);
+    }
+
+    /**
+     * Pool reset: empty this map and recycle its ChangeTree WITHOUT recording
+     * any wire op (the parent field's ADD/DELETE owns the wire). Recurses into
+     * ref-type children. Called by Schema.reset when a pooled entity has a
+     * map field. The instance must already be detached from the encoder.
+     */
+    [$reset]() {
+        const changeTree = this[$changes];
+        if (changeTree.isStreamCollection) {
+            throw new Error(`@colyseus/schema: cannot reset a streamed MapSchema (pooling not supported).`);
+        }
+        // reset ref-type children first (primitives optional-chain away)
+        this.$items.forEach((value: any) => value?.[$reset]?.());
+        this.$items.clear();
+        this.journal.reset();
+        changeTree.recycle();
+        this[$refId] = undefined; // assign (not delete) to avoid V8 dictionary-mode deopt
     }
 
     has (key: K) {

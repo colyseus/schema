@@ -76,6 +76,15 @@ export const $proxyTarget: unique symbol = Symbol.for("$proxyTarget");
 export const $onEncodeEnd = '~onEncodeEnd';
 
 /**
+ * Optional "reset" method on every poolable Ref (Schema + collections).
+ * Empties the instance's backing store and recycles its ChangeTree WITHOUT
+ * emitting any wire op, and recurses into ref-type children — so the instance
+ * can be returned to a SchemaPool and reused, avoiding the cost of `new`.
+ * See encoder/Pool.ts and Schema.reset().
+ */
+export const $reset = "~reset";
+
+/**
  * When decoding, this method is called after the instance is fully decoded
  */
 export const $onDecodeEnd = "~onDecodeEnd";

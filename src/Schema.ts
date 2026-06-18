@@ -4,7 +4,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
 import { ChangeTree, installUntrackedChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
-import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $numFields, $refId, $track, $values } from './types/symbols.js';
+import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation.js';
@@ -64,6 +64,69 @@ export class Schema<C = any> implements IRef {
         installUntrackedChangeTree(inst);
         inst[$values] = [];
         return inst;
+    }
+
+    /**
+     * Reset a DETACHED instance to construction defaults so it can be returned
+     * to a {@link SchemaPool} and reused, avoiding the cost of `new`. Recurses
+     * into ref-type fields (child Schemas / collections).
+     *
+     * Preconditions (enforced):
+     * - The instance must be tracked (encoder-side), not a decoder mirror.
+     * - The instance must NOT be shared across multiple parents.
+     * - The instance must already be removed from its parent collection/field
+     *   (so the encoder detached it: `root === undefined`).
+     *
+     * NOTE: primitive field values are NOT reset to class defaults — re-assign
+     * the fields you care about when you reuse the instance (standard
+     * object-pool discipline).
+     */
+    static reset(instance: Schema): void {
+        const changeTree: ChangeTree = (instance as any)?.[$changes];
+
+        // Only tracked (encoder-side) instances are poolable. Decoder-side
+        // instances carry an UntrackedChangeTree, which has no recycle().
+        if (changeTree === undefined || typeof (changeTree as any).recycle !== "function") {
+            throw new Error(`@colyseus/schema: Schema.reset() requires a tracked (encoder-side) instance.`);
+        }
+
+        // Instances reachable through more than one parent are unsafe to pool:
+        // another owner may still hold this instance.
+        if (changeTree.extraParents !== undefined) {
+            throw new Error(`@colyseus/schema: cannot reset a shared instance (${instance.constructor.name}) with multiple parents.`);
+        }
+
+        (instance as any)[$reset]();
+    }
+
+    /**
+     * Per-instance reset primitive (the recursive worker behind
+     * {@link Schema.reset}). Resets ref-type children first (depth-first),
+     * then recycles this instance's ChangeTree and drops its `$refId` so a
+     * re-add routes through `RefIdAllocator.acquire()` exactly like a freshly
+     * constructed instance (respecting the one-tick defer). Dropping `$refId`
+     * is what makes instance reuse wire-format-identical to `new T()` and
+     * prevents a stale refId from colliding with a different instance that
+     * acquired it after this one was released.
+     */
+    [$reset](): void {
+        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
+        const refIndexes = (metadata?.[$refTypeFieldIndexes] as number[]) ?? [];
+        const values = this[$values];
+
+        for (let i = 0; i < refIndexes.length; i++) {
+            const child = values[refIndexes[i]];
+            // ref fields hold a child Schema or collection (both implement
+            // [$reset]); skip undefined/null. Optional-chain is a cheap guard.
+            child?.[$reset]?.();
+        }
+
+        this[$changes].recycle();
+        // Clear the refId by ASSIGNMENT (not `delete`): `delete` would force the
+        // instance into V8 dictionary mode, making release() as expensive as the
+        // construction it saves. `=== undefined` in Root.add still routes a re-add
+        // through refIds.acquire() exactly like a freshly-constructed instance.
+        this[$refId] = undefined;
     }
 
     /**

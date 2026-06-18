@@ -532,6 +532,56 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         if (this.collPureOps !== undefined) this.collPureOps.length = 0;
     }
 
+    /**
+     * Full reset to construction defaults so the owning ref can be returned to
+     * a pool and reused for a different logical entity (see encoder/Pool.ts +
+     * Schema.reset). Unlike `reset()` / `endEncode()` (which only clear the
+     * dirty bucket for the next encode), this also drops parent links, queue
+     * nodes and per-view bitmaps, and re-arms IS_NEW.
+     *
+     * Precondition: the tree must already be detached from the encoder
+     * (`root === undefined`) — i.e. the ref was removed from its parent
+     * collection/field, which `Root.remove` does before this runs.
+     */
+    recycle(): void {
+        if (this.root !== undefined) {
+            throw new Error(
+                `@colyseus/schema: cannot recycle an attached ChangeTree ` +
+                `(${this.ref?.constructor?.name}). Remove the instance from its ` +
+                `parent collection before releasing it to a pool.`
+            );
+        }
+
+        // dirty/ops buckets (Schema: dirtyLow/High + ops; Collection: collDirty/collPureOps)
+        this.reset();
+        // keep the recorder object allocated (re-alloc is the cost we avoid), clear contents
+        this.unreliableRecorder?.reset();
+
+        // back to a freshly-constructed tree: IS_NEW, no inherited flags
+        // (FILTERED/TRANSIENT/STATIC/STREAM are re-derived on the next setParent)
+        this.flags = IS_NEW;
+        this._fullSyncGen = 0;
+
+        // drop parent links — Root.remove clears `root` and the CHILDREN's
+        // parent links, but leaves this tree's own parentRef dangling.
+        this.parentRef = undefined;
+        this._parentIndex = undefined;
+        this.extraParents = undefined;
+
+        // queue nodes (already nulled by Root.remove's queue removal; defensive)
+        this.changesNode = undefined;
+        this.unreliableChangesNode = undefined;
+
+        this.paused = false;
+
+        // per-view visibility lives on the tree (NOT keyed by refId), so a
+        // recycled tree must not inherit its previous life's view membership.
+        this.visibleViews = undefined;
+        this.invisibleViews = undefined;
+        this.tagViews = undefined;
+        this.subscribedViews = undefined;
+    }
+
     shift(shiftIndex: number): void {
         if (this._isSchema) throw new Error("ChangeTree (Schema): shift is not supported");
         const src = this.collDirty!;

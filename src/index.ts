@@ -79,6 +79,7 @@ export { getRawChangesCallback } from "./decoder/strategy/RawChanges.js";
 
 export { Encoder } from "./encoder/Encoder.js";
 export { Root } from "./encoder/Root.js";
+export { createPool, type SchemaPool, type PoolOptions } from "./encoder/Pool.js";
 export { encodeSchemaOperation, encodeArray, encodeKeyValueOperation, encodeMapEntry, encodeIndexedEntry } from "./encoder/EncodeOperation.js";
 export { ChangeTree, type Ref, type IRef } from "./encoder/ChangeTree.js";
 export { StateView } from "./encoder/StateView.js";
