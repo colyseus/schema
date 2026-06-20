@@ -349,22 +349,16 @@ describe("InputEncoder / InputDecoder", () => {
 
     });
 
-    it("should pause tracking on the bound instance when delta is off", () => {
+    it("keeps change-tracking active on the bound instance (delta reads dirty bits)", () => {
         class Input extends Schema {
             @type("number") x: number;
         }
 
-        // Full-snapshot mode: setter change-tracking is pure overhead,
-        // encoder pauses it.
-        const a = new Input();
-        assert.strictEqual(a.isTrackingPaused, false);
-        new InputEncoder(a);
-        assert.strictEqual(a.isTrackingPaused, true);
-
-        // Delta mode: encoder *reads* the setter-populated dirty bits,
-        // so tracking must stay active.
+        // InputEncoder always delta-encodes: it *reads* the setter-populated
+        // dirty bits, so tracking must stay active on the bound instance.
         const b = new Input();
-        new InputEncoder(b, { delta: true });
+        assert.strictEqual(b.isTrackingPaused, false);
+        new InputEncoder(b);
         assert.strictEqual(b.isTrackingPaused, false);
     });
 
@@ -435,21 +429,6 @@ describe("InputEncoder / InputDecoder", () => {
 
         // And the first subarray now reflects the mutation (same memory).
         assert.notDeepStrictEqual(Array.from(b1), first);
-    });
-
-    it("should accept a user-supplied buffer", () => {
-        class Input extends Schema {
-            @type("number") seq: number;
-        }
-
-        const buf = new Uint8Array(128);
-        const src = new Input();
-        const enc = new InputEncoder(src, { buffer: buf });
-
-        src.seq = 42;
-        const out = enc.encode();
-
-        assert.strictEqual(out.buffer, buf.buffer);
     });
 
     it("should throw on non-primitive fields (nested Schema)", () => {
@@ -614,7 +593,7 @@ describe("InputEncoder / InputDecoder", () => {
             twin.seq = 1; twin.vx = 0.5; twin.vy = -0.25; twin.fire = true;
             const refBytes = new InputEncoder(twin).encode();
 
-            const enc = new InputEncoder(src, { delta: true });
+            const enc = new InputEncoder(src);
             const deltaBytes = enc.encode();
 
             assert.deepStrictEqual(Array.from(deltaBytes), Array.from(refBytes));
@@ -624,7 +603,7 @@ describe("InputEncoder / InputDecoder", () => {
             const src = new DeltaInput();
             src.seq = 1; src.vx = 0.5; src.vy = -0.25; src.fire = false;
 
-            const enc = new InputEncoder(src, { delta: true });
+            const enc = new InputEncoder(src);
             const first = enc.encode();
             assert.ok(first.length > 0);
 
@@ -648,7 +627,7 @@ describe("InputEncoder / InputDecoder", () => {
             const src = new DeltaInput();
             src.seq = 1; src.vx = 0.5; src.vy = 0.5; src.fire = true;
 
-            const enc = new InputEncoder(src, { delta: true });
+            const enc = new InputEncoder(src);
             enc.encode(); // baseline
 
             const noop = enc.encode();
@@ -660,7 +639,7 @@ describe("InputEncoder / InputDecoder", () => {
             const src = new DeltaInput();
             src.seq = 1; src.vx = 0; src.vy = 0; src.fire = false;
 
-            const enc = new InputEncoder(src, { delta: true });
+            const enc = new InputEncoder(src);
             const dst = new DeltaInput();
             const dec = new InputDecoder(dst);
 
@@ -683,7 +662,7 @@ describe("InputEncoder / InputDecoder", () => {
             const src = new DeltaInput();
             src.seq = 1; src.vx = 0; src.vy = 0; src.fire = false;
 
-            const enc = new InputEncoder(src, { delta: true });
+            const enc = new InputEncoder(src);
             const dst = new DeltaInput();
             const dec = new InputDecoder(dst);
 
@@ -711,7 +690,7 @@ describe("InputEncoder / InputDecoder", () => {
             const src = new DeltaInput();
             src.seq = 1; src.vx = 0.5; src.vy = 0.5; src.fire = true;
 
-            const enc = new InputEncoder(src, { delta: true });
+            const enc = new InputEncoder(src);
             const first = enc.encode(); // full snapshot
 
             assert.strictEqual(enc.encode().length, 0); // nothing changed
@@ -731,7 +710,7 @@ describe("InputEncoder / InputDecoder", () => {
             }
 
             const src = new BigMsg();
-            const enc = new InputEncoder(src, { delta: true });
+            const enc = new InputEncoder(src);
 
             // Small baseline — buffer fits.
             src.text = "x"; src.seq = 1;
@@ -751,14 +730,6 @@ describe("InputEncoder / InputDecoder", () => {
             assert.strictEqual(enc.encode().length, 0);
         });
 
-        it("exposes `delta` on the encoder (defaults to false)", () => {
-            const a = new InputEncoder(new DeltaInput());
-            assert.strictEqual(a.delta, false);
-
-            const b = new InputEncoder(new DeltaInput(), { delta: true });
-            assert.strictEqual(b.delta, true);
-        });
-
     });
 
     describe("delta encoding (unreliable + ring-buffer)", () => {
@@ -773,7 +744,7 @@ describe("InputEncoder / InputDecoder", () => {
             const src = new DeltaInput();
             src.seq = 1; src.vx = 0.5; src.fire = true;
 
-            const enc = new InputEncoder(src, { mode: "unreliable", delta: true, historySize: 3 });
+            const enc = new InputEncoder(src, { mode: "unreliable", historySize: 3 });
             const bytes = enc.encode();
             assert.ok(bytes.length > 0);
 
@@ -789,7 +760,7 @@ describe("InputEncoder / InputDecoder", () => {
 
         it("no-change tick still pushes a (carry-forward) slot — every tick gets a seq", () => {
             const src = new DeltaInput();
-            const enc = new InputEncoder(src, { mode: "unreliable", delta: true, historySize: 3 });
+            const enc = new InputEncoder(src, { mode: "unreliable", historySize: 3 });
             const dst = new DeltaInput();
             const dec = new InputDecoder(dst);
 
@@ -810,7 +781,7 @@ describe("InputEncoder / InputDecoder", () => {
 
         it("accumulates per-tick deltas into the ring", () => {
             const src = new DeltaInput();
-            const enc = new InputEncoder(src, { mode: "unreliable", delta: true, historySize: 3 });
+            const enc = new InputEncoder(src, { mode: "unreliable", historySize: 3 });
             const dst = new DeltaInput();
             const dec = new InputDecoder(dst);
 
@@ -836,7 +807,7 @@ describe("InputEncoder / InputDecoder", () => {
 
         it("drops oldest delta when historySize is exceeded", () => {
             const src = new DeltaInput();
-            const enc = new InputEncoder(src, { mode: "unreliable", delta: true, historySize: 2 });
+            const enc = new InputEncoder(src, { mode: "unreliable", historySize: 2 });
             const dst = new DeltaInput();
             const dec = new InputDecoder(dst);
 
@@ -854,7 +825,7 @@ describe("InputEncoder / InputDecoder", () => {
             // Fresh encoder, no field set: push-every-tick emits [baseSeq][0-len slot]
             // rather than nothing, so the tick still has a framework seq.
             const src = new DeltaInput();
-            const enc = new InputEncoder(src, { mode: "unreliable", delta: true });
+            const enc = new InputEncoder(src, { mode: "unreliable" });
             const bytes = enc.encode();
             assert.ok(bytes.length > 0);
 
@@ -866,7 +837,7 @@ describe("InputEncoder / InputDecoder", () => {
 
         it("reset() drops both the ring and the delta baseline", () => {
             const src = new DeltaInput();
-            const enc = new InputEncoder(src, { mode: "unreliable", delta: true, historySize: 3 });
+            const enc = new InputEncoder(src, { mode: "unreliable", historySize: 3 });
 
             src.seq = 1; src.vx = 0.5; src.fire = true; enc.encode();
             src.seq = 2; enc.encode();

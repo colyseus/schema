@@ -377,7 +377,7 @@ describe("Reflection", () => {
             Reflection.makeEncodable(Reconstructed);
 
             const inst = new Reconstructed();
-            const ie = new InputEncoder(inst, { mode: "unreliable", delta: true, historySize: 4 });
+            const ie = new InputEncoder(inst, { mode: "unreliable", historySize: 4 });
 
             inst.seq = 1; inst.x = 10; ie.encode();
             inst.seq = 2; inst.x = 20; ie.encode();
