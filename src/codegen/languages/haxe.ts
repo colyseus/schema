@@ -67,22 +67,6 @@ ${classBodies.join("\n\n")}
     return { name: fileName, content };
 }
 
-function getInheritanceTree(klass: Class, allClasses: Class[], includeSelf: boolean = true) {
-    let currentClass = klass;
-    let inheritanceTree: Class[] = [];
-
-    if (includeSelf) {
-        inheritanceTree.push(currentClass);
-    }
-
-    while (currentClass.extends !== "Schema") {
-        currentClass = allClasses.find(klass => klass.name == currentClass.extends);
-        inheritanceTree.push(currentClass);
-    }
-
-    return inheritanceTree;
-}
-
 /**
  * Generate just the class body (without package/imports) for bundling
  */

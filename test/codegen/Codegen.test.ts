@@ -5,6 +5,7 @@ import * as rimraf from "rimraf";
 import * as glob from "glob";
 import * as assert from "assert";
 import { generate } from "../../src/codegen/api.js";
+import { Context, Class, getInheritanceTree } from "../../src/codegen/types.js";
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -152,6 +153,21 @@ describe("schema-codegen", () => {
 
             assert.strictEqual(2, outputFiles.length);
         });
+
+        it("should infer class names from the variable when no name arg is given", () => {
+            // Exercises the parser's name-inference branch (no explicit name arg)
+            // for both `schema({...})` and `Base.extend({...})`.
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "InferName.ts"));
+
+            generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
+
+            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts")).map((f) => path.basename(f));
+            assert.deepStrictEqual(outputFiles.sort(), ["Vec3.ts", "Vec4.ts"]);
+
+            // `.extend()` with no name → inferred "Vec4", extending the inferred "Vec3".
+            const vec4 = fs.readFileSync(path.resolve(OUTPUT_DIR, "Vec4.ts"), "utf8");
+            assert.match(vec4, /class Vec4 extends Vec3/);
+        });
     });
 
     describe("invalid/error", () => {
@@ -166,5 +182,52 @@ describe("schema-codegen", () => {
         });
     });
 
+    // Codegen must terminate on ANY class graph the parser can produce. These
+    // guard the inheritance-chain walks (getStructures/isSchemaClass/
+    // getInheritanceTree/postProcessing) against the malformed inputs that used
+    // to hang or crash: a nameless half-formed Class, a cyclic `extends` chain,
+    // and an unresolved base class.
+    describe("malformed class graph (must not hang/crash)", () => {
+        function classOf(name: string | undefined, ext: string | undefined) {
+            const k = new Class();
+            k.name = name as any;
+            k.extends = ext as any;
+            return k;
+        }
+
+        it("excludes a nameless, half-formed class instead of looping", () => {
+            const ctx = new Context();
+            ctx.addStructure(classOf(undefined, undefined)); // would self-match in getParentClass
+            ctx.addStructure(classOf("Vec5", "Schema"));
+
+            const { classes } = ctx.getStructures();
+            assert.deepStrictEqual(classes.map((c) => c.name), ["Vec5"]);
+        });
+
+        it("terminates on a cyclic extends chain", () => {
+            const ctx = new Context();
+            ctx.addStructure(classOf("A", "B"));
+            ctx.addStructure(classOf("B", "A")); // neither descends from Schema
+
+            const { classes } = ctx.getStructures();
+            assert.strictEqual(classes.length, 0);
+        });
+
+        it("getInheritanceTree stops at an unresolved base instead of crashing", () => {
+            const a = classOf("A", "DoesNotExist");
+            assert.deepStrictEqual(getInheritanceTree(a, [a]).map((c) => c.name), ["A"]);
+        });
+
+        it("generates a chained schema().extend() without hanging", () => {
+            // The outer `.extend`'s base is a call (not an identifier), so it
+            // can't be named — codegen drops that layer (warns) but must finish.
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "InferNameChain.ts"));
+            generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
+
+            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts")).map((f) => path.basename(f));
+            assert.deepStrictEqual(outputFiles, ["Vec5.ts"]);
+            assert.match(fs.readFileSync(path.resolve(OUTPUT_DIR, "Vec5.ts"), "utf8"), /class Vec5 extends Schema/);
+        });
+    });
 
 });

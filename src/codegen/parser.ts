@@ -278,7 +278,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                 if (!callee) break;
 
                 const isSchemaCall = callee === "schema" || callee === "schema.schema";
-                const isExtendCall = callee.indexOf(".extend") !== -1 && !callee.endsWith(".extends");
+                const isExtendCall = callee.endsWith(".extend");
                 if (!isSchemaCall && !isExtendCall) break;
 
                 // Signature: (fields, name?)
@@ -297,25 +297,43 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     }
                 }
 
-                if (!className && callExpression.parent.kind === ts.SyntaxKind.VariableDeclaration) {
-                    className = (callExpression.parent as ts.VariableDeclaration).name?.getText();
+                if (!className) {
+                    // No explicit name arg — infer it from the variable the
+                    // result is assigned to (`const Foo = schema({...})`).
+                    let p: ts.Node = callExpression.parent;
+                    while (p !== undefined && (
+                        p.kind === ts.SyntaxKind.PropertyAccessExpression ||
+                        p.kind === ts.SyntaxKind.CallExpression
+                    )) {
+                        p = p.parent;
+                    }
+                    if (p?.kind === ts.SyntaxKind.VariableDeclaration) {
+                        className = (p as ts.VariableDeclaration).name?.getText();
+                    }
                 }
 
                 if (!className) break;
+
+                // Resolve the base class BEFORE registering a structure. A
+                // chained `schema({...}).extend({...})` has a call expression
+                // (not an identifier) as its `.extend` base, which can't be
+                // statically named — bail here rather than leave a half-formed,
+                // nameless Class in the context (which corrupts inheritance walks).
+                let extendsClass = "Schema";
+                if (isExtendCall) {
+                    extendsClass = (node as any).expression?.expression?.escapedText;
+                    if (!extendsClass) {
+                        console.warn(`schema-codegen: cannot resolve the base class of a chained .extend() for '${className}' — fields from that .extend({...}) are omitted.`);
+                        break;
+                    }
+                }
 
                 if (currentStructure?.name !== className) {
                     currentStructure = new Class();
                     context.addStructure(currentStructure);
                 }
 
-                if (isExtendCall) {
-                    const extendsClass = (node as any).expression?.expression?.escapedText;
-                    if (!extendsClass) break;
-                    (currentStructure as Class).extends = extendsClass;
-                } else {
-                    (currentStructure as Class).extends = "Schema";
-                }
-
+                (currentStructure as Class).extends = extendsClass;
                 currentStructure.name = className;
 
                 const types = fieldsArg as any;
