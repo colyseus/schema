@@ -863,6 +863,58 @@ describe("Definition Tests", () => {
             assert.throws(() => schema({ c: t.number().noSync().owned() }, 'BadOwned'), /local-only field cannot be synchronized/);
         });
 
+        it("should build a fresh value per instance from a .default(factory)", () => {
+            class Accuracy {
+                value = 0;
+                shots = 0;
+                bump() { this.value += ++this.shots; }
+            }
+            const State = schema({
+                x: t.number().default(1),
+                acc: t.ref(Accuracy).noSync().default(() => new Accuracy()),
+                tags: t.array("string").noSync().default(() => ["a", "b"] as any), // general: any field
+            }, 'StateLocalRef');
+
+            const a = new State();
+            const b = new State();
+
+            // factory ran per parent → typed + a DISTINCT instance each (no shared default)
+            assert.ok((a as any).acc instanceof Accuracy);
+            assert.ok((b as any).acc instanceof Accuracy);
+            assert.notStrictEqual((a as any).acc, (b as any).acc, "each parent gets its own instance");
+            assert.notStrictEqual((a as any).tags, (b as any).tags, "factory is not shared");
+
+            (a as any).acc.bump();
+            assert.strictEqual((a as any).acc.value, 1);
+            assert.strictEqual((b as any).acc.value, 0, "instances are not aliased");
+
+            // excluded from metadata + never transmitted
+            const metadata = (State as any)[Symbol.metadata];
+            const fieldNames = Object.keys(metadata).map((k) => metadata[k]?.name).filter(Boolean);
+            assert.ok(!fieldNames.includes("acc"), "noSync ref excluded from metadata");
+
+            const decoded = createInstanceFromReflection(a);
+            decoded.decode(a.encodeAll());
+            assert.strictEqual(decoded.x, 1);
+            assert.strictEqual((decoded as any).acc, undefined, "non-Schema ref not transmitted");
+        });
+
+        it("a .noSync() t.ref() of a non-Schema class without .default() starts undefined", () => {
+            class Foo { bar = 1; }
+            const State = schema({ foo: t.ref(Foo).noSync() }, 'NoDefaultLocalRef');
+            assert.strictEqual((new State() as any).foo, undefined, "no implicit instantiation without .default()");
+        });
+
+        it("should reject a SYNCED t.ref() of a bare non-Schema class", () => {
+            class Plain { x = 0; }
+            // type-checks (t.ref accepts any constructor) but throws at definition,
+            // pointing the user at .noSync() / Metadata.setFields().
+            assert.throws(
+                () => schema({ p: t.ref(Plain) }, 'BadRef'),
+                /non-Schema class 'Plain'/,
+            );
+        });
+
     });
 
 });

@@ -89,8 +89,23 @@ export class FieldBuilder<
         this._type = type;
     }
 
-    /** Provide a default value for this field. */
-    default(value: T): FieldBuilder<T, true, IsOptional> {
+    /**
+     * Provide a default value for this field.
+     *
+     * Pass a **factory function** `() => T` to build a FRESH value per instance
+     * (invoked once per construction) instead of sharing a single default — the
+     * clean way to default a ref to a plain custom class, or any field that must
+     * not share a mutable default across instances:
+     *
+     * ```ts
+     * acc: t.ref(GunAccuracy).noSync().default(() => new GunAccuracy()),
+     * ```
+     *
+     * Schema fields are never function-typed, so a function is always treated as a
+     * factory. A non-function value is shared (and cloned per instance if it is
+     * clone-able, e.g. a Schema/collection).
+     */
+    default(value: T | (() => T)): FieldBuilder<T, true, IsOptional> {
         this._default = value;
         this._hasDefault = true;
         return this as unknown as FieldBuilder<T, true, IsOptional>;
@@ -359,10 +374,10 @@ type RefHasDefault<C> =
         : true;
 
 interface RefFactory {
-    <C extends Constructor<Schema>>(ctor: C): FieldBuilder<InstanceType<C>, RefHasDefault<C>, false>;
+    <C extends Constructor>(ctor: C): FieldBuilder<InstanceType<C>, RefHasDefault<C>, false>;
 }
 
-const refFactory: RefFactory = (<C extends Constructor<Schema>>(ctor: C) =>
+const refFactory: RefFactory = (<C extends Constructor>(ctor: C) =>
     new FieldBuilder<InstanceType<C>>(ctor as unknown as DefinitionType)) as RefFactory;
 
 export const t = Object.freeze({
@@ -383,7 +398,16 @@ export const t = Object.freeze({
     bigint64: primitive<bigint>("bigint64"),
     biguint64: primitive<bigint>("biguint64"),
 
-    /** Reference to a Schema subtype. `t.array(Item)` usually reads better, but this is available when a plain ref is needed. */
+    /**
+     * Reference to a Schema subtype — `t.array(Item)` usually reads better, but
+     * this is available when a plain ref is needed.
+     *
+     * The target may also be a **non-Schema custom class**. A synced ref still
+     * requires it to be encodable — a `Schema` subclass, or a class retrofitted
+     * with `Metadata.setFields(...)` (both carry `[Symbol.metadata]`); a bare
+     * custom class is rejected at `schema()` time. A `.noSync()` (local-only)
+     * field accepts ANY zero-arg class and auto-instantiates one per parent.
+     */
     ref: refFactory,
     array: arrayFactory,
     map: mapFactory,
