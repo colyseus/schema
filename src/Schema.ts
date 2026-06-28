@@ -195,7 +195,8 @@ export class Schema<C = any> implements IRef {
             return view.isChangeTreeVisible(ref[$changes]);
 
         } else {
-            // view pass: custom tag
+            // view pass: custom tag (bitmask) — field's stored mask matches
+            // if it shares any bit with a tag this view was add()ed with.
             return view.hasTagOnTree(ref[$changes], tag);
         }
     }

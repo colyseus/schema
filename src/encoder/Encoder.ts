@@ -348,7 +348,12 @@ export class Encoder<T extends Schema = any> {
 
         if (it.offset > buffer.byteLength) {
             buffer = this._resizeBuffer(buffer, it.offset);
-            return this._encodeChannel({ offset: initialOffset }, view, buffer, initialOffset, unreliable);
+            // Reuse `it` (reset its offset) instead of a fresh iterator so the
+            // caller's `it.offset` ends at the true final offset. A fresh one
+            // strands `it.offset` at the overflow value and corrupts the next
+            // view's region in a multi-view encode.
+            it.offset = initialOffset;
+            return this._encodeChannel(it, view, buffer, initialOffset, unreliable);
         }
 
         return buffer.subarray(0, it.offset);
@@ -391,7 +396,8 @@ export class Encoder<T extends Schema = any> {
 
         if (it.offset > buffer.byteLength) {
             buffer = this._resizeBuffer(buffer, it.offset);
-            return this.encodeFullSync({ offset: initialOffset }, buffer, emitFiltered, view);
+            it.offset = initialOffset; // reuse `it` so the caller's offset stays accurate
+            return this.encodeFullSync(it, buffer, emitFiltered, view, initialOffset);
         }
 
         return buffer.subarray(0, it.offset);
@@ -431,12 +437,24 @@ export class Encoder<T extends Schema = any> {
     ) {
         const viewOffset = it.offset;
 
-        this.encodeFullSync(it, bytes, /* emitFiltered */ true, view, viewOffset);
+        // encodeFullSync() may reallocate the buffer on overflow — keep its
+        // return, not the stale `bytes`, or the concat below reads a dead buffer.
+        bytes = this.encodeFullSync(it, bytes, /* emitFiltered */ true, view, viewOffset);
 
         return concatBytes(
             bytes.subarray(0, sharedOffset),
             bytes.subarray(viewOffset, it.offset)
         );
+    }
+
+    /** Grow `buffer` to keep BUFFER_SIZE free bytes past `offset`, preserving `[0, offset)`. */
+    protected ensureCapacity(buffer: Uint8Array, offset: number): Uint8Array {
+        if (offset + Encoder.BUFFER_SIZE <= buffer.byteLength) { return buffer; }
+        const size = Math.ceil((offset + Encoder.BUFFER_SIZE) / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
+        const grown = new Uint8Array(size);
+        grown.set(buffer.subarray(0, offset));
+        if (buffer === this.sharedBuffer) { this.sharedBuffer = grown; }
+        return grown;
     }
 
     encodeView(
@@ -487,6 +505,10 @@ export class Encoder<T extends Schema = any> {
             const ref = changeTree.ref;
             const refTarget = changeTree.refTarget;
 
+            // These writes are unguarded and unrecoverable (view.changes is cleared
+            // below), so unlike encode() they can't re-encode on overflow — grow ahead.
+            bytes = this.ensureCapacity(bytes, it.offset);
+
             bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
             encode.number(bytes, ref[$refId], it);
 
@@ -509,9 +531,14 @@ export class Encoder<T extends Schema = any> {
         //
         view.changes.clear();
 
-        // per-tick view-scoped pass: walks the same `changes` queue as the
+        // Per-tick view-scoped pass: walks the same `changes` queue as the
         // shared pass, but `encodeChangeCb` emits only filtered fields.
-        this.encode(it, view, bytes, viewOffset);
+        // encode() may reallocate the buffer on overflow — keep its return,
+        // not the stale `bytes`. Anchor the re-encode at the current offset
+        // (the default `initialOffset = it.offset`), NOT `viewOffset`: a
+        // resize must not clobber the view.changes already written at
+        // [viewOffset, it.offset).
+        bytes = this.encode(it, view, bytes);
 
         return concatBytes(
             bytes.subarray(0, sharedOffset),
@@ -534,7 +561,9 @@ export class Encoder<T extends Schema = any> {
     ) {
         const viewOffset = it.offset;
 
-        this.encodeUnreliable(it, view, bytes, viewOffset);
+        // Capture the return: a resize on overflow reallocates the buffer, and
+        // the concat below must read from the live one, not the stale `bytes`.
+        bytes = this.encodeUnreliable(it, view, bytes, viewOffset);
 
         return concatBytes(
             bytes.subarray(0, sharedOffset),

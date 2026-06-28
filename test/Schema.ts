@@ -52,6 +52,12 @@ export function assertDeepStrictEqualEncodeAll<T extends Schema>(state: T, asset
     // assert.deepStrictEqual(freshDecode.toJSON(), state.toJSON());
 }
 
+/**
+ * Assert the encoder and decoder agree on every reference:
+ * - matching refCounts (encoder vs decoder), and
+ * - no orphans — the decoder holds no reference the encoder has dropped
+ *   (see `assertNoOrphanRefs`).
+ */
 export function assertRefIdCounts<T extends Schema>(source: T, target: T) {
     // assert ref counts
     const encoder = getEncoder(source);
@@ -63,6 +69,30 @@ export function assertRefIdCounts<T extends Schema>(source: T, target: T) {
         const decoderRefCount = decoder.root.refCount[refId] ?? 0;
         assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for '${ref?.constructor.name}' (refId: ${refId}) => (Encoder count: ${encoderRefCount}, Decoder count: ${decoderRefCount})
 \n${Schema.debugRefIds(source)}`);
+    }
+
+    assertNoOrphanRefs(source, target);
+}
+
+/**
+ * Assert the decoder isn't holding onto any reference the encoder has dropped.
+ *
+ * Complements `assertRefIdCounts`: that compares refCounts (and so catches an
+ * encoder/decoder count mismatch), but a leak that survives only in the
+ * decoder's `refs` Map — the structure `"refId not found"` reads from — after
+ * its refCount entry is gone would slip past it. A decoder ref is an orphan
+ * when the encoder no longer considers it live (`refCount[refId] > 0`).
+ */
+export function assertNoOrphanRefs<T extends Schema>(source: T, target: T) {
+    const encoder = getEncoder(source);
+    const decoder = getDecoder(target);
+
+    for (const refId of decoder.root.refs.keys()) {
+        assert.ok(
+            encoder.root.refCount[refId] > 0,
+            `decoder holds orphan refId ${refId} (${decoder.root.refs.get(refId)?.constructor.name}) — encoder refCount=${encoder.root.refCount[refId] ?? "absent"}
+\n${Schema.debugRefIds(source)}`,
+        );
     }
 }
 

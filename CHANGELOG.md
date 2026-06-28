@@ -203,6 +203,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   init-props derivation can distinguish required vs. omittable fields
   without runtime cost.
 
+## 4.0.27
+
+### Encoder: fix `@view` corruption when a filtered patch grows the buffer
+
+With many filtered changes for a client, a single `Encoder` flush could exceed
+the default 8 KB `BUFFER_SIZE` and reallocate the shared buffer mid-flush. When
+that happened, `encodeView()` / `encodeAllView()` kept slicing from the old (now
+discarded) buffer and left the shared iterator's `offset` stuck at the
+pre-resize overflow value — so every *subsequent* client in the same flush got a
+corrupted patch. The `view.changes` write loop also had no overflow guard, and
+its operations are cleared immediately after, so a dropped write couldn't be
+recovered by re-encoding. On the decoder this surfaced as misaligned values
+(e.g. positions decoding as huge floats), `"refId" not found`, and
+`previousValue.entries is not a function`.
+
+It mostly affected rooms with `@view()`-filtered collections holding many
+visible children (lots of nearby players/NPCs). Adding fields to those schemas
+made it more frequent by enlarging each patch.
+
+Buffer growth is now a single `ensureCapacity()` helper used by both the
+`encode()` resize path and the `view.changes` loop; the resize re-encode reuses
+the same iterator so `offset` stays accurate; and the per-view methods slice
+from the buffer that `encode()` returns. Large filtered patches are also
+~15–20% faster, since growth is incremental instead of re-encoding the whole
+changeset on every overflow.
+
+Thanks to [@TJEvans](https://github.com/TJEvans) and
+[@XT60](https://github.com/XT60) for the report.
+
+## 4.0.26
+
+### Decoder: fix "refId not found" when replacing a collection that holds a shared child
+
+A `Schema` instance shared between a collection and another holder (e.g. an
+array element also assigned to a sibling field) could be dropped on the client
+when that collection was replaced in the same patch, surfacing as
+`"refId" not found` / `trying to remove refId that doesn't exist` decode errors.
+
+The collection-replace path in `decodeValue` was decrementing each previous
+child's refId, then `garbageCollectDeletedRefs()` decremented them again — a
+*shared* child got double-counted and dropped while still referenced. Child
+reference-counting is now left to GC. A guard also releases the previous
+collection's own refId when the replacement op isn't tagged `DELETE` (e.g. an
+`encodeAll()` not followed by `discardChanges()`), preventing a leak.
+
+Thanks to [@beemdvp](https://github.com/beemdvp) for the report.
+
+### `@view()` now accepts bitwise tags
+
+The `@view()` decorator can now be given a bitmask of tags
+(`@view(Tag.A | Tag.B)`). A field becomes visible to any client whose
+`view.add(obj, tag)` call shares at least one bit with the field's mask, so a
+single field can be exposed to multiple tag audiences at once.
+
+Internally, per-`ChangeTree` tag storage moved from `WeakMap<ChangeTree,
+Set<number>>` to a single integer bitmask, with membership resolved via bitwise
+`&` instead of `Set` lookups. Custom tags must therefore be powers of two
+(`1 << 0`, `1 << 1`, ...). The default `@view()` tag is unaffected.
+
+Thanks to [@FTWinston](https://github.com/FTWinston) for the contribution.
+
 ## 4.0.25
 
 ### `@view(N)` collections: items pushed after `view.add` are now visible

@@ -127,16 +127,20 @@ describe("StateView", () => {
 
     describe("tagged properties", () => {
         it("filter properties by tag", () => {
-            enum Tag { ZERO = 0, ONE = 1 };
+            // Bitwise tags must be powers of 2.
+            enum Tag {
+                FIRST = 1 << 0, // 1
+                SECOND = 1 << 1 // 2
+            }
 
             class Player extends Schema {
                 @view()
                 @type("number") tag_default: number;
 
-                @view(Tag.ZERO)
+                @view(Tag.FIRST)
                 @type("number") tag_0: number;
 
-                @view(Tag.ONE)
+                @view(Tag.SECOND)
                 @type("number") tag_1: number;
             }
 
@@ -158,8 +162,8 @@ describe("StateView", () => {
 
             const client1 = createClientWithView(state);
             client1.view.add(state.players.get("0"));
-            client1.view.add(state.players.get("1"), Tag.ZERO);
-            client1.view.add(state.players.get("2"), Tag.ONE);
+            client1.view.add(state.players.get("1"), Tag.FIRST);
+            client1.view.add(state.players.get("2"), Tag.SECOND);
             client1.view.add(state.players.get("3"));
             client1.view.add(state.players.get("4"));
 
@@ -194,6 +198,114 @@ describe("StateView", () => {
             }
 
             assertEncodeAllMultiple(encoder, state, [client1, client2])
+        });
+
+        it("@view() with bitwise tags: field visible to any client whose add-tag shares a bit", () => {
+            // Tags must be powers of 2 with the bitwise approach.
+            // @view(Tag.A | Tag.B) determines a client's visibility by (fieldMask & clientTag) !== 0.
+            const Tag = { A: 1 << 0, B: 1 << 1, C: 1 << 2 };
+
+            class Player extends Schema {
+                @view() @type("number") tag_default: number;
+
+                // visible to clients added with Tag.A OR Tag.B (stored as mask 3)
+                @view(Tag.A | Tag.B) @type("number") shared: number;
+
+                @view(Tag.A) @type("number") only_a: number;
+                @view(Tag.B) @type("number") only_b: number;
+            }
+
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            const player = new Player().assign({
+                tag_default: 1,
+                shared: 2,
+                only_a: 3,
+                only_b: 4,
+            });
+            state.players.set("p", player);
+
+            const encoder = getEncoder(state);
+
+            // clientA: added with Tag.A — should see shared + only_a
+            const clientA = createClientWithView(state);
+            clientA.view.add(player, Tag.A);
+
+            // clientB: added with Tag.B — should see shared + only_b
+            const clientB = createClientWithView(state);
+            clientB.view.add(player, Tag.B);
+
+            // clientC: added with Tag.C — should NOT see shared, only_a or only_b
+            const clientC = createClientWithView(state);
+            clientC.view.add(player, Tag.C);
+
+            // clientDefault: added with default tag — should see tag_default only
+            const clientDefault = createClientWithView(state);
+            clientDefault.view.add(player);
+
+            // clientAB: added with Tag.A|Tag.B combined bitmask — sees all three tagged fields
+            const clientAB = createClientWithView(state);
+            clientAB.view.add(player, Tag.A | Tag.B);
+
+            encodeMultiple(encoder, state, [clientA, clientB, clientC, clientDefault, clientAB]);
+
+            // clientA sees tag_default, shared and only_a
+            assert.strictEqual(clientA.state.players.get("p").tag_default, 1);
+            assert.strictEqual(clientA.state.players.get("p").shared, 2);
+            assert.strictEqual(clientA.state.players.get("p").only_a, 3);
+            assert.strictEqual(clientA.state.players.get("p").only_b, undefined);
+
+            // clientB sees tag_default, shared and only_b
+            assert.strictEqual(clientB.state.players.get("p").tag_default, 1);
+            assert.strictEqual(clientB.state.players.get("p").shared, 2);
+            assert.strictEqual(clientB.state.players.get("p").only_a, undefined);
+            assert.strictEqual(clientB.state.players.get("p").only_b, 4);
+
+            // clientC sees tag_default only (Tag.C=4 shares no bits with mask 3)
+            assert.strictEqual(clientC.state.players.get("p").tag_default, 1);
+            assert.strictEqual(clientC.state.players.get("p").shared, undefined);
+            assert.strictEqual(clientC.state.players.get("p").only_a, undefined);
+            assert.strictEqual(clientC.state.players.get("p").only_b, undefined);
+
+            // clientDefault sees tag_default only
+            assert.strictEqual(clientDefault.state.players.get("p").tag_default, 1);
+            assert.strictEqual(clientDefault.state.players.get("p").shared, undefined);
+            assert.strictEqual(clientDefault.state.players.get("p").only_a, undefined);
+            assert.strictEqual(clientDefault.state.players.get("p").only_b, undefined);
+
+            // clientAB (added with Tag.A|Tag.B) sees shared, only_a AND only_b
+            assert.strictEqual(clientAB.state.players.get("p").tag_default, 1);
+            assert.strictEqual(clientAB.state.players.get("p").shared, 2);
+            assert.strictEqual(clientAB.state.players.get("p").only_a, 3);
+            assert.strictEqual(clientAB.state.players.get("p").only_b, 4);
+
+            // Mutate tag_default — @view() fields must propagate to ALL clients,
+            // including those added with a custom tag (the fix in forEachChild / changes block).
+            player.tag_default = 99;
+            encodeMultiple(encoder, state, [clientA, clientB, clientC, clientDefault, clientAB]);
+
+            assert.strictEqual(clientA.state.players.get("p").tag_default, 99, "custom-tag client A must receive @view() field update");
+            assert.strictEqual(clientB.state.players.get("p").tag_default, 99, "custom-tag client B must receive @view() field update");
+            assert.strictEqual(clientC.state.players.get("p").tag_default, 99, "custom-tag client C must receive @view() field update");
+            assert.strictEqual(clientDefault.state.players.get("p").tag_default, 99, "default-tag client must receive @view() field update");
+            assert.strictEqual(clientAB.state.players.get("p").tag_default, 99, "combined-tag client must receive @view() field update");
+
+            // Custom-tagged fields must still only reach their respective clients after mutation.
+            player.only_a = 30;
+            player.only_b = 40;
+            encodeMultiple(encoder, state, [clientA, clientB, clientC, clientDefault, clientAB]);
+
+            assert.strictEqual(clientA.state.players.get("p").only_a, 30);
+            assert.strictEqual(clientA.state.players.get("p").only_b, undefined);
+            assert.strictEqual(clientB.state.players.get("p").only_a, undefined);
+            assert.strictEqual(clientB.state.players.get("p").only_b, 40);
+            assert.strictEqual(clientDefault.state.players.get("p").only_a, undefined);
+            assert.strictEqual(clientDefault.state.players.get("p").only_b, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [clientA, clientB, clientC, clientDefault, clientAB])
         });
 
         it("view.remove() change should assign property to undefined", () => {
@@ -4104,6 +4216,189 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client]);
         });
 
+    });
+
+    it("replacing a @view collection whose child is shared into another @view field", () => {
+        //
+        // Regression guard for the collection-replace refId bookkeeping under
+        // a filtered (StateView) encode: a child shared between a filtered
+        // array and a filtered field must survive the array's replacement
+        // without being dropped / leaked on the per-client decoder.
+        //
+        class Item extends Schema {
+            @type("number") amount: number;
+            constructor(amount?: number) { super(); this.amount = amount; }
+        }
+        class State extends Schema {
+            @view() @type([Item]) items = new ArraySchema<Item>();
+            @view() @type(Item) featured: Item;
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+
+        const shared = new Item(1);
+        state.items.push(new Item(0), shared);
+        state.featured = shared; // shared between the filtered array and the filtered field
+
+        const client = createClientWithView(state);
+        client.view.add(state.items);
+        client.view.add(shared);
+
+        encodeMultiple(encoder, state, [client]);
+        assert.strictEqual(client.state.items.length, 2);
+        assert.strictEqual(client.state.featured?.amount, 1);
+
+        // replace the filtered array; the shared item survives via `featured`
+        state.items = new ArraySchema<Item>(new Item(9));
+        client.view.add(state.items);
+        encodeMultiple(encoder, state, [client]);
+
+        assert.strictEqual(client.state.featured?.amount, 1, "shared item survives the array replacement");
+        assert.strictEqual(client.state.items.length, 1);
+
+        assertEncodeAllMultiple(encoder, state, [client]);
+    });
+
+    it("should not corrupt other views when a filtered patch grows the encode buffer", () => {
+        // A tiny BUFFER_SIZE forces the multi-view flush to reallocate the shared
+        // buffer mid-encode. encodeView/encodeAllView must keep reading the
+        // resized buffer and keep `it.offset` accurate, else later views in the
+        // same flush decode as "refId not found" / "previousValue.entries is not
+        // a function".
+        const originalBufferSize = Encoder.BUFFER_SIZE;
+        const originalWarn = console.warn;
+        Encoder.BUFFER_SIZE = 256;
+        console.warn = () => {}; // silence the overflow advisory we deliberately trigger
+        try {
+            class Npc extends Schema {
+                @type("uint32") x = 0;
+                @type("uint32") y = 0;
+                @type("string") name = "";
+                @type("string") tag = "";
+            }
+            class State extends Schema {
+                @view() @type({ map: Npc }) npcs = new MapSchema<Npc>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const NCLIENTS = 4, NUM = 30, WINDOW = 12;
+            const clients = Array.from({ length: NCLIENTS }, () => createClientWithView(state));
+            for (const c of clients) c.view.add(state);
+
+            const npcs: Npc[] = [];
+            for (let i = 0; i < NUM; i++) {
+                const npc = new Npc().assign({ x: i, y: 1000 + i, name: `Npc${i}`, tag: `tag-${i}` });
+                state.npcs.set(`n${i}`, npc);
+                npcs.push(npc);
+            }
+
+            // each client sees a sliding window of NPCs that churns every frame,
+            // while every NPC keeps moving — large per-view patches that overflow.
+            const start = new Array(NCLIENTS).fill(0);
+            for (let frame = 0; frame < 40; frame++) {
+                for (let i = 0; i < NUM; i++) npcs[i].x = (npcs[i].x + 1) >>> 0;
+                for (let c = 0; c < NCLIENTS; c++) {
+                    start[c] = (start[c] + 1) % NUM;
+                    const visible = new Set<number>();
+                    for (let k = 0; k < WINDOW; k++) visible.add((start[c] + k) % NUM);
+                    for (let i = 0; i < NUM; i++) {
+                        if (visible.has(i)) clients[c].view.add(npcs[i]);
+                        else clients[c].view.remove(npcs[i]);
+                    }
+                }
+                encodeMultiple(encoder, state, clients); // must not throw
+
+                for (let c = 0; c < NCLIENTS; c++) {
+                    for (let i = 0; i < NUM; i++) {
+                        const npc = clients[c].state.npcs.get(`n${i}`);
+                        if (!npc) { continue; } // filtered out of this view
+                        assert.strictEqual(npc.x, npcs[i].x, `client${c} n${i} x @frame${frame}`);
+                        assert.strictEqual(npc.y, npcs[i].y, `client${c} n${i} y @frame${frame}`);
+                        assert.strictEqual(npc.name, `Npc${i}`, `client${c} n${i} name @frame${frame}`);
+                        assert.strictEqual(npc.tag, `tag-${i}`, `client${c} n${i} tag @frame${frame}`);
+                    }
+                }
+            }
+        } finally {
+            Encoder.BUFFER_SIZE = originalBufferSize;
+            console.warn = originalWarn;
+        }
+    });
+
+    it("should filter exactly across multiple clients when patches grow the buffer", () => {
+        // Each client gets an explicit, distinct + overlapping view set; a tiny
+        // BUFFER_SIZE forces the multi-view flush to resize. Every client must
+        // decode EXACTLY its set — no entity leaked from another client's view,
+        // none missing — with exact values.
+        const originalBufferSize = Encoder.BUFFER_SIZE;
+        const originalWarn = console.warn;
+        Encoder.BUFFER_SIZE = 256;
+        console.warn = () => {}; // silence the overflow advisory we deliberately trigger
+        try {
+            class Entity extends Schema {
+                @type("uint32") x = 0;
+                @type("string") name = "";
+                @type("string") tag = "";
+            }
+            class State extends Schema {
+                @view() @type({ map: Entity }) ents = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const NUM = 40, NCLIENTS = 4;
+            const ents: Entity[] = [];
+            for (let i = 0; i < NUM; i++) {
+                const e = new Entity().assign({ x: i, name: `E${i}`, tag: `t${i}` });
+                state.ents.set(`e${i}`, e);
+                ents.push(e);
+            }
+            const clients = Array.from({ length: NCLIENTS }, () => createClientWithView(state));
+            for (const c of clients) c.view.add(state);
+
+            const wanted: Set<number>[] = clients.map(() => new Set<number>());
+            const setView = (c: number, indices: number[]) => {
+                wanted[c] = new Set(indices);
+                for (let i = 0; i < NUM; i++) {
+                    if (wanted[c].has(i)) clients[c].view.add(ents[i]);
+                    else clients[c].view.remove(ents[i]);
+                }
+            };
+            const checkExact = (label: string) => {
+                for (let c = 0; c < NCLIENTS; c++) {
+                    const got = new Set<number>();
+                    for (let i = 0; i < NUM; i++) {
+                        if (clients[c].state.ents.get(`e${i}`) !== undefined) { got.add(i); }
+                    }
+                    for (const i of wanted[c]) assert.ok(got.has(i), `${label} client${c} missing e${i}`);
+                    for (const i of got) assert.ok(wanted[c].has(i), `${label} client${c} leaked e${i}`);
+                    for (const i of wanted[c]) {
+                        const e = clients[c].state.ents.get(`e${i}`)!;
+                        assert.strictEqual(e.x, ents[i].x, `${label} client${c} e${i} x`);
+                        assert.strictEqual(e.name, `E${i}`, `${label} client${c} e${i} name`);
+                    }
+                }
+            };
+
+            // shifting per-client stripes + a growing shared block
+            for (let round = 0; round <= 8; round++) {
+                for (let c = 0; c < NCLIENTS; c++) {
+                    const set: number[] = [];
+                    for (let i = 0; i < NUM; i++) if ((i + round * 3) % NCLIENTS === c || i < round) set.push(i);
+                    setView(c, set);
+                }
+                for (let i = 0; i < NUM; i++) ents[i].x = (ents[i].x + 1) >>> 0;
+                encodeMultiple(encoder, state, clients);
+                checkExact(`round${round}`);
+            }
+        } finally {
+            Encoder.BUFFER_SIZE = originalBufferSize;
+            console.warn = originalWarn;
+        }
     });
 
 });

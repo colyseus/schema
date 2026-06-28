@@ -224,39 +224,61 @@ export class StateView {
     // `Schema.ts` filter check — `hasTagOnTree` is O(1) bitwise.
     // ──────────────────────────────────────────────────────────────────
 
-    /** True iff this view has `tag` associated with `tree`. */
+    /**
+     * True iff this view shares at least one tag bit with `tree`.
+     *
+     * `tagViews` is keyed by individual power-of-two bits (custom tags must
+     * be powers of two; `@view(A|B)` field masks are decomposed on store).
+     * A field whose mask is `tag` is visible if the view was `add()`ed with
+     * any overlapping bit — so we walk `tag`'s set bits and return on the
+     * first match. Passing DEFAULT_VIEW_TAG (-1, all bits) answers "does
+     * this view hold ANY custom tag on the tree".
+     */
     public hasTagOnTree(tree: ChangeTree, tag: number): boolean {
         const map = tree.tagViews;
         if (map === undefined) return false;
-        const arr = map.get(tag);
         const slot = this._slot;
-        return arr !== undefined && slot < arr.length && (arr[slot] & this._bit) !== 0;
+        const bit = this._bit;
+        for (let bits = tag; bits !== 0; bits &= bits - 1) {
+            const arr = map.get(bits & -bits); // isolate lowest set bit
+            if (arr !== undefined && slot < arr.length && (arr[slot] & bit) !== 0) return true;
+        }
+        return false;
     }
 
-    /** Mark `tree` as carrying `tag` for this view. */
+    /** Mark `tree` as carrying `tag` (each of its bits) for this view. */
     public addTag(tree: ChangeTree, tag: number): void {
+        // DEFAULT_VIEW_TAG visibility lives in `visibleViews`, not here.
+        if (tag === DEFAULT_VIEW_TAG) return;
         let map = tree.tagViews;
         if (map === undefined) {
             map = tree.tagViews = new Map();
         }
-        let arr = map.get(tag);
-        if (arr === undefined) {
-            arr = [];
-            map.set(tag, arr);
-        }
         const slot = this._slot;
-        while (arr.length <= slot) arr.push(0);
-        arr[slot] |= this._bit;
+        const bit = this._bit;
+        for (let bits = tag; bits > 0; bits &= bits - 1) {
+            const b = bits & -bits; // isolate lowest set bit
+            let arr = map.get(b);
+            if (arr === undefined) {
+                arr = [];
+                map.set(b, arr);
+            }
+            while (arr.length <= slot) arr.push(0);
+            arr[slot] |= bit;
+        }
     }
 
-    /** Clear this view's `tag` bit on `tree`. */
+    /** Clear each of `tag`'s bits for this view on `tree`. */
     public removeTag(tree: ChangeTree, tag: number): void {
+        if (tag === DEFAULT_VIEW_TAG) return;
         const map = tree.tagViews;
         if (map === undefined) return;
-        const arr = map.get(tag);
-        if (arr === undefined) return;
         const slot = this._slot;
-        if (slot < arr.length) arr[slot] &= ~this._bit;
+        const clearMask = ~this._bit;
+        for (let bits = tag; bits > 0; bits &= bits - 1) {
+            const arr = map.get(bits & -bits);
+            if (arr !== undefined && slot < arr.length) arr[slot] &= clearMask;
+        }
     }
 
     /** Clear ALL tag bits this view holds on `tree` (used when the per-tag isn't known). */
@@ -409,10 +431,16 @@ export class StateView {
         // direct array index instead of a per-field-object hop.
         const tags = changeTree.encDescriptor.tags;
         changeTree.forEachChild((change, index) => {
-            // Do not ADD children that don't have the same tag
+            // Do not ADD children whose field tag shares no bit with `tag`.
+            // DEFAULT_VIEW_TAG fields are visible to all clients; custom-tag
+            // fields only when bits overlap, and never to default-tag clients.
             const fieldTag = tags[index];
-            if (fieldTag !== undefined && fieldTag !== tag) {
-                return;
+            if (fieldTag !== undefined) {
+                const tagMatch = fieldTag === DEFAULT_VIEW_TAG ||
+                    (tag !== DEFAULT_VIEW_TAG && (fieldTag & tag) !== 0);
+                if (!tagMatch) {
+                    return;
+                }
             }
 
             if (this.add(change.ref, tag, false)) {
@@ -424,12 +452,19 @@ export class StateView {
         if (tag !== DEFAULT_VIEW_TAG) {
             this.addTag(changeTree, tag);
 
-            // Ref: add tagged properties
-            metadata?.[$fieldIndexesByViewTag]?.[tag]?.forEach((index) => {
-                if (changeTree.getChange(index) !== OPERATION.DELETE) {
-                    changes.set(index, OPERATION.ADD);
+            // Ref: add tagged properties. `$fieldIndexesByViewTag` is keyed
+            // per-bit, so a combined add-tag (`view.add(obj, A|B)`) must look
+            // up each set bit to force-ADD every field that shares a bit.
+            const byTag = metadata?.[$fieldIndexesByViewTag];
+            if (byTag !== undefined) {
+                for (let bits = tag; bits > 0; bits &= bits - 1) {
+                    byTag[bits & -bits]?.forEach((index) => {
+                        if (changeTree.getChange(index) !== OPERATION.DELETE) {
+                            changes.set(index, OPERATION.ADD);
+                        }
+                    });
                 }
-            });
+            }
 
         } else if (!changeTree.isNew || isChildAdded) {
             // new structures will be added as part of .encode() call, no need to force it to .encodeView()
@@ -447,7 +482,8 @@ export class StateView {
                 if (
                     isInvisible || // if "invisible", include all
                     tagAtIndex === undefined || // "all change" with no tag
-                    tagAtIndex === tag // tagged property
+                    tagAtIndex === DEFAULT_VIEW_TAG || // visible to all clients
+                    (tag !== DEFAULT_VIEW_TAG && (tagAtIndex & tag) !== 0) // tag bits overlap
                 ) {
                     changes.set(index, OPERATION.ADD);
                     isChildAdded = true;
@@ -479,7 +515,11 @@ export class StateView {
         const tags = tree.encDescriptor.tags;
         tree.forEachChild((child, index) => {
             const fieldTag = tags[index];
-            if (fieldTag !== undefined && fieldTag !== tag) return;
+            if (fieldTag !== undefined) {
+                const tagMatch = fieldTag === DEFAULT_VIEW_TAG ||
+                    (tag !== DEFAULT_VIEW_TAG && (fieldTag & tag) !== 0);
+                if (!tagMatch) return;
+            }
 
             if (child.isNew) {
                 this.markVisible(child);
@@ -702,21 +742,27 @@ export class StateView {
             }
 
         } else {
-            // delete only tagged properties
+            // delete only tagged properties. `$fieldIndexesByViewTag` is
+            // keyed per-bit, so a combined tag iterates each set bit.
             const names = changeTree.encDescriptor.names;
-            metadata?.[$fieldIndexesByViewTag][tag].forEach((index) => {
-                changes.set(index, OPERATION.DELETE);
+            const byTag = metadata?.[$fieldIndexesByViewTag];
+            if (byTag !== undefined) {
+                for (let bits = tag; bits > 0; bits &= bits - 1) {
+                    byTag[bits & -bits]?.forEach((index) => {
+                        changes.set(index, OPERATION.DELETE);
 
-                // Remove child structures from visible set
-                const value = changeTree.ref[names[index] as keyof Ref];
-                if (value?.[$changes]) {
-                    this.unmarkVisible(value[$changes]);
-                    this._recursiveDeleteVisibleChangeTree(value[$changes]);
+                        // Remove child structures from visible set
+                        const value = changeTree.ref[names[index] as keyof Ref];
+                        if (value?.[$changes]) {
+                            this.unmarkVisible(value[$changes]);
+                            this._recursiveDeleteVisibleChangeTree(value[$changes]);
+                        }
+                    });
                 }
-            });
+            }
         }
 
-        // remove tag bit for this view
+        // remove tag bits for this view
         if (tag === undefined) {
             this.removeAllTagsOnTree(changeTree);
         } else {
