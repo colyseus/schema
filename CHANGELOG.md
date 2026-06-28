@@ -1,5 +1,34 @@
 # Changelog
 
+## 4.0.27
+
+### Encoder: fix `@view` corruption when a filtered patch grows the buffer
+
+With many filtered changes for a client, a single `Encoder` flush could exceed
+the default 8 KB `BUFFER_SIZE` and reallocate the shared buffer mid-flush. When
+that happened, `encodeView()` / `encodeAllView()` kept slicing from the old (now
+discarded) buffer and left the shared iterator's `offset` stuck at the
+pre-resize overflow value — so every *subsequent* client in the same flush got a
+corrupted patch. The `view.changes` write loop also had no overflow guard, and
+its operations are cleared immediately after, so a dropped write couldn't be
+recovered by re-encoding. On the decoder this surfaced as misaligned values
+(e.g. positions decoding as huge floats), `"refId" not found`, and
+`previousValue.entries is not a function`.
+
+It mostly affected rooms with `@view()`-filtered collections holding many
+visible children (lots of nearby players/NPCs). Adding fields to those schemas
+made it more frequent by enlarging each patch.
+
+Buffer growth is now a single `ensureCapacity()` helper used by both the
+`encode()` resize path and the `view.changes` loop; the resize re-encode reuses
+the same iterator so `offset` stays accurate; and the per-view methods slice
+from the buffer that `encode()` returns. Large filtered patches are also
+~15–20% faster, since growth is incremental instead of re-encoding the whole
+changeset on every overflow.
+
+Thanks to [@TJEvans](https://github.com/TJEvans) and
+[@XT60](https://github.com/XT60) for the report.
+
 ## 4.0.26
 
 ### Decoder: fix "refId not found" when replacing a collection that holds a shared child

@@ -126,36 +126,23 @@ export class Encoder<T extends Schema = any> {
             }
         }
 
-        if (it.offset > buffer.byteLength) {
-            // we can assume that n + 1 BUFFER_SIZE will suffice given that we are likely done with encoding at this point
-            // multiples of BUFFER_SIZE are faster to allocate than arbitrary sizes
-            const newSize = Math.ceil(it.offset / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
-
-            console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
-
-    import { Encoder } from "@colyseus/schema";
-    Encoder.BUFFER_SIZE = ${Math.round(newSize / 1024)} * 1024; // ${Math.round(newSize / 1024)} KB
-`);
-
-            //
-            // resize buffer and re-encode (TODO: can we avoid re-encoding here?)
-            // -> No we probably can't unless we catch the need for resize before encoding which is likely more computationally expensive than resizing on demand
-            //
-            const newBuffer = new Uint8Array(newSize);
-            newBuffer.set(buffer); // copy previous encoding steps beyond the initialOffset
-            buffer = newBuffer;
-
-            // assign resized buffer to local sharedBuffer
-            if (buffer === this.sharedBuffer) {
-                this.sharedBuffer = buffer;
-            }
-
-            return this.encode({ offset: initialOffset }, view, buffer, changeSetName, isEncodeAll);
-
-        } else {
-
+        if (it.offset <= buffer.byteLength) {
             return buffer.subarray(0, it.offset);
         }
+
+        // Overflowed: grow and re-encode. Reuse the same iterator so `it.offset`
+        // ends accurate — a fresh one strands it at the overflow value and
+        // corrupts the next view's `viewOffset` in a multi-view encode.
+        buffer = this.ensureCapacity(buffer, it.offset);
+
+        console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
+
+    import { Encoder } from "@colyseus/schema";
+    Encoder.BUFFER_SIZE = ${Math.round(buffer.byteLength / 1024)} * 1024; // ${Math.round(buffer.byteLength / 1024)} KB
+`);
+
+        it.offset = initialOffset;
+        return this.encode(it, view, buffer, changeSetName, isEncodeAll);
     }
 
     encodeAll(
@@ -173,13 +160,23 @@ export class Encoder<T extends Schema = any> {
     ) {
         const viewOffset = it.offset;
 
-        // try to encode "filtered" changes
-        this.encode(it, view, bytes, "allFilteredChanges", true, viewOffset);
+        // encode() may reallocate the buffer — keep its return, not the stale `bytes`.
+        bytes = this.encode(it, view, bytes, "allFilteredChanges", true, viewOffset);
 
         return concatBytes(
             bytes.subarray(0, sharedOffset),
             bytes.subarray(viewOffset, it.offset)
         );
+    }
+
+    /** Grow `buffer` to keep BUFFER_SIZE free bytes past `offset`, preserving `[0, offset)`. */
+    protected ensureCapacity(buffer: Uint8Array, offset: number): Uint8Array {
+        if (offset + Encoder.BUFFER_SIZE <= buffer.byteLength) { return buffer; }
+        const size = Math.ceil((offset + Encoder.BUFFER_SIZE) / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
+        const grown = new Uint8Array(size);
+        grown.set(buffer.subarray(0, offset));
+        if (buffer === this.sharedBuffer) { this.sharedBuffer = grown; }
+        return grown;
     }
 
     encodeView(
@@ -232,6 +229,10 @@ export class Encoder<T extends Schema = any> {
             const encoder = ctor[$encoder];
             const metadata = ctor[Symbol.metadata];
 
+            // These writes are unguarded and unrecoverable (view.changes is cleared
+            // below), so unlike encode() they can't re-encode on overflow — grow ahead.
+            bytes = this.ensureCapacity(bytes, it.offset);
+
             bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
             encode.number(bytes, ref[$refId], it);
 
@@ -255,8 +256,10 @@ export class Encoder<T extends Schema = any> {
         view.changes.clear();
         view.changesOutOfOrder = false;
 
-        // try to encode "filtered" changes
-        this.encode(it, view, bytes, "filteredChanges", false, viewOffset);
+        // encode() may reallocate the buffer — keep its return, not the stale `bytes`.
+        // Anchor the re-encode at the current offset (default), not `viewOffset`: a
+        // resize must not clobber the view.changes already written at [viewOffset, ).
+        bytes = this.encode(it, view, bytes, "filteredChanges", false);
 
         return concatBytes(
             bytes.subarray(0, sharedOffset),

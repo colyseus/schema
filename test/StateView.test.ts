@@ -4159,4 +4159,145 @@ describe("StateView", () => {
         assertEncodeAllMultiple(encoder, state, [client]);
     });
 
+    it("should not corrupt other views when a filtered patch grows the encode buffer", () => {
+        // A tiny BUFFER_SIZE forces the multi-view flush to reallocate the shared
+        // buffer mid-encode. encodeView/encodeAllView must keep reading the
+        // resized buffer and keep `it.offset` accurate, else later views in the
+        // same flush decode as "refId not found" / "previousValue.entries is not
+        // a function".
+        const originalBufferSize = Encoder.BUFFER_SIZE;
+        const originalWarn = console.warn;
+        Encoder.BUFFER_SIZE = 256;
+        console.warn = () => {}; // silence the overflow advisory we deliberately trigger
+        try {
+            class Npc extends Schema {
+                @type("uint32") x = 0;
+                @type("uint32") y = 0;
+                @type("string") name = "";
+                @type("string") tag = "";
+            }
+            class State extends Schema {
+                @view() @type({ map: Npc }) npcs = new MapSchema<Npc>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const NCLIENTS = 4, NUM = 30, WINDOW = 12;
+            const clients = Array.from({ length: NCLIENTS }, () => createClientWithView(state));
+            for (const c of clients) c.view.add(state);
+
+            const npcs: Npc[] = [];
+            for (let i = 0; i < NUM; i++) {
+                const npc = new Npc().assign({ x: i, y: 1000 + i, name: `Npc${i}`, tag: `tag-${i}` });
+                state.npcs.set(`n${i}`, npc);
+                npcs.push(npc);
+            }
+
+            // each client sees a sliding window of NPCs that churns every frame,
+            // while every NPC keeps moving — large per-view patches that overflow.
+            const start = new Array(NCLIENTS).fill(0);
+            for (let frame = 0; frame < 40; frame++) {
+                for (let i = 0; i < NUM; i++) npcs[i].x = (npcs[i].x + 1) >>> 0;
+                for (let c = 0; c < NCLIENTS; c++) {
+                    start[c] = (start[c] + 1) % NUM;
+                    const visible = new Set<number>();
+                    for (let k = 0; k < WINDOW; k++) visible.add((start[c] + k) % NUM);
+                    for (let i = 0; i < NUM; i++) {
+                        if (visible.has(i)) clients[c].view.add(npcs[i]);
+                        else clients[c].view.remove(npcs[i]);
+                    }
+                }
+                encodeMultiple(encoder, state, clients); // must not throw
+
+                for (let c = 0; c < NCLIENTS; c++) {
+                    for (let i = 0; i < NUM; i++) {
+                        const npc = clients[c].state.npcs.get(`n${i}`);
+                        if (!npc) { continue; } // filtered out of this view
+                        assert.strictEqual(npc.x, npcs[i].x, `client${c} n${i} x @frame${frame}`);
+                        assert.strictEqual(npc.y, npcs[i].y, `client${c} n${i} y @frame${frame}`);
+                        assert.strictEqual(npc.name, `Npc${i}`, `client${c} n${i} name @frame${frame}`);
+                        assert.strictEqual(npc.tag, `tag-${i}`, `client${c} n${i} tag @frame${frame}`);
+                    }
+                }
+            }
+        } finally {
+            Encoder.BUFFER_SIZE = originalBufferSize;
+            console.warn = originalWarn;
+        }
+    });
+
+    it("should filter exactly across multiple clients when patches grow the buffer", () => {
+        // Each client gets an explicit, distinct + overlapping view set; a tiny
+        // BUFFER_SIZE forces the multi-view flush to resize. Every client must
+        // decode EXACTLY its set — no entity leaked from another client's view,
+        // none missing — with exact values.
+        const originalBufferSize = Encoder.BUFFER_SIZE;
+        const originalWarn = console.warn;
+        Encoder.BUFFER_SIZE = 256;
+        console.warn = () => {}; // silence the overflow advisory we deliberately trigger
+        try {
+            class Entity extends Schema {
+                @type("uint32") x = 0;
+                @type("string") name = "";
+                @type("string") tag = "";
+            }
+            class State extends Schema {
+                @view() @type({ map: Entity }) ents = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const NUM = 40, NCLIENTS = 4;
+            const ents: Entity[] = [];
+            for (let i = 0; i < NUM; i++) {
+                const e = new Entity().assign({ x: i, name: `E${i}`, tag: `t${i}` });
+                state.ents.set(`e${i}`, e);
+                ents.push(e);
+            }
+            const clients = Array.from({ length: NCLIENTS }, () => createClientWithView(state));
+            for (const c of clients) c.view.add(state);
+
+            const wanted: Set<number>[] = clients.map(() => new Set<number>());
+            const setView = (c: number, indices: number[]) => {
+                wanted[c] = new Set(indices);
+                for (let i = 0; i < NUM; i++) {
+                    if (wanted[c].has(i)) clients[c].view.add(ents[i]);
+                    else clients[c].view.remove(ents[i]);
+                }
+            };
+            const checkExact = (label: string) => {
+                for (let c = 0; c < NCLIENTS; c++) {
+                    const got = new Set<number>();
+                    for (let i = 0; i < NUM; i++) {
+                        if (clients[c].state.ents.get(`e${i}`) !== undefined) { got.add(i); }
+                    }
+                    for (const i of wanted[c]) assert.ok(got.has(i), `${label} client${c} missing e${i}`);
+                    for (const i of got) assert.ok(wanted[c].has(i), `${label} client${c} leaked e${i}`);
+                    for (const i of wanted[c]) {
+                        const e = clients[c].state.ents.get(`e${i}`)!;
+                        assert.strictEqual(e.x, ents[i].x, `${label} client${c} e${i} x`);
+                        assert.strictEqual(e.name, `E${i}`, `${label} client${c} e${i} name`);
+                    }
+                }
+            };
+
+            // shifting per-client stripes + a growing shared block
+            for (let round = 0; round <= 8; round++) {
+                for (let c = 0; c < NCLIENTS; c++) {
+                    const set: number[] = [];
+                    for (let i = 0; i < NUM; i++) if ((i + round * 3) % NCLIENTS === c || i < round) set.push(i);
+                    setView(c, set);
+                }
+                for (let i = 0; i < NUM; i++) ents[i].x = (ents[i].x + 1) >>> 0;
+                encodeMultiple(encoder, state, clients);
+                checkExact(`round${round}`);
+            }
+        } finally {
+            Encoder.BUFFER_SIZE = originalBufferSize;
+            console.warn = originalWarn;
+        }
+    });
+
 });
