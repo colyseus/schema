@@ -5,6 +5,7 @@ import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $n
 import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
+import { isQuantizedType, makeQuantizedEncoder, resolveQuantize } from "./types/quantize.js";
 
 export type MetadataField = {
     type: DefinitionType,
@@ -53,6 +54,14 @@ export function resolveFieldType(type: any): { complexTypeKlass: TypeDefinition 
 export function getNormalizedType(type: any): DefinitionType  {
     if (Array.isArray(type)) {
         return { array: getNormalizedType(type[0]) };
+
+    } else if (isQuantizedType(type)) {
+        // `{ quantized: ... }` — a scalar wire type, NOT a collection/ref. Resolve
+        // raw options (the `@type({quantized:{min,max}})` path) once; an already-
+        // resolved descriptor (the `t.quantized()` builder path) passes through.
+        return (typeof (type.quantized as any).wire === "string")
+            ? type
+            : { quantized: resolveQuantize(type.quantized as any) } as any;
 
     } else if (typeof (type['type']) !== "undefined") {
         return type['type'];
@@ -146,8 +155,9 @@ export const Metadata = {
             configurable: true,
         });
 
-        // if child Ref/complex type, add to -4
-        if (typeof (metadata[index].type) !== "string") {
+        // if child Ref/complex type, add to -4. Quantized fields are scalar (their
+        // `type` is an object only to carry the descriptor) — not refs, so skip them.
+        if (typeof (metadata[index].type) !== "string" && !isQuantizedType(metadata[index].type)) {
             if (metadata[$refTypeFieldIndexes] === undefined) {
                 Object.defineProperty(metadata, $refTypeFieldIndexes, {
                     value: [],
@@ -371,8 +381,8 @@ export const Metadata = {
             Object.defineProperty(target.prototype, fieldName, metadata[$descriptors][fieldName]);
         }
 
-        // Pre-compute encoder function for primitive types.
-        if (typeof normalized === "string") {
+        // Pre-compute encoder function for primitive + quantized types.
+        if (typeof normalized === "string" || isQuantizedType(normalized)) {
             if (!metadata[$encoders]) {
                 Object.defineProperty(metadata, $encoders, {
                     value: [],
@@ -381,7 +391,9 @@ export const Metadata = {
                     writable: true,
                 });
             }
-            metadata[$encoders][fieldIndex] = (encode as any)[normalized];
+            metadata[$encoders][fieldIndex] = (typeof normalized === "string")
+                ? (encode as any)[normalized]
+                : makeQuantizedEncoder((normalized as any).quantized);
         }
     },
 

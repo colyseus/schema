@@ -10,6 +10,7 @@ import type { ArraySchema } from "../types/custom/ArraySchema.js";
 
 import { getType } from "../types/registry.js";
 import { Collection } from "../types/HelperTypes.js";
+import { decodeQuantized, isQuantizedType } from "../types/quantize.js";
 
 export interface DataChange<T = any, F = string> {
     ref: IRef,
@@ -123,6 +124,12 @@ export function decodeValue<T extends Ref>(
         // Symbol-metadata lookup via `Schema.is`.
         //
         value = (decode as any)[type](bytes, it);
+
+    } else if (isQuantizedType(type)) {
+        // Quantized scalar: read the unsigned-int wire value, then dequantize so
+        // the instance holds (and yields) the wire-exact float — `decodeSchema-
+        // Operation` writes it through the snapping setter (idempotent here).
+        value = decodeQuantized(type.quantized, bytes, it);
 
     } else if (Schema.is(type)) {
         const refId = decode.number(bytes, it);

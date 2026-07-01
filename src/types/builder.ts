@@ -8,6 +8,7 @@ import type { DefinitionType, RawPrimitiveType } from "../annotations.js";
 import type { InferValueType, Constructor } from "./HelperTypes.js";
 import { $builder } from "./symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "../encoder/streaming.js";
+import { resolveQuantize, type QuantizeOptions } from "./quantize.js";
 
 type CollectionKind = "array" | "map" | "set" | "collection";
 
@@ -380,6 +381,21 @@ interface RefFactory {
 const refFactory: RefFactory = (<C extends Constructor>(ctor: C) =>
     new FieldBuilder<InstanceType<C>>(ctor as unknown as DefinitionType)) as RefFactory;
 
+/**
+ * A bounded float carried on the wire as a fixed-width unsigned integer. App code
+ * reads/writes the FLOAT; the wire carries the quantized int and the field only
+ * ever yields `dequant(q)`, so client predict and server sim read the same value
+ * (no full-precision path to leak ⇒ no shot misprediction). See
+ * {@link QuantizeOptions} for the precision/wire trade-offs.
+ *
+ *     yaw:      t.quantized({ min: 0, max: TWO_PI, mode: "wrap" }), // 16-bit
+ *     pitch:    t.quantized({ min: -PITCH_LIMIT, max: PITCH_LIMIT }), // clamp (default)
+ *     throttle: t.quantized({ min: 0, max: 1, bits: 8 }),           // 1 byte
+ */
+function quantizedFactory(opts: QuantizeOptions): FieldBuilder<number> {
+    return new FieldBuilder<number>({ quantized: resolveQuantize(opts) } as unknown as DefinitionType);
+}
+
 export const t = Object.freeze({
     // Primitives
     string: primitive<string>("string"),
@@ -414,4 +430,21 @@ export const t = Object.freeze({
     set: setFactory,
     collection: collectionFactory,
     stream: streamFactory,
+
+    /**
+     * A bounded float quantized to a fixed-width unsigned int on the wire — half
+     * (or a quarter) the bytes of a `float32` at a precision you pick. The field
+     * reads/writes the float and only ever yields `dequant(q)`. {@see QuantizeOptions}
+     */
+    quantized: quantizedFactory,
+
+    /**
+     * Sugar for a full-circle wrapping angle in radians:
+     * `t.quantized({ min: 0, max: 2π, mode: "wrap", bits })` (default 16-bit,
+     * ~0.0055°/step). Any input angle is range-reduced into `[0, 2π)`. Render note:
+     * lerp interpolated remotes shortest-arc (`attach({ angle: true })`) — the
+     * wrap fixes the WIRE seam, not interpolation (see {@link QuantizeOptions.mode}).
+     */
+    angle: (opts?: { bits?: 8 | 16 | 32 }) =>
+        quantizedFactory({ min: 0, max: Math.PI * 2, mode: "wrap", bits: opts?.bits ?? 16 }),
 });

@@ -14,6 +14,7 @@ import { CollectionSchema } from "./types/custom/CollectionSchema.js";
 import { SetSchema } from "./types/custom/SetSchema.js";
 import { StreamSchema } from "./types/custom/StreamSchema.js";
 import { FieldBuilder, isBuilder, type BuilderDefinition } from "./types/builder.js";
+import { dequantize, isQuantizedType, makeQuantizedEncoder, quantize, type QuantizeDescriptor } from "./types/quantize.js";
 
 export type RawPrimitiveType = "string" |
     "number" |
@@ -343,8 +344,8 @@ export function type (
             Object.defineProperty(target, field, metadata[$descriptors][field]);
         }
 
-        // Pre-compute encoder function for primitive types.
-        if (typeof type === "string") {
+        // Pre-compute encoder function for primitive + quantized types.
+        if (typeof type === "string" || isQuantizedType(type)) {
             if (!metadata[$encoders]) {
                 Object.defineProperty(metadata, $encoders, {
                     value: [],
@@ -353,7 +354,9 @@ export function type (
                     writable: true,
                 });
             }
-            metadata[$encoders][fieldIndex] = (encode as any)[type];
+            metadata[$encoders][fieldIndex] = (typeof type === "string")
+                ? (encode as any)[type]
+                : makeQuantizedEncoder((type as any).quantized);
         }
     }
 }
@@ -481,6 +484,38 @@ function makeCollectionSetter(
     };
 }
 
+/**
+ * Setter for a `t.quantized()` field. SNAPS the assigned float to the wire-exact
+ * value (`dequant(quant(x))`) on write, so the stored value — and every read,
+ * including the reconciler's live step off the staged input — is identical to
+ * what the server decodes off the wire. This is the half that kills the
+ * predict-from-the-wrong-value footgun; the encoder re-quantizes the snapped
+ * value at send (a lossless round-trip). Change tracking keys on the SNAPPED
+ * value, so a sub-step jitter that quantizes to the same integer emits no delta.
+ */
+function makeQuantizedSetter(fieldName: string, fieldIndex: number, desc: QuantizeDescriptor) {
+    return function (this: Schema, value: any) {
+        const values = this[$values];
+        const previousValue = values[fieldIndex];
+        if (value !== undefined && value !== null) {
+            if (typeof value !== "number") {
+                throw new EncodeSchemaError(
+                    `a 'number' was expected, but '${JSON.stringify(value)}' was provided in ${this.constructor.name}#${fieldName}`
+                );
+            }
+            value = dequantize(desc, quantize(desc, value)); // snap to wire-exact
+            if (value === previousValue) return;
+            (this.constructor as typeof Schema)[$track](this[$changes], fieldIndex, OPERATION.ADD);
+        } else {
+            if (value === previousValue) return; // undefined === undefined
+            if (previousValue !== undefined && previousValue !== null) {
+                this[$changes].delete(fieldIndex);
+            }
+        }
+        values[fieldIndex] = value;
+    };
+}
+
 export function getPropertyDescriptor(
     fieldName: string,
     fieldIndex: number,
@@ -492,10 +527,14 @@ export function getPropertyDescriptor(
         setter = makeCollectionSetter(fieldName, fieldIndex, type, complexTypeKlass);
     } else if (typeof type === "string") {
         setter = makePrimitiveSetter(fieldName, fieldIndex, type);
+    } else if (isQuantizedType(type)) {
+        setter = makeQuantizedSetter(fieldName, fieldIndex, type.quantized);
     } else {
         setter = makeSchemaRefSetter(fieldName, fieldIndex, type as typeof Schema);
     }
     return {
+        // Quantized stores the already-snapped float, so the getter is the plain
+        // $values read — the field yields dequant(q) with no per-read math.
         get: function (this: Schema) { return this[$values][fieldIndex]; },
         set: setter,
         enumerable: true,

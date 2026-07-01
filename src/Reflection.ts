@@ -8,6 +8,7 @@ import { Schema } from "./Schema.js";
 import { t, FieldBuilder } from "./types/builder.js";
 import { ArraySchema } from "./types/custom/ArraySchema.js";
 import { $encodeDescriptor, $numFields } from "./types/symbols.js";
+import { isQuantizedType, resolveQuantize } from "./types/quantize.js";
 
 /**
  * Static methods available on Reflection
@@ -147,6 +148,13 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
                 if (typeof (field.type) === "string") {
                     fieldType = field.type;
 
+                } else if (isQuantizedType(field.type)) {
+                    // Self-contained in the type string (like "array:string"): carry
+                    // the descriptor params so the peer reconstructs the exact codec.
+                    const d = field.type.quantized;
+                    fieldType = `quantized:${d.min},${d.max},${d.bits},${d.wrap ? 1 : 0}`;
+                    reflectionField.referencedType = -1;
+
                 } else {
                     let childTypeSchema: typeof Schema;
 
@@ -228,6 +236,14 @@ Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it?:
 
                 if (fieldType === "ref") {
                     Metadata.addField(metadata, fieldIndex, field.name, refType);
+
+                } else if (fieldType === "quantized") {
+                    // Parse "min,max,bits,wrap" back into a resolved descriptor. The
+                    // wire keeps the compact boolean; map it to the public `mode`.
+                    const [min, max, bits, wrap] = (refType as unknown as string).split(",");
+                    Metadata.addField(metadata, fieldIndex, field.name, {
+                        quantized: resolveQuantize({ min: +min, max: +max, bits: +bits as 8 | 16 | 32, mode: wrap === "1" ? "wrap" : "clamp" }),
+                    } as any);
 
                 } else {
                     Metadata.addField(metadata, fieldIndex, field.name, { [fieldType]: refType });

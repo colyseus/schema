@@ -1,6 +1,7 @@
 import { Metadata } from "../Metadata.js";
 import { Schema } from "../Schema.js";
 import { $streamFieldIndexes, $viewFieldIndexes } from "./symbols.js";
+import { isQuantizedType } from "./quantize.js";
 
 export class TypeContext {
     types: { [id: number]: typeof Schema; } = {};
@@ -122,6 +123,12 @@ export class TypeContext {
             const fieldHasViewTag = (metadata[index].tag !== undefined);
 
             if (typeof (fieldType) === "string") {
+                continue;
+            }
+
+            // Quantized fields are scalar — their object `type` only carries the
+            // descriptor, there's no child Schema to discover.
+            if (isQuantizedType(fieldType)) {
                 continue;
             }
 
