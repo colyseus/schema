@@ -31,6 +31,21 @@ wall-clock neutral), no other scenario regressing >2% at p<0.05, tests green.
   same shape timeline; only the descriptor allocation + redundant redefine go.
 - **Change:** shared module-level descriptor in both files; `addRef` fast path.
 
+## e5-foreachchild-alloc (2026-07-02) — ACCEPTED
+- **Result:** (targeted N=20–30) stateview/view-churn **−9.7%** (p<.001) with
+  gcMs 199→185 (p<.001); stateview/views/v10 **−1.9%** (p<.001);
+  encoder/deep-nested −2.0% (p=.25); construct/e2e neutral. decoder/churn
+  showed +2.6–3.1% (p=.056/.024) but no forEachChild* call is reachable from
+  the decode loop — artifact of setup-induced heap-state difference (the
+  scenario's setup runs an encoder whose attach path DID change) plus a busy
+  machine (load 5–9 during the first pass; view-churn A-median inflated +25%
+  in that window and normalized later).
+- **Iteration:** first cut used `$items.forEach(closure)` for the Map branch —
+  regressed construct gcMs +10% (p<.001). Closure-free `keys()` loop fixed it.
+- **Lessons:** (1) `for..of entries()` pair allocation is worth killing on hot
+  walks, but replace with keys()+get, NOT a forEach closure; (2) check system
+  load before trusting borderline p-values.
+
 ## e5-foreachchild-alloc (queued)
 - **Hypothesis:** `forEachChild`/`forEachChildWithCtx` iterate collections via
   `for (const [key, value] of ref.entries())` — iterator + pair array per

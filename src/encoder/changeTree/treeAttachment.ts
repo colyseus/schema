@@ -4,7 +4,6 @@
  * goes through here, which is why the recursive walk uses a hoisted
  * callback + ctx-pool instead of per-call closures.
  */
-import type { MapSchema } from "../../types/custom/MapSchema.js";
 import { $changes, $childType, $refTypeFieldIndexes } from "../../types/symbols.js";
 import { Root } from "../Root.js";
 import type { ChangeTree, Ref } from "../ChangeTree.js";
@@ -81,26 +80,11 @@ export function forEachChild(
     tree: ChangeTree,
     callback: (change: ChangeTree, at: any) => void,
 ): void {
-    //
-    // assign same parent on child structures
-    //
-    if ((tree.ref as any)[$childType]) {
-        if (typeof ((tree.ref as any)[$childType]) !== "string") {
-            // MapSchema / ArraySchema, etc.
-            for (const [key, value] of (tree.ref as MapSchema).entries()) {
-                if (!value) { continue; } // sparse arrays can have undefined values
-                callback(value[$changes], (tree.ref as any)._collectionIndexes?.[key] ?? key);
-            };
-        }
+    forEachChildWithCtx(tree, callback, _forEachChildTrampoline);
+}
 
-    } else {
-        const names = tree.encDescriptor.names;
-        for (const index of tree.metadata?.[$refTypeFieldIndexes] ?? []) {
-            const value = tree.ref[names[index] as keyof Ref];
-            if (!value) { continue; }
-            callback(value[$changes], index);
-        }
-    }
+function _forEachChildTrampoline(cb: (change: ChangeTree, at: any) => void, change: ChangeTree, at: any): void {
+    cb(change, at);
 }
 
 /**
@@ -124,10 +108,30 @@ export function forEachChildWithCtx<C>(
     const ref = tree.refTarget as any;
     if (ref[$childType]) {
         if (typeof ref[$childType] !== "string") {
-            const collectionIndexes = ref._collectionIndexes;
-            for (const [key, value] of (ref as MapSchema).entries()) {
-                if (!value) { continue; }
-                callback(ctx, value[$changes], collectionIndexes?.[key] ?? key);
+            const items = ref.items;
+            if (items !== undefined) {
+                // ArraySchema (raw target): dense index loop — the previous
+                // `for..of entries()` allocated an iterator + a [key, value]
+                // pair array per child (top-10 allocation site in the
+                // stateview and deep-nested heap profiles).
+                for (let i = 0, len = items.length; i < len; i++) {
+                    const value = items[i];
+                    if (!value) { continue; } // sparse arrays can have undefined values
+                    callback(ctx, value[$changes], i);
+                }
+            } else {
+                // Map-backed collections (MapSchema/SetSchema/CollectionSchema/
+                // StreamSchema all store `$items: Map`): keys() loop skips the
+                // per-child [key, value] pair arrays of entries(), with no
+                // closure either (a forEach closure showed up as a GC
+                // regression on the construct bench).
+                const $items = ref.$items as Map<any, any>;
+                const collectionIndexes = ref._collectionIndexes;
+                for (const key of $items.keys()) {
+                    const value = $items.get(key);
+                    if (!value) { continue; }
+                    callback(ctx, value[$changes], collectionIndexes?.[key] ?? key);
+                }
             }
         }
     } else {
