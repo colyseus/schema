@@ -12,6 +12,45 @@ wall-clock neutral), no other scenario regressing >2% at p<0.05, tests green.
 - **Verdict:** ACCEPTED / REVERTED (→ DEAD_ENDS.md)
 -->
 
+## e4a-refid-descriptor (queued)
+- **Hypothesis:** `Object.defineProperty(ref, $refId, {value,…})` allocates a
+  descriptor object per new ref in BOTH `Root.add` (13.8% self, deep-nested)
+  and `ReferenceTracker.addRef` (6.1% self, decoder/churn). Reuse one shared
+  mutable descriptor (mutate `.value`, pass same object) and, in `addRef`,
+  skip re-defining when `ref[$refId]` already exists (property is
+  `writable:true` — plain assignment preserves flags). Distinct from dead
+  "$refId pre-install": property is still installed lazily at the same sites,
+  same shape timeline; only the descriptor allocation + redundant redefine go.
+- **Change:** shared module-level descriptor in both files; `addRef` fast path.
+
+## e5-foreachchild-alloc (queued)
+- **Hypothesis:** `forEachChild`/`forEachChildWithCtx` iterate collections via
+  `for (const [key, value] of ref.entries())` — iterator + pair array per
+  child (7.4% of stateview/views_v10 allocations, 5.3% of encoder/deep-nested).
+  Plain `forEachChild` also invokes the `_collectionIndexes` getter per child.
+  Replace with `COLLECTION_KIND` dispatch: index loop over `items` for Array
+  (zero alloc), `$items.forEach` + hoisted journal lookup for Map (one closure
+  per call instead of one pair per child); `entries()` fallback for the rest.
+- **Change:** treeAttachment.ts only; iteration order preserved per kind.
+
+## c1-callbacks-map (2026-07-02)
+- **Hypothesis:** `ReferenceTracker.callbacks` is `{[refId]: SchemaCallbacks}` —
+  integer-keyed plain object with per-ref `delete` on GC → dictionary-mode
+  elements; `triggerChanges` does one lookup per change (8.4% self, dense).
+  `Map<number, SchemaCallbacks>` should beat dictionary-mode object access.
+  Expect: callbacks/strategies/state + density/dense ms/frame; churn variants.
+- **Change:** outer registry object → Map in ReferenceTracker (+5 consumer
+  lookup sites in Callbacks.ts / getDecoderStateCallbacks.ts). Inner
+  SchemaCallbacks stays a plain object (string field keys + small-int ops).
+- **Result:** (N=20, full matrix) REGRESSED everywhere the registry is hot:
+  density/dense **+7.1%** (p<.001), strategies/state **+6.5%**, legacy
+  **+6.8%**, sparse1pct **+5.8%**, add-remove-churn **+3.1%**. Neutral
+  elsewhere. Root cause of the wrong hypothesis: refIds are small sequential
+  integers → V8 keeps the integer-keyed object in dense ELEMENTS backing
+  (array-indexed access), which beats Map hashing; per-ref `delete` only
+  happens on ref-GC, not per frame, so dictionary-mode never dominates.
+- **Verdict:** **REVERTED** → DEAD_ENDS.md.
+
 ## p1-proxy-unwrap (2026-07-02)
 - **Hypothesis:** ArraySchema symbol hooks (`$getByIndex`, `$deleteByIndex`,
   `$onEncodeEnd`, `$onDecodeEnd`, static `$filter`) execute with `this`/`ref`

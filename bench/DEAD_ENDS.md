@@ -29,6 +29,13 @@ Failed candidates from the current loop get appended with measured Δ/p.
 - **Structured callback slots** (C# named-slot port) — extra property hop on the dominant field-listener path; net-zero to worse.
 - **triggerChanges per-callback try/finally** — keep `isTriggering` hoisted to one toggle per dispatch pass (per-callback cost ~2% heavy-tick).
 
+- **callbacks registry `{[refId]: …}` → `Map<number, …>`** (2026-07-02) —
+  +5.8…+7.1% on callbacks/density+strategies at p<.001. refIds are small
+  sequential integers, so the plain object stays in dense ELEMENTS backing —
+  faster than Map hashing. Same likely applies to `refCount` and
+  `Root.changeTrees` (already a sparse array): keep integer-keyed objects/arrays
+  for refId-indexed lookups.
+
 ## Constraints (not dead, but load-bearing)
 
 - `$changes` / `$refId` must stay `Object.defineProperty` (non-enumerable) — `deepStrictEqual` and enumeration semantics depend on it.

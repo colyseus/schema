@@ -63,19 +63,24 @@ for (const file of walk(SCENARIOS_DIR)) {
 if (units.length === 0) { console.error("no scenarios match filter"); process.exit(1); }
 
 // --- sample runner ---
-function runSample(unit, buildDir) {
+function runSample(unit, buildDir, attempt = 0) {
     const args = ["--expose-gc", CHILD, unit.file, unit.variant, buildDir];
     if (opts.reps) args.push(String(opts.reps));
     if (opts.iters) { if (!opts.reps) args.push(String(unit.scenario.reps ?? 7)); args.push(String(opts.iters)); }
     const res = spawnSync(process.execPath, args, { encoding: "utf8", timeout: 10 * 60_000 });
     if (res.status !== 0) {
-        console.error(`\nchild failed: ${unit.scenario.name}/${unit.variant} (${buildDir})\n${res.stderr}`);
-        process.exit(1);
+        const detail = `status=${res.status} signal=${res.signal} err=${res.error ?? ""}\n${res.stderr}`;
+        // transient spawn hiccups happen on multi-hour runs — retry once
+        if (attempt === 0) {
+            console.error(`\nchild failed (retrying): ${unit.scenario.name}/${unit.variant} (${buildDir}) ${detail}`);
+            return runSample(unit, buildDir, 1);
+        }
+        throw new Error(`child failed twice: ${unit.scenario.name}/${unit.variant} (${buildDir}) ${detail}`);
     }
     const line = res.stdout.trim().split("\n").pop();
     try { return JSON.parse(line); } catch {
-        console.error(`\nbad child output for ${unit.scenario.name}/${unit.variant}:\n${res.stdout}\n${res.stderr}`);
-        process.exit(1);
+        if (attempt === 0) return runSample(unit, buildDir, 1);
+        throw new Error(`bad child output for ${unit.scenario.name}/${unit.variant}:\n${res.stdout}\n${res.stderr}`);
     }
 }
 
@@ -102,24 +107,40 @@ if (opts.compare) {
     console.log(`compare A=${dirA}  B=${dirB}  samples=${opts.samples}/side (interleaved)\n`);
     const rows = [["scenario/variant", "unit", "A med", "B med", "Δ%", "p", "gcMs A→B", "p(gc)", "heapKb A→B", "bytes", ""]];
     const jsonRows = [];
+    const failedUnits = [];
 
     for (const unit of units) {
         const A = { values: [], gcMs: [], heapKb: [], bytes: new Set() };
         const B = { values: [], gcMs: [], heapKb: [], bytes: new Set() };
         progress(`${unit.scenario.name}/${unit.variant} `);
-        // discard one warm pair (fs/process caches), then ABBA ordering so
-        // within-pair drift cancels instead of biasing the side that runs second
-        runSample(unit, dirA); runSample(unit, dirB);
-        for (let s = 0; s < opts.samples; s++) {
-            const aFirst = s % 2 === 0;
-            const r1 = runSample(unit, aFirst ? dirA : dirB);
-            const r2 = runSample(unit, aFirst ? dirB : dirA);
-            const [ra, rb] = aFirst ? [r1, r2] : [r2, r1];
-            A.values.push(ra.value); A.gcMs.push(ra.gc.totalMs); A.heapKb.push(ra.heapDeltaKb); A.bytes.add(ra.bytesPerOp);
-            B.values.push(rb.value); B.gcMs.push(rb.gc.totalMs); B.heapKb.push(rb.heapDeltaKb); B.bytes.add(rb.bytesPerOp);
-            progress(".");
+        let sampleError = null;
+        try {
+            // discard one warm pair (fs/process caches), then ABBA ordering so
+            // within-pair drift cancels instead of biasing the side that runs second
+            runSample(unit, dirA); runSample(unit, dirB);
+            for (let s = 0; s < opts.samples; s++) {
+                const aFirst = s % 2 === 0;
+                const r1 = runSample(unit, aFirst ? dirA : dirB);
+                const r2 = runSample(unit, aFirst ? dirB : dirA);
+                const [ra, rb] = aFirst ? [r1, r2] : [r2, r1];
+                A.values.push(ra.value); A.gcMs.push(ra.gc.totalMs); A.heapKb.push(ra.heapDeltaKb); A.bytes.add(ra.bytesPerOp);
+                B.values.push(rb.value); B.gcMs.push(rb.gc.totalMs); B.heapKb.push(rb.heapDeltaKb); B.bytes.add(rb.bytesPerOp);
+                progress(".");
+            }
+        } catch (e) {
+            // don't abort the whole matrix — record what we have and move on
+            sampleError = e;
+            console.error(`\n${e.message ?? e}`);
         }
         progress("\n");
+
+        if (A.values.length < 8 || B.values.length < 8) {
+            failedUnits.push(`${unit.scenario.name}/${unit.variant} (n=${A.values.length})`);
+            rows.push([`${unit.scenario.name}/${unit.variant}`, unit.scenario.unit ?? "ms/op",
+                "-", "-", "-", "-", "-", "-", "-", "-", "FAILED"]);
+            continue;
+        }
+        if (sampleError) failedUnits.push(`${unit.scenario.name}/${unit.variant} (partial n=${A.values.length})`);
 
         const medA = median(A.values), medB = median(B.values);
         const deltaPct = ((medB - medA) / medA) * 100;
@@ -152,8 +173,9 @@ if (opts.compare) {
     console.log("");
     printTable(rows);
     console.log("\n✓/✗ = wall-clock p<0.05; '≈ gc-only' = GC differs at p<0.05 with wall-clock neutral; Δ%<0 means B faster.");
-    writeJson({ meta: { ...meta, mode: "compare", dirA, dirB }, rows: jsonRows });
-    process.exit(0);
+    if (failedUnits.length) console.error(`\nFAILED/PARTIAL UNITS:\n  ${failedUnits.join("\n  ")}`);
+    writeJson({ meta: { ...meta, mode: "compare", dirA, dirB }, failedUnits, rows: jsonRows });
+    process.exit(failedUnits.length ? 1 : 0);
 }
 
 // --- single mode (with optional --assert budget gate) ---
