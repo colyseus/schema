@@ -1,3 +1,4 @@
 .builds/
 profiles/
 results/raw-profiles/
+!lib/
