@@ -8,6 +8,12 @@
     "schema-debug": "bin/schema-debug"
   },
   "scripts": {
+    "bench": "node bench/run.mjs",
+    "bench:compare": "node bench/run.mjs --compare",
+    "bench:snapshot": "bash bench/snapshot-build.sh",
+    "bench:gate": "node bench/run.mjs --assert --samples 3 --filter gate",
+    "profile:cpu": "node bench/profile.mjs --cpu",
+    "profile:heap": "node bench/profile.mjs --heap",
     "build": "tsc -p tsconfig.build.json && rollup -c rollup.config.mjs",
     "watch": "tsc -p tsconfig.build.json -w",
     "typecheck:build": "tsc -p tsconfig.build.json --noEmit",

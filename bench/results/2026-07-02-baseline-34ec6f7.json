@@ -1,0 +1,1497 @@
+{
+  "meta": {
+    "date": "2026-07-02T16:12:10.351Z",
+    "node": "v22.19.0",
+    "gitSha": "34ec6f7",
+    "samples": 5,
+    "filter": null,
+    "mode": "single",
+    "build": "/Users/endel/Projects/colyseus/schema-5.0/build"
+  },
+  "rows": [
+    {
+      "scenario": "callbacks/add-remove-churn",
+      "variant": "default",
+      "unit": "ms/frame",
+      "median": 0.0370106,
+      "values": [
+        0.0453723,
+        0.0368404,
+        0.0359915,
+        0.0379998,
+        0.0370106
+      ],
+      "gc": [
+        {
+          "count": 6,
+          "totalMs": 3.925,
+          "majorMs": 0,
+          "minorMs": 3.925
+        },
+        {
+          "count": 6,
+          "totalMs": 3.519,
+          "majorMs": 0,
+          "minorMs": 3.519
+        },
+        {
+          "count": 6,
+          "totalMs": 3.409,
+          "majorMs": 0,
+          "minorMs": 3.409
+        },
+        {
+          "count": 6,
+          "totalMs": 3.637,
+          "majorMs": 0,
+          "minorMs": 3.637
+        },
+        {
+          "count": 7,
+          "totalMs": 3.97,
+          "majorMs": 0.641,
+          "minorMs": 3.329
+        }
+      ],
+      "heapKb": [
+        194,
+        194,
+        193.9,
+        193.9,
+        203.5
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "callbacks/density",
+      "variant": "none",
+      "unit": "ms/frame",
+      "median": 0.673436,
+      "values": [
+        0.67186,
+        0.674563,
+        0.697766,
+        0.671508,
+        0.673436
+      ],
+      "gc": [
+        {
+          "count": 93,
+          "totalMs": 28.574,
+          "majorMs": 0,
+          "minorMs": 28.574
+        },
+        {
+          "count": 93,
+          "totalMs": 27.327,
+          "majorMs": 0,
+          "minorMs": 27.327
+        },
+        {
+          "count": 93,
+          "totalMs": 26.76,
+          "majorMs": 0,
+          "minorMs": 26.76
+        },
+        {
+          "count": 93,
+          "totalMs": 27.705,
+          "majorMs": 0,
+          "minorMs": 27.705
+        },
+        {
+          "count": 95,
+          "totalMs": 29.152,
+          "majorMs": 0,
+          "minorMs": 29.152
+        }
+      ],
+      "heapKb": [
+        59.4,
+        58.4,
+        58.4,
+        58.2,
+        58.1
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "callbacks/density",
+      "variant": "sparse1pct",
+      "unit": "ms/frame",
+      "median": 0.679598,
+      "values": [
+        0.686798,
+        0.675948,
+        0.67478,
+        0.679598,
+        0.692801
+      ],
+      "gc": [
+        {
+          "count": 94,
+          "totalMs": 28.535,
+          "majorMs": 0,
+          "minorMs": 28.535
+        },
+        {
+          "count": 95,
+          "totalMs": 28.221,
+          "majorMs": 0,
+          "minorMs": 28.221
+        },
+        {
+          "count": 95,
+          "totalMs": 27.772,
+          "majorMs": 0,
+          "minorMs": 27.772
+        },
+        {
+          "count": 94,
+          "totalMs": 27.005,
+          "majorMs": 0,
+          "minorMs": 27.005
+        },
+        {
+          "count": 93,
+          "totalMs": 28.871,
+          "majorMs": 0,
+          "minorMs": 28.871
+        }
+      ],
+      "heapKb": [
+        58.1,
+        57.2,
+        57.7,
+        57.2,
+        57.7
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "callbacks/density",
+      "variant": "dense",
+      "unit": "ms/frame",
+      "median": 0.768991,
+      "values": [
+        0.769529,
+        0.770138,
+        0.759083,
+        0.768991,
+        0.764976
+      ],
+      "gc": [
+        {
+          "count": 97,
+          "totalMs": 35.951,
+          "majorMs": 5.491,
+          "minorMs": 30.46
+        },
+        {
+          "count": 96,
+          "totalMs": 36.198,
+          "majorMs": 7.221,
+          "minorMs": 28.977
+        },
+        {
+          "count": 97,
+          "totalMs": 35.123,
+          "majorMs": 5.491,
+          "minorMs": 29.632
+        },
+        {
+          "count": 96,
+          "totalMs": 34.208,
+          "majorMs": 5.192,
+          "minorMs": 29.017
+        },
+        {
+          "count": 97,
+          "totalMs": 35.297,
+          "majorMs": 6.792,
+          "minorMs": 28.506
+        }
+      ],
+      "heapKb": [
+        58.2,
+        58.3,
+        59.4,
+        59.4,
+        -766.8
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "callbacks/strategies",
+      "variant": "raw",
+      "unit": "ms/frame",
+      "median": 0.659472,
+      "values": [
+        0.657975,
+        0.658984,
+        0.665575,
+        0.667012,
+        0.659472
+      ],
+      "gc": [
+        {
+          "count": 92,
+          "totalMs": 27.686,
+          "majorMs": 0,
+          "minorMs": 27.686
+        },
+        {
+          "count": 97,
+          "totalMs": 28.453,
+          "majorMs": 0,
+          "minorMs": 28.453
+        },
+        {
+          "count": 95,
+          "totalMs": 30.193,
+          "majorMs": 0,
+          "minorMs": 30.193
+        },
+        {
+          "count": 97,
+          "totalMs": 30.72,
+          "majorMs": 0.888,
+          "minorMs": 29.832
+        },
+        {
+          "count": 95,
+          "totalMs": 27.723,
+          "majorMs": 0,
+          "minorMs": 27.723
+        }
+      ],
+      "heapKb": [
+        59.4,
+        60.5,
+        60,
+        58.7,
+        59
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "callbacks/strategies",
+      "variant": "state",
+      "unit": "ms/frame",
+      "median": 0.775475,
+      "values": [
+        0.778434,
+        0.769198,
+        0.779511,
+        0.769139,
+        0.775475
+      ],
+      "gc": [
+        {
+          "count": 96,
+          "totalMs": 34.726,
+          "majorMs": 5.644,
+          "minorMs": 29.083
+        },
+        {
+          "count": 97,
+          "totalMs": 34.77,
+          "majorMs": 5.072,
+          "minorMs": 29.698
+        },
+        {
+          "count": 98,
+          "totalMs": 41.199,
+          "majorMs": 5.774,
+          "minorMs": 35.426
+        },
+        {
+          "count": 97,
+          "totalMs": 37.406,
+          "majorMs": 5.267,
+          "minorMs": 32.138
+        },
+        {
+          "count": 94,
+          "totalMs": 34.752,
+          "majorMs": 4.5,
+          "minorMs": 30.252
+        }
+      ],
+      "heapKb": [
+        59.4,
+        58.1,
+        58,
+        58.1,
+        58
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "callbacks/strategies",
+      "variant": "legacy",
+      "unit": "ms/frame",
+      "median": 0.789717,
+      "values": [
+        0.806472,
+        0.825289,
+        0.774224,
+        0.789717,
+        0.770447
+      ],
+      "gc": [
+        {
+          "count": 98,
+          "totalMs": 30.784,
+          "majorMs": 0,
+          "minorMs": 30.784
+        },
+        {
+          "count": 99,
+          "totalMs": 30.102,
+          "majorMs": 0,
+          "minorMs": 30.102
+        },
+        {
+          "count": 99,
+          "totalMs": 31.896,
+          "majorMs": 1.15,
+          "minorMs": 30.746
+        },
+        {
+          "count": 98,
+          "totalMs": 33.019,
+          "majorMs": 0,
+          "minorMs": 33.019
+        },
+        {
+          "count": 100,
+          "totalMs": 31.364,
+          "majorMs": 1.044,
+          "minorMs": 30.32
+        }
+      ],
+      "heapKb": [
+        59.2,
+        58.4,
+        58.4,
+        58.4,
+        59.7
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "decoder/bootstrap",
+      "variant": "default",
+      "unit": "ms/op",
+      "median": 4.01768,
+      "values": [
+        4.02032,
+        4.01768,
+        4.09757,
+        3.99273,
+        3.91073
+      ],
+      "gc": [
+        {
+          "count": 42,
+          "totalMs": 18.465,
+          "majorMs": 0,
+          "minorMs": 18.465
+        },
+        {
+          "count": 42,
+          "totalMs": 16.109,
+          "majorMs": 0,
+          "minorMs": 16.109
+        },
+        {
+          "count": 42,
+          "totalMs": 18.585,
+          "majorMs": 0,
+          "minorMs": 18.585
+        },
+        {
+          "count": 42,
+          "totalMs": 18.174,
+          "majorMs": 0,
+          "minorMs": 18.174
+        },
+        {
+          "count": 42,
+          "totalMs": 15.702,
+          "majorMs": 0,
+          "minorMs": 15.702
+        }
+      ],
+      "heapKb": [
+        41.9,
+        47,
+        45.8,
+        46.4,
+        45.9
+      ],
+      "bytesPerOp": 64872
+    },
+    {
+      "scenario": "decoder/churn",
+      "variant": "default",
+      "unit": "ms/frame",
+      "median": 0.0343379,
+      "values": [
+        0.036231,
+        0.0336417,
+        0.0371312,
+        0.0324506,
+        0.0343379
+      ],
+      "gc": [
+        {
+          "count": 5,
+          "totalMs": 2.9,
+          "majorMs": 0.752,
+          "minorMs": 2.148
+        },
+        {
+          "count": 5,
+          "totalMs": 2.854,
+          "majorMs": 0.814,
+          "minorMs": 2.04
+        },
+        {
+          "count": 5,
+          "totalMs": 5.97,
+          "majorMs": 0.967,
+          "minorMs": 5.003
+        },
+        {
+          "count": 4,
+          "totalMs": 2.061,
+          "majorMs": 0,
+          "minorMs": 2.061
+        },
+        {
+          "count": 5,
+          "totalMs": 3.028,
+          "majorMs": 0.782,
+          "minorMs": 2.246
+        }
+      ],
+      "heapKb": [
+        166.5,
+        166.4,
+        166.3,
+        165.8,
+        166.4
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "decoder/deep-nested",
+      "variant": "default",
+      "unit": "ms/frame",
+      "median": 0.0266243,
+      "values": [
+        0.0266243,
+        0.0265753,
+        0.0277407,
+        0.0273129,
+        0.0263236
+      ],
+      "gc": [
+        {
+          "count": 0,
+          "totalMs": 0,
+          "majorMs": 0,
+          "minorMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "majorMs": 0,
+          "minorMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "majorMs": 0,
+          "minorMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "majorMs": 0,
+          "minorMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "majorMs": 0,
+          "minorMs": 0
+        }
+      ],
+      "heapKb": [
+        45.9,
+        45.7,
+        45.7,
+        45.7,
+        45.8
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "decoder/tick",
+      "variant": "default",
+      "unit": "ms/frame",
+      "median": 0.644312,
+      "values": [
+        0.644312,
+        0.645263,
+        0.641814,
+        0.645363,
+        0.640852
+      ],
+      "gc": [
+        {
+          "count": 52,
+          "totalMs": 12.646,
+          "majorMs": 0,
+          "minorMs": 12.646
+        },
+        {
+          "count": 43,
+          "totalMs": 10.857,
+          "majorMs": 0,
+          "minorMs": 10.857
+        },
+        {
+          "count": 43,
+          "totalMs": 11.048,
+          "majorMs": 0,
+          "minorMs": 11.048
+        },
+        {
+          "count": 52,
+          "totalMs": 13.065,
+          "majorMs": 0,
+          "minorMs": 13.065
+        },
+        {
+          "count": 49,
+          "totalMs": 12.008,
+          "majorMs": 0,
+          "minorMs": 12.008
+        }
+      ],
+      "heapKb": [
+        58.6,
+        59.1,
+        58.1,
+        58.8,
+        57.9
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "e2e/room-tick",
+      "variant": "default",
+      "unit": "ms/tick",
+      "median": 0.0567533,
+      "values": [
+        0.0567533,
+        0.0581417,
+        0.0559783,
+        0.0615014,
+        0.0542842
+      ],
+      "gc": [
+        {
+          "count": 3,
+          "totalMs": 1.392,
+          "majorMs": 0,
+          "minorMs": 1.392
+        },
+        {
+          "count": 3,
+          "totalMs": 1.132,
+          "majorMs": 0,
+          "minorMs": 1.132
+        },
+        {
+          "count": 3,
+          "totalMs": 1.255,
+          "majorMs": 0,
+          "minorMs": 1.255
+        },
+        {
+          "count": 3,
+          "totalMs": 1.944,
+          "majorMs": 0,
+          "minorMs": 1.944
+        },
+        {
+          "count": 3,
+          "totalMs": 1.3,
+          "majorMs": 0,
+          "minorMs": 1.3
+        }
+      ],
+      "heapKb": [
+        109.3,
+        112.1,
+        111.3,
+        111.4,
+        112.3
+      ],
+      "bytesPerOp": 1349
+    },
+    {
+      "scenario": "encoder/array-churn",
+      "variant": "default",
+      "unit": "ms/tick",
+      "median": 0.000918908,
+      "values": [
+        0.000915717,
+        0.000918908,
+        0.000930567,
+        0.000953517,
+        0.000913833
+      ],
+      "gc": [
+        {
+          "count": 65,
+          "totalMs": 5.748,
+          "majorMs": 0,
+          "minorMs": 5.748
+        },
+        {
+          "count": 65,
+          "totalMs": 4.725,
+          "majorMs": 0,
+          "minorMs": 4.725
+        },
+        {
+          "count": 65,
+          "totalMs": 5.906,
+          "majorMs": 0,
+          "minorMs": 5.906
+        },
+        {
+          "count": 65,
+          "totalMs": 5.363,
+          "majorMs": 0,
+          "minorMs": 5.363
+        },
+        {
+          "count": 65,
+          "totalMs": 4.605,
+          "majorMs": 0,
+          "minorMs": 4.605
+        }
+      ],
+      "heapKb": [
+        138.9,
+        150.8,
+        145.7,
+        145.8,
+        148.4
+      ],
+      "bytesPerOp": 4
+    },
+    {
+      "scenario": "encoder/construct",
+      "variant": "default",
+      "unit": "µs/entity",
+      "median": 4.83732,
+      "values": [
+        4.89306,
+        4.85224,
+        4.78124,
+        4.35347,
+        4.83732
+      ],
+      "gc": [
+        {
+          "count": 63,
+          "totalMs": 174.082,
+          "majorMs": 12.811,
+          "minorMs": 161.271
+        },
+        {
+          "count": 63,
+          "totalMs": 114.696,
+          "majorMs": 14.137,
+          "minorMs": 100.559
+        },
+        {
+          "count": 69,
+          "totalMs": 130.103,
+          "majorMs": 15.609,
+          "minorMs": 114.493
+        },
+        {
+          "count": 62,
+          "totalMs": 111.182,
+          "majorMs": 13.165,
+          "minorMs": 98.016
+        },
+        {
+          "count": 63,
+          "totalMs": 194.529,
+          "majorMs": 15.699,
+          "minorMs": 178.83
+        }
+      ],
+      "heapKb": [
+        -787.2,
+        -783,
+        -702.1,
+        -744.6,
+        -827.4
+      ],
+      "bytesPerOp": 0
+    },
+    {
+      "scenario": "encoder/deep-nested",
+      "variant": "default",
+      "unit": "ms/tick",
+      "median": 6.51966,
+      "values": [
+        7.43007,
+        6.51966,
+        6.14135,
+        7.46212,
+        6.50556
+      ],
+      "gc": [
+        {
+          "count": 36,
+          "totalMs": 142.082,
+          "majorMs": 8.853,
+          "minorMs": 133.229
+        },
+        {
+          "count": 36,
+          "totalMs": 91.502,
+          "majorMs": 4.301,
+          "minorMs": 87.201
+        },
+        {
+          "count": 36,
+          "totalMs": 77.405,
+          "majorMs": 3.362,
+          "minorMs": 74.043
+        },
+        {
+          "count": 36,
+          "totalMs": 103.338,
+          "majorMs": 3.536,
+          "minorMs": 99.801
+        },
+        {
+          "count": 35,
+          "totalMs": 104.758,
+          "majorMs": 4.353,
+          "minorMs": 100.404
+        }
+      ],
+      "heapKb": [
+        211134.6,
+        211164.3,
+        211180.2,
+        211163.9,
+        211183.8
+      ],
+      "bytesPerOp": 89432
+    },
+    {
+      "scenario": "encoder/encode-all",
+      "variant": "default",
+      "unit": "ms/op",
+      "median": 5.24609,
+      "values": [
+        5.29253,
+        4.70171,
+        4.85464,
+        5.81319,
+        5.24609
+      ],
+      "gc": [
+        {
+          "count": 4,
+          "totalMs": 1.405,
+          "majorMs": 0,
+          "minorMs": 1.405
+        },
+        {
+          "count": 4,
+          "totalMs": 1.041,
+          "majorMs": 0,
+          "minorMs": 1.041
+        },
+        {
+          "count": 4,
+          "totalMs": 1.096,
+          "majorMs": 0,
+          "minorMs": 1.096
+        },
+        {
+          "count": 4,
+          "totalMs": 1.367,
+          "majorMs": 0,
+          "minorMs": 1.367
+        },
+        {
+          "count": 4,
+          "totalMs": 4.326,
+          "majorMs": 0,
+          "minorMs": 4.326
+        }
+      ],
+      "heapKb": [
+        18.6,
+        21,
+        18.6,
+        18.6,
+        18.6
+      ],
+      "bytesPerOp": 340872
+    },
+    {
+      "scenario": "encoder/entity-churn",
+      "variant": "default",
+      "unit": "ms/cycle",
+      "median": 0.0642731,
+      "values": [
+        0.0755443,
+        0.0637254,
+        0.0642731,
+        0.0642478,
+        0.0672295
+      ],
+      "gc": [
+        {
+          "count": 51,
+          "totalMs": 81.392,
+          "majorMs": 6.938,
+          "minorMs": 74.455
+        },
+        {
+          "count": 52,
+          "totalMs": 70.142,
+          "majorMs": 6.671,
+          "minorMs": 63.471
+        },
+        {
+          "count": 52,
+          "totalMs": 68.159,
+          "majorMs": 6.045,
+          "minorMs": 62.114
+        },
+        {
+          "count": 52,
+          "totalMs": 66.569,
+          "majorMs": 7.359,
+          "minorMs": 59.209
+        },
+        {
+          "count": 51,
+          "totalMs": 96.045,
+          "majorMs": 6.016,
+          "minorMs": 90.028
+        }
+      ],
+      "heapKb": [
+        -729,
+        -728.7,
+        -728.2,
+        -733.1,
+        -728.5
+      ],
+      "bytesPerOp": 629
+    },
+    {
+      "scenario": "encoder/heavy-tick",
+      "variant": "default",
+      "unit": "ms/tick",
+      "median": 0.726494,
+      "values": [
+        0.735982,
+        0.734748,
+        0.721254,
+        0.726278,
+        0.726494
+      ],
+      "gc": [
+        {
+          "count": 67,
+          "totalMs": 23.802,
+          "majorMs": 8.997,
+          "minorMs": 14.806
+        },
+        {
+          "count": 66,
+          "totalMs": 23.597,
+          "majorMs": 8.836,
+          "minorMs": 14.76
+        },
+        {
+          "count": 63,
+          "totalMs": 23.695,
+          "majorMs": 9.715,
+          "minorMs": 13.98
+        },
+        {
+          "count": 63,
+          "totalMs": 25.046,
+          "majorMs": 9.41,
+          "minorMs": 15.636
+        },
+        {
+          "count": 62,
+          "totalMs": 24.218,
+          "majorMs": 9.84,
+          "minorMs": 14.377
+        }
+      ],
+      "heapKb": [
+        -788.1,
+        -789.2,
+        -786.1,
+        -785.7,
+        -786.3
+      ],
+      "bytesPerOp": 20601
+    },
+    {
+      "scenario": "encoder/memory-footprint",
+      "variant": "default",
+      "unit": "KB",
+      "median": 2564.97,
+      "values": [
+        2564.67,
+        2585.42,
+        2570.16,
+        2564.97,
+        2564.63
+      ],
+      "gc": [
+        {
+          "count": 3,
+          "totalMs": 2.115,
+          "majorMs": 0,
+          "minorMs": 2.115
+        },
+        {
+          "count": 3,
+          "totalMs": 1.88,
+          "majorMs": 0,
+          "minorMs": 1.88
+        },
+        {
+          "count": 3,
+          "totalMs": 1.679,
+          "majorMs": 0,
+          "minorMs": 1.679
+        },
+        {
+          "count": 3,
+          "totalMs": 2.719,
+          "majorMs": 0,
+          "minorMs": 2.719
+        },
+        {
+          "count": 3,
+          "totalMs": 1.997,
+          "majorMs": 0,
+          "minorMs": 1.997
+        }
+      ],
+      "heapKb": [
+        2564.7,
+        2585.4,
+        2570.2,
+        2565,
+        2564.6
+      ],
+      "bytesPerOp": null
+    },
+    {
+      "scenario": "encoder/steady-tick",
+      "variant": "mut10",
+      "unit": "ms/tick",
+      "median": 0.0019549,
+      "values": [
+        0.00200633,
+        0.0019452,
+        0.00189588,
+        0.00196139,
+        0.0019549
+      ],
+      "gc": [
+        {
+          "count": 3,
+          "totalMs": 0.721,
+          "majorMs": 0,
+          "minorMs": 0.721
+        },
+        {
+          "count": 3,
+          "totalMs": 0.609,
+          "majorMs": 0,
+          "minorMs": 0.609
+        },
+        {
+          "count": 3,
+          "totalMs": 0.537,
+          "majorMs": 0,
+          "minorMs": 0.537
+        },
+        {
+          "count": 3,
+          "totalMs": 0.625,
+          "majorMs": 0,
+          "minorMs": 0.625
+        },
+        {
+          "count": 3,
+          "totalMs": 0.567,
+          "majorMs": 0,
+          "minorMs": 0.567
+        }
+      ],
+      "heapKb": [
+        30.6,
+        30.8,
+        33.8,
+        33.6,
+        30
+      ],
+      "bytesPerOp": 100
+    },
+    {
+      "scenario": "encoder/steady-tick",
+      "variant": "mut100",
+      "unit": "ms/tick",
+      "median": 0.0215366,
+      "values": [
+        0.0212935,
+        0.0215366,
+        0.022607,
+        0.0210687,
+        0.0216235
+      ],
+      "gc": [
+        {
+          "count": 6,
+          "totalMs": 1.046,
+          "majorMs": 0,
+          "minorMs": 1.046
+        },
+        {
+          "count": 6,
+          "totalMs": 1.08,
+          "majorMs": 0,
+          "minorMs": 1.08
+        },
+        {
+          "count": 6,
+          "totalMs": 1.105,
+          "majorMs": 0,
+          "minorMs": 1.105
+        },
+        {
+          "count": 6,
+          "totalMs": 1.241,
+          "majorMs": 0,
+          "minorMs": 1.241
+        },
+        {
+          "count": 6,
+          "totalMs": 1.095,
+          "majorMs": 0,
+          "minorMs": 1.095
+        }
+      ],
+      "heapKb": [
+        33.6,
+        33.6,
+        33.6,
+        33.6,
+        33.8
+      ],
+      "bytesPerOp": 1073
+    },
+    {
+      "scenario": "encoder/string-heavy",
+      "variant": "default",
+      "unit": "ms/tick",
+      "median": 0.0224061,
+      "values": [
+        0.0223926,
+        0.021773,
+        0.0224061,
+        0.0225084,
+        0.0267823
+      ],
+      "gc": [
+        {
+          "count": 13,
+          "totalMs": 2.076,
+          "majorMs": 0,
+          "minorMs": 2.076
+        },
+        {
+          "count": 13,
+          "totalMs": 2.329,
+          "majorMs": 0,
+          "minorMs": 2.329
+        },
+        {
+          "count": 13,
+          "totalMs": 2.073,
+          "majorMs": 0,
+          "minorMs": 2.073
+        },
+        {
+          "count": 13,
+          "totalMs": 1.992,
+          "majorMs": 0,
+          "minorMs": 1.992
+        },
+        {
+          "count": 13,
+          "totalMs": 2.153,
+          "majorMs": 0,
+          "minorMs": 2.153
+        }
+      ],
+      "heapKb": [
+        33.3,
+        33.3,
+        33.3,
+        33.2,
+        33.5
+      ],
+      "bytesPerOp": 3929
+    },
+    {
+      "scenario": "stateview/bootstrap",
+      "variant": "default",
+      "unit": "ms/op",
+      "median": 3.16772,
+      "values": [
+        3.16772,
+        3.107,
+        3.16559,
+        3.40506,
+        3.27818
+      ],
+      "gc": [
+        {
+          "count": 66,
+          "totalMs": 11.986,
+          "majorMs": 0,
+          "minorMs": 11.986
+        },
+        {
+          "count": 66,
+          "totalMs": 14.579,
+          "majorMs": 0,
+          "minorMs": 14.579
+        },
+        {
+          "count": 66,
+          "totalMs": 14.048,
+          "majorMs": 0,
+          "minorMs": 14.048
+        },
+        {
+          "count": 66,
+          "totalMs": 13.438,
+          "majorMs": 0,
+          "minorMs": 13.438
+        },
+        {
+          "count": 66,
+          "totalMs": 12.655,
+          "majorMs": 0,
+          "minorMs": 12.655
+        }
+      ],
+      "heapKb": [
+        47.2,
+        46.8,
+        47.3,
+        46.8,
+        46.8
+      ],
+      "bytesPerOp": 180443
+    },
+    {
+      "scenario": "stateview/tags",
+      "variant": "default",
+      "unit": "ms/tick",
+      "median": 0.0228636,
+      "values": [
+        0.0236648,
+        0.0228226,
+        0.0228193,
+        0.0228636,
+        0.0237213
+      ],
+      "gc": [
+        {
+          "count": 10,
+          "totalMs": 1.578,
+          "majorMs": 0,
+          "minorMs": 1.578
+        },
+        {
+          "count": 10,
+          "totalMs": 1.49,
+          "majorMs": 0,
+          "minorMs": 1.49
+        },
+        {
+          "count": 10,
+          "totalMs": 1.947,
+          "majorMs": 0,
+          "minorMs": 1.947
+        },
+        {
+          "count": 10,
+          "totalMs": 1.877,
+          "majorMs": 0,
+          "minorMs": 1.877
+        },
+        {
+          "count": 10,
+          "totalMs": 1.553,
+          "majorMs": 0,
+          "minorMs": 1.553
+        }
+      ],
+      "heapKb": [
+        95.6,
+        99.1,
+        95.4,
+        95.2,
+        94.9
+      ],
+      "bytesPerOp": 2385
+    },
+    {
+      "scenario": "stateview/view-churn",
+      "variant": "default",
+      "unit": "ms/tick",
+      "median": 0.690931,
+      "values": [
+        0.710124,
+        0.655486,
+        0.73031,
+        0.686911,
+        0.690931
+      ],
+      "gc": [
+        {
+          "count": 185,
+          "totalMs": 270.172,
+          "majorMs": 18.145,
+          "minorMs": 252.026
+        },
+        {
+          "count": 184,
+          "totalMs": 251.851,
+          "majorMs": 22.82,
+          "minorMs": 229.032
+        },
+        {
+          "count": 184,
+          "totalMs": 340.834,
+          "majorMs": 21.59,
+          "minorMs": 319.244
+        },
+        {
+          "count": 185,
+          "totalMs": 286.658,
+          "majorMs": 18.992,
+          "minorMs": 267.666
+        },
+        {
+          "count": 184,
+          "totalMs": 242.411,
+          "majorMs": 14.117,
+          "minorMs": 228.294
+        }
+      ],
+      "heapKb": [
+        -735.8,
+        -735.8,
+        -735.2,
+        -735.8,
+        -736
+      ],
+      "bytesPerOp": 18570
+    },
+    {
+      "scenario": "stateview/views",
+      "variant": "v1",
+      "unit": "ms/tick",
+      "median": 0.0103941,
+      "values": [
+        0.00893329,
+        0.0102192,
+        0.0103941,
+        0.0111388,
+        0.0110282
+      ],
+      "gc": [
+        {
+          "count": 0,
+          "totalMs": 0,
+          "majorMs": 0,
+          "minorMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "majorMs": 0,
+          "minorMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "majorMs": 0,
+          "minorMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "majorMs": 0,
+          "minorMs": 0
+        },
+        {
+          "count": 0,
+          "totalMs": 0,
+          "majorMs": 0,
+          "minorMs": 0
+        }
+      ],
+      "heapKb": [
+        70.6,
+        66.6,
+        78,
+        64.8,
+        67.8
+      ],
+      "bytesPerOp": 397
+    },
+    {
+      "scenario": "stateview/views",
+      "variant": "v10",
+      "unit": "ms/tick",
+      "median": 0.0202139,
+      "values": [
+        0.0163837,
+        0.0196975,
+        0.0202139,
+        0.0202266,
+        0.0268987
+      ],
+      "gc": [
+        {
+          "count": 2,
+          "totalMs": 0.789,
+          "majorMs": 0,
+          "minorMs": 0.789
+        },
+        {
+          "count": 2,
+          "totalMs": 1.321,
+          "majorMs": 0,
+          "minorMs": 1.321
+        },
+        {
+          "count": 2,
+          "totalMs": 1.125,
+          "majorMs": 0,
+          "minorMs": 1.125
+        },
+        {
+          "count": 2,
+          "totalMs": 1.067,
+          "majorMs": 0,
+          "minorMs": 1.067
+        },
+        {
+          "count": 2,
+          "totalMs": 2.903,
+          "majorMs": 0,
+          "minorMs": 2.903
+        }
+      ],
+      "heapKb": [
+        103,
+        76.7,
+        85,
+        76.2,
+        74.7
+      ],
+      "bytesPerOp": 2580
+    },
+    {
+      "scenario": "stateview/views",
+      "variant": "v50",
+      "unit": "ms/tick",
+      "median": 0.0553156,
+      "values": [
+        0.0663372,
+        0.0553156,
+        0.0519844,
+        0.0611133,
+        0.0489225
+      ],
+      "gc": [
+        {
+          "count": 3,
+          "totalMs": 1.598,
+          "majorMs": 0,
+          "minorMs": 1.598
+        },
+        {
+          "count": 3,
+          "totalMs": 1.359,
+          "majorMs": 0,
+          "minorMs": 1.359
+        },
+        {
+          "count": 3,
+          "totalMs": 1.314,
+          "majorMs": 0,
+          "minorMs": 1.314
+        },
+        {
+          "count": 3,
+          "totalMs": 2.422,
+          "majorMs": 0,
+          "minorMs": 2.422
+        },
+        {
+          "count": 3,
+          "totalMs": 1.395,
+          "majorMs": 0,
+          "minorMs": 1.395
+        }
+      ],
+      "heapKb": [
+        93.8,
+        105.8,
+        93.7,
+        92.4,
+        90.3
+      ],
+      "bytesPerOp": 12240
+    }
+  ]
+}
