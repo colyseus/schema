@@ -12,6 +12,14 @@ wall-clock neutral), no other scenario regressing >2% at p<0.05, tests green.
 - **Verdict:** ACCEPTED / REVERTED (→ DEAD_ENDS.md)
 -->
 
+## e4a-refid-descriptor (2026-07-02) — ACCEPTED
+- **Result:** (targeted N=20) decoder/bootstrap gcMs **22.1→16.4ms (−26%,
+  p<.001)**, heap 45.5→42.2KB, wall −1.2% (n.s.); decoder/churn +2.3%
+  (p=.86, noise); construct +1.5% (p=.99); deep-nested +0.5% (p=.80);
+  entity-churn −2.3% (p=.14). Accepted via the GC criterion: allocation-site
+  removal with wall-clock non-regressing everywhere.
+- Original hypothesis below.
+
 ## e4a-refid-descriptor (queued)
 - **Hypothesis:** `Object.defineProperty(ref, $refId, {value,…})` allocates a
   descriptor object per new ref in BOTH `Root.add` (13.8% self, deep-nested)

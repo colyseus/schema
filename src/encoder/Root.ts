@@ -23,6 +23,10 @@ export interface Streamable {
     _unregister(): void;
 }
 
+// Reused across Root.add calls — defineProperty is unavoidable ($refId must
+// stay non-enumerable for deepStrictEqual) but the descriptor literal isn't.
+const $refIdDescriptor = { value: 0, enumerable: false, writable: true };
+
 export class Root {
     /**
      * Allocates and recycles refIds. See `RefIdAllocator` for the reuse
@@ -145,11 +149,8 @@ export class Root {
         // *enumerable* own Symbols, so we keep defineProperty(enumerable:false)
         // to keep $refId hidden from deep-equal comparisons in tests.
         if (ref[$refId] === undefined) {
-            Object.defineProperty(ref, $refId, {
-                value: this.refIds.acquire(),
-                enumerable: false,
-                writable: true
-            });
+            $refIdDescriptor.value = this.refIds.acquire();
+            Object.defineProperty(ref, $refId, $refIdDescriptor);
         }
 
         const refId = ref[$refId];
