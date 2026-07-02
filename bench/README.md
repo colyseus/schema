@@ -98,4 +98,4 @@ Rules:
 - `snapshot-build.sh <label>` — freeze a build into `.builds/<label>/`
 - `lib/` — child harness, stats (Mann-Whitney/HL), GC observer, fixtures, report
 - `scenarios/{encoder,stateview,decoder,callbacks,e2e}/`
-- `results/` — committed baseline JSONs + profile reports; `.builds/`, `profiles/` are gitignored
+- `results/` — measurement outputs (JSON runs, profile reports); machine-specific, kept out of git along with `.builds/` and `profiles/`

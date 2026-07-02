@@ -1,4 +1,4 @@
 .builds/
 profiles/
-results/raw-profiles/
+results/
 !lib/
