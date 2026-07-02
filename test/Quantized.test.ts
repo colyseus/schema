@@ -75,6 +75,40 @@ describe("t.quantized", () => {
         assert.throws(() => resolveQuantize({ min: 0, max: 10, mode: "bounce" as any }), /mode must be/);
     });
 
+    it("rejects a non-finite range at define time", () => {
+        assert.throws(() => resolveQuantize({ min: 0, max: Infinity }), /finite/);
+        assert.throws(() => resolveQuantize({ min: -Infinity, max: 0 }), /finite/);
+        assert.throws(() => resolveQuantize({ min: 0, max: NaN }), /finite/);
+    });
+
+    it("non-finite values quantize deterministically (no local NaN vs wire divergence)", () => {
+        // The field's promise is that the stored value IS dequant(q) — the same
+        // value the peer decodes. NaN must not leak into $values while the wire
+        // carries an unrelated integer.
+        const clamp = resolveQuantize({ min: -1.5, max: 1.5 });
+        const wrap = resolveQuantize({ min: 0, max: TWO_PI, mode: "wrap" });
+
+        assert.strictEqual(quantize(clamp, NaN), 0);              // NaN → min
+        assert.strictEqual(quantize(wrap, NaN), 0);
+        assert.strictEqual(quantize(wrap, Infinity), 0);          // irreducible → min
+        assert.strictEqual(quantize(wrap, -Infinity), 0);
+        assert.strictEqual(quantize(clamp, Infinity), clamp.span);  // clamps to max
+        assert.strictEqual(quantize(clamp, -Infinity), 0);          // clamps to min
+
+        // Through the setter: the instance stores dequant(q), never NaN.
+        const Input = schema({ pitch: t.quantized({ min: -1.5, max: 1.5 }), yaw: t.angle() });
+        const s = new Input();
+        s.pitch = NaN;
+        s.yaw = Infinity;
+        assert.strictEqual(s.pitch, -1.5);
+        assert.strictEqual(s.yaw, 0);
+
+        // And the peer decodes the same values the instance holds.
+        const dst = roundTrip(Input, (d) => { d.pitch = NaN; d.yaw = Infinity; });
+        assert.strictEqual(dst.pitch, s.pitch);
+        assert.strictEqual(dst.yaw, s.yaw);
+    });
+
     it("the field yields the wire-exact value immediately on the producer (no full-precision leak)", () => {
         const Input = schema({ yaw: t.angle(), pitch: t.quantized({ min: -PITCH_LIMIT, max: PITCH_LIMIT }) });
         const desc = resolveQuantize({ min: 0, max: TWO_PI, mode: "wrap" });

@@ -95,8 +95,9 @@ export function resolveQuantize(opts: QuantizeOptions): QuantizeDescriptor {
         throw new Error("t.quantized(): options object with { min, max } is required.");
     }
     const { min, max } = opts;
-    if (typeof min !== "number" || typeof max !== "number" || !(max > min)) {
-        throw new Error(`t.quantized(): require min < max (got min=${min}, max=${max}).`);
+    if (typeof min !== "number" || typeof max !== "number" || !(max > min)
+        || !Number.isFinite(min) || !Number.isFinite(max)) {
+        throw new Error(`t.quantized(): require finite min < max (got min=${min}, max=${max}).`);
     }
     const bits = opts.bits ?? 16;
     if (bits !== 8 && bits !== 16 && bits !== 32) {
@@ -132,6 +133,10 @@ export function isQuantizedType(type: any): type is { quantized: QuantizeDescrip
  */
 export function quantize(desc: QuantizeDescriptor, value: number): number {
     if (desc.wrap) {
+        // Non-finite can't be range-reduced (Inf % range = NaN); NaN would flow to
+        // the wire as garbage while the local instance kept NaN — a silent peer
+        // divergence. Pin to q=0 (= min): garbage in, deterministic out, both agree.
+        if (!Number.isFinite(value)) return 0;
         const range = desc.range;
         // float-domain range reduction → [0, range)
         let a = (value - desc.min) % range;
@@ -140,6 +145,7 @@ export function quantize(desc: QuantizeDescriptor, value: number): number {
         // `% steps` (not `& mask`) so bits=32 doesn't overflow JS's int32 bitwise.
         return Math.floor((a / range) * steps + 0.5) % steps;
     }
+    if (value !== value) return 0; // NaN → min (±Inf clamps naturally below)
     const v = value < desc.min ? desc.min : value > desc.max ? desc.max : value;
     return Math.floor(((v - desc.min) / desc.range) * desc.span + 0.5);
 }
