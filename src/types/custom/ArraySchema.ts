@@ -120,6 +120,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     protected tmpItems: V[] = [];
     protected deletedIndexes: boolean[] = [];
     protected isMovingItems = false;
+    /** Decode-side: `items` has holes (delete or gap-write) — `$onDecodeEnd` must compact. */
+    protected _needsCompaction = false;
 
     static [$encoder] = encodeArray;
     static [$decoder] = decodeArray;
@@ -136,10 +138,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
      */
     static [$filter] (ref: ArraySchema, index: number, view: StateView) {
+        if (!view) return true; // must stay first — encodeAll hits this per element
+        const self = ref[$proxyTarget] ?? ref; // ref arrives proxied — skip traps below
         return (
-            !view ||
-            typeof (ref[$childType]) === "string" ||
-            view.isChangeTreeVisible(ref['tmpItems'][index]?.[$changes])
+            typeof (self[$childType]) === "string" ||
+            view.isChangeTreeVisible(self['tmpItems'][index]?.[$changes])
         );
     }
 
@@ -194,6 +197,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         // staged-snapshot path in `$getByIndex`, `$onEncodeEnd`, etc.). The
         // decoder reads from `items` directly and never maintains them.
         self.isMovingItems = false;
+        self._needsCompaction = false;
         self[$childType] = undefined;
         self[$proxyTarget] = self;
 
@@ -344,6 +348,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             this.items[index] = value;
 
         } else {
+            if (index > this.items.length) {
+                this._needsCompaction = true; // gap-write (filtered/out-of-order ADD) leaves holes
+            }
             this.items[index] = value;
         }
     }
@@ -868,24 +875,32 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * `$deleteByIndex` below.
      */
     [$getByIndex](index: number, isEncodeAll: boolean = false): any {
+        const self = this[$proxyTarget] ?? this; // called via Proxy — one trap here beats one per field read
         return (isEncodeAll)
-            ? this.items[index]
-            : this.deletedIndexes[index]
-                ? this.items[index]
-                : this.tmpItems[index] || this.items[index];
+            ? self.items[index]
+            : self.deletedIndexes[index]
+                ? self.items[index]
+                : self.tmpItems[index] || self.items[index];
     }
 
     [$deleteByIndex](index: number): void {
-        this.items[index] = undefined;
+        const self = this[$proxyTarget] ?? this;
+        self.items[index] = undefined;
+        self._needsCompaction = true;
     }
 
     protected [$onEncodeEnd]() {
-        this.tmpItems = this.items.slice();
-        this.deletedIndexes.length = 0;
+        const self = this[$proxyTarget] ?? this;
+        self.tmpItems = self.items.slice();
+        self.deletedIndexes.length = 0;
     }
 
     protected [$onDecodeEnd]() {
-        this.items = this.items.filter((item) => item !== undefined);
+        const self = this[$proxyTarget] ?? this;
+        if (self._needsCompaction) {
+            self._needsCompaction = false;
+            self.items = self.items.filter((item) => item !== undefined);
+        }
     }
 
     toArray() {
