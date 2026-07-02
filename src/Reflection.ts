@@ -53,10 +53,30 @@ interface ReflectionStatic {
 /**
  * Reflection
  */
+
+/**
+ * `t.quantized()` field descriptor as it rides the reflection handshake —
+ * schema-typed (bit-exact float64 bounds), NOT a string grammar, so every
+ * language port decodes it with the schema decoder it already has.
+ */
+export const QuantizedDescriptor = schema({
+    min: t.float64(),
+    max: t.float64(),
+    bits: t.uint8(),
+    mode: t.uint8(), // 0 = clamp, 1 = wrap
+}, "QuantizedDescriptor");
+export type QuantizedDescriptor = SchemaType<typeof QuantizedDescriptor>;
+
 export const ReflectionField = schema({
     name: t.string(),
     type: t.string(),
     referencedType: t.number(),
+    /** Primitive child of a collection (`array`/`map`/... of "string" etc.) —
+     *  its own slot, replacing the legacy `"array:string"` colon packing. */
+    childPrimitive: t.string(),
+    /** Set only on `t.quantized()` fields (`.optional()` — no auto-instantiated
+     *  default; its absence is the "not quantized" signal on decode). */
+    quantized: t.ref(QuantizedDescriptor).optional(),
 }, "ReflectionField");
 export type ReflectionField = SchemaType<typeof ReflectionField>;
 
@@ -149,11 +169,16 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
                     fieldType = field.type;
 
                 } else if (isQuantizedType(field.type)) {
-                    // Self-contained in the type string (like "array:string"): carry
-                    // the descriptor params so the peer reconstructs the exact codec.
+                    // Params ride as a schema-typed descriptor (bit-exact float64) —
+                    // no string grammar for the peer (or a language port) to parse.
                     const d = field.type.quantized;
-                    fieldType = `quantized:${d.min},${d.max},${d.bits},${d.wrap ? 1 : 0}`;
-                    reflectionField.referencedType = -1;
+                    fieldType = "quantized";
+                    const desc = new QuantizedDescriptor();
+                    desc.min = d.min;
+                    desc.max = d.max;
+                    desc.bits = d.bits;
+                    desc.mode = d.wrap ? 1 : 0;
+                    reflectionField.quantized = desc;
 
                 } else {
                     let childTypeSchema: typeof Schema;
@@ -169,7 +194,8 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
                         fieldType = Object.keys(field.type)[0];
 
                         if (typeof (field.type[fieldType as keyof typeof field.type]) === "string") {
-                            fieldType += ":" + field.type[fieldType as keyof typeof field.type]; // array:string
+                            // primitive child gets its own slot (was packed as "array:string")
+                            reflectionField.childPrimitive = field.type[fieldType as keyof typeof field.type] as string;
 
                         } else {
                             childTypeSchema = field.type[fieldType as keyof typeof field.type];
@@ -223,27 +249,23 @@ Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it?:
         reflectionType.fields.forEach((field, i) => {
             const fieldIndex = parentFieldIndex + i;
 
-            if (field.referencedType !== undefined) {
-                let fieldType = field.type;
-                let refType: PrimitiveType = typeContext.get(field.referencedType);
+            if (field.quantized !== undefined) {
+                // Schema-typed descriptor → resolved codec (validation stays in
+                // resolveQuantize, same as the builder path).
+                const q = field.quantized;
+                Metadata.addField(metadata, fieldIndex, field.name, {
+                    quantized: resolveQuantize({ min: q.min, max: q.max, bits: q.bits as 8 | 16 | 32, mode: q.mode === 1 ? "wrap" : "clamp" }),
+                } as any);
 
-                // map or array of primitive type (-1)
-                if (!refType) {
-                    const typeInfo = field.type.split(":");
-                    fieldType = typeInfo[0];
-                    refType = typeInfo[1] as PrimitiveType; // string
-                }
+            } else if (field.referencedType !== undefined) {
+                const fieldType = field.type;
+                // Schema child by type id; a primitive child (referencedType -1)
+                // rides its own childPrimitive slot.
+                const refType: PrimitiveType = typeContext.get(field.referencedType)
+                    ?? field.childPrimitive as PrimitiveType;
 
                 if (fieldType === "ref") {
                     Metadata.addField(metadata, fieldIndex, field.name, refType);
-
-                } else if (fieldType === "quantized") {
-                    // Parse "min,max,bits,wrap" back into a resolved descriptor. The
-                    // wire keeps the compact boolean; map it to the public `mode`.
-                    const [min, max, bits, wrap] = (refType as unknown as string).split(",");
-                    Metadata.addField(metadata, fieldIndex, field.name, {
-                        quantized: resolveQuantize({ min: +min, max: +max, bits: +bits as 8 | 16 | 32, mode: wrap === "1" ? "wrap" : "clamp" }),
-                    } as any);
 
                 } else {
                     Metadata.addField(metadata, fieldIndex, field.name, { [fieldType]: refType });
