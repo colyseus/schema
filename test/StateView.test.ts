@@ -4216,6 +4216,71 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client]);
         });
 
+        it("late-attached client on a SHARED view must receive ancestor bindings again (bootstrap re-add)", () => {
+            //
+            // Shared-view pattern (e.g. one StateView per TEAM, assigned to
+            // every client of that team): visibility bits are per-VIEW, but
+            // the ADD ops they queue are consumed per-ENCODE (or dropped
+            // while the view has no clients). A client that attaches to an
+            // already-active view gets its JOIN full state encoded VIEWLESS
+            // (no filtered containers), so a bootstrap "re-add everything
+            // visible" must re-queue the whole ancestor chain — including
+            // the already-visible filtered map container — or the client
+            // decodes entry ops for a container refId it never received.
+            //
+            class Entity extends Schema {
+                @type("number") x: number;
+            }
+            class State extends Schema {
+                @type("number") tick = 0;
+                @view() @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            // shared "team" view, populated while NO client holds it
+            const sharedView = new StateView();
+            const e1 = new Entity().assign({ x: 10 });
+            state.entities.set("one", e1);
+            state.tick++;
+            sharedView.add(e1);
+            sharedView.changes.clear(); // dormant-team backlog drop (no client to encode for)
+
+            // a patch goes out to other (viewless) clients — consumes changes
+            const it = { offset: 0 };
+            encoder.encode(it);
+            encoder.discardChanges();
+
+            // late joiner: full state encoded VIEWLESS (client.view is only
+            // assigned after join), then attaches to the shared view and
+            // bootstraps by re-adding everything currently visible
+            const client = createClientWithView(state, sharedView);
+            const itAll = { offset: 0 };
+            client.state.decode(encoder.encodeAll(itAll));
+            client.needFullEncode = false;
+
+            state.tick++;
+            if (sharedView.has(e1)) sharedView.add(e1); // bootstrap re-add
+
+            const originalConsoleError = console.error;
+            const errors: string[] = [];
+            console.error = (...args: any[]) => { errors.push(args.map(String).join(" ")); };
+            try {
+                encodeMultiple(encoder, state, [client]);
+            } finally {
+                console.error = originalConsoleError;
+            }
+
+            assert.deepStrictEqual(
+                errors.filter((line) => line.includes('"refId" not found')),
+                [],
+                "decoder should not log 'refId not found'",
+            );
+            assert.strictEqual(client.state.entities.size, 1);
+            assert.strictEqual(client.state.entities.get("one")?.x, 10);
+        });
+
     });
 
     it("replacing a @view collection whose child is shared into another @view field", () => {

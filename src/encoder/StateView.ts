@@ -537,21 +537,26 @@ export class StateView {
         if (!this.isVisible(changeTree)) {
             // view must have all "changeTree" parent tree
             this.markVisible(changeTree);
+        }
 
-            // Recurse all the way to the root regardless of whether the
-            // parent is filtered. Walking the full chain is what makes
-            // `view.changes` topologically ordered by construction — any
-            // filtered ancestor up the chain is touched here, before the
-            // descendant's entry. The actual entry-write below is gated
-            // on `hasFilteredFields` so non-filtered ancestors don't
-            // emit redundant wire bytes (the decoder already knows them
-            // via the shared encode pass). Marking them visible is
-            // still useful: it makes this short-circuit fire on the next
-            // `view.add` instead of re-walking the chain.
-            const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
-            if (parentChangeTree) {
-                this.addParentOf(changeTree, tag);
-            }
+        // Recurse all the way to the root REGARDLESS of whether this parent
+        // is already visible. Walking the full chain keeps `view.changes`
+        // topologically ordered by construction (ancestors touched before
+        // the descendant's entry), and — crucially — re-queues the ancestor
+        // binding ops every time: visibility bits are per-VIEW, but the ADD
+        // ops they once queued are consumed per-ENCODE. With a shared view,
+        // an earlier encode (for other clients) or a dropped backlog leaves
+        // an already-visible ancestor whose binding a late-attached client
+        // never received — its filtered-container refId would then arrive
+        // unbound ("refId not found"). Re-writing the entry ops is cheap
+        // (Map.set dedupes within a patch) and decodes as a no-op for
+        // clients that already hold the refs. The entry-write below is
+        // still gated on `hasFilteredFields` so non-filtered ancestors
+        // don't emit redundant wire bytes (the decoder already knows them
+        // via the shared encode pass).
+        const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
+        if (parentChangeTree) {
+            this.addParentOf(changeTree, tag);
         }
 
         // Skip the entry-write for non-filtered ancestors: their refIds
