@@ -16,6 +16,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   warnings; raise further per app via `Encoder.BUFFER_SIZE = N * 1024`.
 
 ### Fixed
+- `StateView` + `ArraySchema`: a filtered array element removed via
+  `DELETE_BY_REFID` no longer leaks its ref-count on the decoder. That branch
+  deleted the element from the array but — unlike `decodeValue`'s DELETE path —
+  never called `removeRef`, so the child's ref-count never reached zero and the
+  refId was never garbage collected. When the encoder later recycled that refId
+  for a new instance, the decoder's stale mapping aliased a *different* type and
+  decoding derailed with `@colyseus/schema: field not defined` →
+  `definition mismatch` (after which `skipCurrentStructure` silently dropped the
+  rest of the patch, leaving stale state). Surfaces only under `StateView`:
+  `DELETE_BY_REFID` is emitted solely for filtered `ArraySchema`s, and it takes
+  element churn (splice) alongside view-membership churn + refId reuse to expose
+  the leak — steady item flows in a fog-of-war room hit it readily. Keyed
+  collections (`MapSchema`/`SetSchema`) were unaffected; their filtered deletes
+  already route through the `removeRef`-ing path. Regression coverage added to
+  `StateView.test.ts` (ref-count parity + no-orphan-refs across
+  splice / refId-reuse / resurrection).
 - `@colyseus/schema/input` no longer ships a second copy of
   `Schema`/`Metadata`/`TypeContext`/`Encoder`/`Decoder`. The subpath was
   previously built as a standalone bundle that statically inlined the entire

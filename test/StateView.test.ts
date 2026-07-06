@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import * as util from "util";
 import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, $refId, OPERATION, SetSchema, CollectionSchema } from "../src";
-import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts, InheritanceRoot, Position } from "./Schema";
+import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts, assertNoOrphanRefs, InheritanceRoot, Position } from "./Schema";
 import { nanoid } from "nanoid";
 
 describe("StateView", () => {
@@ -4464,6 +4464,210 @@ describe("StateView", () => {
             Encoder.BUFFER_SIZE = originalBufferSize;
             console.warn = originalWarn;
         }
+    });
+
+    it("filtered ArraySchema element removal must release the child refId (no refId-reuse aliasing)", () => {
+        // Regression: DELETE_BY_REFID (a filtered ArraySchema element spliced
+        // out) must decrement the removed child's ref-count on the decoder,
+        // mirroring decodeValue()'s DELETE path. Before the fix it leaked, so
+        // when the encoder recycled that refId for a new instance the decoder's
+        // stale mapping aliased a different type → "definition mismatch" /
+        // "field not defined". Triggered by churning item arrays (mixed
+        // push/splice) while entities move through per-view membership churn and
+        // sibling entities spawn/despawn (refId allocation + reuse).
+        class Item extends Schema {
+            @type("uint8") itemId = 0;
+            @type("uint8") charges = 0;
+        }
+        class Entity extends Schema {
+            @type([Item]) items = new ArraySchema<Item>();
+        }
+        class State extends Schema {
+            @view() @type({ map: Entity }) entities = new MapSchema<Entity>();
+        }
+
+        const originalWarn = console.warn;
+        let warnings = 0;
+        console.warn = (...args: any[]) => {
+            if (/definition mismatch|field not defined|refId/i.test(String(args[0] ?? ""))) warnings++;
+        };
+        try {
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            let nextId = 1;
+            const mkEntity = (n: number) => {
+                const e = new Entity();
+                for (let i = 0; i < n; i++) e.items.push(new Item().assign({ itemId: (nextId++) & 255, charges: 1 }));
+                return e;
+            };
+            state.entities.set("A", mkEntity(2));
+            state.entities.set("C", mkEntity(2));
+            state.entities.set("B", mkEntity(2));
+            const A = state.entities.get("A")!, C = state.entities.get("C")!, B = state.entities.get("B")!;
+
+            // Two views ("teams"): blue always sees A + C; red always sees B.
+            const blue = createClientWithView(state);
+            const red = createClientWithView(state);
+            blue.view.add(A); blue.view.add(C);
+            red.view.add(B);
+            encodeMultiple(encoder, state, [blue, red]);
+
+            // deterministic RNG (Date.now/Math.random-free for reproducibility)
+            let seed = 1;
+            const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 0x7fffffff;
+            const churn = (e: Entity) => {
+                e.items.push(new Item().assign({ itemId: (nextId++) & 255, charges: 1 }));
+                if (e.items.length > 3) e.items.splice((rnd() * e.items.length) | 0, 1);
+                else if (e.items.length > 1 && rnd() < 0.5) e.items.splice(0, 1);
+            };
+            const idsOf = (e: Entity | undefined) => (e ? Array.from(e.items).map((it) => it.itemId).join(",") : "<none>");
+
+            let creepId = 0, bIn = false, acInRed = false;
+            const creeps: string[] = [];
+            for (let patch = 0; patch < 80; patch++) {
+                churn(A); churn(C); churn(B);
+                // fog transitions on a stably-owned ref (B in blue, A/C in red)
+                bIn = !bIn;
+                if (bIn) blue.view.add(B); else blue.view.remove(B);
+                if (patch % 2 === 0) {
+                    acInRed = !acInRed;
+                    if (acInRed) { red.view.add(A); red.view.add(C); }
+                    else { red.view.remove(A); red.view.remove(C); }
+                }
+                // sibling spawn/despawn → refId allocation + reuse
+                const k = `creep${creepId++}`;
+                state.entities.set(k, mkEntity(1));
+                (patch % 2 ? blue : red).view.add(state.entities.get(k)!);
+                creeps.push(k);
+                while (creeps.length > 4) {
+                    const dk = creeps.shift()!;
+                    const de = state.entities.get(dk);
+                    if (de) { blue.view.remove(de); red.view.remove(de); }
+                    state.entities.delete(dk);
+                }
+                encodeMultiple(encoder, state, [blue, red]);
+
+                // Always-visible refs must stay byte-exact (view-safe check).
+                assert.strictEqual(idsOf(blue.state.entities.get("A")), idsOf(A), `blue A @patch${patch}`);
+                assert.strictEqual(idsOf(blue.state.entities.get("C")), idsOf(C), `blue C @patch${patch}`);
+                assert.strictEqual(idsOf(red.state.entities.get("B")), idsOf(B), `red B @patch${patch}`);
+            }
+
+            assert.strictEqual(warnings, 0, `decoder logged ${warnings} definition-mismatch / refId warnings`);
+        } finally {
+            console.warn = originalWarn;
+        }
+    });
+
+    it("filtered ArraySchema: encoder/decoder ref-count parity through splice + refId reuse", () => {
+        // Strict ref-count parity (not just JSON) on a FILTERED array whose
+        // elements are spliced while sibling entities spawn/despawn (forcing the
+        // encoder to recycle refIds). A full-visibility view mirrors the encoder,
+        // so assertRefIdCounts must stay exact — before the DELETE_BY_REFID fix
+        // the removed element's count leaked (decoder > encoder).
+        class Item extends Schema { @type("uint8") v = 0; }
+        class Entity extends Schema { @type([Item]) items = new ArraySchema<Item>(); }
+        class State extends Schema { @view() @type({ map: Entity }) entities = new MapSchema<Entity>(); }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+        const client = createClientWithView(state);
+
+        let n = 1;
+        const mk = (count: number) => { const e = new Entity(); for (let i = 0; i < count; i++) e.items.push(new Item().assign({ v: n++ & 255 })); return e; };
+        state.entities.set("a", mk(3));
+        client.view.add(state.entities.get("a")!);
+        encodeMultiple(encoder, state, [client]);
+        assertRefIdCounts(state, client.state);
+
+        let seed = 3; const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 0x7fffffff;
+        const a = state.entities.get("a")!;
+        let cid = 0; const creeps: string[] = [];
+        for (let t = 0; t < 40; t++) {
+            a.items.push(new Item().assign({ v: n++ & 255 }));
+            if (a.items.length > 3) a.items.splice((rnd() * a.items.length) | 0, 1);
+            // sibling spawn/despawn → refId allocation + reuse
+            const k = `c${cid++}`; const ce = mk(1);
+            state.entities.set(k, ce); client.view.add(ce); creeps.push(k);
+            if (creeps.length > 3) { const dk = creeps.shift()!; state.entities.delete(dk); }
+            encodeMultiple(encoder, state, [client]);
+            assertRefIdCounts(state, client.state);
+            assertNoOrphanRefs(state, client.state);
+        }
+    });
+
+    it("filtered ArraySchema: no orphan refs under realistic fog churn (add-on-enter/remove-on-leave)", () => {
+        // The MOBA-shaped scenario: two team views, entities enter/leave a view
+        // as they cross vision (add on enter, remove on leave — NOT re-added every
+        // tick), item arrays churn (push/splice), and sibling entities spawn/die.
+        // assertNoOrphanRefs is valid on a partial (filtered) view and fails the
+        // moment the decoder holds a refId the encoder has already released.
+        class Item extends Schema { @type("uint8") v = 0; }
+        class Entity extends Schema { @type([Item]) items = new ArraySchema<Item>(); }
+        class State extends Schema { @view() @type({ map: Entity }) entities = new MapSchema<Entity>(); }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+        const blue = createClientWithView(state);
+        const red = createClientWithView(state);
+
+        let n = 1;
+        const mk = (count: number) => { const e = new Entity(); for (let i = 0; i < count; i++) e.items.push(new Item().assign({ v: n++ & 255 })); return e; };
+        state.entities.set("a", mk(2)); state.entities.set("b", mk(2));
+        const a = state.entities.get("a")!, b = state.entities.get("b")!;
+        blue.view.add(a); red.view.add(b);
+        encodeMultiple(encoder, state, [blue, red]);
+        assertNoOrphanRefs(state, blue.state); assertNoOrphanRefs(state, red.state);
+
+        let seed = 9; const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 0x7fffffff;
+        let cid = 0, bIn = false, aInRed = false; const creeps: string[] = [];
+        for (let t = 0; t < 60; t++) {
+            for (const e of [a, b]) { e.items.push(new Item().assign({ v: n++ & 255 })); if (e.items.length > 3) e.items.splice((rnd() * e.items.length) | 0, 1); }
+            bIn = !bIn; if (bIn) blue.view.add(b); else blue.view.remove(b);
+            if (t % 2 === 0) { aInRed = !aInRed; if (aInRed) red.view.add(a); else red.view.remove(a); }
+            const k = `c${cid++}`; state.entities.set(k, mk(1));
+            (t % 2 === 0 ? red : blue).view.add(state.entities.get(k)!); creeps.push(k);
+            while (creeps.length > 4) { const dk = creeps.shift()!; const e = state.entities.get(dk); if (e) { blue.view.remove(e); red.view.remove(e); } state.entities.delete(dk); }
+            encodeMultiple(encoder, state, [blue, red]);
+            assertNoOrphanRefs(state, blue.state);
+            assertNoOrphanRefs(state, red.state);
+        }
+    });
+
+    it("filtered ArraySchema: splice an element out then push the SAME instance back (resurrection)", () => {
+        // A removed filtered-array element whose JS instance is still alive can be
+        // re-pushed; its refId round-trips DELETE_BY_REFID → ADD_BY_REFID. Counts
+        // must stay exact across the drop and the resurrection.
+        class Item extends Schema { @type("uint8") v = 0; }
+        class Entity extends Schema { @type([Item]) items = new ArraySchema<Item>(); }
+        class State extends Schema { @view() @type({ map: Entity }) entities = new MapSchema<Entity>(); }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+        const client = createClientWithView(state);
+
+        const e = new Entity();
+        state.entities.set("e", e);
+        const item = new Item().assign({ v: 42 });
+        e.items.push(new Item().assign({ v: 1 }), item);
+        client.view.add(e);
+        encodeMultiple(encoder, state, [client]);
+        assertRefIdCounts(state, client.state);
+
+        e.items.splice(e.items.findIndex((i) => i === item), 1);
+        client.view.add(e);
+        encodeMultiple(encoder, state, [client]);
+        assertRefIdCounts(state, client.state);
+        assertNoOrphanRefs(state, client.state);
+        assert.strictEqual(client.state.entities.get("e")!.items.find((i: any) => i.v === 42), undefined, "dropped after splice");
+
+        e.items.push(item);
+        client.view.add(e);
+        encodeMultiple(encoder, state, [client]);
+        assertRefIdCounts(state, client.state);
+        assertNoOrphanRefs(state, client.state);
+        assert.strictEqual(client.state.entities.get("e")!.items.find((i: any) => i.v === 42)?.v, 42, "resurrected");
     });
 
 });

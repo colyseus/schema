@@ -424,6 +424,16 @@ export const decodeArray: DecodeOperation = function (
         // TODO: refactor here, try to follow same flow as below
         const refId = decode.number(bytes, it);
         const previousValue = decoder.root.refs.get(refId);
+        // Decrement the removed child's ref-count so it can be garbage
+        // collected — this refId-based branch returns early and never reaches
+        // decodeValue(), so it must do the same DELETE bookkeeping itself.
+        // Without this the refId leaks; a later encoder reuse then aliases a
+        // different type → "field not defined" / "definition mismatch"
+        // (surfaces under StateView when a filtered ArraySchema element is
+        // spliced while its parent moves through view membership churn).
+        if (previousValue !== undefined) {
+            decoder.root.removeRef(refId);
+        }
         index = tgt.findIndex((value: any) => value === previousValue);
         tgt[$deleteByIndex](index);
         allChanges?.push({
