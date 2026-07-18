@@ -4,6 +4,64 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.8]
+
+### Added
+- `Decoder.decodeResync(bytes)`: full-snapshot reconciliation, built for
+  the reconnect path. Decodes a full snapshot (`encodeAll` /
+  `encodeAllView` output) and prunes every collection entry the payload
+  does not mention, through the regular DELETE path — `onRemove` fires
+  with the real previous value, released refs are garbage-collected, and
+  surviving entries keep their instance identity and registered
+  callbacks. DELETEs that happened while a client was off the wire are
+  reconciled as if they had been received; an entry whose occupant was
+  *replaced* while offline releases the previous ref (full-sync emits
+  plain ADD, never DELETE_AND_ADD, so it would otherwise leak). Safety
+  rules: collections that never appear in the payload (`@transient`,
+  view-invisible) are left untouched — payload presence is the
+  discriminator, since reflection carries no `@transient` metadata;
+  `StreamSchema` is exempt entirely (stream contents are trickle-
+  delivered — a snapshot is not authoritative for them); and a payload
+  that could not be fully decoded (skipped structure / definition
+  mismatch) aborts the sweep rather than delete live entries based on
+  incomplete visited data. Zero cost on the regular patch path — all
+  bookkeeping sits behind a per-call mode check. See
+  `PORTING_RESYNC.md` for what other decoder implementations need to
+  pick this up.
+- `[$resyncPrune]` on the `Collection` interface: each collection kind
+  declares its own sweep semantics next to its own storage — maps prune
+  by string key (+ journal upkeep, since the decoder journal never
+  evicts stale index→key mappings), arrays by resolved index (+
+  compaction; `ADD_BY_REFID` lands on the client-side position, so
+  visited indexes form a sparse set, not a tail), sets/collections by
+  wire index, streams as an explicit no-op. New collection kinds are
+  forced by the type system to state theirs.
+
+### Changed
+- RefIds are allocated monotonically and **never recycled**.
+  `RefIdAllocator` (the reuse pool, its one-tick defer, and the
+  resurrection logic — all of which existed only to make recycling safe)
+  is deleted; `Root.nextUniqueId` is a plain counter again, which also
+  restores DevMode's HMR refId handoff (it reads/writes
+  `root['nextUniqueId']`, silently broken since the allocator moved the
+  field). Rationale: recycling's safety contract — "the DELETE for the
+  old instance reaches the wire before the refId is handed to a new
+  one" — is void for a client that is off the wire, so after a reconnect
+  a stale client instance could be adopted as an unrelated new entity
+  (cross-type: permanent `field not defined` / `definition mismatch`
+  spam; same-type: silent aliasing + listener bleed). A refId is now a
+  stable identity for the lifetime of the room. Not a wire-format
+  change. Measured cost (msgpack number widths step at 128/256/65,536):
+  +2 bytes per structure-switch (~+12% on switch-dense patches) only
+  once a room exceeds ~65k lifetime allocations (~85 min of heavy
+  churn); typical match-length rooms measure ~0%. `bench:gate` flat,
+  bytes/op identical.
+- `Schema.reset()` instance pooling re-staged retained field values only
+  by riding on recycled refIds having a zero refCount; that behavior is
+  now explicit via an internal `NEEDS_RESTAGE` flag set by `recycle()`
+  and consumed on the next attach. Pooled instances encode byte-
+  identically to freshly constructed ones, as before.
+
 ## [5.0.7]
 
 ### Changed
