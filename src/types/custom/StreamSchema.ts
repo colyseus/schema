@@ -10,6 +10,7 @@ import {
     $getByIndex,
     $onEncodeEnd,
     $refId,
+    $resyncPrune,
 } from "../symbols.js";
 import { ChangeTree, installUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
 import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
@@ -264,6 +265,12 @@ export class StreamSchema<V = any> implements IRef {
             this._itemIndex.delete(value);
             this.$items.delete(index);
         }
+    }
+
+    [$resyncPrune](): void {
+        // Stream contents are delivered by the trickle/priority pass, NOT
+        // by full-sync (encodeAll carries none of them) — a snapshot is not
+        // authoritative for streams, so absence ≠ deleted. Never prune.
     }
 
     protected [$onEncodeEnd](): void {

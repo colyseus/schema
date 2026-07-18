@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $proxyTarget, $refId, $reset } from "../symbols.js";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $proxyTarget, $refId, $reset, $resyncPrune } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
 import { type IRef, ChangeTree, installUntrackedChangeTree } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
@@ -901,6 +901,28 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             self._needsCompaction = false;
             self.items = self.items.filter((item) => item !== undefined);
         }
+    }
+
+    [$resyncPrune](
+        visited: Set<number | string>,
+        prune: (value: V, identity: number | string) => void,
+        keep: (value: V) => void,
+    ): void {
+        // `items` is hole-free here: the decode loop's $onDecodeEnd already
+        // ran, and a full-sync emits dense ADDs (no DELETEs, no gap-writes)
+        // so no compaction happened mid-decode. Visited indexes may still be
+        // sparse (ADD_BY_REFID resolves to the current client-side index).
+        const self = this[$proxyTarget] ?? this;
+        const items = self.items;
+        let removed = false;
+        for (let i = 0; i < items.length; i++) {
+            const value = items[i];
+            if (visited.has(i)) { keep(value); continue; }
+            removed = true;
+            prune(value, i);
+            self[$deleteByIndex](i);
+        }
+        if (removed) { self[$onDecodeEnd](); } // compact the holes
     }
 
     toArray() {

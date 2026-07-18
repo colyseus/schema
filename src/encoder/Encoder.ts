@@ -89,6 +89,12 @@ function ensureStructSwitch(ctx: EncodeCtx): void {
  * Module-level adapter for `forEachLiveWithCtx`. Full-sync emits every live
  * field as ADD, so we re-enter `encodeChangeCb` with that fixed op — keeps
  * the callback closure-free across the entire DFS walk.
+ *
+ * The resync sweep (decoder/Resync.ts) depends on this shape: full-sync
+ * output is dense plain ADDs — no DELETEs, no gap-writes (so decoding it
+ * never compacts arrays mid-walk), and replaced occupants arrive as plain
+ * ADD (the sweep's touch hook releases them). Changing full-sync emission
+ * means revisiting the sweep.
  */
 function encodeFullSyncCb(ctx: EncodeCtx, fieldIndex: number): void {
     encodeChangeCb(ctx, fieldIndex, OPERATION.ADD);

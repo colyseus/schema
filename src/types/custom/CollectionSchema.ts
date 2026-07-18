@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId, $reset } from "../symbols.js";
+import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId, $reset, $resyncPrune } from "../symbols.js";
 import { ChangeTree, installUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
@@ -261,6 +261,22 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
 
     [$deleteByIndex](index: number): void {
         this.$items.delete(index);
+    }
+
+    [$resyncPrune](
+        visited: Set<number | string>,
+        prune: (value: V, identity: number | string) => void,
+        keep: (value: V) => void,
+    ): void {
+        let toDelete: number[] | null = null;
+        this.$items.forEach((value, index) => {
+            if (visited.has(index)) { keep(value); return; }
+            (toDelete ??= []).push(index);
+            prune(value, index);
+        });
+        if (toDelete !== null) {
+            for (let i = 0; i < toDelete.length; i++) { this[$deleteByIndex](toDelete[i]); }
+        }
     }
 
     protected [$onEncodeEnd]() {

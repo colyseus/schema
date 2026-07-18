@@ -1,3 +1,4 @@
+import { $resyncPrune } from "./symbols.js";
 import type { Definition, DefinitionType, PrimitiveType, RawPrimitiveType } from "../annotations.js";
 import type { Schema } from "../Schema.js";
 import type { ArraySchema } from "./custom/ArraySchema.js";
@@ -20,6 +21,12 @@ export interface Collection<K = any, V = any, IT = V> {
     [Symbol.iterator](): IterableIterator<IT>;
     forEach(callback: Function): void;
     entries(): IterableIterator<[K, V]>;
+    /** See {@link $resyncPrune} — every collection kind must declare its resync-sweep semantics. */
+    [$resyncPrune](
+        visited: Set<number | string>,
+        prune: (value: V, identity: number | string) => void,
+        keep: (value: V) => void,
+    ): void;
 }
 
 export type InferValueType<T> =

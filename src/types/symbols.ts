@@ -46,6 +46,13 @@ export const $filter = "~filter";
 
 export const $getByIndex = "~getByIndex";
 export const $deleteByIndex = "~deleteByIndex";
+/**
+ * Resync-sweep hook (see decoder/Resync.ts): prune every entry the rejoin
+ * snapshot did not visit. Each collection owns its storage-specific
+ * bookkeeping (journal pruning, compaction, item indexes); the generic
+ * DELETE/ref/callback bookkeeping arrives via the `prune`/`keep` callbacks.
+ */
+export const $resyncPrune = "~resyncPrune";
 
 /**
  * Used to hold ChangeTree instances whitin the structures.

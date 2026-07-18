@@ -30,6 +30,8 @@ export function forEachLiveWithCtx<C>(
 
     if (ref[$childType] !== undefined) {
         // Collection inheriting @transient from parent field: skip entirely.
+        // The resync sweep (decoder/Resync.ts) relies on this: a collection
+        // absent from full-sync output is never pruned client-side.
         if (tree.isTransient) return;
 
         // Collection types: dispatch by shape.
@@ -54,6 +56,8 @@ export function forEachLiveWithCtx<C>(
         // Schema: walk declared fields. `null` is treated as absent —
         // the setter records a DELETE when a field is set to null or
         // undefined, so it should not appear in full-sync output.
+        // (@transient skips below matter to the resync sweep — see
+        // decoder/Resync.ts: absent-from-payload means never pruned.)
         //
         // Read names from the per-class descriptor's parallel array —
         // saves the `metadata[i]` (per-field obj) + `.name` chain on

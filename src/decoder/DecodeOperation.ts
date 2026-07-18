@@ -11,6 +11,7 @@ import type { ArraySchema } from "../types/custom/ArraySchema.js";
 import { getType } from "../types/registry.js";
 import { Collection } from "../types/HelperTypes.js";
 import { decodeQuantized, isQuantizedType } from "../types/quantize.js";
+import { resyncMarkPresent, resyncTouchEntry } from "./Resync.js";
 
 export interface DataChange<T = any, F = string> {
     ref: IRef,
@@ -154,6 +155,9 @@ export function decodeValue<T extends Ref>(
     } else {
         const typeDef = getType(Object.keys(type)[0]);
         const refId = decode.number(bytes, it);
+
+        // resync bookkeeping — see Resync.ts
+        if (decoder.resyncVisited !== null) { resyncMarkPresent(decoder, refId); }
 
         // `initializeForDecoder` is a static on every registered collection
         // class — it does `Object.create(Class.prototype)` + the class-
@@ -333,6 +337,11 @@ export const decodeKeyValueOperation: DecodeOperation = function (
         allChanges,
     );
 
+    // resync bookkeeping — see Resync.ts
+    if (decoder.resyncVisited !== null) {
+        resyncTouchEntry(decoder, ref, operation, dynamicIndex, previousValue, value, allChanges);
+    }
+
     if (value !== null && value !== undefined) {
         switch (kind) {
             case CollectionKind.Map:
@@ -484,6 +493,13 @@ export const decodeArray: DecodeOperation = function (
         it,
         allChanges,
     );
+
+    // resync bookkeeping — see Resync.ts. `index` is the RESOLVED position
+    // (ADD_BY_REFID lands on the instance's current client-side index), so
+    // visited entries form a sparse set.
+    if (decoder.resyncVisited !== null) {
+        resyncTouchEntry(decoder, ref, operation, index, previousValue, value, allChanges);
+    }
 
     if (
         value !== null && value !== undefined &&

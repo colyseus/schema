@@ -7,6 +7,7 @@ import { type IRef, type Ref } from "../encoder/ChangeTree.js";
 import type { Iterator } from "../encoding/decode.js";
 import { ReferenceTracker } from "./ReferenceTracker.js";
 import { DEFINITION_MISMATCH, type DataChange, type DecodeOperation } from "./DecodeOperation.js";
+import { resyncSweep } from "./Resync.js";
 import { Collection } from "../types/HelperTypes.js";
 
 export class Decoder<T extends IRef = any> {
@@ -18,6 +19,20 @@ export class Decoder<T extends IRef = any> {
     currentRefId: number = 0;
 
     triggerChanges?: (allChanges: DataChange[]) => void;
+
+    /**
+     * @internal Non-null only while a `decodeResync()` walk is in progress:
+     * collection refId → entry identities the payload visited (map string
+     * keys; array/set/collection/stream indexes). Written by the collection
+     * DecodeOperation functions, read by the post-decode sweep.
+     */
+    resyncVisited: Map<number, Set<number | string>> | null = null;
+
+    /**
+     * @internal Set when a structure had to be skipped during a resync
+     * decode — visited data is incomplete, so the sweep must not delete.
+     */
+    resyncDamaged: boolean = false;
 
     constructor(root: T, context?: TypeContext) {
         this.setState(root);
@@ -103,6 +118,11 @@ export class Decoder<T extends IRef = any> {
         // than being extracted into a helper for a one-line body.
         (ref as any)[$onDecodeEnd]?.()
 
+        // resync mode: prune everything the snapshot didn't visit. Runs
+        // before triggerChanges (DELETE changes fire onRemove with the real
+        // previousValue) and before GC (removeRef feeds deletedRefs).
+        if (this.resyncVisited !== null) { resyncSweep(this, allChanges); }
+
         // trigger changes
         if (allChanges !== null) this.triggerChanges?.(allChanges);
 
@@ -112,7 +132,35 @@ export class Decoder<T extends IRef = any> {
         return allChanges;
     }
 
+    /**
+     * Full-snapshot reconciliation ("resync") decode.
+     *
+     * Behaves exactly like {@link decode}, plus: every collection entry the
+     * payload does NOT mention is removed through the regular DELETE path —
+     * `onRemove` callbacks fire with the real previous value and released
+     * refs are garbage-collected. Use it to apply a rejoin/reconnect full
+     * state over an existing decoded tree: DELETEs that happened while the
+     * client was off the wire are reconciled as if they had been received,
+     * while surviving entries keep their instance identity and callbacks.
+     *
+     * ONLY valid for full-snapshot payloads (`encodeAll` / `encodeAllView`
+     * output). Calling it on an incremental patch would prune everything
+     * the patch doesn't touch.
+     */
+    decodeResync(bytes: Uint8Array, it: Iterator = { offset: 0 }) {
+        this.resyncVisited = new Map();
+        this.resyncDamaged = false;
+        try {
+            return this.decode(bytes, it);
+        } finally {
+            this.resyncVisited = null;
+        }
+    }
+
     skipCurrentStructure(bytes: Uint8Array, it: Iterator, totalBytes: number) {
+        // A skipped range can swallow other structures' ops (their ADDs are
+        // never applied), so resync visited data is no longer trustworthy.
+        if (this.resyncVisited !== null) { this.resyncDamaged = true; }
         //
         // keep skipping next bytes until reaches a known structure
         // by local decoder.

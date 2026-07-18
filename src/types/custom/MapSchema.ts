@@ -1,4 +1,4 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $refId, $reset } from "../symbols.js";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $refId, $reset, $resyncPrune } from "../symbols.js";
 import { ChangeTree, installUntrackedChangeTree, IRef } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
@@ -350,6 +350,36 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         if (key !== undefined) {
             this.$items.delete(key);
             this.journal.keyByIndex.delete(index);
+        }
+    }
+
+    [$resyncPrune](
+        visited: Set<number | string>,
+        prune: (value: V, identity: number | string) => void,
+        keep: (value: V) => void,
+    ): void {
+        // maps prune by string key, NOT wire index — the decoder-side
+        // journal never evicts stale index→key mappings on re-indexing.
+        let deletedKeys: Set<string> | null = null;
+        this.$items.forEach((value, key) => {
+            if (visited.has(key)) { keep(value); return; }
+            (deletedKeys ??= new Set()).add(key);
+            prune(value, key);
+        });
+        if (deletedKeys !== null) {
+            deletedKeys.forEach((key) => {
+                this.$items.delete(key as K);
+                delete this.journal.indexByKey[key];
+            });
+            // drop index→key mappings of swept keys — including stale ones
+            // left behind by re-indexing.
+            const staleIndexes: number[] = [];
+            this.journal.keyByIndex.forEach((key, index) => {
+                if (deletedKeys!.has(key as unknown as string)) { staleIndexes.push(index); }
+            });
+            for (let i = 0; i < staleIndexes.length; i++) {
+                this.journal.keyByIndex.delete(staleIndexes[i]);
+            }
         }
     }
 
