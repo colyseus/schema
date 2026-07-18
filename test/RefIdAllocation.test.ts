@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import { MapSchema, Schema, type } from "../src";
+import { $refId } from "../src/types/symbols";
 import { getEncoder, createInstanceFromReflection } from "./Schema";
 
 class Entity extends Schema {
@@ -11,14 +12,14 @@ class State extends Schema {
     @type({ map: Entity }) entities = new MapSchema<Entity>();
 }
 
-describe("RefId pool", () => {
-    it("recycles refIds across ticks so long-running churn stays bounded", () => {
+describe("RefId allocation", () => {
+    it("allocates refIds monotonically — churn never shrinks or reuses ids", () => {
         const state = new State();
         const encoder = getEncoder(state);
         const decoded = createInstanceFromReflection(state);
 
         decoded.decode(state.encode());
-        const baselineNextId = (encoder.root.refIds as any).nextUniqueId;
+        const baselineNextId = (encoder.root as any).nextUniqueId;
 
         const ticks = 50;
         for (let i = 0; i < ticks; i++) {
@@ -28,19 +29,41 @@ describe("RefId pool", () => {
             decoded.decode(state.encode());
         }
 
-        const nextId = (encoder.root.refIds as any).nextUniqueId;
+        const nextId = (encoder.root as any).nextUniqueId;
 
-        // without pooling, nextUniqueId would grow by ~ticks. With pooling,
-        // the same freed refId is reclaimed each cycle, so growth is small.
-        assert.ok(
-            nextId - baselineNextId <= 4,
-            `expected nextUniqueId growth <= 4, got ${nextId - baselineNextId}`
-        );
+        // one fresh refId per churned Entity — freed ids are never recycled,
+        // so a refId is a stable identity for the lifetime of the room
+        // (clients that miss DELETEs can never see an id rebound).
+        assert.strictEqual(nextId - baselineNextId, ticks);
 
         assert.deepStrictEqual(decoded.toJSON(), state.toJSON());
     });
 
-    it("decodes correctly when a refId is reused across ticks (DELETE -> ADD)", () => {
+    it("never hands a freed refId to a new instance", () => {
+        const state = new State();
+        const decoded = createInstanceFromReflection(state);
+        decoded.decode(state.encode());
+
+        const first = new Entity().assign({ name: "first" });
+        state.entities.set("a", first);
+        decoded.decode(state.encode());
+        const freedRefId = (first as any)[$refId];
+
+        state.entities.delete("a");
+        decoded.decode(state.encode());
+
+        for (let i = 0; i < 5; i++) {
+            const e = new Entity().assign({ name: "e" + i });
+            state.entities.set("e" + i, e);
+            decoded.decode(state.encode());
+            assert.ok(
+                (e as any)[$refId] > freedRefId,
+                `expected fresh refId > ${freedRefId}, got ${(e as any)[$refId]}`
+            );
+        }
+    });
+
+    it("decodes correctly on delete-then-add across ticks", () => {
         const state = new State();
         const decoded = createInstanceFromReflection(state);
         decoded.decode(state.encode());
@@ -53,15 +76,13 @@ describe("RefId pool", () => {
         decoded.decode(state.encode());
         assert.strictEqual(decoded.entities.get("a"), undefined);
 
-        // tick 3: add a fresh entity. It should pop the reused refId from
-        // the pool. Decoder must produce the new state, not the stale one.
         state.entities.set("b", new Entity().assign({ name: "second", x: 2 }));
         decoded.decode(state.encode());
         assert.strictEqual(decoded.entities.get("b")!.name, "second");
         assert.strictEqual(decoded.entities.get("b")!.x, 2);
     });
 
-    it("handles same-tick delete+add without collision (no pool reuse within tick)", () => {
+    it("handles same-tick delete+add without collision", () => {
         const state = new State();
         const decoded = createInstanceFromReflection(state);
         decoded.decode(state.encode());
@@ -69,10 +90,6 @@ describe("RefId pool", () => {
         state.entities.set("a", new Entity().assign({ name: "first" }));
         decoded.decode(state.encode());
 
-        // same-tick churn: delete then add a fresh instance. Within a
-        // single tick, the pool is NOT flushed — the new instance must
-        // get a fresh refId, not the just-freed one, so wire ordering
-        // stays unambiguous.
         state.entities.delete("a");
         state.entities.set("b", new Entity().assign({ name: "second" }));
         decoded.decode(state.encode());

@@ -103,11 +103,9 @@ export class Schema<C = any> implements IRef {
      * Per-instance reset primitive (the recursive worker behind
      * {@link Schema.reset}). Resets ref-type children first (depth-first),
      * then recycles this instance's ChangeTree and drops its `$refId` so a
-     * re-add routes through `RefIdAllocator.acquire()` exactly like a freshly
-     * constructed instance (respecting the one-tick defer). Dropping `$refId`
-     * is what makes instance reuse wire-format-identical to `new T()` and
-     * prevents a stale refId from colliding with a different instance that
-     * acquired it after this one was released.
+     * re-add is assigned a fresh refId exactly like a freshly constructed
+     * instance. Dropping `$refId` is what makes instance reuse
+     * wire-format-identical to `new T()`.
      */
     [$reset](): void {
         const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
@@ -124,8 +122,8 @@ export class Schema<C = any> implements IRef {
         this[$changes].recycle();
         // Clear the refId by ASSIGNMENT (not `delete`): `delete` would force the
         // instance into V8 dictionary mode, making release() as expensive as the
-        // construction it saves. `=== undefined` in Root.add still routes a re-add
-        // through refIds.acquire() exactly like a freshly-constructed instance.
+        // construction it saves. `=== undefined` in Root.add still assigns a fresh
+        // refId exactly like a freshly-constructed instance.
         this[$refId] = undefined;
     }
 

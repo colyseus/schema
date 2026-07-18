@@ -4560,12 +4560,12 @@ describe("StateView", () => {
         }
     });
 
-    it("filtered ArraySchema: encoder/decoder ref-count parity through splice + refId reuse", () => {
+    it("filtered ArraySchema: encoder/decoder ref-count parity through splice churn", () => {
         // Strict ref-count parity (not just JSON) on a FILTERED array whose
-        // elements are spliced while sibling entities spawn/despawn (forcing the
-        // encoder to recycle refIds). A full-visibility view mirrors the encoder,
-        // so assertRefIdCounts must stay exact — before the DELETE_BY_REFID fix
-        // the removed element's count leaked (decoder > encoder).
+        // elements are spliced while sibling entities spawn/despawn. A
+        // full-visibility view mirrors the encoder, so assertRefIdCounts must
+        // stay exact — before the DELETE_BY_REFID fix the removed element's
+        // count leaked (decoder > encoder).
         class Item extends Schema { @type("uint8") v = 0; }
         class Entity extends Schema { @type([Item]) items = new ArraySchema<Item>(); }
         class State extends Schema { @view() @type({ map: Entity }) entities = new MapSchema<Entity>(); }

@@ -127,6 +127,12 @@ export const IS_UNRELIABLE = 8, IS_TRANSIENT = 16, IS_STATIC = 32;
 // `t.map(X).stream()` / `t.set(X).stream()` route through the same
 // emission machinery.
 export const IS_STREAM_COLLECTION = 64;
+// Set by `recycle()` (Schema.reset / pooling): the tree's values are live
+// but its dirty buckets were cleared, so `Root.add` must re-stage every
+// populated field as ADD when the instance re-enters a tree. Without this,
+// only fields assigned after `pool.acquire()` would reach the wire — the
+// retained ones (constructor-initialized children) would never be encoded.
+export const NEEDS_RESTAGE = 128;
 /**
  * Flags a child inherits from its parent's own transitive state via
  * `checkInheritedFlags`. Read as a bitwise mask so the inheritance step
@@ -258,6 +264,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     set isStatic(v: boolean) { this.flags = v ? (this.flags | IS_STATIC) : (this.flags & ~IS_STATIC); }
     get isStreamCollection() { return (this.flags & IS_STREAM_COLLECTION) !== 0; }
     set isStreamCollection(v: boolean) { this.flags = v ? (this.flags | IS_STREAM_COLLECTION) : (this.flags & ~IS_STREAM_COLLECTION); }
+    get needsRestage() { return (this.flags & NEEDS_RESTAGE) !== 0; }
+    set needsRestage(v: boolean) { this.flags = v ? (this.flags | NEEDS_RESTAGE) : (this.flags & ~NEEDS_RESTAGE); }
 
     // True iff tree inherits `isFiltered` OR its Schema class declares any
     // @view-tagged fields. StateView.addParentOf uses this to decide whether
@@ -558,8 +566,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         this.unreliableRecorder?.reset();
 
         // back to a freshly-constructed tree: IS_NEW, no inherited flags
-        // (FILTERED/TRANSIENT/STATIC/STREAM are re-derived on the next setParent)
-        this.flags = IS_NEW;
+        // (FILTERED/TRANSIENT/STATIC/STREAM are re-derived on the next setParent).
+        // NEEDS_RESTAGE makes the next Root.add re-stage retained field values.
+        this.flags = IS_NEW | NEEDS_RESTAGE;
         this._fullSyncGen = 0;
 
         // drop parent links — Root.remove clears `root` and the CHILDREN's

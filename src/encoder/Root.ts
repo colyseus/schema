@@ -2,7 +2,6 @@ import { OPERATION } from "../encoding/spec.js";
 import { TypeContext } from "../types/TypeContext.js";
 import { ChangeTree, ChangeTreeList, createChangeTreeList, type ChangeTreeNode } from "./ChangeTree.js";
 import { $changes, $refId } from "../types/symbols.js";
-import { RefIdAllocator } from "./RefIdAllocator.js";
 import type { StateView } from "./StateView.js";
 import type { StreamSchema } from "../types/custom/StreamSchema.js";
 import type { StreamableState } from "./streaming.js";
@@ -29,10 +28,12 @@ const $refIdDescriptor = { value: 0, enumerable: false, writable: true };
 
 export class Root {
     /**
-     * Allocates and recycles refIds. See `RefIdAllocator` for the reuse
-     * pool semantics (one-tick defer + resurrection).
+     * Monotonic refId counter. RefIds are never recycled — a refId is a
+     * stable identity for the lifetime of the room, so a client that
+     * missed DELETEs (reconnect) can never see an old id rebound to a
+     * different instance. DevMode reads/writes this across HMR cycles.
      */
-    public readonly refIds: RefIdAllocator;
+    protected nextUniqueId: number = 0;
 
     refCount: {[id: number]: number} = {};
     changeTrees: {[refId: number]: ChangeTree} = {};
@@ -138,7 +139,7 @@ export class Root {
     }
 
     constructor(public types: TypeContext, startRefId: number = 0) {
-        this.refIds = new RefIdAllocator(startRefId);
+        this.nextUniqueId = startRefId;
     }
 
     add(changeTree: ChangeTree) {
@@ -149,7 +150,7 @@ export class Root {
         // *enumerable* own Symbols, so we keep defineProperty(enumerable:false)
         // to keep $refId hidden from deep-equal comparisons in tests.
         if (ref[$refId] === undefined) {
-            $refIdDescriptor.value = this.refIds.acquire();
+            $refIdDescriptor.value = this.nextUniqueId++;
             Object.defineProperty(ref, $refId, $refIdDescriptor);
         }
 
@@ -158,21 +159,19 @@ export class Root {
         const isNewChangeTree = (this.changeTrees[refId] === undefined);
         if (isNewChangeTree) { this.changeTrees[refId] = changeTree; }
 
-        // Resurrection path: a ref whose refId is still queued for reuse
-        // is being re-added. Pull the refId out of the pool before it gets
-        // handed out to someone else.
-        if (this.refIds.isPooled(refId)) {
-            this.refIds.reclaim(refId);
-        }
-
         const previousRefCount = this.refCount[refId];
-        if (previousRefCount === 0) {
+        if (previousRefCount === 0 || changeTree.needsRestage) {
             //
-            // When a ChangeTree is re-added, it means that it was previously
-            // removed. Re-stage every currently-populated non-transient index
-            // as a fresh ADD in the matching dirty bucket so the next encode
-            // re-emits it on the correct channel.
+            // Re-stage every currently-populated non-transient index as a
+            // fresh ADD in the matching dirty bucket so the next encode
+            // re-emits it on the correct channel. Two triggers:
+            // - refCount 0: a previously-removed tree re-added under the
+            //   same refId (its ops were consumed by an earlier encode).
+            // - NEEDS_RESTAGE: a `Schema.reset` instance re-entering under
+            //   a fresh refId (reset cleared the buckets; its retained
+            //   values would otherwise never be encoded).
             //
+            changeTree.needsRestage = false;
             changeTree.forEachLive((fieldIndex) => {
                 if (changeTree.isFieldUnreliable(fieldIndex)) {
                     changeTree.ensureUnreliableRecorder().record(fieldIndex, OPERATION.ADD);
@@ -211,16 +210,6 @@ export class Root {
             this.removeFromUnreliableQueue(changeTree);
 
             this.refCount[refId] = 0;
-
-            // Return refId to the reuse pool (deferred to end-of-tick via
-            // the allocator's pending set). Stream collections are excluded
-            // because their per-view delivery bookkeeping is harder to
-            // audit for reuse safety and the savings there are negligible.
-            // If the ref is later resurrected, `add()` evicts the refId
-            // from the pool before it's handed to another instance.
-            if (!changeTree.isStreamCollection) {
-                this.refIds.release(refId);
-            }
 
             changeTree.forEachChild((child, _) => {
                 if (child.removeParent(changeTree.ref)) {
