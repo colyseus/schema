@@ -1,6 +1,26 @@
 # Optimization log
 
 Per-candidate record: hypothesis → measurement → verdict. Newest first.
+
+## ROUND 1 CLOSE-OUT (2026-07-02) — cumulative pre-P1 → HEAD, N=20 full matrix
+`bench/results/2026-07-02-cumulative-vs-baseline.json`. Wins at p<.001 unless noted:
+- callbacks (all strategies/densities): **−13.5…−16.5%**, gcMs **−35…−45%**
+- decoder/tick: **−15.8%**, steady-decode GC **eliminated** (13.3ms→0)
+- encoder/heavy-tick: **−15.9%** · array-churn: **−11.4%**
+- stateview/bootstrap: **−7.5%** (gcMs 14.0→1.07) · view-churn: **−8.2%** ·
+  views/v1 −1.5% (p=.008) · v10 −2.2% (p=.024)
+- No wall-clock regressions: churn flags at N=20 (+5.1%/+2.8%) dissolved at
+  N=40 (+0.2% p=.54 / +2.2% p=.51 with gcMs −11% at p<.001) — inter-run
+  variance on 0.035ms/frame scenarios under machine load.
+- Accepted cost: memory-footprint +0.4% (+11KB/1000 entities — the
+  `_needsCompaction` field on ArraySchema).
+
+**Remaining queue** (see PROFILE_2026-07-02.md): #S1 encodeView concatBytes
+(needs a buffer-lifetime decision: returned frame must stay valid until
+transport send — consider per-view contiguous layout, reserving sharedOffset
+bytes per view, instead of pooling), #E2 _appendToList pool starvation,
+#S3 markInvisible growth + StateView._add walk, #E1 [$onEncodeEnd] tmpItems
+slice gating, forEachWithCtx, MapJournal.indexOf, decoder main-loop peek.
 Accepted criteria: target p<0.05 and |Δ|≥2% (or GC-metric win at p<0.05 with
 wall-clock neutral), no other scenario regressing >2% at p<0.05, tests green.
 
@@ -42,6 +62,10 @@ wall-clock neutral), no other scenario regressing >2% at p<0.05, tests green.
   in that window and normalized later).
 - **Iteration:** first cut used `$items.forEach(closure)` for the Map branch —
   regressed construct gcMs +10% (p<.001). Closure-free `keys()` loop fixed it.
+- **Attribution caveat:** an unrelated reflection refactor (2637ac7, colon
+  string grammar retirement) landed between the A and B builds of this
+  comparison, so e5's per-candidate numbers include it on the B side. The
+  cumulative sweep below brackets both cleanly.
 - **Lessons:** (1) `for..of entries()` pair allocation is worth killing on hot
   walks, but replace with keys()+get, NOT a forEach closure; (2) check system
   load before trusting borderline p-values.

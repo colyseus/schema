@@ -92,11 +92,11 @@ const meta = {
     filter: opts.filter,
 };
 
-function writeJson(payload) {
+function writeJson(payload, quiet = false) {
     if (!opts.json) return;
     mkdirSync(dirname(resolve(opts.json)), { recursive: true });
     writeFileSync(resolve(opts.json), JSON.stringify(payload, null, 2));
-    console.log(`\nwrote ${opts.json}`);
+    if (!quiet) console.log(`\nwrote ${opts.json}`);
 }
 
 function progress(msg) { process.stderr.write(msg); }
@@ -168,6 +168,8 @@ if (opts.compare) {
             deltaPct, p: mwValue.p, pGc: mwGc.p, hlShift: hlShift(A.values, B.values),
             bytesA, bytesB,
         });
+        // flush after every unit — a killed multi-hour run keeps its finished rows
+        writeJson({ meta: { ...meta, mode: "compare", dirA, dirB, partial: `${jsonRows.length}/${units.length}` }, failedUnits, rows: jsonRows }, true);
     }
 
     console.log("");
