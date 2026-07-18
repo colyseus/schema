@@ -1232,7 +1232,9 @@ describe("Type: Schema", () => {
             let jakeX = Math.random() * 2000;
             state.mapOfPlayers.get('jake').x = jakeX;
             decodedState.decode(state.encode());
-            assert.strictEqual(decodedState.mapOfPlayers.get('jake').x.toFixed(3), jakeX.toFixed(3));
+            // the wire carries float32 — compare against the exact f32
+            // round-trip (toFixed(3) coin-flips at precision boundaries)
+            assert.strictEqual(decodedState.mapOfPlayers.get('jake').x, Math.fround(jakeX));
 
             state.mapOfPlayers.delete('jake');
         });
