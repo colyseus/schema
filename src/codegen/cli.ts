@@ -1,7 +1,7 @@
 import argv from "./argv.js";
 import { generate, generators } from "./api.js";
 
-function displayHelp() {
+function displayHelp(exitCode: number = 0) {
     console.log(`\nschema-codegen [path/to/Schema.ts]
 
 Usage (C#/Unity)
@@ -22,7 +22,7 @@ ${Object.
 Optional:
     --namespace: generate namespace on output code
     --decorator: custom name for @type decorator to scan for`);
-    process.exit();
+    process.exit(exitCode);
 }
 
 const args = argv(process.argv.slice(2));
@@ -39,7 +39,7 @@ for (let target in generators) {
 
 if (!args.output) {
     console.error("You must provide a valid --output directory.");
-    displayHelp();
+    displayHelp(1);
 }
 
 try {
@@ -55,5 +55,5 @@ try {
 } catch (e) {
     console.error(e.message);
     console.error(e.stack);
-    displayHelp();
+    displayHelp(1);
 }

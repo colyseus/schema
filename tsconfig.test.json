@@ -5,6 +5,7 @@
     "target": "ES2022",
     "noEmit": true,
     "skipLibCheck": true,
+    "types": ["node", "mocha"],
     "experimentalDecorators": true,
     "useDefineForClassFields": false
   },

@@ -40,6 +40,26 @@ export class MyState extends Schema {
 }
 ```
 
+## TypeScript support
+
+Compatible with TypeScript **5.x**, **6.x** and **7.x**.
+
+The `@type()` decorator uses legacy decorators — enable them in your `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
+  }
+}
+```
+
+> **Note:** `schema-codegen` requires TypeScript 5.x or 6.x installed in your
+> project — TypeScript 7's native compiler no longer ships the JS compiler API
+> that codegen uses to parse your schema files. The runtime and your build are
+> not affected by this.
+
 ## Supported types
 
 ### Primitive Types
@@ -275,6 +295,9 @@ up-to-date version of the schema definitions.
 > Interpreted programming languages are able to re-build the Schema locally through the use of `Reflection`.
 
 You can generate the client-side schema files based on the TypeScript schema definitions automatically.
+
+> `schema-codegen` requires TypeScript 5.x or 6.x installed in your project
+> (TypeScript 7+ no longer ships the JS compiler API it uses for parsing).
 
 ```
 # C#/Unity

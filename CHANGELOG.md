@@ -1,5 +1,27 @@
 # Changelog
 
+## 4.0.28
+
+### TypeScript 5 / 6 / 7 compatibility
+
+`@colyseus/schema` now works with any TypeScript major from 5 onwards
+(TypeScript 7 is the new Go-based native compiler):
+
+- The `typescript` peer dependency range is now `>=5.0.0` and marked optional —
+  installing alongside `typescript@7` no longer fails with `ERESOLVE`, and
+  plain-JavaScript projects no longer get a peer warning.
+- Internal tsconfigs now pin options whose defaults changed in TypeScript 6
+  (`strict`, automatic `@types/*` inclusion), so the package typechecks and
+  builds cleanly with 5.x, 6.x and 7.x.
+- `schema-codegen` still requires TypeScript 5.x or 6.x installed: TypeScript
+  7's native compiler no longer ships the JS compiler API used to parse schema
+  files. With `typescript@7` installed it previously exited successfully while
+  generating no files — it now fails fast with a clear error message, and the
+  CLI exits with a non-zero code on all errors.
+
+The `@type()` decorator (`experimentalDecorators` + `useDefineForClassFields:
+false`) remains fully supported by TypeScript 6 and 7.
+
 ## 4.0.27
 
 ### Encoder: fix `@view` corruption when a filtered patch grows the buffer
