@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `defineTypes()` is back as a **soft-deprecated** API — removed in
+  5.0.0, it's a big part of legacy plain-JS apps, so it now works again
+  exactly as in 4.x (it delegates to the still-supported `type()`
+  decorator pipeline, so raw-string fields like `"string"` remain valid
+  here). It logs a one-time deprecation warning at runtime, and
+  `schema-codegen` parses `defineTypes()` files again (also with a
+  deprecation notice). Migrate to `schema()` with `t.*` field builders.
+
 ## [5.0.8]
 
 ### Added

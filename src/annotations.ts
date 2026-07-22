@@ -575,6 +575,30 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
     }
 }
 
+let defineTypesWarned = false;
+
+/**
+ * Adds synchronizable fields to an existing `Schema` subclass — the pre-5.0
+ * helper for plain JavaScript users.
+ *
+ * @deprecated Use `schema()` with `t.*` field builders instead:
+ * https://docs.colyseus.io/state/schema
+ */
+export function defineTypes(
+    target: typeof Schema,
+    fields: Definition,
+    options?: TypeOptions
+) {
+    if (!defineTypesWarned) {
+        defineTypesWarned = true;
+        console.warn("@colyseus/schema: defineTypes() is deprecated and will be removed in a future release. Use schema() with t.* field builders instead → https://docs.colyseus.io/state/schema");
+    }
+    for (let field in fields) {
+        type(fields[field], options)(target.prototype, field);
+    }
+    return target;
+}
+
 // Helper type to extract InitProps from initialize method.
 // - Non-empty initialize params: use them directly.
 // - Zero-arg initialize: no args accepted (`never`) — user-supplied field

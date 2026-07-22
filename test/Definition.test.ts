@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { Schema, type, MapSchema, ArraySchema, t } from "../src";
+import { Schema, type, defineTypes, MapSchema, ArraySchema, t } from "../src";
 import { schema, SchemaType } from "../src/annotations";
 import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
 import { $numFields } from "../src/types/symbols";
@@ -109,11 +109,24 @@ describe("Definition Tests", () => {
         });
     });
 
-    describe("defineTypes", () => {
-        it("should be equivalent", () => {
-            class MyExistingStructure extends Schema {
-                @type("string") name: string;
+    describe("defineTypes (deprecated)", () => {
+        it("should still work, warning once on first use", () => {
+            class MyExistingStructure extends Schema {}
+            class Another extends Schema {}
+
+            const warnings: string[] = [];
+            const originalWarn = console.warn;
+            console.warn = (msg: any) => warnings.push(String(msg));
+            try {
+                defineTypes(MyExistingStructure, { name: "string" });
+                defineTypes(Another, { x: "number" });
+            } finally {
+                console.warn = originalWarn;
             }
+
+            // warns once per process, on first use only
+            assert.strictEqual(warnings.length, 1);
+            assert.ok(warnings[0].includes("defineTypes() is deprecated"));
 
             const state = new MyExistingStructure();
             (state as any).name = "hello world!";

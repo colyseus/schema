@@ -8,6 +8,8 @@ let currentProperty: Property;
 
 let globalContext: Context;
 
+let defineTypesWarned = false;
+
 const BUILDER_COLLECTION_KINDS = new Set(["array", "map", "set", "collection"]);
 
 /**
@@ -251,6 +253,44 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     property.name = prop.name.escapedText;
 
                     currentStructure.addProperty(property);
+                    defineProperty(property, prop.initializer);
+                }
+
+            } else if (
+                node.getText() === "defineTypes" &&
+                (
+                    node.parent.kind === ts.SyntaxKind.CallExpression ||
+                    node.parent.kind === ts.SyntaxKind.PropertyAccessExpression
+                )
+            ) {
+                /**
+                 * JavaScript source file (`.js`)
+                 * Using `defineTypes()` (deprecated)
+                 */
+                const callExpression = (node.parent.kind === ts.SyntaxKind.PropertyAccessExpression)
+                    ? node.parent.parent as ts.CallExpression
+                    : node.parent as ts.CallExpression;
+
+                if (callExpression.kind !== ts.SyntaxKind.CallExpression) {
+                    break;
+                }
+
+                if (!defineTypesWarned) {
+                    defineTypesWarned = true;
+                    console.warn("schema-codegen: defineTypes() is deprecated and will be removed in a future release. Use schema() with t.* field builders instead → https://docs.colyseus.io/state/schema");
+                }
+
+                const className = callExpression.arguments[0].getText()
+                currentStructure.name = className;
+
+                const types = callExpression.arguments[1] as any;
+                for (let i = 0; i < types.properties.length; i++) {
+                    const prop = types.properties[i];
+
+                    const property = currentProperty || new Property();
+                    property.name = prop.name.escapedText;
+                    currentStructure.addProperty(property);
+
                     defineProperty(property, prop.initializer);
                 }
 

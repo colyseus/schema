@@ -49,6 +49,7 @@ export { Metadata } from "./Metadata.js";
 export {
     type,
     deprecated,
+    defineTypes,
     owned,
     unreliable,
     transient,
