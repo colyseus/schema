@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && rollup -c rollup.config.mjs",
     "watch": "tsc -p tsconfig.build.json -w",
-    "test": "tsx --tsconfig tsconfig.test.json ./node_modules/.bin/mocha test/*.test.ts test/**/*.test.ts",
+    "test": "npm run test:types && tsx --tsconfig tsconfig.test.json ./node_modules/.bin/mocha test/*.test.ts test/**/*.test.ts",
+    "test:types": "tsc -p tsconfig.build.json && tsc -p tsconfig.types.json",
     "typecheck": "tsc -p tsconfig.test.json",
     "coverage": "c8 npm run test",
     "generate-test-1": "bin/schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/PrimitiveTypes",
