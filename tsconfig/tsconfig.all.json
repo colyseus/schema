@@ -3,6 +3,9 @@
         "module": "ESNext",
         "moduleResolution": "bundler",
         "lib": ["ES2022"],
+        // explicit: TS 6+ defaults to strict:true and stops auto-including @types/*
+        "strict": false,
+        "types": ["node"],
         "experimentalDecorators": true,
         "noImplicitAny": true,
         "noImplicitThis": true,

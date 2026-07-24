@@ -288,6 +288,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   init-props derivation can distinguish required vs. omittable fields
   without runtime cost.
 
+## 4.0.30
+
+### `MapSchema.getOrInsert()` and `getOrInsertComputed()`
+
+`MapSchema` now implements `getOrInsert(key, defaultValue)` and
+`getOrInsertComputed(key, callbackfn)` — the `Map.prototype` "upsert" methods
+from the TC39 proposal, typed in TypeScript 6's standard library:
+
+```typescript
+// returns existing value, or inserts (and returns) the default
+const player = state.players.getOrInsert(sessionId, new Player());
+
+// same, but the value is only constructed when the key is missing
+const player = state.players.getOrInsertComputed(sessionId, () => new Player());
+```
+
+Insertions go through the regular `set()` path, so they are tracked and
+synchronized like any other change; when the key already exists, the existing
+value is returned and nothing is enqueued for encoding.
+
+This also completes the native `Map` contract on TypeScript 6 and 7: with
+`lib: ESNext` (where `Map` declares these methods), assigning a `MapSchema`
+where a `Map<K, V>` is expected no longer fails — complementing the iterator
+fix from 4.0.29. On the runtime side these methods are always available,
+regardless of engine support for the proposal.
+
+## 4.0.29
+
+### `MapSchema` iterator type now follows the native `Map` contract
+
+TypeScript 5.6 changed the standard library so `Map[Symbol.iterator]()` returns
+`MapIterator` (which includes the iterator-helper methods) instead of
+`IterableIterator`. `MapSchema`'s explicit `IterableIterator<[K, V]>` annotation
+was narrower, so on TS 5.6+ with `lib: ESNext`:
+
+- assigning a `MapSchema` where a `Map<K, V>` is expected failed with TS2322 —
+  even under the recommended `skipLibCheck: true`;
+- projects with `skipLibCheck: false` also got TS2416 from the shipped
+  declarations (`'[Symbol.iterator]' … is not assignable to the same property
+  in base type 'Map<K, V>'`).
+
+`[Symbol.iterator]()` is now typed as `ReturnType<Map<K, V>[typeof
+Symbol.iterator]>`, deriving the iterator type from the consumer compiler's own
+standard library — `IterableIterator` on TS ≤ 5.5, `MapIterator` on 5.6+. This
+is a declaration-only fix; runtime behavior is unchanged.
+
+A new `test:types` check now compiles the generated declarations under strict
+`NodeNext` with `skipLibCheck: false` to catch regressions of this kind.
+
+Thanks to [@Hoodgail](https://github.com/Hoodgail) for the contribution (#227).
+
+## 4.0.28
+
+### TypeScript 5 / 6 / 7 compatibility
+
+`@colyseus/schema` now works with any TypeScript major from 5 onwards
+(TypeScript 7 is the new Go-based native compiler):
+
+- The `typescript` peer dependency range is now `>=5.0.0` and marked optional —
+  installing alongside `typescript@7` no longer fails with `ERESOLVE`, and
+  plain-JavaScript projects no longer get a peer warning.
+- Internal tsconfigs now pin options whose defaults changed in TypeScript 6
+  (`strict`, automatic `@types/*` inclusion), so the package typechecks and
+  builds cleanly with 5.x, 6.x and 7.x.
+- `schema-codegen` still requires TypeScript 5.x or 6.x installed: TypeScript
+  7's native compiler no longer ships the JS compiler API used to parse schema
+  files. With `typescript@7` installed it previously exited successfully while
+  generating no files — it now fails fast with a clear error message, and the
+  CLI exits with a non-zero code on all errors.
+
+The `@type()` decorator (`experimentalDecorators` + `useDefineForClassFields:
+false`) remains fully supported by TypeScript 6 and 7.
+
 ## 4.0.27
 
 ### Encoder: fix `@view` corruption when a filtered patch grows the buffer

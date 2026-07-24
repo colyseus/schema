@@ -17,7 +17,8 @@
     "build": "tsc -p tsconfig.build.json && rollup -c rollup.config.mjs",
     "watch": "tsc -p tsconfig.build.json -w",
     "typecheck:build": "tsc -p tsconfig.build.json --noEmit",
-    "test": "tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.test.ts\" \"test/**/*.test.ts\"",
+    "test": "npm run test:types && tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.test.ts\" \"test/**/*.test.ts\"",
+    "test:types": "tsc -p tsconfig.build.json && tsc -p tsconfig.types.json",
     "test:exports": "node test/verify-exports.mjs",
     "typecheck": "tsc -p tsconfig.test.json",
     "coverage": "c8 npm run test",
@@ -96,7 +97,12 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0 || ^6.0.0"
+    "typescript": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   },
   "c8": {
     "include": [

@@ -419,6 +419,14 @@ export function parseFiles(
     decoratorName: string = "type",
     context: Context = new Context()
 ) {
+    if (typeof ts.createSourceFile !== "function") {
+        // typescript@7+ (native) no longer ships the JS compiler API
+        throw new Error(
+            `schema-codegen requires the TypeScript compiler API, which the installed "typescript@${(ts as any).version}" package does not provide.\n` +
+            `TypeScript 7+ no longer ships the JS compiler API — install typescript 5.x or 6.x (e.g. \`npm install --save-dev typescript@6\`) to use schema-codegen.`
+        );
+    }
+
     /**
      * Re-set globalContext for each test case
      */
@@ -469,7 +477,8 @@ export function parseFiles(
 
                 break;
             } catch (e) {
-                // console.log(`${fileNameAlternatives[i]} => ${e.message}`);
+                // only swallow fs errors (ENOENT/EISDIR) while probing alternatives
+                if (!e?.code) { throw e; }
             }
         }
 

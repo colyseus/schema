@@ -140,7 +140,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     /** Iterator */
-    [Symbol.iterator](): IterableIterator<[K, V]> { return this.$items[Symbol.iterator](); }
+    [Symbol.iterator](): ReturnType<Map<K, V>[typeof Symbol.iterator]> { return this.$items[Symbol.iterator](); }
     get [Symbol.toStringTag]() { return this.$items[Symbol.toStringTag] }
 
     static get [Symbol.species]() { return MapSchema; }
@@ -222,6 +222,39 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
     get(key: K): V | undefined {
         return this.$items.get(key);
+    }
+
+    /**
+     * Returns the value for `key` if present. Otherwise inserts `defaultValue`
+     * (tracked as an ADD change, like `set()`) and returns it.
+     *
+     * Mirrors `Map.prototype.getOrInsert` (TC39 "upsert" proposal, typed in
+     * TypeScript 6's standard library).
+     */
+    getOrInsert(key: K, defaultValue: V): V {
+        if (this.$items.has(key)) {
+            return this.$items.get(key);
+        }
+        this.set(key, defaultValue);
+        return defaultValue;
+    }
+
+    /**
+     * Returns the value for `key` if present. Otherwise computes a value via
+     * `callbackfn(key)`, inserts it (tracked as an ADD change, like `set()`)
+     * and returns it. The callback is only invoked when the key is missing.
+     *
+     * Mirrors `Map.prototype.getOrInsertComputed` (TC39 "upsert" proposal,
+     * typed in TypeScript 6's standard library).
+     */
+    getOrInsertComputed(key: K, callbackfn: (key: K) => V): V {
+        if (this.$items.has(key)) {
+            return this.$items.get(key);
+        }
+        const value = callbackfn(key);
+        // per spec: overwrites even if callbackfn itself inserted `key`
+        this.set(key, value);
+        return value;
     }
 
     delete(key: K) {
