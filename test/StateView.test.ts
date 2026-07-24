@@ -764,6 +764,159 @@ describe("StateView", () => {
 
     });
 
+    describe("default-tag add() must not leak custom-tagged fields", () => {
+        enum Tag { SECRET = 2 };
+
+        class Player extends Schema {
+            @type("string") name: string;
+            @view(Tag.SECRET) @type("number") secret: number;
+        }
+
+        class State extends Schema {
+            @view() @type({ map: Player }) players = new MapSchema<Player>();
+        }
+
+        it("default add of a settled tree: tagged field excluded, untagged included", () => {
+            const state = new State();
+            const player = new Player().assign({ name: "Alice", secret: 42 });
+            state.players.set("one", player);
+
+            const encoder = getEncoder(state);
+
+            // settle: bootstrap another client so the tree is no longer "new"
+            const clientA = createClientWithView(state);
+            encodeMultiple(encoder, state, [clientA]);
+
+            const clientB = createClientWithView(state);
+            clientB.view.add(player);
+            encodeMultiple(encoder, state, [clientA, clientB]);
+
+            assert.strictEqual(clientB.state.players.get("one").name, "Alice");
+            assert.strictEqual(clientB.state.players.get("one").secret, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [clientA, clientB]);
+        });
+
+        it("tree changed while invisible to a bound view: default add must not leak", () => {
+            const state = new State();
+            const p1 = new Player().assign({ name: "Alice", secret: 42 });
+            const p2 = new Player().assign({ name: "Bob" });
+            state.players.set("one", p1);
+            state.players.set("two", p2);
+
+            const encoder = getEncoder(state);
+
+            // clientA holds the tag — positive control, must receive `secret`
+            const clientA = createClientWithView(state);
+            clientA.view.add(p1, Tag.SECRET);
+
+            // clientB's view is bound (has a view ID) but cannot see p1
+            const clientB = createClientWithView(state);
+            clientB.view.add(p2);
+            encodeMultiple(encoder, state, [clientA, clientB]);
+            assert.strictEqual(clientA.state.players.get("one").secret, 42);
+
+            // p1 changes while invisible to clientB
+            p1.name = "Alice2";
+            encodeMultiple(encoder, state, [clientA, clientB]);
+
+            clientB.view.add(p1); // default tag
+            encodeMultiple(encoder, state, [clientA, clientB]);
+
+            assert.strictEqual(clientB.state.players.get("one").name, "Alice2");
+            assert.strictEqual(clientB.state.players.get("one").secret, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [clientA, clientB]);
+        });
+
+        it("re-add after remove: untagged mutations delivered, tagged field still excluded", () => {
+            const state = new State();
+            const player = new Player().assign({ name: "Alice", secret: 42 });
+            state.players.set("one", player);
+
+            const encoder = getEncoder(state);
+
+            const client = createClientWithView(state);
+            client.view.add(player);
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one").name, "Alice");
+
+            client.view.remove(player);
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one"), undefined);
+
+            // mutate while removed (tree is now invisible to the view)
+            player.name = "Alice3";
+            player.secret = 43;
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(player);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.players.get("one").name, "Alice3");
+            assert.strictEqual(client.state.players.get("one").secret, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("previously tag-added, removed, re-added with default tag: tagged field not resent", () => {
+            const state = new State();
+            const player = new Player().assign({ name: "Alice", secret: 42 });
+            state.players.set("one", player);
+
+            const encoder = getEncoder(state);
+
+            const client = createClientWithView(state);
+            client.view.add(player, Tag.SECRET);
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one").secret, 42);
+
+            client.view.remove(player);
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one"), undefined);
+
+            // mutate while removed
+            player.secret = 99;
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(player); // default tag this time
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.players.get("one").name, "Alice");
+            assert.strictEqual(client.state.players.get("one").secret, undefined);
+        });
+
+        it("schema with only custom-tagged fields: default add sends nothing", () => {
+            class Vault extends Schema {
+                @view(Tag.SECRET) @type("number") gold: number;
+            }
+            class VaultState extends Schema {
+                @view() @type({ map: Vault }) vaults = new MapSchema<Vault>();
+            }
+
+            const state = new VaultState();
+            const vault = new Vault().assign({ gold: 1000 });
+            state.vaults.set("one", vault);
+
+            const encoder = getEncoder(state);
+
+            // bind + settle, then mutate while invisible to hit the
+            // changed-while-invisible path
+            const clientA = createClientWithView(state);
+            const clientB = createClientWithView(state);
+            clientB.view.add(state); // binds clientB's view
+            encodeMultiple(encoder, state, [clientA, clientB]);
+
+            vault.gold = 2000;
+            encodeMultiple(encoder, state, [clientA, clientB]);
+
+            clientB.view.add(vault); // default tag
+            encodeMultiple(encoder, state, [clientA, clientB]);
+
+            assert.strictEqual(clientB.state.vaults.get("one")?.gold, undefined);
+        });
+    });
+
     describe("MapSchema", () => {
         it("should sync single item from map", () => {
             class Item extends Schema {

@@ -50,7 +50,6 @@ describe("SchemaPool", () => {
         assert.strictEqual(ct.has(), false, "dirty bucket must be empty");
         assert.strictEqual(ct.changesNode, undefined);
         assert.strictEqual(ct.visibleViews, undefined);
-        assert.strictEqual(ct.invisibleViews, undefined);
         assert.strictEqual(ct.tagViews, undefined);
         assert.strictEqual(ct.subscribedViews, undefined);
 

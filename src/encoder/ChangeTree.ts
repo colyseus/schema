@@ -232,7 +232,6 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     // per-view WeakSet lookups with direct bitwise ops.
     // Lazy: undefined until the tree participates in any view.
     visibleViews?: number[];
-    invisibleViews?: number[];
 
     // Per-(view, tag) bitmap, indexed by tag. Custom tags only —
     // DEFAULT_VIEW_TAG visibility lives in `visibleViews`.
@@ -586,7 +585,6 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // per-view visibility lives on the tree (NOT keyed by refId), so a
         // recycled tree must not inherit its previous life's view membership.
         this.visibleViews = undefined;
-        this.invisibleViews = undefined;
         this.tagViews = undefined;
         this.subscribedViews = undefined;
     }

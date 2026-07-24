@@ -28,8 +28,6 @@ function _clearViewBitFromAllTrees(root: Root, slot: number, bit: number): void 
         const tree = trees[refId];
         const v = tree.visibleViews;
         if (v !== undefined && slot < v.length) v[slot] &= clearMask;
-        const i = tree.invisibleViews;
-        if (i !== undefined && slot < i.length) i[slot] &= clearMask;
         const s = tree.subscribedViews;
         if (s !== undefined && slot < s.length) s[slot] &= clearMask;
         const t = tree.tagViews;
@@ -187,32 +185,6 @@ export class StateView {
     /** Clear the subscription bit on `tree`. */
     private _clearSubscribed(tree: ChangeTree): void {
         const arr = tree.subscribedViews;
-        if (arr === undefined) return;
-        const slot = this._slot;
-        if (slot < arr.length) arr[slot] &= ~this._bit;
-    }
-
-    /** True iff this view has previously marked `tree` as invisible. */
-    public isInvisible(tree: ChangeTree): boolean {
-        const arr = tree.invisibleViews;
-        const slot = this._slot;
-        return arr !== undefined && slot < arr.length && (arr[slot] & this._bit) !== 0;
-    }
-
-    /** Mark `tree` as invisible to this view (used by encode loop). */
-    public markInvisible(tree: ChangeTree): void {
-        const slot = this._slot;
-        let arr = tree.invisibleViews;
-        if (arr === undefined) {
-            arr = tree.invisibleViews = [];
-        }
-        while (arr.length <= slot) arr.push(0);
-        arr[slot] |= this._bit;
-    }
-
-    /** Clear invisible bit. */
-    public unmarkInvisible(tree: ChangeTree): void {
-        const arr = tree.invisibleViews;
         if (arr === undefined) return;
         const slot = this._slot;
         if (slot < arr.length) arr[slot] &= ~this._bit;
@@ -468,7 +440,6 @@ export class StateView {
 
         } else if (!changeTree.isNew || isChildAdded) {
             // new structures will be added as part of .encode() call, no need to force it to .encodeView()
-            const isInvisible = this.isInvisible(changeTree);
 
             // Full-sync snapshot: walk the live ref structurally instead of
             // iterating a cumulative recorder bucket. Every populated index
@@ -476,11 +447,14 @@ export class StateView {
             // at encode time). Per-field tags come from the descriptor's
             // precomputed `tags[]` array — direct index vs a metadata[i].tag
             // object hop.
+            //
+            // Non-matching custom-tagged fields are NEVER included here —
+            // `view.changes` is drained without a per-field tag re-check,
+            // so anything added leaks straight to the wire.
             const tags = changeTree.encDescriptor.tags;
             changeTree.forEachLive((index) => {
                 const tagAtIndex = tags[index];
                 if (
-                    isInvisible || // if "invisible", include all
                     tagAtIndex === undefined || // "all change" with no tag
                     tagAtIndex === DEFAULT_VIEW_TAG || // visible to all clients
                     (tag !== DEFAULT_VIEW_TAG && (tagAtIndex & tag) !== 0) // tag bits overlap
@@ -652,7 +626,7 @@ export class StateView {
 
         // ── Streamable-collection unsubscribe (the stream itself) ─────
         // Flush DELETE for every sent position and drop pending. After
-        // this, the stream is marked invisible to this view — any future
+        // this, the stream is no longer visible to this view — any future
         // `stream.add()` would still seed broadcast pending (if no views)
         // but would NOT re-seed per-view pending (user must re-subscribe).
         if (changeTree.isStreamCollection) {

@@ -128,13 +128,11 @@ describe("StateView internals", () => {
             return { view, encoder };
         }
 
-        it("tree with no bitmap returns false from isVisible/isInvisible", () => {
+        it("tree with no bitmap returns false from isVisible", () => {
             const { view } = bindView();
             const tree = makeTree();
             assert.strictEqual(view.isVisible(tree), false);
-            assert.strictEqual(view.isInvisible(tree), false);
             assert.strictEqual(tree.visibleViews, undefined);
-            assert.strictEqual(tree.invisibleViews, undefined);
         });
 
         it("markVisible / unmarkVisible round-trips the bit", () => {
@@ -147,31 +145,6 @@ describe("StateView internals", () => {
 
             view.unmarkVisible(tree);
             assert.strictEqual(view.isVisible(tree), false);
-        });
-
-        it("markInvisible / unmarkInvisible round-trips the bit", () => {
-            const { view } = bindView();
-            const tree = makeTree();
-
-            view.markInvisible(tree);
-            assert.strictEqual(view.isInvisible(tree), true);
-
-            view.unmarkInvisible(tree);
-            assert.strictEqual(view.isInvisible(tree), false);
-        });
-
-        it("visible and invisible bitmaps are independent", () => {
-            const { view } = bindView();
-            const tree = makeTree();
-
-            view.markVisible(tree);
-            view.markInvisible(tree);
-            assert.strictEqual(view.isVisible(tree), true);
-            assert.strictEqual(view.isInvisible(tree), true);
-
-            view.unmarkVisible(tree);
-            assert.strictEqual(view.isVisible(tree), false);
-            assert.strictEqual(view.isInvisible(tree), true, "invisible bit unchanged");
         });
 
         it("two views write to different bits in the same slot", () => {
@@ -442,32 +415,5 @@ describe("StateView internals", () => {
             );
         });
 
-        it("invisible bits must be cleared on dispose (bitmap level)", () => {
-            // Lower-level mirror of the privacy test: the invisibleViews
-            // bitmap must also be cleared at dispose. (isVisible is covered
-            // by the earlier test; here we pin the parallel invariant.)
-            const state = new State();
-            getEncoder(state);
-            const tree = state[$changes]!;
-
-            const v1 = new StateView();
-            v1.add(state);
-            v1.markInvisible(tree);
-            assert.strictEqual(v1.isInvisible(tree), true, "sanity");
-
-            const v1Id = v1.id;
-            v1.dispose();
-
-            const v2 = new StateView();
-            // @ts-ignore — bind without calling add() to observe pre-add state
-            v2["_bindRoot"]((state as any)[$changes].root);
-            assert.strictEqual(v2.id, v1Id, "ID reused");
-
-            assert.strictEqual(
-                v2.isInvisible(tree!),
-                false,
-                "v2 must NOT inherit v1's invisible mark after dispose",
-            );
-        });
     });
 });

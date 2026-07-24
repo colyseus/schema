@@ -119,16 +119,7 @@ function _fullSyncWalk(ctx: EncodeCtx, changeTree: ChangeTree): void {
     // Visibility gate: when a view is active, a non-visible tree contributes
     // nothing itself but we still recurse so descendants (possibly added to
     // the view explicitly) are reachable.
-    let visibleHere = true;
-    if (ctx.hasView) {
-        const view = ctx.view!;
-        if (!view.isChangeTreeVisible(changeTree)) {
-            view.markInvisible(changeTree);
-            visibleHere = false;
-        } else {
-            view.unmarkInvisible(changeTree);
-        }
-    }
+    const visibleHere = !ctx.hasView || ctx.view!.isChangeTreeVisible(changeTree);
 
     if (visibleHere) {
         const desc = changeTree.encDescriptor;
@@ -313,12 +304,8 @@ export class Encoder<T extends Schema = any> {
         while (current = current.next) {
             const changeTree = (current as ChangeTreeNode).changeTree;
 
-            if (hasView) {
-                if (!view.isChangeTreeVisible(changeTree)) {
-                    view.markInvisible(changeTree);
-                    continue;
-                }
-                view.unmarkInvisible(changeTree);
+            if (hasView && !view.isChangeTreeVisible(changeTree)) {
+                continue;
             }
 
             const recorder = unreliable ? changeTree.unreliableRecorder : changeTree;
