@@ -944,6 +944,125 @@ describe("StateView", () => {
         });
     });
 
+    describe("idempotent re-add", () => {
+        class Inner extends Schema {
+            @type("number") power: number;
+        }
+        class Player extends Schema {
+            @type("string") name: string;
+            @view() @type(Inner) inner: Inner;
+        }
+        class State extends Schema {
+            @view() @type({ map: Player }) players = new MapSchema<Player>();
+        }
+
+        function makeWorld() {
+            const state = new State();
+            const player = new Player().assign({
+                name: "Alice",
+                inner: new Inner().assign({ power: 1 }),
+            });
+            state.players.set("one", player);
+            const encoder = getEncoder(state);
+            return { state, player, encoder };
+        }
+
+        it("same-tick double-add produces identical bytes to a single add", () => {
+            const single = makeWorld();
+            const double = makeWorld();
+            const c1 = createClientWithView(single.state);
+            const c2 = createClientWithView(double.state);
+            encodeMultiple(single.encoder, single.state, [c1]);
+            encodeMultiple(double.encoder, double.state, [c2]);
+
+            c1.view.add(single.player);
+            c2.view.add(double.player);
+            c2.view.add(double.player); // duplicate
+
+            const b1 = encodeMultiple(single.encoder, single.state, [c1])[0];
+            const b2 = encodeMultiple(double.encoder, double.state, [c2])[0];
+            assert.strictEqual(
+                Buffer.from(b2).toString("hex"),
+                Buffer.from(b1).toString("hex"),
+            );
+        });
+
+        it("cross-tick re-add re-sends the snapshot (shared-view bootstrap semantics)", () => {
+            // Deliberate: on a SHARED view a late-attached client may not
+            // have consumed earlier drains, so add() of an already-visible
+            // instance re-queues its full snapshot. Callers wanting cheap
+            // idempotence should guard with `view.has(obj)`.
+            const { state, player, encoder } = makeWorld();
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(player);
+            const addTick = encodeMultiple(encoder, state, [client])[0];
+            assert.strictEqual(client.state.players.get("one").name, "Alice");
+
+            client.view.add(player); // re-add: same snapshot again
+            const readdTick = encodeMultiple(encoder, state, [client])[0];
+            assert.strictEqual(
+                Buffer.from(readdTick).toString("hex"),
+                Buffer.from(addTick).toString("hex"),
+            );
+            assert.strictEqual(client.state.players.get("one").name, "Alice");
+            assert.strictEqual(client.state.players.get("one").inner.power, 1);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("iterable view: double-add keeps a single items entry", () => {
+            const { state, player, encoder } = makeWorld();
+            const client = createClientWithView(state, new StateView(true));
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(player);
+            client.view.add(player); // same tick
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.view.items.length, 1);
+
+            client.view.add(player); // later tick
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.view.items.length, 1);
+
+            // remove + re-add must re-enter the list
+            client.view.remove(player);
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.view.items.length, 0);
+            client.view.add(player);
+            assert.strictEqual(client.view.items.length, 1);
+        });
+
+        it("re-add cascade still repairs a replaced @view() child", () => {
+            const { state, player, encoder } = makeWorld();
+            const client = createClientWithView(state);
+            client.view.add(player);
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one").inner.power, 1);
+
+            // replace the tagged child; parent stays visible
+            player.inner = new Inner().assign({ power: 2 });
+            client.view.add(player); // re-add repairs via child cascade
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one").inner.power, 2);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("re-add while dirty still delivers the mutation", () => {
+            const { state, player, encoder } = makeWorld();
+            const client = createClientWithView(state);
+            client.view.add(player);
+            encodeMultiple(encoder, state, [client]);
+
+            player.name = "Alice2";
+            client.view.add(player); // same tick as the mutation
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one").name, "Alice2");
+        });
+    });
+
     describe("MapSchema", () => {
         it("should sync single item from map", () => {
             class Item extends Schema {

@@ -343,12 +343,19 @@ export class StateView {
         // subclasses yield a real Metadata object.
         const metadata: Metadata = (obj.constructor as typeof Schema)[Symbol.metadata];
 
-        this.markVisible(changeTree);
-
-        // add to iterable list (only the explicitly added items)
-        if (this.iterable && checkIncludeParent) {
+        // Add to iterable list (only the explicitly added items), deduping
+        // re-adds of an already-visible instance. isVisible must be read
+        // BEFORE markVisible; indexOf runs only on the re-add path.
+        // NOTE: dedup applies to `items` only — a re-add still re-queues the
+        // full snapshot on purpose (shared-view bootstrap re-add: a
+        // late-attached client may not have consumed earlier drains).
+        // Callers wanting cheap idempotence can guard with `view.has(obj)`.
+        if (this.iterable && checkIncludeParent
+            && (!this.isVisible(changeTree) || this.items.indexOf(obj) === -1)) {
             this.items.push(obj);
         }
+
+        this.markVisible(changeTree);
 
         // add parent ChangeTree's
         // - if it was invisible to this view
