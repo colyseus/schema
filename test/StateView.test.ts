@@ -886,6 +886,33 @@ describe("StateView", () => {
             assert.strictEqual(client.state.players.get("one").secret, undefined);
         });
 
+        it("double-add of the same instance: state intact, no tagged leak", () => {
+            const state = new State();
+            const player = new Player().assign({ name: "Alice", secret: 42 });
+            state.players.set("one", player);
+
+            const encoder = getEncoder(state);
+
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            // duplicate add within the same tick
+            client.view.add(player);
+            client.view.add(player);
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one").name, "Alice");
+            assert.strictEqual(client.state.players.get("one").secret, undefined);
+
+            // re-add on a later tick, while dirty
+            player.name = "Alice2";
+            client.view.add(player);
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one").name, "Alice2");
+            assert.strictEqual(client.state.players.get("one").secret, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
         it("schema with only custom-tagged fields: default add sends nothing", () => {
             class Vault extends Schema {
                 @view(Tag.SECRET) @type("number") gold: number;
