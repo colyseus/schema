@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.11]
+
+### Fixed
+- `StateView`: **custom-tag field leak** — `view.add(obj)` with the
+  default tag force-included *all* live fields, including non-matching
+  `@view(tag)` fields, whenever the tree had changed while invisible to
+  the view. Since the per-view op queue is drained with no per-field tag
+  re-check, those fields went straight to the wire: a default-tag client
+  received `@view(tag)` data it never subscribed to. Reachable via
+  "changed while invisible, then `add()`" and via
+  `remove()` → mutate → re-`add()`. Found while evaluating
+  [#228](https://github.com/colyseus/schema/pull/228) (the 4.x line
+  leaks on the same path). The force-include was the only reader of the
+  per-view invisible bit, so the entire invisible-tracking machinery was
+  removed with it (`ChangeTree.invisibleViews`, per-tick mark/unmark in
+  the encode loop). Benchmarks: view-heavy encode got ~5–6% faster at
+  50 views; full-matrix A/B shows no regression, wire bytes unchanged
+  outside the leaking scenarios.
+- `StateView`: re-adding an already-visible instance to an *iterable*
+  view no longer duplicates it in `view.items`; the entry re-enters the
+  list after `remove()`. Dedup runs only on the re-add path.
+
+### Notes
+- `view.add()` of an already-visible instance intentionally re-queues
+  the instance's full snapshot — the shared-view bootstrap re-add idiom
+  (a late-attached client may not have consumed earlier drains) depends
+  on it. Guard with `view.has(obj)` when cheap idempotence is wanted.
+  This and other re-add invariants (same-tick double-add is
+  byte-identical to a single add; re-adding a parent repairs a replaced
+  `@view()` child) are now pinned by tests.
+
 ## [5.0.10]
 
 ### Fixed
