@@ -77,7 +77,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     /** Iterator */
-    [Symbol.iterator](): IterableIterator<[K, V]> { return this.$items[Symbol.iterator](); }
+    [Symbol.iterator](): ReturnType<Map<K, V>[typeof Symbol.iterator]> { return this.$items[Symbol.iterator](); }
     get [Symbol.toStringTag]() { return this.$items[Symbol.toStringTag] }
 
     static get [Symbol.species]() { return MapSchema; }

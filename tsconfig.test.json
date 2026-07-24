@@ -15,6 +15,7 @@
   ],
   "exclude": [
     "build",
+    "test/**/*.types.ts",
     "test/ChangeAPI._test.ts"
   ]
 }
