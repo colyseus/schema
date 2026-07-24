@@ -1,5 +1,31 @@
 # Changelog
 
+## 4.0.30
+
+### `MapSchema.getOrInsert()` and `getOrInsertComputed()`
+
+`MapSchema` now implements `getOrInsert(key, defaultValue)` and
+`getOrInsertComputed(key, callbackfn)` — the `Map.prototype` "upsert" methods
+from the TC39 proposal, typed in TypeScript 6's standard library:
+
+```typescript
+// returns existing value, or inserts (and returns) the default
+const player = state.players.getOrInsert(sessionId, new Player());
+
+// same, but the value is only constructed when the key is missing
+const player = state.players.getOrInsertComputed(sessionId, () => new Player());
+```
+
+Insertions go through the regular `set()` path, so they are tracked and
+synchronized like any other change; when the key already exists, the existing
+value is returned and nothing is enqueued for encoding.
+
+This also completes the native `Map` contract on TypeScript 6 and 7: with
+`lib: ESNext` (where `Map` declares these methods), assigning a `MapSchema`
+where a `Map<K, V>` is expected no longer fails — complementing the iterator
+fix from 4.0.29. On the runtime side these methods are always available,
+regardless of engine support for the proposal.
+
 ## 4.0.29
 
 ### `MapSchema` iterator type now follows the native `Map` contract

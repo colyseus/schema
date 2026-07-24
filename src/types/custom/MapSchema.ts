@@ -152,6 +152,39 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         return this.$items.get(key);
     }
 
+    /**
+     * Returns the value for `key` if present. Otherwise inserts `defaultValue`
+     * (tracked as an ADD change, like `set()`) and returns it.
+     *
+     * Mirrors `Map.prototype.getOrInsert` (TC39 "upsert" proposal, typed in
+     * TypeScript 6's standard library).
+     */
+    getOrInsert(key: K, defaultValue: V): V {
+        if (this.$items.has(key)) {
+            return this.$items.get(key);
+        }
+        this.set(key, defaultValue);
+        return defaultValue;
+    }
+
+    /**
+     * Returns the value for `key` if present. Otherwise computes a value via
+     * `callbackfn(key)`, inserts it (tracked as an ADD change, like `set()`)
+     * and returns it. The callback is only invoked when the key is missing.
+     *
+     * Mirrors `Map.prototype.getOrInsertComputed` (TC39 "upsert" proposal,
+     * typed in TypeScript 6's standard library).
+     */
+    getOrInsertComputed(key: K, callbackfn: (key: K) => V): V {
+        if (this.$items.has(key)) {
+            return this.$items.get(key);
+        }
+        const value = callbackfn(key);
+        // per spec: overwrites even if callbackfn itself inserted `key`
+        this.set(key, value);
+        return value;
+    }
+
     delete(key: K) {
         if (!this.$items.has(key)) {
             return false;

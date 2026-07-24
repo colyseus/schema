@@ -11,6 +11,73 @@ describe("Type: MapSchema", () => {
         });
     });
 
+    describe("getOrInsert / getOrInsertComputed", () => {
+        it("getOrInsert: should insert and sync when key is missing", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>();
+
+            const jake = state.mapOfPlayers.getOrInsert("jake", new Player("Jake"));
+            assert.strictEqual(state.mapOfPlayers.get("jake"), jake);
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+            assert.strictEqual(decodedState.mapOfPlayers.get("jake").name, "Jake");
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("getOrInsert: should return existing value without enqueueing changes", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>({ jake: new Player("Jake") });
+            state.encodeAll();
+            state.encode();
+
+            const jake = state.mapOfPlayers.get("jake");
+            assert.strictEqual(state.mapOfPlayers.getOrInsert("jake", new Player("Other")), jake);
+            assert.strictEqual(state.mapOfPlayers.size, 1);
+            assert.ok(state.encode().length === 0);
+        });
+
+        it("getOrInsert: should work with primitive values", () => {
+            class ScoreState extends Schema {
+                @type({ map: "number" }) scores = new MapSchema<number>();
+            }
+            const state = new ScoreState();
+            assert.strictEqual(state.scores.getOrInsert("one", 10), 10);
+            assert.strictEqual(state.scores.getOrInsert("one", 99), 10);
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+            assert.strictEqual(decodedState.scores.get("one"), 10);
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("getOrInsertComputed: should only invoke callback when key is missing", () => {
+            const state = new State();
+            state.mapOfPlayers = new MapSchema<Player>();
+
+            let calls = 0;
+            const jake = state.mapOfPlayers.getOrInsertComputed("jake", (key) => {
+                calls++;
+                assert.strictEqual(key, "jake");
+                return new Player("Jake");
+            });
+            assert.strictEqual(calls, 1);
+            assert.strictEqual(state.mapOfPlayers.get("jake"), jake);
+
+            const existing = state.mapOfPlayers.getOrInsertComputed("jake", () => {
+                calls++;
+                return new Player("Nope");
+            });
+            assert.strictEqual(existing, jake);
+            assert.strictEqual(calls, 1);
+
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+            assert.strictEqual(decodedState.mapOfPlayers.get("jake").name, "Jake");
+            assertDeepStrictEqualEncodeAll(state);
+        });
+    });
+
     it("should allow to pre-populate a Map", () => {
         const state = new State();
         state.mapOfPlayers = new MapSchema<Player>({
