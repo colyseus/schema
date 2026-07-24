@@ -207,6 +207,7 @@ function generateFieldsArray(klass: Class, typeName: string, snakeName: string, 
         const typeString = getFieldTypeString(prop);
 
         let vtableRef = "NULL";
+        let childPrimitiveRef = "NULL";
 
         if (prop.type === "ref" && prop.childType && !typeMaps[prop.childType]) {
             const childSnake = toSnakeCase(prop.childType);
@@ -214,9 +215,12 @@ function generateFieldsArray(klass: Class, typeName: string, snakeName: string, 
         } else if ((prop.type === "array" || prop.type === "map") && prop.childType && !typeMaps[prop.childType]) {
             const childSnake = toSnakeCase(prop.childType);
             vtableRef = `&${childSnake}_vtable`;
+        } else if ((prop.type === "array" || prop.type === "map") && prop.childType) {
+            // collection of primitives — the decoder strcmp()s this to pick the reader
+            childPrimitiveRef = `"${prop.childType}"`;
         }
 
-        return `    {${prop.index}, "${prop.name}", ${fieldType}, "${typeString}", offsetof(${typeName}, ${prop.name}), ${vtableRef}, NULL}`;
+        return `    {${prop.index}, "${prop.name}", ${fieldType}, "${typeString}", offsetof(${typeName}, ${prop.name}), ${vtableRef}, ${childPrimitiveRef}}`;
     }).join(",\n");
 
     return `static const colyseus_field_t ${snakeName}_fields[] = {
