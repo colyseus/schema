@@ -11,7 +11,8 @@
   },
   "include": [
     "src/**/*.ts",
-    "test/**/*.ts"
+    "test/**/*.ts",
+    "test-external/**/*.ts"
   ],
   "exclude": [
     "test/**/*.types.ts"
