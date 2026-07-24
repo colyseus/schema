@@ -336,12 +336,12 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     // decoding only
     protected $setAt(index: number, value: V, operation: OPERATION) {
         if (
-            index === 0 &&
             operation === OPERATION.ADD &&
             this.items[index] !== undefined
         ) {
-            // handle decoding unshift
-            this.items.unshift(value);
+            // ADD at an occupied index = insert (unshift / splice-insert):
+            // shift existing items up instead of overwriting.
+            this.items.splice(index, 0, value);
 
         } else if (operation === OPERATION.DELETE_AND_MOVE) {
             this.items.splice(index, 1);
@@ -564,13 +564,14 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         const self = this[$proxyTarget];
         const changeTree = self[$changes];
 
-        // Existing items shift up — `shiftChangeIndexes` handles their
-        // relocation bookkeeping. The prepended `items` are genuinely new
-        // (no prior existence to MOVE), so each records an ADD.
-        changeTree.shiftChangeIndexes(items.length);
-        items.forEach((_, index) => {
-            changeTree.change(index, OPERATION.ADD)
-        });
+        // single recorder op: shifts pending indexes up and records the new
+        // ADDs lowest-first (the decoder splice-inserts in ascending order).
+        changeTree.unshift(items.length);
+
+        // attach ref-type items — parent set AFTER recording, as in $changeAt
+        for (let i = 0; i < items.length; i++) {
+            items[i]?.[$changes]?.setParent(this, changeTree.root, i);
+        }
 
         self.tmpItems.unshift(...items);
 

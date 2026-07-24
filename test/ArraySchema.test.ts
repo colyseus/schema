@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
-import { ArraySchema, Schema, type, $changes, $refId, MapSchema, ChangeTree, schema, t } from "../src";
+import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, createClientWithView, encodeMultiple } from "./Schema";
+import { ArraySchema, Schema, type, view, $changes, $refId, MapSchema, ChangeTree, schema, t } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -707,7 +707,7 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("consecutive unshift calls should not break 'encodeAll'", () => {
+        it("consecutive unshift calls should not break 'encodeAll'", () => {
             class State extends Schema {
                 @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
             }
@@ -728,6 +728,153 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([-1, 0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
 
             assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("multi-item unshift", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1, 2, 3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.arrayOfNumbers.unshift(-1, -2);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([-1, -2, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("unshift with pending same-tick operations", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1, 2, 3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            // pending REPLACE + ADD get re-keyed past the inserts
+            state.arrayOfNumbers[2] = 99;
+            state.arrayOfNumbers.push(4);
+            state.arrayOfNumbers.unshift(0);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([0, 1, 2, 99, 4], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("consecutive unshift of Schema instances", () => {
+            class Item extends Schema {
+                @type("number") price: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+            const mkItem = (price: number) => {
+                const item = new Item();
+                item.price = price;
+                return item;
+            };
+
+            const state = new State();
+            state.items.push(mkItem(1), mkItem(2));
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.items.unshift(mkItem(0));
+            state.items.unshift(mkItem(-1));
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([-1, 0, 1, 2], decodedState.items.map((i) => i.price));
+            assertRefIdCounts(state, decodedState);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("unshift interleaved with same-tick shift/pop", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1, 2, 3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            // pop leaves a staged delete; unshift must keep flags aligned
+            state.arrayOfNumbers.pop();
+            state.arrayOfNumbers.unshift(0);
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([0, 1, 2], decodedState.arrayOfNumbers.toJSON());
+
+            state.arrayOfNumbers.shift();
+            state.arrayOfNumbers.unshift(-1);
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([-1, 1, 2], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("clear + unshift in the same tick", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1, 2, 3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.arrayOfNumbers.clear();
+            state.arrayOfNumbers.unshift(9);
+            state.arrayOfNumbers.unshift(8);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([8, 9], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("consecutive unshift on a @view() filtered primitive array", () => {
+            //
+            // positional ADDs survive into the per-view encode pass — it must
+            // drain the recorder in the same rebuilt (ascending) order as the
+            // shared pass.
+            //
+            class ViewState extends Schema {
+                @view() @type(["number"]) nums = new ArraySchema<number>();
+            }
+            const state = new ViewState();
+            const encoder = getEncoder(state);
+            state.nums.push(1, 2, 3);
+
+            const client = createClientWithView(state);
+            client.view.add(state.nums);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual([1, 2, 3], client.state.nums.toJSON());
+
+            state.nums.unshift(0);
+            state.nums.unshift(-1);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual([-1, 0, 1, 2, 3], client.state.nums.toJSON());
+
+            // mixed same-tick ops
+            state.nums[2] = 99;
+            state.nums.push(4);
+            state.nums.unshift(-2);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual([-2, -1, 0, 99, 2, 3, 4], client.state.nums.toJSON());
         });
 
         it("push and unshift", () => {

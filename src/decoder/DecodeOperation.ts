@@ -349,7 +349,11 @@ export const decodeKeyValueOperation: DecodeOperation = function (
                 break;
 
             case CollectionKind.Array:
-                tgt.$setAt(index, value, operation);
+                // resync snapshot ADDs are positional overwrites, not inserts
+                tgt.$setAt(index, value,
+                    (decoder.resyncVisited !== null && operation === OPERATION.ADD)
+                        ? OPERATION.REPLACE
+                        : operation);
                 break;
 
             // SetSchema / CollectionSchema / StreamSchema — use the wire-
@@ -503,9 +507,13 @@ export const decodeArray: DecodeOperation = function (
 
     if (
         value !== null && value !== undefined &&
-        value !== previousValue // avoid setting same value twice (if index === 0 it will result in a "unshift" for ArraySchema)
+        value !== previousValue // avoid setting same value twice (an ADD at an occupied index would splice-insert)
     ) {
-        tgt.$setAt(index, value, operation);
+        // resync snapshot ADDs are positional overwrites, not inserts
+        tgt.$setAt(index, value,
+            (decoder.resyncVisited !== null && operation === OPERATION.ADD)
+                ? OPERATION.REPLACE
+                : operation);
     }
 
     // add change

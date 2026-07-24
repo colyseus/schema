@@ -591,12 +591,27 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         this.subscribedViews = undefined;
     }
 
-    shift(shiftIndex: number): void {
-        if (this._isSchema) throw new Error("ChangeTree (Schema): shift is not supported");
+    /**
+     * ArraySchema#unshift(): re-key pending ops on both channels by
+     * `+count`, then record ADDs for the new items at indexes 0..count-1.
+     *
+     * The rebuilt map's insertion order IS the wire order: new ADDs first
+     * (ascending — the decoder splice-inserts each one, which only works
+     * lowest-index-first), then prior ops in their original relative order
+     * at their shifted positions. See ArraySchema#$setAt.
+     */
+    unshift(count: number): void {
+        if (this._isSchema) throw new Error("ChangeTree (Schema): unshift is not supported");
         const src = this.collDirty!;
         const dst = new Map<number, OPERATION>();
-        for (const [idx, val] of src) dst.set(idx + shiftIndex, val);
+        const track = !this.paused && !this.isStatic;
+        if (track) {
+            for (let i = 0; i < count; i++) dst.set(i, OPERATION.ADD);
+        }
+        for (const [idx, val] of src) dst.set(idx + count, val);
         this.collDirty = dst;
+        (this.unreliableRecorder as ICollectionChangeRecorder | undefined)?.shift(count);
+        if (track) this.root?.enqueueChangeTree(this);
     }
 
     // Tree attachment + child iteration — see ./changeTree/treeAttachment.ts.
@@ -663,13 +678,6 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     indexedOperation(index: number, operation: OPERATION) {
         this._routeAndRecord(index, operation, true);
-    }
-
-    // ArraySchema#unshift(): apply shift to both channels.
-    // Unreliable recorder on an array is always a CollectionChangeRecorder.
-    shiftChangeIndexes(shiftIndex: number) {
-        this.shift(shiftIndex);
-        (this.unreliableRecorder as ICollectionChangeRecorder | undefined)?.shift(shiftIndex);
     }
 
     getChange(index: number) {
