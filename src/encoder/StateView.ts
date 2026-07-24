@@ -103,6 +103,8 @@ export class StateView {
 
         // FIXME: ArraySchema/MapSchema do not have metadata
         const metadata: Metadata = (obj.constructor as typeof Schema)[Symbol.metadata];
+        // captured before the add() below: a not-yet-visible tree is one the client lacks
+        const wasVisible = this.visible.has(changeTree);
         this.visible.add(changeTree);
 
         // add to iterable list (only the explicitly added items)
@@ -171,7 +173,7 @@ export class StateView {
                 ? changeTree.allFilteredChanges
                 : changeTree.allChanges;
 
-            const isInvisible = this.invisible.has(changeTree);
+            const isInvisible = !wasVisible;
 
             for (let i = 0, len = changeSet.operations.length; i < len; i++) {
                 const index = changeSet.operations[i];
