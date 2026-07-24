@@ -1,5 +1,30 @@
 # Changelog
 
+## 4.0.29
+
+### `MapSchema` iterator type now follows the native `Map` contract
+
+TypeScript 5.6 changed the standard library so `Map[Symbol.iterator]()` returns
+`MapIterator` (which includes the iterator-helper methods) instead of
+`IterableIterator`. `MapSchema`'s explicit `IterableIterator<[K, V]>` annotation
+was narrower, so on TS 5.6+ with `lib: ESNext`:
+
+- assigning a `MapSchema` where a `Map<K, V>` is expected failed with TS2322 —
+  even under the recommended `skipLibCheck: true`;
+- projects with `skipLibCheck: false` also got TS2416 from the shipped
+  declarations (`'[Symbol.iterator]' … is not assignable to the same property
+  in base type 'Map<K, V>'`).
+
+`[Symbol.iterator]()` is now typed as `ReturnType<Map<K, V>[typeof
+Symbol.iterator]>`, deriving the iterator type from the consumer compiler's own
+standard library — `IterableIterator` on TS ≤ 5.5, `MapIterator` on 5.6+. This
+is a declaration-only fix; runtime behavior is unchanged.
+
+A new `test:types` check now compiles the generated declarations under strict
+`NodeNext` with `skipLibCheck: false` to catch regressions of this kind.
+
+Thanks to [@Hoodgail](https://github.com/Hoodgail) for the contribution (#227).
+
 ## 4.0.28
 
 ### TypeScript 5 / 6 / 7 compatibility
