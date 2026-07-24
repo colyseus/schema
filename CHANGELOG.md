@@ -4,6 +4,46 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.10]
+
+### Fixed
+- `ArraySchema`: consecutive and multi-item `unshift()` — and `unshift()`
+  mixed with other same-tick operations — now encode/decode correctly
+  ([#193](https://github.com/colyseus/schema/issues/193), port of
+  [#219](https://github.com/colyseus/schema/pull/219)). The encoder
+  records unshift as a single recorder operation whose map order is the
+  wire order (new ADDs stream lowest-index-first); the decoder rule
+  generalizes to *"a plain `ADD` at an occupied index means insert at
+  that index, shifting items up"* (previously only `index === 0` was
+  special-cased as unshift). During `decodeResync()`, snapshot ADDs
+  remain positional overwrites. **Wire-semantics change: all SDK
+  decoders must mirror the `ADD`-at-occupied-index rule for the 0.18
+  line** (see `TODO/sdk-decoders-arrayschema-insert.md`). Also fixed
+  along the way: `unshift()` never attached ref-type items to the change
+  tree, so unshifting Schema instances crashed the decoder.
+- `ArraySchema`: deletes of Schema-type children are now always encoded
+  as `DELETE_BY_REFID` (port of
+  [#220](https://github.com/colyseus/schema/pull/220); previously only
+  view-filtered arrays used it), making array deletes idempotent — a
+  client that received `encodeAll()` mid-tick no longer corrupts when
+  the next shared patch carries DELETEs recorded before its snapshot.
+  The decoder skips stale ops for unknown refIds entirely (no bogus
+  delete-at-`-1`, no bogus `onRemove`), while preserving the ref-count
+  decrement for items absent from a filtered client's array. Note:
+  stale positional ADDs remain unfixable for *primitive* arrays (no
+  refId to be idempotent on) — the 0.18 join path must drain the
+  pending patch before snapshotting a joining client.
+- `ArraySchema`: interleaving index writes with `shift()`/`splice()` in
+  the same tick no longer desyncs clients. Index assignments (`arr[i] =
+  x`) recorded at items-space positions while deletions record at wire
+  (tmpItems) positions; after a same-tick deletion the write landed on
+  the wrong wire slot and clobbered staged encode state. All index-based
+  recording now translates through the staged-deletion map
+  (`$wireIndex`), `shift()` resolves its wire slot structurally instead
+  of by value identity, and `unshift()` keeps staged-delete flags
+  aligned. Benchmarks: `shift`/`unshift`-heavy mutation ops got ~8%
+  faster; full-matrix A/B shows no regression.
+
 ## [5.0.9]
 
 ### Added

@@ -44,33 +44,40 @@ const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
                 obj.$deleteAt(key as unknown as number);
 
             } else {
+                // wire slot the write was recorded at; undefined = nothing
+                // recorded (same value / skipped) — must NOT touch tmpItems
+                // then, or a same-tick shifted layout gets clobbered.
+                let wireIndex: number | undefined;
+
                 if (setValue[$changes]) {
                     assertInstanceType(setValue, obj[$childType] as typeof Schema, obj, key);
 
                     const previousValue = obj.items[key as unknown as number];
 
                     if (!obj.isMovingItems) {
-                        obj.$changeAt(Number(key), setValue);
+                        wireIndex = obj.$changeAt(Number(key), setValue);
 
                     } else {
+                        wireIndex = obj.$wireIndex(Number(key));
+
                         if (previousValue !== undefined) {
                             if (setValue[$changes].isNew) {
-                                obj[$changes].indexedOperation(Number(key), OPERATION.MOVE_AND_ADD);
+                                obj[$changes].indexedOperation(wireIndex, OPERATION.MOVE_AND_ADD);
 
                             } else {
-                                if ((obj[$changes].getChange(Number(key)) & OPERATION.DELETE) === OPERATION.DELETE) {
-                                    obj[$changes].indexedOperation(Number(key), OPERATION.DELETE_AND_MOVE);
+                                if ((obj[$changes].getChange(wireIndex) & OPERATION.DELETE) === OPERATION.DELETE) {
+                                    obj[$changes].indexedOperation(wireIndex, OPERATION.DELETE_AND_MOVE);
 
                                 } else {
-                                    obj[$changes].indexedOperation(Number(key), OPERATION.MOVE);
+                                    obj[$changes].indexedOperation(wireIndex, OPERATION.MOVE);
                                 }
                             }
 
                         } else if (setValue[$changes].isNew) {
-                            obj[$changes].indexedOperation(Number(key), OPERATION.ADD);
+                            obj[$changes].indexedOperation(wireIndex, OPERATION.ADD);
                         }
 
-                        setValue[$changes].setParent(obj, obj[$changes].root, key);
+                        setValue[$changes].setParent(obj, obj[$changes].root, wireIndex);
                     }
 
                     if (previousValue !== undefined) {
@@ -79,11 +86,13 @@ const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
                     }
 
                 } else {
-                    obj.$changeAt(Number(key), setValue);
+                    wireIndex = obj.$changeAt(Number(key), setValue);
                 }
 
                 obj.items[key as unknown as number] = setValue;
-                obj.tmpItems[key as unknown as number] = setValue;
+                if (wireIndex !== undefined) {
+                    obj.tmpItems[wireIndex] = setValue;
+                }
             }
 
             return true;
@@ -300,16 +309,39 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         return this.items[index];
     }
 
-    // encoding only
-    protected $changeAt(index: number, value: V) {
+    /**
+     * items-index → wire (tmpItems) index. Identity while no deletions are
+     * staged this tick; otherwise maps to the index-th live (non-deleted)
+     * tmpItems slot — the same live-index walk `splice()` uses. Without the
+     * translation, index writes recorded after a same-tick `shift()`/`splice()`
+     * land on the wrong wire slots.
+     */
+    protected $wireIndex(index: number): number {
+        const deletedIndexes = this.deletedIndexes;
+        if (deletedIndexes.length === 0) { return index; }
+        const tmpItems = this.tmpItems;
+        let live = 0;
+        for (let i = 0; i < tmpItems.length; i++) {
+            if (deletedIndexes[i] !== true) {
+                if (live === index) { return i; }
+                live++;
+            }
+        }
+        // beyond the live range: appends land after the staged tmpItems tail
+        return tmpItems.length + (index - live);
+    }
+
+    // encoding only. Returns the wire index the change was recorded at
+    // (undefined when nothing was recorded).
+    protected $changeAt(index: number, value: V): number | undefined {
         if (value === undefined || value === null) {
-            console.error("ArraySchema items cannot be null nor undefined; Use `deleteAt(index)` instead.");
-            return;
+            console.error("ArraySchema items cannot be null nor undefined; Use `splice(index, 1)` instead.");
+            return undefined;
         }
 
         // skip if the value is the same as cached.
         if (this.items[index] === value) {
-            return;
+            return undefined;
         }
 
         const operation = (this.items[index] !== undefined)
@@ -318,19 +350,23 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
                 : OPERATION.REPLACE // primitive
             : OPERATION.ADD;
 
+        const wireIndex = this.$wireIndex(index);
+
         const changeTree = this[$changes];
-        changeTree.change(index, operation);
+        changeTree.change(wireIndex, operation);
 
         //
         // set value's parent after the value is set
         // (to avoid encoding "refId" operations before parent's "ADD" operation)
         //
-        value[$changes]?.setParent(this, changeTree.root, index);
+        value[$changes]?.setParent(this, changeTree.root, wireIndex);
+
+        return wireIndex;
     }
 
     // encoding only
     protected $deleteAt(index: number, operation?: OPERATION) {
-        this[$changes].delete(index, operation);
+        this[$changes].delete(this.$wireIndex(index), operation);
     }
 
     // decoding only
@@ -436,10 +472,14 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         if (items.length === 0) { return undefined; }
 
         const changeTree = self[$changes];
-        const first = items[0];
-        const index = self.tmpItems.findIndex(item => item === first);
+        // items[0] ≡ first live (non-deleted) tmpItems slot. Value-based
+        // findIndex is unsafe here: same-tick index writes can duplicate a
+        // value across tmp slots and resolve the wrong one.
+        const deletedIndexes = self.deletedIndexes;
+        let index = 0;
+        while (deletedIndexes[index] === true) { index++; }
         changeTree.delete(index, OPERATION.DELETE);
-        self.deletedIndexes[index] = true;
+        deletedIndexes[index] = true;
 
         return items.shift();
     }
@@ -571,6 +611,12 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         // attach ref-type items — parent set AFTER recording, as in $changeAt
         for (let i = 0; i < items.length; i++) {
             items[i]?.[$changes]?.setParent(this, changeTree.root, i);
+        }
+
+        // keep staged-delete flags aligned with the prepended tmp slots
+        const deletedIndexes = self.deletedIndexes;
+        if (deletedIndexes.length > 0) {
+            deletedIndexes.unshift(...new Array(items.length).fill(false));
         }
 
         self.tmpItems.unshift(...items);

@@ -367,6 +367,7 @@ describe("ArraySchema Tests", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
+
         it("mid-tick join: stale DELETEs in shared patch must not corrupt fresh client", () => {
             class Entity extends Schema {
                 @type("number") thing: number;
@@ -408,6 +409,41 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
+        it("same-tick interleaved index writes and shift()s (primitives)", () => {
+            //
+            // index writes record in items-space while shift() records in
+            // tmpItems (wire) space — $wireIndex translates between them.
+            //
+            class State extends Schema {
+                @type(["number"]) numbers = new ArraySchema<number>();
+            }
+            const state = new State();
+            for (let i = 0; i < 10; i++) state.numbers.push(i);
+
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            client.decode(state.encode());
+
+            // several [increment-all, shift] rounds inside one tick
+            for (let round = 0; round < 3; round++) {
+                for (let j = 0; j < state.numbers.length; j++) state.numbers[j]++;
+                state.numbers.shift();
+            }
+            client.decode(state.encode());
+            assert.deepStrictEqual(state.toJSON(), client.toJSON());
+
+            // again across a second patch, mixed with push
+            for (let round = 0; round < 2; round++) {
+                for (let j = 0; j < state.numbers.length; j++) state.numbers[j]++;
+                state.numbers.shift();
+                state.numbers.push(100 + round);
+            }
+            client.decode(state.encode());
+            assert.deepStrictEqual(state.toJSON(), client.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
         it("same-tick shift/splice + push with Schema children", () => {
             class Entity extends Schema {
                 @type("number") thing: number;
@@ -440,6 +476,91 @@ describe("ArraySchema Tests", () => {
             client.decode(state.encode());
             assert.deepStrictEqual([2, 99, 1], client.entities.map((e) => e.thing));
             assertRefIdCounts(state, client);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("replacing at an index after a same-tick shift (Schema children)", () => {
+            //
+            // arr[j] = x after a shift in the same tick: the replace must
+            // record at the translated wire index ($wireIndex), and the
+            // DELETE_BY_REFID for the shifted head must still resolve the
+            // original item from its (unclobbered) tmpItems slot.
+            //
+            class Entity extends Schema {
+                @type("number") thing: number;
+            }
+            class State extends Schema {
+                @type([Entity]) entities = new ArraySchema<Entity>();
+            }
+            const mkEntity = (n: number) => {
+                const e = new Entity();
+                e.thing = n;
+                return e;
+            };
+
+            const state = new State();
+            for (let i = 0; i < 3; i++) state.entities.push(mkEntity(i));
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            client.decode(state.encode());
+
+            state.entities.shift();
+            state.entities[0] = mkEntity(90);
+            client.decode(state.encode());
+            assert.deepStrictEqual([90, 2], client.entities.map((e) => e.thing));
+            assertRefIdCounts(state, client);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("mid-tick join with drained queue keeps primitive arrays in sync", () => {
+            //
+            // Primitive ops have no refId to make them idempotent — a fresh
+            // client must only ever snapshot a DRAINED queue (colyseus 0.18:
+            // broadcastPatch() before encodeAll on join). Under that
+            // invariant, primitive arrays stay in sync through heavy churn.
+            //
+            class State extends Schema {
+                @type(["number"]) numbers = new ArraySchema<number>();
+            }
+            const mutateAllAndShift = (state: State, count: number) => {
+                for (let i = 0; i < count; i++) {
+                    for (let j = 0; j < state.numbers.length; j++) state.numbers[j]++;
+                    state.numbers.shift();
+                }
+            };
+
+            const state = new State();
+            for (let i = 0; i < 35; i++) state.numbers.push(i);
+
+            state.encode(); // drain before first snapshot
+            const oldClient = createInstanceFromReflection(state);
+            oldClient.decode(state.encodeAll());
+
+            mutateAllAndShift(state, 6);
+            oldClient.decode(state.encode());
+            mutateAllAndShift(state, 6);
+            oldClient.decode(state.encode());
+
+            mutateAllAndShift(state, 9);
+            oldClient.decode(state.encode()); // drain to existing clients...
+            const freshClient = createInstanceFromReflection(state);
+            freshClient.decode(state.encodeAll()); // ...then snapshot
+
+            mutateAllAndShift(state, 3);
+            const patch1 = state.encode();
+            oldClient.decode(patch1);
+            freshClient.decode(patch1);
+            assert.deepStrictEqual(state.toJSON(), oldClient.toJSON());
+            assert.deepStrictEqual(state.toJSON(), freshClient.toJSON());
+
+            mutateAllAndShift(state, 6);
+            const patch2 = state.encode();
+            oldClient.decode(patch2);
+            freshClient.decode(patch2);
+            assert.deepStrictEqual(state.toJSON(), oldClient.toJSON());
+            assert.deepStrictEqual(state.toJSON(), freshClient.toJSON());
 
             assertDeepStrictEqualEncodeAll(state);
         });
@@ -492,7 +613,6 @@ describe("ArraySchema Tests", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
-
     });
 
     it("should allow mutating primitive value by index", () => {
