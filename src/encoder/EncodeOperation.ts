@@ -224,7 +224,8 @@ export const encodeArray: EncodeOperation = function (
     // ArraySchema stores its per-instance child type at `$childType`.
     // This encoder is array-only — there's no Schema fallback to consider.
     const type = ref[$childType];
-    const useOperationByRefId = hasView && changeTree.isFiltered && typeof type !== "string";
+    const isSchemaChild = typeof type !== "string";
+    const useOperationByRefId = hasView && changeTree.isFiltered && isSchemaChild;
 
     let refOrIndex: number;
 
@@ -242,6 +243,18 @@ export const encodeArray: EncodeOperation = function (
         } else if (operation === OPERATION.ADD) {
             operation = OPERATION.ADD_BY_REFID;
         }
+
+    } else if (operation === OPERATION.DELETE && isSchemaChild) {
+        //
+        // DELETE by identity: idempotent, so a stale positional DELETE
+        // (pending in the shared queue when a client bootstraps via
+        // encodeAll) can't corrupt that client — its snapshot no longer
+        // holds the item, the refId is unknown, and the decoder skips.
+        //
+        const item = ref.tmpItems[field];
+        if (!item) { return; }
+        refOrIndex = item[$refId];
+        operation = OPERATION.DELETE_BY_REFID;
 
     } else {
         refOrIndex = field;

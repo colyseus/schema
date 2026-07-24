@@ -310,7 +310,7 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("encodeAll() + with enqueued encode() shifts with Schema children", () => {
+        it("encodeAll() + with enqueued encode() shifts with Schema children", () => {
             class Entity extends Schema {
                 @type("number") thing: number;
             }
@@ -367,6 +367,132 @@ describe("ArraySchema Tests", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
+        it("mid-tick join: stale DELETEs in shared patch must not corrupt fresh client", () => {
+            class Entity extends Schema {
+                @type("number") thing: number;
+            }
+            class State extends Schema {
+                @type([Entity]) entities = new ArraySchema<Entity>();
+            }
+            const mkEntity = (n: number) => {
+                const e = new Entity();
+                e.thing = n;
+                return e;
+            };
+
+            const state = new State();
+            for (let i = 0; i < 5; i++) state.entities.push(mkEntity(i));
+
+            const oldClient = createInstanceFromReflection(state);
+            oldClient.decode(state.encodeAll());
+            oldClient.decode(state.encode());
+
+            // tick in progress: deletions recorded, not yet broadcast
+            state.entities.shift();
+            state.entities.shift();
+
+            // fresh client joins mid-tick — snapshot already reflects deletions
+            const freshClient = createInstanceFromReflection(state);
+            freshClient.decode(state.encodeAll());
+
+            state.entities.shift();
+
+            // same patch bytes broadcast to both
+            const patch = state.encode();
+            oldClient.decode(patch);
+            freshClient.decode(patch);
+
+            assert.deepStrictEqual(state.toJSON(), oldClient.toJSON());
+            assert.deepStrictEqual(state.toJSON(), freshClient.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("same-tick shift/splice + push with Schema children", () => {
+            class Entity extends Schema {
+                @type("number") thing: number;
+            }
+            class State extends Schema {
+                @type([Entity]) entities = new ArraySchema<Entity>();
+            }
+            const mkEntity = (n: number) => {
+                const e = new Entity();
+                e.thing = n;
+                return e;
+            };
+
+            const state = new State();
+            for (let i = 0; i < 3; i++) state.entities.push(mkEntity(i));
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            client.decode(state.encode());
+
+            // churn: delete head + append new, one tick
+            state.entities.shift();
+            state.entities.push(mkEntity(99));
+            client.decode(state.encode());
+            assert.deepStrictEqual([1, 2, 99], client.entities.map((e) => e.thing));
+
+            // move: remove first + re-append the SAME instance, one tick
+            const first = state.entities[0];
+            state.entities.splice(0, 1);
+            state.entities.push(first);
+            client.decode(state.encode());
+            assert.deepStrictEqual([2, 99, 1], client.entities.map((e) => e.thing));
+            assertRefIdCounts(state, client);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        xit("encodeAll() + with enqueued encode() shifts with primitive children", () => {
+            //
+            // Primitive elements have no refId — stale positional ops in the
+            // shared patch cannot be made idempotent the way DELETE_BY_REFID
+            // does for Schema children. (Same limitation as schema#220.)
+            //
+            class State extends Schema {
+                @type(["number"]) numbers: ArraySchema<number>;
+            }
+
+            const state = new State();
+            state.numbers = new ArraySchema<number>();
+
+            for (let i = 0; i < 35; i++) state.numbers.push(i);
+
+            function mutateAllAndShift(count: number = 6) {
+                for (let i = 0; i < count; i++) {
+                    for (let j = 0; j < state.numbers.length; j++) {
+                        state.numbers[j]++;
+                    }
+                    state.numbers.shift();
+                }
+            }
+
+            const decoded1 = createInstanceFromReflection(state);
+            decoded1.decode(state.encodeAll());
+            mutateAllAndShift(6);
+            decoded1.decode(state.encode());
+            mutateAllAndShift(6);
+            decoded1.decode(state.encode());
+
+            mutateAllAndShift(9);
+
+            const decoded2 = createInstanceFromReflection(state);
+            decoded2.decode(state.encodeAll());
+
+            mutateAllAndShift(3);
+            decoded2.decode(state.encode());
+
+            assert.deepStrictEqual(state.toJSON(), decoded2.toJSON());
+
+            mutateAllAndShift(6);
+            decoded2.decode(state.encode());
+
+            assert.deepStrictEqual(state.toJSON(), decoded2.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
     });
 
     it("should allow mutating primitive value by index", () => {
