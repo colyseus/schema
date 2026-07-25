@@ -1,7 +1,7 @@
 import * as ts from "typescript";
 import * as path from "path";
 import { readFileSync } from "fs";
-import { IStructure, Class, Interface, Property, Context, Enum } from "./types.js";
+import { IStructure, Class, Interface, Property, Context, Enum, QuantizedProperty } from "./types.js";
 
 let currentStructure: IStructure;
 let currentProperty: Property;
@@ -36,6 +36,91 @@ function extractBuilderBase(node: ts.CallExpression): { methodName: string, firs
     }
 }
 
+/**
+ * Statically evaluate a numeric option expression. Codegen has no runtime, so
+ * only constant arithmetic is supported: literals, unary +/-, `Math.PI`-style
+ * constants and add/sub/mul/div combinations of those (e.g. `Math.PI * 2`).
+ * Returns
+ * undefined for anything it cannot resolve (a `const` reference, a call).
+ */
+function evalNumericExpression(node: ts.Expression): number | undefined {
+    if (ts.isNumericLiteral(node)) {
+        return Number(node.text);
+    }
+    if (ts.isParenthesizedExpression(node)) {
+        return evalNumericExpression(node.expression);
+    }
+    if (ts.isPrefixUnaryExpression(node)) {
+        const operand = evalNumericExpression(node.operand as ts.Expression);
+        if (operand === undefined) { return undefined; }
+        if (node.operator === ts.SyntaxKind.MinusToken) { return -operand; }
+        if (node.operator === ts.SyntaxKind.PlusToken) { return operand; }
+        return undefined;
+    }
+    if (ts.isPropertyAccessExpression(node) && node.expression.getText() === "Math") {
+        const constant = (Math as any)[node.name.text];
+        return (typeof constant === "number") ? constant : undefined;
+    }
+    if (ts.isBinaryExpression(node)) {
+        const left = evalNumericExpression(node.left);
+        const right = evalNumericExpression(node.right);
+        if (left === undefined || right === undefined) { return undefined; }
+        switch (node.operatorToken.kind) {
+            case ts.SyntaxKind.PlusToken: return left + right;
+            case ts.SyntaxKind.MinusToken: return left - right;
+            case ts.SyntaxKind.AsteriskToken: return left * right;
+            case ts.SyntaxKind.SlashToken: return left / right;
+            default: return undefined;
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Extract `{ min, max, bits?, mode? }` from a `t.quantized({...})` /
+ * `@type({ quantized: {...} })` object literal. Throws on anything codegen
+ * cannot statically resolve — silently dropping an option would generate a
+ * client that decodes every value of that field wrong.
+ */
+function parseQuantizedOptions(node: ts.Expression | undefined, propertyName: string): QuantizedProperty {
+    const fail = (reason: string): never => {
+        throw new Error(
+            `schema-codegen: cannot statically resolve t.quantized() options of field '${propertyName}' — ${reason}. ` +
+            `Use literal numbers or constant Math expressions (e.g. \`Math.PI * 2\`).`
+        );
+    };
+
+    if (!node || !ts.isObjectLiteralExpression(node)) {
+        return fail("expected an inline `{ min, max, ... }` object literal");
+    }
+
+    const result: Partial<QuantizedProperty> & { mode?: string } = {};
+    for (const prop of node.properties) {
+        if (!ts.isPropertyAssignment(prop) || !prop.name) { continue; }
+        const key = (prop.name as ts.Identifier).text;
+
+        if (key === "mode") {
+            if (!ts.isStringLiteral(prop.initializer)) { return fail("`mode` must be a string literal"); }
+            result.mode = prop.initializer.text;
+        } else if (key === "min" || key === "max" || key === "bits") {
+            const value = evalNumericExpression(prop.initializer);
+            if (value === undefined) { return fail(`\`${key}\` is not a constant expression`); }
+            result[key] = value as any;
+        }
+    }
+
+    if (typeof result.min !== "number" || typeof result.max !== "number") {
+        return fail("`min` and `max` are required");
+    }
+
+    const bits = result.bits ?? 16;
+    if (bits !== 8 && bits !== 16 && bits !== 32) {
+        return fail("`bits` must be 8, 16 or 32");
+    }
+
+    return { min: result.min, max: result.max, bits, wrap: result.mode === "wrap" };
+}
+
 function defineProperty(property: Property, initializer: any) {
     // Builder-style: t.number(), t.array(Item), t.map(Item).view(), etc.
     if (ts.isCallExpression(initializer)) {
@@ -51,6 +136,9 @@ function defineProperty(property: Property, initializer: any) {
                 if (base.firstArg) {
                     property.childType = (base.firstArg as any).text ?? base.firstArg.getText();
                 }
+            } else if (base.methodName === "quantized") {
+                property.type = "quantized";
+                property.quantized = parseQuantizedOptions(base.firstArg, property.name);
             } else {
                 property.type = base.methodName;
             }
@@ -63,8 +151,14 @@ function defineProperty(property: Property, initializer: any) {
         property.childType = initializer.text;
 
     } else if (initializer.kind == ts.SyntaxKind.ObjectLiteralExpression) {
-        property.type = initializer.properties[0].name.text;
-        property.childType = initializer.properties[0].initializer.text;
+        if (initializer.properties[0].name.text === "quantized") {
+            // decorator-style: @type({ quantized: { min, max, ... } })
+            property.type = "quantized";
+            property.quantized = parseQuantizedOptions(initializer.properties[0].initializer, property.name);
+        } else {
+            property.type = initializer.properties[0].name.text;
+            property.childType = initializer.properties[0].initializer.text;
+        }
 
     } else if (initializer.kind == ts.SyntaxKind.ArrayLiteralExpression) {
         property.type = "array";

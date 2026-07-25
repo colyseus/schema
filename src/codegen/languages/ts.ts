@@ -158,6 +158,11 @@ function generateProperty(prop: Property) {
                 : `{ set: "${prop.childType}" }`;
         }
 
+    } else if (prop.quantized) {
+        const q = prop.quantized;
+        langType = "number";
+        typeArgs = `{ quantized: { min: ${q.min}, max: ${q.max}, bits: ${q.bits}${q.wrap ? `, mode: "wrap"` : ""} } }`;
+
     } else {
         langType = typeMaps[prop.type];
         typeArgs = `"${prop.type}"`;

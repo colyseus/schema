@@ -94,7 +94,13 @@ function generateProperty(prop: Property) {
     let initializer = "";
     let typeArgs = `"${prop.type}"`;
 
-    if (prop.childType) {
+    if (prop.quantized) {
+        const q = prop.quantized;
+        typeArgs += `, {min: ${q.min}, max: ${q.max}, bits: ${q.bits}, mode: ${q.wrap ? 1 : 0}}`;
+        langType = "Float";
+        initializer = "0";
+
+    } else if (prop.childType) {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
 
         if (isUpcaseFirst) {

@@ -26,9 +26,13 @@ const typeMaps: { [key: string]: string } = {
 }
 
 const COMMON_IMPORTS = `local schema = require 'colyseus.serializer.schema.schema'`;
+const QUANTIZE_IMPORT = `local quantize = require 'colyseus.serializer.schema.quantize'`;
 
 const distinct = (value: string, index: number, self: string[]) =>
     self.indexOf(value) === index;
+
+const hasQuantized = (classes: Class[]) =>
+    classes.some(klass => klass.properties.some(prop => prop.quantized));
 
 /**
  * Generate individual files for each class
@@ -51,7 +55,7 @@ export function renderBundle(context: Context, options: GenerateOptions): File {
 
     const content = `${getCommentHeader().replace(/\/\//mg, "--")}
 
-${COMMON_IMPORTS}
+${COMMON_IMPORTS}${hasQuantized(context.classes) ? `\n${QUANTIZE_IMPORT}` : ""}
 
 ${classBodies.join("\n\n")}
 
@@ -104,7 +108,7 @@ function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
 
     return `${getCommentHeader().replace(/\/\//mg, "--")}
 
-${COMMON_IMPORTS}
+${COMMON_IMPORTS}${hasQuantized([klass]) ? `\n${QUANTIZE_IMPORT}` : ""}
 ${localRequires}
 
 ${generateClassBody(klass)}
@@ -116,7 +120,12 @@ return ${klass.name}
 function generatePropertyDeclaration(prop: Property) {
     let typeArgs: string;
 
-    if (prop.childType) {
+    if (prop.quantized) {
+        // resolve at class-definition time — the decoder expects `.wire`/`.span`
+        const q = prop.quantized;
+        typeArgs = `{ quantized = quantize.resolve({ min = ${q.min}, max = ${q.max}, bits = ${q.bits}, mode = ${q.wrap ? 1 : 0} }) }`;
+
+    } else if (prop.childType) {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
 
         if (isUpcaseFirst) {
@@ -145,7 +154,10 @@ function generatePropertyDeclaration(prop: Property) {
 }
 
 function getLUATypeAnnotation(prop: Property) {
-    if (prop.type === "ref") {
+    if (prop.type === "quantized") {
+        return "number";
+
+    } else if (prop.type === "ref") {
         return prop.childType;
 
     } else if (prop.type === "array") {

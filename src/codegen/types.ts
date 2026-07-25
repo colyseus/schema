@@ -125,11 +125,35 @@ export class Enum implements IStructure {
     }
 }
 
+/**
+ * Statically-extracted `t.quantized()` options. `wrap` is already normalized
+ * from the source's `mode` string; emitters derive `range`/`span` via
+ * {@link resolveQuantized} so every language ships identical precomputed values.
+ */
+export interface QuantizedProperty {
+    min: number;
+    max: number;
+    bits: 8 | 16 | 32;
+    wrap: boolean;
+}
+
+/**
+ * Mirror of the runtime's `resolveQuantize()` scale math (wrap spreads 2^bits
+ * steps across [min,max); clamp maps the endpoints onto 0 and 2^bits-1).
+ */
+export function resolveQuantized(q: QuantizedProperty) {
+    return {
+        range: q.max - q.min,
+        span: q.wrap ? 2 ** q.bits : 2 ** q.bits - 1,
+    };
+}
+
 export class Property {
     index: number;
     name: string;
     type: string;
     childType: string;
+    quantized?: QuantizedProperty;
     deprecated?: boolean;
 }
 
