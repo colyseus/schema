@@ -13,3 +13,16 @@ export const ReconState = schema({
 export const AccelInput = schema({
     ax: t.number(),
 }, "AccelInput");
+
+export const PassiveEnt = schema({
+    a: t.number(),
+    b: t.number(),
+    c: t.number(),
+    d: t.number(),
+    yaw: t.number(),
+}, "PassiveEnt");
+
+export const ReckonBall = schema({
+    x: t.number(),
+    vx: t.number(),
+}, "ReckonBall");
