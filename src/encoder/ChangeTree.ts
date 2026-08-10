@@ -97,18 +97,19 @@ export interface ChangeTreeNode {
     changeTree: ChangeTree;
     next?: ChangeTreeNode;
     prev?: ChangeTreeNode;
-    position: number; // Cached position in the linked list for O(1) lookup
+    position: number; // strictly increasing along the list — O(1) order test
 }
 
 // Linked list for change trees
 export interface ChangeTreeList {
     next?: ChangeTreeNode;
     tail?: ChangeTreeNode;
+    nextPosition: number; // monotonic per drain cycle (resets when list empties)
 }
 
 // Linked list helper functions
 export function createChangeTreeList(): ChangeTreeList {
-    return { next: undefined, tail: undefined };
+    return { next: undefined, tail: undefined, nextPosition: 0 };
 }
 
 export interface ParentChain {

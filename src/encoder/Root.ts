@@ -270,13 +270,9 @@ export class Root {
         const parentNode = parent[$changes][nodeField];
         if (!parentNode || parentNode === node) return;
 
-        // Check if child is already after parent by walking from parent
-        let cursor = parentNode.next;
-        while (cursor) {
-            if (cursor === node) return; // already after parent
-            cursor = cursor.next;
-        }
-        // If we reach here, node is before parent — need to move
+        // Positions are strictly increasing along the list, so this is an
+        // exact O(1) "is child already after parent" test — no queue scan.
+        if (node.position > parentNode.position) return;
 
         // Remove node from current position
         if (node.prev) {
@@ -291,17 +287,18 @@ export class Root {
             changeSet.tail = node.prev;
         }
 
-        // Insert node right after parent
-        node.prev = parentNode;
-        node.next = parentNode.next;
-
-        if (parentNode.next) {
-            parentNode.next.prev = node;
-        } else {
-            changeSet.tail = node;
-        }
-
-        parentNode.next = node;
+        // Re-append at the tail: after `parentNode` AND after every other
+        // queued parent of a multi-referenced instance — relinking next to
+        // the *primary* parent could jump the child ahead of a 2nd/3rd
+        // parent whose ADD the decoder must see first. Tail placement gets
+        // a fresh max position, keeping the invariant append-only.
+        // (`recursivelyMoveNextToParent` visits pre-order, so a moved
+        // subtree re-serializes parent-first behind it.)
+        node.prev = changeSet.tail;
+        node.next = undefined;
+        changeSet.tail!.next = node; // parentNode remains in the list — never empty here
+        changeSet.tail = node;
+        node.position = changeSet.nextPosition++;
     }
 
     public enqueueChangeTree(
@@ -328,11 +325,11 @@ export class Root {
             node.changeTree = changeTree;
             node.next = undefined;
             node.prev = undefined;
-            node.position = 0;
         } else {
             node = { changeTree, next: undefined, prev: undefined, position: 0 };
         }
         if (!list.next) {
+            list.nextPosition = 0; // list drained — restart sequence (stays SMI)
             list.next = node;
             list.tail = node;
         } else {
@@ -340,6 +337,7 @@ export class Root {
             list.tail!.next = node;
             list.tail = node;
         }
+        node.position = list.nextPosition++;
         return node;
     }
 
