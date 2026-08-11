@@ -52,6 +52,7 @@ export {
     defineTypes,
     unreliable,
     patchOnly,
+    fullStateOnly,
     view,
     schema,
     entity,

@@ -255,6 +255,19 @@ export function patchOnly<T> (target: T, field: string) {
     Metadata.setPatchOnly(metadata, field);
 }
 
+/**
+ * @fullStateOnly — mark a field as delivered in the full state sync only
+ * (encodeAll / encodeAllView), never on per-tick patches. Writes after a
+ * client has joined are not propagated to it — populate these fields
+ * before clients connect (e.g. during onCreate).
+ *
+ * The exact mirror of @patchOnly — the two are mutually exclusive.
+ */
+export function fullStateOnly<T> (target: T, field: string) {
+    const metadata = Metadata.initialize(target.constructor as typeof Schema);
+    Metadata.setFullStateOnly(metadata, field);
+}
+
 export function type (
     type: DefinitionType,
     options?: TypeOptions

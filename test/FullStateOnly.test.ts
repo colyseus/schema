@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { $changes, Schema, schema, t, type, ArraySchema, SchemaType } from "../src";
+import { $changes, Schema, schema, t, type, fullStateOnly, patchOnly, ArraySchema, SchemaType } from "../src";
 import { getEncoder, getDecoder, createInstanceFromReflection } from "./Schema";
 
 describe(".fullStateOnly() modifier (full state sync only, never a tick patch)", () => {
@@ -258,6 +258,82 @@ describe(".fullStateOnly() modifier (full state sync only, never a tick patch)",
         assert.strictEqual(tickAfterMutation.f33, undefined, "static (fallback) mutation dropped");
 
         encoder.discardChanges();
+    });
+
+});
+
+describe("@fullStateOnly decorator (parity with the .fullStateOnly() builder chainable)", () => {
+
+    it("a @fullStateOnly field appears in encodeAll but NOT in per-tick encode", () => {
+        class State extends Schema {
+            @type("string") dynamic: string;
+            @fullStateOnly @type("number") config: number;
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+
+        state.dynamic = "hello";
+        state.config = 42;
+
+        // Per-tick encode: only `dynamic`
+        const tickDecoded = createInstanceFromReflection(state) as State;
+        getDecoder(tickDecoded).decode(encoder.encode());
+        assert.strictEqual(tickDecoded.dynamic, "hello");
+        assert.strictEqual(tickDecoded.config, undefined,
+            "@fullStateOnly field must not be emitted on per-tick encode");
+
+        // Full-sync: includes `config`
+        const fullDecoded = createInstanceFromReflection(state) as State;
+        getDecoder(fullDecoded).decode(encoder.encodeAll());
+        assert.strictEqual(fullDecoded.dynamic, "hello");
+        assert.strictEqual(fullDecoded.config, 42);
+
+        encoder.discardChanges();
+    });
+
+    it("mutations on a @fullStateOnly field after initial encode are silently ignored for tick patches", () => {
+        class State extends Schema {
+            @type("string") dynamic: string;
+            @fullStateOnly @type("number") config: number;
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+
+        state.dynamic = "v1";
+        state.config = 100;
+
+        // Bootstrap
+        const client = createInstanceFromReflection(state) as State;
+        getDecoder(client).decode(encoder.encodeAll());
+        encoder.discardChanges();
+        assert.strictEqual(client.config, 100);
+
+        // Mutate both fields, re-encode tick
+        state.dynamic = "v2";
+        state.config = 200; // should be silently skipped
+
+        getDecoder(client).decode(encoder.encode());
+        assert.strictEqual(client.dynamic, "v2");
+        assert.strictEqual(client.config, 100,
+            "mutations on a @fullStateOnly field must not propagate on tick patches");
+
+        encoder.discardChanges();
+    });
+
+    it("throws when combined with @patchOnly, in either decorator order", () => {
+        assert.throws(() => {
+            class Bad extends Schema {
+                @patchOnly @fullStateOnly @type("number") x: number;
+            }
+        }, /cannot be both patchOnly and fullStateOnly/);
+
+        assert.throws(() => {
+            class BadReversed extends Schema {
+                @fullStateOnly @patchOnly @type("number") x: number;
+            }
+        }, /cannot be both patchOnly and fullStateOnly/);
     });
 
 });

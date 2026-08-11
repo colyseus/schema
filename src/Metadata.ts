@@ -279,6 +279,15 @@ export const Metadata = {
 
     setPatchOnly(metadata: Metadata, fieldName: string) {
         const index = metadata[fieldName];
+        // patchOnly + fullStateOnly are the only two delivery channels —
+        // excluding a field from both would silently never reach a client.
+        // (The builder validates earlier; this guards the decorator path.)
+        if (metadata[index].fullStateOnly) {
+            throw new Error(
+                `field "${fieldName}" cannot be both patchOnly and fullStateOnly — ` +
+                `those are the only two delivery channels, so the field would never reach a client.`
+            );
+        }
         metadata[index].patchOnly = true;
 
         if (!metadata[$patchOnlyFieldIndexes]) {
@@ -294,6 +303,13 @@ export const Metadata = {
 
     setFullStateOnly(metadata: Metadata, fieldName: string) {
         const index = metadata[fieldName];
+        // Mirror of the guard in setPatchOnly — covers both decorator orders.
+        if (metadata[index].patchOnly) {
+            throw new Error(
+                `field "${fieldName}" cannot be both patchOnly and fullStateOnly — ` +
+                `those are the only two delivery channels, so the field would never reach a client.`
+            );
+        }
         metadata[index].fullStateOnly = true;
 
         if (!metadata[$fullStateOnlyFieldIndexes]) {
