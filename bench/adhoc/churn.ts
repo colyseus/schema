@@ -9,7 +9,7 @@
  */
 import v8 from "node:v8";
 import vm from "node:vm";
-import { Schema, type, MapSchema, Encoder, createPool, type SchemaPool } from "./index";
+import { Schema, type, MapSchema, Encoder, createPool, type SchemaPool } from "../../src/index";
 
 // gc() handle (works under the tsx CLI, where `node --expose-gc` doesn't reach
 // the forked child).

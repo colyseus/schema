@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { Schema, type, MapSchema, ArraySchema, Encoder } from "./index";
+import { Schema, type, MapSchema, ArraySchema, Encoder } from "../../src/index";
 
 class Attribute extends Schema {
     @type("string") name: string;

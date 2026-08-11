@@ -1,5 +1,5 @@
 import { PerformanceObserver, constants } from "node:perf_hooks";
-import { Encoder, Decoder, Schema, type, MapSchema, ArraySchema } from "./index";
+import { Encoder, Decoder, Schema, type, MapSchema, ArraySchema } from "../../src/index";
 
 class Position extends Schema {
     @type("number") x: number;

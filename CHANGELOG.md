@@ -4,6 +4,44 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Delivery modifiers renamed.** `.transient()` → **`.patchOnly()`** and
+  `.static()` → **`.fullStateOnly()`** (including the `@transient`
+  decorator → `@patchOnly`). Both old names described an imagined property
+  of the *value* rather than the actual *delivery*: a `.transient()` field
+  can hold one value for the entire room lifetime, and a `.static()` field
+  stays fully mutable server-side — only its propagation stops. `transient`
+  additionally collided with the stronger Java / `[NonSerialized]` meaning
+  ("never serialized at all"), which in this API is `.noSync()`, sitting
+  right next to it. The new names use vocabulary the framework already
+  establishes (`patchRate`, `broadcastPatch()`, `onBeforePatch`; "the full
+  state received on join") and name the one channel each field travels on:
+
+  |                    | In the full state sync | In tick patches |
+  |--------------------|:----------------------:|:---------------:|
+  | *(default)*        | ✅                     | ✅              |
+  | `.patchOnly()`     | ❌                     | ✅              |
+  | `.fullStateOnly()` | ✅                     | ❌              |
+
+  Mechanical rename with no behavior change. No aliases are kept — these
+  only ever shipped under the `@next` tag.
+
+### Removed
+- **`.owned()` / `@owned`.** Added during the 5.0 line as a pure metadata
+  marker — it set `metadata[index].owned = true` and nothing ever read it
+  (no reference in `src/encoder/`, and reflection never carried it).
+  Removed rather than shipped as a no-op. Reintroducing it for
+  peer-to-peer work later is a small patch; the plumbing mirrors
+  `.unreliable()`.
+
+### Fixed
+- `.patchOnly()` combined with `.fullStateOnly()` now throws at `schema()`
+  time. Those are the only two delivery channels, so a field marked both
+  was excluded from everywhere — a silent `.noSync()` with no error. The
+  message points at `.noSync()` in case that was the intent.
+
 ## [5.0.11]
 
 ### Fixed
@@ -108,7 +146,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   mismatch) aborts the sweep rather than delete live entries based on
   incomplete visited data. Zero cost on the regular patch path — all
   bookkeeping sits behind a per-call mode check. See
-  `PORTING_RESYNC.md` for what other decoder implementations need to
+  `PORT/resync.md` for what other decoder implementations need to
   pick this up.
 - `[$resyncPrune]` on the `Collection` interface: each collection kind
   declares its own sweep semantics next to its own storage — maps prune
@@ -358,6 +396,174 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (`<T, HasDefault extends boolean, IsOptional extends boolean>`) so the
   init-props derivation can distinguish required vs. omittable fields
   without runtime cost.
+
+## [5.0.0]
+
+Major release. The encoder internals were rewritten and a new authoring
+API was introduced. **Decorators keep working and produce byte-identical
+output** — there is no forced migration.
+
+Across 51 benchmarked workloads, 5.0 is **~2.4× faster than 4.0.27**
+(geometric mean; 50 of 51 significant at p<0.001) with retained heap
+roughly halved. The wire format is byte-identical to 4.x on all
+snapshot/delta workloads except where noted under *Wire format* below.
+
+### Added
+
+- **`schema()` + the `t.*` field builders** — a decorator-free way to
+  define structures that runs in plain JavaScript and TypeScript alike,
+  with no compiler configuration:
+
+  ```ts
+  import { schema, t, type SchemaType } from "@colyseus/schema";
+
+  export const Player = schema({
+      name: t.string(),
+      hp: t.uint8().default(100),
+      items: t.array(Item),
+  }, "Player");
+  export type Player = SchemaType<typeof Player>;
+  ```
+
+  `schema()` returns a real class — `instanceof` works, `new` works,
+  function-valued properties become methods, and `initialize(props)` acts
+  as the constructor body. `.extend()` builds a real prototype chain and
+  registers the subclass automatically. We are steering away from
+  decorators because they require `experimentalDecorators` +
+  `useDefineForClassFields: false`, which conflict with modern toolchain
+  defaults (esbuild, SWC, Vite), diverge from the TC39 decorators
+  proposal, and are unavailable in plain JavaScript.
+
+- **Delivery modifiers** — control *when* a field reaches a client,
+  independently of what it holds:
+  - `.unreliable()` — tick patches carry the field on the unreliable
+    transport channel. For values fully replaced every tick, a dropped
+    packet costs nothing and retransmitting only adds latency. Restricted
+    to primitive fields at decoration time. No-op over plain WebSocket.
+  - `.patchOnly()` — tick patches only; never written to a full state
+    sync, so a late joiner never sees it. For values meaningful only *as
+    they happen* (a hit flash, a one-frame impulse).
+  - `.fullStateOnly()` — the full state sync only; never in a tick patch.
+    For map/room-wide data decided at `onCreate()`: tile grids, level
+    layout, spawn points, match configuration.
+
+- **`.noSync()`** — a local-only field: typed and initialized on the
+  instance (honoring `.default()` and auto-instantiation) but never
+  registered for synchronization. Combining it with any sync-only
+  modifier throws at `schema()` time.
+
+- **`t.stream(Entity)` / `StreamSchema`** — a priority-batched collection
+  for ECS-style workloads where more entities spawn per tick than fit in
+  one encode budget. Additions drain at most `maxPerTick` per client per
+  encode pass, ordered by a `.priority((view, element) => number)`
+  callback. `.stream()` also opts a `MapSchema` / `SetSchema` /
+  `CollectionSchema` into the same batching. Not supported on
+  `ArraySchema` — positional operations shift indexes underneath
+  held-back additions. **Experimental: the API may change.**
+
+- **`view.subscribe(collection)`** — a standing per-view subscription to
+  a collection's future contents, replacing a `view.add()` call per new
+  element.
+
+- **`t.quantized()` / `t.angle()`** — a bounded float carried as a fixed
+  width unsigned integer (8/16/32 bits) with `"clamp"` or `"wrap"`
+  semantics. Lossy, but *identically* lossy on both peers: the field only
+  ever yields the dequantized value, so client prediction and server
+  simulation read the same number.
+
+- **`@colyseus/schema/input`** — `InputEncoder` / `InputDecoder` for the
+  client-input path, always delta-encoding, with a framework-owned
+  per-tick sequence on the unreliable wire.
+
+- **`createPool(ctor, opts?)` / `Schema.reset(instance)`** — a server-side
+  instance pool for spawn/despawn-heavy rooms. Pooled instances encode
+  byte-identically to freshly constructed ones. Detach from the state
+  tree before releasing; note that pooling does **not** clear primitive
+  values, and retained values are re-encoded on re-attach.
+
+- **Change-tracking control** — `pauseTracking()` / `resumeTracking()` /
+  `untracked(fn)` / `markDirty(index)` on `Schema`, `MapSchema` and
+  `ArraySchema`.
+
+- `t.ref()` accepts non-`Schema` classes when combined with `.noSync()`,
+  and `.default()` accepts a factory function that builds a fresh value
+  per instance.
+
+### Changed
+
+- **Raw string field types are rejected by `schema()`.** Write
+  `t.string()`, not `"string"`. They remain valid as collection *child*
+  types — `t.array("string")` is fine — and the `@type("string")`
+  decorator form is unaffected.
+- **`Reflection.encode()` now takes an `Encoder`**, not a state instance,
+  and **`Reflection.decode()` returns a `Decoder`** — read the state from
+  `decoder.state`.
+- Default `Encoder.BUFFER_SIZE` raised from 8 KB to 16 KB, so typical
+  full-room snapshots no longer trigger auto-grow plus a one-time
+  `buffer overflow` warning on first encode.
+- Internal `"~prefix"` string keys are real symbols, created via
+  `Symbol.for()` so duplicate copies of the library in one realm still
+  interoperate.
+
+### Removed
+
+- **`defineTypes()`** — restored in
+  [5.0.9](#509) as a soft-deprecated API after it proved to be load-bearing
+  for legacy plain-JS applications.
+
+### Wire format
+
+Byte-identical to 4.x except for these three, which **every SDK decoder
+must implement** for the 0.18 line:
+
+- **`ADD` at an occupied array index means *insert*, shifting items up.**
+  Previously only `index === 0` was special-cased as an unshift, so
+  consecutive/multi-item `unshift()` and unshift mixed with other
+  same-tick operations desynced ([#193](https://github.com/colyseus/schema/issues/193),
+  port of [#219](https://github.com/colyseus/schema/pull/219)). During
+  `decodeResync()` snapshot ADDs remain positional overwrites.
+- **`ArraySchema` deletes of `Schema` children are always
+  `DELETE_BY_REFID`** (port of
+  [#220](https://github.com/colyseus/schema/pull/220)), making array
+  deletes idempotent. Decoders must skip operations for unknown refIds
+  entirely — no delete-at-`-1`, no spurious `onRemove` — while preserving
+  the ref-count decrement.
+- **The reflection payload retired its colon grammar.**
+  `"quantized:min,max,bits,wrap"` and `"array:string"` are gone: quantized
+  descriptors ride as a schema-typed `QuantizedDescriptor` ref, and a
+  primitive collection child rides `ReflectionField.childPrimitive`. Ports
+  decode both with the schema decoder they already have. The reflection
+  bootstrap is not self-describing, so descriptor changes are append-only
+  and gated on the library version.
+
+Also for porters: `CollectionSchema` / `SetSchema` decoding now preserves
+the wire index (`PORT/decoder-wire-index.md`). Self-verifying fixture
+generators for all of the above live in `test-external/`.
+
+### Performance
+
+Rewritten encoder internals — a unified `ChangeRecorder` (bitmask for
+fixed-field Schemas, map-based for collections) replacing the old
+`indexedOperations` + four ChangeSet wrappers; `ChangeTree` flags packed
+into a bitfield with the single parent inlined and cumulative buckets
+dropped; per-class cached encode descriptors; a per-tree visibility
+bitmap in `StateView` replacing `WeakSet`/`WeakMap`; prototype-level
+descriptors plus a dense values array for construction.
+
+| Workload | 4.0.27 | 5.0 | speedup |
+|---|---:|---:|---:|
+| patch — 10 of 1,000 players moved | 0.00444 ms | 0.00181 ms | 2.45× |
+| patch — all 1,000 moved | 1.349 ms | 0.543 ms | 2.49× |
+| full state sync — 5,000 players (341 KB) | 7.81 ms | 4.10 ms | 1.91× |
+| bootstrap decode — 1,000 players | 13.05 ms | 3.62 ms | 3.61× |
+| decode patch — all 1,000 moved | 1.060 ms | 0.507 ms | 2.09× |
+| `new Player()` with nested defaults | 3.08 µs | 0.97 µs | 3.17× |
+| `array.unshift()` + `shift()` (100 elems) | 124 µs | 15.4 µs | 8.04× |
+| retained heap — 1,000-player state + encoder | 5,697 KB | 2,587 KB | 2.20× |
+
+Patch cost is now flat as the room grows: "10 of N moved" measures
+~0.0018 ms/tick at 100, 1,000 and 5,000 players. Method and full results
+in `bench/results/BLOG_v4_vs_v5.md`.
 
 ## 4.0.30
 

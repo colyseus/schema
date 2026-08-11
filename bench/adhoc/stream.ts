@@ -17,7 +17,7 @@ import {
     ArraySchema,
     StreamSchema,
     StateView,
-} from "./index";
+} from "../../src/index";
 
 // Pre-size the shared buffer so the steady-state loops don't print
 // overflow-warning noise mid-measurement.

@@ -13,7 +13,7 @@
  * The benchmark uses the same schema hierarchy as bench_encode.js so results
  * are directly comparable.
  */
-import { Schema, type, ArraySchema, MapSchema, Encoder } from "./index";
+import { Schema, type, ArraySchema, MapSchema, Encoder } from "../../src/index";
 
 class Attribute extends Schema {
     @type("string") name: string;

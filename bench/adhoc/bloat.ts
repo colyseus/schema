@@ -1,4 +1,4 @@
-import { Encoder, Schema, type, MapSchema, ArraySchema } from "./index";
+import { Encoder, Schema, type, MapSchema, ArraySchema } from "../../src/index";
 
 // Must be set before constructing any Encoder — static BUFFER_SIZE is
 // read at Encoder construction time. Default 8KB overflows on the first

@@ -12,7 +12,7 @@
  *   - encoded tick patch size (bytes)
  */
 
-import { Encoder, Schema, type, schema, t, MapSchema } from "./index";
+import { Encoder, Schema, type, schema, t, MapSchema } from "../../src/index";
 
 const NUM_ENTITIES = 1000;
 const NUM_TICKS = 1000;

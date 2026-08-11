@@ -7,7 +7,7 @@
  *
  * Run: npx tsx --tsconfig tsconfig.test.json --expose-gc src/bench_view_cmp.ts
  */
-import { Encoder, Schema, type, view, MapSchema, ArraySchema, StateView } from "./index";
+import { Encoder, Schema, type, view, MapSchema, ArraySchema, StateView } from "../../src/index";
 
 class Position extends Schema {
     @type("number") x: number = 0;
