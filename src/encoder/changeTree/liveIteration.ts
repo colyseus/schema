@@ -1,13 +1,13 @@
 /**
- * Walk all currently-populated non-transient indexes on a tree, emitting
+ * Walk all currently-populated non-patchOnly indexes on a tree, emitting
  * each index once. Used by Root.add (re-stage), Encoder.encodeAll, and
  * StateView.add to derive full-sync output from the live structure.
  *
- * Transient fields (`@transient`) are skipped — they're delivered only on
+ * Patch-only fields (`@patchOnly`) are skipped — they're delivered only on
  * tick patches and not persisted to snapshots. Collections whose parent
- * field is @transient inherit the skip (`tree.isTransient`).
+ * field is @patchOnly inherit the skip (`tree.isPatchOnly`).
  */
-import { $childType, $numFields, $transientFieldIndexes } from "../../types/symbols.js";
+import { $childType, $numFields, $patchOnlyFieldIndexes } from "../../types/symbols.js";
 import type { ChangeTree } from "../ChangeTree.js";
 
 // Adapter that lets `forEachLive(cb)` delegate to `forEachLiveWithCtx(cb, _invokeNoCtx)` —
@@ -29,10 +29,10 @@ export function forEachLiveWithCtx<C>(
     const ref = tree.refTarget as any;
 
     if (ref[$childType] !== undefined) {
-        // Collection inheriting @transient from parent field: skip entirely.
+        // Collection inheriting @patchOnly from parent field: skip entirely.
         // The resync sweep (decoder/Resync.ts) relies on this: a collection
         // absent from full-sync output is never pruned client-side.
-        if (tree.isTransient) return;
+        if (tree.isPatchOnly) return;
 
         // Collection types: dispatch by shape.
         if (Array.isArray(ref.items)) {
@@ -56,7 +56,7 @@ export function forEachLiveWithCtx<C>(
         // Schema: walk declared fields. `null` is treated as absent —
         // the setter records a DELETE when a field is set to null or
         // undefined, so it should not appear in full-sync output.
-        // (@transient skips below matter to the resync sweep — see
+        // (@patchOnly skips below matter to the resync sweep — see
         // decoder/Resync.ts: absent-from-payload means never pruned.)
         //
         // Read names from the per-class descriptor's parallel array —
@@ -65,12 +65,12 @@ export function forEachLiveWithCtx<C>(
         const metadata = tree.metadata;
         if (!metadata) return;
         const numFields = (metadata[$numFields] ?? -1) as number;
-        const transientIndexes = metadata[$transientFieldIndexes];
+        const patchOnlyIndexes = metadata[$patchOnlyFieldIndexes];
         const names = tree.encDescriptor.names;
         for (let i = 0; i <= numFields; i++) {
             const name = names[i];
             if (name === undefined) continue;
-            if (transientIndexes && transientIndexes.includes(i)) continue;
+            if (patchOnlyIndexes && patchOnlyIndexes.includes(i)) continue;
             const value = ref[name];
             if (value !== undefined && value !== null) cb(ctx, i);
         }

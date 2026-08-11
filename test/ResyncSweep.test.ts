@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type, view, transient, MapSchema, ArraySchema, SetSchema, StreamSchema, StateView } from "../src";
+import { Schema, type, view, patchOnly, MapSchema, ArraySchema, SetSchema, StreamSchema, StateView } from "../src";
 import { Callbacks } from "../src/decoder/strategy/Callbacks";
 import { $refId } from "../src/types/symbols";
 import {
@@ -365,19 +365,19 @@ describe("Resync sweep (decodeResync)", () => {
         assert.strictEqual(client.players.size, 2, "sweep aborted — ghost retained rather than risk deleting live entries");
     });
 
-    it("leaves @transient collections alone (never part of a snapshot)", () => {
-        class TransientState extends Schema {
+    it("leaves @patchOnly collections alone (never part of a snapshot)", () => {
+        class PatchOnlyState extends Schema {
             @type({ map: Entity }) entities = new MapSchema<Entity>();
-            @transient @type({ map: "number" }) locals = new MapSchema<number>();
+            @patchOnly @type({ map: "number" }) locals = new MapSchema<number>();
         }
-        const state = new TransientState();
+        const state = new PatchOnlyState();
         state.entities.set("e1", mkEntity("one"));
         state.locals.set("l1", 1);
         state.locals.set("l2", 2);
 
         const client = createInstanceFromReflection(state);
         client.decode(getEncoder(state).encodeAll());
-        client.decode(state.encode()); // transient entries arrive via patch only
+        client.decode(state.encode()); // patchOnly entries arrive via patch only
 
         assert.strictEqual(client.locals.size, 2);
 
@@ -386,7 +386,7 @@ describe("Resync sweep (decodeResync)", () => {
 
         const warnings = captureWarnings(() => resync(state, client));
 
-        assert.strictEqual(client.locals.size, 2, "@transient data must survive the sweep");
+        assert.strictEqual(client.locals.size, 2, "@patchOnly data must survive the sweep");
         assert.strictEqual(client.entities.size, 2);
         assert.deepStrictEqual(warnings, []);
     });

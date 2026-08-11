@@ -1,7 +1,7 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
 import { getType, registeredTypes, TypeDefinition } from "./types/registry.js";
-import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $staticFieldIndexes, $streamFieldIndexes, $streamPriorities, $track, $transientFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
@@ -13,10 +13,9 @@ export type MetadataField = {
     index: number,
     tag?: number,
     unreliable?: boolean,
-    transient?: boolean,
+    patchOnly?: boolean,
     deprecated?: boolean,
-    owned?: boolean,
-    static?: boolean,
+    fullStateOnly?: boolean,
     stream?: boolean,
     optional?: boolean,
 };
@@ -27,8 +26,8 @@ export type Metadata =
     { [$fieldIndexesByViewTag]: {[tag: number]: number[]}; } & // field indexes by "view" tag
     { [$refTypeFieldIndexes]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
     { [$unreliableFieldIndexes]: number[]; } & // all field indexes tagged with @unreliable
-    { [$transientFieldIndexes]: number[]; } & // all field indexes tagged with @transient (not persisted to snapshots)
-    { [$staticFieldIndexes]: number[]; } & // all field indexes tagged with @static (not tracked after assignment)
+    { [$patchOnlyFieldIndexes]: number[]; } & // all field indexes tagged with @patchOnly (not persisted to snapshots)
+    { [$fullStateOnlyFieldIndexes]: number[]; } & // all field indexes tagged with @static (not tracked after assignment)
     { [$streamFieldIndexes]: number[]; } & // all field indexes holding a t.stream(...) collection
     { [$streamPriorities]: { [field: number]: (view: any, element: any) => number }; } & // per-stream-field priority callback declared at schema definition time
     { [$encoders]: Array<(bytes: Uint8Array, value: any, it: any) => void>; } & // pre-computed encoder fn per primitive field
@@ -112,7 +111,7 @@ export const Metadata = {
         }
 
         metadata[index] = Object.assign(
-            metadata[index] || {}, // avoid overwriting previous field metadata (@owned / @deprecated)
+            metadata[index] || {}, // avoid overwriting previous field metadata (@deprecated / @unreliable)
             {
                 type: getNormalizedType(type),
                 index,
@@ -278,34 +277,34 @@ export const Metadata = {
         metadata[$unreliableFieldIndexes].push(index);
     },
 
-    setTransient(metadata: Metadata, fieldName: string) {
+    setPatchOnly(metadata: Metadata, fieldName: string) {
         const index = metadata[fieldName];
-        metadata[index].transient = true;
+        metadata[index].patchOnly = true;
 
-        if (!metadata[$transientFieldIndexes]) {
-            Object.defineProperty(metadata, $transientFieldIndexes, {
+        if (!metadata[$patchOnlyFieldIndexes]) {
+            Object.defineProperty(metadata, $patchOnlyFieldIndexes, {
                 value: [],
                 enumerable: false,
                 configurable: true,
                 writable: true,
             });
         }
-        metadata[$transientFieldIndexes].push(index);
+        metadata[$patchOnlyFieldIndexes].push(index);
     },
 
-    setStatic(metadata: Metadata, fieldName: string) {
+    setFullStateOnly(metadata: Metadata, fieldName: string) {
         const index = metadata[fieldName];
-        metadata[index].static = true;
+        metadata[index].fullStateOnly = true;
 
-        if (!metadata[$staticFieldIndexes]) {
-            Object.defineProperty(metadata, $staticFieldIndexes, {
+        if (!metadata[$fullStateOnlyFieldIndexes]) {
+            Object.defineProperty(metadata, $fullStateOnlyFieldIndexes, {
                 value: [],
                 enumerable: false,
                 configurable: true,
                 writable: true,
             });
         }
-        metadata[$staticFieldIndexes].push(index);
+        metadata[$fullStateOnlyFieldIndexes].push(index);
     },
 
     setStream(metadata: Metadata, fieldName: string) {
@@ -503,20 +502,20 @@ export const Metadata = {
                     });
                 }
 
-                // $transientFieldIndexes
-                if (parentMetadata[$transientFieldIndexes] !== undefined) {
-                    Object.defineProperty(metadata, $transientFieldIndexes, {
-                        value: [...parentMetadata[$transientFieldIndexes]],
+                // $patchOnlyFieldIndexes
+                if (parentMetadata[$patchOnlyFieldIndexes] !== undefined) {
+                    Object.defineProperty(metadata, $patchOnlyFieldIndexes, {
+                        value: [...parentMetadata[$patchOnlyFieldIndexes]],
                         enumerable: false,
                         configurable: true,
                         writable: true,
                     });
                 }
 
-                // $staticFieldIndexes
-                if (parentMetadata[$staticFieldIndexes] !== undefined) {
-                    Object.defineProperty(metadata, $staticFieldIndexes, {
-                        value: [...parentMetadata[$staticFieldIndexes]],
+                // $fullStateOnlyFieldIndexes
+                if (parentMetadata[$fullStateOnlyFieldIndexes] !== undefined) {
+                    Object.defineProperty(metadata, $fullStateOnlyFieldIndexes, {
+                        value: [...parentMetadata[$fullStateOnlyFieldIndexes]],
                         enumerable: false,
                         configurable: true,
                         writable: true,
@@ -586,12 +585,12 @@ export const Metadata = {
         return metadata?.[$unreliableFieldIndexes]?.includes(index);
     },
 
-    hasTransientAtIndex(metadata: Metadata, index: number) {
-        return metadata?.[$transientFieldIndexes]?.includes(index);
+    hasPatchOnlyAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$patchOnlyFieldIndexes]?.includes(index);
     },
 
-    hasStaticAtIndex(metadata: Metadata, index: number) {
-        return metadata?.[$staticFieldIndexes]?.includes(index);
+    hasFullStateOnlyAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$fullStateOnlyFieldIndexes]?.includes(index);
     },
 
     hasStreamAtIndex(metadata: Metadata, index: number) {

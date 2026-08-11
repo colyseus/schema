@@ -122,26 +122,20 @@ describe("Zod-style schema() API", () => {
             assert.strictEqual(meta[0].tag, 2);
         });
 
-        it(".owned() sets owned flag", () => {
-            const S = schema({ hp: t.uint8().owned() }, "S");
-            const meta = (S as any)[Symbol.metadata];
-            assert.strictEqual(meta[0].owned, true);
-        });
-
         it(".unreliable() sets unreliable flag", () => {
             const S = schema({ ping: t.uint16().unreliable() }, "S");
             const meta = (S as any)[Symbol.metadata];
             assert.strictEqual(meta[0].unreliable, true);
         });
 
-        it(".static() and t.stream() set flags", () => {
+        it(".fullStateOnly() and t.stream() set flags", () => {
             const Entity = schema({ name: t.string() }, "Entity");
             const S = schema({
-                level: t.array("number").static(),
+                level: t.array("number").fullStateOnly(),
                 events: t.stream(Entity),
             }, "S");
             const meta = (S as any)[Symbol.metadata];
-            assert.strictEqual(meta[0].static, true);
+            assert.strictEqual(meta[0].fullStateOnly, true);
             assert.strictEqual(meta[1].stream, true);
         });
 
@@ -170,8 +164,8 @@ describe("Zod-style schema() API", () => {
         });
 
         it("modifier chain order does not matter", () => {
-            const A = schema({ x: t.number().default(5).view(1).owned() }, "A");
-            const B = schema({ x: t.number().owned().view(1).default(5) }, "B");
+            const A = schema({ x: t.number().default(5).view(1).unreliable() }, "A");
+            const B = schema({ x: t.number().unreliable().view(1).default(5) }, "B");
             const a = new A();
             const b = new B();
             const aMeta = (A as any)[Symbol.metadata];
@@ -181,8 +175,8 @@ describe("Zod-style schema() API", () => {
             assert.strictEqual(b.x, 5);
             assert.strictEqual(aMeta[0].tag, 1);
             assert.strictEqual(bMeta[0].tag, 1);
-            assert.strictEqual(aMeta[0].owned, true);
-            assert.strictEqual(bMeta[0].owned, true);
+            assert.strictEqual(aMeta[0].unreliable, true);
+            assert.strictEqual(bMeta[0].unreliable, true);
         });
     });
 
@@ -425,15 +419,15 @@ describe("Zod-style schema() API", () => {
         });
 
         it("can chain .optional() with other modifiers in any order", () => {
-            const A = schema({ x: t.number().optional().view(1).owned() }, "A");
-            const B = schema({ x: t.number().owned().view(1).optional() }, "B");
+            const A = schema({ x: t.number().optional().view(1).unreliable() }, "A");
+            const B = schema({ x: t.number().unreliable().view(1).optional() }, "B");
             const aMeta = (A as any)[Symbol.metadata];
             const bMeta = (B as any)[Symbol.metadata];
             assert.strictEqual(aMeta[0].optional, true);
-            assert.strictEqual(aMeta[0].owned, true);
+            assert.strictEqual(aMeta[0].unreliable, true);
             assert.strictEqual(aMeta[0].tag, 1);
             assert.strictEqual(bMeta[0].optional, true);
-            assert.strictEqual(bMeta[0].owned, true);
+            assert.strictEqual(bMeta[0].unreliable, true);
             assert.strictEqual(bMeta[0].tag, 1);
         });
 

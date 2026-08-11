@@ -1,10 +1,10 @@
 /**
- * Benchmark: per-tick encode cost with vs without `.static()` on fields
+ * Benchmark: per-tick encode cost with vs without `.fullStateOnly()` on fields
  * that are mutated every tick but semantically configure-once.
  *
  * Scenario: 1000 entities with 4 "config" fields + 2 "dynamic" fields.
  * Both variants mutate all 6 fields on all entities every tick. The
- * `.static()` variant skips change-tracking for the 4 config fields,
+ * `.fullStateOnly()` variant skips change-tracking for the 4 config fields,
  * so per-tick encode emits and transmits only the 2 dynamic ones.
  *
  * Measures (per 1000 ticks of 1000 entities × 6 mutations):
@@ -18,7 +18,7 @@ const NUM_ENTITIES = 1000;
 const NUM_TICKS = 1000;
 
 // ──────────────────────────────────────────────────────────────────────────
-// Variant A: all fields tracked (no .static())
+// Variant A: all fields tracked (no .fullStateOnly())
 // ──────────────────────────────────────────────────────────────────────────
 const EntityA = schema({
     maxHp: t.uint16(),
@@ -33,13 +33,13 @@ const StateA = schema({
 }, "StateA");
 
 // ──────────────────────────────────────────────────────────────────────────
-// Variant B: 4 fields marked `.static()` (sync-once, tick-skip)
+// Variant B: 4 fields marked `.fullStateOnly()` (sync-once, tick-skip)
 // ──────────────────────────────────────────────────────────────────────────
 const EntityB = schema({
-    maxHp: t.uint16().static(),
-    team: t.uint8().static(),
-    mapId: t.uint8().static(),
-    spawnIndex: t.uint16().static(),
+    maxHp: t.uint16().fullStateOnly(),
+    team: t.uint8().fullStateOnly(),
+    mapId: t.uint8().fullStateOnly(),
+    spawnIndex: t.uint16().fullStateOnly(),
     hp: t.uint16(),
     x: t.float32(),
 }, "EntityB");
@@ -77,7 +77,7 @@ function run<T extends Schema, E extends Schema>(
     for (let tick = 0; tick < NUM_TICKS; tick++) {
         for (let i = 0; i < NUM_ENTITIES; i++) {
             const e = entitiesMap.get(`e${i}`);
-            // Mutate all 6 fields. The `.static()` variant will silently
+            // Mutate all 6 fields. The `.fullStateOnly()` variant will silently
             // drop the first 4 at tracking time.
             (e as any).maxHp = 100 + (tick & 15);
             (e as any).team = i % 4;
@@ -105,5 +105,5 @@ run("warmup-B", StateB as any, EntityB as any);
 
 console.log();
 console.log(`--- ${NUM_ENTITIES} entities × ${NUM_TICKS} ticks × 6 mutations ---`);
-run("without .static()", StateA as any, EntityA as any);
-run("with .static() on 4 of 6", StateB as any, EntityB as any);
+run("without .fullStateOnly()", StateA as any, EntityA as any);
+run("with .fullStateOnly() on 4 of 6", StateB as any, EntityB as any);

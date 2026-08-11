@@ -194,10 +194,10 @@ describe("Type: StreamSchema", () => {
     });
 
     it("static elements suppress field changes after being sent", () => {
-        // schema() factory builder needed because `.static()` chains from
+        // schema() factory builder needed because `.fullStateOnly()` chains from
         // `t.stream(...)` — @type({ stream: Entity }) can't express it.
         const Entity = schema({ x: t.number() }, "Entity");
-        const State = schema({ entities: t.stream(Entity).static() }, "State");
+        const State = schema({ entities: t.stream(Entity).fullStateOnly() }, "State");
         type EntityT = SchemaType<typeof Entity>;
 
         const state: SchemaType<typeof State> = new State();
@@ -797,7 +797,7 @@ describe("Type: StreamSchema", () => {
 
         it("broadcast static elements suppress field changes", () => {
             const Entity = schema({ x: t.number() }, "Entity");
-            const State = schema({ entities: t.stream(Entity).static() }, "State");
+            const State = schema({ entities: t.stream(Entity).fullStateOnly() }, "State");
 
             const state: SchemaType<typeof State> = new State();
             const encoder = getEncoder(state);

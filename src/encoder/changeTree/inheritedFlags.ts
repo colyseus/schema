@@ -1,5 +1,5 @@
 /**
- * Filter / unreliable / transient / static inheritance helpers for
+ * Filter / unreliable / patchOnly / static inheritance helpers for
  * ChangeTree. Called by setRoot / setParent to derive child flags from
  * the parent field's annotation + the parent tree's own state.
  */
@@ -7,15 +7,15 @@ import { Metadata } from "../../Metadata.js";
 import { DEFAULT_VIEW_TAG } from "../../annotations.js";
 import {
     $changes, $childType,
-    $staticFieldIndexes, $streamFieldIndexes,
-    $transientFieldIndexes, $viewFieldIndexes,
+    $fullStateOnlyFieldIndexes, $streamFieldIndexes,
+    $patchOnlyFieldIndexes, $viewFieldIndexes,
     // $unreliableFieldIndexes — tree-level unreliable currently disabled
     // (see INHERITABLE_FLAGS comment in ChangeTree.ts). Per-field unreliable
     // routing on primitive fields still uses it via `isFieldUnreliable()`.
 } from "../../types/symbols.js";
 import type { Schema } from "../../Schema.js";
 import {
-    INHERITABLE_FLAGS, IS_STATIC, IS_TRANSIENT,
+    INHERITABLE_FLAGS, IS_FULL_STATE_ONLY, IS_PATCH_ONLY,
     // IS_UNRELIABLE — tree-level unreliable currently disabled; see
     // INHERITABLE_FLAGS comment in ChangeTree.ts.
     type ChangeTree, type Ref,
@@ -39,7 +39,7 @@ export function checkIsFiltered(
 
     // Static trees never track per-tick changes — skip the queue entirely.
     // Full-sync reaches them via structural walk (forEachChild).
-    if (tree.isStatic) return;
+    if (tree.isFullStateOnly) return;
 
     // Mutations that happened before setRoot (e.g. class-field initializers)
     // recorded into the appropriate recorder but couldn't enqueue yet.
@@ -66,7 +66,7 @@ export function checkIsFiltered(
 }
 
 /**
- * Inherit filter / unreliable / transient / static classification from
+ * Inherit filter / unreliable / patchOnly / static classification from
  * the parent field's annotation. Collections (MapSchema / ArraySchema /
  * etc.) inherit these from the Schema field that holds them.
  *
@@ -106,15 +106,15 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
 
     const parentMetadata: any = (parent as any)?.constructor?.[Symbol.metadata];
 
-    // Flag inheritance — pack the transient/static annotation checks into
+    // Flag inheritance — pack the patchOnly/static annotation checks into
     // flag bits alongside the parent's own transitive flags, then OR onto
     // `tree.flags` in one write. The bit diff tells us which flag just
     // went from 0→1, cheaper than the prior `becameX = !tree.isX && (...)`
     // pairs. IS_UNRELIABLE is omitted from both sides — tree-level
     // unreliable is disabled (see INHERITABLE_FLAGS in ChangeTree.ts).
     const fieldBits =
-        (parentMetadata?.[$transientFieldIndexes]?.includes(parentIndex) ? IS_TRANSIENT : 0)
-        | (parentMetadata?.[$staticFieldIndexes]?.includes(parentIndex) ? IS_STATIC : 0);
+        (parentMetadata?.[$patchOnlyFieldIndexes]?.includes(parentIndex) ? IS_PATCH_ONLY : 0)
+        | (parentMetadata?.[$fullStateOnlyFieldIndexes]?.includes(parentIndex) ? IS_FULL_STATE_ONLY : 0);
     const inheritedBits = (parentChangeTree.flags & INHERITABLE_FLAGS) | fieldBits;
     const beforeFlags = tree.flags;
     tree.flags = beforeFlags | inheritedBits;
@@ -125,7 +125,7 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
     // `new Config().assign({...})` populates the recorder before the
     // Config instance is attached). Static trees ship state via structural
     // walk only; per-tick dirty entries would leak post-first-sync.
-    if (gainedBits & IS_STATIC) {
+    if (gainedBits & IS_FULL_STATE_ONLY) {
         tree.reset();
         tree.unreliableRecorder?.reset();
     }

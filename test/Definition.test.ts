@@ -872,8 +872,20 @@ describe("Definition Tests", () => {
 
         it("should throw when .noSync() is combined with a sync-only modifier", () => {
             assert.throws(() => schema({ a: t.number().noSync().view() }, 'BadView'), /local-only field cannot be synchronized/);
-            assert.throws(() => schema({ b: t.number().noSync().transient() }, 'BadTransient'), /local-only field cannot be synchronized/);
-            assert.throws(() => schema({ c: t.number().noSync().owned() }, 'BadOwned'), /local-only field cannot be synchronized/);
+            assert.throws(() => schema({ b: t.number().noSync().patchOnly() }, 'BadPatchOnly'), /local-only field cannot be synchronized/);
+            assert.throws(() => schema({ c: t.number().noSync().unreliable() }, 'BadUnreliable'), /local-only field cannot be synchronized/);
+        });
+
+        it("should throw when .patchOnly() is combined with .fullStateOnly()", () => {
+            // Both set = excluded from every channel, i.e. a silent .noSync().
+            assert.throws(
+                () => schema({ a: t.number().patchOnly().fullStateOnly() }, 'BadBoth'),
+                /would never reach a client/,
+            );
+            assert.throws(
+                () => schema({ a: t.number().fullStateOnly().patchOnly() }, 'BadBothReversed'),
+                /would never reach a client/,
+            );
         });
 
         it("should build a fresh value per instance from a .default(factory)", () => {

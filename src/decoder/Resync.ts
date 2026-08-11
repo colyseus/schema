@@ -1,6 +1,6 @@
 import { OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $proxyTarget, $refId, $refTypeFieldIndexes, $resyncPrune, $transientFieldIndexes } from "../types/symbols.js";
+import { $proxyTarget, $refId, $refTypeFieldIndexes, $resyncPrune, $patchOnlyFieldIndexes } from "../types/symbols.js";
 import type { Metadata } from "../Metadata.js";
 import type { Decoder } from "./Decoder.js";
 import type { DataChange } from "./DecodeOperation.js";
@@ -76,8 +76,8 @@ export function resyncTouchEntry(
 /**
  * Mark a collection as present in the payload — even with zero entries.
  * The sweep only prunes collections reported here: absence means "not part
- * of full-sync" (@transient, view-invisible), where pruning would destroy
- * live data. Reflected clients have no @transient metadata, so payload
+ * of full-sync" (@patchOnly, view-invisible), where pruning would destroy
+ * live data. Reflected clients have no @patchOnly metadata, so payload
  * presence is the only reliable signal.
  */
 export function resyncMarkPresent(decoder: Decoder, refId: number) {
@@ -90,7 +90,7 @@ export function resyncMarkPresent(decoder: Decoder, refId: number) {
  * entry the snapshot did not visit.
  *
  * Walks the tree from the root — NOT `root.refs` — for three reasons:
- * `@transient` fields are never part of a snapshot and must be left alone;
+ * `@patchOnly` fields are never part of a snapshot and must be left alone;
  * entries of subtrees removed by the sweep itself are left to the GC's
  * transitive walk (sweeping them directly would double-decrement shared
  * children); and collections the snapshot never mentions (emptied
@@ -115,12 +115,12 @@ function sweepSchema(decoder: Decoder, ref: Schema, seen: Set<number>, allChange
     const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
     const refIndexes = metadata?.[$refTypeFieldIndexes] as number[] | undefined;
     if (refIndexes === undefined) { return; }
-    const transient = metadata[$transientFieldIndexes] as number[] | undefined;
+    const patchOnly = metadata[$patchOnlyFieldIndexes] as number[] | undefined;
 
     for (let i = 0; i < refIndexes.length; i++) {
         const fieldIndex = refIndexes[i];
-        // @transient fields are never in a snapshot — leave them alone.
-        if (transient !== undefined && transient.includes(fieldIndex)) { continue; }
+        // @patchOnly fields are never in a snapshot — leave them alone.
+        if (patchOnly !== undefined && patchOnly.includes(fieldIndex)) { continue; }
 
         const field = metadata[fieldIndex];
         const value = (ref as any)[field.name];
@@ -142,7 +142,7 @@ function sweepCollection(decoder: Decoder, coll: any, seen: Set<number>, allChan
 
     // `undefined` = the collection never appeared in the payload at all
     // (not even as its parent's field op) — it is not part of full-sync
-    // (@transient, view-invisible) and must be left alone. An empty Set
+    // (@patchOnly, view-invisible) and must be left alone. An empty Set
     // means "present with zero entries" → prune everything.
     const visited = decoder.resyncVisited!.get(refId);
     if (visited === undefined) { return; }

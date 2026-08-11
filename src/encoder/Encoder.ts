@@ -639,7 +639,7 @@ export class Encoder<T extends Schema = any> {
                 // Emit each element's full state — forEachLive walks populated
                 // fields structurally, mirroring encodeAllView's bootstrap.
                 // Covers both static elements (dirty state was reset by
-                // inheritedFlags' becameStatic branch) and non-static (still
+                // inheritedFlags' becameFullStateOnly branch) and non-static (still
                 // has dirty state but the main loop skipped them because
                 // they're filtered).
                 for (const element of emittedElements) {

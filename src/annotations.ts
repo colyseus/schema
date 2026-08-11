@@ -37,12 +37,12 @@ export type PrimitiveType = RawPrimitiveType | typeof Schema | object;
 // TODO: infer "default" value type correctly.
 export type DefinitionType<T extends PrimitiveType = PrimitiveType> = T
     | T[]
-    | { type: T, default?: InferValueType<T>, view?: boolean | number, sync?: boolean, owned?: boolean }
-    | { array: T, default?: ArraySchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
-    | { map: T, default?: MapSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
-    | { collection: T, default?: CollectionSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
-    | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean }
-    | { stream: T, default?: StreamSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, owned?: boolean, priority?: (view: any, element: InferValueType<T>) => number };
+    | { type: T, default?: InferValueType<T>, view?: boolean | number, sync?: boolean }
+    | { array: T, default?: ArraySchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
+    | { map: T, default?: MapSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
+    | { collection: T, default?: CollectionSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
+    | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
+    | { stream: T, default?: StreamSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, priority?: (view: any, element: InferValueType<T>) => number };
 
 export type Definition = { [field: string]: DefinitionType };
 
@@ -237,27 +237,22 @@ export function view<T> (tag: number = DEFAULT_VIEW_TAG) {
     }
 }
 
-export function owned<T> (target: T, field: string) {
-    const metadata = Metadata.initialize(target.constructor as typeof Schema);
-    metadata[metadata[field]].owned = true;
-}
-
 export function unreliable<T> (target: T, field: string) {
     const metadata = Metadata.initialize(target.constructor as typeof Schema);
     Metadata.setUnreliable(metadata, field);
 }
 
 /**
- * @transient — mark a field as not persisted to snapshots (encodeAll /
- * encodeAllView). Transient fields are still emitted on per-tick patches
+ * @patchOnly — mark a field as not persisted to snapshots (encodeAll /
+ * encodeAllView). PatchOnly fields are still emitted on per-tick patches
  * (reliable or unreliable), but late-joining clients won't see them until
  * the next mutation.
  *
  * Orthogonal to @unreliable: a field can be either, both, or neither.
  */
-export function transient<T> (target: T, field: string) {
+export function patchOnly<T> (target: T, field: string) {
     const metadata = Metadata.initialize(target.constructor as typeof Schema);
-    Metadata.setTransient(metadata, field);
+    Metadata.setPatchOnly(metadata, field);
 }
 
 export function type (
@@ -772,11 +767,10 @@ export function schema<
     };
 
     const viewTagFields: { [field: string]: number } = {};
-    const ownedFields: string[] = [];
     const unreliableFields: string[] = [];
-    const transientFields: string[] = [];
+    const patchOnlyFields: string[] = [];
     const deprecatedFields: { [field: string]: boolean } = {};
-    const staticFields: string[] = [];
+    const fullStateOnlyFields: string[] = [];
     const streamFields: string[] = [];
     const streamPriorityFields: { [field: string]: (view: any, element: any) => number } = {};
     const optionalFields: string[] = [];
@@ -791,16 +785,26 @@ export function schema<
                 // Local-only field: skip metadata registration entirely so it is
                 // never encoded/decoded, but still seed its construction default
                 // (honoring `.default()` and collection/ref auto-instantiation).
-                if (def.view !== undefined || def.owned || def.unreliable ||
-                    def.transient || def.static || def.stream) {
+                if (def.view !== undefined || def.unreliable ||
+                    def.patchOnly || def.fullStateOnly || def.stream) {
                     throw new Error(
                         `schema(${name ? `'${name}'` : ""}): field '${fieldName}' uses .noSync() ` +
-                        `together with a sync-only modifier (.view/.owned/.unreliable/.transient/.static/.stream). ` +
+                        `together with a sync-only modifier (.view/.unreliable/.patchOnly/.fullStateOnly/.stream). ` +
                         `A local-only field cannot be synchronized.`
                     );
                 }
                 seedDefault(fieldName, def);
                 continue;
+            }
+
+            // The two delivery channels are exhaustive: excluding a field from
+            // both leaves it with nowhere to go — a silent .noSync().
+            if (def.patchOnly && def.fullStateOnly) {
+                throw new Error(
+                    `schema(${name ? `'${name}'` : ""}): field '${fieldName}' uses .patchOnly() ` +
+                    `together with .fullStateOnly(). Those are the only two delivery channels, ` +
+                    `so the field would never reach a client — use .noSync() if that is intended.`
+                );
             }
 
             const normalizedType = getNormalizedType(def.type);
@@ -814,11 +818,10 @@ export function schema<
             fields[fieldName] = normalizedType;
 
             if (def.view !== undefined) { viewTagFields[fieldName] = def.view; }
-            if (def.owned) { ownedFields.push(fieldName); }
             if (def.unreliable) { unreliableFields.push(fieldName); }
-            if (def.transient) { transientFields.push(fieldName); }
+            if (def.patchOnly) { patchOnlyFields.push(fieldName); }
             if (def.deprecated) { deprecatedFields[fieldName] = def.deprecatedThrows; }
-            if (def.static) { staticFields.push(fieldName); }
+            if (def.fullStateOnly) { fullStateOnlyFields.push(fieldName); }
             if (def.stream) { streamFields.push(fieldName); }
             if (def.streamPriority !== undefined) { streamPriorityFields[fieldName] = def.streamPriority; }
             if (def.optional) { optionalFields.push(fieldName); }
@@ -903,23 +906,20 @@ export function schema<
     for (const fieldName in viewTagFields) {
         view(viewTagFields[fieldName])(klass.prototype, fieldName);
     }
-    for (const fieldName of ownedFields) {
-        owned(klass.prototype, fieldName);
-    }
     for (const fieldName of unreliableFields) {
         unreliable(klass.prototype, fieldName);
     }
-    for (const fieldName of transientFields) {
-        transient(klass.prototype, fieldName);
+    for (const fieldName of patchOnlyFields) {
+        patchOnly(klass.prototype, fieldName);
     }
     for (const fieldName in deprecatedFields) {
         deprecated(deprecatedFields[fieldName])(klass.prototype, fieldName);
     }
 
-    if (staticFields.length > 0 || streamFields.length > 0) {
+    if (fullStateOnlyFields.length > 0 || streamFields.length > 0) {
         const metadata = (klass as any)[Symbol.metadata] as Metadata;
-        for (const fieldName of staticFields) {
-            Metadata.setStatic(metadata, fieldName);
+        for (const fieldName of fullStateOnlyFields) {
+            Metadata.setFullStateOnly(metadata, fieldName);
         }
         for (const fieldName of streamFields) {
             Metadata.setStream(metadata, fieldName);

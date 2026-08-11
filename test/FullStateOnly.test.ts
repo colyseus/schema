@@ -2,12 +2,12 @@ import * as assert from "assert";
 import { $changes, Schema, schema, t, type, ArraySchema, SchemaType } from "../src";
 import { getEncoder, getDecoder, createInstanceFromReflection } from "./Schema";
 
-describe("@static modifier (sync-once, skip change tracking)", () => {
+describe(".fullStateOnly() modifier (full state sync only, never a tick patch)", () => {
 
-    it("a static primitive field appears in encodeAll but NOT in per-tick encode", () => {
+    it("a fullStateOnly primitive field appears in encodeAll but NOT in per-tick encode", () => {
         const State = schema({
             dynamic: t.string(),
-            config: t.number().static(),
+            config: t.number().fullStateOnly(),
         }, "State");
         type State = SchemaType<typeof State>;
 
@@ -33,10 +33,10 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
         encoder.discardChanges();
     });
 
-    it("mutations on a static field after initial encode are silently ignored for tick patches", () => {
+    it("mutations on a fullStateOnly field after initial encode are silently ignored for tick patches", () => {
         const State = schema({
             dynamic: t.string(),
-            config: t.number().static(),
+            config: t.number().fullStateOnly(),
         }, "State");
         type State = SchemaType<typeof State>;
 
@@ -65,10 +65,10 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
         encoder.discardChanges();
     });
 
-    it("a LATE-joining client sees the latest static value via encodeAll", () => {
+    it("a LATE-joining client sees the latest fullStateOnly value via encodeAll", () => {
         const State = schema({
             dynamic: t.string(),
-            config: t.number().static(),
+            config: t.number().fullStateOnly(),
         }, "State");
         type State = SchemaType<typeof State>;
 
@@ -92,13 +92,13 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
         encoder.discardChanges();
     });
 
-    it("static collections skip tracking for their items", () => {
+    it("fullStateOnly collections skip tracking for their items", () => {
         class Item extends Schema {
             @type("number") value: number;
         }
         const State = schema({
             dynamic: t.string(),
-            items: t.array(Item).static(),
+            items: t.array(Item).fullStateOnly(),
         }, "State");
         type State = SchemaType<typeof State>;
 
@@ -125,7 +125,7 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
         encoder.discardChanges();
     });
 
-    it("static Schema sub-tree: mutations on child fields are NOT propagated", () => {
+    it("fullStateOnly Schema sub-tree: mutations on child fields are NOT propagated", () => {
         const Config = schema({
             maxPlayers: t.number(),
             mapName: t.string(),
@@ -134,7 +134,7 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
 
         const State = schema({
             dynamic: t.string(),
-            config: t.ref(Config).static(),
+            config: t.ref(Config).fullStateOnly(),
         }, "State");
         type State = SchemaType<typeof State>;
 
@@ -170,12 +170,12 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
         encoder.discardChanges();
     });
 
-    it("isFieldStatic classification: per-field + inherited", () => {
+    it("isFieldFullStateOnly classification: per-field + inherited", () => {
         const Config = schema({ x: t.number() }, "Config");
         const State = schema({
             a: t.number(),
-            b: t.number().static(),
-            c: t.ref(Config).static(),
+            b: t.number().fullStateOnly(),
+            c: t.ref(Config).fullStateOnly(),
         }, "State");
 
         const state = new State();
@@ -188,27 +188,27 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
         state.c = cfg;
 
         const changes: any = (state as any)[$changes];
-        assert.strictEqual(changes.isFieldStatic(0), false);
-        assert.strictEqual(changes.isFieldStatic(1), true);
-        assert.strictEqual(changes.isFieldStatic(2), true);
-        // child inherits isStatic
+        assert.strictEqual(changes.isFieldFullStateOnly(0), false);
+        assert.strictEqual(changes.isFieldFullStateOnly(1), true);
+        assert.strictEqual(changes.isFieldFullStateOnly(2), true);
+        // child inherits isFullStateOnly
         const cfgChanges: any = (cfg as any)[$changes];
-        assert.strictEqual(cfgChanges.isStatic, true);
-        assert.strictEqual(cfgChanges.isFieldStatic(0), true);
+        assert.strictEqual(cfgChanges.isFullStateOnly, true);
+        assert.strictEqual(cfgChanges.isFieldFullStateOnly(0), true);
     });
 
-    // The encoder caches a per-class `staticBitmask` covering field indexes
+    // The encoder caches a per-class `fullStateOnlyBitmask` covering field indexes
     // 0–31 only (matches the existing filterBitmask limitation). Fields ≥32
-    // fall back to `Metadata.hasStaticAtIndex`. This test exercises both
+    // fall back to `Metadata.hasFullStateOnlyAtIndex`. This test exercises both
     // paths and verifies the per-tick / encodeAll routing still works
     // end-to-end.
-    it("classification + routing works for @static fields at index ≥32 (bitmask fallback)", () => {
+    it("classification + routing works for @fullStateOnly fields at index ≥32 (bitmask fallback)", () => {
         // 34 fields. Index 5 (low — bitmask) and index 33 (high — fallback)
         // are @static; the rest are dynamic.
         const fields: Record<string, any> = {};
         for (let i = 0; i < 34; i++) {
             if (i === 5 || i === 33) {
-                fields[`f${i}`] = t.number().static();
+                fields[`f${i}`] = t.number().fullStateOnly();
             } else {
                 fields[`f${i}`] = t.number();
             }
@@ -220,11 +220,11 @@ describe("@static modifier (sync-once, skip change tracking)", () => {
         const ct: any = state[$changes];
 
         // Spot-check classification across both paths.
-        assert.strictEqual(ct.isFieldStatic(0), false, "dynamic field 0");
-        assert.strictEqual(ct.isFieldStatic(5), true, "bitmask path: index 5");
-        assert.strictEqual(ct.isFieldStatic(31), false, "bitmask boundary (31): dynamic");
-        assert.strictEqual(ct.isFieldStatic(32), false, "fallback boundary (32): dynamic");
-        assert.strictEqual(ct.isFieldStatic(33), true, "fallback path: index 33");
+        assert.strictEqual(ct.isFieldFullStateOnly(0), false, "dynamic field 0");
+        assert.strictEqual(ct.isFieldFullStateOnly(5), true, "bitmask path: index 5");
+        assert.strictEqual(ct.isFieldFullStateOnly(31), false, "bitmask boundary (31): dynamic");
+        assert.strictEqual(ct.isFieldFullStateOnly(32), false, "fallback boundary (32): dynamic");
+        assert.strictEqual(ct.isFieldFullStateOnly(33), true, "fallback path: index 33");
 
         // Routing: set initial values for everyone, encode tick + full sync.
         state.f0 = 100;   // dynamic

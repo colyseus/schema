@@ -17,7 +17,7 @@
  * during encode).
  */
 import { Metadata } from "../Metadata.js";
-import { $encodeDescriptor, $encoder, $encoders, $filter, $filterBitmask, $numFields, $staticFieldIndexes, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
+import { $encodeDescriptor, $encoder, $encoders, $filter, $filterBitmask, $numFields, $fullStateOnlyFieldIndexes, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 
@@ -35,7 +35,7 @@ export interface EncodeDescriptor {
 
     /**
      * Class-level "any field has the flag" booleans + per-field bitmasks.
-     * Hot path: per-mutation `_routeAndRecord` calls `isFieldStatic` and
+     * Hot path: per-mutation `_routeAndRecord` calls `isFieldFullStateOnly` and
      * `isFieldUnreliable`. The common case is "no static/unreliable fields
      * anywhere on this class" (booleans short-circuit before the symbol-keyed
      * metadata lookup); the secondary common case is "this class has some
@@ -46,7 +46,7 @@ export interface EncodeDescriptor {
      * Fields ≥32 fall back to `Metadata.hasXAtIndex` — same handling as the
      * filter-bitmask path.
      */
-    hasAnyStatic: boolean;
+    hasAnyFullStateOnly: boolean;
     hasAnyUnreliable: boolean;
     hasAnyStream: boolean;
     /**
@@ -56,7 +56,7 @@ export interface EncodeDescriptor {
      * decide whether a parent tree must be included in a view's bootstrap.
      */
     hasAnyView: boolean;
-    staticBitmask: number;
+    fullStateOnlyBitmask: number;
     unreliableBitmask: number;
     /**
      * Bit i set iff field i holds a `t.stream(...)` collection. Hot encode
@@ -191,11 +191,11 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         metadata,
         isSchema,
         filterBitmask: isSchema ? computeFilterBitmask(metadata) : 0,
-        hasAnyStatic: (metadata?.[$staticFieldIndexes]?.length ?? 0) > 0,
+        hasAnyFullStateOnly: (metadata?.[$fullStateOnlyFieldIndexes]?.length ?? 0) > 0,
         hasAnyUnreliable: (metadata?.[$unreliableFieldIndexes]?.length ?? 0) > 0,
         hasAnyStream: (metadata?.[$streamFieldIndexes]?.length ?? 0) > 0,
         hasAnyView,
-        staticBitmask: indexesToBitmask(metadata?.[$staticFieldIndexes]),
+        fullStateOnlyBitmask: indexesToBitmask(metadata?.[$fullStateOnlyFieldIndexes]),
         unreliableBitmask: indexesToBitmask(metadata?.[$unreliableFieldIndexes]),
         streamBitmask: indexesToBitmask(metadata?.[$streamFieldIndexes]),
         names: arrays.names,

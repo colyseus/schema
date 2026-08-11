@@ -1,10 +1,10 @@
 import * as assert from "assert";
-import { $changes, Schema, schema, t, type, unreliable, transient, view, ArraySchema, MapSchema, StateView } from "../src";
+import { $changes, Schema, schema, t, type, unreliable, patchOnly, view, ArraySchema, MapSchema, StateView } from "../src";
 import { Encoder } from "../src/encoder/Encoder";
 import { Decoder } from "../src/decoder/Decoder";
 import { createInstanceFromReflection, getEncoder, getDecoder } from "./Schema";
 
-describe("@unreliable and @transient", () => {
+describe("@unreliable and @patchOnly", () => {
 
     describe("@unreliable routing", () => {
         it("unreliable field mutations do NOT appear in the reliable encode() output", () => {
@@ -140,11 +140,11 @@ describe("@unreliable and @transient", () => {
         });
     });
 
-    describe("@transient exclusion from full-sync", () => {
-        it("transient fields appear on tick patches but NOT in encodeAll output", () => {
+    describe("@patchOnly exclusion from full-sync", () => {
+        it("patchOnly fields appear on tick patches but NOT in encodeAll output", () => {
             class State extends Schema {
                 @type("string") persistent: string = "kept";
-                @transient @type("number") ephemeral: number = 99;
+                @patchOnly @type("number") ephemeral: number = 99;
             }
 
             const state = new State();
@@ -155,7 +155,7 @@ describe("@unreliable and @transient", () => {
             fresh.decode(encoder.encodeAll());
             assert.strictEqual((fresh as any).persistent, "kept");
             assert.strictEqual((fresh as any).ephemeral, undefined,
-                "transient field must be absent from encodeAll snapshot");
+                "patchOnly field must be absent from encodeAll snapshot");
 
             // Tick-connected client: gets ephemeral via encode()
             const tick = createInstanceFromReflection(state);
@@ -165,10 +165,10 @@ describe("@unreliable and @transient", () => {
             encoder.discardChanges();
         });
 
-        it("transient + unreliable composes: tick-unreliable only, no full-sync", () => {
+        it("patchOnly + unreliable composes: tick-unreliable only, no full-sync", () => {
             class State extends Schema {
                 @type("string") name: string;
-                @transient @unreliable @type("number") frame: number;
+                @patchOnly @unreliable @type("number") frame: number;
             }
 
             const state = new State();

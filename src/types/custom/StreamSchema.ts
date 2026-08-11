@@ -34,7 +34,7 @@ import type { Schema } from "../../Schema.js";
  * per-client and drained in priority order (callback on StateView) up to
  * `maxPerTick` per encode pass. Field mutations on already-sent elements
  * propagate through the normal reliable channel without consuming the
- * per-tick budget. Chain `.static()` on the field builder to suppress
+ * per-tick budget. Chain `.fullStateOnly()` on the field builder to suppress
  * post-add mutation tracking entirely.
  */
 export class StreamSchema<V = any> implements IRef {

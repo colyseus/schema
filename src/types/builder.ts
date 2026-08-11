@@ -20,12 +20,11 @@ export interface BuilderDefinition {
     default?: any;
     hasDefault: boolean;
     view?: number;    // tag value; undefined = no view
-    owned?: boolean;
     unreliable?: boolean;
-    transient?: boolean;
+    patchOnly?: boolean;
     deprecated?: boolean;
     deprecatedThrows?: boolean;
-    static?: boolean;
+    fullStateOnly?: boolean;
     stream?: boolean;
     optional?: boolean;
     /** Local-only field: typed + initialized, but never registered for sync. */
@@ -75,12 +74,11 @@ export class FieldBuilder<
     private _default: any = undefined;
     private _hasDefault = false;
     private _view: number | undefined = undefined;
-    private _owned = false;
     private _unreliable = false;
-    private _transient = false;
+    private _patchOnly = false;
     private _deprecated = false;
     private _deprecatedThrows = true;
-    private _static = false;
+    private _fullStateOnly = false;
     private _stream = false;
     private _optional = false;
     private _noSync = false;
@@ -119,16 +117,10 @@ export class FieldBuilder<
         return this;
     }
 
-    /** Mark this field as owned (encoder-side ownership filtering). */
-    owned(): this {
-        this._owned = true;
-        return this;
-    }
-
     /**
      * Mark this field as unreliable — tick patches emit it on the unreliable
      * transport channel. Still persisted to full-sync snapshots unless also
-     * tagged with `.transient()`.
+     * tagged with `.patchOnly()`.
      */
     unreliable(): this {
         this._unreliable = true;
@@ -136,24 +128,28 @@ export class FieldBuilder<
     }
 
     /**
-     * Mark this field as transient — NOT persisted to full-sync snapshots
-     * (`encodeAll` / `encodeAllView`). Late-joining clients see the field
-     * only after its next mutation is emitted on a tick patch. Orthogonal
-     * to `.unreliable()`.
+     * Deliver this field on tick patches ONLY — it is never written to a
+     * full-state sync (`encodeAll` / `encodeAllView`). Late-joining clients
+     * see the field only after its next mutation is emitted on a patch.
+     * The mirror of `.fullStateOnly()`, and orthogonal to `.unreliable()`.
      */
-    transient(): this {
-        this._transient = true;
+    patchOnly(): this {
+        this._patchOnly = true;
         return this;
     }
 
     /**
-     * Mark this field as static.
-     * - Primitive / Schema fields: synchronized once, skips change tracking.
-     * - Stream fields (`t.stream(X).static()`): child elements are frozen
-     *   after add — post-add field mutations on elements become no-ops.
+     * Deliver this field in the full state sync ONLY (`encodeAll` /
+     * `encodeAllView`) — it never enters a tick patch. A client receives it
+     * on join (and again on a resync); writes after that are not tracked.
+     * The mirror of `.patchOnly()`.
+     *
+     * The field itself is NOT frozen — it stays mutable server-side, only
+     * its propagation stops. On a stream field (`t.stream(X).fullStateOnly()`)
+     * the same rule applies per element: post-add mutations are no-ops.
      */
-    static(): this {
-        this._static = true;
+    fullStateOnly(): this {
+        this._fullStateOnly = true;
         return this;
     }
 
@@ -166,8 +162,8 @@ export class FieldBuilder<
      * Useful for server-side scratch state, per-peer UI state, or values you
      * want on the class for typing convenience without paying any sync cost.
      *
-     * Mutually exclusive with the sync-only modifiers (`.view()`, `.owned()`,
-     * `.unreliable()`, `.transient()`, `.static()`, `.stream()`) — combining
+     * Mutually exclusive with the sync-only modifiers (`.view()`,
+     * `.unreliable()`, `.patchOnly()`, `.fullStateOnly()`, `.stream()`) — combining
      * them throws at `schema()` time.
      *
      * ```ts
@@ -211,9 +207,12 @@ export class FieldBuilder<
      * higher return values emit first. Does nothing in broadcast mode
      * (shared `encode()` drains FIFO). Only meaningful on stream fields.
      *
+     * `StateView` carries no position of its own — attach whatever the
+     * callback needs to sort by (`view` is loosely typed for this).
+     *
      * ```ts
      * t.stream(Enemy).priority((view, enemy) =>
-     *     -dist2(view.anchor, enemy)
+     *     -((enemy.x - view.x) ** 2 + (enemy.y - view.y) ** 2)
      * )
      * ```
      */
@@ -251,12 +250,11 @@ export class FieldBuilder<
             default: this._default,
             hasDefault: this._hasDefault,
             view: this._view,
-            owned: this._owned,
             unreliable: this._unreliable,
-            transient: this._transient,
+            patchOnly: this._patchOnly,
             deprecated: this._deprecated,
             deprecatedThrows: this._deprecatedThrows,
-            static: this._static,
+            fullStateOnly: this._fullStateOnly,
             stream: this._stream,
             optional: this._optional,
             noSync: this._noSync,

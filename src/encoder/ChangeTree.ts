@@ -8,7 +8,7 @@
  *
  *   - parentChain.ts     addParent / removeParent / find / has / getAll
  *   - liveIteration.ts   forEachLive
- *   - inheritedFlags.ts  filter / unreliable / transient / static inheritance
+ *   - inheritedFlags.ts  filter / unreliable / patchOnly / static inheritance
  *   - treeAttachment.ts  setRoot / setParent / forEachChild(+WithCtx)
  *
  * Public surface on ChangeTree is unchanged — methods are thin pass-throughs
@@ -118,10 +118,10 @@ export interface ParentChain {
     next?: ParentChain;
 }
 
-// Flags bitfield. *_UNRELIABLE / _TRANSIENT / _STATIC mirror the parent
+// Flags bitfield. *_UNRELIABLE / _PATCH_ONLY / _STATIC mirror the parent
 // field's annotation — inherited at setParent/setRoot time.
 export const IS_FILTERED = 1, IS_VISIBILITY_SHARED = 2, IS_NEW = 4;
-export const IS_UNRELIABLE = 8, IS_TRANSIENT = 16, IS_STATIC = 32;
+export const IS_UNRELIABLE = 8, IS_PATCH_ONLY = 16, IS_FULL_STATE_ONLY = 32;
 // Collection tree attached to a parent field annotated `.stream()` —
 // drives the encoder's priority/broadcast pass. Set in inheritedFlags
 // so both `t.stream(X)` (via StreamSchema's `$isStream` brand) and
@@ -148,7 +148,7 @@ export const NEEDS_RESTAGE = 128;
  * reconsidered if a safe semantics (e.g. reliable ADD + unreliable
  * field mutations only) is designed later.
  */
-export const INHERITABLE_FLAGS = IS_TRANSIENT | IS_STATIC;
+export const INHERITABLE_FLAGS = IS_PATCH_ONLY | IS_FULL_STATE_ONLY;
 
 export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     ref: T;
@@ -258,10 +258,10 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     set isNew(v: boolean) { this.flags = v ? (this.flags | IS_NEW) : (this.flags & ~IS_NEW); }
     get isUnreliable() { return (this.flags & IS_UNRELIABLE) !== 0; }
     set isUnreliable(v: boolean) { this.flags = v ? (this.flags | IS_UNRELIABLE) : (this.flags & ~IS_UNRELIABLE); }
-    get isTransient() { return (this.flags & IS_TRANSIENT) !== 0; }
-    set isTransient(v: boolean) { this.flags = v ? (this.flags | IS_TRANSIENT) : (this.flags & ~IS_TRANSIENT); }
-    get isStatic() { return (this.flags & IS_STATIC) !== 0; }
-    set isStatic(v: boolean) { this.flags = v ? (this.flags | IS_STATIC) : (this.flags & ~IS_STATIC); }
+    get isPatchOnly() { return (this.flags & IS_PATCH_ONLY) !== 0; }
+    set isPatchOnly(v: boolean) { this.flags = v ? (this.flags | IS_PATCH_ONLY) : (this.flags & ~IS_PATCH_ONLY); }
+    get isFullStateOnly() { return (this.flags & IS_FULL_STATE_ONLY) !== 0; }
+    set isFullStateOnly(v: boolean) { this.flags = v ? (this.flags | IS_FULL_STATE_ONLY) : (this.flags & ~IS_FULL_STATE_ONLY); }
     get isStreamCollection() { return (this.flags & IS_STREAM_COLLECTION) !== 0; }
     set isStreamCollection(v: boolean) { this.flags = v ? (this.flags | IS_STREAM_COLLECTION) : (this.flags & ~IS_STREAM_COLLECTION); }
     get needsRestage() { return (this.flags & NEEDS_RESTAGE) !== 0; }
@@ -271,7 +271,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     // @view-tagged fields. StateView.addParentOf uses this to decide whether
     // a parent must be included in a view's bootstrap. Reads the class-level
     // "any viewed field" flag that `EncodeDescriptor` precomputes — same
-    // pattern as `hasAnyStatic` / `hasAnyUnreliable` / `hasAnyStream`.
+    // pattern as `hasAnyFullStateOnly` / `hasAnyUnreliable` / `hasAnyStream`.
     get hasFilteredFields(): boolean {
         return this.isFiltered || this.encDescriptor.hasAnyView;
     }
@@ -306,12 +306,12 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     // @static fields sync once via full-sync; post-init mutations are ignored
     // by the tracker (the value still lives on the instance).
-    isFieldStatic(index: number): boolean {
-        if (this.isStatic) return true;
+    isFieldFullStateOnly(index: number): boolean {
+        if (this.isFullStateOnly) return true;
         const desc = this.encDescriptor;
-        if (!desc.hasAnyStatic) return false;
-        if (index < 32) return (desc.staticBitmask & (1 << index)) !== 0;
-        return Metadata.hasStaticAtIndex(this.metadata, index);
+        if (!desc.hasAnyFullStateOnly) return false;
+        if (index < 32) return (desc.fullStateOnlyBitmask & (1 << index)) !== 0;
+        return Metadata.hasFullStateOnlyAtIndex(this.metadata, index);
     }
 
     // `t.stream(...)` collection fields — encoded via per-view priority/budget
@@ -566,7 +566,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         this.unreliableRecorder?.reset();
 
         // back to a freshly-constructed tree: IS_NEW, no inherited flags
-        // (FILTERED/TRANSIENT/STATIC/STREAM are re-derived on the next setParent).
+        // (FILTERED/PATCH_ONLY/STATIC/STREAM are re-derived on the next setParent).
         // NEEDS_RESTAGE makes the next Root.add re-stage retained field values.
         this.flags = IS_NEW | NEEDS_RESTAGE;
         this._fullSyncGen = 0;
@@ -603,7 +603,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         if (this._isSchema) throw new Error("ChangeTree (Schema): unshift is not supported");
         const src = this.collDirty!;
         const dst = new Map<number, OPERATION>();
-        const track = !this.paused && !this.isStatic;
+        const track = !this.paused && !this.isFullStateOnly;
         if (track) {
             for (let i = 0; i < count; i++) dst.set(i, OPERATION.ADD);
         }
@@ -626,7 +626,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     operation(op: OPERATION) {
-        if (this.paused || this.isStatic) return;
+        if (this.paused || this.isFullStateOnly) return;
         // Pure ops (CLEAR/REVERSE) only emit from collection trees — the
         // recorder here is always a CollectionChangeRecorder by construction.
         //
@@ -658,7 +658,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * reliable footgun for ref-type fields can't reach this code path.
      */
     private _routeAndRecord(index: number, op: OPERATION, raw: boolean): void {
-        if (this.paused || this.isFieldStatic(index)) return;
+        if (this.paused || this.isFieldFullStateOnly(index)) return;
         if (this.isFieldUnreliable(index)) {
             const r = this.ensureUnreliableRecorder();
             if (raw) r.recordRaw(index, op);
@@ -723,7 +723,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
             return;
         }
 
-        if (this.paused || this.isFieldStatic(index)) return this.getValue(index);
+        if (this.paused || this.isFieldFullStateOnly(index)) return this.getValue(index);
 
         const unreliable = this.isFieldUnreliable(index);
         if (unreliable) this.ensureUnreliableRecorder().recordDelete(index, operation ?? OPERATION.DELETE);

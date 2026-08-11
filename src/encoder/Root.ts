@@ -162,7 +162,7 @@ export class Root {
         const previousRefCount = this.refCount[refId];
         if (previousRefCount === 0 || changeTree.needsRestage) {
             //
-            // Re-stage every currently-populated non-transient index as a
+            // Re-stage every currently-populated non-patchOnly index as a
             // fresh ADD in the matching dirty bucket so the next encode
             // re-emits it on the correct channel. Two triggers:
             // - refCount 0: a previously-removed tree re-added under the
