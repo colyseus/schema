@@ -239,4 +239,81 @@ describe("schema-codegen", () => {
         });
     });
 
+    describe("dart", () => {
+        const read = (name: string) =>
+            fs.readFileSync(path.resolve(OUTPUT_DIR, name), "utf8");
+
+        it("should emit SchemaRef façades", () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "DartSchema.ts"));
+            generate("dart", { files: inputFiles, output: OUTPUT_DIR });
+
+            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.dart")).map((f) => path.basename(f));
+            assert.deepStrictEqual(outputFiles.sort(), ["Item.dart", "Player.dart", "TestRoomState.dart"]);
+
+            const player = read("Player.dart");
+            assert.match(player, /import 'package:colyseus\/colyseus\.dart';/);
+            assert.match(player, /import 'Item\.dart';/);
+            assert.match(player, /final class Player extends SchemaRef \{/);
+            assert.match(player, /Player\(super\.handle\);/);
+            assert.match(player, /double get x => view\['x'\];/);
+            assert.match(player, /bool get isBot => view\.getBool\('isBot'\);/);
+            assert.match(player, /ArraySchema<Item> get items => arrayOf\('items', Item\.new\);/);
+            assert.match(player, /MapSchema<double> get scores => primitiveMapOf\('scores'\);/);
+            assert.match(player, /ArraySchema<String> get tags => primitiveArrayOf\('tags'\);/);
+
+            // Callbacks register through StateCallbacks (C#-style), not
+            // through generated extensions.
+            assert.doesNotMatch(player, /extension /);
+
+            const state = read("TestRoomState.dart");
+            assert.match(state, /MapSchema<Player> get players => mapOf\('players', Player\.new\);/);
+            assert.match(state, /Player\? get host => refOf\('host', Player\.new\);/);
+            assert.match(state, /String get currentTurn => view\.getString\('currentTurn'\) \?\? '';/);
+            assert.doesNotMatch(state, /extension /);
+        });
+
+        it("should mark extended classes `base` and import the parent", () => {
+            const inputFiles = [
+                path.resolve(INPUT_DIR, "BaseSchema.ts"),
+                path.resolve(INPUT_DIR, "Inheritance.ts"),
+            ];
+            generate("dart", { files: inputFiles, output: OUTPUT_DIR });
+
+            const base = read("BaseSchema.dart");
+            assert.match(base, /base class BaseSchema extends SchemaRef \{/);
+
+            const child = read("Inheritance.dart");
+            assert.match(child, /import 'BaseSchema\.dart';/);
+            assert.match(child, /final class Inheritance extends BaseSchema \{/);
+        });
+
+        it("should bundle every structure into a single file", () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "DartSchema.ts"));
+            generate("dart", { files: inputFiles, output: OUTPUT_DIR, bundle: true });
+
+            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.dart")).map((f) => path.basename(f));
+            assert.deepStrictEqual(outputFiles, ["schema.dart"]);
+
+            const bundle = read("schema.dart");
+            assert.match(bundle, /final class Item extends SchemaRef \{/);
+            assert.match(bundle, /final class Player extends SchemaRef \{/);
+            assert.match(bundle, /final class TestRoomState extends SchemaRef \{/);
+            // one shared import, no per-class import lines
+            assert.strictEqual(bundle.match(/import '/g)?.length, 1);
+        });
+
+        it("should emit enums as const holders", () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Enums.ts"));
+            generate("dart", { files: inputFiles, output: OUTPUT_DIR });
+
+            const shipType = read("ShipType.dart");
+            assert.match(shipType, /abstract final class ShipType \{/);
+            assert.match(shipType, /static const Transport = 0;/);
+            assert.match(shipType, /static const Colonizer = 2;/);
+
+            const messageType = read("MessageType.dart");
+            assert.match(messageType, /static const DeployMiner = "deploy-miner";/);
+        });
+    });
+
 });

@@ -14,8 +14,9 @@ import * as java from "./languages/java.js";
 import * as lua from "./languages/lua.js";
 import * as c from "./languages/c.js";
 import * as gdscript from "./languages/gdscript.js";
+import * as dart from "./languages/dart.js";
 
-export const generators: Record<string, any> = { csharp, cpp, haxe, ts, js, java, lua, c, gdscript, };
+export const generators: Record<string, any> = { csharp, cpp, haxe, ts, js, java, lua, c, gdscript, dart, };
 
 export interface GenerateOptions {
     files: string[],
