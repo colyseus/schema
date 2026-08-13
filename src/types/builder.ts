@@ -120,7 +120,13 @@ export class FieldBuilder<
     /**
      * Mark this field as unreliable — tick patches emit it on the unreliable
      * transport channel. Still persisted to full-sync snapshots unless also
-     * tagged with `.patchOnly()`.
+     * tagged with `.patchOnly()`. Primitive fields only.
+     *
+     * The field's FIRST value still travels the reliable channel, as part of
+     * the owning instance's ADD; only later mutations become unreliable. A
+     * decoder cannot apply a write to a ref it has not been told about, so a
+     * value emitted ahead of that ADD would be dropped — and lost for good if
+     * the field is never written again.
      */
     unreliable(): this {
         this._unreliable = true;

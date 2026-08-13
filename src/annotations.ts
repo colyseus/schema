@@ -237,6 +237,17 @@ export function view<T> (tag: number = DEFAULT_VIEW_TAG) {
     }
 }
 
+/**
+ * `@unreliable` — route a field onto the unreliable transport channel, so a
+ * dropped update costs one stale value instead of stalling the ordered stream
+ * behind a retransmit. Primitive fields only (see `Metadata.setUnreliable`).
+ *
+ * The field's FIRST value still travels the reliable channel, as part of the
+ * owning instance's ADD; only later mutations become unreliable. A decoder
+ * cannot apply a write to a ref it has not been told about, so a value emitted
+ * ahead of that ADD would be dropped — and lost for good if the field is never
+ * written again.
+ */
 export function unreliable<T> (target: T, field: string) {
     const metadata = Metadata.initialize(target.constructor as typeof Schema);
     Metadata.setUnreliable(metadata, field);

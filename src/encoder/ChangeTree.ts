@@ -656,10 +656,22 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * fields (see annotations.ts), so the per-field unreliable flag here
      * always means "primitive value updates" — the structural-ADD-routes-
      * reliable footgun for ref-type fields can't reach this code path.
+     *
+     * `!isNew` holds an `@unreliable` field on the RELIABLE channel until this
+     * tree's own ADD has shipped there. A decoder can only apply a field write
+     * to a ref it already knows, so a value emitted before the ADD is dropped —
+     * permanently, if the field is never written again. `isNew` clears in
+     * `endEncode()`, i.e. after a reliable pass, and recording reliably is
+     * itself what enqueues the tree for that pass; the state is self-clearing
+     * and no tree can be stranded on the wrong channel. Mirrors `encodeAll`,
+     * which has always seeded these fields for late joiners.
+     *
+     * Ordering matters: `isFieldUnreliable` short-circuits on the class-level
+     * `hasAnyUnreliable`, so schemas without the modifier never read `flags`.
      */
     private _routeAndRecord(index: number, op: OPERATION, raw: boolean): void {
         if (this.paused || this.isFieldFullStateOnly(index)) return;
-        if (this.isFieldUnreliable(index)) {
+        if (this.isFieldUnreliable(index) && !this.isNew) {
             const r = this.ensureUnreliableRecorder();
             if (raw) r.recordRaw(index, op);
             else r.record(index, op);
@@ -725,7 +737,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
         if (this.paused || this.isFieldFullStateOnly(index)) return this.getValue(index);
 
-        const unreliable = this.isFieldUnreliable(index);
+        // Same pre-ADD hold as `_routeAndRecord` — a DELETE naming a ref the
+        // decoder hasn't seen is dropped just like a field write.
+        const unreliable = this.isFieldUnreliable(index) && !this.isNew;
         if (unreliable) this.ensureUnreliableRecorder().recordDelete(index, operation ?? OPERATION.DELETE);
         else this.recordDelete(index, operation ?? OPERATION.DELETE);
 

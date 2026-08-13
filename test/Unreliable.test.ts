@@ -7,7 +7,7 @@ import { createInstanceFromReflection, getEncoder, getDecoder } from "./Schema";
 describe("@unreliable and @patchOnly", () => {
 
     describe("@unreliable routing", () => {
-        it("unreliable field mutations do NOT appear in the reliable encode() output", () => {
+        it("first value ships on the reliable ADD; later mutations only on the unreliable channel", () => {
             class State extends Schema {
                 @type("string") reliable: string;
                 @unreliable @type("number") x: number;
@@ -21,17 +21,27 @@ describe("@unreliable and @patchOnly", () => {
             state.reliable = "hello";
             state.x = 7;
 
-            const reliableBytes = encoder.encode();
-            decoder.decode(reliableBytes);
+            // Tick 1 — the tree's ADD. `x` rides it, because a decoder can't
+            // apply a write to a ref it hasn't been told about yet.
+            decoder.decode(encoder.encode());
             assert.strictEqual((decoder.state as any).reliable, "hello");
-            assert.strictEqual((decoder.state as any).x, undefined,
-                "unreliable field must not appear on reliable channel");
+            assert.strictEqual((decoder.state as any).x, 7,
+                "first value must ride the reliable ADD, or it can be lost for good");
+            assert.strictEqual(encoder.encodeUnreliable().length, 0,
+                "nothing left over for the unreliable channel");
 
-            // unreliable encode delivers it
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            // Tick 2 — the ref is established, so mutations go unreliable-only.
+            state.x = 8;
+            assert.strictEqual(encoder.encode().length, 0,
+                "an @unreliable mutation produces no reliable bytes");
+
             const unreliableBytes = encoder.encodeUnreliable();
             assert.ok(unreliableBytes.length > 0, "unreliable encode should have emitted the x field");
             decoder.decode(unreliableBytes);
-            assert.strictEqual((decoder.state as any).x, 7);
+            assert.strictEqual((decoder.state as any).x, 8);
 
             encoder.discardChanges();
             encoder.discardUnreliableChanges();
@@ -51,14 +61,24 @@ describe("@unreliable and @patchOnly", () => {
             state.name = "Alice";
             state.x = 42;
 
-            // Reliable only
+            // Establish the ref (ADD carries both fields).
             decoder.decode(encoder.encode());
             assert.strictEqual((decoder.state as any).name, "Alice");
-            assert.strictEqual((decoder.state as any).x, undefined);
-
-            // Unreliable only
-            decoder.decode(encoder.encodeUnreliable());
             assert.strictEqual((decoder.state as any).x, 42);
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            // Now each field splits to its own channel.
+            state.name = "Bob";
+            state.x = 43;
+
+            decoder.decode(encoder.encode());
+            assert.strictEqual((decoder.state as any).name, "Bob");
+            assert.strictEqual((decoder.state as any).x, 42,
+                "the reliable pass must not carry the @unreliable mutation");
+
+            decoder.decode(encoder.encodeUnreliable());
+            assert.strictEqual((decoder.state as any).x, 43);
 
             encoder.discardChanges();
             encoder.discardUnreliableChanges();
@@ -87,22 +107,30 @@ describe("@unreliable and @patchOnly", () => {
             state.positions.push(new Position().assign({ x: 3, y: 4 }));
 
             // Reliable encode: name + array structure (length 2, item refIds
-            // established) but the @unreliable x/y values are NOT here.
+            // established) — and each item's first x/y, seeded with its ADD.
             const decoded = createInstanceFromReflection(state) as State;
             const decoder = getDecoder(decoded);
             decoder.decode(encoder.encode());
             assert.strictEqual((decoder.state as any).name, "world");
             assert.strictEqual((decoder.state as any).positions.length, 2,
                 "structural push must arrive on reliable channel");
-            assert.strictEqual((decoder.state as any).positions[0].x, undefined,
-                "@unreliable x must NOT have arrived via reliable channel");
-
-            // Unreliable encode: x/y values for the already-established items.
-            decoder.decode(encoder.encodeUnreliable());
-            assert.strictEqual((decoder.state as any).positions[0].x, 1);
-            assert.strictEqual((decoder.state as any).positions[0].y, 2);
-            assert.strictEqual((decoder.state as any).positions[1].x, 3);
+            assert.strictEqual((decoder.state as any).positions[0].x, 1,
+                "each item's first value rides its own ADD");
             assert.strictEqual((decoder.state as any).positions[1].y, 4);
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            // Subsequent per-item mutations route unreliable.
+            state.positions[0].x = 11;
+            state.positions[1].y = 44;
+            assert.strictEqual(encoder.encode().length, 0,
+                "no reliable bytes once the items are established");
+
+            decoder.decode(encoder.encodeUnreliable());
+            assert.strictEqual((decoder.state as any).positions[0].x, 11);
+            assert.strictEqual((decoder.state as any).positions[0].y, 2);
+            assert.strictEqual((decoder.state as any).positions[1].y, 44);
 
             encoder.discardChanges();
             encoder.discardUnreliableChanges();
@@ -183,13 +211,19 @@ describe("@unreliable and @patchOnly", () => {
             assert.strictEqual((fresh as any).name, "s");
             assert.strictEqual((fresh as any).frame, undefined);
 
-            // reliable encode should NOT have `frame` (it's unreliable)
+            // Reliable encode carries `frame`'s first value with the ADD —
+            // patchOnly only excludes it from the full-sync snapshot above.
             fresh.decode(encoder.encode());
-            assert.strictEqual((fresh as any).frame, undefined);
-
-            // unreliable encode SHOULD have `frame`
-            fresh.decode(encoder.encodeUnreliable());
             assert.strictEqual((fresh as any).frame, 42);
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            // Later mutations are unreliable-only.
+            state.frame = 43;
+            assert.strictEqual(encoder.encode().length, 0);
+            fresh.decode(encoder.encodeUnreliable());
+            assert.strictEqual((fresh as any).frame, 43);
 
             encoder.discardChanges();
             encoder.discardUnreliableChanges();
@@ -216,7 +250,7 @@ describe("@unreliable and @patchOnly", () => {
             clientView.add(state.entities.get("one"));
 
             // Reliable view pass: emits Entity's @view-tagged / inherited-filter
-            // fields EXCEPT @unreliable ones.
+            // fields, plus the @unreliable field's first value on its ADD.
             const sharedIt = { offset: 0 };
             const sharedReliable = encoder.encode(sharedIt);
             const sharedOffset = sharedIt.offset;
@@ -225,16 +259,20 @@ describe("@unreliable and @patchOnly", () => {
             const decoder = getDecoder(createInstanceFromReflection(state));
             decoder.decode(reliableView);
             assert.strictEqual((decoder.state as any).entities.get("one").id, "one");
-            assert.strictEqual((decoder.state as any).entities.get("one").x, undefined,
-                "unreliable field must not appear on reliable view pass");
+            assert.strictEqual((decoder.state as any).entities.get("one").x, 10,
+                "first value rides the reliable view pass, with the entity's ADD");
 
-            // Unreliable view pass: emits the @unreliable field
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            // Unreliable view pass: emits subsequent mutations of that field.
+            e1.x = 20;
             const unreliableIt = { offset: 0 };
             const unreliableShared = encoder.encodeUnreliable(unreliableIt);
             const unreliableSharedOffset = unreliableIt.offset;
             const unreliableView = encoder.encodeUnreliableView(clientView, unreliableSharedOffset, unreliableIt);
             decoder.decode(unreliableView);
-            assert.strictEqual((decoder.state as any).entities.get("one").x, 10);
+            assert.strictEqual((decoder.state as any).entities.get("one").x, 20);
 
             encoder.discardChanges();
             encoder.discardUnreliableChanges();
@@ -266,14 +304,21 @@ describe("@unreliable and @patchOnly", () => {
             const sharedBytes = encoder.encode(sharedIt);
             const sharedOffset = sharedIt.offset;
 
-            // Reliable view pass: secret is filtered but also @unreliable → NOT
-            // emitted here (filtered+unreliable belongs to the unreliable view path).
+            // Reliable view pass: carries `secret`'s FIRST value, seeded with
+            // the tree's ADD — the visible client must not have to wait for a
+            // datagram that its decoder couldn't have applied anyway.
             const visibleReliable = encoder.encodeView(clientVisible, sharedOffset, sharedIt);
             const decodedVisible = createInstanceFromReflection(state) as State;
             getDecoder(decodedVisible).decode(visibleReliable);
             assert.strictEqual((decodedVisible as any).prop, "public");
-            assert.strictEqual((decodedVisible as any).secret, undefined,
-                "@unreliable + @view must NOT emit on the reliable view pass");
+            assert.strictEqual((decodedVisible as any).secret, 123,
+                "first value rides the reliable view pass");
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            // From here the ref is established, so mutations are unreliable.
+            state.secret = 456;
 
             // Shared unreliable encode: secret is filtered (via @view) → skipped
             // in shared unreliable pass, only per-view pass emits it.
@@ -291,7 +336,7 @@ describe("@unreliable and @patchOnly", () => {
             // Unreliable view pass for visible client: secret IS emitted.
             const uView = encoder.encodeUnreliableView(clientVisible, uSharedOffset, uSharedIt);
             getDecoder(decodedVisible).decode(uView);
-            assert.strictEqual((decodedVisible as any).secret, 123);
+            assert.strictEqual((decodedVisible as any).secret, 456);
 
             // Unreliable view pass for hidden client: secret NOT emitted.
             const uSharedIt2 = { offset: 0 };
@@ -350,6 +395,101 @@ describe("@unreliable and @patchOnly", () => {
             }, /@unreliable cannot be applied to ref-type field/);
         });
 
+        // A tree's @unreliable fields are held on the reliable channel until
+        // its own ADD has shipped there. Without that, an unreliable pass
+        // running ahead of the next reliable one (a faster cadence, which is
+        // the whole point of the split) emits field writes for a refId the
+        // decoder has never seen — dropped on arrival, and lost for good if
+        // the field is never written again.
+        it("holds @unreliable fields on the reliable channel until the tree's ADD ships", () => {
+            class Entity extends Schema {
+                @type("string") name: string;
+                @unreliable @type("number") x: number;
+            }
+            class State extends Schema {
+                @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const decoded = createInstanceFromReflection(state) as State;
+            const decoder = getDecoder(decoded);
+
+            decoder.decode(encoder.encodeAll());
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            // Spawn, then run the unreliable channel 10x with NO reliable pass
+            // in between — patchRate 200ms against a 20ms unreliable rate.
+            const e = new Entity();
+            e.name = "dave";
+            state.entities.set("d", e);
+
+            let datagramBytes = 0;
+            for (let i = 1; i <= 10; i++) {
+                e.x = i;
+                const bytes = encoder.encodeUnreliable();
+                datagramBytes += bytes.length;
+                if (bytes.length > 0) decoder.decode(bytes);
+                encoder.discardUnreliableChanges();
+            }
+            assert.strictEqual(datagramBytes, 0,
+                "nothing may go out unreliably before the entity's ADD");
+
+            // The reliable pass carries the entity AND its current x.
+            decoder.decode(encoder.encode());
+            encoder.discardChanges();
+            assert.strictEqual((decoded as any).entities.get("d").x, 10,
+                "value must not need a further mutation to arrive");
+
+            // Now it behaves as an unreliable field.
+            e.x = 11;
+            assert.strictEqual(encoder.encode().length, 0);
+            decoder.decode(encoder.encodeUnreliable());
+            assert.strictEqual((decoded as any).entities.get("d").x, 11);
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+        });
+
+        it("an entity whose only fields are @unreliable still ships its first values", () => {
+            class Item extends Schema {
+                @unreliable @type("number") v: number;
+            }
+            class State extends Schema {
+                @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const decoded = createInstanceFromReflection(state) as State;
+            const decoder = getDecoder(decoded);
+
+            decoder.decode(encoder.encodeAll());
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            const item = new Item();
+            state.items.set("k", item);
+            item.v = 7;
+
+            // No reliable field exists to drag the tree into the reliable
+            // queue — the held @unreliable write has to do it itself.
+            decoder.decode(encoder.encode());
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+            assert.strictEqual((decoded as any).items.get("k").v, 7);
+
+            item.v = 9;
+            assert.strictEqual(encoder.encode().length, 0,
+                "the hold releases after one reliable pass");
+            decoder.decode(encoder.encodeUnreliable());
+            assert.strictEqual((decoded as any).items.get("k").v, 9);
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+        });
+
         // Verifies the reason the strict rule exists: with primitive-only
         // @unreliable, the structural ADDs always arrive on the reliable
         // channel, so dropping any unreliable packet only loses values —
@@ -368,7 +508,7 @@ describe("@unreliable and @patchOnly", () => {
             const decoded = createInstanceFromReflection(state) as State;
             const decoder = getDecoder(decoded);
 
-            // Tick 1: structural ADD arrives reliable; x/y queued unreliable.
+            // Tick 1: structural ADD arrives reliable, carrying the seed values.
             state.position = new Position();
             state.position.x = 10;
             state.position.y = 20;
@@ -376,26 +516,31 @@ describe("@unreliable and @patchOnly", () => {
             decoder.decode(encoder.encode());
             assert.notStrictEqual((decoded as any).position, undefined,
                 "Position refId established via reliable channel");
-            assert.strictEqual((decoded as any).position.x, undefined,
-                "x must NOT be on reliable channel (it's @unreliable)");
+            assert.strictEqual((decoded as any).position.x, 10,
+                "seed value rides the ADD");
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
 
-            // Drop tick 1's unreliable packet entirely.
+            // Tick 2: mutations now route unreliable — drop that packet whole.
+            state.position.x = 30;
+            state.position.y = 40;
+            assert.strictEqual(encoder.encode().length, 0);
             void encoder.encodeUnreliable();
             encoder.discardChanges();
             encoder.discardUnreliableChanges();
 
-            // Tick 2: more x/y mutations.
-            state.position.x = 30;
-            state.position.y = 40;
-            const reliableBytes2 = encoder.encode();
-            if (reliableBytes2.length > 0) decoder.decode(reliableBytes2);
+            // Tick 3: more mutations, delivered.
+            state.position.x = 50;
+            state.position.y = 60;
+            const reliableBytes3 = encoder.encode();
+            if (reliableBytes3.length > 0) decoder.decode(reliableBytes3);
             decoder.decode(encoder.encodeUnreliable());
             encoder.discardChanges();
             encoder.discardUnreliableChanges();
 
-            assert.strictEqual((decoded as any).position.x, 30,
-                "decoder applies tick 2 values without ever seeing tick 1");
-            assert.strictEqual((decoded as any).position.y, 40);
+            assert.strictEqual((decoded as any).position.x, 50,
+                "decoder applies tick 3 values without ever seeing tick 2");
+            assert.strictEqual((decoded as any).position.y, 60);
         });
     });
 
@@ -457,14 +602,24 @@ describe("@unreliable and @patchOnly", () => {
             state.f5 = 50;    // unreliable via bitmask
             state.f33 = 33;   // unreliable via fallback
 
+            // Seed values ride the tree's ADD on both classification paths.
             decoder.decode(encoder.encode());
             assert.strictEqual(decoded.f0, 100, "reliable field decoded");
-            assert.strictEqual(decoded.f5, undefined, "unreliable (bitmask) NOT on reliable channel");
-            assert.strictEqual(decoded.f33, undefined, "unreliable (fallback) NOT on reliable channel");
+            assert.strictEqual(decoded.f5, 50, "unreliable (bitmask) seeded on the ADD");
+            assert.strictEqual(decoded.f33, 33, "unreliable (fallback) seeded on the ADD");
+
+            encoder.discardChanges();
+            encoder.discardUnreliableChanges();
+
+            // Mutations then route unreliable on both paths.
+            state.f5 = 55;
+            state.f33 = 66;
+            assert.strictEqual(encoder.encode().length, 0,
+                "no reliable bytes for either @unreliable mutation");
 
             decoder.decode(encoder.encodeUnreliable());
-            assert.strictEqual(decoded.f5, 50, "unreliable (bitmask) decoded via unreliable channel");
-            assert.strictEqual(decoded.f33, 33, "unreliable (fallback) decoded via unreliable channel");
+            assert.strictEqual(decoded.f5, 55, "unreliable (bitmask) decoded via unreliable channel");
+            assert.strictEqual(decoded.f33, 66, "unreliable (fallback) decoded via unreliable channel");
 
             encoder.discardChanges();
             encoder.discardUnreliableChanges();
