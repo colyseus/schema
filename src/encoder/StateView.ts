@@ -55,6 +55,24 @@ const _disposeRegistry = new FinalizationRegistry<{ root: Root; id: number; slot
     },
 );
 
+/**
+ * Compact description of a rejected argument, for warning messages.
+ * Passing the value itself to `console.warn` is not an option — a
+ * populated collection inspects into dozens of lines of encoder
+ * internals and buries the message that matters.
+ */
+function describeArg(value: any): string {
+    if (value === undefined) { return "undefined"; }
+    if (value === null) { return "null"; }
+    const type = typeof value;
+    if (type === "string") {
+        return JSON.stringify(value.length > 30 ? `${value.slice(0, 30)}…` : value);
+    }
+    if (type !== "object" && type !== "function") { return `${type} ${String(value)}`; }
+    if (Array.isArray(value)) { return `Array(${value.length})`; }
+    return value.constructor?.name ?? "Object";
+}
+
 export class StateView {
     /**
      * Iterable list of items that are visible to this view
@@ -286,13 +304,16 @@ export class StateView {
 
     private _add(obj: Ref, tag: number, checkIncludeParent: boolean, _skipStreamRouting: boolean) {
         const changeTree: ChangeTree = obj?.[$changes];
+        if (!changeTree) {
+            console.warn(
+                `StateView#add(): expected a Schema instance or collection, received ${describeArg(obj)}`,
+            );
+            return false;
+        }
+
         const parentChangeTree = changeTree.parent;
 
-        if (!changeTree) {
-            console.warn("StateView#add(), invalid object:", obj);
-            return false;
-
-        } else if (
+        if (
             !parentChangeTree &&
             obj[$refId] !== 0 // allow root object
         ) {
@@ -607,9 +628,11 @@ export class StateView {
     remove(obj: Ref, tag?: number): this; // hide _isClear parameter from public API
     remove(obj: Ref, tag?: number, _isClear?: boolean): this;
     remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG, _isClear: boolean = false): this {
-        const changeTree: ChangeTree = obj[$changes];
+        const changeTree: ChangeTree = obj?.[$changes];
         if (!changeTree) {
-            console.warn("StateView#remove(), invalid object:", obj);
+            console.warn(
+                `StateView#remove(): expected a Schema instance or collection, received ${describeArg(obj)}`,
+            );
             return this;
         }
 
@@ -814,7 +837,9 @@ export class StateView {
     subscribe(collection: Ref, priority?: ((element: any) => number) | null): this {
         const tree: ChangeTree = collection?.[$changes];
         if (!tree) {
-            console.warn("StateView#subscribe(), invalid collection:", collection);
+            console.warn(
+                `StateView#subscribe(): expected a Schema collection, received ${describeArg(collection)}`,
+            );
             return this;
         }
         if (this._root === undefined && tree.root !== undefined) {
@@ -902,7 +927,9 @@ export class StateView {
     unsubscribe(collection: Ref): this {
         const tree: ChangeTree = collection?.[$changes];
         if (!tree) {
-            console.warn("StateView#unsubscribe(), invalid collection:", collection);
+            console.warn(
+                `StateView#unsubscribe(): expected a Schema collection, received ${describeArg(collection)}`,
+            );
             return this;
         }
         if (!this.isSubscribed(tree)) return this;
