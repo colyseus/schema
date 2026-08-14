@@ -53,6 +53,13 @@ export interface StreamableState {
      * Instance-level override: assign to `stream.priority`.
      */
     priority?: (view: any, element: any) => number;
+    /**
+     * Per-view priority registered by `StateView.subscribe(collection, fn)`.
+     * Takes precedence over the declaration-scope `priority` for that view.
+     * Receives only the element — the client's own entity is captured in
+     * the closure, so nothing has to be attached to the view.
+     */
+    priorityByView?: Map<number, (element: any) => number>;
 }
 
 export function createStreamableState(): StreamableState {
@@ -229,4 +236,5 @@ export function streamDropView(s: Streamable, viewId: number): void {
     if (st === undefined) return;
     st.pendingByView.delete(viewId);
     st.sentByView.delete(viewId);
+    st.priorityByView?.delete(viewId);
 }

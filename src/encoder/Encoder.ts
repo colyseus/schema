@@ -718,6 +718,11 @@ export class Encoder<T extends Schema = any> {
             // `t.stream(X).priority(fn)` or the decorator form) and seeded
             // into `_stream.priority` when the stream was attached. Users
             // can also override per-instance by assigning to the setter.
+            // A per-view callback (registered by `subscribe(coll, fn)`)
+            // wins over the declaration-scope one: it closes over the
+            // client's own entity, so it needs no view-carried anchor.
+            const perView = st.priorityByView?.get(viewId);
+            const usePerView = perView !== undefined;
             const priority = st.priority;
             const max = st.maxPerTick;
 
@@ -736,7 +741,7 @@ export class Encoder<T extends Schema = any> {
             const positions: number[] = [];
             const stale: number[] = [];
 
-            if (priority !== undefined) {
+            if (usePerView || priority !== undefined) {
                 const bestPos: number[] = [];
                 const bestScore: number[] = [];
                 let filled = 0;
@@ -752,7 +757,9 @@ export class Encoder<T extends Schema = any> {
                         continue;
                     }
 
-                    const score = priority(view, element);
+                    const score = usePerView
+                        ? perView!(element)
+                        : priority!(view, element);
 
                     // Window not yet full: always insert.
                     if (filled < max) {

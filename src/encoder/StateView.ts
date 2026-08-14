@@ -4,7 +4,11 @@ import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
 import { spliceOne } from "../types/utils.js";
-import { streamDequeueForView, streamEnqueueForView } from "./streaming.js";
+import { ensureStreamState, streamDequeueForView, streamEnqueueForView } from "./streaming.js";
+import type { StreamSchema } from "../types/custom/StreamSchema.js";
+import type { MapSchema } from "../types/custom/MapSchema.js";
+import type { SetSchema } from "../types/custom/SetSchema.js";
+import type { CollectionSchema } from "../types/custom/CollectionSchema.js";
 import type { Schema } from "../Schema.js";
 import type { Root, Streamable } from "./Root.js";
 
@@ -780,10 +784,34 @@ export class StateView {
      *   enqueued into `_pendingByView` so the priority pass drains them
      *   respecting `maxPerTick`.
      *
-     * Idempotent on re-subscribe. Subscribing to an already-subscribed
-     * collection is a no-op.
+     * On a streaming collection, pass a `priority` callback to order THIS
+     * client's backlog. It receives only the element, so whatever the
+     * client sorts by is captured in the closure — nothing is attached to
+     * the view, and both the element and the captured entity stay typed:
+     *
+     * ```ts
+     * onJoin(client) {
+     *     const player = this.state.players.get(client.sessionId);
+     *     client.view.subscribe(this.state.enemies, (enemy) =>
+     *         -((enemy.x - player.x) ** 2 + (enemy.y - player.y) ** 2));
+     * }
+     * ```
+     *
+     * A per-view callback overrides the collection's declaration-scope
+     * `.priority()` for this client only.
+     *
+     * Idempotent on re-subscribe: subscribing to an already-subscribed
+     * collection is a no-op, EXCEPT that a supplied `priority` always
+     * replaces the previous one — re-subscribe to retarget the ordering.
+     * Omitting the argument leaves any existing callback in place; pass
+     * `null` to drop it and fall back to the declaration-scope callback.
      */
-    subscribe(collection: Ref): this {
+    subscribe<V>(
+        collection: StreamSchema<V> | MapSchema<V, any> | SetSchema<V> | CollectionSchema<V>,
+        priority?: ((element: V) => number) | null,
+    ): this;
+    subscribe(collection: Ref): this;
+    subscribe(collection: Ref, priority?: ((element: any) => number) | null): this {
         const tree: ChangeTree = collection?.[$changes];
         if (!tree) {
             console.warn("StateView#subscribe(), invalid collection:", collection);
@@ -792,6 +820,41 @@ export class StateView {
         if (this._root === undefined && tree.root !== undefined) {
             this._bindRoot(tree.root);
         }
+
+        if (priority !== undefined) {
+            if (!tree.isStreamCollection) {
+                // Name the field rather than dumping the collection — a
+                // populated MapSchema inspects into dozens of lines of
+                // internals and buries the message.
+                const kind = (collection as any)?.constructor?.name ?? "collection";
+                const parent: any = tree.parent;
+                if (parent === undefined) {
+                    console.warn(
+                        `StateView#subscribe(): \`priority\` ignored — this ${kind} is not ` +
+                        `attached to a state yet, so it cannot be identified as a stream. ` +
+                        `Subscribe after assigning it to the state.`,
+                    );
+                } else {
+                    const field = parent?.constructor?.[Symbol.metadata]?.[tree.parentIndex]?.name;
+                    const where = field ? `${parent.constructor.name}#${field}` : kind;
+                    console.warn(
+                        `StateView#subscribe(): \`priority\` ignored — ${where} is a ${kind}, ` +
+                        `not a streaming collection. Declare the field with .stream() ` +
+                        `(e.g. t.map(X).stream()) or use t.stream(X) to enable priority batching.`,
+                    );
+                }
+            } else {
+                // Set before the idempotency return below, so re-subscribing
+                // is the documented way to retarget this view's ordering.
+                const st = ensureStreamState(collection as unknown as Streamable);
+                if (priority === null) {
+                    st.priorityByView?.delete(this.id);
+                } else {
+                    (st.priorityByView ??= new Map()).set(this.id, priority);
+                }
+            }
+        }
+
         if (this.isSubscribed(tree)) return this;
 
         // Mark collection visible so its own ADD/DELETE ops emit in the
