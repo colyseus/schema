@@ -719,23 +719,78 @@ export class Encoder<T extends Schema = any> {
             // into `_stream.priority` when the stream was attached. Users
             // can also override per-instance by assigning to the setter.
             const priority = st.priority;
+            const max = st.maxPerTick;
 
-            // Materialize pending into an array so we can sort + slice.
-            // Small sets (typical: tens to low hundreds) — allocation is
-            // negligible compared to the priority sort and element walk.
+            // Select the `max` highest-priority candidates.
+            //
+            // A comparator-based sort invokes the callback twice per
+            // comparison, each with its own `$getByIndex` lookup — ~2·n·log n
+            // of each to pick `max` entries (38k calls to select 8 out of a
+            // 2000-entry backlog). Scoring every candidate once and keeping a
+            // bounded top-`max` window costs n invocations instead, and sizes
+            // the scratch by `max` rather than by the backlog.
+            //
+            // Ties keep the earlier position (both comparisons below are
+            // strict), so equal-priority entries still drain in insertion
+            // order.
             const positions: number[] = [];
-            for (const p of pending) positions.push(p);
+            const stale: number[] = [];
 
             if (priority !== undefined) {
-                // Use the symbol-keyed accessor so Map/Set/Stream all route
-                // through the same lookup regardless of $items layout.
-                positions.sort(
-                    (a: number, b: number) => priority(view, s[$getByIndex](b)) - priority(view, s[$getByIndex](a)),
-                );
+                const bestPos: number[] = [];
+                const bestScore: number[] = [];
+                let filled = 0;
+
+                for (const pos of pending) {
+                    // Symbol-keyed accessor so Map/Set/Stream all route
+                    // through the same lookup regardless of $items layout.
+                    const element = s[$getByIndex](pos);
+                    if (element === undefined) {
+                        // Removed after being queued — drop it below without
+                        // spending budget on it.
+                        stale.push(pos);
+                        continue;
+                    }
+
+                    const score = priority(view, element);
+
+                    // Window not yet full: always insert.
+                    if (filled < max) {
+                        let j = filled++;
+                        while (j > 0 && bestScore[j - 1] < score) {
+                            bestScore[j] = bestScore[j - 1];
+                            bestPos[j] = bestPos[j - 1];
+                            j--;
+                        }
+                        bestScore[j] = score;
+                        bestPos[j] = pos;
+
+                    // Otherwise only a strictly better score displaces the tail.
+                    } else if (score > bestScore[max - 1]) {
+                        let j = max - 1;
+                        while (j > 0 && bestScore[j - 1] < score) {
+                            bestScore[j] = bestScore[j - 1];
+                            bestPos[j] = bestPos[j - 1];
+                            j--;
+                        }
+                        bestScore[j] = score;
+                        bestPos[j] = pos;
+                    }
+                }
+
+                for (let i = 0; i < filled; i++) positions.push(bestPos[i]);
+
+            } else {
+                // FIFO — take the head of the backlog, no scoring needed.
+                for (const pos of pending) {
+                    if (positions.length >= max) break;
+                    positions.push(pos);
+                }
             }
 
-            const max = st.maxPerTick;
-            const count = Math.min(positions.length, max);
+            for (const pos of stale) pending.delete(pos);
+
+            const count = positions.length;
 
             let sent: Set<number> | undefined = st.sentByView.get(viewId);
             if (sent === undefined) {
