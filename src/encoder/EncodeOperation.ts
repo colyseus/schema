@@ -75,7 +75,9 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
     _: any,
     __: any,
 ) {
-    // "compress" field index + operation
+    // "compress" field index + operation. Can't collide with
+    // SWITCH_TO_STRUCTURE (255): that needs `DELETE_AND_ADD | 63`, and
+    // `Metadata.MAX_FIELDS` keeps index 63 unassignable.
     bytes[it.offset++] = (index | operation) & 255;
 
     // Do not encode value for DELETE operations

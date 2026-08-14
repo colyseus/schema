@@ -7,6 +7,16 @@ import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
 import { isQuantizedType, makeQuantizedEncoder, resolveQuantize } from "./types/quantize.js";
 
+/**
+ * Field indexes ride in the low 6 bits of the operation byte
+ * (`(index | operation) & 255`), which leaves room for 0..63. Index 63 is
+ * given up: `DELETE_AND_ADD | 63` is 255, the same byte the decoder claims
+ * as SWITCH_TO_STRUCTURE before any field decoder sees it. Every nullable
+ * field can produce that operation (delete-then-set in one tick merges to
+ * DELETE_AND_ADD), so the slot is unusable rather than partly usable.
+ */
+export const MAX_FIELDS = 63;
+
 export type MetadataField = {
     type: DefinitionType,
     name: string,
@@ -27,7 +37,7 @@ export type Metadata =
     { [$refTypeFieldIndexes]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
     { [$unreliableFieldIndexes]: number[]; } & // all field indexes tagged with @unreliable
     { [$patchOnlyFieldIndexes]: number[]; } & // all field indexes tagged with @patchOnly (not persisted to snapshots)
-    { [$fullStateOnlyFieldIndexes]: number[]; } & // all field indexes tagged with @static (not tracked after assignment)
+    { [$fullStateOnlyFieldIndexes]: number[]; } & // all field indexes tagged @fullStateOnly / .fullStateOnly() (not tracked after assignment)
     { [$streamFieldIndexes]: number[]; } & // all field indexes holding a t.stream(...) collection
     { [$streamPriorities]: { [field: number]: (view: any, element: any) => number }; } & // per-stream-field priority callback declared at schema definition time
     { [$encoders]: Array<(bytes: Uint8Array, value: any, it: any) => void>; } & // pre-computed encoder fn per primitive field
@@ -106,8 +116,10 @@ function isTSEnum(_enum: any) {
 export const Metadata = {
 
     addField(metadata: any, index: number, name: string, type: DefinitionType, descriptor?: PropertyDescriptor) {
-        if (index > 64) {
-            throw new Error(`Can't define field '${name}'.\nSchema instances may only have up to 64 fields.`);
+        // `index` is 0-based, so 62 is the last usable slot — see MAX_FIELDS
+        // for why 63 is off limits.
+        if (index >= MAX_FIELDS) {
+            throw new Error(`Can't define field '${name}'.\nSchema instances may only have up to ${MAX_FIELDS} fields.`);
         }
 
         metadata[index] = Object.assign(

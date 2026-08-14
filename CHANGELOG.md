@@ -4,6 +4,47 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.12]
+
+### Added
+
+- **`@fullStateOnly` decorator** — decorator-style equivalent of the
+  `.fullStateOnly()` builder chainable, completing delivery-modifier parity
+  (`@unreliable` and `@patchOnly` already existed). Combining it with
+  `@patchOnly` throws at decoration time, in either decorator order —
+  matching the builder's guard.
+
+### Fixed
+
+- `@unreliable` fields now ship their FIRST value on the reliable channel, with
+  the owning instance's ADD; only later mutations go out unreliably. Previously
+  every value went unreliable, so an instance created after a client connected
+  had its `@unreliable` fields written against a refId that client had not been
+  told about yet — the decoder dropped those writes, and the value was missing
+  until the field changed again (permanently, for a field only written at
+  spawn). It bit hardest with the unreliable channel running faster than the
+  reliable one, which is the case the split exists for. `encodeAll` already
+  seeded these fields for late joiners; a mid-session ADD now matches.
+
+- **A Schema now holds at most 63 fields, down from 64.** The 64th slot could
+  encode an operation as byte 255 — the same byte decoders read as
+  `SWITCH_TO_STRUCTURE` — which desynchronized every client from that point on,
+  with `"refId" not found` in the console. Any nullable field could trigger it,
+  not just child `Schema`s and collections, so the slot is withdrawn rather
+  than special-cased. A schema with exactly 64 fields now throws where it is
+  defined; split it or nest a child Schema. **No SDK decoder change is
+  required** — the byte is simply never emitted.
+
+- Defining one field too many now throws, as the error message always claimed.
+  The guard was off by one, so the extra field was accepted and then encoded as
+  an operation on field 0, corrupting both fields.
+
+- On a Schema with more than 32 fields, an `@view`-tagged field at index 32 or
+  above no longer silently hides an untagged field 32 slots below it. That
+  field stopped being broadcast — it was routed to the per-view channel
+  instead, so clients without a `StateView` never received it, in patches or in
+  the initial state. Tagged data was never exposed to the wrong client.
+
 ## [5.0.11]
 
 Major release. The encoder internals were rewritten and a new authoring API was

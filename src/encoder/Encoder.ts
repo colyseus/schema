@@ -43,11 +43,20 @@ interface EncodeCtx {
     emitFiltered: boolean;
 
     /**
-     * Bitmask: bit i set iff field i has a @view tag. Lets the per-field
-     * filter check be a single bitwise op instead of a metadata[i]?.tag chase.
-     * Always 0 for collection trees.
+     * Bitmask: bit i set iff field i has a @view tag, for i < 32. Lets the
+     * per-field filter check be a single bitwise op instead of a
+     * metadata[i]?.tag chase. Always 0 for collection trees.
      */
     filterBitmask: number;
+
+    /**
+     * Per-field @view tags of the current tree (`undefined` where untagged),
+     * covering the fields the bitmask can't reach. Empty for collections.
+     * Read through the ctx rather than `changeTree.encDescriptor`: a
+     * multi-hop chain here costs ~2% on full-sync even though only Schemas
+     * with 32+ fields ever evaluate it.
+     */
+    tags: (number | undefined)[];
 
     /**
      * Current walk's visit stamp. `_fullSyncWalk` compares it against each
@@ -131,6 +140,7 @@ function _fullSyncWalk(ctx: EncodeCtx, changeTree: ChangeTree): void {
         ctx.treeIsFiltered = changeTree.isFiltered;
         ctx.isSchema = desc.isSchema;
         ctx.filterBitmask = desc.filterBitmask;
+        ctx.tags = desc.tags;
         ctx.structSwitchEmitted = false;
         ctx.shouldEmitSwitch = (ctx.hasView || ctx.it.offset > ctx.initialOffset || changeTree !== ctx.rootChangeTree);
 
@@ -174,10 +184,13 @@ function encodeChangeCb(ctx: EncodeCtx, fieldIndex: number, op: OPERATION): void
 
     // Per-field filter decision (same rule as ChangeTree.change()):
     // a field is filtered iff the tree inherits isFiltered OR the field
-    // itself carries a @view tag. Schema trees check via the precomputed
-    // bitmask; collection trees inherit tree-level (bitmask is 0).
+    // itself carries a @view tag. The bitmask only spans 0–31 — `1 << 40`
+    // wraps onto bit 8 — so fields past it read their tag directly. Reaching
+    // that arm needs a Schema with more than 32 fields.
     const fieldFiltered = ctx.isSchema
-        ? (ctx.treeIsFiltered || (ctx.filterBitmask & (1 << fieldIndex)) !== 0)
+        ? (ctx.treeIsFiltered || (fieldIndex < 32
+            ? (ctx.filterBitmask & (1 << fieldIndex)) !== 0
+            : ctx.tags[fieldIndex] !== undefined))
         : ctx.treeIsFiltered;
     if (fieldFiltered !== ctx.emitFiltered) return;
 
@@ -239,7 +252,7 @@ export class Encoder<T extends Schema = any> {
         ref: undefined, encoder: undefined!, filter: undefined, metadata: undefined,
         view: undefined, isEncodeAll: false, hasView: false,
         treeIsFiltered: false, isSchema: false, emitFiltered: false,
-        filterBitmask: 0,
+        filterBitmask: 0, tags: undefined!,
         structSwitchEmitted: false, isRootTree: false, shouldEmitSwitch: false,
         gen: 0, initialOffset: 0, rootChangeTree: undefined!,
     };
@@ -320,6 +333,7 @@ export class Encoder<T extends Schema = any> {
             ctx.treeIsFiltered = changeTree.isFiltered;
             ctx.isSchema = desc.isSchema;
             ctx.filterBitmask = desc.filterBitmask;
+            ctx.tags = desc.tags;
             ctx.structSwitchEmitted = false;
             ctx.isRootTree = (changeTree === rootChangeTree);
             // Root's struct switch is skipped at the very start of the shared

@@ -10,14 +10,13 @@
  *   ctor[$filter]
  *   ctor[Symbol.metadata]
  *   Metadata.isValidInstance(ref)
- *   getFilterBitmask(metadata)
  *
  * Lives in its own file to break the Encoder.ts ↔ ChangeTree.ts import
  * cycle (ChangeTree caches descriptors at construction; Encoder reads them
  * during encode).
  */
 import { Metadata } from "../Metadata.js";
-import { $encodeDescriptor, $encoder, $encoders, $filter, $filterBitmask, $numFields, $fullStateOnlyFieldIndexes, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
+import { $encodeDescriptor, $encoder, $encoders, $filter, $numFields, $fullStateOnlyFieldIndexes, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 
@@ -28,8 +27,9 @@ export interface EncodeDescriptor {
     isSchema: boolean;
     /**
      * Bit i set iff field i has a @view tag. 0 for collection trees.
-     * Lets `encodeChangeCb` do a single bitwise op instead of a
-     * per-field metadata[i]?.tag chase.
+     * Lets `encodeChangeCb` do a single bitwise op instead of a per-field
+     * metadata[i]?.tag chase. Fields 0–31 only, like the bitmasks below —
+     * `encodeChangeCb` reads `tags` past that.
      */
     filterBitmask: number;
 
@@ -42,18 +42,16 @@ export interface EncodeDescriptor {
      * such fields and we need to know if THIS field is one" — the bitmask
      * answers in one bitwise op instead of an `Array.includes` linear scan.
      *
-     * Bitmasks cover fields 0–31 only (matches the `filterBitmask` limitation).
-     * Fields ≥32 fall back to `Metadata.hasXAtIndex` — same handling as the
-     * filter-bitmask path.
+     * Bitmasks cover fields 0–31 only — shift counts wrap at 32. Fields ≥32
+     * fall back to `Metadata.hasXAtIndex`.
      */
     hasAnyFullStateOnly: boolean;
     hasAnyUnreliable: boolean;
     hasAnyStream: boolean;
     /**
-     * Class-level "any field carries a `@view` tag" — covers fields both
-     * within and beyond index 31 (unlike `filterBitmask`, which only
-     * captures the low 32). Read by `ChangeTree.hasFilteredFields` to
-     * decide whether a parent tree must be included in a view's bootstrap.
+     * Class-level "any field carries a `@view` tag". Read by
+     * `ChangeTree.hasFilteredFields` to decide whether a parent tree must
+     * be included in a view's bootstrap.
      */
     hasAnyView: boolean;
     fullStateOnlyBitmask: number;
@@ -84,29 +82,10 @@ export interface EncodeDescriptor {
     encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
 }
 
-function computeFilterBitmask(metadata: any): number {
-    if (metadata === undefined) return 0;
-    let bm: number | undefined = metadata[$filterBitmask];
-    if (bm !== undefined) return bm;
-    bm = 0;
-    const tagged = metadata[$viewFieldIndexes];
-    if (tagged !== undefined) {
-        for (let i = 0, len = tagged.length; i < len; i++) bm |= (1 << tagged[i]);
-    }
-    // Non-enumerable so `for (const k in metadata)` iteration in TypeContext
-    // and elsewhere doesn't mistake this cache for a real field index.
-    Object.defineProperty(metadata, $filterBitmask, {
-        value: bm,
-        enumerable: false,
-        writable: true,
-        configurable: true,
-    });
-    return bm;
-}
-
 /**
  * Bitmask of field indexes 0–31 in `indexes`. For fields ≥32 callers must
- * fall back to the array lookup (same as `filterBitmask`).
+ * fall back to the array lookup — shift counts wrap at 32, so an unguarded
+ * `1 << 40` would set bit 8 and misclassify field 8.
  */
 function indexesToBitmask(indexes: number[] | undefined): number {
     if (indexes === undefined) return 0;
@@ -190,7 +169,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         filter,
         metadata,
         isSchema,
-        filterBitmask: isSchema ? computeFilterBitmask(metadata) : 0,
+        filterBitmask: isSchema ? indexesToBitmask(metadata?.[$viewFieldIndexes]) : 0,
         hasAnyFullStateOnly: (metadata?.[$fullStateOnlyFieldIndexes]?.length ?? 0) > 0,
         hasAnyUnreliable: (metadata?.[$unreliableFieldIndexes]?.length ?? 0) > 0,
         hasAnyStream: (metadata?.[$streamFieldIndexes]?.length ?? 0) > 0,

@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import * as util from "util";
-import { Schema, type, view, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, $refId, OPERATION, SetSchema, CollectionSchema } from "../src";
+import { Schema, type, view, schema, t, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, $refId, OPERATION, SetSchema, CollectionSchema } from "../src";
 import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts, assertNoOrphanRefs, InheritanceRoot, Position } from "./Schema";
 import { nanoid } from "nanoid";
 
@@ -4967,6 +4967,89 @@ describe("StateView", () => {
         assertRefIdCounts(state, client.state);
         assertNoOrphanRefs(state, client.state);
         assert.strictEqual(client.state.entities.get("e")!.items.find((i: any) => i.v === 42)?.v, 42, "resurrected");
+    });
+
+    describe("wide schemas (field index >= 32)", () => {
+        //
+        // The encoder's per-field "is this field filtered?" check reads a
+        // bitmask that only covers indexes 0-31. It used to be BUILT without
+        // that bound, so a @view field at index 62 set bit 30 (`1 << 62`
+        // wraps) and the untagged field 30 inherited the classification: it
+        // vanished from the shared pass and only rode the view channel.
+        //
+        const build = (name: string, viewIndex: number, nFields = 63) => {
+            const def: any = {};
+            for (let i = 0; i < nFields; i++) {
+                def[`f_${i}`] = (i === viewIndex) ? t.uint8().view() : t.uint8();
+            }
+            return schema(def, name);
+        };
+
+        const broadcast = (viewIndex: number, mutate: number[]) => {
+            const State = build(`Wide_v${viewIndex}_${mutate.join("_")}`, viewIndex);
+            const state: any = new State();
+            const encoder = getEncoder(state);
+            const decoded: any = createInstanceFromReflection(state);
+            getDecoder(decoded).decode(encoder.encodeAll());
+            encoder.discardChanges();
+
+            mutate.forEach((i) => state[`f_${i}`] = i + 1);
+            getDecoder(decoded).decode(encoder.encode());
+            encoder.discardChanges();
+            return decoded;
+        };
+
+        it("should broadcast an untagged field aliased by a @view field 32 slots above", () => {
+            const decoded = broadcast(62, [0, 30]);
+            assert.strictEqual(decoded.f_0, 1);
+            assert.strictEqual(decoded.f_30, 31);
+        });
+
+        it("should broadcast an untagged field aliased by a @view field at index 32", () => {
+            assert.strictEqual(broadcast(32, [0]).f_0, 1);
+        });
+
+        it("should broadcast an untagged field at the last index aliased by a @view field 32 below", () => {
+            assert.strictEqual(broadcast(30, [62]).f_62, 63);
+        });
+
+        it("should include an aliased untagged field in encodeAll", () => {
+            const State = build("WideEncodeAll", 62);
+            const state: any = new State();
+            const encoder = getEncoder(state);
+            state.f_30 = 7;
+
+            const decoded: any = createInstanceFromReflection(state);
+            getDecoder(decoded).decode(encoder.encodeAll());
+            assert.strictEqual(decoded.f_30, 7);
+        });
+
+        it("should keep a @view field at the last index off the shared pass", () => {
+            const State = build("WideTagged", 62);
+            const state: any = new State();
+            const encoder = getEncoder(state);
+            const noView: any = createInstanceFromReflection(state);
+            const client = createClientWithView(state, new StateView(), encoder);
+            client.view.add(state);
+
+            getDecoder(noView).decode(encoder.encodeAll());
+            encodeAllForView(encoder, client);
+            encoder.discardChanges();
+
+            state.f_62 = 9;
+            state.f_30 = 7;
+
+            const it = { offset: 0 };
+            const shared = encoder.encode(it);
+            getDecoder(noView).decode(shared);
+            client.state.decode(encoder.encodeView(client.view, it.offset, it));
+            encoder.discardChanges();
+
+            assert.strictEqual(noView.f_62, undefined, "tagged field must not reach a view-less client");
+            assert.strictEqual(noView.f_30, 7, "untagged field must reach a view-less client");
+            assert.strictEqual((client.state as any).f_62, 9, "tagged field reaches the view");
+            assert.strictEqual((client.state as any).f_30, 7, "untagged field reaches the view");
+        });
     });
 
 });

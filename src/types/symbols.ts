@@ -118,16 +118,9 @@ export const $builder = "~builder";
 export const $descriptors = "~descriptors";
 
 /**
- * Per-class bitmask: bit i set iff field i carries a @view tag.
- * Lazily computed from $viewFieldIndexes on first encode pass.
- * Skips the per-field metadata[i].tag property chase in the hot encode loop.
- */
-export const $filterBitmask = "~__filterBitmask";
-
-/**
  * Cached per-class encode descriptor: bundles encoder fn, filter fn,
- * metadata, isSchema flag, and filterBitmask into one object stashed on
- * the constructor. Replaces 5 separate per-tree property chases /
+ * metadata, isSchema flag and the per-field arrays into one object stashed
+ * on the constructor. Replaces several separate per-tree property chases /
  * function calls in the encode loop with a single property load.
  */
 export const $encodeDescriptor = "~__encodeDescriptor";

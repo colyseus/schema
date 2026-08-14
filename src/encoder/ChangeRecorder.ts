@@ -76,7 +76,7 @@ const _invokeNoCtx = (
 ) => cb(index, op);
 
 // ──────────────────────────────────────────────────────────────────────────
-// SchemaChangeRecorder — bitmask + Uint8Array, for Schema types (≤64 fields)
+// SchemaChangeRecorder — bitmask + Uint8Array, for Schema types (≤63 fields)
 // ──────────────────────────────────────────────────────────────────────────
 
 /**

@@ -20,6 +20,18 @@ Failed candidates from the current loop get appended with measured Δ/p.
 - **Iterative `addParentOf`** — +10% to +34% regressions everywhere; V8 inlines the recursion.
 - **Pool reset as tree-shakeable free functions** — client bundles already ship the whole encoder; ~93 lines of rounding error.
 
+- **`encodeChangeCb`'s ≥32 filter fallback: anything but a single ctx load** (2026-08-14) —
+  the fallback arm for field indexes the `filterBitmask` can't reach must read
+  `ctx.tags[i]`, cached on the ctx per tree. Three variants lost:
+  `ctx.metadata[i]?.tag` and `ctx.changeTree.encDescriptor.tags[i]` each cost
+  +2.2…+2.8% on encode-all / scale/full-* at p<.001 — a multi-hop chain in the
+  *cold* arm perturbs how the callback inlines into the full-sync walk, even
+  though only Schemas with 32+ fields ever evaluate it. Dropping the bitmask
+  and always reading `tags[i]` instead is clean on full-sync but costs
+  +2.3…+2.6% on stateview/tags + views/v10, where bitmask hits are the common
+  case. Landed form keeps the bitmask below 32 and pays ~35ns/op on
+  scale/steady10-n100 (+1.9%, p=0.002, reproduced at N=20 and N=30).
+
 ## Decoder / callbacks
 
 - **Setter bypass in decodeSchemaOperation** (`$values[index]=`) — breaks Reflection-decoded schemas (data descriptors vs accessors). Needs Metadata.addField unification first.

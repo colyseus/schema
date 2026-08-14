@@ -564,8 +564,8 @@ describe("@unreliable and @patchOnly", () => {
         // decorator/builder API.
 
         // The encoder caches a per-class `unreliableBitmask` that covers
-        // field indexes 0–31 only (matches the existing filterBitmask
-        // limitation). Fields ≥32 must fall back to the slower
+        // field indexes 0–31 only (shift counts wrap at 32). Fields ≥32
+        // must fall back to the slower
         // `Metadata.hasUnreliableAtIndex` linear scan; this test exercises
         // both code paths and verifies routing still works end-to-end.
         it("classification + routing works for @unreliable fields at index ≥32 (bitmask fallback)", () => {

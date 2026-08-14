@@ -198,7 +198,7 @@ describe(".fullStateOnly() modifier (full state sync only, never a tick patch)",
     });
 
     // The encoder caches a per-class `fullStateOnlyBitmask` covering field indexes
-    // 0–31 only (matches the existing filterBitmask limitation). Fields ≥32
+    // 0–31 only (shift counts wrap at 32). Fields ≥32
     // fall back to `Metadata.hasFullStateOnlyAtIndex`. This test exercises both
     // paths and verifies the per-tick / encodeAll routing still works
     // end-to-end.

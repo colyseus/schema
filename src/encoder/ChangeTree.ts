@@ -171,8 +171,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     metadata: Metadata;
 
     /**
-     * Per-class cache of encoder fn / filter fn / isSchema / filterBitmask /
-     * metadata, looked up once at construction. The encode loop reads
+     * Per-class cache of encoder fn / filter fn / isSchema / metadata /
+     * per-field arrays, looked up once at construction. The encode loop reads
      * `tree.encDescriptor` and never touches `ref.constructor` again. See
      * EncodeDescriptor.ts.
      */
@@ -297,7 +297,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // metadata lookup. For schemas that DO have unreliable fields, the
         // bitmask answers fields 0-31 in one bitwise op (no Array.includes
         // linear scan). Fields ≥32 always fall back to the metadata lookup
-        // (same limitation as filterBitmask — bitmask only covers low 32).
+        // (shift counts wrap at 32, so the bitmask only covers the low 32).
         const desc = this.encDescriptor;
         if (!desc.hasAnyUnreliable) return false;
         if (index < 32) return (desc.unreliableBitmask & (1 << index)) !== 0;
