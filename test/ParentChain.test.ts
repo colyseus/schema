@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { ChangeTree, Schema, type, $changes, MapSchema, Encoder } from "../src";
+import { ChangeTree, Schema, type, view, $changes, ArraySchema, MapSchema, Encoder } from "../src";
 import { assertDeepStrictEqualEncodeAll, createInstanceFromReflection, encodeAndAssertEquals } from "./Schema";
 
 describe("Parent Chain", () => {
@@ -168,5 +168,77 @@ describe("Parent Chain", () => {
         // assert.strictEqual(itemChangeTree.parent, inventory1);
         // assert.strictEqual(itemChangeTree.parentIndex, 3);
         // assert.strictEqual(itemChangeTree.getAllParents().length, 3, "Should not add duplicate parent with same index");
+    });
+
+    describe("array children track their wire slot", () => {
+        // `parentIndex` is the child's slot in the parent's wire index space
+        // (ArraySchema#tmpItems). StateView addresses per-view ADD/DELETE with
+        // it, so a reindex that leaves it behind aims those ops at whichever
+        // element inherited the slot — see issue #231.
+        //
+        // `rows` is @view-tagged on purpose: a filtered array is the only one
+        // whose slots are ever read back, so it is the only one the encoder
+        // keeps current. Drop the tag and every case below fails.
+        class Row extends Schema {
+            @type("string") text: string = "";
+        }
+        class ArrayState extends Schema {
+            @view() @type([Row]) rows = new ArraySchema<Row>();
+        }
+
+        function row(text: string) {
+            const instance = new Row();
+            instance.text = text;
+            return instance;
+        }
+
+        /** `n` rows named "a", "b", … already encoded, so nothing is pending. */
+        function fixture(n: number) {
+            const state = new ArrayState();
+            const encoder = new Encoder(state);
+            for (let i = 0; i < n; i++) { state.rows.push(row(String.fromCharCode(97 + i))); }
+            const flush = () => { encoder.encode(); encoder.discardChanges(); };
+            flush();
+            return { state, flush };
+        }
+
+        /** Renders as "text@slot", annotating any slot that drifted. */
+        function assertWireSlots(state: ArrayState, expected: string) {
+            const slots = [...state.rows].map((r, i) => {
+                const slot = r[$changes].parentIndex;
+                return `${r.text}@${slot}${slot === i ? "" : `(want ${i})`}`;
+            });
+            assert.strictEqual(slots.join(","), expected);
+        }
+
+        const cases: Array<[string, (state: ArrayState) => void, string]> = [
+            ["shift()", (s) => s.rows.shift(), "b@0,c@1,d@2"],
+            ["pop()", (s) => s.rows.pop(), "a@0,b@1,c@2"],
+            ["splice() at head", (s) => s.rows.splice(0, 1), "b@0,c@1,d@2"],
+            ["splice() in the middle", (s) => s.rows.splice(1, 2), "a@0,d@1"],
+            ["splice() at tail", (s) => s.rows.splice(3, 1), "a@0,b@1,c@2"],
+            ["reverse()", (s) => s.rows.reverse(), "d@0,c@1,b@2,a@3"],
+            ["sort()", (s) => s.rows.sort((x, y) => y.text.localeCompare(x.text)), "d@0,c@1,b@2,a@3"],
+            ["unshift()", (s) => s.rows.unshift(row("x")), "x@0,a@1,b@2,c@3,d@4"],
+        ];
+
+        cases.forEach(([name, mutate, expected]) => {
+            it(name, () => {
+                const { state, flush } = fixture(4);
+                mutate(state);
+                flush();
+                assertWireSlots(state, expected);
+            });
+        });
+
+        it("a same-tick pop + push renumbers the appended row", () => {
+            // push reserves the slot past the staged tail; compaction then
+            // closes the popped hole underneath it
+            const { state, flush } = fixture(3);
+            state.rows.pop();
+            state.rows.push(row("d"));
+            flush();
+            assertWireSlots(state, "a@0,b@1,d@2");
+        });
     });
 });

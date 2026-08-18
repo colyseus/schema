@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.13]
+
+### Fixed
+
+- **`StateView` now addresses the right element after an `ArraySchema` is
+  reindexed.** Following a `shift()`, `splice()`, `unshift()`, `reverse()` or
+  `sort()`, `view.add(item)` could emit a reference the client was never
+  introduced to — `"refId" not found`, the item missing for good, and no
+  recovery short of a rejoin — while `view.remove(item)` failed silently,
+  leaving an item visible to a client that was meant to stop seeing it.
+  Collections that reindex every tick, such as a capped chat or event feed,
+  were the most exposed.
+
+  Thanks to [@serjek](https://github.com/serjek) for the detailed report and
+  reproduction ([#231](https://github.com/colyseus/schema/issues/231)).
+
 ## [5.0.12]
 
 ### Added

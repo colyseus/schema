@@ -331,6 +331,35 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         return tmpItems.length + (index - live);
     }
 
+    /**
+     * Re-point children at their wire slot. `ChangeTree._parentIndex` caches
+     * the slot a child holds in `tmpItems`, and StateView addresses per-view
+     * ADD/DELETE with it — so a reorder that leaves it behind aims those ops
+     * at whichever element inherited the slot (issue #231).
+     *
+     * The filter check is a correctness boundary, not a tunable: StateView is
+     * the only reader and reaches the index only through a filtered array
+     * (`addParentOf` bails on `hasFilteredFields`, `remove` on the child's
+     * `isFiltered`). Everything else stops at the flag read instead of walking
+     * its children every tick.
+     *
+     * Callers name the lowest slot that moved as `from`. Compaction cannot, so
+     * it hands over the pre-compaction layout as `staged` and the unchanged
+     * prefix is skipped instead. Either way tail churn walks nothing.
+     */
+    protected $reindexChildren(from: number, staged?: V[]) {
+        if (!this[$changes].hasFilteredFields) { return; } // nothing will read the cache
+        if (typeof this[$childType] === "string") { return; } // primitives have no child tree
+        const tmpItems = this.tmpItems;
+        const length = tmpItems.length;
+        if (staged !== undefined) {
+            while (from < length && tmpItems[from] === staged[from]) { from++; }
+        }
+        for (let i = from; i < length; i++) {
+            tmpItems[i]?.[$changes]?.setParentIndex(this, i);
+        }
+    }
+
     // encoding only. Returns the wire index the change was recorded at
     // (undefined when nothing was recorded).
     protected $changeAt(index: number, value: V): number | undefined {
@@ -460,6 +489,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         self[$changes].operation(OPERATION.REVERSE);
         self.items.reverse();
         self.tmpItems.reverse();
+        self.$reindexChildren(0);
         return this;
     }
 
@@ -515,6 +545,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         sortedItems.forEach((_, i) => changeTree.change(i, OPERATION.REPLACE));
 
         self.tmpItems.sort(compareFn);
+        self.$reindexChildren(0);
 
         self.isMovingItems = false;
         return this;
@@ -620,6 +651,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         }
 
         self.tmpItems.unshift(...items);
+        self.$reindexChildren(items.length); // survivors only — the loop above placed the new items
 
         return self.items.unshift(...items);
     }
@@ -938,8 +970,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
     protected [$onEncodeEnd]() {
         const self = this[$proxyTarget] ?? this;
+        const staged = self.tmpItems;
         self.tmpItems = self.items.slice();
-        self.deletedIndexes.length = 0;
+
+        if (self.deletedIndexes.length > 0) {
+            // compaction just closed the staged holes — everything above the
+            // lowest one slid down a slot
+            self.$reindexChildren(0, staged);
+            self.deletedIndexes.length = 0;
+        }
     }
 
     protected [$onDecodeEnd]() {

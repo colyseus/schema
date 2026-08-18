@@ -34,6 +34,7 @@ import type { DecodeOperation } from "../decoder/DecodeOperation.js";
 
 import {
     addParent as _addParent, removeParent as _removeParent,
+    setParentIndex as _setParentIndex,
     findParent as _findParent, hasParent as _hasParent,
     getAllParents as _getAllParents,
 } from "./changeTree/parentChain.js";
@@ -804,6 +805,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     addParent(parent: Ref, index: number): void { _addParent(this, parent, index); }
 
+    /** Re-point an existing parent's cached index after the parent reindexed. */
+    setParentIndex(parent: Ref, index: number): void { _setParentIndex(this, parent, index); }
+
     /** @returns true if parent was found and removed */
     removeParent(parent: Ref = this.parent): boolean { return _removeParent(this, parent); }
 
@@ -856,6 +860,7 @@ export class UntrackedChangeTree {
     operation(): void {}
     setParent(): void {}
     addParent(): void {}
+    setParentIndex(): void {}
     removeParent(): boolean { return false; }
     getChange(): number { return 0; }
     discard(): void {}

@@ -46,6 +46,35 @@ export function addParent(tree: ChangeTree, parent: Ref, index: number): void {
 }
 
 /**
+ * Move `parent`'s existing chain entry to `index`, skipping the attachment
+ * work `addParent` does. `parent` must already be a parent of `tree`.
+ *
+ * Called by collections whose wire slots shift (ArraySchema): StateView
+ * addresses per-view ADD/DELETE by that index, so it has to follow the
+ * element it names.
+ */
+export function setParentIndex(tree: ChangeTree, parent: Ref, index: number): void {
+    if (tree.extraParents === undefined) {
+        tree._parentIndex = index; // sole parent, so it is `parent`
+        return;
+    }
+    // Shared instance — move only the entry `parent` owns. Matching goes
+    // through `$changes` because ArraySchema arrives proxied (see removeParent
+    // below), and `extraParents` only ever fills by demoting `parentRef`, so
+    // the inline parent is set here.
+    if (tree.parentRef[$changes] === parent[$changes]) {
+        tree._parentIndex = index;
+        return;
+    }
+    for (let entry = tree.extraParents; entry !== undefined; entry = entry.next) {
+        if (entry.ref[$changes] === parent[$changes]) {
+            entry.index = index;
+            return;
+        }
+    }
+}
+
+/**
  * Remove a parent from the chain.
  * @returns true if parent was found and removed (Root.remove relies on this).
  */
