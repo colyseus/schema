@@ -215,17 +215,11 @@ export class Root {
         return node;
     }
 
-    protected updatePositionsAfterRemoval(list: ChangeTreeList, removedPosition: number) {
-        // Update positions for all nodes after the removed position
-        let current = list.next;
-        let position = 0;
-
+    protected updatePositionsAfterRemoval(current: ChangeTreeNode | undefined) {
+        // Predecessors retain their positions; only successors shift after an unlink.
         while (current) {
-            if (position >= removedPosition) {
-                current.position = position;
-            }
+            current.position--;
             current = current.next;
-            position++;
         }
     }
 
@@ -246,7 +240,7 @@ export class Root {
         const node = changeTree[changeSetName].queueRootNode;
 
         if (node && node.changeTree === changeTree) {
-            const removedPosition = node.position;
+            const nextNode = node.next;
 
             // Remove the node from the linked list
             if (node.prev) {
@@ -262,7 +256,7 @@ export class Root {
             }
 
             // Update positions for nodes that came after the removed node
-            this.updatePositionsAfterRemoval(changeSet, removedPosition);
+            this.updatePositionsAfterRemoval(nextNode);
 
             // Clear ChangeTree reference
             changeTree[changeSetName].queueRootNode = undefined;
