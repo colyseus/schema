@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.14]
+
+### Fixed
+
+- `SchemaType<>` and `toJSON()` no longer mark every field optional in projects
+  compiled with `strictNullChecks: false` (the tsconfig `create-colyseus-app`
+  generates) — a Schema instance now satisfies a plain interface like
+  `{ x: number }`.
+
 ## [5.0.13]
 
 ### Fixed

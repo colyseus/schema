@@ -51,10 +51,11 @@ export type BuilderOf<T> = FieldBuilder<T>;
  *    Schema ref whose `initialize` takes zero args.
  *  - `IsOptional` is a compile-time brand for `.optional()`. Both
  *    `HasDefault` and `IsOptional` make the field omittable in
- *    `BuilderInitProps<T>`. A separate brand (rather than reading
- *    `undefined extends V`) sidesteps a TypeScript quirk where
- *    class-generic-inferred `V` resolves `undefined extends V` as `true`
- *    even for non-undefined types.
+ *    `BuilderInitProps<T>`; `IsOptional` alone marks the instance property
+ *    `?:`. A separate brand (rather than reading `undefined extends V`)
+ *    keeps both correct for consumers compiling with
+ *    `strictNullChecks: false`, where `undefined extends V` is true for
+ *    every V.
  *
  * schema() reads the internal configuration via `toDefinition()` and wires
  * up metadata through the existing pipeline.
@@ -289,8 +290,8 @@ export function isBuilder(value: any): value is FieldBuilder<any> {
  * Two call signatures, NOT a defaulted generic `<T extends TBase = TBase>`: the
  * bare form must return a CONCRETE `FieldBuilder<TBase>` so `schema({ x:
  * t.number() })` still infers `x: number`. A defaulted free type parameter gets
- * captured as `any` during `schema()`'s self-referential field inference (and
- * `undefined extends any` then flips every field optional).
+ * captured as `any` during `schema()`'s self-referential field inference,
+ * degrading every field's value type to `any`.
  *
  * NOTE: the refinement is a TYPE-LEVEL assertion, not a runtime guarantee — the
  * wire still carries the codec's full range and the DECODER writes whatever

@@ -87,10 +87,12 @@ export type InferValueType<T> =
 
     : never;
 
-// Keys whose FieldBuilder generic admits `undefined` (i.e. `.optional()` was chained).
+// Keys whose builder carries the `.optional()` brand. Reads the brand rather
+// than `undefined extends V`: the latter is true for EVERY V when the consumer
+// compiles with `strictNullChecks: false`, flipping all fields optional.
 type OptionalBuilderKeys<T> = {
-    [K in keyof T]: T[K] extends FieldBuilder<infer V>
-        ? (undefined extends V ? K : never)
+    [K in keyof T]: T[K] extends FieldBuilder<unknown, boolean, infer O extends boolean>
+        ? (O extends true ? K : never)
         : never
 }[keyof T];
 
@@ -136,14 +138,16 @@ type ToJSONField<X> =
     : X extends Schema ? ToJSON<X>
     : X;
 
-// Keys whose value type admits `undefined` — runtime `toJSON()` omits those,
-// so they surface as `?:` on the JSON shape.
-type ToJSONRequiredKeys<T> = {
-    [K in keyof T]-?: undefined extends T[K] ? never : K
-}[keyof T];
+// Keys whose value admits `undefined` — runtime `toJSON()` omits those, so
+// they surface as `?:` on the JSON shape. Under `strictNullChecks: false`
+// (`undefined extends {}` detects it) `undefined extends T[K]` is true for
+// every key, so only the `?` modifier can signal optionality there.
 type ToJSONOptionalKeys<T> = {
-    [K in keyof T]-?: undefined extends T[K] ? K : never
+    [K in keyof T]-?: undefined extends {}
+        ? ({} extends Pick<T, K> ? K : never)
+        : (undefined extends T[K] ? K : never)
 }[keyof T];
+type ToJSONRequiredKeys<T> = Exclude<keyof T, ToJSONOptionalKeys<T>>;
 
 export type ToJSON<T> = NonFunctionProps<
     & { [K in ToJSONRequiredKeys<T>]: ToJSONField<T[K]> }
@@ -226,10 +230,9 @@ type FieldValue<F> =
 
 // Classify each key of a fields map as "required" / "optional" / "none"
 // (methods). Both `HasDefault = true` and the explicit `.optional()` brand
-// `IsOptional = true` mark the field omittable at construction. The brand
-// sidesteps a TypeScript quirk where `undefined extends V` returned `true`
-// for non-undefined V when V was inferred from a class with T in
-// contravariant + covariant positions.
+// `IsOptional = true` mark the field omittable at construction. Reading the
+// brands (never `undefined extends V`) keeps this correct for consumers on
+// `strictNullChecks: false`, where `undefined extends V` is true for every V.
 type KeyClass<T, K extends keyof T> =
     T[K] extends FieldBuilder<unknown, infer D extends boolean, infer O extends boolean>
         ? (D extends true

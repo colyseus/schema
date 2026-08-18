@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "5.0.13",
+  "version": "5.0.14",
   "description": "Binary state serializer with delta encoding for games",
   "type": "module",
   "bin": {
@@ -18,7 +18,7 @@
     "watch": "tsc -p tsconfig.build.json -w",
     "typecheck:build": "tsc -p tsconfig.build.json --noEmit",
     "test": "npm run test:types && tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.test.ts\" \"test/**/*.test.ts\"",
-    "test:types": "tsc -p tsconfig.build.json && tsc -p tsconfig.types.json",
+    "test:types": "tsc -p tsconfig.build.json && tsc -p tsconfig.types.json && tsc -p tsconfig.types-nostrict.json",
     "test:exports": "node test/verify-exports.mjs",
     "typecheck": "tsc -p tsconfig.test.json",
     "coverage": "c8 npm run test",

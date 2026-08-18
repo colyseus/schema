@@ -9,5 +9,8 @@
     "noEmit": true,
     "types": []
   },
-  "files": ["test/MapSchemaIterator.types.ts"]
+  "files": [
+    "test/MapSchemaIterator.types.ts",
+    "test/SchemaTypeOptionality.types.ts"
+  ]
 }
