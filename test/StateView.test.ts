@@ -4300,4 +4300,111 @@ describe("StateView", () => {
         }
     });
 
+
+    describe("filtered array that reindexes (issue #231)", () => {
+        // A view addresses an array element by the slot the element occupies
+        // in the array's wire index space. shift()/splice()/unshift() move
+        // the survivors into new slots, so a view op issued afterwards has to
+        // read the new slot — at the old one sits a different element.
+        //
+        // Assertions compare membership, not order: a row that joins the view
+        // late arrives at the client's tail, since the decoder cannot place an
+        // unknown refId at its server-side position in a filtered array.
+        class Row extends Schema {
+            @type("string") text: string = "";
+        }
+        class State extends Schema {
+            @view() @type([Row]) rows = new ArraySchema<Row>();
+        }
+
+        function setup() {
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            return {
+                state,
+                view: client.view,
+                push(text: string) {
+                    const row = new Row();
+                    row.text = text;
+                    state.rows.push(row);
+                    return row;
+                },
+                /** Encode a tick and return what the client can now see. */
+                tick() {
+                    encodeMultiple(encoder, state, [client]);
+                    const rows = (client.state as State).rows ?? []; // unset until a row is first shown
+                    return [...rows].map((row) => row?.text).sort();
+                },
+            };
+        }
+
+        it("adds a withheld row to the view after a shift()", () => {
+            const { state, view, push, tick } = setup();
+
+            const a = push("a"), b = push("b"), c = push("c");
+            view.add(a);
+            view.add(b); // `c` stays withheld
+            assert.deepStrictEqual(tick(), ["a", "b"]);
+
+            state.rows.shift(); // drops "a" — "b" and "c" slide down a slot
+            assert.deepStrictEqual(tick(), ["b"]);
+
+            view.add(c);
+            assert.deepStrictEqual(tick(), ["b", "c"], "row added after a shift() never reached the client");
+        });
+
+        it("removes a row from the view after a shift()", () => {
+            const { state, view, push, tick } = setup();
+
+            const a = push("a"), b = push("b"), c = push("c");
+            [a, b, c].forEach((row) => view.add(row));
+            assert.deepStrictEqual(tick(), ["a", "b", "c"]);
+
+            state.rows.shift();
+            assert.deepStrictEqual(tick(), ["b", "c"]);
+
+            view.remove(c);
+            assert.deepStrictEqual(tick(), ["b"], "row removed after a shift() stayed visible");
+        });
+
+        it("adds a withheld row to the view after a splice()", () => {
+            const { state, view, push, tick } = setup();
+
+            const a = push("a"), b = push("b"), c = push("c"), d = push("d");
+            view.add(a);
+            view.add(b);
+            tick();
+
+            state.rows.splice(1, 1); // drops "b" — "c" and "d" slide down
+            assert.deepStrictEqual(tick(), ["a"]);
+
+            view.add(d);
+            assert.deepStrictEqual(tick(), ["a", "d"]);
+        });
+
+        it("keeps a ring buffer in sync across repeated shifts", () => {
+            const { state, view, push, tick } = setup();
+            const CAP = 3;
+            const rows: Row[] = [];
+            const shown = new Set<Row>();
+
+            for (let i = 0; i < 12; i++) {
+                rows.push(push(`r${i}`));
+                if (state.rows.length > CAP) { state.rows.shift(); }
+
+                // each row joins the view a tick late — by then the shift has
+                // already slid it into a different slot
+                const late = rows[i - 1];
+                if (late !== undefined && state.rows.includes(late)) {
+                    view.add(late);
+                    shown.add(late);
+                }
+
+                const expected = [...state.rows].filter((row) => shown.has(row)).map((row) => row.text).sort();
+                assert.deepStrictEqual(tick(), expected, `desynced at tick ${i}`);
+            }
+        });
+    });
+
 });

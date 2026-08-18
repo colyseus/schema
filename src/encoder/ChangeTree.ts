@@ -653,6 +653,33 @@ export class ChangeTree<T extends Ref = any> {
     }
 
     /**
+     * Move `parent`'s existing chain entry to `index`, skipping the work
+     * `addParent` does. `parent` must already be a parent of this tree.
+     *
+     * Called by collections whose wire slots shift (ArraySchema): StateView
+     * addresses per-view ADD/DELETE by that index, so it has to follow the
+     * element it names.
+     */
+    setParentIndex(parent: Ref, index: number) {
+        const chain = this.parentChain;
+        if (chain === undefined) { return; }
+
+        if (chain.next === undefined) {
+            chain.index = index; // sole parent, so it is `parent`
+            return;
+        }
+        // Shared instance — move only the entry `parent` owns. Matching goes
+        // through `$changes` because ArraySchema arrives proxied (see
+        // removeParent below).
+        for (let entry = chain; entry !== undefined; entry = entry.next) {
+            if (entry.ref[$changes] === parent[$changes]) {
+                entry.index = index;
+                return;
+            }
+        }
+    }
+
+    /**
      * Remove a parent from the chain
      * @param parent - The parent to remove
      * @returns true if parent was removed

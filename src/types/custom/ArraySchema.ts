@@ -186,6 +186,34 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         return this.items.length;
     }
 
+    /**
+     * Re-point children at their wire slot. `ChangeTree.parentIndex` caches
+     * the slot a child holds in `tmpItems`, and StateView addresses per-view
+     * ADD/DELETE with it — so a reorder that leaves it behind aims those ops
+     * at whichever element inherited the slot (issue #231).
+     *
+     * The filter check is a correctness boundary, not a tunable: StateView is
+     * the only reader, and an array without `filteredChanges` never has a slot
+     * read back. Everything else stops at that check instead of walking its
+     * children every tick.
+     *
+     * Callers name the lowest slot that moved as `from`. Compaction cannot, so
+     * it hands over the pre-compaction layout as `staged` and the unchanged
+     * prefix is skipped instead. Either way tail churn walks nothing.
+     */
+    protected $reindexChildren(from: number, staged?: V[]) {
+        if (this[$changes].filteredChanges === undefined) { return; } // nothing will read the cache
+        if (typeof this[$childType] === "string") { return; } // primitives have no child tree
+        const tmpItems = this.tmpItems;
+        const length = tmpItems.length;
+        if (staged !== undefined) {
+            while (from < length && tmpItems[from] === staged[from]) { from++; }
+        }
+        for (let i = from; i < length; i++) {
+            tmpItems[i]?.[$changes]?.setParentIndex(this, i);
+        }
+    }
+
     push(...values: V[]) {
         let length = this.tmpItems.length;
 
@@ -348,6 +376,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         this[$changes].operation(OPERATION.REVERSE);
         this.items.reverse();
         this.tmpItems.reverse();
+        this.$reindexChildren(0);
         return this;
     }
 
@@ -400,6 +429,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         sortedItems.forEach((_, i) => changeTree.change(i, OPERATION.REPLACE));
 
         this.tmpItems.sort(compareFn);
+        this.$reindexChildren(0);
 
         this.isMovingItems = false;
         return this;
@@ -519,6 +549,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         });
 
         this.tmpItems.unshift(...items);
+        this.$reindexChildren(0); // from 0: nothing above placed the new items either
 
         return this.items.unshift(...items);
     }
@@ -845,7 +876,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     }
 
     protected [$onEncodeEnd]() {
+        const staged = this.tmpItems;
         this.tmpItems = this.items.slice();
+
+        // Compaction just closed the staged holes — everything above the
+        // lowest one slid down a slot. There is no cheap "were there any"
+        // test to gate this on: `deletedIndexes` is an object here, and a
+        // `for...in` probe measured slower than the prefix scan it skips.
+        this.$reindexChildren(0, staged);
+
         this.deletedIndexes = {};
     }
 
