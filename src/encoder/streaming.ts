@@ -204,7 +204,8 @@ export function streamDequeueForView(
     viewId: number,
     refId: number,
     index: number,
-    viewChanges: Map<number, Map<number, number>>,
+    // widened key: StateView.changes carries identity-keyed array entries too
+    viewChanges: Map<number, Map<number | object, number>>,
 ): boolean {
     const st = s._stream;
     if (st === undefined) return false;

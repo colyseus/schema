@@ -9,7 +9,7 @@ import type { Iterator } from "../encoding/decode.js";
 import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec.js';
 import { Root } from "./Root.js";
 
-import type { StateView } from "./StateView.js";
+import { ARRAY_SNAPSHOT, type StateView } from "./StateView.js";
 import type { ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 import { forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
@@ -521,7 +521,49 @@ export class Encoder<T extends Schema = any> {
 
             // Iterate entries directly — the inner Map gives us the (index, op)
             // pair without an intermediate keys array or Number() parse.
-            for (const [index, op] of changes) {
+            for (const [key, op] of changes) {
+                // Element-binding entries under a collection parent are keyed
+                // by the child's ChangeTree — resolve its CURRENT wire slot
+                // here (a slot captured at view.add() time goes stale when
+                // the array reindexes later in the same tick).
+                let index: number;
+                if (key === ARRAY_SNAPSHOT) {
+                    // Whole-array snapshot: emit an ADD per live element at
+                    // its CURRENT slot. Structural walk at drain time — a
+                    // reindex after view.add() cannot go stale, and staged
+                    // holes (recorder DELETEs) are skipped by construction.
+                    const tmpItems = refTarget.tmpItems;
+                    const deletedIndexes = refTarget.deletedIndexes;
+                    for (let slot = 0; slot < tmpItems.length; slot++) {
+                        if (tmpItems[slot] === undefined || deletedIndexes[slot] === true) { continue; }
+                        encoder(this, bytes, changeTree, slot, OPERATION.ADD, it, false, true, metadata);
+                    }
+                    continue;
+                }
+                if (typeof key === "number") {
+                    index = key;
+                } else {
+                    const resolved = key.indexInParent(ref);
+                    if (resolved === undefined) { continue; } // detached and re-parented elsewhere
+                    index = resolved;
+
+                    // SAME PATCH view.add + state-removal: the element is
+                    // leaving the array (recorder DELETE at its slot), so the
+                    // binding is moot — and `$getByIndex` on a staged hole
+                    // reads a DIFFERENT element (compacted `items`), which
+                    // would ship a mismatched value payload. Cancel the
+                    // binding AND the child's own pending entry (its refId
+                    // was never introduced to this client). Topological
+                    // drain order guarantees the child entry hasn't been
+                    // visited yet. A recorder ADD at the slot needs no such
+                    // guard — both channels emit ADD_BY_REFID and the
+                    // decoder dedups by identity.
+                    if (op === OPERATION.ADD && changeTree.getChange(index) === OPERATION.DELETE) {
+                        view.changes.delete(key.ref[$refId]);
+                        continue;
+                    }
+                }
+
                 // workaround when using view.add() on item that has been deleted from state
                 // (see test "adding to view item that has been removed from state")
                 const value = refTarget[$getByIndex](index);

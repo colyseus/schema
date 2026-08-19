@@ -144,6 +144,29 @@ export function hasParent(
 }
 
 /**
+ * Wire index `tree` holds inside `parent`, or undefined when `parent` is
+ * nowhere in the chain. Allocation-free variant of `findParent` for the
+ * encodeView drain, which resolves identity-keyed view entries per emission.
+ *
+ * A child detached from `parent` this tick usually still resolves: Root.remove
+ * leaves the child's own parent link dangling, and the staged snapshot keeps
+ * the child in `tmpItems` (so reindexes keep the index current) until
+ * `$onEncodeEnd` — which runs after the drain.
+ */
+export function indexInParent(tree: ChangeTree, parent: Ref): number | undefined {
+    // `$changes` comparison — ArraySchema parents arrive proxied.
+    if (tree.parentRef && tree.parentRef[$changes] === parent[$changes]) {
+        return tree._parentIndex;
+    }
+    for (let entry = tree.extraParents; entry !== undefined; entry = entry.next) {
+        if (entry.ref[$changes] === parent[$changes]) {
+            return entry.index;
+        }
+    }
+    return undefined;
+}
+
+/**
  * Return all parents as an array (debug/test helper).
  */
 export function getAllParents(tree: ChangeTree): Array<{ ref: Ref, index: number }> {

@@ -37,6 +37,7 @@ import {
     setParentIndex as _setParentIndex,
     findParent as _findParent, hasParent as _hasParent,
     getAllParents as _getAllParents,
+    indexInParent as _indexInParent,
 } from "./changeTree/parentChain.js";
 import { forEachLive as _forEachLive, forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import {
@@ -818,6 +819,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     hasParent(predicate: (parent: Ref, index: number) => boolean): boolean {
         return _hasParent(this, predicate);
     }
+
+    /** Wire index this tree holds inside `parent`, or undefined if not a parent. */
+    indexInParent(parent: Ref): number | undefined { return _indexInParent(this, parent); }
 
     getAllParents(): Array<{ ref: Ref, index: number }> { return _getAllParents(this); }
 

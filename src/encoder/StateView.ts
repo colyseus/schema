@@ -1,5 +1,5 @@
 import { ChangeTree, Ref } from "./ChangeTree.js";
-import { $changes, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols.js";
+import { $changes, $childType, $fieldIndexesByViewTag, $proxyTarget, $refId, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
@@ -61,6 +61,16 @@ const _disposeRegistry = new FinalizationRegistry<{ root: Root; id: number; slot
  * populated collection inspects into dozens of lines of encoder
  * internals and buries the message that matters.
  */
+/**
+ * Sentinel inner-map key: "snapshot every live element of this ref-typed
+ * ArraySchema". Written by `_add`'s bulk path instead of one entry per
+ * element; `encodeView` expands it structurally at drain time, so the
+ * emitted slots reflect any reindex that happened after `view.add()` —
+ * and a whole-array snapshot costs one Map insert instead of N.
+ * Real slots are never negative, so -1 cannot collide.
+ */
+export const ARRAY_SNAPSHOT = -1;
+
 function describeArg(value: any): string {
     if (value === undefined) { return "undefined"; }
     if (value === null) { return "null"; }
@@ -107,8 +117,16 @@ export class StateView {
      * Inner storage is a Map so the encode loop in `encodeView` can iterate
      * directly with numeric keys — the legacy `{[index]: OPERATION}` shape
      * forced an `Object.keys(...)` allocation + `Number(key)` parse per ref.
+     *
+     * Inner keys are numbers (Schema field indexes, MapSchema journal
+     * indexes, Set/Collection indexes, stream positions — all stable within
+     * a tick), EXCEPT element bindings under a ref-typed ArraySchema parent,
+     * which are keyed by the child's ChangeTree. An array wire slot captured
+     * at `view.add()` time goes stale if the array reindexes (unshift /
+     * reverse / move) later in the same tick — identity keys let
+     * `encodeView` resolve the CURRENT slot at drain time instead.
      */
-    changes = new Map<number, Map<number, OPERATION>>();
+    changes = new Map<number, Map<number | ChangeTree, OPERATION>>();
 
     constructor(public iterable: boolean = false) {
         if (iterable) {
@@ -473,28 +491,40 @@ export class StateView {
         } else if (!changeTree.isNew || isChildAdded) {
             // new structures will be added as part of .encode() call, no need to force it to .encodeView()
 
-            // Full-sync snapshot: walk the live ref structurally instead of
-            // iterating a cumulative recorder bucket. Every populated index
-            // is emitted as ADD (matching the op-coercion previously done
-            // at encode time). Per-field tags come from the descriptor's
-            // precomputed `tags[]` array — direct index vs a metadata[i].tag
-            // object hop.
-            //
-            // Non-matching custom-tagged fields are NEVER included here —
-            // `view.changes` is drained without a per-field tag re-check,
-            // so anything added leaks straight to the wire.
-            const tags = changeTree.encDescriptor.tags;
-            changeTree.forEachLive((index) => {
-                const tagAtIndex = tags[index];
-                if (
-                    tagAtIndex === undefined || // "all change" with no tag
-                    tagAtIndex === DEFAULT_VIEW_TAG || // visible to all clients
-                    (tag !== DEFAULT_VIEW_TAG && (tagAtIndex & tag) !== 0) // tag bits overlap
-                ) {
-                    changes.set(index, OPERATION.ADD);
+            if (changeTree.refTarget !== changeTree.ref && typeof (changeTree.refTarget as any)[$childType] !== "string") {
+                // Ref-typed ArraySchema (the only proxied collection): one
+                // sentinel entry — encodeView snapshots the live elements at
+                // drain time, so the slots survive a same-tick reindex (see
+                // `changes` field docs) and the write stays O(1).
+                if ((changeTree.refTarget as any).items.length > 0) {
+                    changes.set(ARRAY_SNAPSHOT, OPERATION.ADD);
                     isChildAdded = true;
                 }
-            });
+
+            } else {
+                // Full-sync snapshot: walk the live ref structurally instead of
+                // iterating a cumulative recorder bucket. Every populated index
+                // is emitted as ADD (matching the op-coercion previously done
+                // at encode time). Per-field tags come from the descriptor's
+                // precomputed `tags[]` array — direct index vs a metadata[i].tag
+                // object hop.
+                //
+                // Non-matching custom-tagged fields are NEVER included here —
+                // `view.changes` is drained without a per-field tag re-check,
+                // so anything added leaks straight to the wire.
+                const tags = changeTree.encDescriptor.tags;
+                changeTree.forEachLive((index) => {
+                    const tagAtIndex = tags[index];
+                    if (
+                        tagAtIndex === undefined || // "all change" with no tag
+                        tagAtIndex === DEFAULT_VIEW_TAG || // visible to all clients
+                        (tag !== DEFAULT_VIEW_TAG && (tagAtIndex & tag) !== 0) // tag bits overlap
+                    ) {
+                        changes.set(index, OPERATION.ADD);
+                        isChildAdded = true;
+                    }
+                });
+            }
         }
 
         return isChildAdded;
@@ -575,13 +605,22 @@ export class StateView {
         if (changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
             let changes = this.changes.get(changeTree.ref[$refId]);
             if (changes === undefined) {
-                changes = new Map<number, OPERATION>();
+                changes = new Map<number | ChangeTree, OPERATION>();
                 this.changes.set(changeTree.ref[$refId], changes);
             }
 
             this.addTag(changeTree, tag);
 
-            changes.set(parentIndex, OPERATION.ADD);
+            // ArraySchema parents: key by the child's identity, not the wire
+            // slot it holds right now — a same-tick unshift()/reverse()/move()
+            // would shift the slot before encodeView drains this entry. Other
+            // parents keep numeric keys (Schema fields, MapSchema journal
+            // indexes and Set/Collection indexes are stable within a tick).
+            // ArraySchema is the only proxied collection: refTarget !== ref.
+            changes.set(
+                changeTree.refTarget !== changeTree.ref ? childChangeTree : parentIndex,
+                OPERATION.ADD,
+            );
         }
     }
 
@@ -718,13 +757,18 @@ export class StateView {
             // parent is collection (Map/Array)
             const parent = changeTree.parent;
             if (parent && !Metadata.isValidInstance(parent) && changeTree.isFiltered) {
+                // ArraySchema parents use identity keys (see `changes` field
+                // docs); Map parents keep the (stable) journal index.
+                const key = ((parent as any)[$proxyTarget] !== undefined)
+                    ? changeTree
+                    : changeTree.parentIndex;
                 const parentRefId = parent[$refId];
                 let changes = this.changes.get(parentRefId);
                 if (changes === undefined) {
-                    changes = new Map<number, OPERATION>();
+                    changes = new Map<number | ChangeTree, OPERATION>();
                     this.changes.set(parentRefId, changes);
 
-                } else if (changes.get(changeTree.parentIndex) === OPERATION.ADD) {
+                } else if (changes.get(key) === OPERATION.ADD) {
                     //
                     // SAME PATCH ADD + REMOVE:
                     // The 'changes' of deleted structure should be ignored.
@@ -733,7 +777,7 @@ export class StateView {
                 }
 
                 // DELETE / DELETE BY REF ID
-                changes.set(changeTree.parentIndex, OPERATION.DELETE);
+                changes.set(key, OPERATION.DELETE);
 
                 // Remove child schema from visible set
                 this._recursiveDeleteVisibleChangeTree(changeTree);
@@ -956,14 +1000,16 @@ export class StateView {
         } else {
             // Non-streams: queue DELETE for every current child and
             // unmark their visibility so subsequent mutations stop
-            // reaching this view.
+            // reaching this view. ArraySchema children are keyed by identity
+            // (see `changes` field docs); others by their stable index.
+            const isArray = tree.refTarget !== tree.ref;
             let changes = this.changes.get(collectionRefId);
             tree.forEachChild((childTree, index) => {
                 if (changes === undefined) {
                     changes = new Map();
                     this.changes.set(collectionRefId, changes);
                 }
-                changes.set(index, OPERATION.DELETE);
+                changes.set(isArray ? childTree : index, OPERATION.DELETE);
                 this.unmarkVisible(childTree);
             });
         }

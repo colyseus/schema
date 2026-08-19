@@ -5158,4 +5158,194 @@ describe("StateView", () => {
         });
     });
 
+    describe("view op and array reindex in the same tick", () => {
+        // Same class as the #231 suite above, but within a single tick: the
+        // per-view entry written by view.add()/view.remove() must survive an
+        // index-space reindex (unshift / reverse / move) that happens later
+        // in the same tick, BEFORE the entry is drained by encodeView.
+        class Row extends Schema {
+            @type("string") text: string = "";
+        }
+        class State extends Schema {
+            @view() @type([Row]) rows = new ArraySchema<Row>();
+        }
+
+        function setup() {
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            return {
+                state,
+                view: client.view,
+                push(text: string) {
+                    const row = new Row();
+                    row.text = text;
+                    state.rows.push(row);
+                    return row;
+                },
+                make(text: string) {
+                    const row = new Row();
+                    row.text = text;
+                    return row;
+                },
+                tick() {
+                    encodeMultiple(encoder, state, [client]);
+                    const rows = (client.state as State).rows ?? [];
+                    return [...rows].map((row) => row?.text).sort();
+                },
+            };
+        }
+
+        it("view.add() then unshift()", () => {
+            const { state, view, push, make, tick } = setup();
+            const a = push("a");
+            tick();
+
+            view.add(a);
+            state.rows.unshift(make("x"));
+            assert.deepStrictEqual(tick(), ["a"], "item added to the view never reached the client");
+        });
+
+        it("view.add() then reverse()", () => {
+            const { state, view, push, tick } = setup();
+            const a = push("a"); push("b");
+            tick();
+
+            view.add(a);
+            state.rows.reverse();
+            assert.deepStrictEqual(tick(), ["a"], "item added to the view never reached the client");
+        });
+
+        it("view.add() then move()", () => {
+            const { state, view, push, tick } = setup();
+            const a = push("a"); push("b");
+            tick();
+
+            view.add(a);
+            state.rows.move((rows) => {
+                [rows[0], rows[1]] = [rows[1], rows[0]];
+            });
+            assert.deepStrictEqual(tick(), ["a"], "item added to the view never reached the client");
+        });
+
+        it("view.remove() then unshift() must not leave the item visible", () => {
+            const { state, view, push, make, tick } = setup();
+            const a = push("a"), b = push("b");
+            view.add(a); view.add(b);
+            assert.deepStrictEqual(tick(), ["a", "b"]);
+
+            view.remove(a);
+            state.rows.unshift(make("x"));
+            assert.deepStrictEqual(tick(), ["b"], "item removed from the view stayed visible");
+        });
+
+        it("view.remove() then reverse() must not leave the item visible", () => {
+            const { state, view, push, tick } = setup();
+            const a = push("a"), b = push("b");
+            view.add(a); view.add(b);
+            assert.deepStrictEqual(tick(), ["a", "b"]);
+
+            view.remove(a);
+            state.rows.reverse();
+            assert.deepStrictEqual(tick(), ["b"], "item removed from the view stayed visible");
+        });
+
+        it("view.add() then a staged-hole op (shift) stays correct", () => {
+            const { state, view, push, tick } = setup();
+            push("a"); const b = push("b"), c = push("c");
+            view.add(c);
+            tick();
+
+            view.add(b);
+            state.rows.shift(); // hole, not a reindex — slots stay stable
+            assert.deepStrictEqual(tick(), ["b", "c"]);
+        });
+
+        // Already-working orderings — guard the fix against regressions.
+        it("unshift() then view.add()", () => {
+            const { state, view, push, make, tick } = setup();
+            const a = push("a");
+            tick();
+
+            state.rows.unshift(make("x"));
+            view.add(a);
+            assert.deepStrictEqual(tick(), ["a"]);
+        });
+
+        it("unshift() then view.add(the new item)", () => {
+            const { state, view, push, make, tick } = setup();
+            push("a");
+            tick();
+
+            const x = make("x");
+            state.rows.unshift(x);
+            view.add(x);
+            assert.deepStrictEqual(tick(), ["x"]);
+        });
+
+        it("view.add(owner) snapshots its array after a same-tick reindex", () => {
+            // Exercises the bulk-snapshot path (`ARRAY_SNAPSHOT` sentinel):
+            // adding a Schema whose ref-array gets reindexed later in the
+            // same tick must still deliver every element.
+            class Attr extends Schema {
+                @type("string") name: string = "";
+            }
+            class Owner extends Schema {
+                @view() @type("string") secret: string = "s";
+                @type([Attr]) attrs = new ArraySchema<Attr>();
+            }
+            class OwnerState extends Schema {
+                @view() @type({ map: Owner }) owners = new MapSchema<Owner>();
+            }
+
+            const state = new OwnerState();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+
+            const owner = new Owner();
+            owner.attrs.push(new Attr().assign({ name: "a" }), new Attr().assign({ name: "b" }));
+            state.owners.set("one", owner);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(owner);
+            owner.attrs.unshift(new Attr().assign({ name: "z" }));
+            owner.attrs.reverse();
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(
+                [...client.state.owners.get("one").attrs].map((attr) => attr.name).sort(),
+                ["a", "b", "z"],
+            );
+        });
+
+        it("same-tick view churn with reindexes across many ticks", () => {
+            const { state, view, push, make, tick } = setup();
+            const shown = new Set<Row>();
+            const show = (row: Row) => { view.add(row); shown.add(row); };
+
+            const a = push("a"), b = push("b");
+            tick();
+
+            show(a);
+            state.rows.unshift(make("x"));
+            state.rows.reverse();
+            expectTick();
+
+            show(b);
+            state.rows.shift();
+            state.rows.unshift(make("y"));
+            expectTick();
+
+            view.remove(a); shown.delete(a);
+            state.rows.reverse();
+            expectTick();
+
+            function expectTick() {
+                for (const row of [...shown]) if (!state.rows.includes(row)) shown.delete(row);
+                const expected = [...state.rows].filter((row) => shown.has(row)).map((row) => row.text).sort();
+                assert.deepStrictEqual(tick(), expected);
+            }
+        });
+    });
+
 });

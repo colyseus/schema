@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.16]
+
+### Fixed
+
+- **`StateView` operations no longer go stale when the array reindexes later
+  in the same tick.** `view.add(item)` followed by an `unshift()`, `reverse()`
+  or `move()` on the same `@view` array — within one patch — addressed the
+  item's old slot: the added item never reached the client (`"refId" not
+  found` on the console), and `view.remove()` in the same position silently
+  left the removed item visible. Sibling of the cross-tick case fixed in
+  5.0.13.
+
+- **`move()` / `shuffle()` on a `@view`-filtered array no longer corrupt the
+  patch for viewing clients.** Reorder operations emitted a refId where
+  decoders read an array index. Filtered clients hold per-view subsets, so
+  element order is not synchronized for them — reorders now ship as
+  identity-based operations existing decoders already understand (no SDK
+  update needed).
+
 ## [5.0.15]
 
 ### Fixed
