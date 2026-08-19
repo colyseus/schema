@@ -1,5 +1,5 @@
 import { ChangeTree, Ref } from "./ChangeTree.js";
-import { $changes, $childType, $fieldIndexesByViewTag, $proxyTarget, $refId, $viewFieldIndexes } from "../types/symbols.js";
+import { $changes, $childType, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
@@ -491,7 +491,7 @@ export class StateView {
         } else if (!changeTree.isNew || isChildAdded) {
             // new structures will be added as part of .encode() call, no need to force it to .encodeView()
 
-            if (changeTree.refTarget !== changeTree.ref && typeof (changeTree.refTarget as any)[$childType] !== "string") {
+            if (changeTree.isArray && typeof (changeTree.refTarget as any)[$childType] !== "string") {
                 // Ref-typed ArraySchema (the only proxied collection): one
                 // sentinel entry — encodeView snapshots the live elements at
                 // drain time, so the slots survive a same-tick reindex (see
@@ -616,9 +616,8 @@ export class StateView {
             // would shift the slot before encodeView drains this entry. Other
             // parents keep numeric keys (Schema fields, MapSchema journal
             // indexes and Set/Collection indexes are stable within a tick).
-            // ArraySchema is the only proxied collection: refTarget !== ref.
             changes.set(
-                changeTree.refTarget !== changeTree.ref ? childChangeTree : parentIndex,
+                changeTree.isArray ? childChangeTree : parentIndex,
                 OPERATION.ADD,
             );
         }
@@ -680,8 +679,8 @@ export class StateView {
         // out of the stream's per-view state. If it never made it to the
         // wire (still in pending), silent drop; if already sent, queue
         // DELETE via `view.changes` for the next encodeView drain.
-        const parentStreamTree = changeTree.parent?.[$changes];
-        if (parentStreamTree?.isStreamCollection) {
+        const parentTree = changeTree.parent?.[$changes];
+        if (parentTree?.isStreamCollection) {
             this.unmarkVisible(changeTree);
             if (this.iterable && !_isClear) {
                 spliceOne(this.items, this.items.indexOf(obj));
@@ -759,7 +758,7 @@ export class StateView {
             if (parent && !Metadata.isValidInstance(parent) && changeTree.isFiltered) {
                 // ArraySchema parents use identity keys (see `changes` field
                 // docs); Map parents keep the (stable) journal index.
-                const key = ((parent as any)[$proxyTarget] !== undefined)
+                const key = parentTree!.isArray
                     ? changeTree
                     : changeTree.parentIndex;
                 const parentRefId = parent[$refId];
@@ -993,7 +992,7 @@ export class StateView {
             // unmark their visibility so subsequent mutations stop
             // reaching this view. ArraySchema children are keyed by identity
             // (see `changes` field docs); others by their stable index.
-            const isArray = tree.refTarget !== tree.ref;
+            const isArray = tree.isArray;
             let changes = this.changes.get(collectionRefId);
             tree.forEachChild((childTree, index) => {
                 if (changes === undefined) {

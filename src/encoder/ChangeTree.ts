@@ -170,6 +170,14 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      */
     refTarget: T;
 
+    /**
+     * True when `ref` is an ArraySchema — the only proxied type, so its
+     * user-facing identity differs from `refTarget`. Canonical predicate for
+     * "is this tree's ref an array" without probing `ref` (which would hit
+     * the Proxy trap) — two monomorphic loads on the tree itself.
+     */
+    get isArray(): boolean { return this.refTarget !== this.ref; }
+
     metadata: Metadata;
 
     /**
