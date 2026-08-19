@@ -386,15 +386,18 @@ export class StateView {
         // subclasses yield a real Metadata object.
         const metadata: Metadata = (obj.constructor as typeof Schema)[Symbol.metadata];
 
+        const wasVisible = this.isVisible(changeTree);
+
         // Add to iterable list (only the explicitly added items), deduping
-        // re-adds of an already-visible instance. isVisible must be read
-        // BEFORE markVisible; indexOf runs only on the re-add path.
-        // NOTE: dedup applies to `items` only — a re-add still re-queues the
-        // full snapshot on purpose (shared-view bootstrap re-add: a
-        // late-attached client may not have consumed earlier drains).
-        // Callers wanting cheap idempotence can guard with `view.has(obj)`.
+        // re-adds of an already-visible instance; indexOf runs only on the
+        // re-add path.
+        // NOTE: dedup applies to `items` only — a default-tag re-add still
+        // re-queues the full snapshot on purpose (shared-view bootstrap
+        // re-add: a late-attached client may not have consumed earlier
+        // drains). Callers wanting cheap idempotence can guard with
+        // `view.has(obj)`.
         if (this.iterable && checkIncludeParent
-            && (!this.isVisible(changeTree) || this.items.indexOf(obj) === -1)) {
+            && (!wasVisible || this.items.indexOf(obj) === -1)) {
             this.items.push(obj);
         }
 
@@ -487,10 +490,17 @@ export class StateView {
                     });
                 }
             }
+        }
 
-        } else if (!changeTree.isNew || isChildAdded) {
-            // new structures will be added as part of .encode() call, no need to force it to .encodeView()
-
+        // Full-sync snapshot of a non-new tree (fresh ones ship via .encode()).
+        // Also runs for custom tags when bootstrapping the tree for this view
+        // (!wasVisible) — the per-field filter admits untagged fields, and
+        // collections behind tagged fields have no `byTag`: without the
+        // snapshot their elements are never introduced ("refId" not found).
+        // A tagged add on an already-visible tree stays incremental (byTag
+        // only); default-tag re-adds re-snapshot on purpose (see `items`
+        // dedup note above).
+        if ((tag === DEFAULT_VIEW_TAG || !wasVisible) && (!changeTree.isNew || isChildAdded)) {
             if (changeTree.isArray && typeof (changeTree.refTarget as any)[$childType] !== "string") {
                 // Ref-typed ArraySchema (the only proxied collection): one
                 // sentinel entry — encodeView snapshots the live elements at
@@ -791,20 +801,11 @@ export class StateView {
         } else {
             // delete only tagged properties. `$fieldIndexesByViewTag` is
             // keyed per-bit, so a combined tag iterates each set bit.
-            const names = changeTree.encDescriptor.names;
             const byTag = metadata?.[$fieldIndexesByViewTag];
             if (byTag !== undefined) {
                 for (let bits = tag; bits > 0; bits &= bits - 1) {
-                    byTag[bits & -bits]?.forEach((index) => {
-                        changes.set(index, OPERATION.DELETE);
-
-                        // Remove child structures from visible set
-                        const value = changeTree.ref[names[index] as keyof Ref];
-                        if (value?.[$changes]) {
-                            this.unmarkVisible(value[$changes]);
-                            this._recursiveDeleteVisibleChangeTree(value[$changes]);
-                        }
-                    });
+                    byTag[bits & -bits]?.forEach((index) =>
+                        this._removeViewField(changeTree, changes, index));
                 }
             }
         }

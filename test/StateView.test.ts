@@ -762,6 +762,161 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client1, client2]);
         });
 
+        describe("tagged add() after the subtree's first patch", () => {
+            // A custom-tag add() must bootstrap the same content a default
+            // add() does — untagged fields, and the contents of collections
+            // behind matching tagged fields. The bootstrap tests above mask
+            // this by tagging before the first encode (encodeAllView walks
+            // the tree structurally); after the first patch the content can
+            // only flow through `view.changes` seeding.
+            const TAG = 1;
+
+            class Item extends Schema {
+                @type("string") name: string;
+                @view(TAG) @type("string") secret: string;
+            }
+
+            class Player extends Schema {
+                @type("string") name: string;
+                @view(TAG) @type([Item]) inventory = new ArraySchema<Item>();
+            }
+
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            function encodeCapturingErrors(encoder: Encoder, state: Schema, clients: any[]): string[] {
+                const originalConsoleError = console.error;
+                const errors: string[] = [];
+                console.error = (...args: any[]) => { errors.push(args.map(String).join(" ")); };
+                try {
+                    encodeMultiple(encoder, state as any, clients);
+                } finally {
+                    console.error = originalConsoleError;
+                }
+                return errors.filter((line) => line.includes('"refId" not found'));
+            }
+
+            it("ref-typed ArraySchema: elements + their untagged fields must arrive", () => {
+                const state = new State();
+                const encoder = getEncoder(state);
+
+                const player = new Player().assign({ name: "one" });
+                player.inventory.push(new Item().assign({ name: "sword", secret: "s1" }));
+                player.inventory.push(new Item().assign({ name: "shield", secret: "s2" }));
+                state.players.set("one", player);
+
+                const clientTagged = createClientWithView(state);
+                const clientDefault = createClientWithView(state);
+
+                // patch 1: player ships shared; inventory filtered out
+                encodeMultiple(encoder, state, [clientTagged, clientDefault]);
+                assert.strictEqual(clientTagged.state.players.get("one").inventory, undefined);
+
+                // patch 2: reveal tagged data to one client only
+                clientTagged.view.add(player, TAG);
+                assert.deepStrictEqual(
+                    encodeCapturingErrors(encoder, state, [clientTagged, clientDefault]), []);
+
+                const inventory = clientTagged.state.players.get("one").inventory;
+                assert.strictEqual(inventory.length, 2);
+                assert.strictEqual(inventory[0].name, "sword");
+                assert.strictEqual(inventory[0].secret, "s1");
+                assert.strictEqual(inventory[1].name, "shield");
+                assert.strictEqual(inventory[1].secret, "s2");
+
+                // default-tag client must not receive any of it
+                assert.strictEqual(clientDefault.state.players.get("one").inventory, undefined);
+
+                assertEncodeAllMultiple(encoder, state, [clientTagged, clientDefault]);
+            });
+
+            it("MapSchema behind @view(TAG)", () => {
+                class PlayerM extends Schema {
+                    @type("string") name: string;
+                    @view(TAG) @type({ map: Item }) inventory = new MapSchema<Item>();
+                }
+                class StateM extends Schema {
+                    @type({ map: PlayerM }) players = new MapSchema<PlayerM>();
+                }
+
+                const state = new StateM();
+                const encoder = getEncoder(state);
+
+                const player = new PlayerM().assign({ name: "one" });
+                player.inventory.set("a", new Item().assign({ name: "sword", secret: "s1" }));
+                state.players.set("one", player);
+
+                const client = createClientWithView(state);
+                encodeMultiple(encoder, state, [client]);
+
+                client.view.add(player, TAG);
+                assert.deepStrictEqual(encodeCapturingErrors(encoder, state, [client]), []);
+
+                const inventory = client.state.players.get("one").inventory;
+                assert.strictEqual(inventory.size, 1);
+                assert.strictEqual(inventory.get("a").name, "sword");
+                assert.strictEqual(inventory.get("a").secret, "s1");
+
+                assertEncodeAllMultiple(encoder, state, [client]);
+            });
+
+            it("primitive ArraySchema behind @view(TAG)", () => {
+                class PlayerP extends Schema {
+                    @type("string") name: string;
+                    @view(TAG) @type(["string"]) inventory = new ArraySchema<string>();
+                }
+                class StateP extends Schema {
+                    @type({ map: PlayerP }) players = new MapSchema<PlayerP>();
+                }
+
+                const state = new StateP();
+                const encoder = getEncoder(state);
+
+                const player = new PlayerP().assign({ name: "one" });
+                player.inventory.push("sword", "shield");
+                state.players.set("one", player);
+
+                const client = createClientWithView(state);
+                encodeMultiple(encoder, state, [client]);
+
+                client.view.add(player, TAG);
+                assert.deepStrictEqual(encodeCapturingErrors(encoder, state, [client]), []);
+
+                assert.deepStrictEqual(
+                    Array.from(client.state.players.get("one").inventory),
+                    ["sword", "shield"]);
+
+                assertEncodeAllMultiple(encoder, state, [client]);
+            });
+
+            it("same-patch tagged add + tagged remove must not orphan descendants", () => {
+                const state = new State();
+                const encoder = getEncoder(state);
+
+                const player = new Player().assign({ name: "one" });
+                player.inventory.push(new Item().assign({ name: "sword", secret: "s1" }));
+                state.players.set("one", player);
+
+                const client = createClientWithView(state);
+                encodeMultiple(encoder, state, [client]);
+
+                // add + remove within the same patch window
+                client.view.add(player, TAG);
+                client.view.remove(player, TAG);
+
+                assert.deepStrictEqual(encodeCapturingErrors(encoder, state, [client]), []);
+                assert.strictEqual(client.state.players.get("one").inventory, undefined);
+
+                // a later re-add must still deliver the full subtree
+                client.view.add(player, TAG);
+                assert.deepStrictEqual(encodeCapturingErrors(encoder, state, [client]), []);
+                assert.strictEqual(client.state.players.get("one").inventory.length, 1);
+                assert.strictEqual(client.state.players.get("one").inventory[0].name, "sword");
+
+                assertEncodeAllMultiple(encoder, state, [client]);
+            });
+        });
     });
 
     describe("default-tag add() must not leak custom-tagged fields", () => {
