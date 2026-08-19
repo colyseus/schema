@@ -817,7 +817,7 @@ describe("Edge cases", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
-    xit("DELETE: should not try to encode undefined values (exception reading '~changes')", () => {
+    it("DELETE: should not try to encode undefined values (exception reading '~changes')", () => {
         class Player extends Schema {
             @type("string") id = nanoid();
         }
@@ -835,7 +835,10 @@ describe("Edge cases", () => {
 
         state.encode();
 
-        state.encodeAll();
+        // `delete` is a no-op: the accessor lives on the prototype, so the
+        // field survives and still round-trips to fresh clients.
+        assert.ok(state.host instanceof Player);
+        assertDeepStrictEqualEncodeAll(state);
     });
 
 });
