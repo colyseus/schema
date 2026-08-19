@@ -771,9 +771,10 @@ export class StateView {
                 } else if (changes.get(key) === OPERATION.ADD) {
                     //
                     // SAME PATCH ADD + REMOVE:
-                    // The 'changes' of deleted structure should be ignored.
+                    // cancel the structure's pending ops and its descendants' —
+                    // their introduction never reaches this client.
                     //
-                    this.changes.delete(refId);
+                    this._dropPendingEntries(changeTree);
                 }
 
                 // DELETE / DELETE BY REF ID
@@ -784,18 +785,8 @@ export class StateView {
 
             } else {
                 // delete all "tagged" properties.
-                const names = changeTree.encDescriptor.names;
-                metadata?.[$viewFieldIndexes]?.forEach((index) => {
-                    changes.set(index, OPERATION.DELETE);
-
-                    // Remove child structures of @view() fields from visible set.
-                    // (They were added during view.add() via forEachChild)
-                    const value = changeTree.ref[names[index] as keyof Ref];
-                    if (value?.[$changes]) {
-                        this.unmarkVisible(value[$changes]);
-                        this._recursiveDeleteVisibleChangeTree(value[$changes]);
-                    }
-                });
+                metadata?.[$viewFieldIndexes]?.forEach((index) =>
+                    this._removeViewField(changeTree, changes, index));
             }
 
         } else {
@@ -1059,5 +1050,37 @@ export class StateView {
             this.unmarkVisible(childChangeTree);
             this._recursiveDeleteVisibleChangeTree(childChangeTree);
         });
+    }
+
+    /**
+     * Drop the pending `view.changes` entries of `tree` and every descendant.
+     * Called when a same-patch pending ADD is cancelled: the subtree's
+     * introduction never reaches this client, so its entries would emit
+     * refIds the decoder cannot resolve ("refId" not found).
+     */
+    private _dropPendingEntries(tree: ChangeTree): void {
+        this.changes.delete(tree.ref[$refId]);
+        tree.forEachChild((child) => this._dropPendingEntries(child));
+    }
+
+    /**
+     * Queue DELETE for a @view field on `changes` and hide the field
+     * value's subtree from this view. When the field's ADD is still
+     * pending (same-patch add + remove), the value's introduction never
+     * ships — its pending subtree entries are dropped along with it.
+     */
+    private _removeViewField(changeTree: ChangeTree, changes: Map<number | ChangeTree, OPERATION>, index: number): void {
+        const wasPendingAdd = changes.get(index) === OPERATION.ADD;
+        changes.set(index, OPERATION.DELETE);
+
+        const value = changeTree.ref[changeTree.encDescriptor.names[index] as keyof Ref];
+        const valueTree: ChangeTree = value?.[$changes];
+        if (valueTree) {
+            this.unmarkVisible(valueTree);
+            this._recursiveDeleteVisibleChangeTree(valueTree);
+            if (wasPendingAdd) {
+                this._dropPendingEntries(valueTree);
+            }
+        }
     }
 }

@@ -4024,6 +4024,143 @@ describe("StateView", () => {
             assert.ok(!client.view.isVisible(inventoryChangeTree),
                 "inventory ChangeTree should NOT be in visible after tagged remove");
         });
+
+        describe("same-patch add + remove must not orphan descendants' pending ops", () => {
+            // Cancelling a pending ADD (view.add + view.remove within one
+            // patch window) must also drop the descendants' view.changes
+            // entries — otherwise encodeView emits refIds whose introducing
+            // parent op was cancelled, and the decoder logs "refId not found".
+            class Item extends Schema {
+                @type("string") name: string;
+            }
+
+            class Player extends Schema {
+                @type("string") name: string;
+                @type([Item]) items = new ArraySchema<Item>();
+                @type([Item]) equipment = new ArraySchema<Item>();
+            }
+
+            class State extends Schema {
+                @view() @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            function encodeCapturingErrors(encoder: Encoder, state: Schema, client: any): string[] {
+                const originalConsoleError = console.error;
+                const errors: string[] = [];
+                console.error = (...args: any[]) => { errors.push(args.map(String).join(" ")); };
+                try {
+                    encodeMultiple(encoder, state as any, [client]);
+                } finally {
+                    console.error = originalConsoleError;
+                }
+                return errors.filter((line) => line.includes('"refId" not found'));
+            }
+
+            it("collection parent: existing (non-new) player", () => {
+                const state = new State();
+                const encoder = getEncoder(state);
+
+                const player = new Player().assign({ name: "one" });
+                player.items.push(new Item().assign({ name: "sword" }));
+                player.items.push(new Item().assign({ name: "shield" }));
+                player.equipment.push(new Item().assign({ name: "helmet" }));
+                state.players.set("one", player);
+
+                const client = createClientWithView(state);
+
+                // patch 1: flush — player exists but is invisible to the view
+                encodeMultiple(encoder, state, [client]);
+
+                // patch 2: add + remove within the same patch window
+                client.view.add(player);
+                client.view.remove(player);
+
+                assert.deepStrictEqual(encodeCapturingErrors(encoder, state, client), []);
+                assert.strictEqual(client.state.players?.size ?? 0, 0);
+
+                // patch 3: a later re-add must deliver the full subtree
+                client.view.add(player);
+                assert.deepStrictEqual(encodeCapturingErrors(encoder, state, client), []);
+                assert.strictEqual(client.state.players.size, 1);
+                assert.strictEqual(client.state.players.get("one").items.length, 2);
+                assert.strictEqual(client.state.players.get("one").equipment.length, 1);
+
+                assertEncodeAllMultiple(encoder, state, [client]);
+            });
+
+            it("collection parent: brand-new player (isNew fast path)", () => {
+                const state = new State();
+                const encoder = getEncoder(state);
+                const client = createClientWithView(state);
+                encodeMultiple(encoder, state, [client]);
+
+                const player = new Player().assign({ name: "two" });
+                player.items.push(new Item().assign({ name: "bow" }));
+                state.players.set("two", player);
+
+                client.view.add(player);
+                client.view.remove(player);
+
+                assert.deepStrictEqual(encodeCapturingErrors(encoder, state, client), []);
+                assert.strictEqual(client.state.players?.size ?? 0, 0);
+
+                assertEncodeAllMultiple(encoder, state, [client]);
+            });
+
+            it("Schema parent: pending @view field ADD overwritten by DELETE", () => {
+                class PlayerV extends Schema {
+                    @type("string") name: string;
+                    @view() @type([Item]) items = new ArraySchema<Item>();
+                }
+                class StateV extends Schema {
+                    @type(PlayerV) player: PlayerV;
+                }
+
+                const state = new StateV();
+                const encoder = getEncoder(state);
+
+                const player = new PlayerV().assign({ name: "one" });
+                player.items.push(new Item().assign({ name: "sword" }));
+                state.player = player;
+
+                const client = createClientWithView(state);
+
+                // patch 1: flush — client has player, but not the @view items field
+                encodeMultiple(encoder, state, [client]);
+                assert.strictEqual(client.state.player.name, "one");
+                assert.strictEqual(client.state.player.items, undefined);
+
+                // patch 2: add + remove within the same patch window
+                client.view.add(player);
+                client.view.remove(player);
+
+                assert.deepStrictEqual(encodeCapturingErrors(encoder, state, client), []);
+                assert.strictEqual(client.state.player.items, undefined);
+            });
+
+            it("state removal instead of view.remove (drain-time cancellation)", () => {
+                class StateA extends Schema {
+                    @view() @type([Player]) players = new ArraySchema<Player>();
+                }
+
+                const state = new StateA();
+                const encoder = getEncoder(state);
+
+                const player = new Player().assign({ name: "one" });
+                player.items.push(new Item().assign({ name: "sword" }));
+                state.players.push(player);
+
+                const client = createClientWithView(state);
+                encodeMultiple(encoder, state, [client]);
+
+                // patch 2: view.add + state removal within the same patch window
+                client.view.add(player);
+                state.players.splice(0, 1);
+
+                assert.deepStrictEqual(encodeCapturingErrors(encoder, state, client), []);
+                assert.strictEqual(client.state.players?.length ?? 0, 0);
+            });
+        });
     });
 
     describe("isNew fast path", () => {
