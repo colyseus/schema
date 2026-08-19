@@ -5,7 +5,7 @@
  * additional parents live in the `extraParents` linked list.
  */
 import { $changes } from "../../types/symbols.js";
-import type { ChangeTree, ParentChain, Ref } from "../ChangeTree.js";
+import type { ChangeTree, ParentEntry, Ref } from "../ChangeTree.js";
 
 /**
  * Add a parent to the chain. If `parent` already exists anywhere in the
@@ -115,32 +115,39 @@ export function removeParent(tree: ChangeTree, parent: Ref): boolean {
 }
 
 /**
- * Find the first parent in the chain matching `predicate`.
+ * First parent matching `predicate`, as a detached `ParentEntry`. Never returns
+ * a live `ParentChain` node — the inline parent has no node to return in the
+ * first place, so handing out the real node for the `extraParents` case only
+ * would make writes land or vanish depending on which parent matched. Use
+ * `setParentIndex` to move an index and `indexInParent` to read one.
  */
 export function findParent(
     tree: ChangeTree,
     predicate: (parent: Ref, index: number) => boolean,
-): ParentChain | undefined {
-    // Check inline parent first
-    if (tree.parentRef && predicate(tree.parentRef, tree._parentIndex)) {
+): ParentEntry | undefined {
+    if (tree.parentRef !== undefined && predicate(tree.parentRef, tree._parentIndex)) {
         return { ref: tree.parentRef, index: tree._parentIndex };
     }
-
-    let current = tree.extraParents;
-    while (current) {
-        if (predicate(current.ref, current.index)) {
-            return current;
+    for (let entry = tree.extraParents; entry !== undefined; entry = entry.next) {
+        if (predicate(entry.ref, entry.index)) {
+            return { ref: entry.ref, index: entry.index };
         }
-        current = current.next;
     }
     return undefined;
 }
 
+/** Walks in place — `addParent` calls this per shared-instance attach. */
 export function hasParent(
     tree: ChangeTree,
     predicate: (parent: Ref, index: number) => boolean,
 ): boolean {
-    return findParent(tree, predicate) !== undefined;
+    if (tree.parentRef !== undefined && predicate(tree.parentRef, tree._parentIndex)) {
+        return true;
+    }
+    for (let entry = tree.extraParents; entry !== undefined; entry = entry.next) {
+        if (predicate(entry.ref, entry.index)) { return true; }
+    }
+    return false;
 }
 
 /**
@@ -167,10 +174,10 @@ export function indexInParent(tree: ChangeTree, parent: Ref): number | undefined
 }
 
 /**
- * Return all parents as an array (debug/test helper).
+ * Return all parents as detached entries (debug/test helper).
  */
-export function getAllParents(tree: ChangeTree): Array<{ ref: Ref, index: number }> {
-    const parents: Array<{ ref: Ref, index: number }> = [];
+export function getAllParents(tree: ChangeTree): ParentEntry[] {
+    const parents: ParentEntry[] = [];
     if (tree.parentRef) {
         parents.push({ ref: tree.parentRef, index: tree._parentIndex });
     }

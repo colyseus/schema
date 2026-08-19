@@ -170,6 +170,36 @@ describe("Parent Chain", () => {
         // assert.strictEqual(itemChangeTree.getAllParents().length, 3, "Should not add duplicate parent with same index");
     });
 
+    it("findParent / getAllParents hand out detached copies", () => {
+        // The inline parent has no chain node to return, so these helpers have
+        // to fabricate one for it. Returning the live node for the
+        // `extraParents` case only would mean a write lands or vanishes
+        // depending on which parent happened to match. Both are copies.
+        const state = new State();
+        const inventory1 = new Inventory();
+        const inventory2 = new Inventory();
+        const shared = new Item();
+        state.inventories.set("p1", inventory1);
+        state.inventories.set("p2", inventory2);
+        inventory1.items.set("sword", shared);
+        inventory2.items.set("sword", shared);
+
+        const tree = shared[$changes] as ChangeTree;
+        const before = tree.getAllParents().map((p) => p.index);
+        assert.strictEqual(before.length, 2, "fixture should give the item two parents");
+
+        // `readonly` blocks this at compile time; the cast proves the runtime
+        // copy is what actually protects the chain.
+        for (const parent of [inventory1.items, inventory2.items]) {
+            const found = tree.findParent((ref) => ref === parent)!;
+            (found as { index: number }).index = 99;
+            assert.notStrictEqual(tree.indexInParent(parent), 99, "write leaked into the live chain");
+        }
+        (tree.getAllParents()[0] as { index: number }).index = 99;
+
+        assert.deepStrictEqual(tree.getAllParents().map((p) => p.index), before);
+    });
+
     describe("array children track their wire slot", () => {
         // `parentIndex` is the child's slot in the parent's wire index space
         // (ArraySchema#tmpItems). StateView addresses per-view ADD/DELETE with

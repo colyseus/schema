@@ -114,10 +114,25 @@ export function createChangeTreeList(): ChangeTreeList {
     return { next: undefined, tail: undefined, nextPosition: 0 };
 }
 
+/**
+ * Live node in a tree's parent chain — mutating one edits the chain. Only
+ * `parentChain.ts` should hold these.
+ */
 export interface ParentChain {
     ref: Ref;
     index: number;
     next?: ParentChain;
+}
+
+/**
+ * Detached copy of one parent link, handed out by the query helpers. Distinct
+ * from `ParentChain` on purpose: it carries no `next`, so it cannot be walked
+ * as if it were the chain, and it is readonly, so it cannot be mistaken for a
+ * way to move a parent's index — `setParentIndex` does that.
+ */
+export interface ParentEntry {
+    readonly ref: Ref;
+    readonly index: number;
 }
 
 // Flags bitfield. *_UNRELIABLE / _PATCH_ONLY / _STATIC mirror the parent
@@ -820,7 +835,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     /** @returns true if parent was found and removed */
     removeParent(parent: Ref = this.parent): boolean { return _removeParent(this, parent); }
 
-    findParent(predicate: (parent: Ref, index: number) => boolean): ParentChain | undefined {
+    findParent(predicate: (parent: Ref, index: number) => boolean): ParentEntry | undefined {
         return _findParent(this, predicate);
     }
 
@@ -831,7 +846,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     /** Wire index this tree holds inside `parent`, or undefined if not a parent. */
     indexInParent(parent: Ref): number | undefined { return _indexInParent(this, parent); }
 
-    getAllParents(): Array<{ ref: Ref, index: number }> { return _getAllParents(this); }
+    getAllParents(): ParentEntry[] { return _getAllParents(this); }
 
 }
 
