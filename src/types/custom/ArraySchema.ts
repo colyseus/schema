@@ -486,7 +486,22 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     // @ts-ignore
     reverse(): ArraySchema<V> {
         const self = this[$proxyTarget];
-        self[$changes].operation(OPERATION.REVERSE);
+        const changeTree = self[$changes];
+
+        if (changeTree.has() || self.deletedIndexes.length > 0) {
+            //
+            // Ops recorded earlier this tick address the staged (pre-reverse)
+            // layout, and the encoder only resolves their values at encode
+            // time — a pure REVERSE would move that layout under them.
+            // Degrade to a full re-state: CLEAR + re-ADD in reversed order.
+            //
+            const reversed = self.items.slice().reverse();
+            this.clear(); // also drops staged holes (discard → $onEncodeEnd)
+            this.push(...reversed);
+            return this;
+        }
+
+        changeTree.operation(OPERATION.REVERSE);
         self.items.reverse();
         self.tmpItems.reverse();
         self.$reindexChildren(0);

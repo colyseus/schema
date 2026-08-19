@@ -430,7 +430,11 @@ export const decodeArray: DecodeOperation = function (
         return;
 
     } else if (operation === OPERATION.REVERSE) {
-        tgt.reverse();
+        // Positional reverse of the decoder's authoritative storage. Don't
+        // call `tgt.reverse()` — that's the encoder-side method, and its
+        // dirty-tick check would misread the stale recorder a `clone(true)`
+        // instance carries.
+        tgt.items.reverse();
         return;
 
     } else if (operation === OPERATION.DELETE_BY_REFID) {

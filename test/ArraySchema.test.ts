@@ -3021,6 +3021,142 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([5, 4, 3, 2, 1], decodedState.numbers.toJSON());
         });
 
+        describe("#reverse() following another same-tick operation", () => {
+            class Item extends Schema {
+                @type("string") name: string;
+            }
+            class ReverseState extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+                @type(["string"]) strings = new ArraySchema<string>();
+            }
+            const item = (name: string) => new Item().assign({ name });
+
+            // Sync `initial` into both arrays (ref-typed + primitive), then run
+            // `mutate` against each in the same tick and assert one patch
+            // brings the decoder to `expected` — and that a fresh encodeAll
+            // still matches (catches refId leaks the patch path can hide).
+            function assertSameTick(
+                initial: string[],
+                mutate: (arr: ArraySchema<any>, wrap: (name: string) => any) => void,
+                expected: string[],
+            ) {
+                const state = new ReverseState();
+                const decodedState = createInstanceFromReflection(state);
+                if (initial.length > 0) {
+                    state.items.push(...initial.map(item));
+                    state.strings.push(...initial);
+                }
+                decodedState.decode(state.encode());
+
+                mutate(state.items, item);
+                mutate(state.strings, (name) => name);
+
+                assert.deepStrictEqual(state.items.map((i) => i.name), expected, "server items");
+                assert.deepStrictEqual([...state.strings], expected, "server strings");
+
+                decodedState.decode(state.encode());
+                assert.deepStrictEqual(decodedState.items.map((i) => i.name), expected, "decoded items");
+                assert.deepStrictEqual([...decodedState.strings], expected, "decoded strings");
+
+                assertDeepStrictEqualEncodeAll(state);
+            }
+
+            it("ADDs then reverse() on a fresh array", () => {
+                assertSameTick([], (arr, wrap) => {
+                    arr.push(wrap("a"), wrap("b"), wrap("c"));
+                    arr.reverse();
+                }, ["c", "b", "a"]);
+            });
+
+            it("push() then reverse()", () => {
+                assertSameTick(["a", "b"], (arr, wrap) => {
+                    arr.push(wrap("c"));
+                    arr.reverse();
+                }, ["c", "b", "a"]);
+            });
+
+            it("pop() then reverse()", () => {
+                assertSameTick(["a", "b", "c"], (arr) => {
+                    arr.pop();
+                    arr.reverse();
+                }, ["b", "a"]);
+            });
+
+            it("shift() then reverse()", () => {
+                assertSameTick(["a", "b", "c"], (arr) => {
+                    arr.shift();
+                    arr.reverse();
+                }, ["c", "b"]);
+            });
+
+            it("unshift() then reverse()", () => {
+                assertSameTick(["a", "b"], (arr, wrap) => {
+                    arr.unshift(wrap("z"));
+                    arr.reverse();
+                }, ["b", "a", "z"]);
+            });
+
+            it("splice() then reverse()", () => {
+                assertSameTick(["a", "b", "c"], (arr) => {
+                    arr.splice(0, 1);
+                    arr.reverse();
+                }, ["c", "b"]);
+            });
+
+            it("index write then reverse()", () => {
+                assertSameTick(["a", "b", "c"], (arr, wrap) => {
+                    arr[0] = wrap("a2");
+                    arr.reverse();
+                }, ["c", "b", "a2"]);
+            });
+
+            it("pop() + push() then reverse()", () => {
+                assertSameTick(["a", "b", "c"], (arr, wrap) => {
+                    arr.pop();
+                    arr.push(wrap("d"));
+                    arr.reverse();
+                }, ["d", "b", "a"]);
+            });
+
+            // Already-working orderings — guard the fix against regressions.
+            it("reverse() then push()", () => {
+                assertSameTick(["a", "b", "c"], (arr, wrap) => {
+                    arr.reverse();
+                    arr.push(wrap("d"));
+                }, ["c", "b", "a", "d"]);
+            });
+
+            it("reverse() then pop()", () => {
+                assertSameTick(["a", "b", "c"], (arr) => {
+                    arr.reverse();
+                    arr.pop();
+                }, ["c", "b"]);
+            });
+
+            it("reverse() twice in the same tick", () => {
+                assertSameTick(["a", "b", "c"], (arr) => {
+                    arr.reverse();
+                    arr.reverse();
+                }, ["a", "b", "c"]);
+            });
+
+            it("pop() then reverse() across separate ticks", () => {
+                const state = new ReverseState();
+                const decodedState = createInstanceFromReflection(state);
+                state.items.push(item("a"), item("b"), item("c"));
+                decodedState.decode(state.encode());
+
+                state.items.pop();
+                decodedState.decode(state.encode());
+
+                state.items.reverse();
+                decodedState.decode(state.encode());
+
+                assert.deepStrictEqual(decodedState.items.map((i) => i.name), ["b", "a"]);
+                assertDeepStrictEqualEncodeAll(state);
+            });
+        });
+
         it("#flat", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
             assert.throws(() => { arr.flat(); }, /not supported/i);

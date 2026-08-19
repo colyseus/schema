@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.15]
+
+### Fixed
+
+- **`ArraySchema.reverse()` no longer desyncs clients when it follows another
+  change in the same patch.** A `push()`, `pop()`, `shift()`, `unshift()`,
+  `splice()` or index write earlier in the tick made the reversal ship wrong
+  elements — clients ended up with duplicated or stale entries and never
+  recovered. `reverse()` in a tick of its own was already fine. When other
+  changes are pending, the reversal now goes out as a full re-state of the
+  array (existing wire operations — no SDK update needed), so `onAdd`/`onRemove`
+  fire for the re-stated items in that case.
+
 ## [5.0.14]
 
 ### Fixed
