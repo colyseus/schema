@@ -569,9 +569,7 @@ export function getPropertyDescriptor(
 export function deprecated(throws: boolean = true): PropertyDecorator {
     return function (klass: typeof Schema, field: string) {
         const metadata = Metadata.initialize(klass.constructor as typeof Schema);
-        const fieldIndex = metadata[field];
-
-        metadata[fieldIndex].deprecated = true;
+        Metadata.setDeprecated(metadata, field);
 
         if (throws) {
             metadata[$descriptors] ??= {};
@@ -584,13 +582,6 @@ export function deprecated(throws: boolean = true): PropertyDecorator {
             // Override accessor on the prototype so deprecated throws at access.
             Object.defineProperty(klass, field, metadata[$descriptors][field]);
         }
-
-        // flag metadata[field] as non-enumerable
-        Object.defineProperty(metadata, fieldIndex, {
-            value: metadata[fieldIndex],
-            enumerable: false,
-            configurable: true
-        });
     }
 }
 

@@ -131,6 +131,9 @@ export const $viewFieldIndexes = "~__viewFieldIndexes";
 export const $fieldIndexesByViewTag = "$__fieldIndexesByViewTag";
 export const $unreliableFieldIndexes = "~__unreliableFieldIndexes";
 export const $patchOnlyFieldIndexes = "~__patchOnlyFieldIndexes";
+// @patchOnly ∪ @deprecated() — indexes the full-sync walk must not read (the
+// deprecated accessor may throw). Maintained at decoration time.
+export const $fullSyncSkipIndexes = "~__fullSyncSkipIndexes";
 export const $fullStateOnlyFieldIndexes = "~__fullStateOnlyFieldIndexes";
 export const $streamFieldIndexes = "~__streamFieldIndexes";
 export const $streamPriorities = "~__streamPriorities";

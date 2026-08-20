@@ -240,7 +240,12 @@ export const decodeSchemaOperation: DecodeOperation = function <T extends Schema
         return DEFINITION_MISMATCH;
     }
 
-    const previousValue = ref[$getByIndex](index);
+    // a peer that still carries a @deprecated() field keeps sending it — the
+    // bytes must be consumed or the stream desyncs, but the local accessor
+    // may throw: read nothing, write nothing, report nothing.
+    const isDeprecated = field.deprecated === true;
+
+    const previousValue = isDeprecated ? undefined : ref[$getByIndex](index);
     const value = decodeValue(
         decoder,
         operation,
@@ -252,6 +257,8 @@ export const decodeSchemaOperation: DecodeOperation = function <T extends Schema
         it,
         allChanges,
     );
+
+    if (isDeprecated) { return; }
 
     if (value !== null && value !== undefined) {
         // Write via the generated setter. Bypass to `(ref as any)[$values][index]`

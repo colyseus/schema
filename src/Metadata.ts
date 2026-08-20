@@ -1,7 +1,7 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
 import { getType, registeredTypes, TypeDefinition } from "./types/registry.js";
-import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
@@ -37,6 +37,8 @@ export type Metadata =
     { [$refTypeFieldIndexes]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
     { [$unreliableFieldIndexes]: number[]; } & // all field indexes tagged with @unreliable
     { [$patchOnlyFieldIndexes]: number[]; } & // all field indexes tagged with @patchOnly (not persisted to snapshots)
+    { [$fullSyncSkipIndexes]: number[]; } & // @patchOnly ∪ @deprecated() — never read during full sync
+
     { [$fullStateOnlyFieldIndexes]: number[]; } & // all field indexes tagged @fullStateOnly / .fullStateOnly() (not tracked after assignment)
     { [$streamFieldIndexes]: number[]; } & // all field indexes holding a t.stream(...) collection
     { [$streamPriorities]: { [field: number]: (view: any, element: any) => number }; } & // per-stream-field priority callback declared at schema definition time
@@ -111,6 +113,30 @@ function isTSEnum(_enum: any) {
     }
 
     return false;
+}
+
+// Copied parent → subclass on Metadata.initialize, so each class owns its list.
+const INHERITED_ARRAY_KEYS = [
+    $refTypeFieldIndexes,
+    $unreliableFieldIndexes,
+    $patchOnlyFieldIndexes,
+    $fullSyncSkipIndexes,
+    $fullStateOnlyFieldIndexes,
+    $streamFieldIndexes,
+    $encoders,
+];
+
+/** Append to a non-enumerable metadata index list, creating it on first use. */
+function pushIndexList(metadata: any, key: string, index: number) {
+    if (!metadata[key]) {
+        Object.defineProperty(metadata, key, {
+            value: [],
+            enumerable: false,
+            configurable: true,
+            writable: true,
+        });
+    }
+    metadata[key].push(index);
 }
 
 export const Metadata = {
@@ -302,15 +328,26 @@ export const Metadata = {
         }
         metadata[index].patchOnly = true;
 
-        if (!metadata[$patchOnlyFieldIndexes]) {
-            Object.defineProperty(metadata, $patchOnlyFieldIndexes, {
-                value: [],
-                enumerable: false,
-                configurable: true,
-                writable: true,
-            });
-        }
-        metadata[$patchOnlyFieldIndexes].push(index);
+        pushIndexList(metadata, $patchOnlyFieldIndexes, index);
+        pushIndexList(metadata, $fullSyncSkipIndexes, index); // not persisted to snapshots
+    },
+
+    /**
+     * `@deprecated()` bookkeeping: the field keeps its wire index (so peers
+     * that still carry it stay compatible) but is excluded from full sync —
+     * its accessor may throw — and hidden from `for..in` consumers.
+     */
+    setDeprecated(metadata: Metadata, fieldName: string) {
+        const index = metadata[fieldName];
+        metadata[index].deprecated = true;
+
+        pushIndexList(metadata, $fullSyncSkipIndexes, index);
+
+        Object.defineProperty(metadata, index, {
+            value: metadata[index],
+            enumerable: false,
+            configurable: true
+        });
     },
 
     setFullStateOnly(metadata: Metadata, fieldName: string) {
@@ -324,15 +361,7 @@ export const Metadata = {
         }
         metadata[index].fullStateOnly = true;
 
-        if (!metadata[$fullStateOnlyFieldIndexes]) {
-            Object.defineProperty(metadata, $fullStateOnlyFieldIndexes, {
-                value: [],
-                enumerable: false,
-                configurable: true,
-                writable: true,
-            });
-        }
-        metadata[$fullStateOnlyFieldIndexes].push(index);
+        pushIndexList(metadata, $fullStateOnlyFieldIndexes, index);
     },
 
     setStream(metadata: Metadata, fieldName: string) {
@@ -510,54 +539,17 @@ export const Metadata = {
                     });
                 }
 
-                // $refTypeFieldIndexes
-                if (parentMetadata[$refTypeFieldIndexes] !== undefined) {
-                    Object.defineProperty(metadata, $refTypeFieldIndexes, {
-                        value: [...parentMetadata[$refTypeFieldIndexes]],
-                        enumerable: false,
-                        configurable: true,
-                        writable: true,
-                    });
-                }
-
-                // $unreliableFieldIndexes
-                if (parentMetadata[$unreliableFieldIndexes] !== undefined) {
-                    Object.defineProperty(metadata, $unreliableFieldIndexes, {
-                        value: [...parentMetadata[$unreliableFieldIndexes]],
-                        enumerable: false,
-                        configurable: true,
-                        writable: true,
-                    });
-                }
-
-                // $patchOnlyFieldIndexes
-                if (parentMetadata[$patchOnlyFieldIndexes] !== undefined) {
-                    Object.defineProperty(metadata, $patchOnlyFieldIndexes, {
-                        value: [...parentMetadata[$patchOnlyFieldIndexes]],
-                        enumerable: false,
-                        configurable: true,
-                        writable: true,
-                    });
-                }
-
-                // $fullStateOnlyFieldIndexes
-                if (parentMetadata[$fullStateOnlyFieldIndexes] !== undefined) {
-                    Object.defineProperty(metadata, $fullStateOnlyFieldIndexes, {
-                        value: [...parentMetadata[$fullStateOnlyFieldIndexes]],
-                        enumerable: false,
-                        configurable: true,
-                        writable: true,
-                    });
-                }
-
-                // $streamFieldIndexes
-                if (parentMetadata[$streamFieldIndexes] !== undefined) {
-                    Object.defineProperty(metadata, $streamFieldIndexes, {
-                        value: [...parentMetadata[$streamFieldIndexes]],
-                        enumerable: false,
-                        configurable: true,
-                        writable: true,
-                    });
+                // per-class arrays the subclass extends independently
+                for (const key of INHERITED_ARRAY_KEYS) {
+                    const list = parentMetadata[key] as unknown as any[] | undefined;
+                    if (list !== undefined) {
+                        Object.defineProperty(metadata, key, {
+                            value: [...list],
+                            enumerable: false,
+                            configurable: true,
+                            writable: true,
+                        });
+                    }
                 }
 
                 // $descriptors
@@ -567,16 +559,6 @@ export const Metadata = {
                     configurable: true,
                     writable: true,
                 });
-
-                // $encoders
-                if (parentMetadata[$encoders] !== undefined) {
-                    Object.defineProperty(metadata, $encoders, {
-                        value: [...parentMetadata[$encoders]],
-                        enumerable: false,
-                        configurable: true,
-                        writable: true,
-                    });
-                }
             }
         }
 

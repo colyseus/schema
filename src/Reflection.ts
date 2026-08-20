@@ -149,9 +149,15 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
         // if metadata is the same reference as the parent class - it means the class has no own metadata
         //
         if (metadata !== inheritFrom[Symbol.metadata]) {
-            for (const fieldIndex in metadata) {
-                const index = Number(fieldIndex);
-                const fieldName = metadata[index].name;
+            // Walk by index rather than `for…in`: `@deprecated()` makes its
+            // metadata slot non-enumerable, and dropping it from the payload
+            // shifts every later field down one wire index on the peer.
+            const numFields = (metadata[$numFields] ?? -1) as number;
+            for (let index = 0; index <= numFields; index++) {
+                const field = metadata[index];
+                if (field === undefined) { continue; }
+
+                const fieldName = field.name;
 
                 // skip fields from parent classes
                 if (!Object.prototype.hasOwnProperty.call(metadata, fieldName)) {
@@ -162,8 +168,6 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
                 reflectionField.name = fieldName;
 
                 let fieldType: string;
-
-                const field = metadata[index];
 
                 if (typeof (field.type) === "string") {
                     fieldType = field.type;

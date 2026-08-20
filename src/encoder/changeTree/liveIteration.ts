@@ -6,8 +6,13 @@
  * Patch-only fields (`@patchOnly`) are skipped — they're delivered only on
  * tick patches and not persisted to snapshots. Collections whose parent
  * field is @patchOnly inherit the skip (`tree.isPatchOnly`).
+ *
+ * `@deprecated()` fields are skipped too: the decorator swaps the field's
+ * prototype accessor for a throwing getter, so `ref[name]` below would blow
+ * up full sync for the whole state. Both skips ride one decoration-time
+ * list (`$fullSyncSkipIndexes`) so the walk pays a single metadata lookup.
  */
-import { $childType, $numFields, $patchOnlyFieldIndexes } from "../../types/symbols.js";
+import { $childType, $numFields, $fullSyncSkipIndexes } from "../../types/symbols.js";
 import type { ChangeTree } from "../ChangeTree.js";
 
 // Adapter that lets `forEachLive(cb)` delegate to `forEachLiveWithCtx(cb, _invokeNoCtx)` —
@@ -65,12 +70,12 @@ export function forEachLiveWithCtx<C>(
         const metadata = tree.metadata;
         if (!metadata) return;
         const numFields = (metadata[$numFields] ?? -1) as number;
-        const patchOnlyIndexes = metadata[$patchOnlyFieldIndexes];
+        const skipIndexes = metadata[$fullSyncSkipIndexes] as number[] | undefined;
         const names = tree.encDescriptor.names;
         for (let i = 0; i <= numFields; i++) {
             const name = names[i];
             if (name === undefined) continue;
-            if (patchOnlyIndexes && patchOnlyIndexes.includes(i)) continue;
+            if (skipIndexes && skipIndexes.includes(i)) continue;
             const value = ref[name];
             if (value !== undefined && value !== null) cb(ctx, i);
         }
