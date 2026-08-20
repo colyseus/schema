@@ -477,12 +477,27 @@ function makeCollectionSetter(
 
         if (value !== undefined && value !== null) {
             // automatic Array → ArraySchema / Map → MapSchema conversion.
+            // `$childType` goes on before populating — push()/set() gate
+            // their `assertInstanceType` on it.
             if (isArrayKlass && !(value instanceof ArraySchema)) {
-                value = new ArraySchema(...value);
+                const array: any = new ArraySchema();
+                array[$childType] = type;
+                array.push(...value);
+                value = array;
+
             } else if (isMapKlass && !(value instanceof MapSchema)) {
-                value = new MapSchema(value);
+                const map: any = new MapSchema();
+                map[$childType] = type;
+                if (value instanceof Map) {
+                    value.forEach((v, k) => map.set(k, v));
+                } else {
+                    for (const k in value) { map.set(k, value[k]); }
+                }
+                value = map;
+
+            } else {
+                value[$childType] = type;
             }
-            value[$childType] = type;
 
             const changeTree = this[$changes];
             const ctor = this.constructor as typeof Schema;
