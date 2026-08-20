@@ -27,7 +27,7 @@ import type { StreamSchema } from "../types/custom/StreamSchema.js";
 
 import { Root } from "./Root.js";
 import { Metadata } from "../Metadata.js";
-import { type ChangeRecorder, type ICollectionChangeRecorder, SchemaChangeRecorder, CollectionChangeRecorder, popcount32 } from "./ChangeRecorder.js";
+import { type ChangeRecorder, SchemaChangeRecorder, CollectionChangeRecorder, popcount32 } from "./ChangeRecorder.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 import { type EncodeDescriptor, getEncodeDescriptor } from "./EncodeDescriptor.js";
 import type { DecodeOperation } from "../decoder/DecodeOperation.js";
@@ -616,26 +616,40 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     /**
-     * ArraySchema#unshift(): re-key pending ops on both channels by
-     * `+count`, then record ADDs for the new items at indexes 0..count-1.
+     * ArraySchema insert (unshift / splice with more inserts than deletes):
+     * re-key pending ops at or above `at` by `+count`, then record ADDs for
+     * the new items at indexes `at..at+count-1`.
      *
-     * The rebuilt map's insertion order IS the wire order: new ADDs first
-     * (ascending — the decoder splice-inserts each one, which only works
-     * lowest-index-first), then prior ops in their original relative order
-     * at their shifted positions. See ArraySchema#$setAt.
+     * The rebuilt map's insertion order IS the wire order:
+     *   1. ops below `at` — the insert doesn't move them, and an insert of
+     *      their own must still be applied before this one (ascending);
+     *   2. the new ADDs, ascending — the decoder splice-inserts each one,
+     *      which only works lowest-index-first;
+     *   3. the re-keyed ops, in their original relative order — their
+     *      indexes now address the post-insert layout.
+     * See ArraySchema#$setAt.
      */
-    unshift(count: number): void {
-        if (this._isSchema) throw new Error("ChangeTree (Schema): unshift is not supported");
+    insertAt(at: number, count: number): void {
+        if (this._isSchema) throw new Error("ChangeTree (Schema): insertAt is not supported");
         const src = this.collDirty!;
         const dst = new Map<number, OPERATION>();
         const track = !this.paused && !this.isFullStateOnly;
-        if (track) {
-            for (let i = 0; i < count; i++) dst.set(i, OPERATION.ADD);
+        if (at > 0) {
+            for (const [idx, val] of src) if (idx < at) dst.set(idx, val);
         }
-        for (const [idx, val] of src) dst.set(idx + count, val);
+        if (track) {
+            for (let i = 0; i < count; i++) dst.set(at + i, OPERATION.ADD);
+        }
+        for (const [idx, val] of src) if (idx >= at) dst.set(idx + count, val);
         this.collDirty = dst;
-        (this.unreliableRecorder as ICollectionChangeRecorder | undefined)?.shift(count);
+        // no unreliable re-key — collection trees never carry an unreliable
+        // recorder (tree-level @unreliable is disabled, see isFieldUnreliable)
         if (track) this.root?.enqueueChangeTree(this);
+    }
+
+    /** ArraySchema#unshift(): insert `count` items at the head. */
+    unshift(count: number): void {
+        this.insertAt(0, count);
     }
 
     // Tree attachment + child iteration — see ./changeTree/treeAttachment.ts.

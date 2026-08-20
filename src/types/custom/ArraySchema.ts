@@ -617,13 +617,13 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
         // insert operations
         if (insertCount > 0) {
-            if (insertCount > deleteCount) {
-                console.error("Inserting more elements than deleting during ArraySchema#splice()");
-                throw new Error("ArraySchema#splice(): insertCount must be equal or lower than deleteCount.");
-            }
+            const base = indexes[start] ?? itemsLength;
 
-            for (let i = 0; i < insertCount; i++) {
-                const addIndex = (indexes[start] ?? itemsLength) + i;
+            // the first `reuse` items take over the wire slots just deleted
+            const reuse = Math.min(insertCount, deleteCount);
+
+            for (let i = 0; i < reuse; i++) {
+                const addIndex = base + i;
 
                 changeTree.indexedOperation(
                     addIndex,
@@ -632,8 +632,35 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
                         : OPERATION.ADD
                 );
 
+                // the slot is live again — the staged snapshot must carry the
+                // new value, or `$getByIndex` falls back to `items[addIndex]`
+                // and resolves an unrelated element once tmp/items diverge.
+                tmpItems[addIndex] = insertItems[i];
+                deletedIndexes[addIndex] = false;
+
                 // set value's parent/root — use `this` (Proxy) as parent.
                 insertItems[i][$changes]?.setParent(this, changeTree.root, addIndex);
+            }
+
+            // ...the rest have no slot to take: widen the wire layout, same as
+            // unshift() but at `at` instead of 0.
+            const extra = insertCount - reuse;
+            if (extra > 0) {
+                const at = base + reuse;
+
+                changeTree.insertAt(at, extra);
+
+                for (let i = 0; i < extra; i++) {
+                    insertItems[reuse + i][$changes]?.setParent(this, changeTree.root, at + i);
+                }
+
+                // keep staged-delete flags aligned with the inserted tmp slots
+                if (deletedIndexes.length > 0) {
+                    deletedIndexes.splice(at, 0, ...new Array(extra).fill(false));
+                }
+
+                tmpItems.splice(at, 0, ...insertItems.slice(reuse));
+                self.$reindexChildren(at + extra); // survivors only — the loop above placed the new items
             }
         }
 

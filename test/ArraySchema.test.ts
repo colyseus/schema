@@ -1318,27 +1318,133 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("TODO: should allow to replace 1 item and add another", () => {
+        describe("inserting more items than deleted", () => {
             class Item extends Schema {
                 @type("number") i: number;
             }
             class State extends Schema {
                 @type([Item]) items = new ArraySchema<Item>();
             }
-
-            const state = new State();
-            for (let i = 0; i < 10; i++) {
-                state.items.push(new Item().assign({ i }));
+            class PrimitiveState extends Schema {
+                @type(["number"]) items = new ArraySchema<number>();
             }
 
-            const decodedState = createInstanceFromReflection(state);
-            decodedState.decode(state.encode());
+            const item = (i: number) => new Item().assign({ i });
 
-            state.items.splice(0, 1, new Item().assign({ i: 10 }), new Item().assign({ i: 10 }));
-            decodedState.decode(state.encode());
+            /** 10 items (0..9), already delivered to a client. */
+            function setup() {
+                const state = new State();
+                for (let i = 0; i < 10; i++) { state.items.push(item(i)); }
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+                return { state, decodedState };
+            }
 
-            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
-            assertDeepStrictEqualEncodeAll(state);
+            function assertInSync(state: State, decodedState: any, expected: number[]) {
+                assert.deepStrictEqual(expected, state.items.map((entry) => entry.i));
+                assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+                assertRefIdCounts(state, decodedState);
+                assertDeepStrictEqualEncodeAll(state);
+            }
+
+            it("should allow to replace 1 item and add another", () => {
+                const { state, decodedState } = setup();
+
+                state.items.splice(0, 1, item(10), item(11));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [10, 11, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+            });
+
+            it("should insert in the middle", () => {
+                const { state, decodedState } = setup();
+
+                state.items.splice(3, 1, item(10), item(11), item(12));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [0, 1, 2, 10, 11, 12, 4, 5, 6, 7, 8, 9]);
+            });
+
+            it("should insert at the end", () => {
+                const { state, decodedState } = setup();
+
+                state.items.splice(9, 1, item(10), item(11));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11]);
+            });
+
+            it("should insert without deleting (deleteCount = 0)", () => {
+                const { state, decodedState } = setup();
+
+                state.items.splice(0, 0, item(10));
+                state.items.splice(5, 0, item(11), item(12));
+                state.items.splice(state.items.length, 0, item(13));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [10, 0, 1, 2, 3, 11, 12, 4, 5, 6, 7, 8, 9, 13]);
+            });
+
+            it("should keep deleting more than inserted working", () => {
+                const { state, decodedState } = setup();
+
+                state.items.splice(0, 1, item(10)); // equal
+                state.items.splice(4, 3, item(11)); // fewer
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [10, 1, 2, 3, 11, 7, 8, 9]);
+            });
+
+            it("should insert more than deleted with primitive children", () => {
+                const state = new PrimitiveState();
+                for (let i = 0; i < 10; i++) { state.items.push(i); }
+
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                state.items.splice(0, 1, 10, 11);
+                state.items.splice(6, 1, 12, 13);
+                state.items.splice(2, 0, 14);
+                decodedState.decode(state.encode());
+
+                assert.deepStrictEqual([10, 11, 14, 1, 2, 3, 4, 12, 13, 6, 7, 8, 9], state.items.toJSON());
+                assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+                assertDeepStrictEqualEncodeAll(state);
+            });
+
+            it("should insert alongside other mutations in the same tick", () => {
+                const { state, decodedState } = setup();
+
+                state.items.unshift(item(90));
+                state.items.splice(5, 1, item(10), item(11));
+                state.items[3] = item(93);
+                state.items.push(item(94));
+                state.items.splice(0, 0, item(95));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [95, 90, 0, 1, 93, 3, 10, 11, 5, 6, 7, 8, 9, 94]);
+            });
+
+            it("should insert in the same tick the items were pushed", () => {
+                const state = new State();
+                for (let i = 0; i < 10; i++) { state.items.push(item(i)); }
+                state.items.splice(2, 1, item(10), item(11));
+
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode()); // single encode: push + splice
+
+                assertInSync(state, decodedState, [0, 1, 10, 11, 3, 4, 5, 6, 7, 8, 9]);
+            });
+
+            it("should insert after a same-tick shift()", () => {
+                const { state, decodedState } = setup();
+
+                state.items.shift();
+                state.items.splice(0, 1, item(10), item(11));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [10, 11, 2, 3, 4, 5, 6, 7, 8, 9]);
+            });
         });
 
         it("should allow consecutive splices (same place, 3 items)", () => {
