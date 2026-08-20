@@ -91,7 +91,7 @@ describe("StateView", () => {
         assertEncodeAllMultiple(encoder, state, [client1])
     });
 
-    xit("shouldn't allow to add detached instance to view", () => {
+    it("shouldn't allow to add detached instance to view", () => {
         class Entity extends Schema {
             @type("string") id: string = nanoid(9);
         }

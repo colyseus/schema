@@ -1240,12 +1240,12 @@ describe("Type: Schema", () => {
         });
 
         //
-        // Encoding from a decoded structure is not supported
+        // Re-encoding a decoded structure works for primitive-only trees
+        // (encodeAll only). Schema children still get an UntrackedChangeTree,
+        // and incremental encode() from a decoded state emits corrupt indexes —
+        // both blockers for the peer-to-peer scenario.
         //
-        // This is not a real usage scenario yet, but on a peer-to-peer setup
-        // this feature would play an interesting role.
-        //
-        it.skip('should encode map with primitive values from decoded state', () => {
+        it('should encode map with primitive values from decoded state', () => {
             class TestMapSchema extends Schema {
                 @type({ map: 'number' }) value = new MapSchema<number>();
             }
@@ -1294,11 +1294,11 @@ describe("Type: Schema", () => {
         });
 
         //
-        // TODO: since 3.0, this test is failing (and its use-case is not
-        // realistic anymore, since sending schema-encoded messages is not on
-        // Colyseus supported anymore)
+        // NOTE: rooting a second Encoder at an already-attached child detaches
+        // it from the parent's Root — `state` must not be encoded again after
+        // this. (Colyseus no longer sends schema-encoded messages.)
         //
-        xit("should decode a child structure alone (Schema encoded messages)", () => {
+        it("should decode a child structure alone (Schema encoded messages)", () => {
             const state = new State();
 
             state.mapOfPlayers = new MapSchema<Player>();
@@ -1517,27 +1517,6 @@ describe("Type: Schema", () => {
                 { player: { items: [{ props: { one: { name: "Hello" } } }] } } as ToJSON<MyState>
             );
             assertDeepStrictEqualEncodeAll(state);
-        });
-
-        xit("should allow to call .assign() ArraySchema and MapSchema using .toJSON() response", () => {
-            class Prop extends Schema {
-                @type("string") name: string;
-            }
-            class Item extends Schema {
-                @type({ map: Prop }) props = new MapSchema<Prop>();
-            }
-            class MyState extends Schema {
-                @type("string") str: string;
-                @type([Item]) items = new ArraySchema<Item>();
-            }
-            const state = new MyState();
-            state.str = "Hello world";
-            state.items.push(new Item().assign({ props: new MapSchema<Prop>().set('one', new Prop().assign({ name: "Hello" })) }));
-
-            const state2 = new MyState();
-            state2.assign(state.toJSON());
-            assert.deepStrictEqual(state2.toJSON(), state.toJSON());
-            assertDeepStrictEqualEncodeAll(state2);
         });
 
     });

@@ -30,7 +30,7 @@ describe("toJSON", () => {
     }, "State");
     type State = SchemaType<typeof State>;
 
-    it("should allow to fill complex object using .assign() with a JSON object", () => {
+    it("should allow to fill complex object using .restore() with a JSON object", () => {
         const state = new State();
         getEncoder(state);
 

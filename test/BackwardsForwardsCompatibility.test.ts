@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { Reflection, type, Schema, MapSchema, ArraySchema } from "../src";
 import { deprecated } from "../src/annotations";
 import "./Schema";
-import { getEncoder } from "./Schema";
+import { getEncoder, getDecoder, createInstanceFromReflection } from "./Schema";
 
 describe("backwards/forwards compatibility", () => {
 
@@ -31,15 +31,28 @@ describe("backwards/forwards compatibility", () => {
         @type("number") countdown: number;
     }
 
-    xit("should be backward compatible", () => {
+    it("should be backward compatible", () => {
         const state = new StateV1();
         state.str = "Hello world";
-        state.map.set('one', new PlayerV1());
+        state.map.set('one', new PlayerV1().assign({ x: 10, y: 20 }));
 
         const decodedStateV2 = new StateV2();
         decodedStateV2.decode(state.encode());
         assert.strictEqual("Hello world", decodedStateV2.str);
-        // assert.strictEqual(10, decodedStateV2.countdown);
+
+        // fields the V1 peer doesn't know about keep their defaults
+        assert.strictEqual(undefined, decodedStateV2.countdown);
+
+        // the shared portion of the tree must decode for real, not vacuously
+        assert.deepStrictEqual(["one"], Array.from(decodedStateV2.map.keys()));
+        assert.strictEqual(10, decodedStateV2.map.get("one").x);
+        assert.strictEqual(20, decodedStateV2.map.get("one").y);
+
+        // fields the V1 peer never sends stay undefined: decoder-created
+        // instances don't run field initializers, so a newer client does NOT
+        // get the declared default for a field the older peer lacks.
+        assert.strictEqual(undefined, decodedStateV2.map.get("one").name);
+        assert.strictEqual(undefined, decodedStateV2.map.get("one").arrayOfStrings);
 
         assert.throws(() => {
             return decodedStateV2.currentTurn;
@@ -68,8 +81,27 @@ describe("backwards/forwards compatibility", () => {
 
     it("should allow reflection", () => {
         const state = new StateV2();
-        const reflectionBytes = Reflection.encode(getEncoder(state));
+        const encoder = getEncoder(state);
+        const reflectionBytes = Reflection.encode(encoder);
 
         const reflected = Reflection.decode(reflectionBytes);
+        assert.ok(reflected.state);
+
+        //
+        // The @deprecated() slot must keep its wire index through reflection.
+        // Dropping it shifts every later field down, and the reflected peer
+        // then silently loses them.
+        //
+        state.str = "Hello world";
+        state.countdown = 10;
+        state.map.set("one", new PlayerV2().assign({ x: 10, y: 20, name: "Reflected" }));
+
+        const reflectedState = createInstanceFromReflection(state, encoder);
+        getDecoder(reflectedState).decode(encoder.encode());
+
+        assert.strictEqual("Hello world", reflectedState.str);
+        assert.strictEqual(10, reflectedState.countdown); // index 3, after the deprecated slot
+        assert.strictEqual("Reflected", reflectedState.map.get("one").name);
+        assert.deepStrictEqual(state.toJSON(), reflectedState.toJSON());
     });
 });

@@ -156,18 +156,12 @@ describe("Parent Chain", () => {
         assert.strictEqual(itemChangeTree.parent, inventory2);
         assert.strictEqual(itemChangeTree.parentIndex, 3);
         assert.strictEqual(itemChangeTree.getAllParents().length, 2, "Should add parent with different index");
-        // assert.strictEqual(itemChangeTree.parent, inventory1);
-        // assert.strictEqual(itemChangeTree.parentIndex, 3);
-        // assert.strictEqual(itemChangeTree.getAllParents().length, 3, "Should add parent with different index");
 
         // Try to add the same parent with same index again
         itemChangeTree.addParent(inventory1, 3);
         assert.strictEqual(itemChangeTree.parent, inventory2);
         assert.strictEqual(itemChangeTree.parentIndex, 3);
-        assert.strictEqual(itemChangeTree.getAllParents().length, 2, "Should add parent with different index");
-        // assert.strictEqual(itemChangeTree.parent, inventory1);
-        // assert.strictEqual(itemChangeTree.parentIndex, 3);
-        // assert.strictEqual(itemChangeTree.getAllParents().length, 3, "Should not add duplicate parent with same index");
+        assert.strictEqual(itemChangeTree.getAllParents().length, 2, "Should not add duplicate parent with same index");
     });
 
     it("findParent / getAllParents hand out detached copies", () => {
