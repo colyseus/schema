@@ -14,10 +14,12 @@ const BUILDER_COLLECTION_KINDS = new Set(["array", "map", "set", "collection"]);
 
 /**
  * For a t.*().chain().calls() expression, walk down to the base `t.X(...)`
- * call and return its method name and first argument. Returns null if the
+ * call and return its method name, first argument, and the names of the
+ * chained modifiers (`.view()`, `.deprecated()`, …). Returns null if the
  * node does not look like a builder chain.
  */
-function extractBuilderBase(node: ts.CallExpression): { methodName: string, firstArg?: ts.Expression } | null {
+function extractBuilderBase(node: ts.CallExpression): { methodName: string, firstArg?: ts.Expression, modifiers: Set<string> } | null {
+    const modifiers = new Set<string>();
     let current: ts.CallExpression = node;
     while (true) {
         const expr = current.expression;
@@ -25,13 +27,14 @@ function extractBuilderBase(node: ts.CallExpression): { methodName: string, firs
             return null;
         }
         if (ts.isCallExpression(expr.expression)) {
-            // Chained modifier, e.g. .default() / .view() — walk deeper.
+            modifiers.add(expr.name.text);
             current = expr.expression;
             continue;
         }
         return {
             methodName: expr.name.text,
             firstArg: current.arguments[0],
+            modifiers,
         };
     }
 }
@@ -126,6 +129,10 @@ function defineProperty(property: Property, initializer: any) {
     if (ts.isCallExpression(initializer)) {
         const base = extractBuilderBase(initializer);
         if (base) {
+            // same as `@deprecated()`: `.deprecated(false)` still marks the field
+            if (base.modifiers.has("deprecated")) {
+                property.deprecated = true;
+            }
             if (BUILDER_COLLECTION_KINDS.has(base.methodName)) {
                 property.type = base.methodName;
                 if (base.firstArg) {
@@ -491,7 +498,10 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     if (prop.kind === ts.SyntaxKind.MethodDeclaration) continue;
                     if (!prop.initializer) continue;
 
-                    const property = currentProperty || new Property();
+                    // never inherit `currentProperty`: it's the decorator path's
+                    // carry-over from a visited `deprecated` identifier, and a
+                    // trailing `.deprecated()` chain can leave it set
+                    const property = new Property();
                     property.name = prop.name.escapedText;
 
                     currentStructure.addProperty(property);

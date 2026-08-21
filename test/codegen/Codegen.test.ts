@@ -201,6 +201,33 @@ describe("schema-codegen", () => {
         });
     });
 
+    describe("deprecated fields", () => {
+        const gen = (fixture: string, lang: string) => {
+            fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
+            generate(lang, { files: [path.resolve(INPUT_DIR, fixture)], output: OUTPUT_DIR });
+            const ext = (lang === "csharp") ? "cs" : lang;
+            return fs.readFileSync(path.resolve(OUTPUT_DIR, `Versioned.${ext}`)).toString();
+        };
+
+        it("`.deprecated()` generates the same output as `@deprecated()`", () => {
+            for (const lang of ["csharp", "dart"]) {
+                const decorator = gen("DeprecatedDecorator.ts", lang);
+                const builder = gen("DeprecatedBuilder.ts", lang);
+                assert.strictEqual(builder, decorator, lang);
+                assert.match(decorator, /old.*deprecated|deprecated.*old/is);
+            }
+        });
+
+        it("marks both `.deprecated()` and `.deprecated(false)`, and nothing else", () => {
+            const out = gen("DeprecatedBuilder.ts", "csharp");
+            const obsolete = [...out.matchAll(/Obsolete\("field '(\w+)'/g)].map((m) => m[1]);
+            assert.deepStrictEqual(obsolete, ["old", "soft"]);
+
+            const after = fs.readFileSync(path.resolve(OUTPUT_DIR, "After.cs")).toString();
+            assert.doesNotMatch(after, /Obsolete/, "trailing .deprecated() leaked into the next schema()");
+        });
+    });
+
     // Codegen must terminate on ANY class graph the parser can produce. These
     // guard the inheritance-chain walks (getStructures/isSchemaClass/
     // getInheritanceTree/postProcessing) against the malformed inputs that used

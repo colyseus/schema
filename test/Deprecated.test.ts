@@ -1,10 +1,10 @@
 import * as assert from "assert";
 
-import { Schema, type, patchOnly, MapSchema } from "../src";
+import { Schema, type, patchOnly, MapSchema, schema, t } from "../src";
 import { deprecated } from "../src/annotations";
 import { Decoder } from "../src/decoder/Decoder";
 import { DataChange } from "../src/decoder/DecodeOperation";
-import { $numFields } from "../src/types/symbols";
+import { $numFields, $fullSyncSkipIndexes } from "../src/types/symbols";
 
 import "./Schema";
 import { assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
@@ -236,6 +236,116 @@ describe("@deprecated()", () => {
             new Decoder(target).decode(getEncoder(state).encode());
 
             assert.strictEqual("AAA", target.a);
+        });
+    });
+
+    // `.deprecated()` routes through the same deprecated() function, but
+    // schema() applies it AFTER type() has already installed the accessor,
+    // whereas the decorator short-circuits type(). Every observable must match.
+    describe("schema() .deprecated() parity", () => {
+        class DChild extends Schema {
+            @type("number") x: number;
+            @deprecated() @type("string") oldChild: string;
+            @type("number") y: number;
+        }
+        class DState extends Schema {
+            @type("string") a = "one";
+            @deprecated() @type("string") old: string;
+            @deprecated(false) @type("string") soft = "soft";
+            @type("string") b = "two";
+            @type({ map: DChild }) children = new MapSchema<DChild>();
+        }
+        class DBase extends Schema {
+            @type("string") base = "B";
+            @deprecated() @type("string") oldBase: string;
+        }
+        class DDerived extends DBase {
+            @type("string") extra = "E";
+            @deprecated() @type("string") oldDerived: string;
+            @type("string") last = "L";
+        }
+
+        const BChild = schema({
+            x: t.number(),
+            oldChild: t.string().deprecated(),
+            y: t.number(),
+        }, "BChild");
+        const BState = schema({
+            a: t.string().default("one"),
+            old: t.string().deprecated(),
+            soft: t.string().default("soft").deprecated(false),
+            b: t.string().default("two"),
+            children: t.map(BChild),
+        }, "BState");
+        const BBase = schema({
+            base: t.string().default("B"),
+            oldBase: t.string().deprecated(),
+        }, "BBase");
+        const BDerived = BBase.extend({
+            extra: t.string().default("E"),
+            oldDerived: t.string().deprecated(),
+            last: t.string().default("L"),
+        }, "BDerived");
+
+        /** Same field layout, sent by a peer that still populates the deprecated slots. */
+        const LivePeer = schema({
+            a: t.string().default("AAA"),
+            old: t.string().default("OLD"),
+            soft: t.string().default("SOFT"),
+            b: t.string().default("BBB"),
+        }, "LivePeerParity");
+
+        const styles = [
+            { name: "decorator", State: DState, Child: DChild, Derived: DDerived },
+            { name: "builder", State: BState, Child: BChild, Derived: BDerived },
+        ] as const;
+
+        /** Everything a deprecated field changes, as plain data — diffed across styles. */
+        function observe({ State, Child, Derived }: typeof styles[number]) {
+            const metadata = State[Symbol.metadata] as any;
+            const state = new State() as any;
+            state.children.set("p1", new Child().assign({ x: 1, y: 2 }));
+
+            const attempt = (fn: () => unknown) => { try { return { value: fn() }; } catch (e) { return { throws: (e as Error).message }; } };
+            const fullSync = (instance: any) => {
+                const client = createInstanceFromReflection(instance);
+                client.decode(getEncoder(instance).encodeAll());
+                return client.toJSON();
+            };
+
+            const target = new State() as any;
+            const decoder = new Decoder(target);
+            const changed: string[] = [];
+            decoder.triggerChanges = (all: DataChange[]) => { all.forEach((c) => changed.push(c.field)); };
+            decoder.decode(getEncoder(new LivePeer()).encode());
+
+            return {
+                fieldNames: fieldNames(State),
+                enumerableIndexes: Object.keys(metadata).filter((k) => /^\d+$/.test(k)),
+                fullSyncSkip: metadata[$fullSyncSkipIndexes],
+                protoDescriptor: Object.keys(Object.getOwnPropertyDescriptor(State.prototype, "old")),
+                getThrowing: attempt(() => state.old),
+                getSoft: attempt(() => state.soft),
+                setThrowing: attempt(() => { state.old = "z"; }),
+                ownKeys: Object.keys(state),
+                toJSON: state.toJSON(),
+                fullSync: fullSync(state),
+                reflectedFieldNames: fieldNames(createInstanceFromReflection(state).constructor),
+                derivedFieldNames: fieldNames(Derived),
+                derivedFullSyncSkip: (Derived[Symbol.metadata] as any)[$fullSyncSkipIndexes],
+                derivedFullSync: fullSync(new Derived()),
+                decodedFromLivePeer: { a: target.a, b: target.b, changed },
+            };
+        }
+
+        it("behaves identically to @deprecated() in every observable", () => {
+            const [decorator, builder] = styles.map(observe);
+
+            // guard against vacuous equality: the deprecated field really is deprecated
+            assert.match(decorator.getThrowing.throws, /deprecated/);
+            assert.deepStrictEqual(decorator.fullSyncSkip, [1, 2]);
+
+            assert.deepStrictEqual(builder, decorator);
         });
     });
 
