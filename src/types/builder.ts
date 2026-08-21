@@ -307,16 +307,24 @@ function primitive<TBase>(name: RawPrimitiveType): PrimitiveFactory<TBase> {
     return (() => new FieldBuilder<TBase>(name)) as PrimitiveFactory<TBase>;
 }
 
-// Accepts a Schema class, a primitive string, or another FieldBuilder as a child type.
+// Collection element: a Schema class or a primitive type NAME (`"string"`).
 export type ChildType =
     | RawPrimitiveType
-    | Constructor<Schema>
-    | FieldBuilder<any>;
+    | Constructor<Schema>;
 
+/**
+ * Guard against `t.array(t.string())`. A builder child looks like it should
+ * work — and its bare `_type` would — but every modifier on it (`.view()`,
+ * `.default()`, quantize options) would be silently dropped, since modifiers
+ * describe the FIELD, not the elements. Fail loudly instead.
+ */
 function resolveChild(child: ChildType): DefinitionType {
     if (isBuilder(child)) {
-        // `_type` is private; element access bypasses the visibility check.
-        return child['_type'];
+        const inner = child['_type']; // private; element access bypasses the check
+        const hint = (typeof inner === "string")
+            ? `use the type name instead: t.array("${inner}")`
+            : `collections accept a Schema class or a primitive type name ("string", "number", …)`;
+        throw new Error(`t.array/map/set/collection(): a t.* builder is not a valid element type — ${hint}.`);
     }
     return child as DefinitionType;
 }
@@ -326,28 +334,24 @@ function resolveChild(child: ChildType): DefinitionType {
 // ---------------------------------------------------------------------------
 
 // Overloaded factories for collections. Implementation lives in a single function;
-// overloads narrow the return type for Schema/primitive/builder children.
+// overloads narrow the return type for Schema/primitive children.
 // All collection factories tag `HasDefault = true` because schema() auto-
 // instantiates an empty collection when no explicit default is given.
 interface ArrayFactory {
     <C extends Constructor<Schema>>(child: C): FieldBuilder<ArraySchema<InstanceType<C>>, true, false>;
     <P extends RawPrimitiveType>(child: P): FieldBuilder<ArraySchema<InferValueType<P>>, true, false>;
-    <V>(child: FieldBuilder<V>): FieldBuilder<ArraySchema<V>, true, false>;
 }
 interface MapFactory {
     <C extends Constructor<Schema>>(child: C): FieldBuilder<MapSchema<InstanceType<C>>, true, false>;
     <P extends RawPrimitiveType>(child: P): FieldBuilder<MapSchema<InferValueType<P>>, true, false>;
-    <V>(child: FieldBuilder<V>): FieldBuilder<MapSchema<V>, true, false>;
 }
 interface SetFactory {
     <C extends Constructor<Schema>>(child: C): FieldBuilder<SetSchema<InstanceType<C>>, true, false>;
     <P extends RawPrimitiveType>(child: P): FieldBuilder<SetSchema<InferValueType<P>>, true, false>;
-    <V>(child: FieldBuilder<V>): FieldBuilder<SetSchema<V>, true, false>;
 }
 interface CollectionFactory {
     <C extends Constructor<Schema>>(child: C): FieldBuilder<CollectionSchema<InstanceType<C>>, true, false>;
     <P extends RawPrimitiveType>(child: P): FieldBuilder<CollectionSchema<InferValueType<P>>, true, false>;
-    <V>(child: FieldBuilder<V>): FieldBuilder<CollectionSchema<V>, true, false>;
 }
 // t.stream(Entity) — priority-batched collection of Schema instances.
 // Element type is restricted to Schema subclasses (no primitives) because

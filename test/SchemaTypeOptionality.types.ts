@@ -75,3 +75,9 @@ void mixedJSONReq;
 // @ts-expect-error — opt stays optional in the JSON shape
 const mixedJSONOpt: string = mixedJSON.opt;
 void mixedJSONOpt;
+
+// a t.* builder is not a collection element type — use the type name
+// @ts-expect-error — t.array(t.string()) must not typecheck
+schema({ items: t.array(t.string()) });
+// @ts-expect-error — t.map(t.uint8()) must not typecheck
+schema({ m: t.map(t.uint8()) });

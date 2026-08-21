@@ -933,6 +933,20 @@ describe("Definition Tests", () => {
             assert.throws(() => schema({ c: t.number().noSync().unreliable() }, 'BadUnreliable'), /local-only field cannot be synchronized/);
         });
 
+        it("should reject a t.* builder as a collection element type", () => {
+            // bare primitive builder: would work by accident, but modifiers on it
+            // (.view/.default/quantize) are silently dropped — point at the string form
+            assert.throws(() => schema({ a: t.array(t.string() as any) }, 'BuilderChild'), /t\.array\("string"\)/);
+            assert.throws(() => schema({ b: t.map(t.uint8() as any) }, 'BuilderChildMap'), /t\.array\("uint8"\)/);
+            // quantized is not a valid element type at all — used to crash on null metadata
+            assert.throws(
+                () => schema({ c: t.array(t.quantized({ min: 0, max: 1 }) as any) }, 'QuantizedChild'),
+                /not a valid element type/,
+            );
+            // the canonical spellings still work
+            assert.doesNotThrow(() => schema({ a: t.array("string"), b: t.map("uint8") }, 'StringChild'));
+        });
+
         it("should throw when .patchOnly() is combined with .fullStateOnly()", () => {
             // Both set = excluded from every channel, i.e. a silent .noSync().
             assert.throws(

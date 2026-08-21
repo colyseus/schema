@@ -191,6 +191,16 @@ describe("schema-codegen", () => {
         });
     });
 
+    describe("builder as collection element", () => {
+        it("throws pointing at the type-name form instead of emitting an undefined child type", () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "BuilderChild.ts"));
+            assert.throws(
+                () => generate("csharp", { files: inputFiles, output: OUTPUT_DIR }),
+                /field 'items'.*t\.array\("string"\)/,
+            );
+        });
+    });
+
     // Codegen must terminate on ANY class graph the parser can produce. These
     // guard the inheritance-chain walks (getStructures/isSchemaClass/
     // getInheritanceTree/postProcessing) against the malformed inputs that used

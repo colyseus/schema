@@ -129,7 +129,20 @@ function defineProperty(property: Property, initializer: any) {
             if (BUILDER_COLLECTION_KINDS.has(base.methodName)) {
                 property.type = base.methodName;
                 if (base.firstArg) {
-                    property.childType = (base.firstArg as any).text ?? base.firstArg.getText();
+                    // see through `(x)`, `x as any`, `x satisfies T`
+                    let childArg: ts.Expression = base.firstArg;
+                    while (ts.isParenthesizedExpression(childArg) || ts.isAsExpression(childArg) || ts.isSatisfiesExpression(childArg)) {
+                        childArg = childArg.expression;
+                    }
+                    if (ts.isCallExpression(childArg)) {
+                        // mirrors the runtime guard in builder.ts resolveChild()
+                        const inner = extractBuilderBase(childArg);
+                        const hint = (inner && !BUILDER_COLLECTION_KINDS.has(inner.methodName) && inner.methodName !== "ref" && inner.methodName !== "quantized")
+                            ? `use the type name instead: t.${base.methodName}("${inner.methodName}")`
+                            : `collections accept a Schema class or a primitive type name ("string", "number", …)`;
+                        throw new Error(`schema-codegen: field '${property.name}': a t.* builder is not a valid element type — ${hint}.`);
+                    }
+                    property.childType = (childArg as any).text ?? childArg.getText();
                 }
             } else if (base.methodName === "ref") {
                 property.type = "ref";
