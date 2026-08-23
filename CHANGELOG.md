@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.18]
+
+### Fixed
+
+- **A `@view` tag no longer filters that Schema class everywhere else it is
+  used.** Tagging a single field — `@view() @type(Inventory) inventory` on a
+  player — also hid the contents of every other `Inventory` in the state,
+  including ones on a fully public path such as a building's chest: clients
+  received the empty container and none of its children, with no error to
+  point at it. Self-referencing types (a `Node` holding a map of `Node`) were
+  worst hit — one tagged branch blanked the children of all of them.
+
+  Thanks to [@AndadH](https://github.com/AndadH) for the report and the
+  narrowed-down schema ([#204](https://github.com/colyseus/schema/issues/204)).
+
 ## [5.0.16]
 
 ### Fixed

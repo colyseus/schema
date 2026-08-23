@@ -8,16 +8,6 @@ export class TypeContext {
     schemas = new Map<typeof Schema, number>();
 
     hasFilters: boolean = false;
-    parentFiltered: {[typeIdAndParentIndex: string]: boolean} = {};
-    /**
-     * True iff `parentFiltered` has at least one entry. Flipped on by
-     * `registerFilteredByParent` and read in `checkInheritedFlags` as a
-     * cheap gate to skip the string-keyed `parentFiltered[key]` lookup
-     * when no class has registered filter inheritance via ancestry — the
-     * common case when @view tags exist only on sibling fields, not
-     * along any attachment chain.
-     */
-    hasParentFilteredEntries: boolean = false;
 
     /**
      * For inheritance support
@@ -84,17 +74,13 @@ export class TypeContext {
         return this.schemas.get(klass);
     }
 
-    private discoverTypes(klass: typeof Schema, parentType?: typeof Schema, parentIndex?: number, parentHasViewTag?: boolean) {
-        if (parentHasViewTag) {
-            this.registerFilteredByParent(klass, parentType, parentIndex);
-        }
-
+    private discoverTypes(klass: typeof Schema) {
         // skip if already registered
         if (!this.add(klass)) { return; }
 
         // add classes inherited from this base class
         TypeContext.inheritedTypes.get(klass)?.forEach((child) => {
-            this.discoverTypes(child, parentType, parentIndex, parentHasViewTag);
+            this.discoverTypes(child);
         });
 
         // add parent classes
@@ -120,7 +106,6 @@ export class TypeContext {
             const index = fieldIndex as any as number;
 
             const fieldType = metadata[index].type;
-            const fieldHasViewTag = (metadata[index].tag !== undefined);
 
             if (typeof (fieldType) === "string") {
                 continue;
@@ -133,7 +118,7 @@ export class TypeContext {
             }
 
             if (typeof (fieldType) === "function") {
-                this.discoverTypes(fieldType as typeof Schema, klass, index, parentHasViewTag || fieldHasViewTag);
+                this.discoverTypes(fieldType as typeof Schema);
 
             } else {
                 const type = Object.values(fieldType)[0];
@@ -143,47 +128,15 @@ export class TypeContext {
                     continue;
                 }
 
-                this.discoverTypes(type as typeof Schema, klass, index, parentHasViewTag || fieldHasViewTag);
+                this.discoverTypes(type as typeof Schema);
             }
         }
     }
 
-    /**
-     * Keep track of which classes have filters applied.
-     * Format: `${typeid}-${parentTypeid}-${parentIndex}`
-     */
-    private registerFilteredByParent(schema: typeof Schema, parentType?: typeof Schema, parentIndex?: number) {
-        const typeid = this.schemas.get(schema) ?? this.schemas.size;
-
-        let key = `${typeid}`;
-        if (parentType) { key += `-${this.schemas.get(parentType)}`; }
-
-        key += `-${parentIndex}`;
-        this.parentFiltered[key] = true;
-        this.hasParentFilteredEntries = true;
-    }
-
     debug() {
-        let parentFiltered = "";
-
-        for (const key in this.parentFiltered) {
-            const keys: number[] = key.split("-").map(Number);
-            const fieldIndex = keys.pop();
-
-            parentFiltered += `\n\t\t`;
-            parentFiltered += `${key}: ${keys.reverse().map((id, i) => {
-                const klass = this.types[id];
-                const metadata: Metadata = klass[Symbol.metadata];
-                let txt = klass.name;
-                if (i === 0) { txt += `[${metadata[fieldIndex].name}]`; }
-                return `${txt}`;
-            }).join(" -> ")}`;
-        }
-
         return `TypeContext ->\n` +
             `\tSchema types: ${this.schemas.size}\n` +
-            `\thasFilters: ${this.hasFilters}\n` +
-            `\tparentFiltered:${parentFiltered}`;
+            `\thasFilters: ${this.hasFilters}`;
     }
 
 }

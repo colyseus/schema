@@ -13,7 +13,6 @@ import {
     // (see INHERITABLE_FLAGS comment in ChangeTree.ts). Per-field unreliable
     // routing on primitive fields still uses it via `isFieldUnreliable()`.
 } from "../../types/symbols.js";
-import type { Schema } from "../../Schema.js";
 import {
     INHERITABLE_FLAGS, IS_FULL_STATE_ONLY, IS_PATCH_ONLY,
     // IS_UNRELIABLE — tree-level unreliable currently disabled; see
@@ -71,25 +70,13 @@ export function checkIsFiltered(
  * etc.) inherit these from the Schema field that holds them.
  *
  * The common case — fresh tree attached to a parent field that carries
- * none of the inheritable annotations — produces no flag change, no
- * queue update, and no `parentFiltered` hit. Two small structural
- * choices keep that case cheap without any precomputed descriptor
- * bitmask:
- *
- *  1) Flag inheritance is a single bitwise OR onto `tree.flags`. The
- *     three per-annotation reads pack into `fieldBits`, the parent's
- *     inherited bits come from `parentChangeTree.flags` directly; one
- *     read-modify-write replaces three getter/setter cycles, and the
- *     bit diff against `beforeFlags` gives us the "just became static /
- *     unreliable" signal for the side-effect branches.
- *
- *  2) The `parentFiltered` string-key lookup is gated on
- *     `types.hasParentFilteredEntries`, which is only flipped true when
- *     `registerFilteredByParent` actually records an entry — i.e. when
- *     some @view-tagged field reaches this (child, parent, index)
- *     triple through the ancestry walk. Schemas with @view tags only on
- *     sibling fields (not along any attachment chain) skip the string
- *     concat + hash lookup entirely.
+ * none of the inheritable annotations — produces no flag change and no
+ * queue update. Flag inheritance is a single bitwise OR onto
+ * `tree.flags`: the per-annotation reads pack into `fieldBits`, the
+ * parent's inherited bits come from `parentChangeTree.flags` directly,
+ * and one read-modify-write replaces three getter/setter cycles. The bit
+ * diff against `beforeFlags` gives the "just became static / unreliable"
+ * signal for the side-effect branches.
  */
 export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: number): void {
     if (!parent) { return; }
@@ -159,21 +146,12 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
     // pass is the only way elements become visible to a view.
     const fieldHasStream = parentMetadata?.[$streamFieldIndexes]?.includes(parentIndex) ?? false;
 
-    // Skip the `parentFiltered` string-key lookup when no class has
-    // actually registered filter inheritance via ancestry. The lookup
-    // cannot hit in that state, so the string concat + hash lookup would
-    // be wasted work every attach.
-    let parentFiltered = false;
-    const parentConstructor = (parent as any)?.constructor as typeof Schema | undefined;
-    if (types.hasParentFilteredEntries && parentConstructor !== undefined) {
-        const refType = Metadata.isValidInstance(tree.ref)
-            ? tree.ref.constructor
-            : (tree.ref as any)[$childType];
-        const key = `${types.getTypeId(refType as typeof Schema)}-${types.schemas.get(parentConstructor)}-${parentIndex}`;
-        parentFiltered = types.parentFiltered[key] ?? false;
-    }
-
-    const newFiltered = parentChangeTree.isFiltered || parentFiltered || fieldHasViewTag || fieldHasStream;
+    // Filtering is a property of the *attachment*, never of the child class:
+    // the same Schema class may sit under a @view field here and under a
+    // public field there (#204). `parentChangeTree.isFiltered` carries the
+    // ancestry — `setRoot` derives it parent-first before recursing — so the
+    // field annotation only has to answer for this one edge.
+    const newFiltered = parentChangeTree.isFiltered || fieldHasViewTag || fieldHasStream;
     tree.isFiltered = newFiltered;
 
     // Flag collection trees attached to a `.stream()` field so the encoder

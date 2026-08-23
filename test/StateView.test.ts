@@ -3249,13 +3249,7 @@ describe("StateView", () => {
 
             assert.strictEqual(contextDebug, `TypeContext ->
 	Schema types: 5
-	hasFilters: true
-	parentFiltered:
-		1-0-0: MyRoomState[entities] -> Entity
-		2-1-1: Entity[components] -> Component
-		3-1-1: Entity[components] -> ListComponent
-		4-1-1: Entity[components] -> TagComponent
-		2-1-2: Entity[component] -> Component`);
+	hasFilters: true`);
 
 
         });
@@ -5638,6 +5632,478 @@ describe("StateView", () => {
                 assert.deepStrictEqual(tick(), expected);
             }
         });
+    });
+
+
+    describe("#204: a @view tag must not filter other uses of the same type", () => {
+
+        it("nested Schema reused outside the tagged path stays public", () => {
+            class Leaf extends Schema {
+                @type("number") n = 7;
+            }
+            class Mid extends Schema {
+                @type(Leaf) leaf = new Leaf();
+            }
+            class Owner extends Schema {
+                @view() @type(Mid) mid = new Mid();
+            }
+            class State extends Schema {
+                @type(Owner) owner = new Owner();
+                @type(Mid) publicMid = new Mid();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state.owner);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // reachable only through an untagged path — public to everyone
+            assert.strictEqual(client1.state.publicMid.leaf.n, 7);
+            assert.strictEqual(client2.state.publicMid.leaf.n, 7);
+
+            // the tagged path is still gated
+            assert.strictEqual(client1.state.owner.mid.leaf.n, 7);
+            assert.strictEqual(client2.state.owner.mid, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("collection under a reused type stays public (issue repro)", () => {
+            class InventoryItem extends Schema {
+                @type("string") name: string;
+            }
+            class Inventory extends Schema {
+                @type({ map: InventoryItem }) slots = new MapSchema<InventoryItem>();
+            }
+            class Chest extends Schema {
+                @type(Inventory) inventory = new Inventory();
+            }
+            class Building extends Schema {
+                @type(Chest) chest = new Chest();
+            }
+            class Player extends Schema {
+                @view(1) @type(Inventory) inventory = new Inventory();
+            }
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+                @type({ map: Building }) buildings = new MapSchema<Building>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const building = new Building();
+            building.chest.inventory.slots.set("0", new InventoryItem().assign({ name: "wood" }));
+            state.buildings.set("b1", building);
+
+            const player = new Player();
+            player.inventory.slots.set("0", new InventoryItem().assign({ name: "sword" }));
+            state.players.set("one", player);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(player, 1);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            const chestSlots = (client: typeof client1) =>
+                client.state.buildings.get("b1").chest.inventory.slots;
+
+            assert.strictEqual(chestSlots(client1).get("0").name, "wood");
+            assert.strictEqual(chestSlots(client2).get("0").name, "wood");
+
+            assert.strictEqual(client1.state.players.get("one").inventory.slots.get("0").name, "sword");
+            assert.strictEqual(client2.state.players.get("one").inventory, undefined);
+
+            // mutations after the first patch keep the same split
+            building.chest.inventory.slots.set("1", new InventoryItem().assign({ name: "stone" }));
+            player.inventory.slots.set("1", new InventoryItem().assign({ name: "shield" }));
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(chestSlots(client1).get("1").name, "stone");
+            assert.strictEqual(chestSlots(client2).get("1").name, "stone");
+            assert.strictEqual(client1.state.players.get("one").inventory.slots.get("1").name, "shield");
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("the reported schema shape, with both view.add() styles", () => {
+            //
+            // github.com/colyseus/schema/issues/204 as declared by the reporter:
+            // three @view(1) fields on Player (two of them the same Inventory
+            // class), and a Building > chest > Inventory that carries no tag.
+            //
+            class InventoryItem extends Schema {
+                @type("string") name: string;
+                @type("number") quantity: number = 1;
+                @type("string") equipSlot: string = "";
+            }
+            class Inventory extends Schema {
+                @type({ map: InventoryItem }) slots = new MapSchema<InventoryItem>();
+                @type("number") version: number = 0;
+            }
+            class Equipment extends Schema {
+                @type({ map: InventoryItem }) slots = new MapSchema<InventoryItem>();
+            }
+            class Player extends Schema {
+                @type("string") id: string;
+                @view(1) @type(Inventory) inventory = new Inventory();
+                @view(1) @type(Inventory) pchest = new Inventory();
+                @view(1) @type("string") interactHook: string = "";
+                @view(1) @type(Equipment) equipment = new Equipment();
+            }
+            class Chest extends Schema {
+                @type(Inventory) inventory = new Inventory();
+            }
+            class Building extends Schema {
+                @type("string") id: string;
+                @type(Chest) chest = new Chest();
+            }
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+                @type({ map: Building }) buildings = new MapSchema<Building>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const building = new Building().assign({ id: "b1" });
+            building.chest.inventory.slots.set("0", new InventoryItem().assign({ name: "wood", quantity: 10 }));
+            state.buildings.set("b1", building);
+
+            const makePlayer = (id: string, item: string) => {
+                const player = new Player().assign({ id, interactHook: `hook-${id}` });
+                player.inventory.slots.set("0", new InventoryItem().assign({ name: item }));
+                player.pchest.slots.set("0", new InventoryItem().assign({ name: `${item}-stored` }));
+                player.equipment.slots.set("head", new InventoryItem().assign({ name: `${item}-helm`, equipSlot: "head" }));
+                state.players.set(id, player);
+                return player;
+            };
+            const one = makePlayer("one", "sword");
+            const two = makePlayer("two", "axe");
+
+            // the reporter's onJoin(): parent plus each tagged child explicitly
+            const client1 = createClientWithView(state);
+            client1.view.add(one, 1);
+            client1.view.add(one.inventory, 1);
+            client1.view.add(one.pchest, 1);
+            client1.view.add(one.equipment, 1);
+
+            // the single add() that should already be enough
+            const client2 = createClientWithView(state);
+            client2.view.add(two, 1);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            const assertOwnAndChest = (client: typeof client1, id: string, item: string) => {
+                const own = client.state.players.get(id);
+                assert.strictEqual(own.inventory.slots.get("0").name, item, `${id} inventory`);
+                assert.strictEqual(own.pchest.slots.get("0").name, `${item}-stored`, `${id} pchest`);
+                assert.strictEqual(own.equipment.slots.get("head").name, `${item}-helm`, `${id} equipment`);
+                assert.strictEqual(own.interactHook, `hook-${id}`, `${id} interactHook`);
+
+                // untagged Building > chest > Inventory — public to everyone
+                const chest = client.state.buildings.get("b1").chest;
+                assert.strictEqual(chest.inventory.slots.get("0").name, "wood", `${id} sees chest`);
+            };
+
+            assertOwnAndChest(client1, "one", "sword");
+            assertOwnAndChest(client2, "two", "axe");
+
+            // neither player sees the other's tagged fields
+            assert.strictEqual(client1.state.players.get("two").inventory, undefined);
+            assert.strictEqual(client1.state.players.get("two").equipment, undefined);
+            assert.strictEqual(client1.state.players.get("two").interactHook, undefined);
+            assert.strictEqual(client2.state.players.get("one").inventory, undefined);
+
+            // moveItem(): a new instance into the chest, an existing one re-slotted
+            const moved = one.inventory.slots.get("0");
+            one.inventory.slots.delete("0");
+            one.inventory.slots.set("5", moved);
+            one.inventory.version++;
+            building.chest.inventory.slots.set("1", new InventoryItem().assign({ name: "stone", quantity: 3 }));
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.players.get("one").inventory.slots.get("5").name, "sword");
+            assert.strictEqual(client1.state.players.get("one").inventory.slots.get("0"), undefined);
+            assert.strictEqual(client1.state.players.get("one").inventory.version, 1);
+
+            for (const client of [client1, client2]) {
+                const slots = client.state.buildings.get("b1").chest.inventory.slots;
+                assert.strictEqual(slots.get("1").name, "stone");
+                assert.strictEqual(slots.size, 2);
+            }
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("a self-recursive type keeps its public branch", () => {
+            // `Node.children` is an edge from Node to itself: a @view on one
+            // Node field must not filter every other Node's children.
+            class Node extends Schema {
+                @type("number") n = 0;
+                @type({ map: Node }) children = new MapSchema<Node>();
+            }
+            class State extends Schema {
+                @view() @type(Node) secretRoot = new Node().assign({ n: 1 });
+                @type(Node) publicRoot = new Node().assign({ n: 2 });
+            }
+
+            const state = new State();
+            state.secretRoot.children.set("c", new Node().assign({ n: 10 }));
+            state.publicRoot.children.set("c", new Node().assign({ n: 20 }));
+
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state.secretRoot);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.publicRoot.children.get("c").n, 20);
+            assert.strictEqual(client2.state.publicRoot.children.get("c").n, 20);
+
+            assert.strictEqual(client1.state.secretRoot.children.get("c").n, 10);
+            assert.strictEqual(client2.state.secretRoot, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+    });
+
+    describe("filter inheritance through untagged levels", () => {
+        //
+        // A @view tag gates one edge; everything below it inherits visibility
+        // from the parent ChangeTree, however many untagged levels deep.
+        //
+
+        it("propagates down a chain of untagged Schema fields", () => {
+            class C extends Schema { @type("number") n = 3; }
+            class B extends Schema { @type(C) c = new C(); }
+            class A extends Schema { @type(B) b = new B(); }
+            class State extends Schema { @view() @type(A) a = new A(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state.a);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), { a: { b: { c: { n: 3 } } } });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("propagates through nested collections", () => {
+            class Leaf extends Schema { @type("number") n = 1; }
+            class Part extends Schema { @type({ map: Leaf }) sub = new MapSchema<Leaf>(); }
+            class Entity extends Schema { @type([Part]) parts = new ArraySchema<Part>(); }
+            class State extends Schema {
+                @view() @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const entity = new Entity();
+            const part = new Part();
+            part.sub.set("k", new Leaf().assign({ n: 5 }));
+            entity.parts.push(part);
+            state.entities.set("e1", entity);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(entity);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.entities.get("e1").parts[0].sub.get("k").n, 5);
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("covers subclass fields inside a filtered collection", () => {
+            class Comp extends Schema { @type("string") name = "base"; }
+            class ListComp extends Comp { @type(["string"]) list = new ArraySchema<string>(); }
+            class TagComp extends Comp { @type("string") tag = "t"; }
+            class Entity extends Schema { @type([Comp]) comps = new ArraySchema<Comp>(); }
+            class State extends Schema {
+                @view() @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const entity = new Entity();
+            entity.comps.push(new Comp());
+            entity.comps.push(new TagComp());
+            entity.comps.push(new ListComp().assign({ list: new ArraySchema<string>("a", "b") }));
+            state.entities.set("e", entity);
+
+            entity.comps.forEach((comp) =>
+                assert.strictEqual(comp[$changes].isFiltered, true, `${comp.constructor.name} must be filtered`));
+
+            const client1 = createClientWithView(state);
+            client1.view.add(entity);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.entities.get("e").toJSON(), {
+                comps: [
+                    { name: "base" },
+                    { name: "base", tag: "t" },
+                    { name: "base", list: ["a", "b"] },
+                ],
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("covers primitive collections at depth", () => {
+            class Deep extends Schema {
+                @type(["string"]) arr = new ArraySchema<string>("x", "y");
+                @type({ map: "number" }) map = new MapSchema<number>();
+                @type({ set: "string" }) set = new SetSchema<string>(["s"]);
+            }
+            class Mid extends Schema { @type(Deep) deep = new Deep(); }
+            class State extends Schema { @view() @type(Mid) mid = new Mid(); }
+
+            const state = new State();
+            state.mid.deep.map.set("k", 9);
+
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state.mid);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                mid: { deep: { arr: ["x", "y"], map: { k: 9 }, set: ["s"] } },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("applies to a subtree assembled detached, then attached", () => {
+            // children get their parent before a root exists, so the filter
+            // flag can only be derived on the later setRoot walk.
+            class C extends Schema { @type("number") n = 8; }
+            class B extends Schema { @type({ map: C }) cs = new MapSchema<C>(); }
+            class A extends Schema { @type(B) b: B; }
+            class State extends Schema { @view() @type(A) a = new A(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state.a);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            const b = new B();
+            b.cs.set("one", new C());
+            b.cs.set("two", new C().assign({ n: 88 }));
+            state.a.b = b;
+
+            assert.strictEqual(b[$changes].isFiltered, true);
+            assert.strictEqual(b.cs.get("two")[$changes].isFiltered, true);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                a: { b: { cs: { one: { n: 8 }, two: { n: 88 } } } },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("deep descendants of a tagged field are still filtered", () => {
+            class Leaf extends Schema {
+                @type("number") n = 7;
+            }
+            class Mid extends Schema {
+                @type(Leaf) leaf = new Leaf();
+                @type({ map: Leaf }) leaves = new MapSchema<Leaf>();
+            }
+            class State extends Schema {
+                @view() @type(Mid) mid = new Mid();
+            }
+
+            const state = new State();
+            state.mid.leaves.set("one", new Leaf().assign({ n: 9 }));
+
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state.mid);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.strictEqual(client1.state.mid.leaf.n, 7);
+            assert.strictEqual(client1.state.mid.leaves.get("one").n, 9);
+
+            assert.strictEqual(client2.state.mid, undefined);
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("nested @view tags gate independently", () => {
+            class B extends Schema { @type("number") n = 2; }
+            class A extends Schema {
+                @view(2) @type(B) secret = new B();
+                @type(B) pub = new B();
+            }
+            class State extends Schema { @view(1) @type(A) a = new A(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const outer = createClientWithView(state);
+            outer.view.add(state.a, 1);
+
+            const inner = createClientWithView(state);
+            inner.view.add(state.a, 1);
+            inner.view.add(state.a.secret, 2);
+
+            const none = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [outer, inner, none]);
+
+            assert.deepStrictEqual(outer.state.toJSON(), { a: { pub: { n: 2 } } });
+            assert.deepStrictEqual(inner.state.toJSON(), { a: { secret: { n: 2 }, pub: { n: 2 } } });
+            assert.deepStrictEqual(none.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [outer, inner, none]);
+        });
+
     });
 
 });
