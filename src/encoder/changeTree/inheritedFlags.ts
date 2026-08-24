@@ -86,14 +86,16 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
     // Walk up a collection level so `parent` lands on the Schema that
     // owns the field at `parentIndex`. Field annotations live on Schema
     // metadata; collections have none.
-    let parentChangeTree: ChangeTree = parent[$changes];
-    const parentIsCollection = !Metadata.isValidInstance(parent);
+    const parentChangeTree: ChangeTree = parent[$changes];
+    const parentIsCollection = !parentChangeTree._isSchema;
+    let parentMetadata: any;
     if (parentIsCollection) {
         parent = parentChangeTree.parent;
         parentIndex = parentChangeTree.parentIndex;
+        parentMetadata = parent?.[$changes].metadata;
+    } else {
+        parentMetadata = parentChangeTree.metadata;
     }
-
-    const parentMetadata: any = (parent as any)?.constructor?.[Symbol.metadata];
 
     // Flag inheritance — pack the patchOnly/static annotation checks into
     // flag bits alongside the parent's own transitive flags, then OR onto
@@ -184,9 +186,7 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
     }
 
     if (newFiltered) {
-        const refType = Metadata.isValidInstance(tree.ref)
-            ? tree.ref.constructor
-            : (tree.ref as any)[$childType];
+        const sharesEligible = _sharesEligible(tree);
         // #218: nested Schema fields inherit visibility from a @view-gated
         // parent regardless of whether the parent is a collection. The
         // `parentIsCollection` constraint that used to live here blocked
@@ -203,7 +203,7 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
         // are guaranteed to exist when that flag is set).
         tree.isVisibilitySharedWithParent = (
             parentChangeTree.isFiltered
-            && typeof refType !== "string"
+            && sharesEligible
             && !fieldHasStream
             && (!fieldHasViewTag || (parentIsCollection && parentMetadata[parentIndex].tag !== DEFAULT_VIEW_TAG))
         );
@@ -247,6 +247,17 @@ export function drainFilterRefresh(root: Root): void {
 }
 
 /**
+ * Primitive-element collections never share visibility downward. One
+ * predicate for both derivations (`checkInheritedFlags` and
+ * `refreshFilterState`) — the InstanceSharing invariant test pins them
+ * together. `_isSchema` short-circuits the `$childType` probe for Schema
+ * trees (whose `$childType` is undefined and would pass anyway).
+ */
+function _sharesEligible(tree: ChangeTree): boolean {
+    return tree._isSchema || typeof (tree.refTarget as any)[$childType] !== "string";
+}
+
+/**
  * Re-derive `isFiltered` (AND over live edges) and
  * `isVisibilitySharedWithParent` (OR over live edges) from the parent
  * chain. On a filtered→public flip, live state is re-staged — it may have
@@ -264,10 +275,7 @@ function refreshFilterState(tree: ChangeTree): void {
     const root = tree.root;
     if (root === undefined || tree.parentRef === undefined) return;
 
-    // Primitive-element collections never share visibility (mirror of
-    // checkInheritedFlags\' `typeof refType !== "string"` — a Schema tree\'s
-    // `$childType` is undefined, so it passes too).
-    const sharesEligible = typeof (tree.refTarget as any)[$childType] !== "string";
+    const sharesEligible = _sharesEligible(tree);
 
     let bits = _edgeBits(tree, tree.parentRef, tree._parentIndex, sharesEligible);
     // Saturated means no further edge can change the outcome.
@@ -324,7 +332,7 @@ function _edgeBits(tree: ChangeTree, parentRef: Ref, index: number, sharesEligib
             else if (sharesEligible) bits |= EDGE_SHARES;
         }
     } else if (!parentTree.isFiltered) {
-        // Collection edge: the collection\'s own classification already
+        // Collection edge: the collection's own classification already
         // folds in the field that holds it.
         bits |= EDGE_PUBLIC;
     } else if (sharesEligible && !parentTree.isStreamCollection) {

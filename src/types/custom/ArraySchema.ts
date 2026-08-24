@@ -178,7 +178,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         const proxy = new Proxy(this, ARRAY_PROXY_HANDLER);
 
         Object.defineProperty(this, $changes, {
-            value: new ChangeTree(proxy),
+            value: new ChangeTree(proxy, this),
             enumerable: false,
             writable: true,
         });
@@ -1011,15 +1011,16 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     }
 
     protected [$onEncodeEnd]() {
-        const self = this[$proxyTarget] ?? this;
-        const staged = self.tmpItems;
-        self.tmpItems = self.items.slice();
+        // No unwrap: ChangeTree's gated sites are the only callers and they
+        // invoke on `refTarget` (the raw target) already.
+        const staged = this.tmpItems;
+        this.tmpItems = this.items.slice();
 
-        if (self.deletedIndexes.length > 0) {
+        if (this.deletedIndexes.length > 0) {
             // compaction just closed the staged holes — everything above the
             // lowest one slid down a slot
-            self.$reindexChildren(0, staged);
-            self.deletedIndexes.length = 0;
+            this.$reindexChildren(0, staged);
+            this.deletedIndexes.length = 0;
         }
     }
 

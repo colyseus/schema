@@ -17,7 +17,7 @@
  */
 import { OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $proxyTarget, $refId, $refTypeFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
+import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
@@ -308,8 +308,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     ensureUnreliableRecorder(): ChangeRecorder {
         if (this.unreliableRecorder === undefined) {
-            const isSchema = Metadata.isValidInstance(this.ref);
-            this.unreliableRecorder = isSchema
+            this.unreliableRecorder = this._isSchema
                 ? new SchemaChangeRecorder((this.metadata?.[$numFields] ?? 0) as number)
                 : new CollectionChangeRecorder();
         }
@@ -354,12 +353,13 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         return Metadata.hasStreamAtIndex(this.metadata, index);
     }
 
-    constructor(ref: T) {
+    constructor(ref: T, refTarget: T = ref) {
         this.ref = ref;
-        // `$proxyTarget` is a self-reference set by ArraySchema on the raw
-        // target; for non-proxied refs it's undefined and we fall back to
-        // `ref`. Cached here so hot-path reads skip the Proxy `get` trap.
-        this.refTarget = ((ref as any)[$proxyTarget] ?? ref) as T;
+        // Raw (non-Proxy) target, passed explicitly by ArraySchema's ctor —
+        // the only proxied type. Defaulting to `ref` for everything else
+        // skips a guaranteed-miss megamorphic `$proxyTarget` probe per
+        // construction. Cached so hot-path reads skip the Proxy `get` trap.
+        this.refTarget = refTarget;
 
         // Single per-class lookup that subsumes Symbol.metadata,
         // isValidInstance, $encoder, $filter, and the filter bitmask.
@@ -805,7 +805,12 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     endEncode() {
         this.reset();
         this.changesNode = undefined;
-        (this.ref as any)[$onEncodeEnd]?.();
+        // Every collection class defines [$onEncodeEnd]; Schema never does —
+        // probing it was a guaranteed megamorphic miss per drained tree.
+        // `?.` stays: a FIELDLESS Schema has no metadata, so its tree is
+        // `_isSchema === false` too. refTarget receiver skips ArraySchema's
+        // proxy hops.
+        if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.();
         this.isNew = false;
     }
 
@@ -813,11 +818,11 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     endEncodeUnreliable() {
         this.unreliableRecorder?.reset();
         this.unreliableChangesNode = undefined;
-        (this.ref as any)[$onEncodeEnd]?.();
+        if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.();
     }
 
     discard() {
-        (this.ref as any)[$onEncodeEnd]?.();
+        if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.();
         this.reset();
         this.unreliableRecorder?.reset();
     }
