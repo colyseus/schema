@@ -2,6 +2,7 @@ import * as ts from "typescript";
 import * as path from "path";
 import { readFileSync } from "fs";
 import { IStructure, Class, Interface, Property, Context, Enum, QuantizedProperty } from "./types.js";
+import { ResolveOptions, isOwnPackageSource, resetResolver, resolveNonRelativeImport, resolveSourceFile, sourceFileCandidates } from "./resolve.js";
 
 let currentStructure: IStructure;
 let currentProperty: Property;
@@ -189,15 +190,36 @@ function defineProperty(property: Property, initializer: any) {
     }
 }
 
+function followModuleSpecifier(
+    specifier: ts.Expression | undefined,
+    currentFile: string,
+    decoratorName: string,
+) {
+    const moduleName: string | undefined = (specifier as ts.StringLiteral)?.text;
+    if (!moduleName) { return; } // `export { x }` — no module to follow
+
+    const resolved = (moduleName.startsWith("."))
+        ? resolveSourceFile(path.resolve(path.dirname(currentFile), moduleName))
+        // may be a tsconfig `paths`/`baseUrl` alias onto first-party source;
+        // npm packages are filtered out by the resolver
+        : resolveNonRelativeImport(moduleName, currentFile);
+
+    if (resolved && !isOwnPackageSource(resolved)) {
+        parseFiles([resolved], decoratorName, globalContext);
+    }
+}
+
 function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
     switch (node.kind) {
-        case ts.SyntaxKind.ImportClause:
-            const specifier = (node.parent as any).moduleSpecifier;
-            if (specifier && (specifier.text as string).startsWith('.')) {
-                const currentDir = path.dirname(node.getSourceFile().fileName);
-                const pathToImport = path.resolve(currentDir, specifier.text);
-                parseFiles([pathToImport], decoratorName, globalContext);
-            }
+        case ts.SyntaxKind.ImportDeclaration:
+        case ts.SyntaxKind.ExportDeclaration:
+            // ExportDeclaration too: path aliases usually point at a barrel
+            // (`@schemas` -> `schemas/index.ts` -> `export * from "./Player"`).
+            followModuleSpecifier(
+                (node as ts.ImportDeclaration | ts.ExportDeclaration).moduleSpecifier,
+                node.getSourceFile().fileName,
+                decoratorName,
+            );
             break;
 
         case ts.SyntaxKind.ClassDeclaration:
@@ -531,10 +553,15 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
 let parsedFiles: { [filename: string]: boolean };
 
+/**
+ * `options` is only honored for a top-level call (one passing a fresh
+ * `Context`) — the recursive import walk reuses the run's resolver state.
+ */
 export function parseFiles(
     fileNames: string[],
     decoratorName: string = "type",
-    context: Context = new Context()
+    context: Context = new Context(),
+    options?: ResolveOptions,
 ) {
     if (typeof ts.createSourceFile !== "function") {
         // typescript@7+ (native) no longer ships the JS compiler API
@@ -550,30 +577,18 @@ export function parseFiles(
     if (globalContext !== context) {
         parsedFiles = {};
         globalContext = context;
+        // a structure left over from a previous run would make the
+        // `currentStructure?.name !== className` guard skip re-registering it
+        currentStructure = undefined;
+        currentProperty = undefined;
+        resetResolver(options);
     }
 
     fileNames.forEach((fileName) => {
         let sourceFile: ts.Node;
         let sourceFileName: string;
 
-        const fileNameAlternatives = [];
-
-        if (
-            !fileName.endsWith(".ts") &&
-            !fileName.endsWith(".js") &&
-            !fileName.endsWith(".mjs")
-        ) {
-            fileNameAlternatives.push(`${fileName}.ts`);
-            fileNameAlternatives.push(`${fileName}/index.ts`);
-
-        } else if (fileName.endsWith(".js")) {
-            // Handle .js extensions by also trying .ts (ESM imports often use .js extension)
-            fileNameAlternatives.push(fileName);
-            fileNameAlternatives.push(fileName.replace(/\.js$/, ".ts"));
-
-        } else {
-            fileNameAlternatives.push(fileName);
-        }
+        const fileNameAlternatives = sourceFileCandidates(fileName);
 
         for (let i = 0; i < fileNameAlternatives.length; i++) {
             try {

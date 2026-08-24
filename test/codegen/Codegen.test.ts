@@ -353,4 +353,43 @@ describe("schema-codegen", () => {
         });
     });
 
+    // https://github.com/colyseus/schema/issues/186 — a bare specifier that a
+    // tsconfig `paths`/`baseUrl` maps onto first-party source used to be dropped
+    // silently, so the schemas it exported never reached the generated output.
+    describe("tsconfig path aliases", () => {
+        const ALIAS_DIR = path.resolve(INPUT_DIR, "aliased");
+
+        it("follows `paths`, `baseUrl` and barrel re-exports", () => {
+            generate("csharp", { files: [path.resolve(ALIAS_DIR, "Room.ts")], output: OUTPUT_DIR });
+
+            // the exact list also pins that `nanoid` was not followed into
+            // node_modules, and that the library's own source stayed out
+            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs")).map((f) => path.basename(f));
+            assert.deepStrictEqual(outputFiles.sort(), ["AliasedEnemy.cs", "AliasedPlayer.cs", "AliasedRoomState.cs"]);
+
+            const state = fs.readFileSync(path.resolve(OUTPUT_DIR, "AliasedRoomState.cs"), "utf8");
+            assert.match(state, /AliasedPlayer player/);
+            assert.match(state, /AliasedEnemy enemy/);
+        });
+
+        it("accepts an explicit --tsconfig for sources outside the aliased project", () => {
+            generate("csharp", {
+                files: [path.resolve(INPUT_DIR, "aliased-external", "OutsideRoom.ts")],
+                output: OUTPUT_DIR,
+                tsconfig: path.resolve(ALIAS_DIR, "tsconfig.json"),
+            });
+
+            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs")).map((f) => path.basename(f));
+            assert.deepStrictEqual(outputFiles.sort(), ["AliasedPlayer.cs", "OutsideRoomState.cs"]);
+        });
+
+        it("throws when an explicit --tsconfig does not exist", () => {
+            assert.throws(() => generate("csharp", {
+                files: [path.resolve(ALIAS_DIR, "Room.ts")],
+                output: OUTPUT_DIR,
+                tsconfig: path.resolve(ALIAS_DIR, "nope.json"),
+            }), /nope\.json/);
+        });
+    });
+
 });

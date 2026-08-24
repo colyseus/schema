@@ -5,7 +5,10 @@ if (typeof(__dirname) === "undefined") {
     global.__dirname = path.dirname(new URL(import.meta.url).pathname);
 }
 
-const VERSION = JSON.parse(fs.readFileSync(__dirname + "/../../package.json").toString()).version;
+/** Root of the @colyseus/schema package — `src/codegen/` in dev, `build/codegen/` once bundled. */
+export const PACKAGE_ROOT = path.resolve(__dirname, "..", "..");
+
+const VERSION = JSON.parse(fs.readFileSync(path.resolve(PACKAGE_ROOT, "package.json")).toString()).version;
 const COMMENT_HEADER = `
 THIS FILE HAS BEEN GENERATED AUTOMATICALLY
 DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING

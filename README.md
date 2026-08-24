@@ -333,6 +333,11 @@ schema-codegen ./schemas/State.ts --output ./haxe-project/ --haxe
 | `--bundle` | Bundle all generated files into a single file |
 | `--namespace` | Generate namespace/package on output code |
 | `--decorator` | Custom name for `@type` decorator to scan for |
+| `--tsconfig` | `tsconfig.json` to resolve import path aliases with (default: the nearest `tsconfig.json`/`jsconfig.json` above each source file) |
+
+Imports are followed to discover related schemas, including bare specifiers
+mapped by `compilerOptions.paths`/`baseUrl` and barrel files that re-export
+them. Imports of installed packages are not followed.
 
 ### Bundle Mode
 

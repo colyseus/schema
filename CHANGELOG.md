@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.19]
+
+### Added
+
+- **`schema-codegen` now resolves TypeScript path aliases.** An import written
+  as `@schemas/Player` — mapped through `compilerOptions.paths` or `baseUrl` —
+  was skipped, so the schemas behind it were silently missing from the generated
+  client code. Barrel files (`export * from "./Player"`) are followed too, an
+  alias that resolves to nothing now warns instead of failing quietly, and
+  `--tsconfig` picks the config to read the aliases from when the sources live
+  outside that project.
+
+  Thanks to [@essaenko](https://github.com/essaenko) for the report
+  ([#186](https://github.com/colyseus/schema/issues/186)).
+
 ## [5.0.18]
 
 ### Fixed

@@ -15,6 +15,10 @@
     "test-external/**/*.ts"
   ],
   "exclude": [
-    "test/**/*.types.ts"
+    "test/**/*.types.ts",
+    // codegen fixtures: read as text by the parser, never compiled by this
+    // project — their path aliases resolve through their own tsconfig
+    "test/codegen/sources/aliased/**/*",
+    "test/codegen/sources/aliased-external/**/*"
   ]
 }
