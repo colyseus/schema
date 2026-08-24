@@ -1,8 +1,10 @@
 import * as util from "util";
 import * as assert from "assert";
-import { Schema, type, ArraySchema, MapSchema, SetSchema, CollectionSchema, Reflection } from "../src";
+import { Schema, type, view, ArraySchema, MapSchema, SetSchema, CollectionSchema, Reflection } from "../src";
 import { $changes, $refId } from "../src/types/symbols";
-import { assertDeepStrictEqualEncodeAll, assertRefIdCounts, createInstanceFromReflection, getCallbacks, getDecoder, getEncoder } from "./Schema";
+import { IS_FILTERED, IS_VISIBILITY_SHARED } from "../src/encoder/ChangeTree";
+import { drainFilterRefresh } from "../src/encoder/changeTree/inheritedFlags";
+import { assertDeepStrictEqualEncodeAll, assertEncodeAllMultiple, assertRefIdCounts, createClientWithView, createInstanceFromReflection, encodeMultiple, getCallbacks, getDecoder, getEncoder, ClientWithState } from "./Schema";
 
 describe("Instance sharing", () => {
     class Position extends Schema {
@@ -1089,6 +1091,387 @@ describe("Instance sharing", () => {
             assert.strictEqual(decoded.arr[decoded.arr.length - 1].x, 42);
 
             assertDeepStrictEqualEncodeAll(state);
+        });
+    });
+
+    describe("StateView: instance shared across a filter boundary", () => {
+        //
+        // A Schema instance held by BOTH a @view-gated container and a public
+        // container is publicly reachable — its fields must ship on the shared
+        // channel (everyone), while the @view container's entry stays
+        // view-only. One `isFiltered` per ChangeTree used to let the FIRST
+        // attachment decide the channel for good, desyncing one side or the
+        // other depending on ordering (TODO/stateview-instance-shared-across-
+        // filter-boundary.md).
+        //
+        class Item extends Schema {
+            @type("string") name: string;
+        }
+        class Box extends Schema {
+            @type({ map: Item }) items = new MapSchema<Item>();
+        }
+        class State extends Schema {
+            @type(Box) pub = new Box();
+            @view() @type(Box) hidden = new Box();
+        }
+
+        // Duplicate re-staged ADDs must decode as no-ops — never as decoder
+        // warnings ("refId not found" / refCount underflow).
+        let decoderWarnings: string[] = [];
+        const originalWarn = console.warn;
+        beforeEach(() => {
+            decoderWarnings = [];
+            console.warn = (...args: any[]) => decoderWarnings.push(args.map(String).join(" "));
+        });
+        afterEach(() => { console.warn = originalWarn; });
+
+        function assertNoDecoderWarnings() {
+            assert.deepStrictEqual(decoderWarnings, [], `decoder emitted warning(s): ${decoderWarnings.join(" | ")}`);
+        }
+
+        function attachBoth(state: State, item: Item, filteredFirst: boolean) {
+            if (filteredFirst) {
+                state.hidden.items.set("k", item);
+                state.pub.items.set("k", item);
+            } else {
+                state.pub.items.set("k", item);
+                state.hidden.items.set("k", item);
+            }
+        }
+
+        function assertClientStates(viewer: ClientWithState<State>, plain: ClientWithState<State>) {
+            assert.deepStrictEqual(viewer.state.toJSON(), {
+                pub: { items: { k: { name: "shared" } } },
+                hidden: { items: { k: { name: "shared" } } },
+            }, "viewer must see the item through both containers");
+            assert.deepStrictEqual(plain.state.toJSON(), {
+                pub: { items: { k: { name: "shared" } } },
+            }, "plain client must see the item through the public container");
+            assertNoDecoderWarnings();
+        }
+
+        for (const attachOrder of ["filtered container first", "public container first"] as const) {
+            for (const addTiming of ["before", "after"] as const) {
+                it(`${attachOrder}, view.add() ${addTiming} the attach`, () => {
+                    const state = new State();
+                    const encoder = getEncoder(state);
+                    const item = new Item().assign({ name: "shared" });
+
+                    const viewer = createClientWithView(state);
+                    const plain = createClientWithView(state);
+
+                    if (addTiming === "before") { viewer.view.add(state.hidden); }
+
+                    attachBoth(state, item, attachOrder === "filtered container first");
+
+                    if (addTiming === "after") { viewer.view.add(state.hidden); }
+
+                    encodeMultiple(encoder, state, [viewer, plain]);
+                    assertClientStates(viewer, plain);
+                    assert.strictEqual(false, item[$changes].isFiltered, "a publicly-reachable instance must emit on the shared channel");
+
+                    // fresh joiners (encodeAll) must see the same state
+                    assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+                });
+            }
+        }
+
+        for (const container of ["hidden", "pub"] as const) {
+            it(`control: item in '${container}' only`, () => {
+                const state = new State();
+                const encoder = getEncoder(state);
+                const viewer = createClientWithView(state);
+                const plain = createClientWithView(state);
+
+                viewer.view.add(state.hidden);
+                state[container].items.set("k", new Item().assign({ name: "shared" }));
+                encodeMultiple(encoder, state, [viewer, plain]);
+
+                assert.deepStrictEqual(viewer.state.toJSON(), {
+                    pub: { items: container === "pub" ? { k: { name: "shared" } } : {} },
+                    hidden: { items: container === "hidden" ? { k: { name: "shared" } } : {} },
+                });
+                assert.deepStrictEqual(plain.state.toJSON(), {
+                    pub: { items: container === "pub" ? { k: { name: "shared" } } : {} },
+                });
+                assertNoDecoderWarnings();
+                assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+            });
+        }
+
+        it("cross-tick: filtered attach + encode, THEN public attach", () => {
+            const state = new State();
+            const encoder = getEncoder(state);
+            const item = new Item().assign({ name: "shared" });
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+
+            viewer.view.add(state.hidden);
+            state.hidden.items.set("k", item);
+            encodeMultiple(encoder, state, [viewer, plain]);
+
+            // still view-only: the plain client must not know it
+            assert.deepStrictEqual(plain.state.toJSON(), { pub: { items: {} } });
+
+            // the item's fields were already drained to the view channel —
+            // gaining the public parent must re-state them for everyone.
+            state.pub.items.set("k", item);
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assertClientStates(viewer, plain);
+
+            // post-flip mutations reach every client
+            item.name = "renamed";
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assert.strictEqual("renamed", plain.state.pub.items.get("k").name);
+            assert.strictEqual("renamed", viewer.state.hidden.items.get("k").name);
+
+            assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+        });
+
+        for (const attachOrder of ["filtered container first", "public container first"] as const) {
+            it(`shared before encoder creation (${attachOrder})`, () => {
+                const state = new State();
+                const item = new Item().assign({ name: "shared" });
+                attachBoth(state, item, attachOrder === "filtered container first");
+
+                // the setRoot cascade (not setParent) classifies every tree here
+                const encoder = getEncoder(state);
+                const viewer = createClientWithView(state);
+                const plain = createClientWithView(state);
+                viewer.view.add(state.hidden);
+
+                encodeMultiple(encoder, state, [viewer, plain]);
+                assertClientStates(viewer, plain);
+                assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+            });
+        }
+
+        it("nested children of the shared instance flip along with it", () => {
+            class Meta extends Schema {
+                @type("string") info: string;
+            }
+            class DeepItem extends Schema {
+                @type("string") name: string;
+                @type(Meta) meta: Meta;
+            }
+            class DeepBox extends Schema {
+                @type({ map: DeepItem }) items = new MapSchema<DeepItem>();
+            }
+            class DeepState extends Schema {
+                @type(DeepBox) pub = new DeepBox();
+                @view() @type(DeepBox) hidden = new DeepBox();
+            }
+
+            const state = new DeepState();
+            const encoder = getEncoder(state);
+            const item = new DeepItem().assign({
+                name: "shared",
+                meta: new Meta().assign({ info: "meta" }),
+            });
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+
+            viewer.view.add(state.hidden);
+            state.hidden.items.set("k", item);
+            encodeMultiple(encoder, state, [viewer, plain]);
+
+            state.pub.items.set("k", item);
+            encodeMultiple(encoder, state, [viewer, plain]);
+
+            const expected = { items: { k: { name: "shared", meta: { info: "meta" } } } };
+            assert.deepStrictEqual(plain.state.toJSON(), { pub: expected });
+            assert.deepStrictEqual(viewer.state.toJSON(), { pub: expected, hidden: expected });
+            assert.strictEqual(false, item.meta[$changes].isFiltered);
+            assertNoDecoderWarnings();
+
+            assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+        });
+
+        it("shared collection across the boundary ships to plain clients", () => {
+            //
+            // The flip must also work when the shared instance IS a
+            // collection (exercises the filtered→public flip on a collection tree +
+            // primitive re-stage dedup). Viewer-side assertions stop at the
+            // last-bound field: a collection shared across two DECODED
+            // fields forks client-side — pre-existing, unrelated to views
+            // (TODO/decoder-shared-collection-fork.md).
+            //
+            class ArrState extends Schema {
+                @type(["number"]) pubArr: ArraySchema<number>;
+                @view() @type(["number"]) hiddenArr: ArraySchema<number>;
+            }
+
+            const state = new ArrState();
+            const encoder = getEncoder(state);
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+
+            const arr = new ArraySchema<number>(1, 2, 3);
+            state.hiddenArr = arr;
+            viewer.view.add(state.hiddenArr);
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assert.deepStrictEqual(viewer.state.toJSON(), { hiddenArr: [1, 2, 3] });
+            assert.deepStrictEqual(plain.state.toJSON(), {});
+
+            state.pubArr = arr; // same instance, now publicly reachable
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assert.strictEqual(false, arr[$changes].isFiltered);
+            assert.deepStrictEqual(plain.state.toJSON(), { pubArr: [1, 2, 3] });
+
+            arr.push(4);
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assert.deepStrictEqual(plain.state.toJSON(), { pubArr: [1, 2, 3, 4] });
+            assert.deepStrictEqual(viewer.state.pubArr.toJSON(), [1, 2, 3, 4]);
+
+            assertNoDecoderWarnings();
+        });
+
+        it("losing the last public parent flips the instance back to view-only", () => {
+            const state = new State();
+            const encoder = getEncoder(state);
+            const item = new Item().assign({ name: "shared" });
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+
+            viewer.view.add(state.hidden);
+            state.hidden.items.set("k", item);
+            state.pub.items.set("k", item);
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assertClientStates(viewer, plain);
+
+            // drop the only public path — the @view container still holds it
+            state.pub.items.delete("k");
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assert.strictEqual(true, item[$changes].isFiltered, "no public path left — must emit on the view channel only");
+            assert.deepStrictEqual(plain.state.toJSON(), { pub: { items: {} } });
+            assert.deepStrictEqual(viewer.state.toJSON(), {
+                pub: { items: {} },
+                hidden: { items: { k: { name: "shared" } } },
+            });
+
+            // post-downgrade mutations must not reach plain clients
+            item.name = "secret";
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assert.deepStrictEqual(plain.state.toJSON(), { pub: { items: {} } });
+            assert.strictEqual("secret", viewer.state.hidden.items.get("k").name);
+            assertNoDecoderWarnings();
+
+            // a fresh joiner's full state must exclude it too
+            assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+        });
+
+        for (const order of ["add then delete", "delete then add"] as const) {
+            it(`same-tick move from public into the @view container stays view-only (${order})`, () => {
+                const state = new State();
+                const encoder = getEncoder(state);
+                const item = new Item().assign({ name: "shared" });
+                const viewer = createClientWithView(state);
+                const plain = createClientWithView(state);
+
+                viewer.view.add(state.hidden);
+                state.pub.items.set("k", item);
+                encodeMultiple(encoder, state, [viewer, plain]);
+
+                if (order === "add then delete") {
+                    state.hidden.items.set("k", item);
+                    state.pub.items.delete("k");
+                } else {
+                    state.pub.items.delete("k");
+                    state.hidden.items.set("k", item);
+                }
+                encodeMultiple(encoder, state, [viewer, plain]);
+                assert.strictEqual(true, item[$changes].isFiltered);
+                assert.deepStrictEqual(plain.state.toJSON(), { pub: { items: {} } });
+                assert.deepStrictEqual(viewer.state.toJSON(), {
+                    pub: { items: {} },
+                    hidden: { items: { k: { name: "shared" } } },
+                });
+
+                item.name = "secret";
+                encodeMultiple(encoder, state, [viewer, plain]);
+                assert.deepStrictEqual(plain.state.toJSON(), { pub: { items: {} } });
+                assert.strictEqual("secret", viewer.state.hidden.items.get("k").name);
+                assertNoDecoderWarnings();
+
+                assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+            });
+        }
+
+        it("re-gaining a public parent after the downgrade re-states the fields", () => {
+            const state = new State();
+            const encoder = getEncoder(state);
+            const item = new Item().assign({ name: "shared" });
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+
+            viewer.view.add(state.hidden);
+            state.hidden.items.set("k", item);
+            state.pub.items.set("k", item);
+            encodeMultiple(encoder, state, [viewer, plain]);
+
+            state.pub.items.delete("k");
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assert.deepStrictEqual(plain.state.toJSON(), { pub: { items: {} } });
+
+            // view-only mutation, then back into a public container
+            item.name = "renamed";
+            encodeMultiple(encoder, state, [viewer, plain]);
+            state.pub.items.set("k", item);
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assert.strictEqual(false, item[$changes].isFiltered);
+            assert.deepStrictEqual(plain.state.toJSON(), { pub: { items: { k: { name: "renamed" } } } });
+            assertNoDecoderWarnings();
+
+            assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+        });
+
+        it("invariant: refresh after a fresh single-edge attach is a no-op", () => {
+            //
+            // `checkIsFiltered` (first attach) and `refreshFilterState`
+            // (edge events) derive the same policy from different sources
+            // (metadata symbols vs encDescriptor). Force-refreshing every
+            // freshly-attached tree must not change any classification —
+            // this pins the two derivations against drifting apart.
+            //
+            const MASK = IS_FILTERED | IS_VISIBILITY_SHARED;
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const viewer = createClientWithView(state);
+            viewer.view.add(state.hidden);
+            state.pub.items.set("a", new Item().assign({ name: "public" }));
+            state.hidden.items.set("b", new Item().assign({ name: "hidden" }));
+            encodeMultiple(encoder, state, [viewer]);
+
+            const root = encoder.root;
+            const before: {[refId: number]: number} = {};
+            for (const refId in root.changeTrees) {
+                before[refId] = root.changeTrees[refId].flags & MASK;
+                root.enqueueFilterRefresh(root.changeTrees[refId]);
+            }
+            drainFilterRefresh(root);
+            for (const refId in root.changeTrees) {
+                const tree = root.changeTrees[refId];
+                assert.strictEqual(before[refId], tree.flags & MASK,
+                    `refresh changed classification of ${tree.ref.constructor.name} (refId ${refId})`);
+            }
+        });
+
+        it("explicit view.add(item) keeps working alongside the flip", () => {
+            const state = new State();
+            const encoder = getEncoder(state);
+            const item = new Item().assign({ name: "shared" });
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+
+            viewer.view.add(state.hidden);
+            state.hidden.items.set("k", item);
+            state.pub.items.set("k", item);
+            viewer.view.add(item); // the documented pre-fix workaround
+
+            encodeMultiple(encoder, state, [viewer, plain]);
+            assertClientStates(viewer, plain);
+            assertEncodeAllMultiple(encoder, state, [viewer, plain]);
         });
     });
 

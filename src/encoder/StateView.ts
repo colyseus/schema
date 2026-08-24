@@ -1036,9 +1036,24 @@ export class StateView {
         // `markVisible` memoizes so the branch fires at most once per
         // (tree, view) pair.
         if (!isVisible && changeTree.isVisibilitySharedWithParent){
+            // Primary grant is intentionally unguarded — pre-existing
+            // semantics; the extras walk below is stricter on purpose.
             if (this.isVisible(changeTree.parent[$changes])) {
                 this.markVisible(changeTree);
                 isVisible = true;
+            } else {
+                // Shared instance: the sharing parent may sit anywhere in the
+                // chain — addParent promotes the LAST container to primary.
+                // Only filtered parents can grant (public ones never share
+                // visibility downward).
+                for (let e = changeTree.extraParents; e !== undefined; e = e.next) {
+                    const parentTree = e.ref[$changes];
+                    if (parentTree.isFiltered && this.isVisible(parentTree)) {
+                        this.markVisible(changeTree);
+                        isVisible = true;
+                        break;
+                    }
+                }
             }
         }
 

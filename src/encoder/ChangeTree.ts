@@ -151,6 +151,11 @@ export const IS_STREAM_COLLECTION = 64;
 // only fields assigned after `pool.acquire()` would reach the wire — the
 // retained ones (constructor-initialized children) would never be encoded.
 export const NEEDS_RESTAGE = 128;
+// Queued in `Root.pendingFilterRefresh` — the tree's parent-edge set changed
+// (instance sharing gained/lost an edge) and `isFiltered` /
+// `isVisibilitySharedWithParent` must be re-derived from the LIVE edges
+// before the next encode. See inheritedFlags.refreshFilterState.
+export const PENDING_FILTER_REFRESH = 256;
 /**
  * Flags a child inherits from its parent's own transitive state via
  * `checkInheritedFlags`. Read as a bitwise mask so the inheritance step

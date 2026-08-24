@@ -1,6 +1,7 @@
 import { OPERATION } from "../encoding/spec.js";
 import { TypeContext } from "../types/TypeContext.js";
-import { ChangeTree, ChangeTreeList, createChangeTreeList, type ChangeTreeNode } from "./ChangeTree.js";
+import { ChangeTree, ChangeTreeList, createChangeTreeList, PENDING_FILTER_REFRESH, type ChangeTreeNode } from "./ChangeTree.js";
+import { restageLiveCb } from "./changeTree/liveIteration.js";
 import { $changes, $refId } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { StreamSchema } from "../types/custom/StreamSchema.js";
@@ -52,6 +53,22 @@ export class Root {
      * fields dirty at the same time.
      */
     unreliableChanges: ChangeTreeList = createChangeTreeList();
+
+    /**
+     * Trees whose parent-edge set changed this tick (instance sharing
+     * gained or lost an edge). The encoder drains this before emission —
+     * `inheritedFlags.drainFilterRefresh` re-derives each tree's filter
+     * state against the then-settled containers. Only populated when the
+     * TypeContext has any @view/@stream field.
+     */
+    public pendingFilterRefresh: ChangeTree[] = [];
+
+    public enqueueFilterRefresh(tree: ChangeTree): void {
+        if (!this.types.hasFilters) return;
+        if (tree.flags & PENDING_FILTER_REFRESH) return;
+        tree.flags |= PENDING_FILTER_REFRESH;
+        this.pendingFilterRefresh.push(tree);
+    }
 
     /**
      * Free-list of ChangeTreeNode objects. Both queues share this pool —
@@ -172,16 +189,15 @@ export class Root {
             //   values would otherwise never be encoded).
             //
             changeTree.needsRestage = false;
-            changeTree.forEachLive((fieldIndex) => {
-                if (changeTree.isFieldUnreliable(fieldIndex)) {
-                    changeTree.ensureUnreliableRecorder().record(fieldIndex, OPERATION.ADD);
-                } else {
-                    changeTree.record(fieldIndex, OPERATION.ADD);
-                }
-            });
+            changeTree.forEachLiveWithCtx(changeTree, restageLiveCb);
         }
 
         this.refCount[refId] = (previousRefCount || 0) + 1;
+
+        // Gained a 2nd+ parent edge (instance sharing / re-assignment) —
+        // re-derive filter state before the next encode. Chokepoint for
+        // every attach path; mirrors the edge-loss enqueue in `remove()`.
+        if (previousRefCount > 0) this.enqueueFilterRefresh(changeTree);
 
         return isNewChangeTree;
     }
@@ -228,6 +244,10 @@ export class Root {
 
         } else {
             this.refCount[refId] = refCount;
+
+            // Lost one of several parent edges — the surviving edge set may
+            // no longer include a public path (or may have gained one).
+            this.enqueueFilterRefresh(changeTree);
 
             //
             // When losing a reference to an instance, it is best to move the

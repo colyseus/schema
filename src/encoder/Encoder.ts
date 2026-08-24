@@ -14,6 +14,7 @@ import type { ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree.js
 import type { EncodeOperation } from "./EncodeOperation.js";
 import { forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { forEachChildWithCtx as _forEachChildWithCtx } from "./changeTree/treeAttachment.js";
+import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
 
 /**
  * Reusable context passed to the recorder's forEachWithCtx to iterate changes
@@ -296,6 +297,10 @@ export class Encoder<T extends Schema = any> {
         initialOffset: number,
         unreliable: boolean,
     ): Uint8Array {
+        // Settle any pending per-edge filter re-derivations before routing
+        // fields to channels (see inheritedFlags.drainFilterRefresh).
+        if (this.root.pendingFilterRefresh.length > 0) drainFilterRefresh(this.root);
+
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
@@ -379,6 +384,9 @@ export class Encoder<T extends Schema = any> {
         view?: StateView,
         initialOffset: number = it.offset
     ): Uint8Array {
+        // Full-sync splits fields by the same isFiltered classification.
+        if (this.root.pendingFilterRefresh.length > 0) drainFilterRefresh(this.root);
+
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 

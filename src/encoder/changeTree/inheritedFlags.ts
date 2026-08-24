@@ -14,14 +14,16 @@ import {
     // routing on primitive fields still uses it via `isFieldUnreliable()`.
 } from "../../types/symbols.js";
 import {
-    INHERITABLE_FLAGS, IS_FULL_STATE_ONLY, IS_PATCH_ONLY,
+    INHERITABLE_FLAGS, IS_FULL_STATE_ONLY, IS_PATCH_ONLY, PENDING_FILTER_REFRESH,
     // IS_UNRELIABLE — tree-level unreliable currently disabled; see
     // INHERITABLE_FLAGS comment in ChangeTree.ts.
     type ChangeTree, type Ref,
 } from "../ChangeTree.js";
 import type { ICollectionChangeRecorder } from "../ChangeRecorder.js";
-import type { Streamable } from "../Root.js";
+import type { Root, Streamable } from "../Root.js";
 import { ensureStreamState } from "../streaming.js";
+import { restageLiveCb } from "./liveIteration.js";
+import { isEdgeLive } from "./parentChain.js";
 
 /**
  * Reconcile queue membership + inherited flags for a tree that just had
@@ -207,3 +209,134 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
         );
     }
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// Per-edge filter refresh — instance sharing across a @view boundary.
+//
+// `checkIsFiltered` classifies a tree from the edge it was FIRST attached
+// through. A shared instance has N parent edges with different visibility,
+// and the wire emits field data per-refId per-channel — so the tree-level
+// invariant is:
+//
+//     isFiltered  ⇔  no fully-public root path reaches this tree
+//
+// Rather than reconciling eagerly at every attach/detach (whose ordering
+// against the container's own storage mutation is fragile), edge events
+// call `Root.enqueueFilterRefresh` and the encoder re-derives the flags at
+// the top of the next encode — after every container mutation of the tick
+// has settled — via `drainFilterRefresh`. `isFiltered` is only CONSUMED at
+// encode time (recording is channel-agnostic), so the deferral is safe for
+// wire routing; only same-tick StateView bootstrap reads see the stale
+// flags, which at worst emits redundant (deduped) entries.
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Drain `root.pendingFilterRefresh`. Called by the encoder before any
+ * emission (per-tick channels and full-sync).
+ */
+export function drainFilterRefresh(root: Root): void {
+    const list = root.pendingFilterRefresh;
+    for (let i = 0; i < list.length; i++) {
+        const tree = list[i];
+        // Already settled as another entry's parent, or detached/recycled
+        // since it was queued.
+        if ((tree.flags & PENDING_FILTER_REFRESH) === 0) continue;
+        refreshFilterState(tree);
+    }
+    list.length = 0;
+}
+
+/**
+ * Re-derive `isFiltered` (AND over live edges) and
+ * `isVisibilitySharedWithParent` (OR over live edges) from the parent
+ * chain. On a filtered→public flip, live state is re-staged — it may have
+ * already drained to view channels only, and clients that hold it decode
+ * the duplicate ADDs as no-ops (StateView bootstrap re-adds rely on the
+ * same property). The public→filtered flip needs no re-stage: the public
+ * container's DELETE already ships on the shared channel.
+ *
+ * A flip cascades into children so classifications inherited through this
+ * tree follow it; re-derivation is idempotent and a child that does not
+ * flip does not recurse, so the walk terminates on cyclic instance graphs.
+ */
+function refreshFilterState(tree: ChangeTree): void {
+    tree.flags &= ~PENDING_FILTER_REFRESH;
+    const root = tree.root;
+    if (root === undefined || tree.parentRef === undefined) return;
+
+    // Primitive-element collections never share visibility (mirror of
+    // checkInheritedFlags\' `typeof refType !== "string"` — a Schema tree\'s
+    // `$childType` is undefined, so it passes too).
+    const sharesEligible = typeof (tree.refTarget as any)[$childType] !== "string";
+
+    let bits = _edgeBits(tree, tree.parentRef, tree._parentIndex, sharesEligible);
+    // Saturated means no further edge can change the outcome.
+    for (let e = tree.extraParents; e !== undefined && bits !== EDGE_SATURATED; e = e.next) {
+        bits |= _edgeBits(tree, e.ref, e.index, sharesEligible);
+    }
+
+    // No live edge resolved (mid-detach churn) — keep the current
+    // classification rather than guess.
+    if (bits === 0) return;
+
+    tree.isVisibilitySharedWithParent = (bits & EDGE_SHARES) !== 0;
+
+    const newFiltered = (bits & EDGE_PUBLIC) === 0;
+    if (newFiltered === tree.isFiltered) return;
+    tree.isFiltered = newFiltered;
+
+    // Became public: clients that only ever had the view channel never saw
+    // this state. Static trees ship via structural walk instead.
+    if (!newFiltered && !tree.isFullStateOnly) {
+        tree.forEachLiveWithCtx(tree, restageLiveCb);
+        if (tree.has()) root.enqueueChangeTree(tree);
+        if (tree.unreliableRecorder?.has()) root.enqueueUnreliable(tree);
+    }
+
+    tree.forEachChildWithCtx(tree, _cascadeRefreshCb);
+}
+
+const EDGE_LIVE = 1, EDGE_PUBLIC = 2, EDGE_SHARES = 4;
+const EDGE_SATURATED = EDGE_LIVE | EDGE_PUBLIC | EDGE_SHARES;
+
+/**
+ * Classify one parent edge: is it live, does it make the tree publicly
+ * reachable, does view visibility flow through it.
+ */
+function _edgeBits(tree: ChangeTree, parentRef: Ref, index: number, sharesEligible: boolean): number {
+    const parentTree: ChangeTree = parentRef[$changes];
+    if (parentTree.root !== tree.root || !isEdgeLive(tree, parentTree, index)) return 0;
+
+    // A queued parent must settle first — this edge reads its `isFiltered`.
+    // The flag-clear on entry terminates cycles, and a cascade re-entering
+    // `tree` is idempotent (same edges, same result — the outer pass then
+    // sees "no change").
+    if (parentTree.flags & PENDING_FILTER_REFRESH) refreshFilterState(parentTree);
+
+    let bits = EDGE_LIVE;
+    if (parentTree._isSchema) {
+        // A @view/stream-marked field stays filtered even under a public
+        // parent, and never shares visibility downward.
+        const marked = parentTree.encDescriptor.tags[index] !== undefined
+            || parentTree.isFieldStream(index);
+        if (!marked) {
+            if (!parentTree.isFiltered) bits |= EDGE_PUBLIC;
+            else if (sharesEligible) bits |= EDGE_SHARES;
+        }
+    } else if (!parentTree.isFiltered) {
+        // Collection edge: the collection\'s own classification already
+        // folds in the field that holds it.
+        bits |= EDGE_PUBLIC;
+    } else if (sharesEligible && !parentTree.isStreamCollection) {
+        // #226: default-tag @view() collections keep per-item gating;
+        // untagged and non-default-tag @view(N) ones share.
+        const gp = parentTree.parent?.[$changes];
+        const tag = gp?._isSchema ? gp.encDescriptor.tags[parentTree.parentIndex] : undefined;
+        if (tag !== DEFAULT_VIEW_TAG) bits |= EDGE_SHARES;
+    }
+    return bits;
+}
+
+const _cascadeRefreshCb = (_parentTree: ChangeTree, child: ChangeTree, _index: any): void => {
+    refreshFilterState(child);
+};

@@ -12,8 +12,24 @@
  * up full sync for the whole state. Both skips ride one decoration-time
  * list (`$fullSyncSkipIndexes`) so the walk pays a single metadata lookup.
  */
+import { OPERATION } from "../../encoding/spec.js";
 import { $childType, $numFields, $fullSyncSkipIndexes } from "../../types/symbols.js";
 import type { ChangeTree } from "../ChangeTree.js";
+
+/**
+ * Re-stage one live index as a fresh ADD on its channel. Shared by
+ * `Root.add` (refCount-0 / NEEDS_RESTAGE re-adds) and
+ * `inheritedFlags.refreshFilterState` (filtered→public flip) via
+ * `forEachLiveWithCtx(tree, restageLiveCb)` — one home for the
+ * unreliable-routing rule.
+ */
+export const restageLiveCb = (tree: ChangeTree, fieldIndex: number): void => {
+    if (tree.isFieldUnreliable(fieldIndex)) {
+        tree.ensureUnreliableRecorder().record(fieldIndex, OPERATION.ADD);
+    } else {
+        tree.record(fieldIndex, OPERATION.ADD);
+    }
+};
 
 // Adapter that lets `forEachLive(cb)` delegate to `forEachLiveWithCtx(cb, _invokeNoCtx)` —
 // keeps the no-ctx path closure-free and shares one walker implementation.

@@ -188,3 +188,30 @@ export function getAllParents(tree: ChangeTree): ParentEntry[] {
     }
     return parents;
 }
+
+/**
+ * True iff `parent` currently holds `tree`. Detached edges linger in the
+ * parent chain (load-bearing for same-tick view drains — see
+ * `indexInParent` above), so the chain alone cannot answer which edges
+ * are live. ArraySchema is probed by scanning `items`: the recorded slot
+ * can go stale after reorders, and `items` — unlike `$getByIndex`'s staged
+ * view — reflects the tick's completed mutations.
+ */
+export function isEdgeLive(tree: ChangeTree, parentTree: ChangeTree, index: number): boolean {
+    const target = parentTree.refTarget as any;
+    if (parentTree.isArray) {
+        // Read `items` directly, not `$getByIndex` — the latter serves the
+        // staged (tmpItems) view, which can still hold a same-tick removal.
+        const items = target.items;
+        const at = items[index];
+        if (at !== undefined && at[$changes] === tree) return true;
+        // Recorded slot goes stale after reorders — scan before declaring dead.
+        for (let i = 0, len = items.length; i < len; i++) {
+            const v = items[i];
+            if (v !== undefined && v[$changes] === tree) return true;
+        }
+        return false;
+    }
+    const at = parentTree.getValue(index);
+    return at !== undefined && at[$changes] === tree;
+}
