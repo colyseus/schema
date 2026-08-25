@@ -2,17 +2,19 @@
   <img src="logo.png?raw=true" width="50%" />
   <br>
   <p>
-    An incremental binary state serializer with delta encoding for games.<br>
+    <b>Automatic state replication for multiplayer games.</b><br>
+    Define your state once and mutate it like plain objects. Every client holds a live, typed mirror. Only the changes are sent, filtered per client.<br>
     Made for <a href="https://github.com/colyseus/colyseus">Colyseus</a>, yet can be used standalone.
   </p>
 </div>
 
 # Features
 
-- **Incremental State Synchronization**: Send only the properties that have changed.
+- **Plain Objects, Synced**: Assign a property, `push` to an array, or `set` on a map. Change tracking, encoding and decoding happen for you.
+- **Delta Encoding**: Only the properties that changed are sent, in a compact binary format.
 - **Trigger Callbacks at Decoding**: [Bring your own](https://docs.colyseus.io/state/callbacks/custom) callback system at decoding, or use the built-in one.
 - **Instance Reference Tracking**: Share references of the same instance across the state.
-- **State Views**: Filter properties that should be sent only to specific clients.
+- **State Views**: Per-client visibility. Decide which properties and instances each client receives.
 - **Reflection**: Encode/Decode schema definitions.
 - **Schema Generation**: Generate client-side schema files for strictly typed languages.
 - **Type Safety**: Strictly typed schema definitions.

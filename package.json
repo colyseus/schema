@@ -1,7 +1,7 @@
 {
   "name": "@colyseus/schema",
   "version": "5.0.19",
-  "description": "Binary state serializer with delta encoding for games",
+  "description": "Automatic state replication for multiplayer games. Mutate plain objects, and every client gets a live, typed mirror through delta encoding.",
   "type": "module",
   "bin": {
     "schema-codegen": "bin/schema-codegen",
