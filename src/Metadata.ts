@@ -1,8 +1,21 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
-import { getType, registeredTypes } from "./types/registry.js";
-import { $decoder, $descriptors, $encoder, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $track, $viewFieldIndexes } from "./types/symbols.js";
+import { getType, registeredTypes, TypeDefinition } from "./types/registry.js";
+import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
+import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
+import { isQuantizedType, makeQuantizedEncoder, resolveQuantize } from "./types/quantize.js";
+
+/**
+ * Field indexes ride in the low 6 bits of the operation byte
+ * (`(index | operation) & 255`), which leaves room for 0..63. Index 63 is
+ * given up: `DELETE_AND_ADD | 63` is 255, the same byte the decoder claims
+ * as SWITCH_TO_STRUCTURE before any field decoder sees it. Every nullable
+ * field can produce that operation (delete-then-set in one tick merges to
+ * DELETE_AND_ADD), so the slot is unusable rather than partly usable.
+ */
+export const MAX_FIELDS = 63;
 
 export type MetadataField = {
     type: DefinitionType,
@@ -10,7 +23,11 @@ export type MetadataField = {
     index: number,
     tag?: number,
     unreliable?: boolean,
+    patchOnly?: boolean,
     deprecated?: boolean,
+    fullStateOnly?: boolean,
+    stream?: boolean,
+    optional?: boolean,
 };
 
 export type Metadata =
@@ -18,13 +35,44 @@ export type Metadata =
     { [$viewFieldIndexes]: number[]; } & // all field indexes with "view" tag
     { [$fieldIndexesByViewTag]: {[tag: number]: number[]}; } & // field indexes by "view" tag
     { [$refTypeFieldIndexes]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
+    { [$unreliableFieldIndexes]: number[]; } & // all field indexes tagged with @unreliable
+    { [$patchOnlyFieldIndexes]: number[]; } & // all field indexes tagged with @patchOnly (not persisted to snapshots)
+    { [$fullSyncSkipIndexes]: number[]; } & // @patchOnly ∪ @deprecated() — never read during full sync
+
+    { [$fullStateOnlyFieldIndexes]: number[]; } & // all field indexes tagged @fullStateOnly / .fullStateOnly() (not tracked after assignment)
+    { [$streamFieldIndexes]: number[]; } & // all field indexes holding a t.stream(...) collection
+    { [$streamPriorities]: { [field: number]: (view: any, element: any) => number }; } & // per-stream-field priority callback declared at schema definition time
+    { [$encoders]: Array<(bytes: Uint8Array, value: any, it: any) => void>; } & // pre-computed encoder fn per primitive field
     { [field: number]: MetadataField; } & // index => field name
     { [field: string]: number; } & // field name => field metadata
     { [$descriptors]: { [field: string]: PropertyDescriptor } }  // property descriptors
 
+/**
+ * Given a normalized field type (`"number"`, `{ map: Foo }`, `Player`,
+ * etc.), split into the collection-type descriptor (`{ constructor:
+ * MapSchema, ... }`) if applicable and the inner child type. Shared by
+ * `@type()` decoration and `Metadata.setFields` — both need to build a
+ * property accessor that knows whether the slot holds a collection.
+ */
+export function resolveFieldType(type: any): { complexTypeKlass: TypeDefinition | false, childType: any } {
+    const complexTypeKlass = typeof (Object.keys(type)[0]) === "string" && getType(Object.keys(type)[0]);
+    return {
+        complexTypeKlass,
+        childType: complexTypeKlass ? Object.values(type)[0] : type,
+    };
+}
+
 export function getNormalizedType(type: any): DefinitionType  {
     if (Array.isArray(type)) {
         return { array: getNormalizedType(type[0]) };
+
+    } else if (isQuantizedType(type)) {
+        // `{ quantized: ... }` — a scalar wire type, NOT a collection/ref. Resolve
+        // raw options (the `@type({quantized:{min,max}})` path) once; an already-
+        // resolved descriptor (the `t.quantized()` builder path) passes through.
+        return (typeof (type.quantized as any).wire === "string")
+            ? type
+            : { quantized: resolveQuantize(type.quantized as any) } as any;
 
     } else if (typeof (type['type']) !== "undefined") {
         return type['type'];
@@ -67,15 +115,41 @@ function isTSEnum(_enum: any) {
     return false;
 }
 
+// Copied parent → subclass on Metadata.initialize, so each class owns its list.
+const INHERITED_ARRAY_KEYS = [
+    $refTypeFieldIndexes,
+    $unreliableFieldIndexes,
+    $patchOnlyFieldIndexes,
+    $fullSyncSkipIndexes,
+    $fullStateOnlyFieldIndexes,
+    $streamFieldIndexes,
+    $encoders,
+];
+
+/** Append to a non-enumerable metadata index list, creating it on first use. */
+function pushIndexList(metadata: any, key: string, index: number) {
+    if (!metadata[key]) {
+        Object.defineProperty(metadata, key, {
+            value: [],
+            enumerable: false,
+            configurable: true,
+            writable: true,
+        });
+    }
+    metadata[key].push(index);
+}
+
 export const Metadata = {
 
     addField(metadata: any, index: number, name: string, type: DefinitionType, descriptor?: PropertyDescriptor) {
-        if (index > 64) {
-            throw new Error(`Can't define field '${name}'.\nSchema instances may only have up to 64 fields.`);
+        // `index` is 0-based, so 62 is the last usable slot — see MAX_FIELDS
+        // for why 63 is off limits.
+        if (index >= MAX_FIELDS) {
+            throw new Error(`Can't define field '${name}'.\nSchema instances may only have up to ${MAX_FIELDS} fields.`);
         }
 
         metadata[index] = Object.assign(
-            metadata[index] || {}, // avoid overwriting previous field metadata (@owned / @deprecated)
+            metadata[index] || {}, // avoid overwriting previous field metadata (@deprecated / @unreliable)
             {
                 type: getNormalizedType(type),
                 index,
@@ -91,16 +165,11 @@ export const Metadata = {
         });
 
         if (descriptor) {
-            // for encoder
+            // Accessor descriptor for the public field name.
+            // Installed on the prototype at class-definition time.
             metadata[$descriptors][name] = descriptor;
-            metadata[$descriptors][`_${name}`] = {
-                value: undefined,
-                writable: true,
-                enumerable: false,
-                configurable: true,
-            };
         } else {
-            // for decoder
+            // For decoder: simple writable slot, also on prototype.
             metadata[$descriptors][name] = {
                 value: undefined,
                 writable: true,
@@ -123,8 +192,9 @@ export const Metadata = {
             configurable: true,
         });
 
-        // if child Ref/complex type, add to -4
-        if (typeof (metadata[index].type) !== "string") {
+        // if child Ref/complex type, add to -4. Quantized fields are scalar (their
+        // `type` is an object only to carry the descriptor) — not refs, so skip them.
+        if (typeof (metadata[index].type) !== "string" && !isQuantizedType(metadata[index].type)) {
             if (metadata[$refTypeFieldIndexes] === undefined) {
                 Object.defineProperty(metadata, $refTypeFieldIndexes, {
                     value: [],
@@ -133,6 +203,38 @@ export const Metadata = {
                 });
             }
             metadata[$refTypeFieldIndexes].push(index);
+        }
+
+        // `{ stream: ... }` collections are always view-scoped (priority-
+        // batched emit). Auto-flag here so both `@type({stream: ...})` and
+        // the `t.stream(...)` builder route into the same filter / encoder
+        // dispatch without the caller needing an extra setStream() call.
+        const t = metadata[index].type;
+        if (t && typeof t === "object" && (t as any)["stream"] !== undefined) {
+            // Reject the combined shorthand `@type({ array: X, stream:
+            // true })` at decoration time — same diagnostic as the
+            // builder chainable throws for `t.array(X).stream()`.
+            if ((t as any).array !== undefined) {
+                throw new Error(ARRAY_STREAM_NOT_SUPPORTED);
+            }
+            metadata[index].stream = true;
+            if (!metadata[$streamFieldIndexes]) {
+                Object.defineProperty(metadata, $streamFieldIndexes, {
+                    value: [],
+                    enumerable: false,
+                    configurable: true,
+                    writable: true,
+                });
+            }
+            if (!metadata[$streamFieldIndexes].includes(index)) {
+                metadata[$streamFieldIndexes].push(index);
+            }
+            // Pick up the declaration-scope priority callback if present in
+            // the `@type({ stream: X, priority: fn })` shorthand.
+            const priorityFn = (type as any)?.priority;
+            if (typeof priorityFn === "function") {
+                Metadata.setStreamPriority(metadata as any, name, priorityFn);
+            }
         }
     },
 
@@ -181,6 +283,176 @@ export const Metadata = {
         }
     },
 
+    setUnreliable(metadata: Metadata, fieldName: string) {
+        const index = metadata[fieldName];
+        const fieldType = metadata[index].type;
+        // `@unreliable` is only valid on primitive fields. Ref-type fields
+        // (Schema sub-classes, MapSchema, ArraySchema, SetSchema,
+        // CollectionSchema) carry refIds whose ADD/DELETE must arrive
+        // on the reliable channel — otherwise a dropped unreliable packet
+        // would leave the decoder unable to interpret subsequent packets
+        // referencing the orphan refId. Primitive types are encoded as
+        // strings ("number", "string", "int32", ...); anything else is a
+        // ref. Reject at decoration time so the bug surfaces in dev, not
+        // under packet loss in prod.
+        if (typeof fieldType !== "string") {
+            throw new Error(
+                `@unreliable cannot be applied to ref-type field "${fieldName}". ` +
+                `For ref-type fields, mark each primitive sub-field with @unreliable instead. ` +
+                `See README "Limitations and best practices".`
+            );
+        }
+        metadata[index].unreliable = true;
+
+        if (!metadata[$unreliableFieldIndexes]) {
+            Object.defineProperty(metadata, $unreliableFieldIndexes, {
+                value: [],
+                enumerable: false,
+                configurable: true,
+                writable: true,
+            });
+        }
+        metadata[$unreliableFieldIndexes].push(index);
+    },
+
+    setPatchOnly(metadata: Metadata, fieldName: string) {
+        const index = metadata[fieldName];
+        // patchOnly + fullStateOnly are the only two delivery channels —
+        // excluding a field from both would silently never reach a client.
+        // (The builder validates earlier; this guards the decorator path.)
+        if (metadata[index].fullStateOnly) {
+            throw new Error(
+                `field "${fieldName}" cannot be both patchOnly and fullStateOnly — ` +
+                `those are the only two delivery channels, so the field would never reach a client.`
+            );
+        }
+        metadata[index].patchOnly = true;
+
+        pushIndexList(metadata, $patchOnlyFieldIndexes, index);
+        pushIndexList(metadata, $fullSyncSkipIndexes, index); // not persisted to snapshots
+    },
+
+    /**
+     * `@deprecated()` bookkeeping: the field keeps its wire index (so peers
+     * that still carry it stay compatible) but is excluded from full sync —
+     * its accessor may throw — and hidden from `for..in` consumers.
+     */
+    setDeprecated(metadata: Metadata, fieldName: string) {
+        const index = metadata[fieldName];
+        metadata[index].deprecated = true;
+
+        pushIndexList(metadata, $fullSyncSkipIndexes, index);
+
+        Object.defineProperty(metadata, index, {
+            value: metadata[index],
+            enumerable: false,
+            configurable: true
+        });
+    },
+
+    setFullStateOnly(metadata: Metadata, fieldName: string) {
+        const index = metadata[fieldName];
+        // Mirror of the guard in setPatchOnly — covers both decorator orders.
+        if (metadata[index].patchOnly) {
+            throw new Error(
+                `field "${fieldName}" cannot be both patchOnly and fullStateOnly — ` +
+                `those are the only two delivery channels, so the field would never reach a client.`
+            );
+        }
+        metadata[index].fullStateOnly = true;
+
+        pushIndexList(metadata, $fullStateOnlyFieldIndexes, index);
+    },
+
+    setStream(metadata: Metadata, fieldName: string) {
+        const index = metadata[fieldName];
+        metadata[index].stream = true;
+
+        if (!metadata[$streamFieldIndexes]) {
+            Object.defineProperty(metadata, $streamFieldIndexes, {
+                value: [],
+                enumerable: false,
+                configurable: true,
+                writable: true,
+            });
+        }
+        metadata[$streamFieldIndexes].push(index);
+    },
+
+    /**
+     * Attach a declaration-scope priority callback to a stream field.
+     * Called at schema definition time (via `t.stream(X).priority(fn)` or
+     * `@type({ stream: X, priority: fn })`), looked up at stream-attach
+     * time to seed the instance's `_stream.priority` slot. The callback
+     * signature is `(view: StateView, element: V) => number` — only fires
+     * during `encodeView`, broadcast mode emits FIFO regardless.
+     */
+    setStreamPriority(
+        metadata: Metadata,
+        fieldName: string,
+        fn: (view: any, element: any) => number,
+    ) {
+        const index = metadata[fieldName];
+        if (!metadata[$streamPriorities]) {
+            Object.defineProperty(metadata, $streamPriorities, {
+                value: {},
+                enumerable: false,
+                configurable: true,
+                writable: true,
+            });
+        }
+        metadata[$streamPriorities][index] = fn;
+    },
+
+    getStreamPriority(metadata: Metadata | undefined, index: number) {
+        return metadata?.[$streamPriorities]?.[index];
+    },
+
+    /**
+     * Install a single field with full encoder wiring: accessor descriptor
+     * on the prototype + `metadata[$encoders]` slot for primitives. Shared
+     * between `Metadata.setFields` (build path) and
+     * `Reflection.makeEncodable` (Reflection upgrade path).
+     */
+    defineField(
+        target: any,
+        metadata: any,
+        fieldIndex: number,
+        fieldName: string,
+        type: DefinitionType,
+    ) {
+        const normalized = getNormalizedType(type);
+        const { complexTypeKlass, childType } = resolveFieldType(normalized);
+
+        Metadata.addField(
+            metadata,
+            fieldIndex,
+            fieldName,
+            normalized,
+            getPropertyDescriptor(fieldName, fieldIndex, childType, complexTypeKlass),
+        );
+
+        // Install accessor descriptor on the prototype (once per class field).
+        if (metadata[$descriptors][fieldName]) {
+            Object.defineProperty(target.prototype, fieldName, metadata[$descriptors][fieldName]);
+        }
+
+        // Pre-compute encoder function for primitive + quantized types.
+        if (typeof normalized === "string" || isQuantizedType(normalized)) {
+            if (!metadata[$encoders]) {
+                Object.defineProperty(metadata, $encoders, {
+                    value: [],
+                    enumerable: false,
+                    configurable: true,
+                    writable: true,
+                });
+            }
+            metadata[$encoders][fieldIndex] = (typeof normalized === "string")
+                ? (encode as any)[normalized]
+                : makeQuantizedEncoder((normalized as any).quantized);
+        }
+    },
+
     setFields<T extends { new (...args: any[]): InstanceType<T> } = any>(target: T, fields: { [field in keyof InstanceType<T>]?: DefinitionType }) {
         // for inheritance support
         const constructor = target.prototype.constructor;
@@ -205,24 +477,18 @@ export const Metadata = {
 
         fieldIndex++;
 
+        // Pre-computed encoder function table: metadata[$encoders][fieldIndex] = encode.uint8 etc.
+        if (!metadata[$encoders]) {
+            Object.defineProperty(metadata, $encoders, {
+                value: parentMetadata?.[$encoders] ? [...parentMetadata[$encoders]] : [],
+                enumerable: false,
+                configurable: true,
+                writable: true,
+            });
+        }
+
         for (const field in fields) {
-            const type = getNormalizedType(fields[field]);
-
-            // FIXME: this code is duplicated from @type() annotation
-            const complexTypeKlass = typeof(Object.keys(type)[0]) === "string" && getType(Object.keys(type)[0]);
-
-            const childType = (complexTypeKlass)
-                ? Object.values(type)[0]
-                : type;
-
-            Metadata.addField(
-                metadata,
-                fieldIndex,
-                field,
-                type,
-                getPropertyDescriptor(`_${field}`, fieldIndex, childType, complexTypeKlass)
-            );
-
+            Metadata.defineField(constructor, metadata, fieldIndex, field, fields[field] as DefinitionType);
             fieldIndex++;
         }
 
@@ -231,20 +497,6 @@ export const Metadata = {
 
     isDeprecated(metadata: any, field: string) {
         return metadata[field].deprecated === true;
-    },
-
-    init(klass: any) {
-        //
-        // Used only to initialize an empty Schema (Encoder#constructor)
-        // TODO: remove/refactor this...
-        //
-        const metadata = {};
-        klass[Symbol.metadata] = metadata;
-        Object.defineProperty(metadata, $numFields, {
-            value: 0,
-            enumerable: false,
-            configurable: true,
-        });
     },
 
     initialize(constructor: any) {
@@ -287,14 +539,17 @@ export const Metadata = {
                     });
                 }
 
-                // $refTypeFieldIndexes
-                if (parentMetadata[$refTypeFieldIndexes] !== undefined) {
-                    Object.defineProperty(metadata, $refTypeFieldIndexes, {
-                        value: [...parentMetadata[$refTypeFieldIndexes]],
-                        enumerable: false,
-                        configurable: true,
-                        writable: true,
-                    });
+                // per-class arrays the subclass extends independently
+                for (const key of INHERITED_ARRAY_KEYS) {
+                    const list = parentMetadata[key] as unknown as any[] | undefined;
+                    if (list !== undefined) {
+                        Object.defineProperty(metadata, key, {
+                            value: [...list],
+                            enumerable: false,
+                            configurable: true,
+                            writable: true,
+                        });
+                    }
                 }
 
                 // $descriptors
@@ -334,5 +589,21 @@ export const Metadata = {
 
     hasViewTagAtIndex(metadata: Metadata, index: number) {
         return metadata?.[$viewFieldIndexes]?.includes(index);
+    },
+
+    hasUnreliableAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$unreliableFieldIndexes]?.includes(index);
+    },
+
+    hasPatchOnlyAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$patchOnlyFieldIndexes]?.includes(index);
+    },
+
+    hasFullStateOnlyAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$fullStateOnlyFieldIndexes]?.includes(index);
+    },
+
+    hasStreamAtIndex(metadata: Metadata, index: number) {
+        return metadata?.[$streamFieldIndexes]?.includes(index);
     }
 }

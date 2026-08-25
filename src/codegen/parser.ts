@@ -1,21 +1,185 @@
 import * as ts from "typescript";
 import * as path from "path";
 import { readFileSync } from "fs";
-import { IStructure, Class, Interface, Property, Context, Enum } from "./types.js";
+import { IStructure, Class, Interface, Property, Context, Enum, QuantizedProperty } from "./types.js";
+import { ResolveOptions, isOwnPackageSource, resetResolver, resolveNonRelativeImport, resolveSourceFile, sourceFileCandidates } from "./resolve.js";
 
 let currentStructure: IStructure;
 let currentProperty: Property;
 
 let globalContext: Context;
 
+let defineTypesWarned = false;
+
+const BUILDER_COLLECTION_KINDS = new Set(["array", "map", "set", "collection"]);
+
+/**
+ * For a t.*().chain().calls() expression, walk down to the base `t.X(...)`
+ * call and return its method name, first argument, and the names of the
+ * chained modifiers (`.view()`, `.deprecated()`, …). Returns null if the
+ * node does not look like a builder chain.
+ */
+function extractBuilderBase(node: ts.CallExpression): { methodName: string, firstArg?: ts.Expression, modifiers: Set<string> } | null {
+    const modifiers = new Set<string>();
+    let current: ts.CallExpression = node;
+    while (true) {
+        const expr = current.expression;
+        if (!ts.isPropertyAccessExpression(expr)) {
+            return null;
+        }
+        if (ts.isCallExpression(expr.expression)) {
+            modifiers.add(expr.name.text);
+            current = expr.expression;
+            continue;
+        }
+        return {
+            methodName: expr.name.text,
+            firstArg: current.arguments[0],
+            modifiers,
+        };
+    }
+}
+
+/**
+ * Statically evaluate a numeric option expression. Codegen has no runtime, so
+ * only constant arithmetic is supported: literals, unary +/-, `Math.PI`-style
+ * constants and add/sub/mul/div combinations of those (e.g. `Math.PI * 2`).
+ * Returns
+ * undefined for anything it cannot resolve (a `const` reference, a call).
+ */
+function evalNumericExpression(node: ts.Expression): number | undefined {
+    if (ts.isNumericLiteral(node)) {
+        return Number(node.text);
+    }
+    if (ts.isParenthesizedExpression(node)) {
+        return evalNumericExpression(node.expression);
+    }
+    if (ts.isPrefixUnaryExpression(node)) {
+        const operand = evalNumericExpression(node.operand as ts.Expression);
+        if (operand === undefined) { return undefined; }
+        if (node.operator === ts.SyntaxKind.MinusToken) { return -operand; }
+        if (node.operator === ts.SyntaxKind.PlusToken) { return operand; }
+        return undefined;
+    }
+    if (ts.isPropertyAccessExpression(node) && node.expression.getText() === "Math") {
+        const constant = (Math as any)[node.name.text];
+        return (typeof constant === "number") ? constant : undefined;
+    }
+    if (ts.isBinaryExpression(node)) {
+        const left = evalNumericExpression(node.left);
+        const right = evalNumericExpression(node.right);
+        if (left === undefined || right === undefined) { return undefined; }
+        switch (node.operatorToken.kind) {
+            case ts.SyntaxKind.PlusToken: return left + right;
+            case ts.SyntaxKind.MinusToken: return left - right;
+            case ts.SyntaxKind.AsteriskToken: return left * right;
+            case ts.SyntaxKind.SlashToken: return left / right;
+            default: return undefined;
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Extract `{ min, max, bits?, mode? }` from a `t.quantized({...})` /
+ * `@type({ quantized: {...} })` object literal. Throws on anything codegen
+ * cannot statically resolve — silently dropping an option would generate a
+ * client that decodes every value of that field wrong.
+ */
+function parseQuantizedOptions(node: ts.Expression | undefined, propertyName: string): QuantizedProperty {
+    const fail = (reason: string): never => {
+        throw new Error(
+            `schema-codegen: cannot statically resolve t.quantized() options of field '${propertyName}' — ${reason}. ` +
+            `Use literal numbers or constant Math expressions (e.g. \`Math.PI * 2\`).`
+        );
+    };
+
+    if (!node || !ts.isObjectLiteralExpression(node)) {
+        return fail("expected an inline `{ min, max, ... }` object literal");
+    }
+
+    const result: Partial<QuantizedProperty> & { mode?: string } = {};
+    for (const prop of node.properties) {
+        if (!ts.isPropertyAssignment(prop) || !prop.name) { continue; }
+        const key = (prop.name as ts.Identifier).text;
+
+        if (key === "mode") {
+            if (!ts.isStringLiteral(prop.initializer)) { return fail("`mode` must be a string literal"); }
+            result.mode = prop.initializer.text;
+        } else if (key === "min" || key === "max" || key === "bits") {
+            const value = evalNumericExpression(prop.initializer);
+            if (value === undefined) { return fail(`\`${key}\` is not a constant expression`); }
+            result[key] = value as any;
+        }
+    }
+
+    if (typeof result.min !== "number" || typeof result.max !== "number") {
+        return fail("`min` and `max` are required");
+    }
+
+    const bits = result.bits ?? 16;
+    if (bits !== 8 && bits !== 16 && bits !== 32) {
+        return fail("`bits` must be 8, 16 or 32");
+    }
+
+    return { min: result.min, max: result.max, bits, wrap: result.mode === "wrap" };
+}
+
 function defineProperty(property: Property, initializer: any) {
+    // Builder-style: t.number(), t.array(Item), t.map(Item).view(), etc.
+    if (ts.isCallExpression(initializer)) {
+        const base = extractBuilderBase(initializer);
+        if (base) {
+            // same as `@deprecated()`: `.deprecated(false)` still marks the field
+            if (base.modifiers.has("deprecated")) {
+                property.deprecated = true;
+            }
+            if (BUILDER_COLLECTION_KINDS.has(base.methodName)) {
+                property.type = base.methodName;
+                if (base.firstArg) {
+                    // see through `(x)`, `x as any`, `x satisfies T`
+                    let childArg: ts.Expression = base.firstArg;
+                    while (ts.isParenthesizedExpression(childArg) || ts.isAsExpression(childArg) || ts.isSatisfiesExpression(childArg)) {
+                        childArg = childArg.expression;
+                    }
+                    if (ts.isCallExpression(childArg)) {
+                        // mirrors the runtime guard in builder.ts resolveChild()
+                        const inner = extractBuilderBase(childArg);
+                        const hint = (inner && !BUILDER_COLLECTION_KINDS.has(inner.methodName) && inner.methodName !== "ref" && inner.methodName !== "quantized")
+                            ? `use the type name instead: t.${base.methodName}("${inner.methodName}")`
+                            : `collections accept a Schema class or a primitive type name ("string", "number", …)`;
+                        throw new Error(`schema-codegen: field '${property.name}': a t.* builder is not a valid element type — ${hint}.`);
+                    }
+                    property.childType = (childArg as any).text ?? childArg.getText();
+                }
+            } else if (base.methodName === "ref") {
+                property.type = "ref";
+                if (base.firstArg) {
+                    property.childType = (base.firstArg as any).text ?? base.firstArg.getText();
+                }
+            } else if (base.methodName === "quantized") {
+                property.type = "quantized";
+                property.quantized = parseQuantizedOptions(base.firstArg, property.name);
+            } else {
+                property.type = base.methodName;
+            }
+            return;
+        }
+    }
+
     if (ts.isIdentifier(initializer)) {
         property.type = "ref";
         property.childType = initializer.text;
 
     } else if (initializer.kind == ts.SyntaxKind.ObjectLiteralExpression) {
-        property.type = initializer.properties[0].name.text;
-        property.childType = initializer.properties[0].initializer.text;
+        if (initializer.properties[0].name.text === "quantized") {
+            // decorator-style: @type({ quantized: { min, max, ... } })
+            property.type = "quantized";
+            property.quantized = parseQuantizedOptions(initializer.properties[0].initializer, property.name);
+        } else {
+            property.type = initializer.properties[0].name.text;
+            property.childType = initializer.properties[0].initializer.text;
+        }
 
     } else if (initializer.kind == ts.SyntaxKind.ArrayLiteralExpression) {
         property.type = "array";
@@ -26,15 +190,36 @@ function defineProperty(property: Property, initializer: any) {
     }
 }
 
+function followModuleSpecifier(
+    specifier: ts.Expression | undefined,
+    currentFile: string,
+    decoratorName: string,
+) {
+    const moduleName: string | undefined = (specifier as ts.StringLiteral)?.text;
+    if (!moduleName) { return; } // `export { x }` — no module to follow
+
+    const resolved = (moduleName.startsWith("."))
+        ? resolveSourceFile(path.resolve(path.dirname(currentFile), moduleName))
+        // may be a tsconfig `paths`/`baseUrl` alias onto first-party source;
+        // npm packages are filtered out by the resolver
+        : resolveNonRelativeImport(moduleName, currentFile);
+
+    if (resolved && !isOwnPackageSource(resolved)) {
+        parseFiles([resolved], decoratorName, globalContext);
+    }
+}
+
 function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
     switch (node.kind) {
-        case ts.SyntaxKind.ImportClause:
-            const specifier = (node.parent as any).moduleSpecifier;
-            if (specifier && (specifier.text as string).startsWith('.')) {
-                const currentDir = path.dirname(node.getSourceFile().fileName);
-                const pathToImport = path.resolve(currentDir, specifier.text);
-                parseFiles([pathToImport], decoratorName, globalContext);
-            }
+        case ts.SyntaxKind.ImportDeclaration:
+        case ts.SyntaxKind.ExportDeclaration:
+            // ExportDeclaration too: path aliases usually point at a barrel
+            // (`@schemas` -> `schemas/index.ts` -> `export * from "./Player"`).
+            followModuleSpecifier(
+                (node as ts.ImportDeclaration | ts.ExportDeclaration).moduleSpecifier,
+                node.getSourceFile().fileName,
+                decoratorName,
+            );
             break;
 
         case ts.SyntaxKind.ClassDeclaration:
@@ -216,7 +401,7 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
             ) {
                 /**
                  * JavaScript source file (`.js`)
-                 * Using `defineTypes()`
+                 * Using `defineTypes()` (deprecated)
                  */
                 const callExpression = (node.parent.kind === ts.SyntaxKind.PropertyAccessExpression)
                     ? node.parent.parent as ts.CallExpression
@@ -224,6 +409,11 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
                 if (callExpression.kind !== ts.SyntaxKind.CallExpression) {
                     break;
+                }
+
+                if (!defineTypesWarned) {
+                    defineTypesWarned = true;
+                    console.warn("schema-codegen: defineTypes() is deprecated and will be removed in a future release. Use schema() with t.* field builders instead → https://docs.colyseus.io/state/schema");
                 }
 
                 const className = callExpression.arguments[0].getText()
@@ -252,59 +442,88 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
         case ts.SyntaxKind.CallExpression:
             /**
-             * Defining schema via `schema.schema({ ... })`
-             * - schema.schema({})
-             * - schema({})
-             * - ClassName.extends({})
+             * Defining schema via:
+             * - schema({ ... })
+             * - schema({ ... }, 'Name')
+             * - schema.schema({ ... }, 'Name')
+             * - ParentClass.extend({ ... }, 'Name')
              */
-            if (
-                (
-                    (
-                        (node as ts.CallExpression).expression?.getText() === "schema.schema" ||
-                        (node as ts.CallExpression).expression?.getText() === "schema"
-                    ) ||
-                    (
-                        (node as ts.CallExpression).expression?.getText().indexOf(".extends") !== -1
-                    )
-                ) &&
-                (node as ts.CallExpression).arguments[0].kind === ts.SyntaxKind.ObjectLiteralExpression
-            ) {
+            {
                 const callExpression = node as ts.CallExpression;
+                const callee = callExpression.expression?.getText?.();
+                if (!callee) break;
 
-                let className = callExpression.arguments[1]?.getText();
+                const isSchemaCall = callee === "schema" || callee === "schema.schema";
+                const isExtendCall = callee.endsWith(".extend");
+                if (!isSchemaCall && !isExtendCall) break;
 
-                if (!className && callExpression.parent.kind === ts.SyntaxKind.VariableDeclaration) {
-                    className = (callExpression.parent as ts.VariableDeclaration).name?.getText();
+                // Signature: (fields, name?)
+                const fieldsArg = callExpression.arguments[0];
+                const nameArg = callExpression.arguments[1];
+                if (!fieldsArg || fieldsArg.kind !== ts.SyntaxKind.ObjectLiteralExpression) {
+                    break;
                 }
 
-                // skip if no className is provided
-                if (!className) { break; }
+                let className: string | undefined;
+                if (nameArg) {
+                    if (nameArg.kind === ts.SyntaxKind.StringLiteral) {
+                        className = (nameArg as ts.StringLiteral).text;
+                    } else {
+                        className = nameArg.getText();
+                    }
+                }
+
+                if (!className) {
+                    // No explicit name arg — infer it from the variable the
+                    // result is assigned to (`const Foo = schema({...})`).
+                    let p: ts.Node = callExpression.parent;
+                    while (p !== undefined && (
+                        p.kind === ts.SyntaxKind.PropertyAccessExpression ||
+                        p.kind === ts.SyntaxKind.CallExpression
+                    )) {
+                        p = p.parent;
+                    }
+                    if (p?.kind === ts.SyntaxKind.VariableDeclaration) {
+                        className = (p as ts.VariableDeclaration).name?.getText();
+                    }
+                }
+
+                if (!className) break;
+
+                // Resolve the base class BEFORE registering a structure. A
+                // chained `schema({...}).extend({...})` has a call expression
+                // (not an identifier) as its `.extend` base, which can't be
+                // statically named — bail here rather than leave a half-formed,
+                // nameless Class in the context (which corrupts inheritance walks).
+                let extendsClass = "Schema";
+                if (isExtendCall) {
+                    extendsClass = (node as any).expression?.expression?.escapedText;
+                    if (!extendsClass) {
+                        console.warn(`schema-codegen: cannot resolve the base class of a chained .extend() for '${className}' — fields from that .extend({...}) are omitted.`);
+                        break;
+                    }
+                }
 
                 if (currentStructure?.name !== className) {
                     currentStructure = new Class();
                     context.addStructure(currentStructure);
                 }
 
-                if ((node as ts.CallExpression).expression?.getText().indexOf(".extends") !== -1) {
-                    // if it's using `.extends({})`
-                    const extendsClass = (node as any).expression?.expression?.escapedText;
-
-                    // skip if no extendsClass is provided
-                    if (!extendsClass) { break; }
-                    (currentStructure as Class).extends = extendsClass;
-
-                } else {
-                    // if it's using `schema({})`
-                    (currentStructure as Class).extends = "Schema"; // force extends to Schema
-                }
-
+                (currentStructure as Class).extends = extendsClass;
                 currentStructure.name = className;
 
-                const types = callExpression.arguments[0] as any;
+                const types = fieldsArg as any;
                 for (let i = 0; i < types.properties.length; i++) {
                     const prop = types.properties[i];
 
-                    const property = currentProperty || new Property();
+                    // Skip methods declared inside the fields object.
+                    if (prop.kind === ts.SyntaxKind.MethodDeclaration) continue;
+                    if (!prop.initializer) continue;
+
+                    // never inherit `currentProperty`: it's the decorator path's
+                    // carry-over from a visited `deprecated` identifier, and a
+                    // trailing `.deprecated()` chain can leave it set
+                    const property = new Property();
                     property.name = prop.name.escapedText;
 
                     currentStructure.addProperty(property);
@@ -334,10 +553,15 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
 let parsedFiles: { [filename: string]: boolean };
 
+/**
+ * `options` is only honored for a top-level call (one passing a fresh
+ * `Context`) — the recursive import walk reuses the run's resolver state.
+ */
 export function parseFiles(
     fileNames: string[],
     decoratorName: string = "type",
-    context: Context = new Context()
+    context: Context = new Context(),
+    options?: ResolveOptions,
 ) {
     if (typeof ts.createSourceFile !== "function") {
         // typescript@7+ (native) no longer ships the JS compiler API
@@ -353,30 +577,18 @@ export function parseFiles(
     if (globalContext !== context) {
         parsedFiles = {};
         globalContext = context;
+        // a structure left over from a previous run would make the
+        // `currentStructure?.name !== className` guard skip re-registering it
+        currentStructure = undefined;
+        currentProperty = undefined;
+        resetResolver(options);
     }
 
     fileNames.forEach((fileName) => {
         let sourceFile: ts.Node;
         let sourceFileName: string;
 
-        const fileNameAlternatives = [];
-
-        if (
-            !fileName.endsWith(".ts") &&
-            !fileName.endsWith(".js") &&
-            !fileName.endsWith(".mjs")
-        ) {
-            fileNameAlternatives.push(`${fileName}.ts`);
-            fileNameAlternatives.push(`${fileName}/index.ts`);
-
-        } else if (fileName.endsWith(".js")) {
-            // Handle .js extensions by also trying .ts (ESM imports often use .js extension)
-            fileNameAlternatives.push(fileName);
-            fileNameAlternatives.push(fileName.replace(/\.js$/, ".ts"));
-
-        } else {
-            fileNameAlternatives.push(fileName);
-        }
+        const fileNameAlternatives = sourceFileCandidates(fileName);
 
         for (let i = 0; i < fileNameAlternatives.length; i++) {
             try {

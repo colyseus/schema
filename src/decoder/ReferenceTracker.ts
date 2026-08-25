@@ -20,6 +20,9 @@ class DecodingWarning extends Error {
 
 export type SchemaCallbacks = { [field: string | number]: Function[] };
 
+// Reused across addRef calls — saves a descriptor object per decoded ref.
+const $refIdDescriptor = { value: 0, enumerable: false, writable: true };
+
 export class ReferenceTracker {
     //
     // Relation of refId => Schema structure
@@ -41,11 +44,16 @@ export class ReferenceTracker {
     addRef(refId: number, ref: IRef, incrementCount: boolean = true) {
         this.refs.set(refId, ref);
 
-        Object.defineProperty(ref, $refId, {
-            value: refId,
-            enumerable: false,
-            writable: true
-        });
+        // `enumerable: false` is load-bearing: tests use `deepStrictEqual`
+        // on decoded instances, which WOULD walk enumerable Symbol-keyed
+        // properties and include `$refId` in the comparison. Keep the
+        // descriptor dance for semantic compatibility.
+        if (ref[$refId] === undefined) {
+            $refIdDescriptor.value = refId;
+            Object.defineProperty(ref, $refId, $refIdDescriptor);
+        } else if (ref[$refId] !== refId) {
+            ref[$refId] = refId; // property exists (writable) — plain write keeps flags
+        }
 
         if (incrementCount) {
             this.refCount[refId] = (this.refCount[refId] || 0) + 1;

@@ -5,7 +5,10 @@ if (typeof(__dirname) === "undefined") {
     global.__dirname = path.dirname(new URL(import.meta.url).pathname);
 }
 
-const VERSION = JSON.parse(fs.readFileSync(__dirname + "/../../package.json").toString()).version;
+/** Root of the @colyseus/schema package — `src/codegen/` in dev, `build/codegen/` once bundled. */
+export const PACKAGE_ROOT = path.resolve(__dirname, "..", "..");
+
+const VERSION = JSON.parse(fs.readFileSync(path.resolve(PACKAGE_ROOT, "package.json")).toString()).version;
 const COMMENT_HEADER = `
 THIS FILE HAS BEEN GENERATED AUTOMATICALLY
 DO NOT CHANGE IT MANUALLY UNLESS YOU KNOW WHAT YOU'RE DOING
@@ -23,21 +26,11 @@ export class Context {
     enums: Enum[] = [];
 
     getStructures() {
+        // `isSchemaClass` already walks the full ancestor chain, so a class is
+        // emitted iff it (or any ancestor) descends from Schema — no need to
+        // re-walk parents here.
         return {
-            classes: this.classes.filter(klass => {
-                if (this.isSchemaClass(klass)) {
-                    return true;
-
-                } else {
-                    let parentClass = klass;
-                    while (parentClass = this.getParentClass(parentClass)) {
-                        if (this.isSchemaClass(parentClass)) {
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }),
+            classes: this.classes.filter(klass => this.isSchemaClass(klass)),
             interfaces: this.interfaces,
             enums: this.enums,
         };
@@ -56,37 +49,25 @@ export class Context {
         }
     }
 
-    private getParentClass(klass: Class) {
-        return this.classes.find(c => c.name === klass.extends);
-    }
-
     private isSchemaClass(klass: Class) {
-        let isSchema: boolean = false;
-
-        let currentClass = klass;
-        while (!isSchema && currentClass) {
-            //
-            // TODO: ideally we should check for actual @colyseus/schema module
-            // reference rather than arbitrary strings.
-            //
-            isSchema = (
-                currentClass.extends === "Schema" ||
-                currentClass.extends === "schema.Schema" ||
-                currentClass.extends === "Schema.Schema"
+        // True if `klass` or any ancestor extends Schema (directly or via the
+        // `schema.Schema` / `Schema.Schema` aliases).
+        //
+        // TODO: ideally we should check for the actual @colyseus/schema module
+        // reference rather than arbitrary strings.
+        for (const current of [klass, ...eachAncestor(klass, this.classes)]) {
+            const isSchema = (
+                current.extends === "Schema" ||
+                current.extends === "schema.Schema" ||
+                current.extends === "Schema.Schema"
             );
-
-            //
-            // When extending from `schema.Schema`, it is required to
-            // normalize as "Schema" for code generation.
-            //
-            if (currentClass === klass && isSchema) {
-                klass.extends = "Schema";
+            if (isSchema) {
+                // Normalize a `schema.Schema`-style base on the queried class itself.
+                if (current === klass) { klass.extends = "Schema"; }
+                return true;
             }
-
-            currentClass = this.getParentClass(currentClass);
         }
-
-        return isSchema;
+        return false;
     }
 }
 
@@ -127,17 +108,11 @@ export class Class implements IStructure {
     }
 
     postProcessing() {
-        /**
-         * Ensure the proprierties `index` are correct using inheritance
-         */
-        let parentKlass: Class = this;
-
-        while (
-            parentKlass &&
-            (parentKlass = this.context.classes.find(k => k.name === parentKlass.extends))
-        ) {
+        // Offset each property's `index` by the field count of every ancestor,
+        // so indexes stay correct across inheritance.
+        for (const parent of eachAncestor(this, this.context.classes)) {
             this.properties.forEach(prop => {
-                prop.index += parentKlass.properties.length;
+                prop.index += parent.properties.length;
             });
         }
     }
@@ -153,11 +128,35 @@ export class Enum implements IStructure {
     }
 }
 
+/**
+ * Statically-extracted `t.quantized()` options. `wrap` is already normalized
+ * from the source's `mode` string; emitters derive `range`/`span` via
+ * {@link resolveQuantized} so every language ships identical precomputed values.
+ */
+export interface QuantizedProperty {
+    min: number;
+    max: number;
+    bits: 8 | 16 | 32;
+    wrap: boolean;
+}
+
+/**
+ * Mirror of the runtime's `resolveQuantize()` scale math (wrap spreads 2^bits
+ * steps across [min,max); clamp maps the endpoints onto 0 and 2^bits-1).
+ */
+export function resolveQuantized(q: QuantizedProperty) {
+    return {
+        range: q.max - q.min,
+        span: q.wrap ? 2 ** q.bits : 2 ** q.bits - 1,
+    };
+}
+
 export class Property {
     index: number;
     name: string;
     type: string;
     childType: string;
+    quantized?: QuantizedProperty;
     deprecated?: boolean;
 }
 
@@ -181,18 +180,28 @@ export interface GeneratedFile {
     body: string;
 }
 
+/**
+ * Walk `klass`'s `extends` chain, parent-first, yielding each ancestor class
+ * (not `klass` itself). The single safe ancestor traversal every inheritance
+ * query is built on: it stops at the Schema root, an unresolved base, or a
+ * cycle — so a malformed class graph can never spin forever. This is why the
+ * `seen` cycle-guard lives here and nowhere else.
+ */
+function* eachAncestor(klass: Class, allClasses: Class[]): Generator<Class> {
+    const seen = new Set<Class>([klass]);
+    let current = klass;
+    while (current.extends && current.extends !== "Schema") {
+        const parent = allClasses.find(c => c.name === current.extends);
+        if (!parent || seen.has(parent)) { return; }
+        seen.add(parent);
+        yield parent;
+        current = parent;
+    }
+}
+
 export function getInheritanceTree(klass: Class, allClasses: Class[], includeSelf: boolean = true) {
-    let currentClass = klass;
-    let inheritanceTree: Class[] = [];
-
-    if (includeSelf) {
-        inheritanceTree.push(currentClass);
-    }
-
-    while (currentClass.extends !== "Schema") {
-        currentClass = allClasses.find(klass => klass.name == currentClass.extends);
-        inheritanceTree.push(currentClass);
-    }
-
-    return inheritanceTree;
+    return [
+        ...(includeSelf ? [klass] : []),
+        ...eachAncestor(klass, allClasses),
+    ];
 }

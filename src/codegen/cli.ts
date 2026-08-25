@@ -21,7 +21,9 @@ ${Object.
 
 Optional:
     --namespace: generate namespace on output code
-    --decorator: custom name for @type decorator to scan for`);
+    --decorator: custom name for @type decorator to scan for
+    --tsconfig: tsconfig.json to resolve import path aliases with
+                (default: nearest tsconfig.json/jsconfig.json above each source file)`);
     process.exit(exitCode);
 }
 
@@ -49,7 +51,8 @@ try {
         decorator: args.decorator,
         output: args.output,
         namespace: args.namespace,
-        bundle: args.bundle
+        bundle: args.bundle,
+        tsconfig: args.tsconfig,
     });
 
 } catch (e) {

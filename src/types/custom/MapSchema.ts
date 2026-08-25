@@ -1,10 +1,18 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $numFields, $refId } from "../symbols.js";
-import { ChangeTree, IRef } from "../../encoder/ChangeTree.js";
+import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $refId, $reset, $resyncPrune } from "../symbols.js";
+import { ChangeTree, installUntrackedChangeTree, IRef } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
-import { decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
-import { encodeKeyValueOperation } from "../../encoder/EncodeOperation.js";
+import { CollectionKind, decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
+import { encodeMapEntry } from "../../encoder/EncodeOperation.js";
+import { MapJournal } from "../../encoder/MapJournal.js";
+import {
+    createStreamableState,
+    streamDropView,
+    streamRouteAdd,
+    streamRouteRemove,
+    type StreamableState,
+} from "../../encoder/streaming.js";
 import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
 import { assertInstanceType } from "../../encoding/assert.js";
@@ -17,11 +25,59 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     protected [$childType]: string | typeof Schema;
 
     protected $items: Map<K, V> = new Map<K, V>();
-    protected $indexes: Map<number, K> = new Map<number, K>();
-    protected deletedItems: { [index: string]: V } = {};
 
-    static [$encoder] = encodeKeyValueOperation;
+    /**
+     * Wire-protocol identity + change-tracking metadata for this map.
+     *
+     * Owns: index↔key mapping, monotonic index counter, snapshots of removed
+     * values for filter visibility checks. Replaces what used to live as three
+     * separate fields on this class ($indexes, _collectionIndexes, deletedItems).
+     */
+    protected journal: MapJournal<K> = new MapJournal<K>();
+
+    /**
+     * Streamable state — lazily allocated by `inheritedFlags` (or the
+     * `maxPerTick` setter) when streaming actually activates. `undefined`
+     * on every non-streaming MapSchema so the common case pays zero
+     * Map/Set allocation. Single slot → hidden-class shape stays stable
+     * across streaming and non-streaming instances.
+     */
+    _stream?: StreamableState;
+
+    /** Max ADD ops emitted per tick per view. Ignored outside streaming mode. */
+    get maxPerTick(): number {
+        return this._stream?.maxPerTick ?? 32;
+    }
+    set maxPerTick(n: number) {
+        (this._stream ??= createStreamableState()).maxPerTick = n;
+    }
+
+    /**
+     * Per-view priority callback for `.stream()` maps. Initialized from the
+     * schema declaration (`t.map(X).stream().priority(fn)` or `@type({ map,
+     * priority })`); assigning here overrides for this instance. Only fires
+     * during `encodeView` — broadcast mode drains FIFO.
+     */
+    get priority(): ((view: any, element: V) => number) | undefined {
+        return this._stream?.priority as ((view: any, element: V) => number) | undefined;
+    }
+    set priority(fn: ((view: any, element: V) => number) | undefined) {
+        (this._stream ??= createStreamableState()).priority = fn;
+    }
+
+    /** Backwards-compat alias for `journal.keyByIndex`. */
+    get $indexes(): Map<number, K> { return this.journal.keyByIndex; }
+
+    /**
+     * Backwards-compat alias for `journal.indexByKey`. Plain object so
+     * polymorphic call sites like `ref._collectionIndexes?.[key]` keep working.
+     */
+    get _collectionIndexes(): { [key: string]: number } { return this.journal.indexByKey; }
+
+    static [$encoder] = encodeMapEntry;
     static [$decoder] = decodeKeyValueOperation;
+    /** Integer tag read by `decodeKeyValueOperation` — see `CollectionKind`. */
+    static readonly COLLECTION_KIND = CollectionKind.Map;
 
     /**
      * Determine if a property must be filtered.
@@ -33,11 +89,9 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
      */
     static [$filter] (ref: MapSchema, index: number, view: StateView) {
-        return (
-            !view ||
-            typeof (ref[$childType]) === "string" ||
-            view.isChangeTreeVisible((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
-        );
+        if (!view || typeof (ref[$childType]) === "string") return true;
+        const value = ref[$getByIndex](index) ?? ref.journal.snapshotAt(index);
+        return view.isChangeTreeVisible(value[$changes]);
     }
 
     static is(type: any) {
@@ -45,14 +99,15 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     constructor (initialValues?: Map<K, V> | Record<K, V>) {
-        const changeTree = new ChangeTree(this);
-        changeTree.indexes = {};
-
+        // $changes MUST be non-enumerable — see Schema.initialize comment.
+        // ChangeTree has circular refs (root→changeTrees→…) and would send
+        // `assert.deepStrictEqual` into exponential recursion.
         Object.defineProperty(this, $changes, {
-            value: changeTree,
+            value: new ChangeTree(this),
             enumerable: false,
             writable: true,
         });
+        this[$childType] = undefined as any;
 
         if (initialValues) {
             if (
@@ -67,13 +122,21 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
                 }
             }
         }
+    }
 
-        Object.defineProperty(this, $childType, {
-            value: undefined,
-            enumerable: false,
-            writable: true,
-            configurable: true,
-        });
+    /**
+     * Decoder-side factory. Skips the tracking `ChangeTree` allocation;
+     * `Object.create` also bypasses the class-field initializers, so we
+     * replicate the minimum slot init here. Must stay in sync with the
+     * class-field declarations above and with the constructor body.
+     */
+    static initializeForDecoder<V = any, K extends string = string>(): MapSchema<V, K> {
+        const self: any = Object.create(MapSchema.prototype);
+        self.$items = new Map<K, V>();
+        self.journal = new MapJournal<K>();
+        self[$childType] = undefined;
+        installUntrackedChangeTree(self);
+        return self;
     }
 
     /** Iterator */
@@ -96,13 +159,13 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         const changeTree = this[$changes];
         const isRef = (value[$changes]) !== undefined;
+        const journal = this.journal;
 
-        let index: number;
+        let index = journal.indexOf(key);
         let operation: OPERATION;
 
-        // IS REPLACE?
-        if (typeof(changeTree.indexes[key]) !== "undefined") {
-            index = changeTree.indexes[key];
+        if (index !== undefined) {
+            // REPLACE branch
             operation = OPERATION.REPLACE;
 
             const previousValue = this.$items.get(key);
@@ -120,22 +183,31 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
                 }
             }
 
-            if (this.deletedItems[index]) {
-                delete this.deletedItems[index];
+            // Re-setting after a delete: discard the snapshot.
+            if (journal.snapshotAt(index) !== undefined) {
+                journal.forgetSnapshot(index);
             }
 
         } else {
-            index = changeTree.indexes[$numFields] ?? 0;
+            // ADD branch
+            index = journal.assign(key);
             operation = OPERATION.ADD;
-
-            this.$indexes.set(index, key);
-            changeTree.indexes[key] = index;
-            changeTree.indexes[$numFields] = index + 1;
         }
 
         this.$items.set(key, value);
 
-        changeTree.change(index, operation);
+        // Streaming-mode ADD: route the new entry into per-view or broadcast
+        // pending instead of recording on the tree. The encoder's priority /
+        // broadcast pass will drain up to `maxPerTick` per tick. REPLACE
+        // and DELETE_AND_ADD fall through to the normal recorder path — the
+        // old value is already being emitted, so the swap just mutates.
+        if (operation === OPERATION.ADD && changeTree.isStreamCollection) {
+            if (changeTree.root !== undefined) {
+                streamRouteAdd(this, changeTree.root, index);
+            }
+        } else {
+            changeTree.change(index, operation);
+        }
 
         //
         // set value's parent after the value is set
@@ -190,9 +262,36 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
             return false;
         }
 
-        const index = this[$changes].indexes[key];
+        const index = this.journal.indexOf(key)!;
+        const previousValue = this.$items.get(key)!;
+        const changeTree = this[$changes];
 
-        this.deletedItems[index] = this[$changes].delete(index);
+        // Streaming-mode: silent-drop if the entry never made it out to any
+        // client (still in pending). Otherwise force DELETE on the channels
+        // where it was already sent — bypasses the normal recorder so the
+        // emission path stays symmetric with StreamSchema.
+        if (changeTree.isStreamCollection) {
+            const root = changeTree.root;
+            let neverSent = false;
+            if (root !== undefined) {
+                neverSent = streamRouteRemove(this, root, this[$refId], index);
+            }
+            if ((previousValue as any)?.[$changes] !== undefined) {
+                root?.remove(previousValue[$changes]);
+            }
+            this.$items.delete(key);
+            // Only snapshot if we actually need a DELETE op (already-sent):
+            // filter visibility checks look up the snapshot until the next
+            // encode end. Never-sent entries can skip the snapshot work.
+            if (!neverSent) this.journal.snapshot(index, previousValue);
+            return true;
+        }
+
+        // Snapshot the deleted value (used by [$filter] for visibility checks
+        // until $onEncodeEnd cleans it up).
+        this.journal.snapshot(index, previousValue);
+
+        changeTree.delete(index);
 
         return this.$items.delete(key);
     }
@@ -201,21 +300,39 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         const changeTree = this[$changes];
 
         // discard previous operations.
-        changeTree.discard(true);
-        changeTree.indexes = {};
+        changeTree.discard();
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {
             changeTree.root?.remove(childChangeTree);
         });
 
-        // clear previous indexes
-        this.$indexes.clear();
+        // reset journal (clears all index/key state and snapshots)
+        this.journal.reset();
 
         // clear items
         this.$items.clear();
 
         changeTree.operation(OPERATION.CLEAR);
+    }
+
+    /**
+     * Pool reset: empty this map and recycle its ChangeTree WITHOUT recording
+     * any wire op (the parent field's ADD/DELETE owns the wire). Recurses into
+     * ref-type children. Called by Schema.reset when a pooled entity has a
+     * map field. The instance must already be detached from the encoder.
+     */
+    [$reset]() {
+        const changeTree = this[$changes];
+        if (changeTree.isStreamCollection) {
+            throw new Error(`@colyseus/schema: cannot reset a streamed MapSchema (pooling not supported).`);
+        }
+        // reset ref-type children first (primitives optional-chain away)
+        this.$items.forEach((value: any) => value?.[$reset]?.());
+        this.$items.clear();
+        this.journal.reset();
+        changeTree.recycle();
+        this[$refId] = undefined; // assign (not delete) to avoid V8 dictionary-mode deopt
     }
 
     has (key: K) {
@@ -242,39 +359,75 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         return this.$items.size;
     }
 
+    // ────── Change tracking control (same API as Schema) ──────
+    pauseTracking(): void { this[$changes].pause(); }
+    resumeTracking(): void { this[$changes].resume(); }
+    untracked<T>(fn: () => T): T { return this[$changes].untracked(fn); }
+    get isTrackingPaused(): boolean { return this[$changes].paused; }
+
     protected setIndex(index: number, key: K) {
-        this.$indexes.set(index, key);
+        this.journal.setIndex(index, key);
     }
 
     protected getIndex(index: number) {
-        return this.$indexes.get(index);
+        return this.journal.keyOf(index);
     }
 
     [$getByIndex](index: number): V | undefined {
-        return this.$items.get(this.$indexes.get(index));
+        const key = this.journal.keyOf(index);
+        return key !== undefined ? this.$items.get(key) : undefined;
     }
 
     [$deleteByIndex](index: number): void {
-        const key = this.$indexes.get(index);
-        this.$items.delete(key);
-        this.$indexes.delete(index);
+        const key = this.journal.keyOf(index);
+        if (key !== undefined) {
+            this.$items.delete(key);
+            this.journal.keyByIndex.delete(index);
+        }
+    }
+
+    [$resyncPrune](
+        visited: Set<number | string>,
+        prune: (value: V, identity: number | string) => void,
+        keep: (value: V) => void,
+    ): void {
+        // maps prune by string key, NOT wire index — the decoder-side
+        // journal never evicts stale index→key mappings on re-indexing.
+        let deletedKeys: Set<string> | null = null;
+        this.$items.forEach((value, key) => {
+            if (visited.has(key)) { keep(value); return; }
+            (deletedKeys ??= new Set()).add(key);
+            prune(value, key);
+        });
+        if (deletedKeys !== null) {
+            deletedKeys.forEach((key) => {
+                this.$items.delete(key as K);
+                delete this.journal.indexByKey[key];
+            });
+            // drop index→key mappings of swept keys — including stale ones
+            // left behind by re-indexing.
+            const staleIndexes: number[] = [];
+            this.journal.keyByIndex.forEach((key, index) => {
+                if (deletedKeys!.has(key as unknown as string)) { staleIndexes.push(index); }
+            });
+            for (let i = 0; i < staleIndexes.length; i++) {
+                this.journal.keyByIndex.delete(staleIndexes[i]);
+            }
+        }
     }
 
     protected [$onEncodeEnd]() {
-        const changeTree = this[$changes];
+        this.journal.cleanupAfterEncode();
+    }
 
-        // - cleanup changeTree.indexes
-        // - cleanup $indexes
-        for (const indexStr in this.deletedItems) {
-            const index = parseInt(indexStr);
-            const key = this.$indexes.get(index);
-            // TODO: refactor this.
-            // it shouldn't be necessary to keep track of indexes both on changeTree and on $indexes
-            delete changeTree.indexes[key];
-            this.$indexes.delete(index);
-        }
+    // ─── Streamable interface (Encoder priority / broadcast pass) ──────
 
-        this.deletedItems = {};
+    _dropView(viewId: number): void {
+        streamDropView(this, viewId);
+    }
+
+    _unregister(): void {
+        // no-op — `Root.unregisterStream` handles the Set removal.
     }
 
     toJSON() {

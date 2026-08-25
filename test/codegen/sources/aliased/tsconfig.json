@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@schemas": ["schemas/index.ts"],
+      "@schemas/*": ["schemas/*"]
+    }
+  }
+}

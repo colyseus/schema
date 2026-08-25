@@ -1,18 +1,20 @@
 import * as util from "util";
 import * as assert from "assert";
 import { nanoid } from "nanoid";
-import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Encoder, $changes, entity } from "../src";
+import { MapSchema, Schema, type, ArraySchema, Reflection, Encoder, OPERATION, schema, t, $changes, entity } from "../src";
+
+import { SWITCH_TO_STRUCTURE } from "../src/encoding/spec";
 
 import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, encodeAndAssertEquals } from "./Schema";
 
 describe("Edge cases", () => {
-    it("Schema should support up to 64 fields", () => {
-        const maxFields = 64;
+    it("Schema should support up to 63 fields", () => {
+        const maxFields = 63;
         class State extends Schema {};
 
-        const schema = {};
-        for (let i = 0; i < maxFields; i++) { (schema as any)[`field_${i}`] = "string"; }
-        defineTypes(State, schema);
+        for (let i = 0; i < maxFields; i++) {
+            type("string")(State.prototype, `field_${i}`);
+        }
 
         const state = new State();
         for (let i = 0; i < maxFields; i++) { (state as any)[`field_${i}`] = "value " + i; }
@@ -132,7 +134,6 @@ describe("Edge cases", () => {
             @type(Child) child61 = new Child();
             @type(Child) child62 = new Child();
             @type(Child) child63 = new Child();
-            @type(Child) child64 = new Child();
         }
 
         it("SWITCH_TO_STRUCTURE check should not collide", () => {
@@ -146,7 +147,7 @@ describe("Edge cases", () => {
             for (let i = 0; i < numItems; i++) { state.mapOfNum.set(i.toString(), i); }
 
             state.child.n = 0;
-            state.child64.n = 0;
+            state.child63.n = 0;
 
             const decodedState = new State();
             decodedState.decode(state.encode());
@@ -170,7 +171,6 @@ describe("Edge cases", () => {
 
             state.arrayOfNum.clear();
             state.arrayOfNum.push(10);
-            console.log(".push() =>", state.arrayOfNum[$changes].indexedOperations);
 
             state.mapOfNum.clear();
             state.mapOfNum.set("one", 10);
@@ -183,19 +183,107 @@ describe("Edge cases", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("SWITCH_TO_STRUCTURE should not conflict with `DELETE_AND_ADD` on fieldIndex = 63", () => {
+        it("should replace a ref at the last usable index without colliding", () => {
             //
-            // FIXME: this should not throw an error.
-            // SWITCH_TO_STRUCTURE conflicts with `DELETE_AND_ADD` + fieldIndex = 63
+            // `DELETE_AND_ADD | 63` would be 255, the SWITCH_TO_STRUCTURE
+            // byte. Index 63 is unassignable for exactly that reason, so the
+            // last usable slot (62) must stay collision-free.
             //
             const state = new State();
-            state.child64 = undefined;
-            state.child64 = new Child();
-            state.child64.n = 1;
+            state.child63 = undefined;
+            state.child63 = new Child();
+            state.child63.n = 1;
 
             const decodedState = new State();
             decodedState.decode(state.encode());
 
+            assert.strictEqual(decodedState.child63.n, 1);
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        //
+        // The last usable slot is 62: `DELETE_AND_ADD | 63` would be 255, the
+        // SWITCH_TO_STRUCTURE byte, so `Metadata.MAX_FIELDS` stops one short.
+        // Any nullable field can reach that operation (delete-then-set in one
+        // tick merges to DELETE_AND_ADD), so the slot can't be partly allowed.
+        //
+        function padded(lastField: any, name: string, pad = 62) {
+            const def: any = {};
+            for (let i = 0; i < pad; i++) { def[`pad_${i}`] = t.uint8(); }
+            def.last = lastField;
+            return schema(def, name);
+        }
+
+        it("should reject a field landing on index 63", () => {
+            const TOO_MANY = /may only have up to 63 fields/;
+            assert.throws(() => padded(t.number(), "PrimitiveAtIndex63", 63), TOO_MANY);
+            assert.throws(() => padded(t.ref(schema({ n: t.number() }, "IdxChildX")), "RefAtIndex63", 63), TOO_MANY);
+        });
+
+        it("should replace a child Schema at the last usable index", () => {
+            const ChildT = schema({ n: t.number() }, "IdxChild");
+            const State62 = padded(t.ref(ChildT), "RefAtIndex62");
+
+            const state: any = new State62();
+            state.last = new ChildT();
+            state.last.n = 0;
+
+            const decodedState: any = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+            assert.strictEqual(decodedState.last.n, 0);
+
+            state.last = new ChildT();
+            state.last.n = 1;
+
+            // the merged op stays one byte — 192|62 is 254, one short of the
+            // SWITCH_TO_STRUCTURE byte that forced index 63 out
+            const patch = Uint8Array.from(state.encode());
+            assert.notStrictEqual(patch.indexOf(OPERATION.DELETE_AND_ADD | 62), -1, "expected DELETE_AND_ADD|62 (254)");
+            assert.strictEqual(SWITCH_TO_STRUCTURE, 255);
+
+            decodedState.decode(patch);
+            assert.strictEqual(decodedState.last.n, 1);
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("should replace a collection at the last usable index", () => {
+            const ItemT = schema({ n: t.number() }, "IdxItem");
+            const State62 = padded(t.array(ItemT), "CollectionAtIndex62");
+
+            const state: any = new State62();
+            state.last.push(new ItemT().assign({ n: 1 }), new ItemT().assign({ n: 2 }));
+
+            const decodedState: any = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(decodedState.last.map((i: any) => i.n), [1, 2]);
+
+            state.last = new ArraySchema<any>();
+            state.last.push(new ItemT().assign({ n: 9 }));
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(decodedState.last.map((i: any) => i.n), [9]);
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("should null-then-set a primitive at the last usable index in one tick", () => {
+            //
+            // The merge that produces DELETE_AND_ADD — the operation that
+            // would collide at index 63 — is reachable from a primitive too.
+            //
+            const State62 = padded(t.string(), "PrimitiveAtIndex62");
+
+            const state: any = new State62();
+            state.last = "a";
+
+            const decodedState: any = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+            assert.strictEqual(decodedState.last, "a");
+
+            state.last = undefined;
+            state.last = "b";
+
+            decodedState.decode(state.encode());
+            assert.strictEqual(decodedState.last, "b");
             assertDeepStrictEqualEncodeAll(state);
         });
     });
@@ -729,7 +817,7 @@ describe("Edge cases", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
-    xit("DELETE: should not try to encode undefined values (exception reading '~changes')", () => {
+    it("DELETE: should not try to encode undefined values (exception reading '~changes')", () => {
         class Player extends Schema {
             @type("string") id = nanoid();
         }
@@ -747,7 +835,10 @@ describe("Edge cases", () => {
 
         state.encode();
 
-        state.encodeAll();
+        // `delete` is a no-op: the accessor lives on the prototype, so the
+        // field survives and still round-trips to fresh clients.
+        assert.ok(state.host instanceof Player);
+        assertDeepStrictEqualEncodeAll(state);
     });
 
 });

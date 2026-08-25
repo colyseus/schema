@@ -11,11 +11,14 @@
   },
   "include": [
     "src/**/*.ts",
-    "test/**/*.ts"
+    "test/**/*.ts",
+    "test-external/**/*.ts"
   ],
   "exclude": [
-    "build",
     "test/**/*.types.ts",
-    "test/ChangeAPI._test.ts"
+    // codegen fixtures: read as text by the parser, never compiled by this
+    // project — their path aliases resolve through their own tsconfig
+    "test/codegen/sources/aliased/**/*",
+    "test/codegen/sources/aliased-external/**/*"
   ]
 }

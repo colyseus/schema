@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts } from "./Schema";
-import { ArraySchema, Schema, type, $changes, $refId, MapSchema, ChangeTree, schema } from "../src";
+import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, createClientWithView, encodeMultiple } from "./Schema";
+import { ArraySchema, Schema, type, view, $changes, $refId, MapSchema, ChangeTree, schema, t } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -113,19 +113,26 @@ describe("ArraySchema Tests", () => {
             decodedState.decode(state.encode())
 
             const entitiesChangeTree: ChangeTree = state.entities[$changes];
-            assert.deepStrictEqual({ '0': 0, '1': 1, '2': 2, '3': 3, '4': 4 }, entitiesChangeTree.allChanges.indexes);
+            const collectAll = () => {
+                const out: number[] = [];
+                entitiesChangeTree.forEachLive((idx) => out.push(idx));
+                return out;
+            };
+            // Full-sync iterates live items — after each shift, indexes
+            // collapse toward the current array positions.
+            assert.deepStrictEqual(collectAll(), [0, 1, 2, 3, 4]);
 
             state.entities.shift();
-            assert.deepStrictEqual({ '0': 1, '1': 2, '2': 3, '3': 4 }, entitiesChangeTree.allChanges.indexes);
+            assert.deepStrictEqual(collectAll(), [0, 1, 2, 3]);
 
             state.entities.shift();
-            assert.deepStrictEqual({ '0': 2, '1': 3, '2': 4 }, entitiesChangeTree.allChanges.indexes);
+            assert.deepStrictEqual(collectAll(), [0, 1, 2]);
 
             state.entities.shift();
-            assert.deepStrictEqual({ '0': 3, '1': 4 }, entitiesChangeTree.allChanges.indexes);
+            assert.deepStrictEqual(collectAll(), [0, 1]);
 
             state.entities.shift();
-            assert.deepStrictEqual({ '0': 4 }, entitiesChangeTree.allChanges.indexes);
+            assert.deepStrictEqual(collectAll(), [0]);
 
             assertDeepStrictEqualEncodeAll(state);
 
@@ -188,11 +195,11 @@ describe("ArraySchema Tests", () => {
 
         it("2: shift + repopulate should not trigger refId not found", () => {
             const Entity = schema({
-                i: "number"
-            });
+                i: t.number()
+            }, "Entity");
             const MyState = schema({
-                entities: [Entity]
-            });
+                entities: t.array(Entity)
+            }, "MyState");
 
             const state = new MyState();
             state.entities = new ArraySchema();
@@ -303,7 +310,7 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("encodeAll() + with enqueued encode() shifts with Schema children", () => {
+        it("encodeAll() + with enqueued encode() shifts with Schema children", () => {
             class Entity extends Schema {
                 @type("number") thing: number;
             }
@@ -357,6 +364,203 @@ describe("ArraySchema Tests", () => {
             decoded2.decode(state.encode()); // TODO: this is triggering "refId not found"
 
             assert.deepStrictEqual(state.toJSON(), decoded2.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("mid-tick join: stale DELETEs in shared patch must not corrupt fresh client", () => {
+            class Entity extends Schema {
+                @type("number") thing: number;
+            }
+            class State extends Schema {
+                @type([Entity]) entities = new ArraySchema<Entity>();
+            }
+            const mkEntity = (n: number) => {
+                const e = new Entity();
+                e.thing = n;
+                return e;
+            };
+
+            const state = new State();
+            for (let i = 0; i < 5; i++) state.entities.push(mkEntity(i));
+
+            const oldClient = createInstanceFromReflection(state);
+            oldClient.decode(state.encodeAll());
+            oldClient.decode(state.encode());
+
+            // tick in progress: deletions recorded, not yet broadcast
+            state.entities.shift();
+            state.entities.shift();
+
+            // fresh client joins mid-tick — snapshot already reflects deletions
+            const freshClient = createInstanceFromReflection(state);
+            freshClient.decode(state.encodeAll());
+
+            state.entities.shift();
+
+            // same patch bytes broadcast to both
+            const patch = state.encode();
+            oldClient.decode(patch);
+            freshClient.decode(patch);
+
+            assert.deepStrictEqual(state.toJSON(), oldClient.toJSON());
+            assert.deepStrictEqual(state.toJSON(), freshClient.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("same-tick interleaved index writes and shift()s (primitives)", () => {
+            //
+            // index writes record in items-space while shift() records in
+            // tmpItems (wire) space — $wireIndex translates between them.
+            //
+            class State extends Schema {
+                @type(["number"]) numbers = new ArraySchema<number>();
+            }
+            const state = new State();
+            for (let i = 0; i < 10; i++) state.numbers.push(i);
+
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            client.decode(state.encode());
+
+            // several [increment-all, shift] rounds inside one tick
+            for (let round = 0; round < 3; round++) {
+                for (let j = 0; j < state.numbers.length; j++) state.numbers[j]++;
+                state.numbers.shift();
+            }
+            client.decode(state.encode());
+            assert.deepStrictEqual(state.toJSON(), client.toJSON());
+
+            // again across a second patch, mixed with push
+            for (let round = 0; round < 2; round++) {
+                for (let j = 0; j < state.numbers.length; j++) state.numbers[j]++;
+                state.numbers.shift();
+                state.numbers.push(100 + round);
+            }
+            client.decode(state.encode());
+            assert.deepStrictEqual(state.toJSON(), client.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("same-tick shift/splice + push with Schema children", () => {
+            class Entity extends Schema {
+                @type("number") thing: number;
+            }
+            class State extends Schema {
+                @type([Entity]) entities = new ArraySchema<Entity>();
+            }
+            const mkEntity = (n: number) => {
+                const e = new Entity();
+                e.thing = n;
+                return e;
+            };
+
+            const state = new State();
+            for (let i = 0; i < 3; i++) state.entities.push(mkEntity(i));
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            client.decode(state.encode());
+
+            // churn: delete head + append new, one tick
+            state.entities.shift();
+            state.entities.push(mkEntity(99));
+            client.decode(state.encode());
+            assert.deepStrictEqual([1, 2, 99], client.entities.map((e) => e.thing));
+
+            // move: remove first + re-append the SAME instance, one tick
+            const first = state.entities[0];
+            state.entities.splice(0, 1);
+            state.entities.push(first);
+            client.decode(state.encode());
+            assert.deepStrictEqual([2, 99, 1], client.entities.map((e) => e.thing));
+            assertRefIdCounts(state, client);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("replacing at an index after a same-tick shift (Schema children)", () => {
+            //
+            // arr[j] = x after a shift in the same tick: the replace must
+            // record at the translated wire index ($wireIndex), and the
+            // DELETE_BY_REFID for the shifted head must still resolve the
+            // original item from its (unclobbered) tmpItems slot.
+            //
+            class Entity extends Schema {
+                @type("number") thing: number;
+            }
+            class State extends Schema {
+                @type([Entity]) entities = new ArraySchema<Entity>();
+            }
+            const mkEntity = (n: number) => {
+                const e = new Entity();
+                e.thing = n;
+                return e;
+            };
+
+            const state = new State();
+            for (let i = 0; i < 3; i++) state.entities.push(mkEntity(i));
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            client.decode(state.encode());
+
+            state.entities.shift();
+            state.entities[0] = mkEntity(90);
+            client.decode(state.encode());
+            assert.deepStrictEqual([90, 2], client.entities.map((e) => e.thing));
+            assertRefIdCounts(state, client);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("mid-tick join with drained queue keeps primitive arrays in sync", () => {
+            //
+            // Primitive ops have no refId to make them idempotent — a fresh
+            // client must only ever snapshot a DRAINED queue (colyseus 0.18:
+            // broadcastPatch() before encodeAll on join). Under that
+            // invariant, primitive arrays stay in sync through heavy churn.
+            //
+            class State extends Schema {
+                @type(["number"]) numbers = new ArraySchema<number>();
+            }
+            const mutateAllAndShift = (state: State, count: number) => {
+                for (let i = 0; i < count; i++) {
+                    for (let j = 0; j < state.numbers.length; j++) state.numbers[j]++;
+                    state.numbers.shift();
+                }
+            };
+
+            const state = new State();
+            for (let i = 0; i < 35; i++) state.numbers.push(i);
+
+            state.encode(); // drain before first snapshot
+            const oldClient = createInstanceFromReflection(state);
+            oldClient.decode(state.encodeAll());
+
+            mutateAllAndShift(state, 6);
+            oldClient.decode(state.encode());
+            mutateAllAndShift(state, 6);
+            oldClient.decode(state.encode());
+
+            mutateAllAndShift(state, 9);
+            oldClient.decode(state.encode()); // drain to existing clients...
+            const freshClient = createInstanceFromReflection(state);
+            freshClient.decode(state.encodeAll()); // ...then snapshot
+
+            mutateAllAndShift(state, 3);
+            const patch1 = state.encode();
+            oldClient.decode(patch1);
+            freshClient.decode(patch1);
+            assert.deepStrictEqual(state.toJSON(), oldClient.toJSON());
+            assert.deepStrictEqual(state.toJSON(), freshClient.toJSON());
+
+            mutateAllAndShift(state, 6);
+            const patch2 = state.encode();
+            oldClient.decode(patch2);
+            freshClient.decode(patch2);
+            assert.deepStrictEqual(state.toJSON(), oldClient.toJSON());
+            assert.deepStrictEqual(state.toJSON(), freshClient.toJSON());
 
             assertDeepStrictEqualEncodeAll(state);
         });
@@ -700,7 +904,7 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("consecutive unshift calls should not break 'encodeAll'", () => {
+        it("consecutive unshift calls should not break 'encodeAll'", () => {
             class State extends Schema {
                 @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
             }
@@ -721,6 +925,153 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([-1, 0, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
 
             assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("multi-item unshift", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1, 2, 3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.arrayOfNumbers.unshift(-1, -2);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([-1, -2, 1, 2, 3], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("unshift with pending same-tick operations", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1, 2, 3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            // pending REPLACE + ADD get re-keyed past the inserts
+            state.arrayOfNumbers[2] = 99;
+            state.arrayOfNumbers.push(4);
+            state.arrayOfNumbers.unshift(0);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([0, 1, 2, 99, 4], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("consecutive unshift of Schema instances", () => {
+            class Item extends Schema {
+                @type("number") price: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+            const mkItem = (price: number) => {
+                const item = new Item();
+                item.price = price;
+                return item;
+            };
+
+            const state = new State();
+            state.items.push(mkItem(1), mkItem(2));
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.items.unshift(mkItem(0));
+            state.items.unshift(mkItem(-1));
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([-1, 0, 1, 2], decodedState.items.map((i) => i.price));
+            assertRefIdCounts(state, decodedState);
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("unshift interleaved with same-tick shift/pop", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1, 2, 3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            // pop leaves a staged delete; unshift must keep flags aligned
+            state.arrayOfNumbers.pop();
+            state.arrayOfNumbers.unshift(0);
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([0, 1, 2], decodedState.arrayOfNumbers.toJSON());
+
+            state.arrayOfNumbers.shift();
+            state.arrayOfNumbers.unshift(-1);
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([-1, 1, 2], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("clear + unshift in the same tick", () => {
+            class State extends Schema {
+                @type(["number"]) arrayOfNumbers = new ArraySchema<number>();
+            }
+
+            const state = new State();
+            state.arrayOfNumbers.push(1, 2, 3);
+
+            const decodedState = new State();
+            decodedState.decode(state.encode());
+
+            state.arrayOfNumbers.clear();
+            state.arrayOfNumbers.unshift(9);
+            state.arrayOfNumbers.unshift(8);
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual([8, 9], decodedState.arrayOfNumbers.toJSON());
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("consecutive unshift on a @view() filtered primitive array", () => {
+            //
+            // positional ADDs survive into the per-view encode pass — it must
+            // drain the recorder in the same rebuilt (ascending) order as the
+            // shared pass.
+            //
+            class ViewState extends Schema {
+                @view() @type(["number"]) nums = new ArraySchema<number>();
+            }
+            const state = new ViewState();
+            const encoder = getEncoder(state);
+            state.nums.push(1, 2, 3);
+
+            const client = createClientWithView(state);
+            client.view.add(state.nums);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual([1, 2, 3], client.state.nums.toJSON());
+
+            state.nums.unshift(0);
+            state.nums.unshift(-1);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual([-1, 0, 1, 2, 3], client.state.nums.toJSON());
+
+            // mixed same-tick ops
+            state.nums[2] = 99;
+            state.nums.push(4);
+            state.nums.unshift(-2);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual([-2, -1, 0, 99, 2, 3, 4], client.state.nums.toJSON());
         });
 
         it("push and unshift", () => {
@@ -918,27 +1269,133 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        xit("TODO: should allow to replace 1 item and add another", () => {
+        describe("inserting more items than deleted", () => {
             class Item extends Schema {
                 @type("number") i: number;
             }
             class State extends Schema {
                 @type([Item]) items = new ArraySchema<Item>();
             }
-
-            const state = new State();
-            for (let i = 0; i < 10; i++) {
-                state.items.push(new Item().assign({ i }));
+            class PrimitiveState extends Schema {
+                @type(["number"]) items = new ArraySchema<number>();
             }
 
-            const decodedState = createInstanceFromReflection(state);
-            decodedState.decode(state.encode());
+            const item = (i: number) => new Item().assign({ i });
 
-            state.items.splice(0, 1, new Item().assign({ i: 10 }), new Item().assign({ i: 10 }));
-            decodedState.decode(state.encode());
+            /** 10 items (0..9), already delivered to a client. */
+            function setup() {
+                const state = new State();
+                for (let i = 0; i < 10; i++) { state.items.push(item(i)); }
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+                return { state, decodedState };
+            }
 
-            assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
-            assertDeepStrictEqualEncodeAll(state);
+            function assertInSync(state: State, decodedState: any, expected: number[]) {
+                assert.deepStrictEqual(expected, state.items.map((entry) => entry.i));
+                assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+                assertRefIdCounts(state, decodedState);
+                assertDeepStrictEqualEncodeAll(state);
+            }
+
+            it("should allow to replace 1 item and add another", () => {
+                const { state, decodedState } = setup();
+
+                state.items.splice(0, 1, item(10), item(11));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [10, 11, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+            });
+
+            it("should insert in the middle", () => {
+                const { state, decodedState } = setup();
+
+                state.items.splice(3, 1, item(10), item(11), item(12));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [0, 1, 2, 10, 11, 12, 4, 5, 6, 7, 8, 9]);
+            });
+
+            it("should insert at the end", () => {
+                const { state, decodedState } = setup();
+
+                state.items.splice(9, 1, item(10), item(11));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11]);
+            });
+
+            it("should insert without deleting (deleteCount = 0)", () => {
+                const { state, decodedState } = setup();
+
+                state.items.splice(0, 0, item(10));
+                state.items.splice(5, 0, item(11), item(12));
+                state.items.splice(state.items.length, 0, item(13));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [10, 0, 1, 2, 3, 11, 12, 4, 5, 6, 7, 8, 9, 13]);
+            });
+
+            it("should keep deleting more than inserted working", () => {
+                const { state, decodedState } = setup();
+
+                state.items.splice(0, 1, item(10)); // equal
+                state.items.splice(4, 3, item(11)); // fewer
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [10, 1, 2, 3, 11, 7, 8, 9]);
+            });
+
+            it("should insert more than deleted with primitive children", () => {
+                const state = new PrimitiveState();
+                for (let i = 0; i < 10; i++) { state.items.push(i); }
+
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                state.items.splice(0, 1, 10, 11);
+                state.items.splice(6, 1, 12, 13);
+                state.items.splice(2, 0, 14);
+                decodedState.decode(state.encode());
+
+                assert.deepStrictEqual([10, 11, 14, 1, 2, 3, 4, 12, 13, 6, 7, 8, 9], state.items.toJSON());
+                assert.deepStrictEqual(state.items.toJSON(), decodedState.items.toJSON());
+                assertDeepStrictEqualEncodeAll(state);
+            });
+
+            it("should insert alongside other mutations in the same tick", () => {
+                const { state, decodedState } = setup();
+
+                state.items.unshift(item(90));
+                state.items.splice(5, 1, item(10), item(11));
+                state.items[3] = item(93);
+                state.items.push(item(94));
+                state.items.splice(0, 0, item(95));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [95, 90, 0, 1, 93, 3, 10, 11, 5, 6, 7, 8, 9, 94]);
+            });
+
+            it("should insert in the same tick the items were pushed", () => {
+                const state = new State();
+                for (let i = 0; i < 10; i++) { state.items.push(item(i)); }
+                state.items.splice(2, 1, item(10), item(11));
+
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode()); // single encode: push + splice
+
+                assertInSync(state, decodedState, [0, 1, 10, 11, 3, 4, 5, 6, 7, 8, 9]);
+            });
+
+            it("should insert after a same-tick shift()", () => {
+                const { state, decodedState } = setup();
+
+                state.items.shift();
+                state.items.splice(0, 1, item(10), item(11));
+                decodedState.decode(state.encode());
+
+                assertInSync(state, decodedState, [10, 11, 2, 3, 4, 5, 6, 7, 8, 9]);
+            });
         });
 
         it("should allow consecutive splices (same place, 3 items)", () => {
@@ -1068,14 +1525,13 @@ describe("ArraySchema Tests", () => {
 
             const itemsChangeTree = state.items[$changes];
             const checkItemsSameAsOperations = () => {
-                assert.strictEqual(state.items.length, itemsChangeTree.allChanges.operations.filter((op) => op !== undefined).length);
-                for (let i = 0; i < itemsChangeTree.allChanges.operations.length; i++) {
-                    const fieldIndex = itemsChangeTree.allChanges.operations[i];
-                    if (fieldIndex !== undefined) {
-                        const value = itemsChangeTree.getValue(fieldIndex, true);
-                        assert.ok(value);
-                    }
-                };
+                let count = 0;
+                itemsChangeTree.forEachLive((fieldIndex) => {
+                    count++;
+                    const value = itemsChangeTree.getValue(fieldIndex, true);
+                    assert.ok(value);
+                });
+                assert.strictEqual(state.items.length, count);
             }
 
             const decodedState = createInstanceFromReflection(state);
@@ -1120,15 +1576,13 @@ describe("ArraySchema Tests", () => {
 
             const itemsChangeTree = state.items[$changes];
             const checkItemsSameAsOperations = () => {
-                assert.strictEqual(state.items.length, itemsChangeTree.allChanges.operations.filter((op) => op !== undefined).length);
-                for (let i = 0; i < itemsChangeTree.allChanges.operations.length; i++) {
-                    const fieldIndex = itemsChangeTree.allChanges.operations[i];
-                    if (fieldIndex !== undefined) {
-                        const value = itemsChangeTree.getValue(fieldIndex, true);
-                        console.log("check...", { fieldIndex, value: value?.toJSON() });
-                        assert.ok(value);
-                    }
-                };
+                let count = 0;
+                itemsChangeTree.forEachLive((fieldIndex) => {
+                    count++;
+                    const value = itemsChangeTree.getValue(fieldIndex, true);
+                    assert.ok(value);
+                });
+                assert.strictEqual(state.items.length, count);
             }
 
             const decodedState = createInstanceFromReflection(state);
@@ -2318,8 +2772,6 @@ describe("ArraySchema Tests", () => {
                 [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
             });
 
-            console.log(Schema.debugChangesDeep(state));
-
             assert.strictEqual(1, encoder.root.refCount[state.cards[0][$refId]]);
             assert.strictEqual(1, encoder.root.refCount[state.cards[1][$refId]]);
             assert.strictEqual(1, encoder.root.refCount[state.cards[2][$refId]]);
@@ -2496,7 +2948,14 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(4, onChangeCallCount);
         });
 
-        xit("should trigger onAdd callback only once after clearing and adding one item", () => {
+        it("should trigger onAdd callback only once after clearing and adding one item", () => {
+            //
+            // `encodeAll()` does not consume the change queue, so a client
+            // snapshotting an undrained one replays the pending [CLEAR, ADD,
+            // ADD] on top of the snapshot and fires onAdd twice per item.
+            // Draining first (colyseus 0.18: broadcastPatch() before
+            // encodeAll on join) is the supported join order.
+            //
             const state = new State();
             const decodedState = new State();
             const $ = getCallbacks(decodedState);
@@ -2508,11 +2967,9 @@ describe("ArraySchema Tests", () => {
             state.points.push(new Point().assign({ x: 3, y: 3 }));
 
             let onAddCallCount = 0;
-            $(decodedState).points.onAdd((point, key) => {
-                onAddCallCount++;
-                console.log(point.toJSON(), key);
-            });
+            $(decodedState).points.onAdd(() => onAddCallCount++);
 
+            state.encode(); // drain before the snapshot
             decodedState.decode(state.encodeAll());
             decodedState.decode(state.encode());
 
@@ -2624,6 +3081,142 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
             assert.deepStrictEqual([5, 4, 3, 2, 1], decodedState.numbers.toJSON());
+        });
+
+        describe("#reverse() following another same-tick operation", () => {
+            class Item extends Schema {
+                @type("string") name: string;
+            }
+            class ReverseState extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+                @type(["string"]) strings = new ArraySchema<string>();
+            }
+            const item = (name: string) => new Item().assign({ name });
+
+            // Sync `initial` into both arrays (ref-typed + primitive), then run
+            // `mutate` against each in the same tick and assert one patch
+            // brings the decoder to `expected` — and that a fresh encodeAll
+            // still matches (catches refId leaks the patch path can hide).
+            function assertSameTick(
+                initial: string[],
+                mutate: (arr: ArraySchema<any>, wrap: (name: string) => any) => void,
+                expected: string[],
+            ) {
+                const state = new ReverseState();
+                const decodedState = createInstanceFromReflection(state);
+                if (initial.length > 0) {
+                    state.items.push(...initial.map(item));
+                    state.strings.push(...initial);
+                }
+                decodedState.decode(state.encode());
+
+                mutate(state.items, item);
+                mutate(state.strings, (name) => name);
+
+                assert.deepStrictEqual(state.items.map((i) => i.name), expected, "server items");
+                assert.deepStrictEqual([...state.strings], expected, "server strings");
+
+                decodedState.decode(state.encode());
+                assert.deepStrictEqual(decodedState.items.map((i) => i.name), expected, "decoded items");
+                assert.deepStrictEqual([...decodedState.strings], expected, "decoded strings");
+
+                assertDeepStrictEqualEncodeAll(state);
+            }
+
+            it("ADDs then reverse() on a fresh array", () => {
+                assertSameTick([], (arr, wrap) => {
+                    arr.push(wrap("a"), wrap("b"), wrap("c"));
+                    arr.reverse();
+                }, ["c", "b", "a"]);
+            });
+
+            it("push() then reverse()", () => {
+                assertSameTick(["a", "b"], (arr, wrap) => {
+                    arr.push(wrap("c"));
+                    arr.reverse();
+                }, ["c", "b", "a"]);
+            });
+
+            it("pop() then reverse()", () => {
+                assertSameTick(["a", "b", "c"], (arr) => {
+                    arr.pop();
+                    arr.reverse();
+                }, ["b", "a"]);
+            });
+
+            it("shift() then reverse()", () => {
+                assertSameTick(["a", "b", "c"], (arr) => {
+                    arr.shift();
+                    arr.reverse();
+                }, ["c", "b"]);
+            });
+
+            it("unshift() then reverse()", () => {
+                assertSameTick(["a", "b"], (arr, wrap) => {
+                    arr.unshift(wrap("z"));
+                    arr.reverse();
+                }, ["b", "a", "z"]);
+            });
+
+            it("splice() then reverse()", () => {
+                assertSameTick(["a", "b", "c"], (arr) => {
+                    arr.splice(0, 1);
+                    arr.reverse();
+                }, ["c", "b"]);
+            });
+
+            it("index write then reverse()", () => {
+                assertSameTick(["a", "b", "c"], (arr, wrap) => {
+                    arr[0] = wrap("a2");
+                    arr.reverse();
+                }, ["c", "b", "a2"]);
+            });
+
+            it("pop() + push() then reverse()", () => {
+                assertSameTick(["a", "b", "c"], (arr, wrap) => {
+                    arr.pop();
+                    arr.push(wrap("d"));
+                    arr.reverse();
+                }, ["d", "b", "a"]);
+            });
+
+            // Already-working orderings — guard the fix against regressions.
+            it("reverse() then push()", () => {
+                assertSameTick(["a", "b", "c"], (arr, wrap) => {
+                    arr.reverse();
+                    arr.push(wrap("d"));
+                }, ["c", "b", "a", "d"]);
+            });
+
+            it("reverse() then pop()", () => {
+                assertSameTick(["a", "b", "c"], (arr) => {
+                    arr.reverse();
+                    arr.pop();
+                }, ["c", "b"]);
+            });
+
+            it("reverse() twice in the same tick", () => {
+                assertSameTick(["a", "b", "c"], (arr) => {
+                    arr.reverse();
+                    arr.reverse();
+                }, ["a", "b", "c"]);
+            });
+
+            it("pop() then reverse() across separate ticks", () => {
+                const state = new ReverseState();
+                const decodedState = createInstanceFromReflection(state);
+                state.items.push(item("a"), item("b"), item("c"));
+                decodedState.decode(state.encode());
+
+                state.items.pop();
+                decodedState.decode(state.encode());
+
+                state.items.reverse();
+                decodedState.decode(state.encode());
+
+                assert.deepStrictEqual(decodedState.items.map((i) => i.name), ["b", "a"]);
+                assertDeepStrictEqualEncodeAll(state);
+            });
         });
 
         it("#flat", () => {

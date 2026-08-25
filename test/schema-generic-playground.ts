@@ -1,3 +1,5 @@
+import { t } from "../src";
+
 export function schema<
     T extends Record<string, any>,
     InitProps
@@ -8,12 +10,12 @@ export function schema<
 }
 
 const NoInit = schema({
-    x: "number",
+    x: t.number(),
     initialize() { }
 });
 
 const WithInit = schema({
-    x: { type: "number", default: 10 },
+    x: t.number().default(10),
     initialize(props: { x: number }) {
         this.x.default = props.x;
     }
@@ -45,11 +47,11 @@ export function schema<
 }
 
 const NoInit = schema({
-    x: "number",
+    x: t.number(),
     initialize() { }
 });
 
 const WithInit = schema<{ x: number }>({
-    x: { type: "number", default: 10 },
+    x: t.number().default(10),
 });
 */

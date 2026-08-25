@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, encodeAndAssertEquals } from "./Schema";
+import { State, Player, getCallbacks, createInstanceFromReflection, getDecoder, getEncoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, assertNoOrphanRefs, encodeAndAssertEquals } from "./Schema";
 import { MapSchema, type, Schema, ArraySchema, Reflection, $changes, $refId, SetSchema, entity, $getByIndex, Encoder } from "../src";
 
 describe("Type: MapSchema", () => {
@@ -895,9 +895,12 @@ describe("Type: MapSchema", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
-    xit("move instance between keys in the same patch", () => {
+    it("move instance between keys in the same patch", () => {
         //
-        // TODO: test $onEncodeEnd of MapSchema. Is $onEncodeEnd of MapSchema even necessary?
+        // The moved instance must land on "two" only — no duplicate ref, and
+        // the key retired in the same patch must not leave a stale index
+        // behind. MapJournal.cleanupAfterEncode() (via $onEncodeEnd) is what
+        // retires it.
         //
         const state = new State();
         const decodedState = new State();
@@ -909,6 +912,16 @@ describe("Type: MapSchema", () => {
         state.mapOfPlayers.set("two", state.mapOfPlayers.get("one"));
         state.mapOfPlayers.delete("one");
         decodedState.decode(state.encode());
+
+        assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
+        assert.deepStrictEqual(Array.from(decodedState.mapOfPlayers.keys()), ["two"]);
+        assertRefIdCounts(state, decodedState);
+        assertNoOrphanRefs(state, decodedState);
+
+        // the moved instance must still be live — not detached by the move
+        state.mapOfPlayers.get("two").x = 999;
+        decodedState.decode(state.encode());
+        assert.strictEqual(999, decodedState.mapOfPlayers.get("two").x);
 
         assertDeepStrictEqualEncodeAll(state);
     });

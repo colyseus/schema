@@ -12,7 +12,7 @@ describe("Community cases", () => {
 
         class Test extends Schema {
             @type('number') size: number = 0; // total number of storage slots in this container.
-            @type('boolean') transient?: boolean;
+            @type('boolean') patchOnly?: boolean;
             @type(OptionalChildSchema) sub?: OptionalChildSchema;
         }
 

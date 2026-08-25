@@ -5,6 +5,10 @@ import { Iterator } from "./encoding/decode.js";
 import { Encoder } from "./encoder/Encoder.js";
 import { Decoder } from "./decoder/Decoder.js";
 import { Schema } from "./Schema.js";
+import { t, FieldBuilder } from "./types/builder.js";
+import { ArraySchema } from "./types/custom/ArraySchema.js";
+import { $encodeDescriptor, $numFields } from "./types/symbols.js";
+import { isQuantizedType, resolveQuantize } from "./types/quantize.js";
 
 /**
  * Static methods available on Reflection
@@ -27,31 +31,68 @@ interface ReflectionStatic {
      * @returns Decoder instance
      */
     decode: <T extends Schema = Schema>(bytes: Uint8Array, it?: Iterator) => Decoder<T>;
+
+    /**
+     * Upgrade a class produced by `Reflection.decode` so its instances
+     * can be used as encode sources (for `InputEncoder` or `Encoder`).
+     *
+     * `Reflection.decode` reconstructs classes with decoder-only field
+     * slots — `inst.x = 7` lands as a direct own property and bypasses
+     * the change-tracking + `$values` plumbing that encoders rely on.
+     * Calling `makeEncodable(ctor)` installs the same prototype accessor
+     * descriptors and `metadata[$encoders]` lookup table that the
+     * `schema(...)` / `@type` builders install at class-definition time.
+     *
+     * Idempotent. Pay-as-you-go: callers that only decode never invoke
+     * this and pay nothing extra. Must be called BEFORE any instance of
+     * the class is constructed and assigned to.
+     */
+    makeEncodable: (ctor: typeof Schema) => typeof Schema;
 }
 
 /**
  * Reflection
  */
+
+/**
+ * `t.quantized()` field descriptor as it rides the reflection handshake —
+ * schema-typed (bit-exact float64 bounds), NOT a string grammar, so every
+ * language port decodes it with the schema decoder it already has.
+ */
+export const QuantizedDescriptor = schema({
+    min: t.float64(),
+    max: t.float64(),
+    bits: t.uint8(),
+    mode: t.uint8(), // 0 = clamp, 1 = wrap
+}, "QuantizedDescriptor");
+export type QuantizedDescriptor = SchemaType<typeof QuantizedDescriptor>;
+
 export const ReflectionField = schema({
-    name: "string",
-    type: "string",
-    referencedType: "number",
-})
+    name: t.string(),
+    type: t.string(),
+    referencedType: t.number(),
+    /** Primitive child of a collection (`array`/`map`/... of "string" etc.) —
+     *  its own slot, replacing the legacy `"array:string"` colon packing. */
+    childPrimitive: t.string(),
+    /** Set only on `t.quantized()` fields (`.optional()` — no auto-instantiated
+     *  default; its absence is the "not quantized" signal on decode). */
+    quantized: t.ref(QuantizedDescriptor).optional(),
+}, "ReflectionField");
 export type ReflectionField = SchemaType<typeof ReflectionField>;
 
 export const ReflectionType = schema({
-    id: "number",
-    extendsId: "number",
-    fields: [ ReflectionField ],
-})
+    id: t.number(),
+    extendsId: t.number(),
+    fields: t.array(ReflectionField),
+}, "ReflectionType");
 export type ReflectionType = SchemaType<typeof ReflectionType>;
 
 export const Reflection = schema({
-    types: [ ReflectionType ],
-    rootType: "number",
-}) as ReturnType<typeof schema<{
-    types: [typeof ReflectionType];
-    rootType: "number";
+    types: t.array(ReflectionType),
+    rootType: t.number(),
+}, "Reflection") as ReturnType<typeof schema<{
+    types: FieldBuilder<ArraySchema<ReflectionType>, true, false>;
+    rootType: FieldBuilder<number, false, false>;
 }>> & ReflectionStatic;
 
 export type Reflection = SchemaType<typeof Reflection>;
@@ -108,9 +149,15 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
         // if metadata is the same reference as the parent class - it means the class has no own metadata
         //
         if (metadata !== inheritFrom[Symbol.metadata]) {
-            for (const fieldIndex in metadata) {
-                const index = Number(fieldIndex);
-                const fieldName = metadata[index].name;
+            // Walk by index rather than `for…in`: `@deprecated()` makes its
+            // metadata slot non-enumerable, and dropping it from the payload
+            // shifts every later field down one wire index on the peer.
+            const numFields = (metadata[$numFields] ?? -1) as number;
+            for (let index = 0; index <= numFields; index++) {
+                const field = metadata[index];
+                if (field === undefined) { continue; }
+
+                const fieldName = field.name;
 
                 // skip fields from parent classes
                 if (!Object.prototype.hasOwnProperty.call(metadata, fieldName)) {
@@ -122,10 +169,20 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
 
                 let fieldType: string;
 
-                const field = metadata[index];
-
                 if (typeof (field.type) === "string") {
                     fieldType = field.type;
+
+                } else if (isQuantizedType(field.type)) {
+                    // Params ride as a schema-typed descriptor (bit-exact float64) —
+                    // no string grammar for the peer (or a language port) to parse.
+                    const d = field.type.quantized;
+                    fieldType = "quantized";
+                    const desc = new QuantizedDescriptor();
+                    desc.min = d.min;
+                    desc.max = d.max;
+                    desc.bits = d.bits;
+                    desc.mode = d.wrap ? 1 : 0;
+                    reflectionField.quantized = desc;
 
                 } else {
                     let childTypeSchema: typeof Schema;
@@ -141,7 +198,8 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
                         fieldType = Object.keys(field.type)[0];
 
                         if (typeof (field.type[fieldType as keyof typeof field.type]) === "string") {
-                            fieldType += ":" + field.type[fieldType as keyof typeof field.type]; // array:string
+                            // primitive child gets its own slot (was packed as "array:string")
+                            reflectionField.childPrimitive = field.type[fieldType as keyof typeof field.type] as string;
 
                         } else {
                             childTypeSchema = field.type[fieldType as keyof typeof field.type];
@@ -195,16 +253,20 @@ Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it?:
         reflectionType.fields.forEach((field, i) => {
             const fieldIndex = parentFieldIndex + i;
 
-            if (field.referencedType !== undefined) {
-                let fieldType = field.type;
-                let refType: PrimitiveType = typeContext.get(field.referencedType);
+            if (field.quantized !== undefined) {
+                // Schema-typed descriptor → resolved codec (validation stays in
+                // resolveQuantize, same as the builder path).
+                const q = field.quantized;
+                Metadata.addField(metadata, fieldIndex, field.name, {
+                    quantized: resolveQuantize({ min: q.min, max: q.max, bits: q.bits as 8 | 16 | 32, mode: q.mode === 1 ? "wrap" : "clamp" }),
+                } as any);
 
-                // map or array of primitive type (-1)
-                if (!refType) {
-                    const typeInfo = field.type.split(":");
-                    fieldType = typeInfo[0];
-                    refType = typeInfo[1] as PrimitiveType; // string
-                }
+            } else if (field.referencedType !== undefined) {
+                const fieldType = field.type;
+                // Schema child by type id; a primitive child (referencedType -1)
+                // rides its own childPrimitive slot.
+                const refType: PrimitiveType = typeContext.get(field.referencedType)
+                    ?? field.childPrimitive as PrimitiveType;
 
                 if (fieldType === "ref") {
                     Metadata.addField(metadata, fieldIndex, field.name, refType);
@@ -248,3 +310,30 @@ Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it?:
 
     return new Decoder<T>(state, typeContext);
 }
+
+Reflection.makeEncodable = function (ctor: typeof Schema): typeof Schema {
+    const metadata: any = (ctor as any)[Symbol.metadata];
+    if (!metadata) return ctor;
+
+    const numFields = metadata[$numFields];
+    if (numFields === undefined) return ctor;
+
+    // Walk every field index across the inheritance chain. Repeat calls
+    // are cheap: defineField overwrites the same descriptor and re-stamps
+    // the same `metadata[$encoders]` slot (idempotent).
+    for (let i = 0; i <= numFields; i++) {
+        const field = metadata[i];
+        if (!field) continue;
+        Metadata.defineField(ctor, metadata, i, field.name, field.type);
+    }
+
+    // Invalidate any cached encode descriptor — `getEncodeDescriptor`
+    // memoizes on the constructor. If something already constructed it
+    // (e.g. a prior `InputEncoder(...)` call that threw), drop the stale
+    // entry so the next read sees the upgraded metadata.
+    if (Object.prototype.hasOwnProperty.call(ctor, $encodeDescriptor)) {
+        delete (ctor as any)[$encodeDescriptor];
+    }
+
+    return ctor;
+};

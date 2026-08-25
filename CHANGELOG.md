@@ -1,5 +1,251 @@
 # Changelog
 
+All notable changes to this project are documented in this file. The
+format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
+
+## [5.0.19]
+
+### Added
+
+- **`schema-codegen` now resolves TypeScript path aliases.** An import written
+  as `@schemas/Player` — mapped through `compilerOptions.paths` or `baseUrl` —
+  was skipped, so the schemas behind it were silently missing from the generated
+  client code. Barrel files (`export * from "./Player"`) are followed too, an
+  alias that resolves to nothing now warns instead of failing quietly, and
+  `--tsconfig` picks the config to read the aliases from when the sources live
+  outside that project.
+
+  Thanks to [@essaenko](https://github.com/essaenko) for the report
+  ([#186](https://github.com/colyseus/schema/issues/186)).
+
+## [5.0.18]
+
+### Fixed
+
+- **A `@view` tag no longer filters that Schema class everywhere else it is
+  used.** Tagging a single field — `@view() @type(Inventory) inventory` on a
+  player — also hid the contents of every other `Inventory` in the state,
+  including ones on a fully public path such as a building's chest: clients
+  received the empty container and none of its children, with no error to
+  point at it. Self-referencing types (a `Node` holding a map of `Node`) were
+  worst hit — one tagged branch blanked the children of all of them.
+
+  Thanks to [@AndadH](https://github.com/AndadH) for the report and the
+  narrowed-down schema ([#204](https://github.com/colyseus/schema/issues/204)).
+
+## [5.0.16]
+
+### Fixed
+
+- **`StateView` operations no longer go stale when the array reindexes later
+  in the same tick.** `view.add(item)` followed by an `unshift()`, `reverse()`
+  or `move()` on the same `@view` array — within one patch — addressed the
+  item's old slot: the added item never reached the client (`"refId" not
+  found` on the console), and `view.remove()` in the same position silently
+  left the removed item visible. Sibling of the cross-tick case fixed in
+  5.0.13.
+
+- **`move()` / `shuffle()` on a `@view`-filtered array no longer corrupt the
+  patch for viewing clients.** Reorder operations emitted a refId where
+  decoders read an array index. Filtered clients hold per-view subsets, so
+  element order is not synchronized for them — reorders now ship as
+  identity-based operations existing decoders already understand (no SDK
+  update needed).
+
+## [5.0.15]
+
+### Fixed
+
+- **`ArraySchema.reverse()` no longer desyncs clients when it follows another
+  change in the same patch.** A `push()`, `pop()`, `shift()`, `unshift()`,
+  `splice()` or index write earlier in the tick made the reversal ship wrong
+  elements — clients ended up with duplicated or stale entries and never
+  recovered. `reverse()` in a tick of its own was already fine. When other
+  changes are pending, the reversal now goes out as a full re-state of the
+  array (existing wire operations — no SDK update needed), so `onAdd`/`onRemove`
+  fire for the re-stated items in that case.
+
+## [5.0.14]
+
+### Fixed
+
+- `SchemaType<>` and `toJSON()` no longer mark every field optional in projects
+  compiled with `strictNullChecks: false` (the tsconfig `create-colyseus-app`
+  generates) — a Schema instance now satisfies a plain interface like
+  `{ x: number }`.
+
+## [5.0.13]
+
+### Fixed
+
+- **`StateView` now addresses the right element after an `ArraySchema` is
+  reindexed.** Following a `shift()`, `splice()`, `unshift()`, `reverse()` or
+  `sort()`, `view.add(item)` could emit a reference the client was never
+  introduced to — `"refId" not found`, the item missing for good, and no
+  recovery short of a rejoin — while `view.remove(item)` failed silently,
+  leaving an item visible to a client that was meant to stop seeing it.
+  Collections that reindex every tick, such as a capped chat or event feed,
+  were the most exposed.
+
+  Thanks to [@serjek](https://github.com/serjek) for the detailed report and
+  reproduction ([#231](https://github.com/colyseus/schema/issues/231)).
+
+## [5.0.12]
+
+### Added
+
+- **`@fullStateOnly` decorator** — decorator-style equivalent of the
+  `.fullStateOnly()` builder chainable, completing delivery-modifier parity
+  (`@unreliable` and `@patchOnly` already existed). Combining it with
+  `@patchOnly` throws at decoration time, in either decorator order —
+  matching the builder's guard.
+
+### Fixed
+
+- `@unreliable` fields now ship their FIRST value on the reliable channel, with
+  the owning instance's ADD; only later mutations go out unreliably. Previously
+  every value went unreliable, so an instance created after a client connected
+  had its `@unreliable` fields written against a refId that client had not been
+  told about yet — the decoder dropped those writes, and the value was missing
+  until the field changed again (permanently, for a field only written at
+  spawn). It bit hardest with the unreliable channel running faster than the
+  reliable one, which is the case the split exists for. `encodeAll` already
+  seeded these fields for late joiners; a mid-session ADD now matches.
+
+- **A Schema now holds at most 63 fields, down from 64.** The 64th slot could
+  encode an operation as byte 255 — the same byte decoders read as
+  `SWITCH_TO_STRUCTURE` — which desynchronized every client from that point on,
+  with `"refId" not found` in the console. Any nullable field could trigger it,
+  not just child `Schema`s and collections, so the slot is withdrawn rather
+  than special-cased. A schema with exactly 64 fields now throws where it is
+  defined; split it or nest a child Schema. **No SDK decoder change is
+  required** — the byte is simply never emitted.
+
+- Defining one field too many now throws, as the error message always claimed.
+  The guard was off by one, so the extra field was accepted and then encoded as
+  an operation on field 0, corrupting both fields.
+
+- On a Schema with more than 32 fields, an `@view`-tagged field at index 32 or
+  above no longer silently hides an untagged field 32 slots below it. That
+  field stopped being broadcast — it was routed to the per-view channel
+  instead, so clients without a `StateView` never received it, in patches or in
+  the initial state. Tagged data was never exposed to the wrong client.
+
+## [5.0.11]
+
+Major release. The encoder internals were rewritten and a new authoring API was
+introduced. **Decorators keep working and produce byte-identical output** —
+there is no forced migration.
+
+~2.4× faster than 4.0.27 across 51 benchmarked workloads (geometric mean, 50 of
+51 at p<0.001), with retained heap roughly halved. Method and full results in
+`bench/results/BLOG_v4_vs_v5.md`.
+
+### Added
+
+- **`schema()` + the `t.*` field builders** — decorator-free definitions that
+  run in plain JavaScript, with no compiler configuration:
+
+  ```ts
+  export const Player = schema({
+      name: t.string(),
+      hp: t.uint8().default(100),
+  }, "Player");
+  export type Player = SchemaType<typeof Player>;
+  ```
+
+  Returns a real class: `initialize(props)` acts as the constructor body,
+  function-valued properties become methods, and `.extend()` builds a real
+  prototype chain.
+- **Field modifiers** — `.default(value | factory)`, `.optional()`,
+  `.deprecated()`, `.view(tag?)`, plus:
+  - `.noSync()` — local-only: typed and initialized, never synchronized.
+  - `.unreliable()` — patches carry the field on the unreliable channel.
+    Primitive fields only.
+  - `.patchOnly()` — tick patches only; never in a full state sync, so a late
+    joiner never sees it.
+  - `.fullStateOnly()` — full state sync only; never in a tick patch. For
+    room-wide data set during `onCreate()`.
+
+  Those are the only two delivery channels, so marking a field both throws.
+- **`t.stream(Entity)` / `StreamSchema`** — priority-batched collection for
+  ECS-style workloads. Additions drain at most `maxPerTick` per client per
+  encode pass, ordered by `.priority((view, element) => number)`. `.stream()`
+  opts a Map/Set/Collection into the same batching; not supported on
+  `ArraySchema`. **Experimental — the API may change.**
+- **`view.subscribe(collection)`** — standing per-view subscription to a
+  collection's future contents.
+- **`t.quantized()` / `t.angle()`** — a bounded float carried as an 8/16/32-bit
+  unsigned integer, `"clamp"` or `"wrap"`. Lossy, but identically so on both
+  peers, so client prediction and server simulation read the same value.
+- **`@colyseus/schema/input`** — `InputEncoder` / `InputDecoder` for the client
+  input path, always delta-encoding.
+- **`Decoder.decodeResync(bytes)`** — reconcile a full state sync over live
+  state on the reconnect path: entries the payload omits are pruned through the
+  regular DELETE path, survivors keep instance identity and callbacks. See
+  `PORT/resync.md`.
+- **`createPool(ctor)` / `Schema.reset()`** — server-side instance pooling for
+  spawn/despawn-heavy rooms. Pooled instances encode byte-identically to fresh
+  ones. Does not clear primitive values — re-assign every field after
+  `acquire()`.
+- **Change-tracking control** — `pauseTracking()`, `resumeTracking()`,
+  `untracked(fn)`, `markDirty(index)`.
+- **Type helpers** — `Data<T>` (the plain data shape of an instance type),
+  `BuilderInitProps<T>`, generic narrowing on primitives
+  (`t.int8<-1 | 0 | 1>()`), and `Reflection.makeEncodable(ctor)`.
+
+### Changed
+
+- **Raw string field types are rejected by `schema()`** — write `t.string()`.
+  They remain valid as collection child types (`t.array("string")`), and the
+  `@type("string")` decorator form is unaffected.
+- **`Reflection.encode()` takes an `Encoder`**, not a state instance, and
+  **`Reflection.decode()` returns a `Decoder`** — read `decoder.state`.
+- `defineTypes()` is **soft-deprecated**: works as in 4.x, warns once.
+- Default `Encoder.BUFFER_SIZE` raised 8 KB → 16 KB, so typical full-room syncs
+  no longer trigger auto-grow plus a one-time `buffer overflow` warning.
+- RefIds are allocated monotonically and never recycled — a refId is a stable
+  identity for the lifetime of the room.
+- Internal `"~prefix"` string keys are real symbols, created via `Symbol.for()`
+  so duplicate copies of the library in one realm interoperate.
+
+### Fixed
+
+- `ArraySchema`: consecutive and multi-item `unshift()`, and `unshift()` mixed
+  with other same-tick operations (#193). Unshifting Schema instances no longer
+  crashes the decoder.
+- `ArraySchema`: deletes of Schema children are idempotent, so a client that
+  received a full state sync mid-tick no longer corrupts on the next patch.
+- `ArraySchema`: interleaving index writes with `shift()` / `splice()` in one
+  tick no longer desyncs clients.
+- `StateView`: `view.add(obj)` with the default tag no longer leaks
+  non-matching `@view(tag)` fields to that client.
+- `StateView`: per-tree visibility bits are cleared on dispose, closing an
+  ID-reuse leak between views.
+- `StateView`: re-adding an already-visible instance to an iterable view no
+  longer duplicates it in `view.items`.
+
+### Wire format
+
+Byte-identical to 4.x except for these three, which **every SDK decoder must
+implement** for the 0.18 line:
+
+- **`ADD` at an occupied array index means insert**, shifting items up
+  (previously only `index === 0` was special-cased). During `decodeResync()`,
+  snapshot ADDs remain positional overwrites.
+- **`ArraySchema` deletes of Schema children are always `DELETE_BY_REFID`.**
+  Decoders must skip operations for unknown refIds entirely — no
+  delete-at-`-1`, no spurious `onRemove` — while preserving the ref-count
+  decrement.
+- **The reflection payload retired its colon grammar.**
+  `"quantized:min,max,bits,wrap"` and `"array:string"` are gone: quantized
+  descriptors ride as a schema-typed `QuantizedDescriptor` ref, and a primitive
+  collection child rides `ReflectionField.childPrimitive`.
+
+`CollectionSchema` / `SetSchema` decoding now preserves the wire index
+(`PORT/decoder-wire-index.md`). Fixture generators live in `test-external/`.
+
 ## 4.0.31
 
 ### `StateView` operations after an `ArraySchema` is reindexed

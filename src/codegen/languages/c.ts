@@ -1,4 +1,4 @@
-import { Class, Property, File, getCommentHeader, getInheritanceTree, Context } from "../types.js";
+import { Class, Property, File, getCommentHeader, getInheritanceTree, Context, resolveQuantized } from "../types.js";
 import { GenerateOptions } from "../api.js";
 
 export const name = "C";
@@ -20,6 +20,7 @@ const typeMaps: { [key: string]: string } = {
     "uint64": "uint64_t",
     "float32": "float",
     "float64": "double",
+    "quantized": "double",
 };
 
 /**
@@ -42,6 +43,7 @@ const fieldTypeMaps: { [key: string]: string } = {
     "ref": "COLYSEUS_FIELD_REF",
     "array": "COLYSEUS_FIELD_ARRAY",
     "map": "COLYSEUS_FIELD_MAP",
+    "quantized": "COLYSEUS_FIELD_QUANTIZED",
 };
 
 const COMMON_INCLUDES = `#include "colyseus/schema/types.h"
@@ -202,11 +204,22 @@ function generateFieldsArray(klass: Class, typeName: string, snakeName: string, 
         return `static const colyseus_field_t ${snakeName}_fields[] = {};`;
     }
 
+    // one pre-resolved static descriptor per quantized field
+    const descriptors = allProperties
+        .filter(prop => prop.quantized)
+        .map(prop => {
+            const q = prop.quantized;
+            const { range, span } = resolveQuantized(q);
+            return `static const colyseus_quantized_descriptor_t ${snakeName}_${prop.name}_quantized = {${q.min}, ${q.max}, ${range}, ${span}, ${q.bits}, ${q.wrap}};`;
+        });
+
     const fields = allProperties.map((prop, i) => {
         const fieldType = getFieldType(prop);
         const typeString = getFieldTypeString(prop);
 
         let vtableRef = "NULL";
+        let childPrimitiveRef = "NULL";
+        let quantizedRef = "NULL";
 
         if (prop.type === "ref" && prop.childType && !typeMaps[prop.childType]) {
             const childSnake = toSnakeCase(prop.childType);
@@ -214,12 +227,17 @@ function generateFieldsArray(klass: Class, typeName: string, snakeName: string, 
         } else if ((prop.type === "array" || prop.type === "map") && prop.childType && !typeMaps[prop.childType]) {
             const childSnake = toSnakeCase(prop.childType);
             vtableRef = `&${childSnake}_vtable`;
+        } else if ((prop.type === "array" || prop.type === "map") && prop.childType) {
+            // collection of primitives — the decoder strcmp()s this to pick the reader
+            childPrimitiveRef = `"${prop.childType}"`;
+        } else if (prop.quantized) {
+            quantizedRef = `&${snakeName}_${prop.name}_quantized`;
         }
 
-        return `    {${prop.index}, "${prop.name}", ${fieldType}, "${typeString}", offsetof(${typeName}, ${prop.name}), ${vtableRef}, NULL}`;
+        return `    {${prop.index}, "${prop.name}", ${fieldType}, "${typeString}", offsetof(${typeName}, ${prop.name}), ${vtableRef}, ${childPrimitiveRef}, ${quantizedRef}}`;
     }).join(",\n");
 
-    return `static const colyseus_field_t ${snakeName}_fields[] = {
+    return `${descriptors.length ? descriptors.join("\n") + "\n\n" : ""}static const colyseus_field_t ${snakeName}_fields[] = {
 ${fields}
 };`;
 }

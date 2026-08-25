@@ -1,0 +1,4 @@
+.builds/
+profiles/
+results/
+!lib/

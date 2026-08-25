@@ -1,4 +1,4 @@
-export const SWITCH_TO_STRUCTURE = 255; // (decoding collides with DELETE_AND_ADD + fieldIndex = 63)
+export const SWITCH_TO_STRUCTURE = 255; // same byte as `DELETE_AND_ADD | 63`, which is why field index 63 is unassignable (Metadata.MAX_FIELDS)
 export const TYPE_ID = 213;
 
 /**

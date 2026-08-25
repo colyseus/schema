@@ -20,7 +20,33 @@
 
 ## Schema definition
 
-`@colyseus/schema` uses type annotations to define types of synchronized properties.
+Define synchronizable structures with `schema()` and `t.*` field builders:
+
+```typescript
+import { schema, t, type SchemaType } from '@colyseus/schema';
+
+export const Player = schema({
+  name: t.string(),
+  x: t.number(),
+  y: t.number(),
+}, "Player");
+export type Player = SchemaType<typeof Player>;
+
+export const MyState = schema({
+  fieldString: t.string(),
+  fieldNumber: t.number(),
+  player: Player,
+  arrayOfPlayers: t.array(Player),
+  mapOfPlayers: t.map(Player),
+}, "MyState");
+export type MyState = SchemaType<typeof MyState>;
+```
+
+`schema()` returns a real class (`instanceof` works) and runs in plain JavaScript and TypeScript alike, with no compiler configuration. The `type` aliases are TypeScript-only sugar — omit them in plain JS.
+
+### Decorators (still supported)
+
+The classic `@type()` decorator style remains fully supported, and both styles produce the identical wire format:
 
 ```typescript
 import { Schema, type, ArraySchema, MapSchema } from '@colyseus/schema';
@@ -30,15 +56,9 @@ export class Player extends Schema {
   @type("number") x: number;
   @type("number") y: number;
 }
-
-export class MyState extends Schema {
-  @type('string') fieldString: string;
-  @type('number') fieldNumber: number;
-  @type(Player) player: Player;
-  @type([ Player ]) arrayOfPlayers: ArraySchema<Player>;
-  @type({ map: Player }) mapOfPlayers: MapSchema<Player>;
-}
 ```
+
+We are moving away from decorators due to ecosystem compatibility issues: they depend on the legacy `experimentalDecorators` implementation and `useDefineForClassFields: false`, which conflict with modern toolchain defaults (esbuild, SWC, Vite), diverge from the TC39 decorators specification, and aren't available in plain JavaScript. See the [Decorators reference](https://docs.colyseus.io/state/schema/decorators) for setup and the full decorator documentation.
 
 ## TypeScript support
 
@@ -82,28 +102,25 @@ The `@type()` decorator uses legacy decorators — enable them in your `tsconfig
 
 ### Declaration:
 
+Each primitive type is declared through its `t.*` factory (`t.string()`, `t.uint8()`, …). Collection elements take the type **name**, not a builder: `t.array("string")`, never `t.array(t.string())`.
+
 #### Primitive types (`string`, `number`, `boolean`, etc)
 
 ```typescript
-@type("string")
-name: string;
-
-@type("int32")
-name: number;
+name: t.string(),
+health: t.int32(),
 ```
 
 #### Child `Schema` structures
 
 ```typescript
-@type(Player)
-player: Player;
+player: Player,   // shorthand for t.ref(Player)
 ```
 
 #### Array of `Schema` structure
 
 ```typescript
-@type([ Player ])
-arrayOfPlayers: ArraySchema<Player>;
+arrayOfPlayers: t.array(Player),
 ```
 
 #### Array of a primitive type
@@ -111,18 +128,14 @@ arrayOfPlayers: ArraySchema<Player>;
 You can't mix types inside arrays.
 
 ```typescript
-@type([ "number" ])
-arrayOfNumbers: ArraySchema<number>;
-
-@type([ "string" ])
-arrayOfStrings: ArraySchema<string>;
+arrayOfNumbers: t.array("number"),
+arrayOfStrings: t.array("string"),
 ```
 
 #### Map of `Schema` structure
 
 ```typescript
-@type({ map: Player })
-mapOfPlayers: MapSchema<Player>;
+mapOfPlayers: t.map(Player),
 ```
 
 #### Map of a primitive type
@@ -130,11 +143,8 @@ mapOfPlayers: MapSchema<Player>;
 You can't mix primitive types inside maps.
 
 ```typescript
-@type({ map: "number" })
-mapOfNumbers: MapSchema<number>;
-
-@type({ map: "string" })
-mapOfStrings: MapSchema<string>;
+mapOfNumbers: t.map("number"),
+mapOfStrings: t.map("string"),
 ```
 
 ### Reflection
@@ -144,35 +154,38 @@ definition implementation in the server-side, and just send the encoded
 reflection to the client-side, for example:
 
 ```typescript
-import { Schema, type, Reflection } from "@colyseus/schema";
+import { schema, t, Encoder, Reflection } from "@colyseus/schema";
 
-class MyState extends Schema {
-  @type("string") currentTurn: string;
+const MyState = schema({
+  currentTurn: t.string(),
   // ... more definitions
-}
+}, "MyState");
 
-// send `encodedStateSchema` across the network
-const encodedStateSchema = Reflection.encode(new MyState());
+// server-side: encode the schema definition itself
+const encoder = new Encoder(new MyState());
+const encodedStateSchema = Reflection.encode(encoder);
+// ... send `encodedStateSchema` across the network
 
-// instantiate `MyState` in the client-side, without having its definition:
-const myState = Reflection.decode(encodedStateSchema);
+// client-side: rebuild the state without having its definition
+const decoder = Reflection.decode(encodedStateSchema);
+const myState = decoder.state;
 ```
 
-### `StateView` / `@view()`
+### `StateView` / `.view()`
 
-You can use `@view()` to filter properties that should be sent only to `StateView`'s that have access to it.
+You can use the `.view()` field modifier to filter properties that should be sent only to `StateView`'s that have access to it.
 
 ```typescript
-import { Schema, type, view } from "@colyseus/schema";
+import { schema, t } from "@colyseus/schema";
 
-class Player extends Schema {
-  @view() @type("string") secret: string;
-  @type("string") notSecret: string;
-}
+const Player = schema({
+  secret: t.string().view(),
+  notSecret: t.string(),
+}, "Player");
 
-class MyState extends Schema {
-  @type({ map: Player }) players = new MapSchema<Player>();
-}
+const MyState = schema({
+  players: t.map(Player),
+}, "MyState");
 ```
 
 Using the `StateView`
@@ -188,7 +201,7 @@ There are 3 major features of the `Encoder` class:
 
 - Encoding the full state
 - Encoding the state changes
-- Encoding state with filters (properties using `@view()` tag)
+- Encoding state with filters (properties tagged with `.view()`)
 
 ```typescript
 import { Encoder } from "@colyseus/schema";
@@ -213,7 +226,7 @@ const changesBuffer = encoder.encode();
 
 ### Encoding with views
 
-When using `@view()` and `StateView`'s, a single "full encode" must be used for multiple views. Each view also must add its own changes.
+When using `.view()` and `StateView`'s, a single "full encode" must be used for multiple views. Each view also must add its own changes.
 
 ```typescript
 // shared buffer iterator
@@ -270,7 +283,7 @@ decoder.decode(encodedBytes);
 
 Backwards/forwards compatibility is possible by declaring new fields at the
 end of existing structures, and earlier declarations to not be removed, but
-be marked `@deprecated()` when needed.
+be marked `.deprecated()` when needed.
 
 This is particularly useful for native-compiled targets, such as C#, C++,
 Haxe, etc - where the client-side can potentially not have the most
@@ -280,6 +293,8 @@ up-to-date version of the schema definitions.
 ## Limitations and best practices
 
 - Each `Schema` structure can hold up to `64` fields. If you need more fields, use nested structures.
+- Fields tagged with `.view()`, `.unreliable()`, or `.fullStateOnly()` at field indexes `≥ 32` use a slower per-mutation classification path (linear scan over the tagged-field list instead of a single bitwise op). For schemas with more than 32 fields, declare frequently-mutated tagged fields earlier so they fall in the bitmask fast path.
+- Schemas with `≤ 8` fields store per-field operation bytes inline in two numbers (no allocation per instance). Schemas with `> 8` fields allocate a small `Uint8Array` per instance for op storage. The difference is only material when allocating thousands of instances per tick — prefer narrower nested structures in that regime.
 - `NaN` or `null` numbers are encoded as `0`
 - `null` strings are encoded as `""`
 - `Infinity` numbers are encoded as `Number.MAX_SAFE_INTEGER`
@@ -294,7 +309,7 @@ up-to-date version of the schema definitions.
 > If you're using JavaScript or LUA, there's no need to bother about this.
 > Interpreted programming languages are able to re-build the Schema locally through the use of `Reflection`.
 
-You can generate the client-side schema files based on the TypeScript schema definitions automatically.
+You can generate the client-side schema files based on your server-side schema definitions automatically — both `schema()` and decorator styles are supported.
 
 > `schema-codegen` requires TypeScript 5.x or 6.x installed in your project
 > (TypeScript 7+ no longer ships the JS compiler API it uses for parsing).
@@ -318,6 +333,11 @@ schema-codegen ./schemas/State.ts --output ./haxe-project/ --haxe
 | `--bundle` | Bundle all generated files into a single file |
 | `--namespace` | Generate namespace/package on output code |
 | `--decorator` | Custom name for `@type` decorator to scan for |
+| `--tsconfig` | `tsconfig.json` to resolve import path aliases with (default: the nearest `tsconfig.json`/`jsconfig.json` above each source file) |
+
+Imports are followed to discover related schemas, including bare specifiers
+mapped by `compilerOptions.paths`/`baseUrl` and barrel files that re-export
+them. Imports of installed packages are not followed.
 
 ### Bundle Mode
 

@@ -8,7 +8,7 @@
 
 import * as assert from "assert";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
-import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema, schema, ToJSON, $refId } from "../src";
+import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema, schema, t, ToJSON, $refId } from "../src";
 import { getNormalizedType } from "../src/Metadata";
 
 describe("Type: Schema", () => {
@@ -487,8 +487,8 @@ describe("Type: Schema", () => {
             it("enum with default value", () => {
                 enum Item { SWORD, SHIELD, BOW, POTION }
                 const State = schema({
-                    item: { type: Item, default: Item.SWORD }
-                });
+                    item: t.number().default(Item.SWORD)
+                }, "State");
 
                 const state = new State();
 
@@ -503,9 +503,9 @@ describe("Type: Schema", () => {
             it("array and map of enums", () => {
                 enum Item { SWORD, SHIELD, BOW, POTION }
                 const State = schema({
-                    itemsArray: { type: [Item], default: [Item.SWORD] },
-                    itemsMap: { type: { map: Item }, default: new MapSchema<Item>({ "sword": Item.SWORD }) }
-                });
+                    itemsArray: t.array("number").default(new ArraySchema<Item>(Item.SWORD)),
+                    itemsMap: t.map("number").default(new MapSchema<Item>({ "sword": Item.SWORD }))
+                }, "State");
 
                 const state = new State();
                 if (state.itemsArray[0] !== Item.SWORD) {
@@ -1232,18 +1232,20 @@ describe("Type: Schema", () => {
             let jakeX = Math.random() * 2000;
             state.mapOfPlayers.get('jake').x = jakeX;
             decodedState.decode(state.encode());
-            assert.strictEqual(decodedState.mapOfPlayers.get('jake').x.toFixed(3), jakeX.toFixed(3));
+            // the wire carries float32 — compare against the exact f32
+            // round-trip (toFixed(3) coin-flips at precision boundaries)
+            assert.strictEqual(decodedState.mapOfPlayers.get('jake').x, Math.fround(jakeX));
 
             state.mapOfPlayers.delete('jake');
         });
 
         //
-        // Encoding from a decoded structure is not supported
+        // Re-encoding a decoded structure works for primitive-only trees
+        // (encodeAll only). Schema children still get an UntrackedChangeTree,
+        // and incremental encode() from a decoded state emits corrupt indexes —
+        // both blockers for the peer-to-peer scenario.
         //
-        // This is not a real usage scenario yet, but on a peer-to-peer setup
-        // this feature would play an interesting role.
-        //
-        it.skip('should encode map with primitive values from decoded state', () => {
+        it('should encode map with primitive values from decoded state', () => {
             class TestMapSchema extends Schema {
                 @type({ map: 'number' }) value = new MapSchema<number>();
             }
@@ -1292,11 +1294,11 @@ describe("Type: Schema", () => {
         });
 
         //
-        // TODO: since 3.0, this test is failing (and its use-case is not
-        // realistic anymore, since sending schema-encoded messages is not on
-        // Colyseus supported anymore)
+        // NOTE: rooting a second Encoder at an already-attached child detaches
+        // it from the parent's Root — `state` must not be encoded again after
+        // this. (Colyseus no longer sends schema-encoded messages.)
         //
-        xit("should decode a child structure alone (Schema encoded messages)", () => {
+        it("should decode a child structure alone (Schema encoded messages)", () => {
             const state = new State();
 
             state.mapOfPlayers = new MapSchema<Player>();
@@ -1515,27 +1517,6 @@ describe("Type: Schema", () => {
                 { player: { items: [{ props: { one: { name: "Hello" } } }] } } as ToJSON<MyState>
             );
             assertDeepStrictEqualEncodeAll(state);
-        });
-
-        xit("should allow to call .assign() ArraySchema and MapSchema using .toJSON() response", () => {
-            class Prop extends Schema {
-                @type("string") name: string;
-            }
-            class Item extends Schema {
-                @type({ map: Prop }) props = new MapSchema<Prop>();
-            }
-            class MyState extends Schema {
-                @type("string") str: string;
-                @type([Item]) items = new ArraySchema<Item>();
-            }
-            const state = new MyState();
-            state.str = "Hello world";
-            state.items.push(new Item().assign({ props: new MapSchema<Prop>().set('one', new Prop().assign({ name: "Hello" })) }));
-
-            const state2 = new MyState();
-            state2.assign(state.toJSON());
-            assert.deepStrictEqual(state2.toJSON(), state.toJSON());
-            assertDeepStrictEqualEncodeAll(state2);
         });
 
     });

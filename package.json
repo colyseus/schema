@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "4.0.31",
+  "version": "5.0.19",
   "description": "Binary state serializer with delta encoding for games",
   "type": "module",
   "bin": {
@@ -8,10 +8,18 @@
     "schema-debug": "bin/schema-debug"
   },
   "scripts": {
+    "bench": "node bench/run.mjs",
+    "bench:compare": "node bench/run.mjs --compare",
+    "bench:snapshot": "bash bench/snapshot-build.sh",
+    "bench:gate": "node bench/run.mjs --assert --samples 3 --filter gate",
+    "profile:cpu": "node bench/profile.mjs --cpu",
+    "profile:heap": "node bench/profile.mjs --heap",
     "build": "tsc -p tsconfig.build.json && rollup -c rollup.config.mjs",
     "watch": "tsc -p tsconfig.build.json -w",
-    "test": "npm run test:types && tsx --tsconfig tsconfig.test.json ./node_modules/.bin/mocha test/*.test.ts test/**/*.test.ts",
-    "test:types": "tsc -p tsconfig.build.json && tsc -p tsconfig.types.json",
+    "typecheck:build": "tsc -p tsconfig.build.json --noEmit",
+    "test": "npm run test:types && tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.test.ts\" \"test/**/*.test.ts\"",
+    "test:types": "tsc -p tsconfig.build.json && tsc -p tsconfig.types.json && tsc -p tsconfig.types-nostrict.json",
+    "test:exports": "node test/verify-exports.mjs",
     "typecheck": "tsc -p tsconfig.test.json",
     "coverage": "c8 npm run test",
     "generate-test-1": "bin/schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/PrimitiveTypes",
@@ -43,6 +51,12 @@
       "import": "./build/index.mjs",
       "require": "./build/index.cjs",
       "types": "./build/index.d.ts"
+    },
+    "./input": {
+      "browser": "./build/input/index.mjs",
+      "import": "./build/input/index.mjs",
+      "require": "./build/input/index.cjs",
+      "types": "./build/input/index.d.ts"
     }
   },
   "repository": {

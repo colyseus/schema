@@ -3,8 +3,8 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
-import { ChangeSet, ChangeSetName, ChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
-import { $changes, $decoder, $deleteByIndex, $descriptors, $encoder, $filter, $getByIndex, $refId, $track } from './types/symbols.js';
+import { ChangeTree, installUntrackedChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
+import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
 import { encodeSchemaOperation } from './encoder/EncodeOperation.js';
@@ -23,28 +23,132 @@ export class Schema<C = any> implements IRef {
     static [$decoder] = decodeSchemaOperation;
 
     [$refId]?: number;
+    [$values]: any[];
 
     /**
-     * Assign the property descriptors required to track changes on this instance.
-     * @param instance
+     * Initialize change tracking on this instance.
+     * Field accessor descriptors (getter/setter) live on the prototype,
+     * installed once at class-definition time. Per-instance work is limited
+     * to allocating a ChangeTree and a values array.
      */
     static initialize(instance: any) {
+        // $changes MUST be non-enumerable: tests use assert.deepStrictEqual on
+        // Schema instances (e.g. arrayOfPlayers.toArray()), which walks
+        // enumerable own Symbol properties. ChangeTree has circular refs
+        // (root → changeTrees → other ChangeTrees), so a visible $changes
+        // would send deepStrictEqual into exponential recursion. Plain
+        // assignment of a Symbol key would be enumerable: true — hence we
+        // keep defineProperty here.
         Object.defineProperty(instance, $changes, {
             value: new ChangeTree(instance),
             enumerable: false,
             writable: true
         });
-
-        Object.defineProperties(instance, instance.constructor[Symbol.metadata]?.[$descriptors] || {});
+        instance[$values] = [];
     }
 
+    /**
+     * Decoder-side factory. Skips the user subclass ctor entirely —
+     * decoder-built instances are passive mirrors of server state, so any
+     * field initializer / ctor body work would be overwritten by the
+     * decoded ADDs immediately after. Assignment order matches
+     * {@link Schema.initialize} so V8 assigns the same hidden class
+     * ($changes, then $values), keeping decode-path ICs monomorphic even
+     * when tracked and untracked instances coexist.
+     *
+     * The `this:` constraint pins the return type to the concrete subclass
+     * when called as `Player.initializeForDecoder()`, not the base Schema.
+     */
+    static initializeForDecoder<T extends Schema = Schema>(this: { prototype: T } & typeof Schema): T {
+        const inst: any = Object.create(this.prototype);
+        installUntrackedChangeTree(inst);
+        inst[$values] = [];
+        return inst;
+    }
+
+    /**
+     * Reset a DETACHED instance to construction defaults so it can be returned
+     * to a {@link SchemaPool} and reused, avoiding the cost of `new`. Recurses
+     * into ref-type fields (child Schemas / collections).
+     *
+     * Preconditions (enforced):
+     * - The instance must be tracked (encoder-side), not a decoder mirror.
+     * - The instance must NOT be shared across multiple parents.
+     * - The instance must already be removed from its parent collection/field
+     *   (so the encoder detached it: `root === undefined`).
+     *
+     * NOTE: primitive field values are NOT reset to class defaults — re-assign
+     * the fields you care about when you reuse the instance (standard
+     * object-pool discipline).
+     */
+    static reset(instance: Schema): void {
+        const changeTree: ChangeTree = (instance as any)?.[$changes];
+
+        // Only tracked (encoder-side) instances are poolable. Decoder-side
+        // instances carry an UntrackedChangeTree, which has no recycle().
+        if (changeTree === undefined || typeof (changeTree as any).recycle !== "function") {
+            throw new Error(`@colyseus/schema: Schema.reset() requires a tracked (encoder-side) instance.`);
+        }
+
+        // Instances reachable through more than one parent are unsafe to pool:
+        // another owner may still hold this instance.
+        if (changeTree.extraParents !== undefined) {
+            throw new Error(`@colyseus/schema: cannot reset a shared instance (${instance.constructor.name}) with multiple parents.`);
+        }
+
+        (instance as any)[$reset]();
+    }
+
+    /**
+     * Per-instance reset primitive (the recursive worker behind
+     * {@link Schema.reset}). Resets ref-type children first (depth-first),
+     * then recycles this instance's ChangeTree and drops its `$refId` so a
+     * re-add is assigned a fresh refId exactly like a freshly constructed
+     * instance. Dropping `$refId` is what makes instance reuse
+     * wire-format-identical to `new T()`.
+     */
+    [$reset](): void {
+        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
+        const refIndexes = (metadata?.[$refTypeFieldIndexes] as number[]) ?? [];
+        const values = this[$values];
+
+        for (let i = 0; i < refIndexes.length; i++) {
+            const child = values[refIndexes[i]];
+            // ref fields hold a child Schema or collection (both implement
+            // [$reset]); skip undefined/null. Optional-chain is a cheap guard.
+            child?.[$reset]?.();
+        }
+
+        this[$changes].recycle();
+        // Clear the refId by ASSIGNMENT (not `delete`): `delete` would force the
+        // instance into V8 dictionary mode, making release() as expensive as the
+        // construction it saves. `=== undefined` in Root.add still assigns a fresh
+        // refId exactly like a freshly-constructed instance.
+        this[$refId] = undefined;
+    }
+
+    /**
+     * Check whether `type` describes a Schema *class* (a subclass
+     * constructor carrying `Symbol.metadata`, as installed by `@type`).
+     * Returns false for primitive type strings like `"number"`, descriptor
+     * objects like `{ map: Player }`, and Schema *instances*.
+     *
+     * For the instance-level check — "is this value a Schema instance?" —
+     * see {@link Schema.isSchema}.
+     */
     static is(type: DefinitionType) {
         return typeof((type as typeof Schema)[Symbol.metadata]) === "object";
     }
 
     /**
-     * Check if a value is an instance of Schema.
-     * This method uses duck-typing to avoid issues with multiple @colyseus/schema versions.
+     * Check if a value is an *instance* of Schema. Uses duck-typing on
+     * `.assign` to work across multiple `@colyseus/schema` versions that
+     * may be loaded in the same process (e.g. bundled server types vs.
+     * client types in a p2p setup).
+     *
+     * For the class-level check — "is this type a Schema subclass?" —
+     * see {@link Schema.is}.
+     *
      * @param obj Value to check
      * @returns true if the value is a Schema instance
      */
@@ -53,7 +157,11 @@ export class Schema<C = any> implements IRef {
     }
 
     /**
-     * Track property changes
+     * Track property changes. Exposed as an override point so downstream
+     * tools (debuggers, transparent proxies, custom instrumentation) can
+     * intercept per-field writes. Hot-path code in `annotations.ts` calls
+     * `(this.constructor as typeof Schema)[$track](...)` rather than
+     * `changeTree.change(...)` directly so any subclass override wins.
      */
     static [$track] (changeTree: ChangeTree, index: number, operation: OPERATION = OPERATION.ADD) {
         changeTree.change(index, operation);
@@ -85,26 +193,17 @@ export class Schema<C = any> implements IRef {
             return view.isChangeTreeVisible(ref[$changes]);
 
         } else {
-            // view pass: custom tag (bitmask)
-            // tag is the field's stored bitmask; view.tags stores the accumulated bitmask of tags used in view.add().
-            const tags = view.tags?.get(ref[$changes]);
-            return tags != null && (tag & tags) !== 0;
+            // view pass: custom tag (bitmask) — field's stored mask matches
+            // if it shares any bit with a tag this view was add()ed with.
+            return view.hasTagOnTree(ref[$changes], tag);
         }
     }
 
     // allow inherited classes to have a constructor
     constructor(arg?: C) {
-        //
-        // inline
-        // Schema.initialize(this);
-        //
         Schema.initialize(this);
-
-        //
-        // Assign initial values
-        //
         if (arg) {
-            Object.assign(this, arg);
+            Schema.assignProps(this, arg);
         }
     }
 
@@ -114,8 +213,34 @@ export class Schema<C = any> implements IRef {
      * @returns
      */
     public assign<T extends Partial<this>>(props: AssignableProps<T>,): this {
-        Object.assign(this, props);
+        Schema.assignProps(this, props);
         return this;
+    }
+
+    /**
+     * Metadata-driven property assignment.
+     * Reads tracked fields via property access (works with prototype accessors),
+     * then copies any remaining own properties for non-tracked fields.
+     */
+    protected static assignProps(target: any, source: any) {
+        const metadata: Metadata = target.constructor[Symbol.metadata];
+        if (metadata && metadata[$numFields] !== undefined) {
+            for (let i = 0; i <= metadata[$numFields]; i++) {
+                const field = metadata[i];
+                if (!field) { continue; }
+                const value = source[field.name];
+                if (value !== undefined) {
+                    target[field.name] = value;
+                }
+            }
+        }
+        // Copy non-tracked own properties (e.g. `notSynched: true`).
+        const keys = Object.keys(source);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            if (metadata && metadata[key] !== undefined) { continue; }
+            target[key] = source[key];
+        }
     }
 
     /**
@@ -193,6 +318,50 @@ export class Schema<C = any> implements IRef {
             metadata[metadata[property as string]].index,
             operation
         );
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // Change-tracking control API
+    //
+    // By default, every mutation to a @type() property is automatically
+    // recorded as a change. These methods let you opt out for bulk-load
+    // scenarios or custom batching.
+    //
+    // @example
+    //   // Bulk-load without emitting changes:
+    //   player.untracked(() => {
+    //     player.hp = 100;
+    //     player.name = "alice";
+    //   });
+    //
+    //   // Pause / resume pattern:
+    //   player.pauseTracking();
+    //   player.hp = 100;   // not tracked
+    //   player.resumeTracking();
+    //   player.hp = 50;    // tracked
+    // ────────────────────────────────────────────────────────────────────
+
+    /** Stop recording mutations until resumeTracking() is called. */
+    public pauseTracking(): void {
+        this[$changes].pause();
+    }
+
+    /** Re-enable automatic change tracking. */
+    public resumeTracking(): void {
+        this[$changes].resume();
+    }
+
+    /**
+     * Run `fn` with change tracking paused, then resume.
+     * Returns the function's return value. Safe to nest.
+     */
+    public untracked<T>(fn: () => T): T {
+        return this[$changes].untracked(fn);
+    }
+
+    /** True while tracking is paused. */
+    public get isTrackingPaused(): boolean {
+        return this[$changes].paused;
     }
 
     clone (): this {
@@ -292,15 +461,45 @@ export class Schema<C = any> implements IRef {
         return output;
     }
 
-    static debugRefIdEncodingOrder<T extends Ref>(ref: T, changeSet: ChangeSetName = 'allChanges') {
-        let encodeOrder: number[] = [];
-        let current = ref[$changes].root[changeSet].next;
-        while (current) {
-            if (current.changeTree) {
-                encodeOrder.push(current.changeTree.ref[$refId]);
+    /**
+     * @param changeSet
+     *  - "changes": iterate the current-tick dirty queue (per-tick encode order)
+     *  - "allChanges" / "allFilteredChanges" (legacy): structurally walk the
+     *    tree in DFS preorder (matches the order in which full-sync emits
+     *    trees). The two legacy modes differ by which side of the filter
+     *    split they include.
+     */
+    static debugRefIdEncodingOrder<T extends Ref>(
+        ref: T,
+        changeSet: "changes" | "allChanges" | "allFilteredChanges" = 'allChanges'
+    ) {
+        const encodeOrder: number[] = [];
+        const rootChangeTree = ref[$changes];
+
+        if (changeSet === "changes") {
+            let current = rootChangeTree.root.changes?.next;
+            while (current) {
+                if (current.changeTree) {
+                    encodeOrder.push(current.changeTree.ref[$refId]);
+                }
+                current = current.next;
             }
-            current = current.next;
+            return encodeOrder;
         }
+
+        // Full-sync modes: DFS preorder from root, filtered by tree's
+        // filter-status to match the unfiltered / filtered split.
+        const wantFiltered = (changeSet === "allFilteredChanges");
+        const visited = new Set<ChangeTree>();
+        const walk = (changeTree: ChangeTree) => {
+            if (visited.has(changeTree)) return;
+            visited.add(changeTree);
+            if (changeTree.isFiltered === wantFiltered) {
+                encodeOrder.push(changeTree.ref[$refId]);
+            }
+            changeTree.forEachChild((child, _) => walk(child));
+        };
+        walk(rootChangeTree);
         return encodeOrder;
     }
 
@@ -318,118 +517,22 @@ export class Schema<C = any> implements IRef {
      */
     static debugChanges<T extends Ref>(instance: T, isEncodeAll: boolean = false) {
         const changeTree: ChangeTree = instance[$changes];
+        const label = isEncodeAll ? "allChanges" : "changes";
+        let output = `${instance.constructor.name} (${instance[$refId]}) -> .${label}:\n`;
 
-        const changeSet = (isEncodeAll) ? changeTree.allChanges : changeTree.changes;
-        const changeSetName = (isEncodeAll) ? "allChanges" : "changes";
-
-        let output = `${instance.constructor.name} (${instance[$refId]}) -> .${changeSetName}:\n`;
-
-        function dumpChangeSet(changeSet: ChangeSet) {
-            changeSet.operations
-                .filter(op => op)
-                .forEach((index) => {
-                    const operation = changeTree.indexedOperations[index];
-                    output += `- [${index}]: ${OPERATION[operation]} (${JSON.stringify(changeTree.getValue(Number(index), isEncodeAll))})\n`
-                });
-        }
-
-        dumpChangeSet(changeSet);
-
-        // display filtered changes
-        if (
-            !isEncodeAll &&
-            changeTree.filteredChanges &&
-            (changeTree.filteredChanges.operations).filter(op => op).length > 0
-        ) {
-            output += `${instance.constructor.name} (${instance[$refId]}) -> .filteredChanges:\n`;
-            dumpChangeSet(changeTree.filteredChanges);
-        }
-
-        // display filtered changes
-        if (
-            isEncodeAll &&
-            changeTree.allFilteredChanges &&
-            (changeTree.allFilteredChanges.operations).filter(op => op).length > 0
-        ) {
-            output += `${instance.constructor.name} (${instance[$refId]}) -> .allFilteredChanges:\n`;
-            dumpChangeSet(changeTree.allFilteredChanges);
+        if (isEncodeAll) {
+            changeTree.forEachLive((index) => {
+                output += `- [${index}]: ADD (${JSON.stringify(changeTree.getValue(Number(index), true))})\n`;
+            });
+        } else {
+            changeTree.forEach((index, op) => {
+                if (index < 0 || !op) return;
+                output += `- [${index}]: ${OPERATION[op]} (${JSON.stringify(changeTree.getValue(Number(index), false))})\n`;
+            });
         }
 
         return output;
     }
-
-    static debugChangesDeep<T extends Schema>(ref: T, changeSetName: "changes" | "allChanges" | "allFilteredChanges" | "filteredChanges" = "changes") {
-        let output = "";
-
-        const rootChangeTree: ChangeTree = ref[$changes];
-        const root = rootChangeTree.root;
-        const changeTrees: Map<ChangeTree, ChangeTree[]> = new Map();
-
-        const instanceRefIds = [];
-        let totalOperations = 0;
-
-        // TODO: FIXME: this method is not working as expected
-        for (const [refId, changes] of Object.entries(root[changeSetName])) {
-            const changeTree = root.changeTrees[refId as any as number];
-            if (!changeTree) { continue; }
-
-            let includeChangeTree = false;
-            let parentChangeTrees: ChangeTree[] = [];
-            let parentChangeTree = changeTree.parent?.[$changes];
-
-            if (changeTree === rootChangeTree) {
-                includeChangeTree = true;
-
-            } else {
-                while (parentChangeTree !== undefined) {
-                    parentChangeTrees.push(parentChangeTree);
-                    if (parentChangeTree.ref === ref) {
-                        includeChangeTree = true;
-                        break;
-                    }
-                    parentChangeTree = parentChangeTree.parent?.[$changes];
-                }
-            }
-
-            if (includeChangeTree) {
-                instanceRefIds.push(changeTree.ref[$refId]);
-                totalOperations += Object.keys(changes).length;
-                changeTrees.set(changeTree, parentChangeTrees.reverse());
-            }
-        }
-
-        output += "---\n"
-        output += `root refId: ${rootChangeTree.ref[$refId]}\n`;
-        output += `Total instances: ${instanceRefIds.length} (refIds: ${instanceRefIds.join(", ")})\n`;
-        output += `Total changes: ${totalOperations}\n`;
-        output += "---\n"
-
-        // based on root.changes, display a tree of changes that has the "ref" instance as parent
-        const visitedParents = new WeakSet<ChangeTree>();
-        for (const [changeTree, parentChangeTrees] of changeTrees.entries()) {
-            parentChangeTrees.forEach((parentChangeTree, level) => {
-                if (!visitedParents.has(parentChangeTree)) {
-                    output += `${getIndent(level)}${parentChangeTree.ref.constructor.name} (refId: ${parentChangeTree.ref[$refId]})\n`;
-                    visitedParents.add(parentChangeTree);
-                }
-            });
-
-            const changes = changeTree.indexedOperations;
-            const level = parentChangeTrees.length;
-            const indent = getIndent(level);
-
-            const parentIndex = (level > 0) ? `(${changeTree.parentIndex}) ` : "";
-            output += `${indent}${parentIndex}${changeTree.ref.constructor.name} (refId: ${changeTree.ref[$refId]}) - changes: ${Object.keys(changes).length}\n`;
-
-            for (const index in changes) {
-                const operation = changes[index];
-                output += `${getIndent(level + 1)}${OPERATION[operation]}: ${index}\n`;
-            }
-        }
-
-        return `${output}`;
-    }
-
 
 }
 

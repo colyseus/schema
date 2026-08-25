@@ -67,22 +67,6 @@ ${classBodies.join("\n\n")}
     return { name: fileName, content };
 }
 
-function getInheritanceTree(klass: Class, allClasses: Class[], includeSelf: boolean = true) {
-    let currentClass = klass;
-    let inheritanceTree: Class[] = [];
-
-    if (includeSelf) {
-        inheritanceTree.push(currentClass);
-    }
-
-    while (currentClass.extends !== "Schema") {
-        currentClass = allClasses.find(klass => klass.name == currentClass.extends);
-        inheritanceTree.push(currentClass);
-    }
-
-    return inheritanceTree;
-}
-
 /**
  * Generate just the class body (without package/imports) for bundling
  */
@@ -110,7 +94,13 @@ function generateProperty(prop: Property) {
     let initializer = "";
     let typeArgs = `"${prop.type}"`;
 
-    if (prop.childType) {
+    if (prop.quantized) {
+        const q = prop.quantized;
+        typeArgs += `, {min: ${q.min}, max: ${q.max}, bits: ${q.bits}, mode: ${q.wrap ? 1 : 0}}`;
+        langType = "Float";
+        initializer = "0";
+
+    } else if (prop.childType) {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
 
         if (isUpcaseFirst) {

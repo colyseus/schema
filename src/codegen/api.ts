@@ -14,8 +14,9 @@ import * as java from "./languages/java.js";
 import * as lua from "./languages/lua.js";
 import * as c from "./languages/c.js";
 import * as gdscript from "./languages/gdscript.js";
+import * as dart from "./languages/dart.js";
 
-export const generators: Record<string, any> = { csharp, cpp, haxe, ts, js, java, lua, c, gdscript, };
+export const generators: Record<string, any> = { csharp, cpp, haxe, ts, js, java, lua, c, gdscript, dart, };
 
 export interface GenerateOptions {
     files: string[],
@@ -23,6 +24,8 @@ export interface GenerateOptions {
     decorator?: string;
     namespace?: string;
     bundle?: boolean;
+    /** Overrides the nearest-tsconfig lookup used to resolve import path aliases. */
+    tsconfig?: string;
 }
 
 export function generate(targetId: string, options: GenerateOptions) {
@@ -52,7 +55,7 @@ export function generate(targetId: string, options: GenerateOptions) {
         return acc;
     }, [])
 
-    const structures = parseFiles(options.files, options.decorator);
+    const structures = parseFiles(options.files, options.decorator, undefined, { tsconfig: options.tsconfig });
 
     // Post-process classes before generating
     structures.classes.forEach(klass => klass.postProcessing());

@@ -333,6 +333,13 @@ export class StateCallbackStrategy<TState extends IRef> {
     protected triggerChanges(allChanges: DataChange[]): void {
         this.uniqueRefIds.clear();
 
+        // Flag stays set for the whole dispatch pass — any `listen()` /
+        // `onAdd(...)` registered while a callback is firing needs to
+        // suppress its immediate-trigger. One toggle per pass is enough;
+        // every callback invocation below is wrapped in try/catch so
+        // nothing bubbles out to leave the flag stuck.
+        this.isTriggering = true;
+
         for (let i = 0, l = allChanges.length; i < l; i++) {
             const change = allChanges[i];
             const refId = change.refId;
@@ -354,7 +361,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 const deleteCallbacks = this.callbacks[childRefId]?.[OPERATION.DELETE];
                 if (deleteCallbacks) {
                     for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
-                        deleteCallbacks[j]();
+                        try { deleteCallbacks[j](); } catch (e) { console.error(e); }
                     }
                 }
             }
@@ -369,11 +376,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                     const replaceCallbacks = $callbacks[OPERATION.REPLACE];
                     if (replaceCallbacks) {
                         for (let j = replaceCallbacks.length - 1; j >= 0; j--) {
-                            try {
-                                replaceCallbacks[j]();
-                            } catch (e) {
-                                console.error(e);
-                            }
+                            try { replaceCallbacks[j](); } catch (e) { console.error(e); }
                         }
                     }
                 }
@@ -382,14 +385,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 const fieldCallbacks = $callbacks[change.field];
                 if (fieldCallbacks) {
                     for (let j = fieldCallbacks.length - 1; j >= 0; j--) {
-                        try {
-                            this.isTriggering = true;
-                            fieldCallbacks[j](change.value, change.previousValue);
-                        } catch (e) {
-                            console.error(e);
-                        } finally {
-                            this.isTriggering = false;
-                        }
+                        try { fieldCallbacks[j](change.value, change.previousValue); } catch (e) { console.error(e); }
                     }
                 }
 
@@ -400,15 +396,25 @@ export class StateCallbackStrategy<TState extends IRef> {
                 const dynamicIndex = change.dynamicIndex ?? change.field;
 
                 if ((change.op & OPERATION.DELETE) === OPERATION.DELETE) {
-                    //
-                    // FIXME: `previousValue` should always be available.
-                    //
+                    // DELETE can arrive with `previousValue === undefined` in two
+                    // legitimate cases — neither is fixable decoder-side:
+                    //   1. DELETE_AND_ADD (op byte 192) for an index/refId the
+                    //      decoder never held — e.g. a client whose @view
+                    //      subscription just began sees the replacement op
+                    //      first. `previousValue` is undefined; `value` is the
+                    //      newly-decoded instance. The ADD half still fires below.
+                    //   2. DELETE_BY_REFID (decodeArray, DecodeOperation.ts) for
+                    //      a filtered ArraySchema ref that was never ADDed on
+                    //      this decoder. That push site is unconditional because
+                    //      `removeRef` has already run; raw-change observers
+                    //      still want the event even with unknown previousValue.
+                    // The guard prevents `onRemove(undefined, key)` from firing.
                     if (change.previousValue !== undefined) {
                         // trigger onRemove (value, key)
                         const deleteCallbacks = $callbacks[OPERATION.DELETE];
                         if (deleteCallbacks) {
                             for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
-                                deleteCallbacks[j](change.previousValue, dynamicIndex);
+                                try { deleteCallbacks[j](change.previousValue, dynamicIndex); } catch (e) { console.error(e); }
                             }
                         }
                     }
@@ -417,11 +423,9 @@ export class StateCallbackStrategy<TState extends IRef> {
                     if ((change.op & OPERATION.ADD) === OPERATION.ADD) {
                         const addCallbacks = $callbacks[OPERATION.ADD];
                         if (addCallbacks) {
-                            this.isTriggering = true;
                             for (let j = addCallbacks.length - 1; j >= 0; j--) {
-                                addCallbacks[j](change.value, dynamicIndex);
+                                try { addCallbacks[j](change.value, dynamicIndex); } catch (e) { console.error(e); }
                             }
-                            this.isTriggering = false;
                         }
                     }
 
@@ -432,11 +436,9 @@ export class StateCallbackStrategy<TState extends IRef> {
                     // trigger onAdd (value, key)
                     const addCallbacks = $callbacks[OPERATION.ADD];
                     if (addCallbacks) {
-                        this.isTriggering = true;
                         for (let j = addCallbacks.length - 1; j >= 0; j--) {
-                            addCallbacks[j](change.value, dynamicIndex);
+                            try { addCallbacks[j](change.value, dynamicIndex); } catch (e) { console.error(e); }
                         }
-                        this.isTriggering = false;
                     }
                 }
 
@@ -445,7 +447,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                     const replaceCallbacks = $callbacks[OPERATION.REPLACE];
                     if (replaceCallbacks) {
                         for (let j = replaceCallbacks.length - 1; j >= 0; j--) {
-                            replaceCallbacks[j](dynamicIndex, change.value);
+                            try { replaceCallbacks[j](dynamicIndex, change.value); } catch (e) { console.error(e); }
                         }
                     }
                 }
@@ -453,6 +455,8 @@ export class StateCallbackStrategy<TState extends IRef> {
 
             this.uniqueRefIds.add(refId);
         }
+
+        this.isTriggering = false;
     }
 }
 

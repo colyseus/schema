@@ -156,18 +156,42 @@ describe("Parent Chain", () => {
         assert.strictEqual(itemChangeTree.parent, inventory2);
         assert.strictEqual(itemChangeTree.parentIndex, 3);
         assert.strictEqual(itemChangeTree.getAllParents().length, 2, "Should add parent with different index");
-        // assert.strictEqual(itemChangeTree.parent, inventory1);
-        // assert.strictEqual(itemChangeTree.parentIndex, 3);
-        // assert.strictEqual(itemChangeTree.getAllParents().length, 3, "Should add parent with different index");
 
         // Try to add the same parent with same index again
         itemChangeTree.addParent(inventory1, 3);
         assert.strictEqual(itemChangeTree.parent, inventory2);
         assert.strictEqual(itemChangeTree.parentIndex, 3);
-        assert.strictEqual(itemChangeTree.getAllParents().length, 2, "Should add parent with different index");
-        // assert.strictEqual(itemChangeTree.parent, inventory1);
-        // assert.strictEqual(itemChangeTree.parentIndex, 3);
-        // assert.strictEqual(itemChangeTree.getAllParents().length, 3, "Should not add duplicate parent with same index");
+        assert.strictEqual(itemChangeTree.getAllParents().length, 2, "Should not add duplicate parent with same index");
+    });
+
+    it("findParent / getAllParents hand out detached copies", () => {
+        // The inline parent has no chain node to return, so these helpers have
+        // to fabricate one for it. Returning the live node for the
+        // `extraParents` case only would mean a write lands or vanishes
+        // depending on which parent happened to match. Both are copies.
+        const state = new State();
+        const inventory1 = new Inventory();
+        const inventory2 = new Inventory();
+        const shared = new Item();
+        state.inventories.set("p1", inventory1);
+        state.inventories.set("p2", inventory2);
+        inventory1.items.set("sword", shared);
+        inventory2.items.set("sword", shared);
+
+        const tree = shared[$changes] as ChangeTree;
+        const before = tree.getAllParents().map((p) => p.index);
+        assert.strictEqual(before.length, 2, "fixture should give the item two parents");
+
+        // `readonly` blocks this at compile time; the cast proves the runtime
+        // copy is what actually protects the chain.
+        for (const parent of [inventory1.items, inventory2.items]) {
+            const found = tree.findParent((ref) => ref === parent)!;
+            (found as { index: number }).index = 99;
+            assert.notStrictEqual(tree.indexInParent(parent), 99, "write leaked into the live chain");
+        }
+        (tree.getAllParents()[0] as { index: number }).index = 99;
+
+        assert.deepStrictEqual(tree.getAllParents().map((p) => p.index), before);
     });
 
     describe("array children track their wire slot", () => {
@@ -219,10 +243,7 @@ describe("Parent Chain", () => {
             ["splice() at tail", (s) => s.rows.splice(3, 1), "a@0,b@1,c@2"],
             ["reverse()", (s) => s.rows.reverse(), "d@0,c@1,b@2,a@3"],
             ["sort()", (s) => s.rows.sort((x, y) => y.text.localeCompare(x.text)), "d@0,c@1,b@2,a@3"],
-            // unshift() never parents the items it prepends — a separate defect,
-            // already fixed on 5.0. The `want 0` below marks it; what #231 is
-            // about is that the survivors behind it slid to 1..4 correctly.
-            ["unshift()", (s) => s.rows.unshift(row("x")), "x@undefined(want 0),a@1,b@2,c@3,d@4"],
+            ["unshift()", (s) => s.rows.unshift(row("x")), "x@0,a@1,b@2,c@3,d@4"],
         ];
 
         cases.forEach(([name, mutate, expected]) => {

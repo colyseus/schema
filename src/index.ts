@@ -14,6 +14,9 @@ export { CollectionSchema };
 import { SetSchema } from "./types/custom/SetSchema.js";
 export { SetSchema };
 
+import { StreamSchema } from "./types/custom/StreamSchema.js";
+export { StreamSchema };
+
 import { registerType, defineCustomTypes } from "./types/registry.js";
 export { registerType, defineCustomTypes };
 
@@ -21,6 +24,8 @@ registerType("map", { constructor: MapSchema });
 registerType("array", { constructor: ArraySchema });
 registerType("set", { constructor: SetSchema });
 registerType("collection", { constructor: CollectionSchema, });
+// "stream" is registered inside StreamSchema.ts (same pattern as others
+// that co-locate registerType with the class for side-effect safety).
 
 // Utils
 export { dumpChanges } from "./utils.js";
@@ -45,33 +50,51 @@ export {
     type,
     deprecated,
     defineTypes,
+    unreliable,
+    patchOnly,
+    fullStateOnly,
     view,
     schema,
     entity,
     type DefinitionType,
     type PrimitiveType,
     type Definition,
+    type FieldsAndMethods,
     // Raw schema() return types
     type SchemaWithExtendsConstructor,
     type SchemaWithExtends,
     type SchemaType,
 } from "./annotations.js";
 
+// zod-style chainable builders
+export { t, FieldBuilder, isBuilder, type BuilderDefinition, type ChildType } from "./types/builder.js";
+
 export { TypeContext } from "./types/TypeContext.js";
 
 // Helper types for type inference
-export type { InferValueType, InferSchemaInstanceType, AssignableProps } from "./types/HelperTypes.js";
+export type { InferValueType, InferSchemaInstanceType, AssignableProps, BuilderInitProps, Data } from "./types/HelperTypes.js";
 
 export { getDecoderStateCallbacks, type CallbackProxy, type SchemaCallback, type CollectionCallback, type SchemaCallbackProxy } from "./decoder/strategy/getDecoderStateCallbacks.js";
 export { Callbacks, StateCallbackStrategy } from "./decoder/strategy/Callbacks.js";
 export { getRawChangesCallback } from "./decoder/strategy/RawChanges.js";
 
 export { Encoder } from "./encoder/Encoder.js";
-export { encodeSchemaOperation, encodeArray, encodeKeyValueOperation } from "./encoder/EncodeOperation.js";
-export { ChangeTree, type Ref, type IRef, type ChangeSetName, type ChangeSet} from "./encoder/ChangeTree.js";
+export { Root } from "./encoder/Root.js";
+export { createPool, type SchemaPool, type PoolOptions } from "./encoder/Pool.js";
+export { encodeSchemaOperation, encodeArray, encodeKeyValueOperation, encodeMapEntry, encodeIndexedEntry } from "./encoder/EncodeOperation.js";
+export { ChangeTree, type Ref, type IRef } from "./encoder/ChangeTree.js";
 export { StateView } from "./encoder/StateView.js";
 
 export { Decoder } from "./decoder/Decoder.js";
 export { decodeSchemaOperation, decodeKeyValueOperation } from "./decoder/DecodeOperation.js";
 
 export { OPERATION } from "./encoding/spec.js";
+
+// Re-exported for `@colyseus/schema/input` — that subpath bundle is built
+// as a thin wrapper that imports identity-bearing modules from here at
+// runtime, so it needs `getEncodeDescriptor` available on the public surface.
+export { getEncodeDescriptor, type EncodeDescriptor } from "./encoder/EncodeDescriptor.js";
+
+// Symbols used by InputEncoder/InputDecoder via the runtime-externalized
+// `@colyseus/schema` import in `build/input/index.mjs`.
+export { $numFields, $values } from "./types/symbols.js";

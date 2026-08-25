@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
-import { Schema, type, ArraySchema, MapSchema } from "../../src";
-import { createInstanceFromReflection, getDecoder } from "../Schema";
+import { Schema, type, view, ArraySchema, MapSchema } from "../../src";
+import { createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "../Schema";
 import { Callbacks } from "../../src/decoder/strategy/Callbacks";
 
 /**
@@ -293,6 +293,63 @@ describe("Callbacks (new API)", () => {
 
             // Should be called once for Charlie (total 3)
             assert.strictEqual(addCount, 3, `Expected addCount to be 3, but was ${addCount}. Names: ${addedNames.join(", ")}`);
+        });
+
+        it("DELETE_BY_REFID for an unseen filtered ArraySchema item must not trigger onRemove", () => {
+            // Reproduces the case documented at Callbacks.ts: a client whose
+            // @view subscription never included a given ArraySchema item still
+            // receives a DELETE_BY_REFID when the server removes it. The push
+            // site in decodeArray is unconditional (previousValue: undefined),
+            // and the dispatcher guard must prevent onRemove(undefined, key).
+            class Item extends Schema {
+                @type("number") amount: number;
+            }
+
+            class State extends Schema {
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+
+            const state = new State();
+            for (let i = 0; i < 3; i++) {
+                state.items.push(new Item().assign({ amount: i }));
+            }
+
+            const encoder = getEncoder(state);
+
+            // client1 only ever sees items[1].
+            const client1 = createClientWithView(state);
+            client1.view.add(state.items.at(1));
+
+            // client2 sees the entire array (so the server actually emits the
+            // DELETE for items[0] on the wire).
+            const client2 = createClientWithView(state);
+            client2.view.add(state.items);
+
+            const callbacks = Callbacks.get(client1.decoder);
+
+            const addedAmounts: number[] = [];
+            const removedAmounts: any[] = [];
+
+            callbacks.onAdd("items", (item) => addedAmounts.push(item.amount));
+            callbacks.onRemove("items", (item) => removedAmounts.push(item?.amount));
+
+            assert.doesNotThrow(() => {
+                encodeMultiple(encoder, state, [client1, client2]);
+            });
+
+            assert.deepStrictEqual(addedAmounts, [1]);
+            assert.deepStrictEqual(removedAmounts, []);
+
+            // Now splice the unseen items[0] — client1 receives DELETE_BY_REFID
+            // for a refId it never had. onRemove must NOT fire on client1.
+            state.items.splice(0, 1);
+
+            assert.doesNotThrow(() => {
+                encodeMultiple(encoder, state, [client1, client2]);
+            });
+
+            assert.deepStrictEqual(addedAmounts, [1], "onAdd must not fire for the unseen refId");
+            assert.deepStrictEqual(removedAmounts, [], "onRemove must not fire with undefined previousValue");
         });
     });
 

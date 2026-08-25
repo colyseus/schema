@@ -1,5 +1,5 @@
 import { OPERATION } from "../encoding/spec.js";
-import { $changes, $childType, $getByIndex, $refId } from "../types/symbols.js";
+import { $changes, $childType, $encoders, $getByIndex, $refId, $values } from "../types/symbols.js";
 
 import { encode } from "../encoding/encode.js";
 
@@ -30,8 +30,14 @@ export function encodeValue(
     value: any,
     operation: OPERATION,
     it: Iterator,
+    encoderFn?: (bytes: Uint8Array, value: any, it: Iterator) => void,
 ) {
-    if (typeof (type) === "string") {
+    if (encoderFn !== undefined) {
+        // Fast path: pre-computed encoder for primitive types.
+        encoderFn(bytes, value, it);
+
+    } else if (typeof (type) === "string") {
+        // Fallback for types not pre-computed (e.g. runtime-constructed).
         (encode as any)[type]?.(bytes, value, it);
 
     } else if (type[Symbol.metadata] !== undefined) {
@@ -68,9 +74,10 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
     it: Iterator,
     _: any,
     __: any,
-    metadata: Metadata,
 ) {
-    // "compress" field index + operation
+    // "compress" field index + operation. Can't collide with
+    // SWITCH_TO_STRUCTURE (255): that needs `DELETE_AND_ADD | 63`, and
+    // `Metadata.MAX_FIELDS` keeps index 63 unassignable.
     bytes[it.offset++] = (index | operation) & 255;
 
     // Do not encode value for DELETE operations
@@ -78,23 +85,109 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
         return;
     }
 
-    const ref = changeTree.ref;
-    const field = metadata[index];
+    // Read field info from the per-class descriptor's parallel arrays —
+    // replaces `metadata[index]` (returns a per-field obj) + `.name` /
+    // `.type` chains. The `encoders` array is also pre-baked here so we
+    // skip a `metadata[$encoders]?.[index]` symbol-keyed lookup per call.
+    const desc = changeTree.encDescriptor;
+    const ref = changeTree.ref as any;
 
-    // TODO: inline this function call small performance gain
+    // Direct $values[index] read — bypasses prototype getter + metadata name lookup.
+    // Falls back to named property for manual fields (which don't use $values).
+    const value = ref[$values][index] ?? ref[desc.names[index]];
+
     encodeValue(
         encoder,
         bytes,
-        metadata[index].type,
-        ref[field.name as keyof T],
+        desc.types[index],
+        value,
         operation,
-        it
+        it,
+        desc.encoders[index],
     );
 }
 
 /**
- * Used for collections (MapSchema, CollectionSchema, SetSchema)
+ * Encode a single MapSchema entry. Splits the legacy
+ * `encodeKeyValueOperation` so the per-emission `typeof ref['set']` check
+ * is gone — MapSchema instances are routed here via their `[$encoder]`
+ * static, the dynamic-key string emission is unconditional on ADD.
+ *
  * @private
+ */
+export const encodeMapEntry: EncodeOperation = function (
+    encoder: Encoder,
+    bytes: Uint8Array,
+    changeTree: ChangeTree,
+    index: number,
+    operation: OPERATION,
+    it: Iterator,
+) {
+    bytes[it.offset++] = operation & 255;
+    encode.number(bytes, index, it);
+
+    if (operation === OPERATION.DELETE) return;
+
+    const ref = changeTree.ref;
+
+    // ADD or DELETE_AND_ADD: emit the user-facing string key for dynamic
+    // map fields. SetSchema/CollectionSchema use a different encoder and
+    // skip this entirely (no dynamic key).
+    if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+        const dynamicIndex = (ref as any)['$indexes'].get(index);
+        encode.string(bytes, dynamicIndex, it);
+    }
+
+    encodeValue(
+        encoder,
+        bytes,
+        (ref as any)[$childType],
+        ref[$getByIndex](index),
+        operation,
+        it,
+    );
+}
+
+/**
+ * Encode a single SetSchema / CollectionSchema entry. Wire format is the
+ * same as MapSchema minus the dynamic-key string, so this path skips the
+ * legacy `typeof ref['set']` check entirely.
+ *
+ * @private
+ */
+export const encodeIndexedEntry: EncodeOperation = function (
+    encoder: Encoder,
+    bytes: Uint8Array,
+    changeTree: ChangeTree,
+    index: number,
+    operation: OPERATION,
+    it: Iterator,
+) {
+    bytes[it.offset++] = operation & 255;
+    encode.number(bytes, index, it);
+
+    if (operation === OPERATION.DELETE) return;
+
+    const ref = changeTree.ref;
+    encodeValue(
+        encoder,
+        bytes,
+        (ref as any)[$childType],
+        ref[$getByIndex](index),
+        operation,
+        it,
+    );
+}
+
+/**
+ * Unified encoder kept for back-compat with external consumers that may
+ * have registered it directly via `static [$encoder] =
+ * encodeKeyValueOperation`. New code (and all internal collections)
+ * should use the split variants — `encodeMapEntry` for MapSchema and
+ * `encodeIndexedEntry` for SetSchema / CollectionSchema.
+ *
+ * The runtime `typeof ref['set']` check below is the per-emission cost
+ * the split is designed to remove.
  */
 export const encodeKeyValueOperation: EncodeOperation = function (
     encoder: Encoder,
@@ -104,57 +197,12 @@ export const encodeKeyValueOperation: EncodeOperation = function (
     operation: OPERATION,
     it: Iterator,
 ) {
-    // encode operation
-    bytes[it.offset++] = operation & 255;
-
-    // encode index
-    encode.number(bytes, index, it);
-
-    // Do not encode value for DELETE operations
-    if (operation === OPERATION.DELETE) {
-        return;
+    const ref = changeTree.ref as any;
+    if ((operation & OPERATION.ADD) === OPERATION.ADD && typeof ref['set'] === "function") {
+        encodeMapEntry(encoder, bytes, changeTree, index, operation, it, false, false);
+    } else {
+        encodeIndexedEntry(encoder, bytes, changeTree, index, operation, it, false, false);
     }
-
-    const ref = changeTree.ref;
-
-    //
-    // encode "alias" for dynamic fields (maps)
-    //
-    if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
-        if (typeof(ref['set']) === "function") {
-            //
-            // MapSchema dynamic key
-            //
-            const dynamicIndex = changeTree.ref['$indexes'].get(index);
-            encode.string(bytes, dynamicIndex, it);
-        }
-    }
-
-    const type = ref[$childType];
-    const value = ref[$getByIndex](index);
-
-    // try { throw new Error(); } catch (e) {
-    //     // only print if not coming from Reflection.ts
-    //     if (!e.stack.includes("src/Reflection.ts")) {
-    //         console.log("encodeKeyValueOperation -> ", {
-    //             ref: changeTree.ref.constructor.name,
-    //             field,
-    //             operation: OPERATION[operation],
-    //             value: value?.toJSON(),
-    //             items: ref.toJSON(),
-    //         });
-    //     }
-    // }
-
-    // TODO: inline this function call small performance gain
-    encodeValue(
-        encoder,
-        bytes,
-        type,
-        value,
-        operation,
-        it
-    );
 }
 
 /**
@@ -171,13 +219,20 @@ export const encodeArray: EncodeOperation = function (
     isEncodeAll: boolean,
     hasView: boolean,
 ) {
-    const ref = changeTree.ref;
-    const useOperationByRefId = hasView && changeTree.isFiltered && (typeof (changeTree.getType(field)) !== "string");
+    // Read through `refTarget` so every property access below skips the
+    // ArraySchema Proxy `get` trap. `refTarget` points at the raw backing
+    // instance; `ref` (the Proxy) stays the user-facing identity.
+    const ref = changeTree.refTarget as any;
+    // ArraySchema stores its per-instance child type at `$childType`.
+    // This encoder is array-only — there's no Schema fallback to consider.
+    const type = ref[$childType];
+    const isSchemaChild = typeof type !== "string";
+    const useOperationByRefId = hasView && changeTree.isFiltered && isSchemaChild;
 
     let refOrIndex: number;
 
     if (useOperationByRefId) {
-        const item = ref['tmpItems'][field];
+        const item = ref.tmpItems[field];
 
         // Skip encoding if item is undefined (e.g. when clear() is called)
         if (!item) { return; }
@@ -187,9 +242,30 @@ export const encodeArray: EncodeOperation = function (
         if (operation === OPERATION.DELETE) {
             operation = OPERATION.DELETE_BY_REFID;
 
-        } else if (operation === OPERATION.ADD) {
+        } else if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+            // ADD, DELETE_AND_ADD, MOVE_AND_ADD. The wire index below is a
+            // refId — positional ops would make the decoder misread it as a
+            // slot, so everything must degrade to a BY_REFID op here.
             operation = OPERATION.ADD_BY_REFID;
+
+        } else if ((operation & OPERATION.MOVE) === OPERATION.MOVE) {
+            // Pure reorder (MOVE / DELETE_AND_MOVE). Filtered clients hold
+            // per-view subsets, so element order is not synchronized for
+            // them (ADD_BY_REFID appends) — there is nothing to emit.
+            return;
         }
+
+    } else if (operation === OPERATION.DELETE && isSchemaChild) {
+        //
+        // DELETE by identity: idempotent, so a stale positional DELETE
+        // (pending in the shared queue when a client bootstraps via
+        // encodeAll) can't corrupt that client — its snapshot no longer
+        // holds the item, the refId is unknown, and the decoder skips.
+        //
+        const item = ref.tmpItems[field];
+        if (!item) { return; }
+        refOrIndex = item[$refId];
+        operation = OPERATION.DELETE_BY_REFID;
 
     } else {
         refOrIndex = field;
@@ -206,20 +282,10 @@ export const encodeArray: EncodeOperation = function (
         return;
     }
 
-    const type = changeTree.getType(field);
-    const value = changeTree.getValue(field, isEncodeAll);
+    // `type` was already read above. Direct $getByIndex call — skips
+    // ChangeTree.getValue's pass-through wrapper.
+    const value = ref[$getByIndex](field, isEncodeAll);
 
-    // console.log({ type, field, value });
-
-    // console.log("encodeArray -> ", {
-    //     ref: changeTree.ref.constructor.name,
-    //     field,
-    //     operation: OPERATION[operation],
-    //     value: value?.toJSON(),
-    //     items: ref.toJSON(),
-    // });
-
-    // TODO: inline this function call small performance gain
     encodeValue(
         encoder,
         bytes,

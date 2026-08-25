@@ -191,7 +191,13 @@ function generateProperty(prop: Property, indent: string = "") {
     let langType: string;
     let initializer = "";
 
-    if (prop.childType) {
+    if (prop.quantized) {
+        const q = prop.quantized;
+        typeArgs += `, QuantizeMin = ${q.min}, QuantizeMax = ${q.max}, QuantizeBits = ${q.bits}, QuantizeWrap = ${q.wrap}`;
+        langType = "double";
+        initializer = "default(double)";
+
+    } else if (prop.childType) {
         const isUpcaseFirst = prop.childType.match(/^[A-Z]/);
 
         langType = getType(prop);
