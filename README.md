@@ -3,7 +3,6 @@
   <br>
   <p>
     <b>Automatic state replication for multiplayer games.</b><br>
-    Define your state once and mutate it like plain objects. Every client holds a live, typed mirror. Only the changes are sent, filtered per client.<br>
     Made for <a href="https://github.com/colyseus/colyseus">Colyseus</a>, yet can be used standalone.
   </p>
 </div>
