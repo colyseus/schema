@@ -246,6 +246,22 @@ implement** for the 0.18 line:
 `CollectionSchema` / `SetSchema` decoding now preserves the wire index
 (`PORT/decoder-wire-index.md`). Fixture generators live in `test-external/`.
 
+## 4.0.31
+
+### `StateView` operations after an `ArraySchema` is reindexed
+
+`view.add(item)` and `view.remove(item)` now address the right element after a
+`shift()`, `splice()`, `unshift()`, `reverse()` or `sort()`. The reindex used to
+leave the view aiming at whichever element had inherited the slot: `view.add()`
+emitted a reference the client was never introduced to — `"refId" not found`,
+the item missing for good, and no recovery short of a rejoin — while
+`view.remove()` failed silently, leaving an item visible to a client that was
+meant to stop seeing it. Collections that reindex every tick, such as a capped
+chat or event feed, were the most exposed.
+
+Thanks to [@serjek](https://github.com/serjek) for the detailed report and
+reproduction ([#231](https://github.com/colyseus/schema/issues/231)).
+
 ## 4.0.30
 
 ### `MapSchema.getOrInsert()` and `getOrInsertComputed()`
