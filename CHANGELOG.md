@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - TypeScript 7: schema definitions no longer fail with `TS2589: Type
-  instantiation is excessively deep`. Thanks @charmantle
+  instantiation is excessively deep`. Thanks @LarryLing
   ([Discord](https://discord.com/channels/525739117951320081/1542028538901823508)).
 - `SchemaType<>` and `this` inside `schema()` methods include the members of
   a custom base class.
