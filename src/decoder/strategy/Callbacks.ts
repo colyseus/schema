@@ -1,5 +1,5 @@
 import { Metadata } from "../../Metadata.js";
-import { Collection, NonFunctionPropNames } from "../../types/HelperTypes.js";
+import { Collection, NonFunctionPropNames, CollectionLike } from "../../types/HelperTypes.js";
 import type { IRef, Ref } from "../../encoder/ChangeTree.js";
 import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
@@ -25,25 +25,24 @@ type KeyValueCallback<K, V> = (key: K, value: V) => void;
 type ValueKeyCallback<V, K> = (value: V, key: K) => void;
 type InstanceChangeCallback = () => void;
 
-// Exclude internal properties from valid property names
-type PublicPropNames<T> = Exclude<NonFunctionPropNames<T>, typeof $refId> & string;
+type PublicPropNames<T> = NonFunctionPropNames<T> & string;
 
 // Extract only properties that extend Collection
-type CollectionPropNames<T> = Exclude<{
-    [K in keyof T]: T[K] extends Collection<any, any> ? K : never
-}[keyof T] & string, typeof $refId>;
+type CollectionPropNames<T> = {
+    [K in keyof T]: T[K] extends CollectionLike<any, any> ? K : never
+}[keyof T] & string;
 
 // Infer the value type of a collection property
 type CollectionValueType<T, K extends keyof T> =
     T[K] extends MapSchema<infer V, any> ? V :
     T[K] extends ArraySchema<infer V> ? V :
-    T[K] extends Collection<any, infer V, any> ? V : never;
+    T[K] extends CollectionLike<any, infer V, any> ? V : never;
 
 // Infer the key type of a collection property
 type CollectionKeyType<T, K extends keyof T> =
     T[K] extends MapSchema<any, infer Key> ? Key :
     T[K] extends ArraySchema<any> ? number :
-    T[K] extends Collection<infer Key, any, any> ? Key : never;
+    T[K] extends CollectionLike<infer Key, any, any> ? Key : never;
 
 export class StateCallbackStrategy<TState extends IRef> {
     protected decoder: Decoder<TState>;

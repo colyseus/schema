@@ -1,4 +1,4 @@
-import { MapSchema } from "../build/index.js";
+import { MapSchema } from "../../build/index.js";
 
 const schema = new MapSchema<number>();
 const map: Map<string, number> = schema;

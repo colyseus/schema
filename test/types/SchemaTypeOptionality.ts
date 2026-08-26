@@ -1,4 +1,4 @@
-import { schema, t, Schema, ArraySchema, MapSchema, type SchemaType } from "../build/index.js";
+import { schema, t, Schema, ArraySchema, MapSchema, type SchemaType } from "../../build/index.js";
 
 // Instance optionality must come from the `.optional()` brand, never from
 // `undefined extends V`. The companion .nostrict file pins the same surface
@@ -81,3 +81,11 @@ void mixedJSONOpt;
 schema({ items: t.array(t.string()) });
 // @ts-expect-error — t.map(t.uint8()) must not typecheck
 schema({ m: t.map(t.uint8()) });
+
+// a ref typed by a generic constructor leaves the other keys resolvable
+function withGenericRef<C extends new (...args: any[]) => Schema>(ctor: C) {
+    const Holder = schema({ inner: ctor, w: t.number() });
+    const w: number = (null as unknown as SchemaType<typeof Holder>).w;
+    return w;
+}
+void withGenericRef;

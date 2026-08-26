@@ -17,10 +17,18 @@ type PrimitiveStringToType<T> =
     : T extends "boolean" ? boolean
     : T;
 
-export interface Collection<K = any, V = any, IT = V> {
+/**
+ * What the decoder callbacks accept as "a collection": the public shape, which
+ * a plain array satisfies too — `@type([X]) items: X[]` is a common way to
+ * declare a field. {@link Collection} is the runtime contract on top of it.
+ */
+export interface CollectionLike<K = any, V = any, IT = V> {
     [Symbol.iterator](): IterableIterator<IT>;
     forEach(callback: Function): void;
     entries(): IterableIterator<[K, V]>;
+}
+
+export interface Collection<K = any, V = any, IT = V> extends CollectionLike<K, V, IT> {
     /** See {@link $resyncPrune} — every collection kind must declare its resync-sweep semantics. */
     [$resyncPrune](
         visited: Set<number | string>,
@@ -90,13 +98,13 @@ export type InferValueType<T> =
 // Keys whose builder carries the `.optional()` brand. Reads the brand rather
 // than `undefined extends V`: the latter is true for EVERY V when the consumer
 // compiles with `strictNullChecks: false`, flipping all fields optional.
-type OptionalBuilderKeys<T> = {
-    [K in keyof T]: T[K] extends FieldBuilder<unknown, boolean, infer O extends boolean>
-        ? (O extends true ? K : never)
-        : never
-}[keyof T];
+type IsOptionalBuilderKey<T, K extends keyof T> =
+    T[K] extends FieldBuilder<unknown, boolean, infer O extends boolean> ? O : false;
 
-type RequiredBuilderKeys<T> = Exclude<keyof T, OptionalBuilderKeys<T>>;
+// Per key, like `DataKey` below — an `Exclude<keyof T, …>` split defers every
+// key once one field is typed by a bare type parameter.
+type OptionalBuilderKeys<T> = { [K in keyof T]-?: IsOptionalBuilderKey<T, K> extends true ? K : never }[keyof T];
+type RequiredBuilderKeys<T> = { [K in keyof T]-?: IsOptionalBuilderKey<T, K> extends true ? never : K }[keyof T];
 
 export type InferSchemaInstanceType<T> = {
     [K in RequiredBuilderKeys<T>]: T[K] extends FieldBuilder<any>
@@ -110,20 +118,20 @@ export type InferSchemaInstanceType<T> = {
         : never
 } & Schema;
 
-export type NonFunctionProps<T> = Omit<T, {
-    [K in keyof T]: T[K] extends Function ? K : never;
-}[keyof T]>;
+// Per-key filter, never `Omit`/`Exclude` over the union of method names: with
+// one field typed by a bare type parameter that union defers EVERY key, and a
+// mapped type with no resolvable keys has no members to relate — which is what
+// stopped `SpecialNode<E>` from satisfying `extends NodeBase`.
+// `keyof Schema` is dropped so `restore({ ... })` takes a plain literal.
+type DataKey<T, K extends keyof T> =
+    K extends keyof Schema ? never
+    : T[K] extends Function ? never
+    : K;
 
-export type NonFunctionPropNames<T> = {
-    [K in keyof T]: T[K] extends Function ? never : K
-}[keyof T];
+export type NonFunctionPropNames<T> = { [K in keyof T]-?: DataKey<T, K> }[keyof T];
 
 export type NonFunctionNonPrimitivePropNames<T> = {
-    [K in keyof T]: T[K] extends Function
-        ? never
-        : T[K] extends number | string | boolean
-            ? never
-            : K
+    [K in keyof T]-?: [DataKey<T, K>] extends [never] ? never : T[K] extends number | string | boolean ? never : K
 }[keyof T];
 
 // Helper to recursively convert Schema instances to their JSON representation
@@ -138,21 +146,23 @@ type ToJSONField<X> =
     : X extends Schema ? ToJSON<X>
     : X;
 
-// Keys whose value admits `undefined` — runtime `toJSON()` omits those, so
-// they surface as `?:` on the JSON shape. Under `strictNullChecks: false`
-// (`undefined extends {}` detects it) `undefined extends T[K]` is true for
-// every key, so only the `?` modifier can signal optionality there.
-type ToJSONOptionalKeys<T> = {
-    [K in keyof T]-?: undefined extends {}
-        ? ({} extends Pick<T, K> ? K : never)
-        : (undefined extends T[K] ? K : never)
-}[keyof T];
-type ToJSONRequiredKeys<T> = Exclude<keyof T, ToJSONOptionalKeys<T>>;
+// Runtime `toJSON()` omits `undefined` values, so those keys surface as `?:`.
+// Under `strictNullChecks: false` (`undefined extends {}` detects it)
+// `undefined extends T[K]` is true for every key, so only the `?` modifier
+// can signal optionality there.
+type IsOptionalKey<T, K extends keyof T> = undefined extends {}
+    ? ({} extends Pick<T, K> ? true : false)
+    : (undefined extends T[K] ? true : false);
 
-export type ToJSON<T> = NonFunctionProps<
+// `DataKey` first: machinery and method keys drop before the optionality probe.
+type ToJSONRequiredKeys<T> = { [K in keyof T]-?: [DataKey<T, K>] extends [never] ? never : IsOptionalKey<T, K> extends true ? never : K }[keyof T];
+type ToJSONOptionalKeys<T> = { [K in keyof T]-?: [DataKey<T, K>] extends [never] ? never : IsOptionalKey<T, K> extends true ? K : never }[keyof T];
+
+// Keys are filtered before mapping: `ToJSONField` over the `this`-typed methods
+// exceeds TypeScript 7's instantiation depth.
+export type ToJSON<T> =
     & { [K in ToJSONRequiredKeys<T>]: ToJSONField<T[K]> }
-    & { [K in ToJSONOptionalKeys<T>]?: ToJSONField<Exclude<T[K], undefined>> }
->;
+    & { [K in ToJSONOptionalKeys<T>]?: ToJSONField<Exclude<T[K], undefined>> };
 
 /**
  * The plain DATA shape of a Schema instance type `T`: its synchronized fields
@@ -172,8 +182,7 @@ export type ToJSON<T> = NonFunctionProps<
  *
  * Unlike {@link ToJSON} (a recursive *serialization* shape), this is a flat
  * structural projection: nested Schema / collection fields keep their instance
- * types, and it does not retain the non-method `Schema` members that `ToJSON`'s
- * `NonFunctionProps` pass leaves behind.
+ * types.
  */
 export type Data<T> = Omit<T, keyof Schema>;
 

@@ -1,4 +1,4 @@
-import { schema, t, type SchemaType } from "../build/index.js";
+import { schema, t, type SchemaType } from "../../build/index.js";
 
 // Compiled with `strict: true` + `strictNullChecks: false` — the config
 // create-colyseus-app generates. There `undefined extends V` is true for

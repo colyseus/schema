@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "5.0.19",
+  "version": "5.0.20",
   "description": "Automatic state replication for multiplayer games. Mutate plain objects, and every client gets a live, typed mirror through delta encoding.",
   "type": "module",
   "bin": {
@@ -14,13 +14,13 @@
     "bench:gate": "node bench/run.mjs --assert --samples 3 --filter gate",
     "profile:cpu": "node bench/profile.mjs --cpu",
     "profile:heap": "node bench/profile.mjs --heap",
-    "build": "tsc -p tsconfig.build.json && rollup -c rollup.config.mjs",
-    "watch": "tsc -p tsconfig.build.json -w",
-    "typecheck:build": "tsc -p tsconfig.build.json --noEmit",
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json && rollup -c rollup.config.mjs",
+    "watch": "node node_modules/typescript/bin/tsc -p tsconfig.build.json -w",
+    "typecheck:build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json --noEmit",
     "test": "npm run test:types && tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.test.ts\" \"test/**/*.test.ts\"",
-    "test:types": "tsc -p tsconfig.build.json && tsc -p tsconfig.types.json && tsc -p tsconfig.types-nostrict.json",
+    "test:types": "node node_modules/typescript/bin/tsc -p tsconfig.build.json && node test/types/run.mjs typescript typescript-7",
     "test:exports": "node test/verify-exports.mjs",
-    "typecheck": "tsc -p tsconfig.test.json",
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.test.json",
     "coverage": "c8 npm run test",
     "generate-test-1": "bin/schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/PrimitiveTypes",
     "generate-test-2": "bin/schema-codegen test-external/ChildSchemaTypes.ts --namespace SchemaTest.ChildSchemaTypes --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/ChildSchemaTypes",
@@ -94,7 +94,8 @@
     "source-map-support": "^0.5.13",
     "tslib": "^2.1.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-7": "npm:typescript@^7.0.2"
   },
   "peerDependencies": {
     "typescript": ">=5.0.0"

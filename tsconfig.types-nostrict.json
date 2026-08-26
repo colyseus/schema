@@ -1,16 +1,13 @@
 // Mirrors the tsconfig create-colyseus-app generates: strict on, but
 // strictNullChecks off (and skipLibCheck on, as such consumers set it).
 {
+  "extends": "./tsconfig.types-decorators.json",
   "compilerOptions": {
-    "target": "ESNext",
-    "lib": ["ESNext"],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
     "strictNullChecks": false,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "types": []
+    "skipLibCheck": true
   },
-  "files": ["test/SchemaTypeOptionality.nostrict.types.ts"]
+  "files": [
+    "test/types/SchemaTypeOptionality.nostrict.ts",
+    "test/types/ComplexDeclarations.nostrict.ts"
+  ]
 }

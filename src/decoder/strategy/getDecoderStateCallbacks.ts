@@ -1,5 +1,5 @@
 import { Metadata } from "../../Metadata.js";
-import { Collection, NonFunctionNonPrimitivePropNames, NonFunctionPropNames } from "../../types/HelperTypes.js";
+import { Collection, NonFunctionNonPrimitivePropNames, NonFunctionPropNames, CollectionLike } from "../../types/HelperTypes.js";
 import { IRef, Ref } from "../../encoder/ChangeTree.js";
 import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
@@ -30,7 +30,7 @@ export type GetCallbackProxy = SchemaCallbackProxy<any>; // workaround for compa
 
 export type CallbackProxy<T> = unknown extends T // is "any"?
     ? SchemaCallback<T> & CollectionCallback<any, any>
-    : T extends Collection<infer K, infer V, infer _>
+    : T extends CollectionLike<infer K, infer V, infer _>
         ? CollectionCallback<K, V>
         : SchemaCallback<T>;
 

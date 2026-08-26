@@ -668,9 +668,13 @@ type HasExplicitInit<T> = T extends { initialize: (...args: infer P) => void }
  */
 export type FieldsAndMethods = Record<string, FieldBuilder<any, boolean, boolean> | (new (...args: any[]) => Schema) | Function>;
 
+// One spelling for every site that names the instance — identical
+// instantiations compare by identity, not structurally.
+type SchemaInstance<T, P extends typeof Schema> = InferSchemaInstanceType<T> & InstanceType<P>;
+
 export interface SchemaWithExtends<T, P extends typeof Schema> {
     extend: <T2 extends FieldsAndMethods = FieldsAndMethods>(
-        fields: T2 & ThisType<InferSchemaInstanceType<T & T2>>,
+        fields: T2 & ThisType<SchemaInstance<T & T2, P>>,
         name?: string,
     ) => SchemaWithExtendsConstructor<T & T2, ExtractInitProps<T & T2>, P>;
 }
@@ -692,7 +696,7 @@ export interface SchemaWithExtendsConstructor<
     InitProps,
     P extends typeof Schema
 > extends SchemaWithExtends<T, P> {
-    '~type': InferSchemaInstanceType<T>;
+    '~type': SchemaInstance<T, P>;
     // Constructor signature:
     //  - InitProps = never (zero-arg initialize): no args.
     //  - InitProps is a tuple (multi-arg initialize): spread it.
@@ -708,8 +712,8 @@ export interface SchemaWithExtendsConstructor<
         : HasExplicitInit<T> extends true ? [InitProps]
         : IsInitPropsRequired<T> extends true ? ([] | [InitProps])
         : [InitProps?]
-    ): InferSchemaInstanceType<T> & InstanceType<P>;
-    prototype: InferSchemaInstanceType<T> & InstanceType<P> & {
+    ): SchemaInstance<T, P>;
+    prototype: SchemaInstance<T, P> & {
         initialize(...args: [InitProps] extends [never] ? [] : InitProps extends readonly any[] ? InitProps : [InitProps]): void;
     };
 }
@@ -755,7 +759,7 @@ export function schema<
     T extends FieldsAndMethods,
     P extends typeof Schema = typeof Schema
 >(
-    fieldsAndMethods: T & ThisType<InferSchemaInstanceType<T>>,
+    fieldsAndMethods: T & ThisType<SchemaInstance<T, P>>,
     name?: string,
     inherits: P = Schema as P,
 ): SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P> {

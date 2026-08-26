@@ -1,0 +1,13 @@
+// `@type()` decorator surface — needs experimentalDecorators and
+// useDefineForClassFields:false, which the builder config leaves off.
+{
+  "extends": "./tsconfig.types.json",
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
+  },
+  "files": [
+    "test/types/DecoratorAnnotations.ts",
+    "test/types/SchemaMethods.ts"
+  ]
+}

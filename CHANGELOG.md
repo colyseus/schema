@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.20]
+
+### Fixed
+
+- TypeScript 7: schema definitions no longer fail with `TS2589: Type
+  instantiation is excessively deep`. Thanks @charmantle
+  ([Discord](https://discord.com/channels/525739117951320081/1542028538901823508)).
+- `SchemaType<>` and `this` inside `schema()` methods include the members of
+  a custom base class.
+- A generic `Schema` subclass with a field typed by its own type parameter
+  satisfies `extends` constraints.
+- `restore()` accepts a plain object literal of the fields under `strict`.
+- Decoder callbacks (`onAdd` / `onRemove` / `onChange`, `$()`) accept fields
+  declared as plain arrays (`@type([Item]) items: Item[]`) again.
+
 ## [5.0.19]
 
 ### Added
