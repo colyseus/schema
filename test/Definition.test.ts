@@ -99,6 +99,11 @@ describe("Definition Tests", () => {
             assert.throws(() => (Base as any).extend({ extra: t.uint8() }, "OverflowChild"), TOO_MANY);
         });
 
+        it("should reject redeclaring a parent field", () => {
+            const Base = schema({ x: t.number(), hp: t.uint8() }, "Base");
+            assert.throws(() => (Base as any).extend({ hp: t.number() }, "Child"), /Duplicate 'hp' definition on 'Child'/);
+        });
+
         it("should round-trip a field at the last index (62)", () => {
             const def: any = {};
             for (let i = 0; i < 62; i++) { def[`f_${i}`] = t.uint8(); }

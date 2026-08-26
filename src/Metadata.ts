@@ -488,6 +488,10 @@ export const Metadata = {
         }
 
         for (const field in fields) {
+            // metadata inherits the parent's, so this also catches a redeclared parent field
+            if (metadata[field] !== undefined) {
+                throw new Error(`@colyseus/schema: Duplicate '${field}' definition on '${constructor.name || "(anonymous)"}'.`);
+            }
             Metadata.defineField(constructor, metadata, fieldIndex, field, fields[field] as DefinitionType);
             fieldIndex++;
         }

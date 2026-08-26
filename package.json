@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "5.0.20",
+  "version": "5.0.21",
   "description": "Automatic state replication for multiplayer games. Mutate plain objects, and every client gets a live, typed mirror through delta encoding.",
   "type": "module",
   "bin": {

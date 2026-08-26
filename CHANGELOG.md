@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.21]
+
+### Fixed
+
+- A `schema()` class created with `.extend()` and no `initialize()` of its own
+  now runs the parent's; its init props were accepted and silently dropped.
+- `.extend()` throws on a field that redeclares one from the parent instead of
+  registering it twice and corrupting decoding.
+- `class X extends MySchema {}` on a `schema()` result no longer fails with
+  `TS2417`.
+
 ## [5.0.20]
 
 ### Fixed

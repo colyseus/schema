@@ -626,11 +626,11 @@ export function defineTypes(
 
 // Helper type to extract InitProps from initialize method.
 // - Non-empty initialize params: use them directly.
-// - Zero-arg initialize: no args accepted (`never`) — user-supplied field
-//   values would be dropped at runtime (parent's initialize is skipped
-//   during child construction via the `new.target === klass` guard, and
-//   own-field auto-assignment happens only inside initialize).
+// - Zero-arg initialize: no args accepted (`never`) — an initialize() owns the
+//   fields, so user-supplied values would be dropped at runtime.
 // - No initialize at all: derive from fields map.
+// `T & T2` from `.extend()` carries the parent's initialize unless the child
+// redefines it, matching the runtime (the most-derived one runs).
 type ExtractInitProps<T> = T extends { initialize: (...args: infer P) => void }
     ? P extends readonly []
         ? never
@@ -713,9 +713,7 @@ export interface SchemaWithExtendsConstructor<
         : IsInitPropsRequired<T> extends true ? ([] | [InitProps])
         : [InitProps?]
     ): SchemaInstance<T, P>;
-    prototype: SchemaInstance<T, P> & {
-        initialize(...args: [InitProps] extends [never] ? [] : InitProps extends readonly any[] ? InitProps : [InitProps]): void;
-    };
+    prototype: SchemaInstance<T, P>;
 }
 
 /**
@@ -741,6 +739,9 @@ function makeAutoDefaultFactory(rawType: any): (() => any) | undefined {
 
 /**
  * Define a Schema class declaratively.
+ *
+ * `initialize()` acts as the constructor: a class created with `.extend()`
+ * inherits the parent's unless it defines its own.
  *
  * @example
  * import { schema, t } from '@colyseus/schema';
@@ -910,9 +911,12 @@ export function schema<
     };
 
     const hasInitialize = typeof methods.initialize === "function";
+    // Like a constructor: the most-derived initialize() runs once, own or
+    // inherited from a schema() parent. A custom base's initialize() is not
+    // picked up — the constructor type only sees the fields map.
+    const initialize = methods.initialize ?? (inherits as any)._initialize;
 
-    /** @codegen-ignore */
-    const klass = Metadata.setFields<any>(class extends (inherits as any) {
+    const klass = class extends (inherits as any) {
         constructor(...args: any[]) {
             const props = args[0];
             if (props === undefined) {
@@ -926,14 +930,22 @@ export function schema<
                 // `initialize()` owns the schema fields, so only parent props flow up.
                 super(Object.assign(getDefaultValues(), hasInitialize ? getParentProps(props) : props));
             }
-            // Only call initialize() on the exact target class, not parents.
-            if (hasInitialize && new.target === klass) {
-                methods.initialize.apply(this, args);
+            // Only on the exact target class — parents' constructors skip it.
+            if (initialize && new.target === klass) {
+                initialize.apply(this, args);
             }
         }
-    }, fields) as unknown as SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P>;
+    } as unknown as SchemaWithExtendsConstructor<T, ExtractInitProps<T>, P>;
+
+    // named before setFields so a duplicate-field error can say which class
+    if (name) {
+        Object.defineProperty(klass, "name", { value: name });
+    }
+    /** @codegen-ignore */
+    Metadata.setFields<any>(klass, fields);
 
     (klass as any)._getDefaultValues = getDefaultValues;
+    (klass as any)._initialize = initialize;
 
     Object.assign(klass.prototype, methods);
 
@@ -968,10 +980,6 @@ export function schema<
         for (const fieldName of optionalFields) {
             metadata[metadata[fieldName]].optional = true;
         }
-    }
-
-    if (name) {
-        Object.defineProperty(klass, "name", { value: name });
     }
 
     (klass as any).extend = <T2 extends FieldsAndMethods = FieldsAndMethods>(

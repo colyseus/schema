@@ -257,18 +257,46 @@ describe("Zod-style schema() API", () => {
             assert.strictEqual(calls, 1);
         });
 
-        it("initialize() does NOT run for parent classes during child construction", () => {
+        it("a child without initialize() inherits the parent's", () => {
+            let parentCalls = 0;
+            const Parent = schema({
+                x: t.number(),
+                initialize(opts: { x: number; scale: number }) { parentCalls++; this.x = opts.x * opts.scale; },
+            }, "Parent");
+            const Child = Parent.extend({ y: t.number() }, "Child");
+            const Grandchild = Child.extend({ z: t.number() }, "Grandchild");
+
+            const child = new Child({ x: 2, scale: 3 });
+            assert.strictEqual(child.x, 6);
+            assert.strictEqual(parentCalls, 1);
+
+            const grandchild = new Grandchild({ x: 2, scale: 5 });
+            assert.strictEqual(grandchild.x, 10);
+            assert.strictEqual(parentCalls, 2);
+        });
+
+        it("a child's own initialize() replaces the parent's", () => {
             let parentCalls = 0;
             const Parent = schema({
                 x: t.number(),
                 initialize() { parentCalls++; },
             }, "Parent");
-            const Child = Parent.extend({ y: t.number() }, "Child");
+            const Child = Parent.extend({
+                y: t.number(),
+                initialize(opts: { y: number }) { this.y = opts.y; },
+            }, "Child");
 
-            // Zero-arg initialize on Parent propagates through ExtractInitProps,
-            // so Child() accepts no init-props either.
-            new Child();
+            const child = new Child({ y: 1 });
+            assert.strictEqual(child.y, 1);
             assert.strictEqual(parentCalls, 0);
+        });
+
+        it("a custom base's initialize() is not picked up", () => {
+            let baseCalls = 0;
+            class Base extends Schema { initialize() { baseCalls++; } }
+            const OnBase = schema({ x: t.number() }, "OnBase", Base);
+            new OnBase({ x: 1 });
+            assert.strictEqual(baseCalls, 0);
         });
     });
 
