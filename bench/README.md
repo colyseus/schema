@@ -84,12 +84,10 @@ Rules:
 ## Optimization protocol
 
 1. Intake a candidate from the profile reports (`results/PROFILE_*.md`).
-2. **Cross-check `DEAD_ENDS.md`** — exact and adjacent mechanisms.
-3. Write the hypothesis in `OPTIMIZATION_LOG.md` (target, expected metric, affected scenarios).
-4. Implement; `npm test` must stay green.
-5. Snapshot both sides; targeted compare at N≥20; full-matrix regression sweep.
-6. Accept/revert per the criteria above; record the verdict with numbers.
-   Failed candidates go to `DEAD_ENDS.md` so they are never retried.
+2. State the hypothesis up front: target, expected metric, affected scenarios.
+3. Implement; `npm test` must stay green.
+4. Snapshot both sides; targeted compare at N≥20; full-matrix regression sweep.
+5. Accept/revert per the criteria above; record the verdict with numbers.
 
 ## Directory map
 

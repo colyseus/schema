@@ -183,8 +183,7 @@ there is no forced migration.
   input path, always delta-encoding.
 - **`Decoder.decodeResync(bytes)`** — reconcile a full state sync over live
   state on the reconnect path: entries the payload omits are pruned through the
-  regular DELETE path, survivors keep instance identity and callbacks. See
-  `PORT/resync.md`.
+  regular DELETE path, survivors keep instance identity and callbacks.
 - **`createPool(ctor)` / `Schema.reset()`** — server-side instance pooling for
   spawn/despawn-heavy rooms. Pooled instances encode byte-identically to fresh
   ones. Does not clear primitive values — re-assign every field after
@@ -243,8 +242,8 @@ implement** for the 0.18 line:
   descriptors ride as a schema-typed `QuantizedDescriptor` ref, and a primitive
   collection child rides `ReflectionField.childPrimitive`.
 
-`CollectionSchema` / `SetSchema` decoding now preserves the wire index
-(`PORT/decoder-wire-index.md`). Fixture generators live in `test-external/`.
+`CollectionSchema` / `SetSchema` decoding now preserves the wire index.
+Fixture generators live in `test-external/`.
 
 ## 4.0.31
 
