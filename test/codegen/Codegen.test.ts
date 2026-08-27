@@ -276,6 +276,79 @@ describe("schema-codegen", () => {
         });
     });
 
+    describe("swift", () => {
+        const read = (name: string) =>
+            fs.readFileSync(path.resolve(OUTPUT_DIR, name), "utf8");
+
+        it("should emit SchemaRef façades", () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "SwiftSchema.ts"));
+            generate("swift", { files: inputFiles, output: OUTPUT_DIR });
+
+            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.swift")).map((f) => path.basename(f));
+            assert.deepStrictEqual(outputFiles.sort(), ["Item.swift", "Player.swift", "TestRoomState.swift"]);
+
+            const player = read("Player.swift");
+            assert.match(player, /import Colyseus/);
+            assert.match(player, /public final class Player: SchemaRef, @unchecked Sendable \{/);
+            assert.match(player, /public var x: Double \{ view\["x"\] \}/);
+            assert.match(player, /public var isBot: Bool \{ view\.bool\("isBot"\) \}/);
+            assert.match(player, /public var items: ArraySchema<Item> \{ arrayOf\("items"\) \}/);
+            assert.match(player, /public var scores: MapSchema<Double> \{ mapOf\("scores"\) \}/);
+            assert.match(player, /public var tags: ArraySchema<String> \{ arrayOf\("tags"\) \}/);
+
+            const state = read("TestRoomState.swift");
+            assert.match(state, /public var players: MapSchema<Player> \{ mapOf\("players"\) \}/);
+            assert.match(state, /public var host: Player\? \{ refOf\("host"\) \}/);
+            assert.match(state, /public var currentTurn: String \{ view\.string\("currentTurn"\) \?\? "" \}/);
+        });
+
+        it("should leave an extended class open to subclass", () => {
+            const inputFiles = [
+                path.resolve(INPUT_DIR, "BaseSchema.ts"),
+                path.resolve(INPUT_DIR, "Inheritance.ts"),
+            ];
+            generate("swift", { files: inputFiles, output: OUTPUT_DIR });
+
+            assert.match(read("BaseSchema.swift"), /open class BaseSchema: SchemaRef, @unchecked Sendable \{/);
+            assert.match(read("Inheritance.swift"), /public final class Inheritance: BaseSchema, @unchecked Sendable \{/);
+        });
+
+        it("should bundle every structure into a single file", () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "SwiftSchema.ts"));
+            generate("swift", { files: inputFiles, output: OUTPUT_DIR, bundle: true });
+
+            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.swift")).map((f) => path.basename(f));
+            assert.deepStrictEqual(outputFiles, ["Schema.swift"]);
+
+            const bundle = read("Schema.swift");
+            for (const klass of ["Item", "Player", "TestRoomState"]) {
+                assert.match(bundle, new RegExp(`class ${klass}`));
+            }
+            // One import for the whole file, not one per structure.
+            assert.strictEqual(bundle.match(/import Colyseus/g)?.length, 1);
+        });
+
+        it("should stand a namespace in as a caseless enum", () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "SwiftSchema.ts"));
+            generate("swift", { files: inputFiles, output: OUTPUT_DIR, bundle: true, namespace: "Lab" });
+
+            const bundle = read("Lab.swift");
+            assert.match(bundle, /public enum Lab \{\}/);
+            assert.match(bundle, /extension Lab \{/);
+            assert.match(bundle, /    public final class Player: SchemaRef, @unchecked Sendable \{/);
+        });
+
+        it("should escape a field name that is a Swift keyword", () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "SwiftKeywords.ts"));
+            generate("swift", { files: inputFiles, output: OUTPUT_DIR });
+
+            const out = read("KeywordState.swift");
+            assert.match(out, /public var `class`: String/);
+            assert.match(out, /public var `repeat`: Double/);
+            assert.match(out, /public var normal: Double/);
+        });
+    });
+
     describe("dart", () => {
         const read = (name: string) =>
             fs.readFileSync(path.resolve(OUTPUT_DIR, name), "utf8");
