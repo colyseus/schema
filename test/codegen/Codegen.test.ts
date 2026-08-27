@@ -347,6 +347,19 @@ describe("schema-codegen", () => {
             assert.match(out, /public var `repeat`: Double/);
             assert.match(out, /public var normal: Double/);
         });
+
+        it("should emit enums as caseless enums of constants", () => {
+            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Enums.ts"));
+            generate("swift", { files: inputFiles, output: OUTPUT_DIR });
+
+            const shipType = read("ShipType.swift");
+            assert.match(shipType, /public enum ShipType \{/);
+            assert.match(shipType, /public static let Transport = 0/);
+            assert.match(shipType, /public static let Colonizer = 2/);
+
+            const messageType = read("MessageType.swift");
+            assert.match(messageType, /public static let DeployMiner = "deploy-miner"/);
+        });
     });
 
     describe("dart", () => {
