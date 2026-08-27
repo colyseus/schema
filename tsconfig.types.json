@@ -14,6 +14,7 @@
     "test/types/MapSchemaIterator.ts",
     "test/types/SchemaTypeOptionality.ts",
     "test/types/SchemaCustomBase.ts",
-    "test/types/SchemaExtend.ts"
+    "test/types/SchemaExtend.ts",
+    "test/types/CollectionElementRefinement.ts"
   ]
 }

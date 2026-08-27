@@ -14,6 +14,7 @@ export type Constructor<T = {}> = new (...args: any[]) => T;
 type PrimitiveStringToType<T> =
     T extends "string" ? string
     : T extends "number" | "int8" | "uint8" | "int16" | "uint16" | "int32" | "uint32" | "int64" | "uint64" | "float32" | "float64" ? number
+    : T extends "bigint64" | "biguint64" ? bigint
     : T extends "boolean" ? boolean
     : T;
 
@@ -53,6 +54,8 @@ export type InferValueType<T> =
     : T extends "uint64" ? number
     : T extends "float32" ? number
     : T extends "float64" ? number
+    : T extends "bigint64" ? bigint
+    : T extends "biguint64" ? bigint
     : T extends "boolean" ? boolean
 
     // Handle { type: ... } patterns
@@ -94,6 +97,19 @@ export type InferValueType<T> =
     : T extends PrimitiveType ? T
 
     : never;
+
+/**
+ * Codecs that can carry a `T` — {@link InferValueType} run backwards, derived
+ * from it so the two can't drift. Constrains the element refinement in
+ * `t.array<Mark>("uint8")`; `never` (an uncallable overload) when no codec
+ * decodes into `T`.
+ *
+ * `[T] extends [...]` is deliberate: a distributive check would let a mixed
+ * union like `string | number` match on either half.
+ */
+export type CodecFor<T> = {
+    [K in RawPrimitiveType]: [T] extends [InferValueType<K>] ? K : never
+}[RawPrimitiveType];
 
 // Keys whose builder carries the `.optional()` brand. Reads the brand rather
 // than `undefined extends V`: the latter is true for EVERY V when the consumer

@@ -341,6 +341,37 @@ describe("Type: Schema", () => {
             assert.strictEqual(decoded.i64, bint);
         });
 
+        it("bigint collections", () => {
+            class Data extends Schema {
+                @type(["bigint64"]) arr = new ArraySchema<bigint>();
+                @type({ map: "biguint64" }) map = new MapSchema<bigint>();
+                @type({ set: "bigint64" }) set = new SetSchema<bigint>();
+            }
+
+            const max64 = 2n ** 64n - 1n;  // biguint64 upper bound
+            const min64 = -(2n ** 63n);    // bigint64 lower bound
+
+            const data = new Data();
+            data.arr.push(min64, 0n, 9007199254740993n);
+            data.map.set("max", max64);
+            data.set.add(-5n);
+
+            const decoded = new Data();
+            decoded.decode(data.encodeAll());
+
+            assert.deepStrictEqual([...decoded.arr], [min64, 0n, 9007199254740993n]);
+            assert.strictEqual(decoded.map.get("max"), max64);
+            assert.deepStrictEqual([...decoded.set], [-5n]);
+
+            // patches carry bigints too
+            data.arr.push(2n ** 63n - 1n);   // bigint64 upper bound
+            data.map.set("mid", 2n ** 63n);  // past the signed range
+            decoded.decode(data.encode());
+
+            assert.strictEqual(decoded.arr.at(-1), 2n ** 63n - 1n);
+            assert.strictEqual(decoded.map.get("mid"), 2n ** 63n);
+        });
+
         it("manual change tracking", () => {
             class MyState extends Schema {
                 @type("string", { manual: true }) currentTurn: string;

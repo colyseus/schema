@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.22]
+
+### Added
+
+- `t.array<Mark>("uint8")` refines the element type — the collection mirror of
+  `t.uint8<Mark>()`, and the same for `t.map` / `t.set` / `t.collection`. An
+  enum or literal-union element was rejected outright, leaving a `number`
+  element type as the only option. Thanks @jeffreyhugh
+  ([Discord](https://discord.com/channels/525739117951320081/1542326053018800178)).
+
+### Fixed
+
+- `bigint64` / `biguint64` collections infer `bigint` elements. `t.array("bigint64")`
+  and `@type(["bigint64"])` typed them as the literal string `"bigint64"`.
+
 ## [5.0.21]
 
 ### Fixed

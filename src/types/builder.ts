@@ -5,7 +5,7 @@ import type { CollectionSchema } from "./custom/CollectionSchema.js";
 import type { StreamSchema } from "./custom/StreamSchema.js";
 import type { Schema } from "../Schema.js";
 import type { DefinitionType, RawPrimitiveType } from "../annotations.js";
-import type { InferValueType, Constructor } from "./HelperTypes.js";
+import type { InferValueType, Constructor, CodecFor } from "./HelperTypes.js";
 import { $builder } from "./symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "../encoder/streaming.js";
 import { resolveQuantize, type QuantizeOptions } from "./quantize.js";
@@ -337,21 +337,28 @@ function resolveChild(child: ChildType): DefinitionType {
 // overloads narrow the return type for Schema/primitive children.
 // All collection factories tag `HasDefault = true` because schema() auto-
 // instantiates an empty collection when no explicit default is given.
+//
+// The third overload refines the ELEMENT type (`t.map<V>` — the value, never
+// the key), with the same type-level-only caveat as `PrimitiveFactory` above.
 interface ArrayFactory {
     <C extends Constructor<Schema>>(child: C): FieldBuilder<ArraySchema<InstanceType<C>>, true, false>;
     <P extends RawPrimitiveType>(child: P): FieldBuilder<ArraySchema<InferValueType<P>>, true, false>;
+    <T>(child: CodecFor<T>): FieldBuilder<ArraySchema<T>, true, false>;
 }
 interface MapFactory {
     <C extends Constructor<Schema>>(child: C): FieldBuilder<MapSchema<InstanceType<C>>, true, false>;
     <P extends RawPrimitiveType>(child: P): FieldBuilder<MapSchema<InferValueType<P>>, true, false>;
+    <T>(child: CodecFor<T>): FieldBuilder<MapSchema<T>, true, false>;
 }
 interface SetFactory {
     <C extends Constructor<Schema>>(child: C): FieldBuilder<SetSchema<InstanceType<C>>, true, false>;
     <P extends RawPrimitiveType>(child: P): FieldBuilder<SetSchema<InferValueType<P>>, true, false>;
+    <T>(child: CodecFor<T>): FieldBuilder<SetSchema<T>, true, false>;
 }
 interface CollectionFactory {
     <C extends Constructor<Schema>>(child: C): FieldBuilder<CollectionSchema<InstanceType<C>>, true, false>;
     <P extends RawPrimitiveType>(child: P): FieldBuilder<CollectionSchema<InferValueType<P>>, true, false>;
+    <T>(child: CodecFor<T>): FieldBuilder<CollectionSchema<T>, true, false>;
 }
 // t.stream(Entity) — priority-batched collection of Schema instances.
 // Element type is restricted to Schema subclasses (no primitives) because
