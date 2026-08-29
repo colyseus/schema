@@ -7,7 +7,7 @@ import { DataChange } from "../src/decoder/DecodeOperation";
 import { $numFields, $fullSyncSkipIndexes } from "../src/types/symbols";
 
 import "./Schema";
-import { assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, createDecoder } from "./Schema";
 
 /** Field names by wire index, straight off a class's metadata. */
 function fieldNames(klass: any): string[] {
@@ -188,7 +188,7 @@ describe("@deprecated()", () => {
         it("should consume a value sent for a deprecated field without throwing", () => {
             const state = new LivePeer();
             const target = new DeprecatedPeer();
-            const decoder = new Decoder(target);
+            const decoder = createDecoder(target);
 
             assert.doesNotThrow(() => decoder.decode(getEncoder(state).encode()));
 
@@ -200,7 +200,7 @@ describe("@deprecated()", () => {
         it("should consume a deprecated field on full sync too", () => {
             const state = new LivePeer();
             const target = new DeprecatedPeer();
-            const decoder = new Decoder(target);
+            const decoder = createDecoder(target);
 
             assert.doesNotThrow(() => decoder.decode(getEncoder(state).encodeAll()));
 
@@ -211,7 +211,7 @@ describe("@deprecated()", () => {
         it("should not emit a change for a deprecated field", () => {
             const state = new LivePeer();
             const target = new DeprecatedPeer();
-            const decoder = new Decoder(target);
+            const decoder = createDecoder(target);
 
             let changes: DataChange[] = [];
             decoder.triggerChanges = (all) => { changes = changes.concat(all); };
@@ -233,7 +233,7 @@ describe("@deprecated()", () => {
 
             const state = new LiveTail();
             const target = new DeprecatedTail();
-            new Decoder(target).decode(getEncoder(state).encode());
+            createDecoder(target).decode(getEncoder(state).encode());
 
             assert.strictEqual("AAA", target.a);
         });
@@ -314,7 +314,7 @@ describe("@deprecated()", () => {
             };
 
             const target = new State() as any;
-            const decoder = new Decoder(target);
+            const decoder = createDecoder(target);
             const changed: string[] = [];
             decoder.triggerChanges = (all: DataChange[]) => { all.forEach((c) => changed.push(c.field)); };
             decoder.decode(getEncoder(new LivePeer()).encode());

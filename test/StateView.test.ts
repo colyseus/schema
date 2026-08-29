@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import * as util from "util";
 import { Schema, type, view, schema, t, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, $refId, OPERATION, SetSchema, CollectionSchema } from "../src";
-import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts, assertNoOrphanRefs, InheritanceRoot, Position } from "./Schema";
+import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts, assertNoOrphanRefs, InheritanceRoot, Position, onlyCodec } from "./Schema";
 import { nanoid } from "nanoid";
 
 describe("StateView", () => {
@@ -407,7 +407,7 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client1])
         });
 
-        it("view.add(TAG) should not encode ADD twice", () => {
+        onlyCodec("v5", "asserts a v5 byte count that only holds with the test's second Encoder on the same state")("view.add(TAG) should not encode ADD twice", () => {
             enum Tag { ONE = 1, TWO = 2 };
 
             class Item extends Schema {

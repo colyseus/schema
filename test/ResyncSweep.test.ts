@@ -6,6 +6,7 @@ import {
     getEncoder, getDecoder, createInstanceFromReflection,
     assertRefIdCounts, assertNoOrphanRefs,
     createClientWithView, type ClientWithState,
+    onlyCodec,
 } from "./Schema";
 
 class Item extends Schema {
@@ -199,7 +200,7 @@ describe("Resync sweep (decodeResync)", () => {
 
         // the DELETE patch is encoded but arrives AFTER the resync
         state.entities.delete("e2");
-        const latePatch = state.encode();
+        const latePatch = state.encode().slice(); // encode() aliases the shared buffer; the resync below overwrites it
 
         resync(state, client);
         assert.strictEqual(removals, 1);
@@ -211,7 +212,7 @@ describe("Resync sweep (decodeResync)", () => {
         assert.deepStrictEqual(client.toJSON(), state.toJSON());
     });
 
-    it("retains StreamSchema entries (streams are not part of full-sync)", () => {
+    onlyCodec("v5", "StreamSchema emission is not ported to the v6 PoC")("retains StreamSchema entries (streams are not part of full-sync)", () => {
         class StreamState extends Schema {
             @type({ stream: Entity }) feed = new StreamSchema<Entity>();
         }

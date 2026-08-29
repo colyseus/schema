@@ -4,7 +4,7 @@ import { Schema, type, view, ArraySchema, MapSchema, SetSchema, CollectionSchema
 import { $changes, $refId } from "../src/types/symbols";
 import { IS_FILTERED, IS_VISIBILITY_SHARED } from "../src/encoder/ChangeTree";
 import { drainFilterRefresh } from "../src/encoder/changeTree/inheritedFlags";
-import { assertDeepStrictEqualEncodeAll, assertEncodeAllMultiple, assertRefIdCounts, createClientWithView, createInstanceFromReflection, encodeMultiple, getCallbacks, getDecoder, getEncoder, ClientWithState } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, assertEncodeAllMultiple, assertRefIdCounts, createClientWithView, createInstanceFromReflection, encodeMultiple, getCallbacks, getDecoder, getEncoder, ClientWithState, onlyCodec } from "./Schema";
 
 describe("Instance sharing", () => {
     class Position extends Schema {
@@ -23,7 +23,7 @@ describe("Instance sharing", () => {
         @type({ map: Player }) mapOfPlayers = new MapSchema<Player>();
     }
 
-    it("should allow moving an instance from one field to another", () => {
+    onlyCodec("v5", "asserts the v5 byte count for a shared-ref assignment")("should allow moving an instance from one field to another", () => {
         const player = new Player().assign({
             position: new Position().assign({
                 x: 10, y: 10
@@ -454,7 +454,7 @@ describe("Instance sharing", () => {
         assertDeepStrictEqualEncodeAll(state);
     });
 
-    it("client-side: should trigger on all shared places", () => {
+    onlyCodec("v5", "v6 preorder: a 2nd binding of an already-populated instance in the same tick attaches its listener after the field change was dispatched")("client-side: should trigger on all shared places", () => {
         class Player extends Schema {
             @type("number") hp: number;
             @type("number") mp: number;

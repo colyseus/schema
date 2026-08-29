@@ -3,6 +3,23 @@ import * as assert from "assert";
 import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator, StateView, view } from "../src";
 import { Decoder } from "../src/decoder/Decoder";
 import { Encoder } from "../src/encoder/Encoder";
+import { Encoder6, Decoder6, Reflection6 } from "../src/v6";
+
+/**
+ * Wire codec used by the helpers below. `SCHEMA_CODEC=v6` runs the suite
+ * against the v6 PoC encoder/decoder; default is the shipping v5 format.
+ */
+export const CODEC: "v5" | "v6" = (process.env.SCHEMA_CODEC === "v6") ? "v6" : "v5";
+
+/** `onlyCodec("v5")("name", fn)` — run a case under one codec only (byte-locked or codec-specific behaviour). */
+export function onlyCodec(codec: "v5" | "v6", _reason?: string): Mocha.TestFunction | Mocha.PendingTestFunction {
+    return (CODEC === codec) ? it : it.skip;
+}
+
+/** Standalone decoder for the active codec (for tests that don't go through `getDecoder`'s cache). */
+export function createDecoder<T extends Schema>(state: T): Decoder<T> {
+    return (CODEC === "v6") ? new Decoder6<T>(state) as any : new Decoder<T>(state);
+}
 import { CallbackProxy, getDecoderStateCallbacks, SchemaCallbackProxy } from "../src/decoder/strategy/getDecoderStateCallbacks";
 
 // augment Schema to add encode/decode methods
@@ -22,7 +39,7 @@ export function getCallbacks<T extends Schema>(state: T): (<F extends Schema>(in
 
 export function getDecoder<T extends Schema>(state: T) {
     // @ts-ignore
-    if (!state['_decoder']) { state['_decoder'] = new Decoder(state); }
+    if (!state['_decoder']) { state['_decoder'] = createDecoder(state); }
     // @ts-ignore
     return state['_decoder'] as Decoder<T>;
 }
@@ -59,19 +76,28 @@ export function assertDeepStrictEqualEncodeAll<T extends Schema>(state: T, asset
  *   (see `assertNoOrphanRefs`).
  */
 export function assertRefIdCounts<T extends Schema>(source: T, target: T) {
-    // assert ref counts
-    const encoder = getEncoder(source);
-    const decoder = getDecoder(target);
+    assertRefParity(getEncoder(source).root, getDecoder(target).root, () => Schema.debugRefIds(source));
+}
 
-    for (const refId in encoder.root.refCount) {
-        const ref = encoder.root.changeTrees[refId]?.ref;
-        const encoderRefCount = encoder.root.refCount[refId];
-        const decoderRefCount = decoder.root.refCount[refId] ?? 0;
-        assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for '${ref?.constructor.name}' (refId: ${refId}) => (Encoder count: ${encoderRefCount}, Decoder count: ${decoderRefCount})
-\n${Schema.debugRefIds(source)}`);
+/**
+ * Root-level core of `assertRefIdCounts` + `assertNoOrphanRefs`: every
+ * encoder refCount matches the decoder's, and the decoder holds no ref the
+ * encoder considers dead. `detail` is appended to failure messages.
+ */
+export function assertRefParity(encoderRoot: { refCount: any, changeTrees: any }, decoderRoot: { refCount: any, refs: Map<number, any> }, detail: (() => string) | string = "") {
+    const more = () => (typeof detail === "function") ? `\n${detail()}` : detail;
+    for (const refId in encoderRoot.refCount) {
+        const ref = encoderRoot.changeTrees[refId]?.ref;
+        const encoderRefCount = encoderRoot.refCount[refId];
+        const decoderRefCount = decoderRoot.refCount[refId] ?? 0;
+        assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for '${ref?.constructor.name}' (refId: ${refId}) => (Encoder count: ${encoderRefCount}, Decoder count: ${decoderRefCount})${more()}`);
     }
-
-    assertNoOrphanRefs(source, target);
+    for (const refId of decoderRoot.refs.keys()) {
+        assert.ok(
+            encoderRoot.refCount[refId] > 0,
+            `decoder holds orphan refId ${refId} (${decoderRoot.refs.get(refId)?.constructor.name}) — encoder refCount=${encoderRoot.refCount[refId] ?? "absent"}${more()}`,
+        );
+    }
 }
 
 /**
@@ -98,14 +124,16 @@ export function assertNoOrphanRefs<T extends Schema>(source: T, target: T) {
 
 export function getEncoder<T extends Schema>(state: T) {
     // @ts-ignore
-    if (!state['_encoder']) { state['_encoder'] = new Encoder(state); }
+    if (!state['_encoder']) { state['_encoder'] = (CODEC === "v6") ? new Encoder6(state) : new Encoder(state); }
     // @ts-ignore
     return state['_encoder'] as Encoder;
 }
 
 export function createInstanceFromReflection<T extends Schema>(state: T, encoder?: Encoder<T>) {
     encoder ??= getEncoder(state);
-    const decoder = Reflection.decode<T>(Reflection.encode(encoder));
+    const decoder = (encoder instanceof Encoder6)
+        ? Reflection6.decode<T>(Reflection6.encode(encoder))
+        : Reflection.decode<T>(Reflection.encode(encoder));
     // @ts-ignore
     decoder.state['_decoder'] = decoder;
     return decoder.state;
@@ -118,8 +146,9 @@ Schema.prototype.encode = function(it: Iterator) {
     return bytes;
 }
 
-Schema.prototype.decode = function(bytes: Uint8Array) {
-    return getDecoder(this).decode(bytes);
+Schema.prototype.decode = function(bytes: Uint8Array | Uint8Array[]) {
+    // v6 `encodeView` / `encodeAllView` return a `[shared, view]` pair
+    return (getDecoder(this) as any).decode(bytes);
 }
 
 Schema.prototype.encodeAll = function() {
@@ -161,7 +190,7 @@ export function encodeAllForView<T extends Schema>(encoder: Encoder<T>, client: 
     }
 
     const sharedOffset = itAll.offset;
-    const fullEncodeForView = encoder.encodeAllView(client.view, sharedOffset, itAll, buf);
+    const fullEncodeForView = joinSlices(encoder.encodeAllView(client.view, sharedOffset, itAll, buf));
 
     // console.log(`FULL ENCODE FOR VIEW: (${fullEncodeForView.length})`, Array.from(fullEncodeForView));
 
@@ -194,13 +223,18 @@ export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, 
     const encodedViews = clients.map((client, i) => {
         // encode each view
         // console.log(">> encodeView()", i + 1);
-        const encoded = encoder.encodeView(client.view, sharedOffset, it);
+        const encoded = joinSlices(encoder.encodeView(client.view, sharedOffset, it));
         client.state.decode(encoded);
         return encoded;
     });
 
     encoder.discardChanges();
     return encodedViews;
+}
+
+/** v6 view encodes return `[shared, view]`; tests expect one buffer. */
+function joinSlices(encoded: Uint8Array | Uint8Array[]): Uint8Array {
+    return Array.isArray(encoded) ? Encoder6.concat(encoded) : encoded;
 }
 
 export function encodeAllMultiple<T extends Schema>(encoder: Encoder<T>, state: T, referenceClients: Array<{ state: Schema, view: StateView }>) {
@@ -220,7 +254,7 @@ export function encodeAllMultiple<T extends Schema>(encoder: Encoder<T>, state: 
         // encode each view
         // console.log(`> ENCODE VIEW: client${i + 1}`);
 
-        const encoded = encoder.encodeAllView(client.view, sharedOffset, it);
+        const encoded = joinSlices(encoder.encodeAllView(client.view, sharedOffset, it));
         client.state.decode(encoded);
 
         return encoded;

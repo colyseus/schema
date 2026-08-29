@@ -98,3 +98,5 @@ export { getEncodeDescriptor, type EncodeDescriptor } from "./encoder/EncodeDesc
 // Symbols used by InputEncoder/InputDecoder via the runtime-externalized
 // `@colyseus/schema` import in `build/input/index.mjs`.
 export { $numFields, $values } from "./types/symbols.js";
+// v6 wire format (PoC — experimental)
+export { Encoder6, Decoder6, Reflection6, PROTOCOL_VERSION as V6_PROTOCOL_VERSION, encoding6 } from "./v6/index.js";

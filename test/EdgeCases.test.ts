@@ -5,7 +5,7 @@ import { MapSchema, Schema, type, ArraySchema, Reflection, Encoder, OPERATION, s
 
 import { SWITCH_TO_STRUCTURE } from "../src/encoding/spec";
 
-import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, encodeAndAssertEquals } from "./Schema";
+import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, encodeAndAssertEquals, onlyCodec } from "./Schema";
 
 describe("Edge cases", () => {
     it("Schema should support up to 63 fields", () => {
@@ -220,7 +220,7 @@ describe("Edge cases", () => {
             assert.throws(() => padded(t.ref(schema({ n: t.number() }, "IdxChildX")), "RefAtIndex63", 63), TOO_MANY);
         });
 
-        it("should replace a child Schema at the last usable index", () => {
+        onlyCodec("v5", "asserts the v5 op byte 254")("should replace a child Schema at the last usable index", () => {
             const ChildT = schema({ n: t.number() }, "IdxChild");
             const State62 = padded(t.ref(ChildT), "RefAtIndex62");
 

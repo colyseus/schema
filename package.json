@@ -18,6 +18,7 @@
     "watch": "node node_modules/typescript/bin/tsc -p tsconfig.build.json -w",
     "typecheck:build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json --noEmit",
     "test": "npm run test:types && tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.test.ts\" \"test/**/*.test.ts\"",
+    "test:v6": "SCHEMA_CODEC=v6 tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js test/v6/*.test.ts test/Schema.test.ts test/MapSchema.test.ts test/ArraySchema.test.ts test/InstanceSharing.test.ts test/Inheritance.test.ts test/Definition.test.ts test/ToJSON.test.ts test/ParentChain.test.ts test/RefIdAllocation.test.ts test/Pool.test.ts test/ChangeTrackingControl.test.ts test/NextIteration.test.ts test/Issue221.test.ts test/CommunityCases.test.ts test/EdgeCases.test.ts test/Deprecated.test.ts test/ResyncSweep.test.ts test/StateView.test.ts test/StateViewInternals.test.ts test/StateViewInvalidArgs.test.ts test/ViewSubscribe.test.ts test/callbacks/*.test.ts test/BackwardsForwardsCompatibility.test.ts",
     "test:types": "node node_modules/typescript/bin/tsc -p tsconfig.build.json && node test/types/run.mjs typescript typescript-7",
     "test:exports": "node test/verify-exports.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.test.json",
