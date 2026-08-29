@@ -62,7 +62,7 @@ declare global {
 
 // Pure arithmetic, no `this` — V8 inlines into encode-loop forEach.
 // Mirror of `ChangeTree._opAt` for the inline-ops-only branch.
-function readInlineOpByte(low: number, high: number, index: number): number {
+export function readInlineOpByte(low: number, high: number, index: number): number {
     const shift = (index & 3) << 3;
     return (index < 4)
         ? (low >>> shift) & 0xFF
@@ -227,7 +227,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * reachable through multiple parents) short-circuits on the equality
      * check instead of recursing again.
      */
-    _fullSyncGen: number = 0;
+    _fullSyncGen: number = 0; // v5 walks stamp positive values; the v6 encoder stamps negative ones (never equal)
 
     // Schema vs Collection discriminator. Set once in ctor, never changes —
     // per-tree-stable branch for inline ChangeRecorder dispatch.

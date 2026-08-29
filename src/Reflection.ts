@@ -23,6 +23,9 @@ interface ReflectionStatic {
      */
     encode: (encoder: Encoder, it?: Iterator) => Uint8Array;
 
+    /** Handshake decoders keyed by protocol version (see `Reflection.decode`). */
+    codecs: { [version: number]: { decode: <T extends Schema = Schema>(bytes: Uint8Array, it?: Iterator) => Decoder<T> } };
+
     /**
      * Decodes the TypeContext from a buffer into a Decoder instance.
      *
@@ -97,15 +100,15 @@ export const Reflection = schema({
 
 export type Reflection = SchemaType<typeof Reflection>;
 
-Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
-    const context = encoder.context;
-
-    const reflection = new Reflection();
-    const reflectionEncoder = new Encoder(reflection);
-
+/**
+ * Fill `reflection` with the type table of `context`, rooted at `rootCtor`.
+ * Shared by every codec's handshake encoder (the v5 path keeps creating its
+ * `Encoder` BEFORE populating so refIds — and therefore bytes — are unchanged).
+ */
+export function populateReflection(reflection: Reflection, context: TypeContext, rootCtor: typeof Schema): void {
     // rootType is usually the first schema passed to the Encoder
     // (unless it inherits from another schema)
-    const rootType = context.schemas.get(encoder.state.constructor);
+    const rootType = context.schemas.get(rootCtor);
     if (rootType > 0) { reflection.rootType = rootType; }
 
     const includedTypeIds = new Set<number>();
@@ -224,17 +227,44 @@ Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
         pendingReflectionTypes[typeid].forEach((type) =>
             reflection.types.push(type))
     }
+}
 
+Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
+    const reflection = new Reflection();
+    const reflectionEncoder = new Encoder(reflection);
+    populateReflection(reflection, encoder.context, encoder.state.constructor as typeof Schema);
     const buf = reflectionEncoder.encodeAll(it);
     return buf.slice(0, it.offset);
 };
 
+/**
+ * Handshake decoders by protocol version. A v5 payload always starts with
+ * byte `0x80` (root field 0 `types`, op ADD); newer codecs prefix a
+ * `uvarint(version)` < 0x80 and register themselves here.
+ */
+Reflection.codecs = {};
+
 Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it?: Iterator): Decoder<T> {
+    const first = bytes[it?.offset ?? 0];
+    if (first < 0x80) {
+        const codec = Reflection.codecs[first];
+        if (codec === undefined) {
+            throw new Error(`@colyseus/schema: unsupported reflection protocol version ${first}`);
+        }
+        return codec.decode<T>(bytes, it);
+    }
+
     const reflection = new Reflection();
 
     const reflectionDecoder = new Decoder(reflection);
     reflectionDecoder.decode(bytes, it);
 
+    const { typeContext, state } = materializeReflection<T>(reflection);
+    return new Decoder<T>(state, typeContext);
+}
+
+/** Rebuild classes + a `TypeContext` from a decoded `Reflection`; returns the root instance. */
+export function materializeReflection<T extends Schema = Schema>(reflection: Reflection): { typeContext: TypeContext, state: T } {
     const typeContext = new TypeContext();
 
     // 1st pass, initialize metadata + inheritance
@@ -308,7 +338,7 @@ Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it?:
 
     const state: T = new (typeContext.get(reflection.rootType || 0) as unknown as any)();
 
-    return new Decoder<T>(state, typeContext);
+    return { typeContext, state };
 }
 
 Reflection.makeEncodable = function (ctor: typeof Schema): typeof Schema {

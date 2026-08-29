@@ -203,6 +203,43 @@ function encodeChangeCb(ctx: EncodeCtx, fieldIndex: number, op: OPERATION): void
     ctx.encoder(ctx.self, ctx.buffer, ctx.changeTree, fieldIndex, operation, ctx.it, ctx.isEncodeAll, ctx.hasView, ctx.metadata);
 }
 
+/**
+ * Grow an encoder's output buffer to the next `BUFFER_SIZE` multiple that
+ * fits `usedOffset` bytes, warning once with the value to configure. Shared
+ * by every encoder (v5 and the v6 PoC).
+ */
+export function growSharedBuffer(owner: { sharedBuffer: Uint8Array }, buffer: Uint8Array, usedOffset: number): Uint8Array {
+    const newSize = Math.ceil(usedOffset / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
+
+    console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
+
+    import { Encoder } from "@colyseus/schema";
+    Encoder.BUFFER_SIZE = ${Math.round(newSize / 1024)} * 1024; // ${Math.round(newSize / 1024)} KB
+`);
+
+    const newBuffer = new Uint8Array(newSize);
+    newBuffer.set(buffer);
+
+    if (buffer === owner.sharedBuffer) {
+        owner.sharedBuffer = newBuffer;
+    }
+
+    return newBuffer;
+}
+
+/** End the tick for every tree in `list`: reset recorders, release queue nodes. */
+export function discardQueue(root: Root, list: ChangeTreeList): void {
+    let current = list.next;
+    while (current) {
+        const next = current.next;
+        current.changeTree.endEncode(); // clears changesNode internally
+        root.releaseNode(current);
+        current = next;
+    }
+    list.next = undefined;
+    list.tail = undefined;
+}
+
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
     const result = new Uint8Array(a.length + b.length);
     result.set(a, 0);
@@ -419,22 +456,7 @@ export class Encoder<T extends Schema = any> {
     }
 
     private _resizeBuffer(buffer: Uint8Array, usedOffset: number): Uint8Array {
-        const newSize = Math.ceil(usedOffset / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
-
-        console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
-
-    import { Encoder } from "@colyseus/schema";
-    Encoder.BUFFER_SIZE = ${Math.round(newSize / 1024)} * 1024; // ${Math.round(newSize / 1024)} KB
-`);
-
-        const newBuffer = new Uint8Array(newSize);
-        newBuffer.set(buffer);
-
-        if (buffer === this.sharedBuffer) {
-            this.sharedBuffer = newBuffer;
-        }
-
-        return newBuffer;
+        return growSharedBuffer(this, buffer, usedOffset);
     }
 
     encodeAll(
@@ -911,17 +933,7 @@ export class Encoder<T extends Schema = any> {
     }
 
     discardChanges() {
-        const list = this.root.changes;
-        let current = list.next;
-        const root = this.root;
-        while (current) {
-            const next = current.next;
-            current.changeTree.endEncode(); // clears changesNode internally
-            root.releaseNode(current);
-            current = next;
-        }
-        list.next = undefined;
-        list.tail = undefined;
+        discardQueue(this.root, this.root.changes);
     }
 
     discardUnreliableChanges() {

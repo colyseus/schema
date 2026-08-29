@@ -80,6 +80,9 @@ export interface EncodeDescriptor {
     types: any[];
     tags: (number | undefined)[];
     encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
+
+    /** Lazily-built v6 codec cache (see `src/v6/classInfo.ts`). Declared up front so the slot is in the initial hidden class. */
+    v6: unknown;
 }
 
 /**
@@ -181,6 +184,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         types: arrays.types,
         tags: arrays.tags,
         encoders: arrays.encoders,
+        v6: undefined,
     };
     Object.defineProperty(ctor, $encodeDescriptor, {
         value: desc,
