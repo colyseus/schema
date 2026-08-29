@@ -13,6 +13,40 @@ export function setBufferSize(lib) {
     lib.Encoder.BUFFER_SIZE = 4 * 1024 * 1024;
 }
 
+// --- Codec selection ------------------------------------------------------
+//
+// Every scenario runs once per wire codec present in the build: the shipping
+// v5 format (`lib.Encoder` / `lib.Decoder`) and the v6 PoC (`lib.Encoder6` /
+// `lib.Decoder6`). `withCodecs()` turns each variant into `<name>` (v5) and
+// `<name>-v6`; `codecOf()` hands `setup()` the matching classes. Keeping the
+// codec in the variant (not a build flag) preserves `--compare`'s per-variant
+// byte guard. `BENCH_CODECS=v5` (or `v6`) restricts the matrix.
+
+export function withCodecs(variants) {
+    const codecs = (process.env.BENCH_CODECS ?? "v5,v6").split(",").map((c) => c.trim());
+    const out = [];
+    for (const v of variants) {
+        if (codecs.includes("v5")) out.push({ ...v });
+        if (codecs.includes("v6")) out.push({ ...v, name: `${v.name}-v6`, codec: "v6" });
+    }
+    return out;
+}
+
+export function codecOf(lib, variant) {
+    const name = variant?.codec ?? "v5";
+    if (name === "v6" && lib.Encoder6 === undefined) throw new Error("codec v6 not present in this build");
+    const v6 = name === "v6";
+    return {
+        name,
+        Encoder: v6 ? lib.Encoder6 : lib.Encoder,
+        Decoder: v6 ? lib.Decoder6 : lib.Decoder,
+        Reflection: v6 ? lib.Reflection6 : lib.Reflection,
+        // v6 view encodes return [shared, view]; the transport sends both slices — no concat
+        encodeView: (encoder, view, sharedOffset, it) => encoder.encodeView(view, sharedOffset, it),
+        bytesOf: (payload) => Array.isArray(payload) ? payload[0].byteLength + payload[1].byteLength : payload.byteLength,
+    };
+}
+
 // Decorators applied manually (same call shape __decorate produces): type first, then view.
 function field(lib, Klass, name, typeDef, viewTag) {
     lib.type(typeDef)(Klass.prototype, name, undefined);
@@ -62,10 +96,10 @@ export function makeBloatPlayer(Player, i) {
 }
 
 /** State + Encoder populated with n players keyed p0..p{n-1}. */
-export function buildBloatState(lib, n = 1000) {
+export function buildBloatState(lib, n = 1000, codec = codecOf(lib)) {
     const shapes = defineBloat(lib);
     const state = new shapes.State();
-    const encoder = new lib.Encoder(state);
+    const encoder = new codec.Encoder(state);
     for (let i = 0; i < n; i++) {
         state.players.set(`p${i}`, makeBloatPlayer(shapes.Player, i));
     }
@@ -193,20 +227,20 @@ export function makeDeepPlayer(shapes, j) {
  * One tick for N views: shared encode + per-view encodeView.
  * Returns total encoded bytes across views (correctness guard metric).
  */
-export function tickViews(encoder, views) {
+export function tickViews(codec, encoder, views) {
     const it = { offset: 0 };
     encoder.encode(it);
     const sharedOffset = it.offset;
     let bytes = 0;
     for (let v = 0; v < views.length; v++) {
-        bytes += encoder.encodeView(views[v], sharedOffset, it).byteLength;
+        bytes += codec.bytesOf(codec.encodeView(encoder, views[v], sharedOffset, it));
     }
     encoder.discardChanges();
     return bytes;
 }
 
-/** Full-sync bytes for one view (client join): encodeAll + encodeAllView. */
-export function encodeAllForView(encoder, view) {
+/** Full-sync payload for one view (client join): encodeAll + encodeAllView (a `[shared, view]` pair under v6). */
+export function encodeAllForView(_codec, encoder, view) {
     const it = { offset: 0 };
     encoder.encodeAll(it);
     return encoder.encodeAllView(view, it.offset, it);

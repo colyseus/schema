@@ -1,6 +1,6 @@
 // Custom numeric view tags: fields tagged @view(1)/@view(2), each client
 // subscribed to one tag (bench_view_tags.js pattern — exercises hasTagOnTree).
-import { setBufferSize, tickViews } from "../../lib/fixtures.mjs";
+import { setBufferSize, tickViews, codecOf } from "../../lib/fixtures.mjs";
 
 export default {
     name: "stateview/tags",
@@ -9,6 +9,7 @@ export default {
     reps: 7,
     setup(lib) {
         setBufferSize(lib);
+        const codec = codecOf(lib);
         class TagPlayer extends lib.Schema {}
         lib.type("number")(TagPlayer.prototype, "x", undefined);
         lib.type("number")(TagPlayer.prototype, "y", undefined);
@@ -42,17 +43,17 @@ export default {
             for (const p of players) view.add(p, tag);
             views.push(view);
         }
-        tickViews(encoder, views);
-        return { state, encoder, views, players };
+        tickViews(codec, encoder, views);
+        return { codec, state, encoder, views, players };
     },
     run(ctx, i) {
-        const { encoder, views, players } = ctx;
+        const { codec, encoder, views, players } = ctx;
         for (let j = 0; j < 20; j++) {
             const p = players[j];
             p.x++;
             p.gold = i;      // tag 1
             p.secret = `s${i & 7}`; // tag 2
         }
-        return tickViews(encoder, views);
+        return tickViews(codec, encoder, views);
     },
 };

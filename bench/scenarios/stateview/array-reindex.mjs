@@ -3,7 +3,7 @@
 // visibility). This is the one case that pays for keeping children's
 // cached wire slot in step with the array, since only a filtered array
 // has that slot read back (StateView.addParentOf / remove).
-import { tickViews } from "../../lib/fixtures.mjs";
+import { tickViews, codecOf } from "../../lib/fixtures.mjs";
 
 const N_VIEWS = 4;
 
@@ -18,6 +18,7 @@ export default {
         { name: "pop-1000", size: 1000, head: false, iterations: 500 },
     ],
     setup(lib, variant) {
+        const codec = codecOf(lib);
         class Row extends lib.Schema {
             constructor() {
                 super(...arguments);
@@ -46,8 +47,8 @@ export default {
             for (const row of state.rows) view.add(row);
             views.push(view);
         }
-        tickViews(encoder, views);
-        return { state, encoder, views, mk, head: variant.head };
+        tickViews(codec, encoder, views);
+        return { codec, state, encoder, views, mk, head: variant.head };
     },
     run(ctx, i) {
         const rows = ctx.state.rows;
@@ -55,6 +56,6 @@ export default {
         const row = ctx.mk(1000 + i);
         rows.push(row);
         for (let v = 0; v < N_VIEWS; v++) ctx.views[v].add(row);
-        return tickViews(ctx.encoder, ctx.views);
+        return tickViews(ctx.codec, ctx.encoder, ctx.views);
     },
 };

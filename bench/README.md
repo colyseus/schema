@@ -40,6 +40,20 @@ match — a mismatch means the wire format changed).
 - An A/A null run (`--compare X X`) should show p > 0.05 on ≥95% of rows;
   re-certify when changing the harness or machine.
 
+## Wire codecs (v5 vs the v6 PoC)
+
+Scenarios that touch the wire run once per codec present in the build:
+`<variant>` is the shipping v5 format, `<variant>-v6` the `src/v6/` PoC
+(`withCodecs()` / `codecOf()` in `lib/fixtures.mjs`). `BENCH_CODECS=v5`
+restricts a run to one codec — use it for cross-build `--compare`, whose
+per-variant byte guard keeps working because the codec lives in the variant
+name. To compare the two codecs within one build:
+
+```bash
+npm run bench -- --samples 20 --json bench/results/codecs.json
+node bench/lib/codec-compare.mjs bench/results/codecs.json   # Δ bytes, Δ median, Mann-Whitney p per pair
+```
+
 ## Scenario contract
 
 Scenario files live in `scenarios/<subsystem>/<name>.mjs`:

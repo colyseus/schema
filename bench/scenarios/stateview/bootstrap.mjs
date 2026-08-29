@@ -1,15 +1,17 @@
 // Client-join cost: encodeAll + encodeAllView against a populated state.
-import { defineDeep, makeDeepPlayer, encodeAllForView } from "../../lib/fixtures.mjs";
+import { defineDeep, makeDeepPlayer, encodeAllForView, codecOf, withCodecs } from "../../lib/fixtures.mjs";
 
 export default {
     name: "stateview/bootstrap",
     unit: "ms/op",
     iterations: 50,
     reps: 7,
-    setup(lib) {
+    variants: withCodecs([{ name: "default" }]),
+    setup(lib, variant) {
+        const codec = codecOf(lib, variant);
         const shapes = defineDeep(lib);
         const state = new shapes.State();
-        const encoder = new lib.Encoder(state);
+        const encoder = new codec.Encoder(state);
         const view = new lib.StateView();
         view.add(state);
         for (let j = 0; j < 100; j++) {
@@ -19,9 +21,9 @@ export default {
         }
         encoder.encode();
         encoder.discardChanges();
-        return { encoder, view };
+        return { codec, encoder, view };
     },
     run(ctx) {
-        return encodeAllForView(ctx.encoder, ctx.view).byteLength;
+        return ctx.codec.bytesOf(encodeAllForView(ctx.codec, ctx.encoder, ctx.view));
     },
 };

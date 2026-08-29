@@ -3,30 +3,31 @@
 //   raw    — getRawChangesCallback: DataChange[] firehose, zero dispatch
 //   state  — Callbacks.get() StateCallbackStrategy (dense: onAdd + 2 listens/player)
 //   legacy — getDecoderStateCallbacks proxy (same registrations)
-import { buildBloatState, genHeavyFrames } from "../../lib/fixtures.mjs";
+import { buildBloatState, genHeavyFrames, codecOf, withCodecs } from "../../lib/fixtures.mjs";
 
 export default {
     name: "callbacks/strategies",
     unit: "ms/frame",
     gate: true,
     budget: { raw: 1.4, state: 1.6, legacy: 1.7 }, // ~2x baseline medians (34ec6f7)
-    variants: [
-        { name: "raw", iterations: 400 },
-        { name: "state", iterations: 400 },
-        { name: "legacy", iterations: 400 },
-    ],
+    variants: withCodecs([
+        { name: "raw", strategy: "raw", iterations: 400 },
+        { name: "state", strategy: "state", iterations: 400 },
+        { name: "legacy", strategy: "legacy", iterations: 400 },
+    ]),
     reps: 7,
     setup(lib, variant) {
-        const { state, encoder, State } = buildBloatState(lib, 1000);
+        const codec = codecOf(lib, variant);
+        const { state, encoder, State } = buildBloatState(lib, 1000, codec);
         const bootstrap = encoder.encodeAll().slice();
         encoder.discardChanges();
         const frames = genHeavyFrames(state, encoder, 200, 1000);
-        const decoder = new lib.Decoder(new State());
+        const decoder = new codec.Decoder(new State());
 
         const counters = { onAdd: 0, listen: 0, raw: 0 };
-        if (variant.name === "raw") {
+        if (variant.strategy === "raw") {
             lib.getRawChangesCallback(decoder, (changes) => { counters.raw += changes.length; });
-        } else if (variant.name === "state") {
+        } else if (variant.strategy === "state") {
             const $ = lib.Callbacks.get(decoder);
             $.onAdd("players", (player) => {
                 counters.onAdd++;
