@@ -117,19 +117,19 @@ export type CodecFor<T> = {
 type IsOptionalBuilderKey<T, K extends keyof T> =
     T[K] extends FieldBuilder<unknown, boolean, infer O extends boolean> ? O : false;
 
-// Per key, like `DataKey` below — an `Exclude<keyof T, …>` split defers every
-// key once one field is typed by a bare type parameter.
-type OptionalBuilderKeys<T> = { [K in keyof T]-?: IsOptionalBuilderKey<T, K> extends true ? K : never }[keyof T];
-type RequiredBuilderKeys<T> = { [K in keyof T]-?: IsOptionalBuilderKey<T, K> extends true ? never : K }[keyof T];
-
+// Split in the `as` clause, never over a precomputed key union: only a
+// homomorphic mapping carries each key back to its declaration in the
+// `schema({ … })` literal, which is what go-to-definition and rename resolve
+// through. `-readonly`, and `-?` on the required half, drop the modifiers a
+// homomorphic mapping inherits from the fields map.
 export type InferSchemaInstanceType<T> = {
-    [K in RequiredBuilderKeys<T>]: T[K] extends FieldBuilder<any>
+    -readonly [K in keyof T as IsOptionalBuilderKey<T, K> extends true ? never : K]-?: T[K] extends FieldBuilder<any>
         ? InferValueType<T[K]>
         : T[K] extends (...args: any[]) => any
             ? (T[K] extends new (...args: any[]) => any ? InferValueType<T[K]> : T[K])
             : InferValueType<T[K]>
 } & {
-    [K in OptionalBuilderKeys<T>]?: T[K] extends FieldBuilder<infer V>
+    -readonly [K in keyof T as IsOptionalBuilderKey<T, K> extends true ? K : never]?: T[K] extends FieldBuilder<infer V>
         ? V
         : never
 } & Schema;
@@ -170,15 +170,15 @@ type IsOptionalKey<T, K extends keyof T> = undefined extends {}
     ? ({} extends Pick<T, K> ? true : false)
     : (undefined extends T[K] ? true : false);
 
-// `DataKey` first: machinery and method keys drop before the optionality probe.
-type ToJSONRequiredKeys<T> = { [K in keyof T]-?: [DataKey<T, K>] extends [never] ? never : IsOptionalKey<T, K> extends true ? never : K }[keyof T];
-type ToJSONOptionalKeys<T> = { [K in keyof T]-?: [DataKey<T, K>] extends [never] ? never : IsOptionalKey<T, K> extends true ? K : never }[keyof T];
-
-// Keys are filtered before mapping: `ToJSONField` over the `this`-typed methods
-// exceeds TypeScript 7's instantiation depth.
+// Both filters live in the `as` clause, for two independent reasons:
+// navigation, as above — and depth, because the clause runs before the value
+// type, so `ToJSONField` never reaches the machinery, where it would recurse
+// through `restore(json: ToJSON<this>)` past TypeScript 7's instantiation limit.
+// Probing `IsOptionalKey` first is deliberate: `DataKey` then runs in the taken
+// branch only, once per key rather than once per half.
 export type ToJSON<T> =
-    & { [K in ToJSONRequiredKeys<T>]: ToJSONField<T[K]> }
-    & { [K in ToJSONOptionalKeys<T>]?: ToJSONField<Exclude<T[K], undefined>> };
+    & { -readonly [K in keyof T as IsOptionalKey<T, K> extends true ? never : DataKey<T, K>]-?: ToJSONField<T[K]> }
+    & { -readonly [K in keyof T as IsOptionalKey<T, K> extends true ? DataKey<T, K> : never]?: ToJSONField<Exclude<T[K], undefined>> };
 
 /**
  * The plain DATA shape of a Schema instance type `T`: its synchronized fields
