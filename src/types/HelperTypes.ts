@@ -117,11 +117,12 @@ export type CodecFor<T> = {
 type IsOptionalBuilderKey<T, K extends keyof T> =
     T[K] extends FieldBuilder<unknown, boolean, infer O extends boolean> ? O : false;
 
-// Split in the `as` clause, never over a precomputed key union: only a
-// homomorphic mapping carries each key back to its declaration in the
-// `schema({ … })` literal, which is what go-to-definition and rename resolve
-// through. `-readonly`, and `-?` on the required half, drop the modifiers a
-// homomorphic mapping inherits from the fields map.
+// THE RULE for every mapped type below that projects a user's declared fields:
+// split in the `as` clause, never over a precomputed key union. Only a
+// homomorphic mapping carries each key back to its declaration, and that link
+// is what go-to-definition and rename resolve through — losing it leaves rename
+// silently touching just the cursor (colyseus/colyseus#958). The `-readonly`
+// and `-?` that follow drop the modifiers such a mapping inherits from `T`.
 export type InferSchemaInstanceType<T> = {
     -readonly [K in keyof T as IsOptionalBuilderKey<T, K> extends true ? never : K]-?: T[K] extends FieldBuilder<any>
         ? InferValueType<T[K]>
@@ -170,12 +171,11 @@ type IsOptionalKey<T, K extends keyof T> = undefined extends {}
     ? ({} extends Pick<T, K> ? true : false)
     : (undefined extends T[K] ? true : false);
 
-// Both filters live in the `as` clause, for two independent reasons:
-// navigation, as above — and depth, because the clause runs before the value
-// type, so `ToJSONField` never reaches the machinery, where it would recurse
-// through `restore(json: ToJSON<this>)` past TypeScript 7's instantiation limit.
-// Probing `IsOptionalKey` first is deliberate: `DataKey` then runs in the taken
-// branch only, once per key rather than once per half.
+// Beyond THE RULE, the `as` clause is load-bearing here for a second reason: it
+// runs before the value type, so `ToJSONField` never reaches the machinery,
+// where it would recurse through `restore(json: ToJSON<this>)` past TypeScript
+// 7's instantiation limit. Probing `IsOptionalKey` first is deliberate too —
+// `DataKey` then runs in the taken branch only, once per key not once per half.
 export type ToJSON<T> =
     & { -readonly [K in keyof T as IsOptionalKey<T, K> extends true ? never : DataKey<T, K>]-?: ToJSONField<T[K]> }
     & { -readonly [K in keyof T as IsOptionalKey<T, K> extends true ? DataKey<T, K> : never]?: ToJSONField<Exclude<T[K], undefined>> };
@@ -210,9 +210,11 @@ export type IsNever<T> = [T] extends [never] ? true : false;
  * - Primitives can be assigned directly
  * - Schema instances can be assigned from plain objects or Schema instances
  * - Collections can be assigned from their JSON representations
+ *
+ * Keys filter through `DataKey` in the `as` clause — see THE RULE above.
  */
 export type AssignableProps<T> = {
-    [K in NonFunctionPropNames<T>]?: AssignableValue<T[K]>
+    -readonly [K in keyof T as DataKey<T, K>]?: AssignableValue<T[K]>
 };
 
 /**
@@ -267,19 +269,15 @@ type KeyClass<T, K extends keyof T> =
             ? (RefHasDefault<T[K]> extends true ? "optional" : "required")
             : "none";
 
-export type BuilderRequiredKeys<T> = {
-    [K in keyof T]-?: KeyClass<T, K> extends "required" ? K : never
-}[keyof T];
-
-export type BuilderOptionalKeys<T> = {
-    [K in keyof T]-?: KeyClass<T, K> extends "optional" ? K : never
-}[keyof T];
-
 /**
  * Constructor/init-props type for a schema() fields map. Required fields
  * (primitives without `.default()` or `.optional()`, and Schema refs with
  * non-zero-arg `initialize()`) are `:`; everything else is `?:`.
+ *
+ * Split by `KeyClass` in the `as` clause — see THE RULE above. `-?` matters
+ * under `strictNullChecks: false`: an optional key in the fields map still
+ * classifies as "required" there, and would otherwise inherit the `?`.
  */
 export type BuilderInitProps<T> =
-    & { [K in BuilderRequiredKeys<T>]: AssignableValue<FieldValue<T[K]>> }
-    & { [K in BuilderOptionalKeys<T>]?: AssignableValue<Exclude<FieldValue<T[K]>, undefined>> };
+    & { -readonly [K in keyof T as KeyClass<T, K> extends "required" ? K : never]-?: AssignableValue<FieldValue<T[K]>> }
+    & { -readonly [K in keyof T as KeyClass<T, K> extends "optional" ? K : never]?: AssignableValue<Exclude<FieldValue<T[K]>, undefined>> };
