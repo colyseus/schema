@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `view.add(child, tag)` no longer grants that tag on the child's parents, where
+  it exposed their other `@view(tag)` fields to the client from their next change
+  on. Thanks @5zyyy ([#232](https://github.com/colyseus/schema/issues/232)).
 - Rename Symbol and Go to Definition also work on the keys of `assign({ … })`
   and of a `schema()` constructor call, completing the 5.0.24 fix
   ([#958](https://github.com/colyseus/colyseus/issues/958)).

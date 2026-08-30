@@ -916,6 +916,102 @@ describe("StateView", () => {
 
                 assertEncodeAllMultiple(encoder, state, [client]);
             });
+
+            it("issue #232: scalar @view(TAG) fields must arrive without a mutation", () => {
+                class PlayerS extends Schema {
+                    @type("string") name: string;
+                    @view(TAG) @type("number") x: number = 10;
+                    @view(TAG) @type("number") y: number = 20;
+                }
+                class StateS extends Schema {
+                    @type({ map: PlayerS }) players = new MapSchema<PlayerS>();
+                }
+
+                const state = new StateS();
+                const encoder = getEncoder(state);
+
+                const player = new PlayerS().assign({ name: "one" });
+                state.players.set("one", player);
+
+                const client = createClientWithView(state);
+                client.view.add(player); // default tag first
+                encodeMultiple(encoder, state, [client]);
+                assert.deepStrictEqual(client.state.players.get("one").toJSON(), { name: "one" });
+
+                // grant the tag mid-session — x/y are NOT touched
+                client.view.add(player, TAG);
+                encodeMultiple(encoder, state, [client]);
+
+                assert.deepStrictEqual(
+                    client.state.players.get("one").toJSON(),
+                    { name: "one", x: 10, y: 20 });
+
+                assertEncodeAllMultiple(encoder, state, [client]);
+            });
+
+            it("a tagged add() on a child must not reveal the parent's other same-tag fields", () => {
+                class PlayerT extends Schema {
+                    @type("string") name: string;
+                    @view(TAG) @type("number") x = 10;
+                }
+                class StateT extends Schema {
+                    @view(TAG) @type("string") adminMessage = "top secret";
+                    @type({ map: PlayerT }) players = new MapSchema<PlayerT>();
+                }
+
+                const state = new StateT();
+                const encoder = getEncoder(state);
+
+                const player = new PlayerT().assign({ name: "one" });
+                state.players.set("one", player);
+
+                const client = createClientWithView(state);
+                client.view.add(player);
+                encodeMultiple(encoder, state, [client]);
+
+                // the grant targets the player, not the root that holds it
+                client.view.add(player, TAG);
+                encodeMultiple(encoder, state, [client]);
+                assert.strictEqual(client.state.players.get("one").x, 10);
+                assert.strictEqual(client.state.adminMessage, undefined);
+
+                // ...and it must stay hidden when it changes
+                state.adminMessage = "changed";
+                encodeMultiple(encoder, state, [client]);
+                assert.strictEqual(client.state.adminMessage, undefined);
+
+                assertEncodeAllMultiple(encoder, state, [client]);
+            });
+
+            it("...not even when the field holding the child is @view()-filtered", () => {
+                class PlayerV extends Schema {
+                    @type("string") name: string;
+                    @view(TAG) @type("number") x = 10;
+                }
+                class StateV extends Schema {
+                    @view(TAG) @type("string") adminMessage = "top secret";
+                    @view() @type({ map: PlayerV }) players = new MapSchema<PlayerV>();
+                }
+
+                const state = new StateV();
+                const encoder = getEncoder(state);
+
+                const player = new PlayerV().assign({ name: "one" });
+                state.players.set("one", player);
+
+                const client = createClientWithView(state);
+                client.view.add(player);
+                client.view.add(player, TAG);
+                encodeMultiple(encoder, state, [client]);
+
+                state.adminMessage = "changed";
+                encodeMultiple(encoder, state, [client]);
+
+                assert.strictEqual(client.state.players.get("one").x, 10);
+                assert.strictEqual(client.state.adminMessage, undefined);
+
+                assertEncodeAllMultiple(encoder, state, [client]);
+            });
         });
     });
 

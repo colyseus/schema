@@ -619,7 +619,18 @@ export class StateView {
                 this.changes.set(changeTree.ref[$refId], changes);
             }
 
-            this.addTag(changeTree, tag);
+            // Grant the tag on the parent only when the field pointing at
+            // the child carries an overlapping tag — that field is the sole
+            // reason the parent needs it. Granting unconditionally handed
+            // the view every OTHER same-tag field on the parent, which then
+            // rode out on its next mutation (never at add() time, so it read
+            // as "the field only shows up after it changes").
+            const parentFieldTag = changeTree.encDescriptor.tags[parentIndex];
+            if (parentFieldTag !== undefined &&
+                parentFieldTag !== DEFAULT_VIEW_TAG &&
+                (parentFieldTag & tag) !== 0) {
+                this.addTag(changeTree, tag);
+            }
 
             // ArraySchema parents: key by the child's identity, not the wire
             // slot it holds right now — a same-tick unshift()/reverse()/move()
