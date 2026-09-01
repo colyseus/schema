@@ -62,7 +62,7 @@ export class TypeContext {
         //
         // Workaround to allow using an empty Schema (with no `@type()` fields)
         //
-        if (schema[Symbol.metadata] === undefined) {
+        if (schema[Symbol.metadata] == null) {
             Metadata.initialize(schema);
         }
 
@@ -93,7 +93,7 @@ export class TypeContext {
             this.discoverTypes(parent);
         }
 
-        const metadata: Metadata = (klass[Symbol.metadata] ??= {} as Metadata);
+        const metadata: Metadata = klass[Symbol.metadata];
 
         // if any schema/field has filters, mark "context" as having filters.
         // Stream fields are always view-scoped — treat like @view tags for

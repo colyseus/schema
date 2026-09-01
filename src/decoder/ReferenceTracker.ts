@@ -112,8 +112,8 @@ export class ReferenceTracker {
             //
             // Ensure child schema instances have their references removed as well.
             //
-            if ((ref.constructor as typeof Schema)[Symbol.metadata] !== undefined) {
-                const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
+            const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
+            if (metadata != null) {
                 for (const index in metadata) {
                     const field = metadata[index as any as number].name;
                     const child = ref[field as keyof IRef];

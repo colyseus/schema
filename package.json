@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "5.0.25",
+  "version": "5.0.26",
   "description": "Automatic state replication for multiplayer games. Mutate plain objects, and every client gets a live, typed mirror through delta encoding.",
   "type": "module",
   "bin": {
@@ -17,9 +17,11 @@
     "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json && rollup -c rollup.config.mjs",
     "watch": "node node_modules/typescript/bin/tsc -p tsconfig.build.json -w",
     "typecheck:build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json --noEmit",
-    "test": "npm run test:types && tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.test.ts\" \"test/**/*.test.ts\"",
+    "test": "npm run test:types && npm run test:mocha",
+    "test:mocha": "tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.test.ts\" \"test/**/*.test.ts\"",
     "test:types": "node node_modules/typescript/bin/tsc -p tsconfig.build.json && node test/types/run.mjs typescript typescript-7",
     "test:exports": "node test/verify-exports.mjs",
+    "test:polyfill": "npm run test:mocha -- --require ./test/metadata-polyfill/preload.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.test.json",
     "coverage": "c8 npm run test",
     "generate-test-1": "bin/schema-codegen test-external/PrimitiveTypes.ts --namespace SchemaTest.PrimitiveTypes --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/PrimitiveTypes",

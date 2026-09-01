@@ -113,9 +113,7 @@ function buildFieldArrays(metadata: any): {
     const tags: (number | undefined)[] = [];
     const encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[] = [];
 
-    if (metadata === undefined) return { names, types, tags, encoders };
-
-    const numFields = metadata[$numFields];
+    const numFields = metadata?.[$numFields];
     if (numFields === undefined) return { names, types, tags, encoders };
 
     const srcEncoders = metadata[$encoders];

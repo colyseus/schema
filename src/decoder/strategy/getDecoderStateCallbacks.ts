@@ -238,7 +238,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
         let metadata: Metadata = context.instance?.constructor[Symbol.metadata] || metadataOrType;
         let isCollection = (
             (context.instance && typeof (context.instance['forEach']) === "function") ||
-            (metadataOrType && typeof ((metadataOrType as typeof Schema)[Symbol.metadata]) === "undefined")
+            (metadataOrType && !Schema.is(metadataOrType as DefinitionType))
         );
 
         if (metadata && !isCollection) {

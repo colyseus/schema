@@ -1,6 +1,7 @@
 import { DefinitionType, type } from "../annotations.js";
 import { BufferLike, encode } from "../encoding/encode.js";
 import { decode, Iterator } from "../encoding/decode.js";
+import { shadowMetadata } from "../symbol.shim.js";
 
 export interface TypeDefinition {
     constructor?: any,
@@ -14,6 +15,17 @@ const identifiers = new Map<any, string>();
 
 export function registerType(identifier: string, definition: TypeDefinition) {
     if (definition.constructor) {
+        // Registration is the one choke point every collection type passes
+        // through, third-party ones included. hasOwn, because a bare
+        // `{ encode, decode }` literal inherits `Object` as its `constructor`;
+        // and only when unset, so a Schema subclass keeps its real metadata.
+        if (
+            Object.prototype.hasOwnProperty.call(definition, "constructor") &&
+            definition.constructor[Symbol.metadata] == null
+        ) {
+            shadowMetadata(definition.constructor);
+        }
+
         identifiers.set(definition.constructor, identifier);
         registeredTypes[identifier] = definition;
     }

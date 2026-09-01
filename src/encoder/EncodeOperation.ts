@@ -40,7 +40,7 @@ export function encodeValue(
         // Fallback for types not pre-computed (e.g. runtime-constructed).
         (encode as any)[type]?.(bytes, value, it);
 
-    } else if (type[Symbol.metadata] !== undefined) {
+    } else if (type[Symbol.metadata] != null) {
         //
         // Encode refId for this instance.
         // The actual instance is going to be encoded on next `changeTree` iteration.
