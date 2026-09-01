@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.27]
+
+### Fixed
+
+- `t.quantized()` fields whose range is symmetric about zero (`{ min: -1, max: 1 }`,
+  an input axis or a velocity) can now carry an exact `0`. Writing `0` snapped to
+  one quantum above it, so a released axis kept a fraction of a percent of throttle
+  and a resting velocity drifted for as long as the room lived.
+
+  The wire mapping for these fields changed: update your client SDK alongside the
+  server. Unity 0.18.4, Haxe 0.18.2 and native 0.18.3 carry the matching fix; the
+  Defold SDK carries it in 0.18.
+
 ## [5.0.26]
 
 ### Fixed

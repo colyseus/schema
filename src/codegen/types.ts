@@ -142,12 +142,13 @@ export interface QuantizedProperty {
 
 /**
  * Mirror of the runtime's `resolveQuantize()` scale math (wrap spreads 2^bits
- * steps across [min,max); clamp maps the endpoints onto 0 and 2^bits-1).
+ * steps across [min,max); clamp maps the endpoints onto 0 and 2^bits-1, one
+ * fewer on a range symmetric about zero so zero lands on a step).
  */
 export function resolveQuantized(q: QuantizedProperty) {
     return {
         range: q.max - q.min,
-        span: q.wrap ? 2 ** q.bits : 2 ** q.bits - 1,
+        span: q.wrap ? 2 ** q.bits : q.min === -q.max ? 2 ** q.bits - 2 : 2 ** q.bits - 1,
     };
 }
 
