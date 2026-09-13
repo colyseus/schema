@@ -11,6 +11,7 @@ import { Root } from "./Root.js";
 
 import { ARRAY_SNAPSHOT, type StateView } from "./StateView.js";
 import type { ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree.js";
+import { PENDING_SHIPPED_BY_FULL_SYNC } from "./ChangeTree.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 import { forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { forEachChildWithCtx as _forEachChildWithCtx } from "./changeTree/treeAttachment.js";
@@ -144,6 +145,13 @@ function _fullSyncWalk(ctx: EncodeCtx, changeTree: ChangeTree): void {
         ctx.tags = desc.tags;
         ctx.structSwitchEmitted = false;
         ctx.shouldEmitSwitch = (ctx.hasView || ctx.it.offset > ctx.initialOffset || changeTree !== ctx.rootChangeTree);
+
+        // This walk emits from `items`, not `collDirty`, so an array with ops
+        // still pending has just had those wire indexes confirmed to a client.
+        // `isArray` implies a collection tree, so `collDirty` is defined.
+        if (changeTree.isArray && changeTree.collDirty!.size > 0) {
+            changeTree.flags |= PENDING_SHIPPED_BY_FULL_SYNC;
+        }
 
         // Call the module function directly — the `forEachLiveWithCtx`
         // method on ChangeTree is a pass-through that V8 doesn't inline

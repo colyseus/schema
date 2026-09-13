@@ -1,6 +1,6 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $proxyTarget, $refId, $reset, $resyncPrune } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
-import { type IRef, ChangeTree, installUntrackedChangeTree } from "../../encoder/ChangeTree.js";
+import { type IRef, ChangeTree, installUntrackedChangeTree, IS_STREAM_COLLECTION, PENDING_SHIPPED_BY_FULL_SYNC } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
@@ -297,8 +297,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             return undefined;
         }
 
+        const cancel = self.$isUnsentAdd(index);
         self[$changes].delete(index);
-        deletedIndexes[index] = true;
+        if (cancel) { self.$cancelAdd(index); }
+        else { deletedIndexes[index] = true; }
 
         return self.items.pop();
     }
@@ -329,6 +331,58 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         }
         // beyond the live range: appends land after the staged tmpItems tail
         return tmpItems.length + (index - live);
+    }
+
+    /**
+     * True when wire slot `at` holds an ADD recorded this tick that no client
+     * has seen, so the slot can be erased outright instead of shipping a
+     * DELETE for something nobody has. Only Schema children matter: their
+     * DELETE goes out as DELETE_BY_REFID, which the decoder resolves against
+     * every reference to the instance — a phantom one decrements a refCount
+     * owned by whichever other collection still holds it.
+     *
+     * Call BEFORE `ChangeTree.delete()`, which overwrites the ADD. One mask
+     * test rules out both hazards (a same-tick full sync made the pending
+     * indexes load-bearing; a stream journal owns the positions).
+     */
+    protected $isUnsentAdd(at: number): boolean {
+        const changeTree = this[$changes];
+        return (
+            (changeTree.flags & (PENDING_SHIPPED_BY_FULL_SYNC | IS_STREAM_COLLECTION)) === 0 &&
+            !changeTree.paused &&
+            typeof this[$childType] !== "string" &&
+            changeTree.operationAt(at) === OPERATION.ADD
+        );
+    }
+
+    /**
+     * Erase a wire slot whose ADD never reached a client. The staged layout
+     * closes over it, so no emitter — shared pass, view drain, snapshot or
+     * stream — can address it: the add never happened.
+     *
+     * Caller must have run `changeTree.delete(at)` FIRST: it resolves
+     * `$getByIndex(at)` against the still-intact snapshot (splicing first
+     * would resolve the next element) and releases the element's refCount.
+     */
+    protected $cancelAdd(at: number, reindex: boolean = true): void {
+        const changeTree = this[$changes];
+        const removed = this.tmpItems[at]; // before the splice
+
+        this.tmpItems.splice(at, 1);
+        if (this.deletedIndexes.length > 0) { this.deletedIndexes.splice(at, 1); }
+        changeTree.removeAt(at, 1);
+
+        // `Root.remove` leaves a detached child's own parent edge in place on
+        // purpose (encodeView resolves same-tick detached children through
+        // it). Here the SLOT is gone too, so that edge would hand the view
+        // drain the neighbour that inherited it. Drop it — unless the element
+        // is still rooted elsewhere (shared), in which case its edges are live.
+        const removedTree = removed?.[$changes];
+        if (removedTree !== undefined && removedTree.root === undefined) {
+            removedTree.removeParent(this);
+        }
+
+        if (reindex) { this.$reindexChildren(at); }
     }
 
     /**
@@ -523,8 +577,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         const deletedIndexes = self.deletedIndexes;
         let index = 0;
         while (deletedIndexes[index] === true) { index++; }
+        const cancel = self.$isUnsentAdd(index);
         changeTree.delete(index, OPERATION.DELETE);
-        deletedIndexes[index] = true;
+        if (cancel) { self.$cancelAdd(index); }
+        else { deletedIndexes[index] = true; }
 
         return items.shift();
     }
@@ -595,6 +651,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             }
         }
 
+        // Deleted wire slots whose ADD never reached a client, ascending.
+        // Erased AFTER the loops below — doing it inline would invalidate
+        // every later `indexes[]` entry and `base`.
+        let unsent: number[] | undefined;
+
         if (itemsLength > start) {
             // if deleteCount is not provided, delete all items from start to end
             if (deleteCount === undefined) {
@@ -606,8 +667,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             //
             for (let i = start; i < start + deleteCount; i++) {
                 const index = indexes[i];
+                const isUnsent = self.$isUnsentAdd(index);
                 changeTree.delete(index, OPERATION.DELETE);
-                deletedIndexes[index] = true;
+                if (isUnsent) { (unsent ??= []).push(index); }
+                else { deletedIndexes[index] = true; }
             }
 
         } else {
@@ -625,12 +688,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             for (let i = 0; i < reuse; i++) {
                 const addIndex = base + i;
 
-                changeTree.indexedOperation(
-                    addIndex,
-                    (deletedIndexes[addIndex])
-                        ? OPERATION.DELETE_AND_ADD
-                        : OPERATION.ADD
-                );
+                // An unsent slot taken over by an insert needs no erasing, but
+                // it must not carry the DELETE half: the decoder resolves that
+                // positionally and would removeRef whatever the client holds
+                // there — which is not the element being replaced.
+                let op: OPERATION;
+                const u = (unsent !== undefined) ? unsent.indexOf(addIndex) : -1;
+                if (u !== -1) { unsent!.splice(u, 1); op = OPERATION.ADD; }
+                else { op = (deletedIndexes[addIndex]) ? OPERATION.DELETE_AND_ADD : OPERATION.ADD; }
+                changeTree.indexedOperation(addIndex, op);
 
                 // the slot is live again — the staged snapshot must carry the
                 // new value, or `$getByIndex` falls back to `items[addIndex]`
@@ -662,6 +728,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
                 tmpItems.splice(at, 0, ...insertItems.slice(reuse));
                 self.$reindexChildren(at + extra); // survivors only — the loop above placed the new items
             }
+        }
+
+        // Unsent slots nothing took over. `extra > 0` implies every deleted
+        // slot was reused, so this never coexists with the insertAt above and
+        // `base` never needs recomputing. Descending: each erase shifts the
+        // slots above it. One reindex from the lowest covers all of them.
+        if (unsent !== undefined && unsent.length > 0) {
+            for (let i = unsent.length - 1; i >= 0; i--) { self.$cancelAdd(unsent[i], false); }
+            self.$reindexChildren(unsent[0]);
         }
 
         changeTree.root?.enqueueChangeTree(changeTree);

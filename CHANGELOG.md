@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.28]
+
+### Fixed
+
+- Adding a Schema instance to an `ArraySchema` and removing it before the next patch (e.g. `push()` then `shift()`, `pop()` or `splice()`) no longer desyncs clients: if another field or collection also held the instance, the client dropped it and logged `"refId" not found`, and `unshift()` + `shift()` could leave the client's array misaligned. Thanks @beemdvp.
+
 ## [5.0.27]
 
 ### Fixed

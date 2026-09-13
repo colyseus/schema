@@ -156,6 +156,14 @@ export const NEEDS_RESTAGE = 128;
 // `isVisibilitySharedWithParent` must be re-derived from the LIVE edges
 // before the next encode. See inheritedFlags.refreshFilterState.
 export const PENDING_FILTER_REFRESH = 256;
+// A full sync emitted this collection's live indexes while it still held
+// pending ops. Those ops' wire indexes are now load-bearing — a client holds
+// the elements at exactly those positions — so a same-tick ADD+DELETE must
+// not be cancelled by `removeAt` (which shifts later slots down and would
+// make the decoder splice-insert at an occupied index). Armed in
+// `Encoder._fullSyncWalk`, cleared by `reset()`. Fail-safe: a stale bit costs
+// one tick of the optimization, never a wrong byte.
+export const PENDING_SHIPPED_BY_FULL_SYNC = 512;
 /**
  * Flags a child inherits from its parent's own transitive state via
  * `checkInheritedFlags`. Read as a bitwise mask so the inheritance step
@@ -568,6 +576,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         }
         this.collDirty!.clear();
         if (this.collPureOps !== undefined) this.collPureOps.length = 0;
+        this.flags &= ~PENDING_SHIPPED_BY_FULL_SYNC;
     }
 
     /**
@@ -650,6 +659,42 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // no unreliable re-key — collection trees never carry an unreliable
         // recorder (tree-level @unreliable is disabled, see isFieldUnreliable)
         if (track) this.root?.enqueueChangeTree(this);
+    }
+
+    /**
+     * Inverse of `insertAt`: the wire slots in `[at, at+count)` never existed.
+     * Drop their pending ops and re-key everything above them down by `count`,
+     * preserving relative order exactly as `insertAt` does for the entries it
+     * shifts up.
+     *
+     * Reached only through `ArraySchema.$cancelAdd`, after `ChangeTree.delete`
+     * has already enqueued this tree and released the element's refCount — so
+     * no enqueue here, and no `paused`/`isFullStateOnly` handling: neither can
+     * have put an ADD in `collDirty` (`_routeAndRecord` returns early), and
+     * the caller only cancels a pending ADD. `collPureOps` is left alone for
+     * the same reason `insertAt` leaves it: a CLEAR/REVERSE resets the bucket
+     * first (`ArraySchema.clear` → `discard()`).
+     */
+    removeAt(at: number, count: number): void {
+        if (this._isSchema) throw new Error("ChangeTree (Schema): removeAt is not supported");
+        const src = this.collDirty!;
+        const end = at + count;
+
+        // Tail cancel (the common case): nothing addresses a slot above the
+        // removed range, so delete in place — no Map rebuild, no allocation.
+        let needsShift = false;
+        for (const idx of src.keys()) { if (idx >= end) { needsShift = true; break; } }
+        if (!needsShift) {
+            for (let i = at; i < end; i++) src.delete(i);
+            return;
+        }
+
+        const dst = new Map<number, OPERATION>();
+        for (const [idx, val] of src) {
+            if (idx < at) dst.set(idx, val);
+            else if (idx >= end) dst.set(idx - count, val);
+        }
+        this.collDirty = dst;
     }
 
     /** ArraySchema#unshift(): insert `count` items at the head. */
