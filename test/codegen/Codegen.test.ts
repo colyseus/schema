@@ -5,7 +5,10 @@ import * as rimraf from "rimraf";
 import * as glob from "glob";
 import * as assert from "assert";
 import { generate } from "../../src/codegen/api.js";
+import { parseFiles } from "../../src/codegen/parser.js";
 import { Context, Class, getInheritanceTree } from "../../src/codegen/types.js";
+import { $numFields } from "../../src/types/symbols.js";
+import { NoSyncParent, NoSyncChild, FunctionMembers } from "./sources/NoSync.js";
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -436,6 +439,107 @@ describe("schema-codegen", () => {
 
             const messageType = read("MessageType.dart");
             assert.match(messageType, /static const DeployMiner = "deploy-miner";/);
+        });
+    });
+
+    describe("field indexes", () => {
+        const NOSYNC = path.resolve(INPUT_DIR, "NoSync.ts");
+
+        // name -> [Type] index of every field a generated C# file declares
+        const csharpIndexes = (file: string) => Object.fromEntries(
+            [...fs.readFileSync(path.resolve(OUTPUT_DIR, file), "utf8")
+                .matchAll(/\[(?:global::Colyseus\.Schema\.)?Type\((\d+),[^\n]*\]\s*\n\s*public \S+ @?(\w+) =/g)]
+                .map((m) => [m[2], Number(m[1])])
+        );
+
+        // name -> index as assigned by the real runtime, inherited fields included
+        const runtimeIndexes = (klass: any) => {
+            const metadata = klass[Symbol.metadata];
+            const indexes: Record<string, number> = {};
+            for (let i = 0; i <= metadata[$numFields]; i++) { indexes[metadata[i].name] = i; }
+            return indexes;
+        };
+
+        it("leaves .noSync() fields out of the model every target generates from", () => {
+            const { classes } = parseFiles([NOSYNC], "type", new Context());
+            const fields = Object.fromEntries(classes.map((k) => [k.name, k.properties.map((p) => p.name)]));
+            assert.deepStrictEqual(fields.NoSyncParent, ["x", "y"]);
+            assert.deepStrictEqual(fields.NoSyncChild, ["hp", "name"]);
+        });
+
+        it("matches the runtime's indexes across .noSync() and .extend()", () => {
+            generate("csharp", { files: [NOSYNC], output: OUTPUT_DIR });
+            assert.deepStrictEqual(csharpIndexes("NoSyncParent.cs"), runtimeIndexes(NoSyncParent));
+            assert.deepStrictEqual(
+                { ...csharpIndexes("NoSyncParent.cs"), ...csharpIndexes("NoSyncChild.cs") },
+                runtimeIndexes(NoSyncChild),
+            );
+        });
+
+        it("does not number function-valued members as fields", () => {
+            generate("csharp", { files: [NOSYNC], output: OUTPUT_DIR });
+            assert.deepStrictEqual(csharpIndexes("FunctionMembers.cs"), runtimeIndexes(FunctionMembers));
+        });
+    });
+
+    describe("csharp", () => {
+        const gen = (klass: string, namespace?: string) => {
+            generate("csharp", { files: [path.resolve(INPUT_DIR, "CSharpFields.ts")], output: OUTPUT_DIR, namespace });
+            return fs.readFileSync(path.resolve(OUTPUT_DIR, `${klass}.cs`), "utf8");
+        };
+        // a field's declaration line
+        const field = (cs: string, name: string) =>
+            cs.match(new RegExp(`^\\s*public \\S+ @?${name} = .*;$`, "m"))?.[0].trim();
+
+        it("maps `number` to double", () => {
+            const cs = gen("CsState");
+            assert.match(field(cs, "num"), /^public double num /);
+            assert.match(field(cs, "scores"), /MapSchema<double> scores /);
+        });
+
+        it("maps float32 to double, so a client-side write keeps the value JS would hold", () => {
+            const cs = gen("CsState");
+            assert.strictEqual(field(cs, "f32"), "public double f32 = default(double);");
+            assert.match(cs, /\[global::Colyseus\.Schema\.Type\(\d+, "float32"\)\]\s*public double f32 /);
+        });
+
+        it("names every SDK type through global:: so a `.Schema` namespace can't shadow it", () => {
+            const cs = gen("CsState", "Game.Schema");
+            assert.match(cs, /class CsState : global::Colyseus\.Schema\.Schema \{/);
+            const unqualified = cs
+                .replace(/^namespace .*$/m, "")
+                .replace(/global::[\w.]+/g, "")
+                .match(/\b(Schema|ArraySchema|MapSchema|Type|Preserve)\b/g);
+            assert.strictEqual(unqualified, null);
+        });
+
+        it("initializes collections empty and leaves a child schema null", () => {
+            const cs = gen("CsState");
+            assert.match(field(cs, "items"), /items = new global::Colyseus\.Schema\.ArraySchema<CsItem>\(\);$/);
+            assert.match(field(cs, "bytes"), /bytes = new global::Colyseus\.Schema\.ArraySchema<byte>\(\);$/);
+            assert.match(field(cs, "byId"), /byId = new global::Colyseus\.Schema\.MapSchema<CsItem>\(\);$/);
+            assert.strictEqual(field(cs, "child"), "public CsItem child = null;");
+        });
+
+        it("emits literal .default() values, else the type's default", () => {
+            const cs = gen("CsState");
+            assert.strictEqual(field(cs, "alive"), "public bool alive = true;");
+            assert.strictEqual(field(cs, "campId"), "public sbyte campId = -1;");
+            assert.strictEqual(field(cs, "radius"), "public double radius = 0.5;");
+            assert.strictEqual(field(cs, "speed"), "public double speed = 1.25;");
+            assert.strictEqual(field(cs, "label"), 'public string label = "say \\"hi\\"\\n";');
+            assert.strictEqual(field(cs, "mode"), "public byte mode = default(byte);");
+        });
+
+        it("emits a decorator field's literal initializer as its default", () => {
+            const cs = gen("CsDecorated");
+            assert.strictEqual(field(cs, "status"), 'public string status = "ready";');
+            assert.strictEqual(field(cs, "count"), "public byte count = 3;");
+            assert.strictEqual(field(cs, "seed"), "public double seed = default(double);");
+        });
+
+        it("escapes a field named after a C# keyword", () => {
+            assert.strictEqual(field(gen("CsState"), "class"), "public string @class = default(string);");
         });
     });
 

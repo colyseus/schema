@@ -15,12 +15,14 @@ const BUILDER_COLLECTION_KINDS = new Set(["array", "map", "set", "collection"]);
 
 /**
  * For a t.*().chain().calls() expression, walk down to the base `t.X(...)`
- * call and return its method name, first argument, and the names of the
- * chained modifiers (`.view()`, `.deprecated()`, …). Returns null if the
- * node does not look like a builder chain.
+ * call and return its method name, first argument, the names of the
+ * chained modifiers (`.view()`, `.deprecated()`, …) and the argument of the
+ * effective `.default(...)`. Returns null if the node does not look like a
+ * builder chain.
  */
-function extractBuilderBase(node: ts.CallExpression): { methodName: string, firstArg?: ts.Expression, modifiers: Set<string> } | null {
+function extractBuilderBase(node: ts.CallExpression): { methodName: string, firstArg?: ts.Expression, modifiers: Set<string>, defaultArg?: ts.Expression } | null {
     const modifiers = new Set<string>();
+    let defaultArg: ts.Expression | undefined;
     let current: ts.CallExpression = node;
     while (true) {
         const expr = current.expression;
@@ -28,6 +30,10 @@ function extractBuilderBase(node: ts.CallExpression): { methodName: string, firs
             return null;
         }
         if (ts.isCallExpression(expr.expression)) {
+            // walking outermost-first: the first `.default()` seen is the last applied
+            if (expr.name.text === "default" && !modifiers.has("default")) {
+                defaultArg = current.arguments[0];
+            }
             modifiers.add(expr.name.text);
             current = expr.expression;
             continue;
@@ -36,8 +42,22 @@ function extractBuilderBase(node: ts.CallExpression): { methodName: string, firs
             methodName: expr.name.text,
             firstArg: current.arguments[0],
             modifiers,
+            defaultArg,
         };
     }
+}
+
+/**
+ * Statically evaluate a default value: a string/boolean literal or a constant
+ * numeric expression. Returns undefined for anything else (a `const`
+ * reference, a factory function, an object).
+ */
+function evalDefaultLiteral(node: ts.Expression | undefined): string | number | boolean | undefined {
+    if (!node) { return undefined; }
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) { return node.text; }
+    if (node.kind === ts.SyntaxKind.TrueKeyword) { return true; }
+    if (node.kind === ts.SyntaxKind.FalseKeyword) { return false; }
+    return evalNumericExpression(node);
 }
 
 /**
@@ -125,11 +145,21 @@ function parseQuantizedOptions(node: ts.Expression | undefined, propertyName: st
     return { min: result.min, max: result.max, bits, wrap: result.mode === "wrap" };
 }
 
-function defineProperty(property: Property, initializer: any) {
+/**
+ * Fill `property` from a field's type expression. Returns false for a
+ * `.noSync()` field: the runtime gives it no field index, so emitting it would
+ * shift every later index on the client.
+ */
+function defineProperty(property: Property, initializer: any): boolean {
     // Builder-style: t.number(), t.array(Item), t.map(Item).view(), etc.
     if (ts.isCallExpression(initializer)) {
         const base = extractBuilderBase(initializer);
         if (base) {
+            if (base.modifiers.has("noSync")) {
+                return false;
+            }
+            property.defaultValue = evalDefaultLiteral(base.defaultArg);
+
             // same as `@deprecated()`: `.deprecated(false)` still marks the field
             if (base.modifiers.has("deprecated")) {
                 property.deprecated = true;
@@ -163,7 +193,7 @@ function defineProperty(property: Property, initializer: any) {
             } else {
                 property.type = base.methodName;
             }
-            return;
+            return true;
         }
     }
 
@@ -188,6 +218,7 @@ function defineProperty(property: Property, initializer: any) {
     } else {
         property.type = initializer.text;
     }
+    return true;
 }
 
 function followModuleSpecifier(
@@ -316,10 +347,15 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
                     const property = currentProperty || new Property();
                     property.name = prop.name.escapedText;
-                    currentStructure.addProperty(property);
 
                     const typeArgument = typeDecorator.arguments[0];
-                    defineProperty(property, typeArgument);
+                    if (defineProperty(property, typeArgument)) {
+                        // `@type("string") name = "x"` — the decorator form of `.default()`
+                        if (property.defaultValue === undefined) {
+                            property.defaultValue = evalDefaultLiteral(prop.initializer);
+                        }
+                        currentStructure.addProperty(property);
+                    }
 
                 } else if (
                     prop.expression.arguments?.[1] &&
@@ -330,10 +366,11 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                      */
                     const property = currentProperty || new Property();
                     property.name = prop.expression.arguments[1].text;
-                    currentStructure.addProperty(property);
 
                     const typeArgument = prop.expression.expression.arguments[0];
-                    defineProperty(property, typeArgument);
+                    if (defineProperty(property, typeArgument)) {
+                        currentStructure.addProperty(property);
+                    }
                 }
 
             } else if (
@@ -388,8 +425,9 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     const property = currentProperty || new Property();
                     property.name = prop.name.escapedText;
 
-                    currentStructure.addProperty(property);
-                    defineProperty(property, prop.initializer);
+                    if (defineProperty(property, prop.initializer)) {
+                        currentStructure.addProperty(property);
+                    }
                 }
 
             } else if (
@@ -425,9 +463,10 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
 
                     const property = currentProperty || new Property();
                     property.name = prop.name.escapedText;
-                    currentStructure.addProperty(property);
 
-                    defineProperty(property, prop.initializer);
+                    if (defineProperty(property, prop.initializer)) {
+                        currentStructure.addProperty(property);
+                    }
                 }
 
             }
@@ -516,9 +555,11 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                 for (let i = 0; i < types.properties.length; i++) {
                     const prop = types.properties[i];
 
-                    // Skip methods declared inside the fields object.
+                    // Skip methods declared inside the fields object — the
+                    // runtime gives no field index to any function value.
                     if (prop.kind === ts.SyntaxKind.MethodDeclaration) continue;
                     if (!prop.initializer) continue;
+                    if (ts.isArrowFunction(prop.initializer) || ts.isFunctionExpression(prop.initializer)) continue;
 
                     // never inherit `currentProperty`: it's the decorator path's
                     // carry-over from a visited `deprecated` identifier, and a
@@ -526,8 +567,9 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                     const property = new Property();
                     property.name = prop.name.escapedText;
 
-                    currentStructure.addProperty(property);
-                    defineProperty(property, prop.initializer);
+                    if (defineProperty(property, prop.initializer)) {
+                        currentStructure.addProperty(property);
+                    }
                 }
             }
 

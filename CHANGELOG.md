@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.29]
+
+### Changed
+
+- **Breaking for regenerated C# code:** `schema-codegen --csharp` now emits `number` and `float32` fields as `double` — the value JS holds, so client-side prediction no longer rounds between ticks. Code passing these fields to `float` APIs (Unity's `Vector3`) needs a cast, and a `float32` collection needs a Colyseus Unity SDK newer than 0.18.4 to decode.
+
+### Fixed
+
+- `schema-codegen` no longer emits `.noSync()` fields, or functions declared in `schema({...})`, in any target language. They take no field index on the wire, so one declared before a synced field shifted the client's field indexes.
+- `schema-codegen --csharp` output now compiles and runs as generated: SDK types can't be shadowed by a namespace like `Game.Schema`, collections start empty instead of `null`, `.default()` values carry over, and fields named after C# keywords are escaped.
+
 ## [5.0.28]
 
 ### Fixed

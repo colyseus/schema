@@ -159,6 +159,12 @@ export class Property {
     childType: string;
     quantized?: QuantizedProperty;
     deprecated?: boolean;
+    /**
+     * Construction default (`.default(v)`, or a decorator field's initializer),
+     * only when it is a statically-known literal. Emitters may fall back to the
+     * language's zero value when it is absent or doesn't fit the field's type.
+     */
+    defaultValue?: string | number | boolean;
 }
 
 export interface File {
