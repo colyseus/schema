@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.31]
+
+### Changed
+
+- **Breaking for regenerated Haxe code:** `schema-codegen --haxe` types fields as the Haxe SDK decodes them: `number` is `Float` instead of `Dynamic`, every integer up to 32 bits is `Int` instead of `UInt` (arithmetic stays signed, like the server's numbers), and 64-bit integers are `haxe.Int64`.
+
+### Fixed
+
+- `schema-codegen --haxe` output now compiles and starts with the right values: `.default()` values carry over, and a field named after a Haxe keyword (`cast`, `class`…) is emitted with a trailing underscore (`cast_`).
+- `.default()` values held in a `const` (`t.uint8().default(IDLE)`, locally declared or imported) now carry over in every target language; the field started at its type's zero.
+
 ## [5.0.30]
 
 ### Fixed
