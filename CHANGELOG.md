@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.30]
+
+### Fixed
+
+- `schema-codegen` now handles `t.angle()` and `t.quantized()` bounds held in a `const`, whether declared locally or imported (including through barrel re-exports). Previously these produced an `undefined` field type or failed with "not a constant expression".
+
 ## [5.0.29]
 
 ### Changed

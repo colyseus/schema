@@ -64,18 +64,21 @@ function evalDefaultLiteral(node: ts.Expression | undefined): string | number | 
  * Statically evaluate a numeric option expression. Codegen has no runtime, so
  * only constant arithmetic is supported: literals, unary +/-, `Math.PI`-style
  * constants and add/sub/mul/div combinations of those (e.g. `Math.PI * 2`).
- * Returns
- * undefined for anything it cannot resolve (a `const` reference, a call).
+ * A bare identifier is evaluated through `resolveIdentifier` when given.
+ * Returns undefined for anything it cannot resolve (an unresolved reference, a call).
  */
-function evalNumericExpression(node: ts.Expression): number | undefined {
+function evalNumericExpression(node: ts.Expression, resolveIdentifier?: (id: ts.Identifier) => number | undefined): number | undefined {
     if (ts.isNumericLiteral(node)) {
         return Number(node.text);
     }
+    if (ts.isIdentifier(node)) {
+        return resolveIdentifier?.(node);
+    }
     if (ts.isParenthesizedExpression(node)) {
-        return evalNumericExpression(node.expression);
+        return evalNumericExpression(node.expression, resolveIdentifier);
     }
     if (ts.isPrefixUnaryExpression(node)) {
-        const operand = evalNumericExpression(node.operand as ts.Expression);
+        const operand = evalNumericExpression(node.operand as ts.Expression, resolveIdentifier);
         if (operand === undefined) { return undefined; }
         if (node.operator === ts.SyntaxKind.MinusToken) { return -operand; }
         if (node.operator === ts.SyntaxKind.PlusToken) { return operand; }
@@ -86,8 +89,8 @@ function evalNumericExpression(node: ts.Expression): number | undefined {
         return (typeof constant === "number") ? constant : undefined;
     }
     if (ts.isBinaryExpression(node)) {
-        const left = evalNumericExpression(node.left);
-        const right = evalNumericExpression(node.right);
+        const left = evalNumericExpression(node.left, resolveIdentifier);
+        const right = evalNumericExpression(node.right, resolveIdentifier);
         if (left === undefined || right === undefined) { return undefined; }
         switch (node.operatorToken.kind) {
             case ts.SyntaxKind.PlusToken: return left + right;
@@ -100,34 +103,117 @@ function evalNumericExpression(node: ts.Expression): number | undefined {
     return undefined;
 }
 
+/** Resolve an import/export specifier to a first-party source file. */
+function resolveModuleFile(moduleName: string, currentFile: string): string | undefined {
+    return (moduleName.startsWith("."))
+        ? resolveSourceFile(path.resolve(path.dirname(currentFile), moduleName))
+        // may be a tsconfig `paths`/`baseUrl` alias onto first-party source;
+        // npm packages are filtered out by the resolver
+        : resolveNonRelativeImport(moduleName, currentFile);
+}
+
 /**
- * Extract `{ min, max, bits?, mode? }` from a `t.quantized({...})` /
- * `@type({ quantized: {...} })` object literal. Throws on anything codegen
- * cannot statically resolve — silently dropping an option would generate a
- * client that decodes every value of that field wrong.
+ * The initializer of the top-level `const` named `name` in `sourceFile` — or of
+ * the one it imports (aliased or not) or re-exports under that name. Only
+ * `const` resolves: a `let` may be reassigned before `schema()` runs.
  */
-function parseQuantizedOptions(node: ts.Expression | undefined, propertyName: string): QuantizedProperty {
-    const fail = (reason: string): never => {
-        throw new Error(
-            `schema-codegen: cannot statically resolve t.quantized() options of field '${propertyName}' — ${reason}. ` +
-            `Use literal numbers or constant Math expressions (e.g. \`Math.PI * 2\`).`
+function findConstInitializer(name: string, sourceFile: ts.SourceFile, visited = new Set<string>()): ts.Expression | undefined {
+    const key = `${sourceFile.fileName}#${name}`;
+    if (visited.has(key)) { return undefined; } // `export *` cycle
+    visited.add(key);
+
+    const follow = (specifier: ts.Expression, importedName: string) => {
+        const file = resolveModuleFile((specifier as ts.StringLiteral).text, sourceFile.fileName);
+        return file && findConstInitializer(
+            importedName,
+            ts.createSourceFile(file, readFileSync(file).toString(), ts.ScriptTarget.Latest, true),
+            visited,
         );
     };
 
-    if (!node || !ts.isObjectLiteralExpression(node)) {
-        return fail("expected an inline `{ min, max, ... }` object literal");
+    for (const statement of sourceFile.statements) {
+        if (ts.isVariableStatement(statement)) {
+            if (!(statement.declarationList.flags & ts.NodeFlags.Const)) { continue; }
+            const decl = statement.declarationList.declarations.find((d) => ts.isIdentifier(d.name) && d.name.text === name);
+            if (decl) { return decl.initializer; }
+
+        } else if (ts.isImportDeclaration(statement)) {
+            const bindings = statement.importClause?.namedBindings;
+            const spec = (bindings && ts.isNamedImports(bindings))
+                ? bindings.elements.find((el) => el.name.text === name)
+                : undefined;
+            if (spec) { return follow(statement.moduleSpecifier, (spec.propertyName ?? spec.name).text); }
+
+        } else if (ts.isExportDeclaration(statement) && statement.moduleSpecifier) {
+            // barrels: `export * from "./x"`, `export { A as B } from "./x"`
+            const clause = statement.exportClause;
+            const spec = (clause && ts.isNamedExports(clause))
+                ? clause.elements.find((el) => el.name.text === name)
+                : undefined;
+            if (!clause || spec) {
+                const found = follow(statement.moduleSpecifier, spec ? (spec.propertyName ?? spec.name).text : name);
+                if (found) { return found; }
+            }
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Evaluate a `const` reference through its initializer, across imports. `chain`
+ * holds the consts mid-evaluation, so a cyclic definition fails instead of
+ * recursing forever.
+ */
+function resolveConstIdentifier(id: ts.Identifier, chain = new Set<string>()): number | undefined {
+    const initializer = findConstInitializer(id.text, id.getSourceFile());
+    if (!initializer) { return undefined; }
+
+    // file + offset: an imported module is re-parsed per lookup, so nodes differ
+    const key = `${initializer.getSourceFile().fileName}:${initializer.pos}`;
+    if (chain.has(key)) { return undefined; }
+
+    chain.add(key);
+    const value = evalNumericExpression(initializer, (inner) => resolveConstIdentifier(inner, chain));
+    chain.delete(key);
+    return value;
+}
+
+/**
+ * Extract `{ min, max, bits?, mode? }` from a `t.quantized({...})` /
+ * `@type({ quantized: {...} })` object literal, or the `{ bits? }` of a
+ * `t.angle()`. Throws on anything codegen cannot statically resolve — silently
+ * dropping an option would generate a client that decodes every value of that
+ * field wrong.
+ */
+function parseQuantizedOptions(node: ts.Expression | undefined, propertyName: string, builder: "quantized" | "angle" = "quantized"): QuantizedProperty {
+    const fail = (reason: string): never => {
+        throw new Error(
+            `schema-codegen: cannot statically resolve t.${builder}() options of field '${propertyName}' — ${reason}. ` +
+            `Use literal numbers, constant Math expressions (e.g. \`Math.PI * 2\`) or \`const\`s holding them.`
+        );
+    };
+
+    const angle = builder === "angle";
+    // `t.angle()` may omit its options entirely
+    const properties: readonly ts.ObjectLiteralElementLike[] | undefined = (!node && angle)
+        ? []
+        : (node && ts.isObjectLiteralExpression(node)) ? node.properties : undefined;
+    if (!properties) {
+        return fail(`expected an inline \`{ ${angle ? "bits" : "min, max, ..."} }\` object literal`);
     }
 
-    const result: Partial<QuantizedProperty> & { mode?: string } = {};
-    for (const prop of node.properties) {
+    // mirrors builder.ts: t.angle({ bits }) ≡ t.quantized({ min: 0, max: Math.PI * 2, mode: "wrap", bits })
+    const result: Partial<QuantizedProperty> & { mode?: string } = angle ? { min: 0, max: Math.PI * 2, mode: "wrap" } : {};
+    for (const prop of properties) {
         if (!ts.isPropertyAssignment(prop) || !prop.name) { continue; }
         const key = (prop.name as ts.Identifier).text;
+        if (angle && key !== "bits") { continue; } // the runtime reads nothing else
 
         if (key === "mode") {
             if (!ts.isStringLiteral(prop.initializer)) { return fail("`mode` must be a string literal"); }
             result.mode = prop.initializer.text;
         } else if (key === "min" || key === "max" || key === "bits") {
-            const value = evalNumericExpression(prop.initializer);
+            const value = evalNumericExpression(prop.initializer, resolveConstIdentifier);
             if (value === undefined) { return fail(`\`${key}\` is not a constant expression`); }
             result[key] = value as any;
         }
@@ -175,7 +261,7 @@ function defineProperty(property: Property, initializer: any): boolean {
                     if (ts.isCallExpression(childArg)) {
                         // mirrors the runtime guard in builder.ts resolveChild()
                         const inner = extractBuilderBase(childArg);
-                        const hint = (inner && !BUILDER_COLLECTION_KINDS.has(inner.methodName) && inner.methodName !== "ref" && inner.methodName !== "quantized")
+                        const hint = (inner && !BUILDER_COLLECTION_KINDS.has(inner.methodName) && inner.methodName !== "ref" && inner.methodName !== "quantized" && inner.methodName !== "angle")
                             ? `use the type name instead: t.${base.methodName}("${inner.methodName}")`
                             : `collections accept a Schema class or a primitive type name ("string", "number", …)`;
                         throw new Error(`schema-codegen: field '${property.name}': a t.* builder is not a valid element type — ${hint}.`);
@@ -187,9 +273,9 @@ function defineProperty(property: Property, initializer: any): boolean {
                 if (base.firstArg) {
                     property.childType = (base.firstArg as any).text ?? base.firstArg.getText();
                 }
-            } else if (base.methodName === "quantized") {
+            } else if (base.methodName === "quantized" || base.methodName === "angle") {
                 property.type = "quantized";
-                property.quantized = parseQuantizedOptions(base.firstArg, property.name);
+                property.quantized = parseQuantizedOptions(base.firstArg, property.name, base.methodName);
             } else {
                 property.type = base.methodName;
             }
@@ -229,12 +315,7 @@ function followModuleSpecifier(
     const moduleName: string | undefined = (specifier as ts.StringLiteral)?.text;
     if (!moduleName) { return; } // `export { x }` — no module to follow
 
-    const resolved = (moduleName.startsWith("."))
-        ? resolveSourceFile(path.resolve(path.dirname(currentFile), moduleName))
-        // may be a tsconfig `paths`/`baseUrl` alias onto first-party source;
-        // npm packages are filtered out by the resolver
-        : resolveNonRelativeImport(moduleName, currentFile);
-
+    const resolved = resolveModuleFile(moduleName, currentFile);
     if (resolved && !isOwnPackageSource(resolved)) {
         parseFiles([resolved], decoratorName, globalContext);
     }

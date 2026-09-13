@@ -9,6 +9,9 @@ import { parseFiles } from "../../src/codegen/parser.js";
 import { Context, Class, getInheritanceTree } from "../../src/codegen/types.js";
 import { $numFields } from "../../src/types/symbols.js";
 import { NoSyncParent, NoSyncChild, FunctionMembers } from "./sources/NoSync.js";
+import { Look } from "./sources/Quantized.js";
+import { Literal, LiteralDecorated } from "./sources/QuantizedLiteral.js";
+import { Aim } from "./sources/QuantizedAngle.js";
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -479,6 +482,79 @@ describe("schema-codegen", () => {
         it("does not number function-valued members as fields", () => {
             generate("csharp", { files: [NOSYNC], output: OUTPUT_DIR });
             assert.deepStrictEqual(csharpIndexes("FunctionMembers.cs"), runtimeIndexes(FunctionMembers));
+        });
+    });
+
+    describe("quantized", () => {
+        const source = (name: string) => path.resolve(INPUT_DIR, `${name}.ts`);
+
+        // class -> field -> the quantization codegen extracted, for every quantized field
+        const parsed = (file: string): Record<string, Record<string, any>> => Object.fromEntries(
+            parseFiles([source(file)], "type", new Context()).classes.map((k) => [
+                k.name,
+                Object.fromEntries(k.properties.filter((p) => p.quantized).map((p) => [p.name, p.quantized])),
+            ])
+        );
+
+        // field -> the same, as the real runtime resolved it
+        const runtime = (klass: any) => {
+            const metadata = klass[Symbol.metadata];
+            const fields: Record<string, any> = {};
+            for (let i = 0; i <= metadata[$numFields]; i++) {
+                const q = metadata[i].type?.quantized;
+                if (q) { fields[metadata[i].name] = { min: q.min, max: q.max, bits: q.bits, wrap: q.wrap }; }
+            }
+            return fields;
+        };
+
+        it("reads literal and constant-Math options, defaulting to 16-bit clamp", () => {
+            const { Literal, LiteralDecorated } = parsed("QuantizedLiteral");
+            assert.deepStrictEqual(Literal, {
+                axis: { min: -1, max: 1, bits: 16, wrap: false },
+                heading: { min: 0, max: Math.PI * 2, bits: 8, wrap: true },
+                speed: { min: 0, max: 20, bits: 32, wrap: false },
+            });
+            assert.deepStrictEqual(LiteralDecorated, { lean: { min: -0.5, max: 0.5, bits: 8, wrap: false } });
+        });
+
+        it("desugars t.angle() into a wrapping full circle", () => {
+            assert.deepStrictEqual(parsed("QuantizedAngle").Aim, {
+                yaw: { min: 0, max: Math.PI * 2, bits: 16, wrap: true },
+                coarse: { min: 0, max: Math.PI * 2, bits: 8, wrap: true },
+            });
+        });
+
+        it("emits t.angle() as a quantized field in C# and Haxe", () => {
+            generate("csharp", { files: [source("QuantizedAngle")], output: OUTPUT_DIR });
+            generate("haxe", { files: [source("QuantizedAngle")], output: OUTPUT_DIR });
+            const cs = fs.readFileSync(path.resolve(OUTPUT_DIR, "Aim.cs"), "utf8");
+            const hx = fs.readFileSync(path.resolve(OUTPUT_DIR, "Aim.hx"), "utf8");
+            assert.doesNotMatch(cs, /undefined|"angle"/);
+            assert.doesNotMatch(hx, /undefined|"angle"/);
+            assert.match(cs, /Type\(0, "quantized", QuantizeMin = 0, QuantizeMax = 6\.283185307179586, QuantizeBits = 16, QuantizeWrap = true\)\]\s*public double yaw /);
+            assert.match(hx, /"quantized", \{min: 0, max: 6\.283185307179586, bits: 16, mode: 1\}\)\s*public var yaw: Float/);
+        });
+
+        it("resolves bounds held in consts: local, imported, aliased, re-exported and chained", () => {
+            const { pitch, span, tilt, coarse } = parsed("Quantized").Look;
+            assert.deepStrictEqual(pitch, { min: -1.5, max: 1.5, bits: 16, wrap: false });
+            assert.deepStrictEqual(span, { min: 0, max: Math.PI * 2, bits: 16, wrap: true });
+            assert.deepStrictEqual(tilt, { min: 0, max: 1.5, bits: 16, wrap: false });
+            assert.deepStrictEqual(coarse, { min: 0, max: Math.PI * 2, bits: 8, wrap: true });
+        });
+
+        it("matches the runtime's descriptor for every quantized field", () => {
+            assert.deepStrictEqual(parsed("QuantizedLiteral").Literal, runtime(Literal));
+            assert.deepStrictEqual(parsed("QuantizedLiteral").LiteralDecorated, runtime(LiteralDecorated));
+            assert.deepStrictEqual(parsed("QuantizedAngle").Aim, runtime(Aim));
+            assert.deepStrictEqual(parsed("Quantized").Look, runtime(Look));
+        });
+
+        it("refuses a bound held in a `let`", () => {
+            assert.throws(
+                () => parseFiles([path.resolve(INPUT_DIR, "QuantizedMutable.ts")], "type", new Context()),
+                /field 'value' — `max` is not a constant expression/,
+            );
         });
     });
 
