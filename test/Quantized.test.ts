@@ -148,8 +148,8 @@ describe("t.quantized", () => {
             src.v = 0.5;
             const it = { offset: 0 };
             const buf = encoder.encode(it).slice(0, it.offset);
-            // wire body = [index|op byte] + N value bytes
-            assert.strictEqual(buf.length, 1 + bytes, `bits=${bits} body length`);
+            // wire = [refId][len][field header] + N value bytes
+            assert.strictEqual(buf.length, 3 + bytes, `bits=${bits} body length`);
 
             const dst = new Input();
             new Decoder(dst).decode(buf);
@@ -196,8 +196,8 @@ describe("t.quantized", () => {
             const it = { offset: 0 };
             return enc.encode(it).slice(0, it.offset).length;
         };
-        assert.strictEqual(measure(Quant), 1 + 2); // index + uint16
-        assert.strictEqual(measure(Float), 1 + 4); // index + float32
+        assert.strictEqual(measure(Quant), 3 + 2); // chunk framing + uint16
+        assert.strictEqual(measure(Float), 3 + 4); // chunk framing + float32
     });
 
     it("does not emit a delta when a sub-step change quantizes to the same integer", () => {

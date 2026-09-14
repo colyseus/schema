@@ -7,7 +7,7 @@
 // import "core-js";
 
 import * as assert from "assert";
-import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, onlyCodec } from "./Schema";
+import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
 import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema, schema, t, ToJSON, $refId } from "../src";
 import { getNormalizedType } from "../src/Metadata";
 
@@ -1324,23 +1324,6 @@ describe("Type: Schema", () => {
             assert.strictEqual(decodedState2.n, 100);
         });
 
-        //
-        // NOTE: rooting a second Encoder at an already-attached child detaches
-        // it from the parent's Root — `state` must not be encoded again after
-        // this. (Colyseus no longer sends schema-encoded messages.)
-        //
-        onlyCodec("v5", "v6 chunks are refId-addressed; no standalone child decode")("should decode a child structure alone (Schema encoded messages)", () => {
-            const state = new State();
-
-            state.mapOfPlayers = new MapSchema<Player>();
-            state.mapOfPlayers.set('jake', new Player("Jake"));
-            state.mapOfPlayers.set('katarina', new Player("Jake"));
-            state.encode();
-
-            const decodedPlayer = new Player();
-            decodedPlayer.decode(state.mapOfPlayers.get('jake').encodeAll());
-            assert.strictEqual("Jake", decodedPlayer.name);
-        });
     });
 
 

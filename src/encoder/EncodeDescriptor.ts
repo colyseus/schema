@@ -4,32 +4,34 @@
  * a tree of that class is constructed) and stashed on the constructor via
  * `$encodeDescriptor`. Each ChangeTree caches a reference to its class's
  * descriptor at construction time, so the encode loop reads a single
- * property from the tree instead of chasing 5 separate per-tree lookups:
- *
- *   ctor[$encoder]
- *   ctor[$filter]
- *   ctor[Symbol.metadata]
- *   Metadata.isValidInstance(ref)
+ * property from the tree instead of chasing several per-tree lookups.
  *
  * Lives in its own file to break the Encoder.ts ↔ ChangeTree.ts import
  * cycle (ChangeTree caches descriptors at construction; Encoder reads them
  * during encode).
  */
 import { Metadata } from "../Metadata.js";
-import { $encodeDescriptor, $encoder, $encoders, $filter, $numFields, $fullStateOnlyFieldIndexes, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
+import { DEFAULT_VIEW_TAG } from "../annotations.js";
+import { KIND_INDEXED, KIND_SCHEMA } from "../encoding/spec.js";
+import { $encodeDescriptor, $encoders, $filter, $fullSyncSkipIndexes, $numFields, $fullStateOnlyFieldIndexes, $recorder, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
-import type { EncodeOperation } from "./EncodeOperation.js";
+import type { ArrayLog } from "./ArrayLog.js";
+import type { KeyedRecorder } from "./KeyedRecorder.js";
 
 export interface EncodeDescriptor {
-    encoder: EncodeOperation;
     filter: ((ref: any, index: number, view?: StateView) => boolean) | undefined;
     metadata: any;
     isSchema: boolean;
+    /** KIND_SCHEMA / KIND_MAP / KIND_ARRAY / KIND_INDEXED — per class, so frames don't probe the instance. */
+    kind: number;
+    /** Recorder factory for collection classes (`static [$recorder]`); undefined for Schemas. */
+    newRecorder: (() => ArrayLog | KeyedRecorder) | undefined;
+    /** Highest field index (`metadata[$numFields]`), -1 for collections. */
+    numFields: number;
     /**
      * Bit i set iff field i has a @view tag. 0 for collection trees.
-     * Lets `encodeChangeCb` do a single bitwise op instead of a per-field
-     * metadata[i]?.tag chase. Fields 0–31 only, like the bitmasks below —
-     * `encodeChangeCb` reads `tags` past that.
+     * Fields 0–31 only, like the bitmasks below — readers consult `tags`
+     * past that.
      */
     filterBitmask: number;
 
@@ -73,16 +75,22 @@ export interface EncodeDescriptor {
      * a @view tag; readers should null-check before comparing.
      *
      * `encoders[i]` mirrors `metadata[$encoders]` — the pre-computed
-     * encoder fn for primitive-typed fields. Cached here so encode loops
-     * skip a `metadata[$encoders]?.[i]` symbol-chain per emission.
+     * encoder fn for primitive-typed fields.
      */
     names: string[];
     types: any[];
     tags: (number | undefined)[];
     encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
 
-    /** Lazily-built v6 codec cache (see `src/v6/classInfo.ts`). Declared up front so the slot is in the initial hidden class. */
-    v6: unknown;
+    /** Field indexes a full sync walks: declared and not `@patchOnly` / `@deprecated`. */
+    liveIndexes: number[];
+    /** Bit i set iff field i (< 32) is ref-typed. */
+    refTypeBitmask: number;
+    hasRefFieldAbove32: boolean;
+    /** Any `@view` tag on a field index ≥ 32 (past `filterBitmask`). */
+    hasTagAbove32: boolean;
+    /** Distinct custom `@view(tag)` bits declared on this class. */
+    customTagBits: number[];
 }
 
 /**
@@ -100,47 +108,6 @@ function indexesToBitmask(indexes: number[] | undefined): number {
     return bm;
 }
 
-/**
- * Build the per-field parallel arrays once at descriptor construction.
- * For collection trees (no metadata or no $numFields) this returns empty
- * arrays — readers branch on `isSchema` before touching them anyway.
- */
-function buildFieldArrays(metadata: any): {
-    names: string[];
-    types: any[];
-    tags: (number | undefined)[];
-    encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
-} {
-    const names: string[] = [];
-    const types: any[] = [];
-    const tags: (number | undefined)[] = [];
-    const encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[] = [];
-
-    if (metadata === undefined) return { names, types, tags, encoders };
-
-    const numFields = metadata[$numFields];
-    if (numFields === undefined) return { names, types, tags, encoders };
-
-    const srcEncoders = metadata[$encoders];
-    for (let i = 0; i <= numFields; i++) {
-        const field = metadata[i];
-        if (field === undefined) {
-            // Holes are normal — inheritance can leave gaps. Fill with
-            // undefined so indexing is valid.
-            names[i] = undefined!;
-            types[i] = undefined;
-            tags[i] = undefined;
-            encoders[i] = undefined;
-            continue;
-        }
-        names[i] = field.name;
-        types[i] = field.type;
-        tags[i] = field.tag;
-        encoders[i] = srcEncoders?.[i];
-    }
-    return { names, types, tags, encoders };
-}
-
 export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     const ctor = ref.constructor;
 
@@ -155,23 +122,65 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     const metadata = ctor[Symbol.metadata];
     const isSchema = Metadata.isValidInstance(ref);
     const hasAnyView = (metadata?.[$viewFieldIndexes]?.length ?? 0) > 0;
-    const arrays = buildFieldArrays(metadata);
-    // For Schema classes with no `@view`-tagged fields, the per-field
-    // `ctx.filter(ref, index, view)` call on the encode hot path is a
-    // provable no-op: `Schema[$filter]` does `metadata[index]?.tag === undefined`
-    // which is always true when no field carries a tag. Setting filter to
-    // `undefined` here lets the `ctx.filter !== undefined && …` short-circuit
-    // in `encodeChangeCb` skip the call entirely — the metadata lookup +
-    // comparison adds up across 10k+ field encodes/tick.
-    // Collection classes keep their filter — their `[$filter]` does
-    // instance-level `ref[$childType]` / view-visibility checks that can't
-    // be decided class-wide.
+
+    const collectionKind = ctor.COLLECTION_KIND;
+    const kind = (collectionKind === undefined) ? KIND_SCHEMA : (collectionKind <= 2 ? collectionKind : KIND_INDEXED);
+
+    // Per-field parallel arrays (Schemas only; empty for collections).
+    const names: string[] = [];
+    const types: any[] = [];
+    const tags: (number | undefined)[] = [];
+    const encoders: EncodeDescriptor["encoders"] = [];
+    const liveIndexes: number[] = [];
+    let refTypeBitmask = 0;
+    let hasRefFieldAbove32 = false;
+    let hasTagAbove32 = false;
+    const tagBits = new Set<number>();
+    const numFields: number = (isSchema && metadata !== undefined) ? (metadata[$numFields] ?? -1) : -1;
+    const srcEncoders = metadata?.[$encoders];
+    const skip: number[] | undefined = metadata?.[$fullSyncSkipIndexes];
+
+    for (let i = 0; i <= numFields; i++) {
+        const field = metadata[i];
+        if (field === undefined) {
+            // Holes are normal — inheritance can leave gaps.
+            names[i] = undefined!;
+            types[i] = undefined;
+            tags[i] = undefined;
+            encoders[i] = undefined;
+            continue;
+        }
+        names[i] = field.name;
+        types[i] = field.type;
+        tags[i] = field.tag;
+        encoders[i] = srcEncoders?.[i];
+        if (skip === undefined || !skip.includes(i)) liveIndexes.push(i);
+
+        const isRef = typeof field.type !== "string" && field.type.quantized === undefined;
+        if (isRef) {
+            if (i < 32) refTypeBitmask |= (1 << i);
+            else hasRefFieldAbove32 = true;
+        }
+        const tag = field.tag;
+        if (tag !== undefined && i >= 32) hasTagAbove32 = true;
+        if (tag !== undefined && tag !== DEFAULT_VIEW_TAG) {
+            for (let bits = tag; bits > 0; bits &= bits - 1) tagBits.add(bits & -bits);
+        }
+    }
+
+    // For Schema classes with no `@view`-tagged fields the per-field
+    // `filter(ref, index, view)` call is a provable no-op — leave it
+    // undefined so the emitter's `filter !== undefined && …` short-circuit
+    // skips the call. Keyed collections keep their instance-level filter;
+    // arrays have none (the emitter checks element visibility directly).
     const filter = (isSchema && !hasAnyView) ? undefined : ctor[$filter];
     const desc: EncodeDescriptor = {
-        encoder: ctor[$encoder],
         filter,
         metadata,
         isSchema,
+        kind,
+        newRecorder: ctor[$recorder],
+        numFields,
         filterBitmask: isSchema ? indexesToBitmask(metadata?.[$viewFieldIndexes]) : 0,
         hasAnyFullStateOnly: (metadata?.[$fullStateOnlyFieldIndexes]?.length ?? 0) > 0,
         hasAnyUnreliable: (metadata?.[$unreliableFieldIndexes]?.length ?? 0) > 0,
@@ -180,11 +189,15 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         fullStateOnlyBitmask: indexesToBitmask(metadata?.[$fullStateOnlyFieldIndexes]),
         unreliableBitmask: indexesToBitmask(metadata?.[$unreliableFieldIndexes]),
         streamBitmask: indexesToBitmask(metadata?.[$streamFieldIndexes]),
-        names: arrays.names,
-        types: arrays.types,
-        tags: arrays.tags,
-        encoders: arrays.encoders,
-        v6: undefined,
+        names,
+        types,
+        tags,
+        encoders,
+        liveIndexes,
+        refTypeBitmask,
+        hasRefFieldAbove32,
+        hasTagAbove32,
+        customTagBits: Array.from(tagBits),
     };
     Object.defineProperty(ctor, $encodeDescriptor, {
         value: desc,

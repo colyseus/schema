@@ -4,6 +4,84 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [6.0.0-alpha.0]
+
+### Changed (breaking)
+
+- **Wire format 6** (see `SPEC.md`): length-prefixed chunks
+  (`uvarint(refId) uvarint(len) ops`) replace the `255 + refId` switch byte,
+  fresh instances ride inline as bodies of the parent's ADD, every structural
+  integer is a LEB128 varint, strings are `uvarint(len) + utf8`. A 5.x client
+  is rejected at the reflection handshake. Snapshots are ~40 % smaller and
+  ~40 % faster to encode; patches ~15 % faster (`bench/v6-results.md`).
+- **`ArraySchema` extends `Array`.** `Array.isArray(arr)` is true; `map` /
+  `filter` / `slice` / `concat` / `flat` return plain arrays
+  (`ArraySchema[Symbol.species] === Array`); `fill`, `copyWithin`, `flat`,
+  `flatMap` work. Index writes are tracked through a `set`-only Proxy on the
+  encoder side; decoder-side instances have no Proxy at all. Writes past the
+  end append (no holes); `delete arr[i]` removes; growing `length` is ignored.
+  V8 runs `Array.prototype` builtins on a subclass instance through their
+  generic path, so `ArraySchema` overrides the common ones (`push`, `pop`,
+  `shift`, `unshift`, `splice`, `sort`, `reverse`, `forEach`, `map`,
+  `filter`, `find`, `findIndex`, `some`, `every`, `reduce`, `indexOf`,
+  `lastIndexOf`, `includes`, `slice`, `at`) with index loops that are as
+  fast as on a plain array or faster, and `for…of` / `values` / `keys` /
+  `entries` iterate the raw array through a small iterator (about 3 ns per
+  element). What remains costly is a read through the encoder-side Proxy
+  itself: `arr[i]` costs about 70 ns there even without a `get` trap (5.x
+  paid twice that through its `get` trap), so walk a large array on the
+  server with `forEach`, `for…of` or `toArray()` rather than an index loop.
+  Spread and `Array.from` remain about 15× slower than on a plain array.
+- **Array wire model**: an ordered op log (PUSH / INSERT / SET / REMOVE /
+  REVERSE / REORDER / RESTATE / CLEAR) with a per-array revision, so a client
+  that joined mid-tick applies exactly the ops recorded after its snapshot.
+  `sort()` / `move()` / `shuffle()` emit one REORDER (nothing when the order
+  is unchanged) and fire `onChange` for moved slots, never `onAdd` /
+  `onRemove`; a value pushed and removed in the same tick never reaches the
+  wire. Arrays of Schema children under `@view()` keep identity ops
+  (order not synced per view). Every array op is one varint carrying its
+  first operand (`uvarint(arg * 16 + op)`): an index write costs
+  `refId len op value`, four bytes for small values. The revision base is
+  sent only in a tick that snapshotted the array (`BASE` op); otherwise the
+  log resumes from the client's own revision.
+- Binding an element of a filtered array to a view (`view.add(element)`)
+  inlines that element only into the parent's re-binding; the rest of the
+  array is not re-sent.
+- Reorders and `RESTATE` snapshots over a populated array of Schema children
+  report the elements that actually left / arrived, not a churn per slot.
+- A `listen()` registered from inside a callback fires immediately unless a
+  later change for that field is pending in the same batch (a shared
+  instance bound twice in one tick now notifies both bindings).
+- `Metadata.MAX_FIELDS` is 64 (indexes 0..63).
+- `SPEC.md` documents wire format 6 and ends with a porting checklist for
+  the other-language decoders (C#, Lua, Haxe, C++, Defold): framing,
+  LEB128 integers, strings, field ops, type ids, inline bodies, keyed and
+  array grammars, handshake, refcounts, callbacks.
+- `ArraySchema` stays an `Array` subclass after a three-way comparison with
+  v5 and a 5.x-style internal-array build (`bench/array-impl-comparison.md`);
+  the alternative remains buildable with `SCHEMA_ARRAY_IMPL=internal`.
+- `encodeView` / `encodeAllView` / `encodeUnreliableView` return
+  `[shared, viewSlice]`; `Decoder.decode` accepts the pair (or a single
+  buffer). `Encoder.concat(parts)` joins them for single-buffer transports.
+- `CollectionSchema` is deprecated (a `SetSchema` allowing duplicates; warns
+  once). `SetSchema` gained O(1) `has` / `delete`.
+- Removed: `MapSchema.$indexes` / `_collectionIndexes` (use `keyByIndex` /
+  `indexByKey`), `MapJournal`, `CollectionChangeRecorder`, `clone(isDecoding)`
+  (`clone()` only), the `$encoder` / `$decoder` statics, `SWITCH_TO_STRUCTURE`,
+  `TYPE_ID`, `MOVE` / `DELETE_AND_MOVE` / `MOVE_AND_ADD` / `ADD_BY_REFID` /
+  `DELETE_BY_REFID`, `decode.stringCheck`, and the `Encoder6` / `Decoder6` /
+  `Reflection6` proof-of-concept exports (now the codec itself).
+- `Reflection.encode` output starts with the protocol version byte; decode
+  it with `Reflection.decode`, or skip the first byte for a raw `Decoder`.
+- The other-language SDK decoders (C#, Lua, Haxe, …) and the fixture
+  generators in `test-external/` still speak the 5.x format and need a port.
+
+### Added
+
+- `ArrayLog` / `KeyedRecorder`: one change recorder per collection, owned by
+  the collection (`ChangeTree.rec`). Custom primitive types registered after
+  import now work as collection children.
+
 ## [5.0.23]
 
 ### Added

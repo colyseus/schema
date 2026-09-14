@@ -1,4 +1,5 @@
 import { ChangeTree, Ref } from "./ChangeTree.js";
+import { isEdgeLive } from "./changeTree/parentChain.js";
 import { $changes, $childType, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
@@ -62,12 +63,11 @@ const _disposeRegistry = new FinalizationRegistry<{ root: Root; id: number; slot
  * internals and buries the message that matters.
  */
 /**
- * Sentinel inner-map key: "snapshot every live element of this ref-typed
- * ArraySchema". Written by `_add`'s bulk path instead of one entry per
- * element; `encodeView` expands it structurally at drain time, so the
- * emitted slots reflect any reindex that happened after `view.add()` —
- * and a whole-array snapshot costs one Map insert instead of N.
- * Real slots are never negative, so -1 cannot collide.
+ * Sentinel inner-map key: "snapshot this ArraySchema" (positional RESTATE
+ * with its revision, or the visible refs for a filtered Schema-child
+ * array). Written by `_add` instead of one entry per element; `encodeView`
+ * emits it from the live array at drain time. Real indexes are never
+ * negative, so -1 cannot collide.
  */
 export const ARRAY_SNAPSHOT = -1;
 
@@ -501,12 +501,11 @@ export class StateView {
         // only); default-tag re-adds re-snapshot on purpose (see `items`
         // dedup note above).
         if ((tag === DEFAULT_VIEW_TAG || !wasVisible) && (!changeTree.isNew || isChildAdded)) {
-            if (changeTree.isArray && typeof (changeTree.refTarget as any)[$childType] !== "string") {
-                // Ref-typed ArraySchema (the only proxied collection): one
-                // sentinel entry — encodeView snapshots the live elements at
-                // drain time, so the slots survive a same-tick reindex (see
-                // `changes` field docs) and the write stays O(1).
-                if ((changeTree.refTarget as any).items.length > 0) {
+            if (changeTree.isArray) {
+                // ArraySchema: one sentinel entry — encodeView emits a whole-
+                // array RESTATE from the live array at drain time (one Map
+                // insert, and no slot can go stale).
+                if ((changeTree.elements as any).length > 0) {
                     changes.set(ARRAY_SNAPSHOT, OPERATION.ADD);
                     isChildAdded = true;
                 }
@@ -611,8 +610,11 @@ export class StateView {
         // bytes for a no-op (`value === previousValue` on the decoder).
         if (!changeTree.hasFilteredFields) return;
 
-        // add parent's tag properties
-        if (changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
+        // add parent's tag properties (arrays: only while the child is still an element)
+        const bound = changeTree.isArray
+            ? isEdgeLive(childChangeTree, changeTree, parentIndex ?? -1)
+            : changeTree.getChange(parentIndex) !== OPERATION.DELETE;
+        if (bound) {
             let changes = this.changes.get(changeTree.ref[$refId]);
             if (changes === undefined) {
                 changes = new Map<number | ChangeTree, OPERATION>();
@@ -621,11 +623,10 @@ export class StateView {
 
             this.addTag(changeTree, tag);
 
-            // ArraySchema parents: key by the child's identity, not the wire
-            // slot it holds right now — a same-tick unshift()/reverse()/move()
-            // would shift the slot before encodeView drains this entry. Other
-            // parents keep numeric keys (Schema fields, MapSchema journal
-            // indexes and Set/Collection indexes are stable within a tick).
+            // ArraySchema parents: key by the child's identity — elements are
+            // never addressed by slot on the wire. Other parents keep numeric
+            // keys (Schema fields, Map / Set / Collection wire indexes are
+            // stable within a tick).
             changes.set(
                 changeTree.isArray ? childChangeTree : parentIndex,
                 OPERATION.ADD,

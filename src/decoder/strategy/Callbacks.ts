@@ -48,6 +48,9 @@ export class StateCallbackStrategy<TState extends IRef> {
     protected decoder: Decoder<TState>;
     protected uniqueRefIds: Set<number> = new Set();
     protected isTriggering: boolean = false;
+    /** The batch being dispatched and the change currently dispatched (see `hasPendingChange`). */
+    protected batch: DataChange[] | null = null;
+    protected batchIndex: number = 0;
 
     constructor(decoder: Decoder<TState>) {
         this.decoder = decoder;
@@ -151,7 +154,14 @@ export class StateCallbackStrategy<TState extends IRef> {
         handler: PropertyChangeCallback<any>,
         immediate: boolean = true
     ): () => void {
-        immediate = immediate && this.isTriggering === false;
+        // While a batch dispatches, a `listen()` registered from inside a
+        // callback fires immediately only if no later change for the same
+        // field is pending — that change will call it instead. (A shared
+        // instance bound twice in one batch: the second binding's listener
+        // still sees the value the first binding's body delivered.)
+        if (immediate && this.isTriggering) {
+            immediate = !this.hasPendingChange(instance[$refId]!, propertyName);
+        }
 
         //
         // Call handler immediately if property is already available.
@@ -329,8 +339,20 @@ export class StateCallbackStrategy<TState extends IRef> {
         return this.addCallback((from as IRef)[$refId]!, OPERATION.REPLACE, action);
     }
 
+    /** True iff a change for (`refId`, `field`) is still ahead in the batch being dispatched. */
+    protected hasPendingChange(refId: number, field: string): boolean {
+        const batch = this.batch;
+        if (batch === null) return false;
+        for (let i = this.batchIndex + 1, l = batch.length; i < l; i++) {
+            const change = batch[i];
+            if (change.refId === refId && change.field === field) return true;
+        }
+        return false;
+    }
+
     protected triggerChanges(allChanges: DataChange[]): void {
         this.uniqueRefIds.clear();
+        this.batch = allChanges;
 
         // Flag stays set for the whole dispatch pass — any `listen()` /
         // `onAdd(...)` registered while a callback is firing needs to
@@ -343,6 +365,7 @@ export class StateCallbackStrategy<TState extends IRef> {
             const change = allChanges[i];
             const refId = change.refId;
             const ref = change.ref;
+            this.batchIndex = i;
 
             const $callbacks = this.callbacks[refId];
             if (!$callbacks) {
@@ -456,6 +479,7 @@ export class StateCallbackStrategy<TState extends IRef> {
         }
 
         this.isTriggering = false;
+        this.batch = null;
     }
 }
 

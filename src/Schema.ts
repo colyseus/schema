@@ -4,11 +4,8 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
 import { ChangeTree, installUntrackedChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
-import { $changes, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $track, $values } from './types/symbols.js';
+import { $changes, $deleteByIndex, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
-
-import { encodeSchemaOperation } from './encoder/EncodeOperation.js';
-import { decodeSchemaOperation } from './decoder/DecodeOperation.js';
 
 import type { Decoder } from './decoder/Decoder.js';
 import type { Metadata, MetadataField } from './Metadata.js';
@@ -19,8 +16,6 @@ import { getIndent } from './utils.js';
  */
 export class Schema<C = any> implements IRef {
     static [Symbol.metadata]: Metadata;
-    static [$encoder] = encodeSchemaOperation;
-    static [$decoder] = decodeSchemaOperation;
 
     [$refId]?: number;
     [$values]: any[];
@@ -450,9 +445,9 @@ export class Schema<C = any> implements IRef {
 
         changeTree.forEachChild((childChangeTree, indexOrKey) => {
             let key = indexOrKey;
-            if (typeof indexOrKey === 'number' && (ref as any)['$indexes']) {
+            if (typeof indexOrKey === 'number' && (ref as any)['keyByIndex'] !== undefined) {
                 // MapSchema
-                key = (ref as any)['$indexes'].get(indexOrKey) ?? indexOrKey;
+                key = (ref as any)['keyByIndex'].get(indexOrKey) ?? indexOrKey;
             }
             const keyPrefix = ((ref as any)['forEach'] !== undefined && key !== undefined) ? `["${key}"]: ` : "";
             output += this.debugRefIds(childChangeTree.ref, showContents, level + 1, decoder, keyPrefix);

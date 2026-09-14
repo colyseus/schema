@@ -477,7 +477,7 @@ describe("Type: MapSchema", () => {
         // TODO: we could get lower than that.
         assert.ok(encoded.length <= 12);
 
-        assert.strictEqual(state.mapOfPlayers['$indexes'].size, 0);
+        assert.strictEqual(state.mapOfPlayers.keyByIndex.size, 0);
         assertDeepStrictEqualEncodeAll(state);
     });
 

@@ -44,7 +44,7 @@ describe("Reflection", () => {
         const encoded = Reflection.encode(encoder);
         console.log(Array.from(encoded));
 
-        reflected.decode(encoded);
+        reflected.decode(encoded.subarray(1)); // past the protocol version prefix
         assert.strictEqual(reflected.types.length, 1);
     });
 
@@ -52,7 +52,7 @@ describe("Reflection", () => {
         const state = new State();
 
         const reflected = new Reflection();
-        reflected.decode(Reflection.encode(getEncoder(state)));
+        reflected.decode(Reflection.encode(getEncoder(state)).subarray(1)); // past the protocol version prefix
 
         assert.deepStrictEqual(
             reflected.toJSON(),
@@ -145,7 +145,7 @@ describe("Reflection", () => {
 
         const reflected = new Reflection();
         const encoded = Reflection.encode(getEncoder(new MyState()));
-        reflected.decode(encoded)
+        reflected.decode(encoded.subarray(1)); // past the protocol version prefix
 
         assert.deepStrictEqual(reflected.toJSON(), {
             types: [
@@ -317,7 +317,7 @@ describe("Reflection", () => {
 
         const reflected = new Reflection();
         const decoder = new Decoder(reflected);
-        decoder.decode(encoded);
+        decoder.decode(encoded, { offset: 1 }); // past the protocol version prefix
 
         const types = reflected.types;
         assert.strictEqual(11, types.length)

@@ -1,4 +1,4 @@
-// v5 vs v6 matrix: entity count × encode mode, bloat shape
+// Entity count × encode mode matrix, bloat shape
 // (`Map<Player{name, position{x,y}, scores[5]}>`). Patch ticks move the
 // first `moving` players by fractional steps (float32 payloads, as in a game).
 import { buildBloatState, codecOf, withCodecs } from "../../lib/fixtures.mjs";

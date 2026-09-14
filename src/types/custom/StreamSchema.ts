@@ -1,20 +1,17 @@
-import { OPERATION } from "../../encoding/spec.js";
+import { CollectionKind } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import {
     $changes,
     $childType,
-    $decoder,
     $deleteByIndex,
-    $encoder,
     $filter,
     $getByIndex,
-    $onEncodeEnd,
+    $recorder,
     $refId,
     $resyncPrune,
 } from "../symbols.js";
 import { ChangeTree, installUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
-import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
-import { CollectionKind, decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
+import { KeyedRecorder } from "../../encoder/KeyedRecorder.js";
 import {
     createStreamableState,
     streamDropView,
@@ -95,9 +92,7 @@ export class StreamSchema<V = any> implements IRef {
      */
     static readonly $isStream: true = true;
 
-    static [$encoder] = encodeIndexedEntry;
-    static [$decoder] = decodeKeyValueOperation;
-    /** Integer tag read by `decodeKeyValueOperation` — see `CollectionKind`. */
+    static [$recorder] = () => new KeyedRecorder();
     static readonly COLLECTION_KIND = CollectionKind.Stream;
 
     /**
@@ -240,21 +235,6 @@ export class StreamSchema<V = any> implements IRef {
         return this.$items.size;
     }
 
-    // ────────────────────────────────────────────────────────────────────
-    // Decoder / encoder plumbing — same shape as SetSchema so
-    // {encode,decode}KeyValueOperation can route uniformly. StreamSchema
-    // keys are identity (wire index === position), so `setIndex`/`getIndex`
-    // are no-ops / identity like SetSchema.
-    // ────────────────────────────────────────────────────────────────────
-
-    protected setIndex(_index: number, _key: number): void {
-        // no-op: indexes are identity
-    }
-
-    protected getIndex(index: number): number {
-        return index;
-    }
-
     [$getByIndex](index: number): V {
         return this.$items.get(index) as V;
     }
@@ -273,10 +253,6 @@ export class StreamSchema<V = any> implements IRef {
         // authoritative for streams, so absence ≠ deleted. Never prune.
     }
 
-    protected [$onEncodeEnd](): void {
-        // No per-tick cleanup: pending/sent state spans encode ticks by design.
-    }
-
     toArray(): V[] {
         return Array.from(this.$items.values());
     }
@@ -289,11 +265,7 @@ export class StreamSchema<V = any> implements IRef {
         return out;
     }
 
-    clone(isDecoding?: boolean): StreamSchema<V> {
-        if (isDecoding) {
-            const cloned = Object.assign(new StreamSchema<V>(), this);
-            return cloned;
-        }
+    clone(): StreamSchema<V> {
         const cloned = new StreamSchema<V>();
         cloned.maxPerTick = this.maxPerTick;
         this.forEach((v: any) => {

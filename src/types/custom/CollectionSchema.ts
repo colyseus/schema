@@ -1,341 +1,60 @@
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId, $reset, $resyncPrune } from "../symbols.js";
-import { ChangeTree, installUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
-import { OPERATION } from "../../encoding/spec.js";
+import { CollectionKind } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
-import { Collection } from "../HelperTypes.js";
-import { CollectionKind, decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
-import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
-import {
-    createStreamableState,
-    streamDropView,
-    streamRouteAdd,
-    streamRouteRemove,
-    type StreamableState,
-} from "../../encoder/streaming.js";
-import type { StateView } from "../../encoder/StateView.js";
-import type { Schema } from "../../Schema.js";
+import { SetSchema } from "./SetSchema.js";
 
-type K = number; // TODO: allow to specify K generic on MapSchema.
+let warned = false;
 
-export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
-    [$changes]: ChangeTree;
-    [$refId]?: number;
-
-    protected [$childType]: string | typeof Schema;
-
-    /** The user-visible data, keyed directly by the wire-protocol index. */
-    protected $items: Map<number, V> = new Map<number, V>();
-
-    /** Snapshots of values that were deleted this tick (for filter visibility). */
-    protected deletedItems: { [field: string]: V } = {};
-
-    /** Monotonic counter for assigning indexes to newly-added items. */
-    protected $refId: number = 0;
-
-    /**
-     * Streamable state — lazily allocated when the field is opted into
-     * streaming via `t.collection(X).stream()`. See MapSchema for the
-     * same pattern / rationale.
-     */
-    _stream?: StreamableState;
-
-    get maxPerTick(): number {
-        return this._stream?.maxPerTick ?? 32;
-    }
-    set maxPerTick(n: number) {
-        (this._stream ??= createStreamableState()).maxPerTick = n;
-    }
-
-    get priority(): ((view: any, element: V) => number) | undefined {
-        return this._stream?.priority as ((view: any, element: V) => number) | undefined;
-    }
-    set priority(fn: ((view: any, element: V) => number) | undefined) {
-        (this._stream ??= createStreamableState()).priority = fn;
-    }
-
-    static [$encoder] = encodeIndexedEntry;
-    static [$decoder] = decodeKeyValueOperation;
-    /** Integer tag read by `decodeKeyValueOperation` — see `CollectionKind`. */
-    static readonly COLLECTION_KIND = CollectionKind.Collection;
-
-    /**
-     * Determine if a property must be filtered.
-     * - If returns false, the property is NOT going to be encoded.
-     * - If returns true, the property is going to be encoded.
-     *
-     * Encoding with "filters" happens in two steps:
-     * - First, the encoder iterates over all "not owned" properties and encodes them.
-     * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
-     */
-    static [$filter] (ref: CollectionSchema, index: number, view: StateView) {
-        return (
-            !view ||
-            typeof (ref[$childType]) === "string" ||
-            view.isChangeTreeVisible((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
-        );
-    }
+/**
+ * @deprecated `CollectionSchema` is a `SetSchema` that allows duplicate
+ * values. Use `SetSchema` (unique values), `ArraySchema` (ordered) or
+ * `MapSchema` (keyed) instead. Kept as a thin subclass so
+ * `t.collection()` / `{ collection: X }` keep working; it will be removed
+ * in a future major version.
+ */
+export class CollectionSchema<V=any> extends SetSchema<V> {
+    static readonly COLLECTION_KIND: CollectionKind = CollectionKind.Collection;
 
     static is(type: any) {
         return type['collection'] !== undefined;
     }
 
     constructor (initialValues?: Array<V>) {
-        // $changes must be non-enumerable — see Schema.initialize.
-        Object.defineProperty(this, $changes, {
-            value: new ChangeTree(this),
-            enumerable: false,
-            writable: true,
-        });
-        this[$childType] = undefined as any;
-
-        if (initialValues) {
-            initialValues.forEach((v) => this.add(v));
+        if (!warned) {
+            warned = true;
+            console.warn("@colyseus/schema: CollectionSchema is deprecated — use SetSchema, ArraySchema or MapSchema instead.");
         }
+        super(initialValues);
     }
 
-    /**
-     * Decoder-side factory. Skips the tracking `ChangeTree` allocation;
-     * `Object.create` also bypasses the class-field initializers, so we
-     * replicate the minimum slot init here. Must stay in sync with the
-     * class-field declarations above.
-     */
-    static initializeForDecoder<V = any>(): CollectionSchema<V> {
-        const self: any = Object.create(CollectionSchema.prototype);
-        self.$items = new Map<number, V>();
-        self.deletedItems = {};
-        self.$refId = 0;
-        self[$childType] = undefined;
-        installUntrackedChangeTree(self);
-        return self;
+    /** Duplicates are allowed: every call appends a new entry. */
+    add(value: V): number {
+        return this.$add(value);
     }
 
-    add(value: V) {
-        // assign the next wire-protocol index
-        const index = this.$refId++;
-
-        const changeTree = this[$changes];
-        const isRef = (value[$changes]) !== undefined;
-        if (isRef) {
-            value[$changes].setParent(this, changeTree.root, index);
-        }
-
-        this.$items.set(index, value);
-
-        if (changeTree.isStreamCollection) {
-            if (changeTree.root !== undefined) {
-                streamRouteAdd(this, changeTree.root, index);
-            }
-        } else {
-            changeTree.change(index);
-        }
-
-        return index;
-    }
-
+    /** Nth entry in insertion order (O(n)). */
     at(index: number): V | undefined {
-        const key = Array.from(this.$items.keys())[index];
-        return this.$items.get(key);
-    }
-
-    entries() {
-        return this.$items.entries();
-    }
-
-    delete(item: V) {
-        const entries = this.$items.entries();
-
-        let index: K;
-        let entry: IteratorResult<[number, V]>;
-        while (entry = entries.next()) {
-            if (entry.done) { break; }
-
-            if (item === entry.value[1]) {
-                index = entry.value[0];
-                break;
-            }
+        let i = 0;
+        for (const value of this.$items.values()) {
+            if (i++ === index) return value;
         }
+        return undefined;
+    }
 
-        if (index === undefined) {
-            return false;
+    /** True iff any entry is `value` (O(n) — duplicates are allowed). */
+    has(value: V): boolean {
+        for (const v of this.$items.values()) {
+            if (v === value) return true;
         }
+        return false;
+    }
 
-        const changeTree = this[$changes];
-        if (changeTree.isStreamCollection) {
-            const root = changeTree.root;
-            const previousValue = this.$items.get(index);
-            if (root !== undefined) {
-                streamRouteRemove(this, root, (this as any)[$refId], index);
-            }
-            if ((previousValue as any)?.[$changes] !== undefined) {
-                root?.remove((previousValue as any)[$changes]);
-            }
-            this.deletedItems[index] = previousValue as V;
-            return this.$items.delete(index);
+    /** Remove the first entry equal to `item` (O(n) — duplicates are allowed). */
+    delete(item: V): boolean {
+        for (const [index, value] of this.$items) {
+            if (value === item) return this.$deleteAt(index, value);
         }
-
-        this.deletedItems[index] = changeTree.delete(index);
-
-        return this.$items.delete(index);
+        return false;
     }
-
-    clear() {
-        const changeTree = this[$changes];
-
-        // discard previous operations.
-        changeTree.discard();
-
-        // remove children references
-        changeTree.forEachChild((childChangeTree, _) => {
-            changeTree.root?.remove(childChangeTree);
-        });
-
-        // clear items
-        this.$items.clear();
-
-        changeTree.operation(OPERATION.CLEAR);
-    }
-
-    /**
-     * Pool reset: empty this collection and recycle its ChangeTree WITHOUT
-     * recording any wire op (the parent field's ADD/DELETE owns the wire).
-     * Recurses into ref-type children. Called by Schema.reset when a pooled
-     * entity has a collection field. Must already be detached from the encoder.
-     */
-    [$reset]() {
-        const changeTree = this[$changes];
-        if (changeTree.isStreamCollection) {
-            throw new Error(`@colyseus/schema: cannot reset a streamed CollectionSchema (pooling not supported).`);
-        }
-        this.$items.forEach((value: any) => value?.[$reset]?.());
-        this.$items.clear();
-        this.deletedItems = {};
-        this.$refId = 0; // reset the monotonic index counter (field, not the symbol)
-        changeTree.recycle();
-        this[$refId] = undefined; // drop encoder ref identity by assign (not delete: avoids dict-mode deopt)
-    }
-
-    has (value: V): boolean {
-        return Array.from(this.$items.values()).some((v) => v === value);
-    }
-
-    forEach(callbackfn: (value: V, key: K, collection: CollectionSchema<V>) => void) {
-        this.$items.forEach((value, key, _) => callbackfn(value, key, this));
-    }
-
-    values() {
-        return this.$items.values();
-    }
-
-    get size () {
-        return this.$items.size;
-    }
-
-    // ────── Change tracking control (same API as Schema) ──────
-    pauseTracking(): void { this[$changes].pause(); }
-    resumeTracking(): void { this[$changes].resume(); }
-    untracked<T>(fn: () => T): T { return this[$changes].untracked(fn); }
-    get isTrackingPaused(): boolean { return this[$changes].paused; }
-
-    /** Iterator */
-    [Symbol.iterator](): IterableIterator<V> {
-        return this.$items.values();
-    }
-
-    // ────────────────────────────────────────────────────────────────────
-    // Decoder-side index hooks. CollectionSchema's "key" IS the wire index,
-    // so these are identity operations. Kept for protocol symmetry with
-    // MapSchema (decoder calls them polymorphically).
-    // ────────────────────────────────────────────────────────────────────
-
-    protected setIndex(_index: number, _key: number) {
-        // no-op: indexes are identity
-    }
-
-    protected getIndex(index: number): number {
-        return index;
-    }
-
-    [$getByIndex](index: number): any {
-        return this.$items.get(index);
-    }
-
-    [$deleteByIndex](index: number): void {
-        this.$items.delete(index);
-    }
-
-    [$resyncPrune](
-        visited: Set<number | string>,
-        prune: (value: V, identity: number | string) => void,
-        keep: (value: V) => void,
-    ): void {
-        let toDelete: number[] | null = null;
-        this.$items.forEach((value, index) => {
-            if (visited.has(index)) { keep(value); return; }
-            (toDelete ??= []).push(index);
-            prune(value, index);
-        });
-        if (toDelete !== null) {
-            for (let i = 0; i < toDelete.length; i++) { this[$deleteByIndex](toDelete[i]); }
-        }
-    }
-
-    protected [$onEncodeEnd]() {
-        for (const key in this.deletedItems) { delete this.deletedItems[key]; }
-    }
-
-    // ─── Streamable interface (Encoder priority / broadcast pass) ──────
-
-    _dropView(viewId: number): void {
-        streamDropView(this, viewId);
-    }
-
-    _unregister(): void {
-        // no-op — `Root.unregisterStream` handles the Set removal.
-    }
-
-    toArray() {
-        return Array.from(this.$items.values());
-    }
-
-    toJSON() {
-        const values: V[] = [];
-
-        this.forEach((value: any, key: K) => {
-            values.push(
-                (typeof (value['toJSON']) === "function")
-                    ? value['toJSON']()
-                    : value
-            );
-        });
-
-        return values;
-    }
-
-    //
-    // Decoding utilities
-    //
-    clone(isDecoding?: boolean): CollectionSchema<V> {
-        let cloned: CollectionSchema;
-
-        if (isDecoding) {
-            // client-side
-            cloned = Object.assign(new CollectionSchema(), this);
-
-        } else {
-            // server-side
-            cloned = new CollectionSchema();
-            this.forEach((value: any) => {
-                if (value[$changes]) {
-                    cloned.add(value['clone']());
-                } else {
-                    cloned.add(value);
-                }
-            })
-        }
-
-        return cloned;
-    }
-
 }
 
 registerType("collection", { constructor: CollectionSchema, });

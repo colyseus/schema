@@ -13,35 +13,28 @@ export function setBufferSize(lib) {
     lib.Encoder.BUFFER_SIZE = 4 * 1024 * 1024;
 }
 
-// --- Codec selection ------------------------------------------------------
+// --- Codec ------------------------------------------------------------------
 //
-// Every scenario runs once per wire codec present in the build: the shipping
-// v5 format (`lib.Encoder` / `lib.Decoder`) and the v6 PoC (`lib.Encoder6` /
-// `lib.Decoder6`). `withCodecs()` turns each variant into `<name>` (v5) and
-// `<name>-v6`; `codecOf()` hands `setup()` the matching classes. Keeping the
-// codec in the variant (not a build flag) preserves `--compare`'s per-variant
-// byte guard. `BENCH_CODECS=v5` (or `v6`) restricts the matrix.
+// One wire codec per build. `withCodecs()` / `codecOf()` are kept as the
+// scenario-facing seam (a build that ships more than one codec can expand
+// variants here again); today they are identity / the library's classes.
+// Variant names stay plain, so `--compare`'s per-variant byte guard lines up
+// across builds.
 
 export function withCodecs(variants) {
-    const codecs = (process.env.BENCH_CODECS ?? "v5,v6").split(",").map((c) => c.trim());
-    const out = [];
-    for (const v of variants) {
-        if (codecs.includes("v5")) out.push({ ...v });
-        if (codecs.includes("v6")) out.push({ ...v, name: `${v.name}-v6`, codec: "v6" });
-    }
-    return out;
+    return variants.map((v) => ({ ...v }));
 }
 
-export function codecOf(lib, variant) {
-    const name = variant?.codec ?? "v5";
-    if (name === "v6" && lib.Encoder6 === undefined) throw new Error("codec v6 not present in this build");
-    const v6 = name === "v6";
+export function codecOf(lib, _variant) {
+    // A 5.0.x snapshot build still ships the v6 proof-of-concept classes
+    // next to its v5 codec; `--compare` against such a build measures the
+    // 6.0 codec against that proof of concept rather than against v5.
     return {
-        name,
-        Encoder: v6 ? lib.Encoder6 : lib.Encoder,
-        Decoder: v6 ? lib.Decoder6 : lib.Decoder,
-        Reflection: v6 ? lib.Reflection6 : lib.Reflection,
-        // v6 view encodes return [shared, view]; the transport sends both slices — no concat
+        name: "v6",
+        Encoder: lib.Encoder6 ?? lib.Encoder,
+        Decoder: lib.Decoder6 ?? lib.Decoder,
+        Reflection: lib.Reflection6 ?? lib.Reflection,
+        // view encodes return [shared, view]; the transport sends both slices — no concat
         encodeView: (encoder, view, sharedOffset, it) => encoder.encodeView(view, sharedOffset, it),
         bytesOf: (payload) => Array.isArray(payload) ? payload[0].byteLength + payload[1].byteLength : payload.byteLength,
     };

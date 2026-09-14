@@ -74,6 +74,18 @@ export function resyncTouchEntry(
 }
 
 /**
+ * Record a visit without the replaced-occupant release: the positional array
+ * path releases displaced refs itself. `identity` is an index, or
+ * `-1 - refId` for an element delivered by identity.
+ */
+export function resyncRecordVisit(decoder: Decoder, identity: number | string) {
+    const visited = decoder.resyncVisited!;
+    let set = visited.get(decoder.currentRefId);
+    if (set === undefined) { visited.set(decoder.currentRefId, set = new Set()); }
+    set.add(identity);
+}
+
+/**
  * Mark a collection as present in the payload — even with zero entries.
  * The sweep only prunes collections reported here: absence means "not part
  * of full-sync" (@patchOnly, view-invisible), where pruning would destroy

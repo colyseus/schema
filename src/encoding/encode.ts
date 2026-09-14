@@ -25,6 +25,7 @@
 
 import type { TextEncoder } from "util";
 import type { Iterator } from "./decode.js";
+import { writeNumber, writeString } from "./varint.js";
 
 export type BufferLike = ArrayLike<number> & { [index: number]: number };
 
@@ -321,8 +322,9 @@ export const encode = {
     float32,
     float64,
     boolean,
-    string,
-    number,
+    // v6: `uvarint(len) + utf8` strings and the msgpack-shaped dynamic number
+    string: writeString,
+    number: writeNumber,
     utf8Write,
     utf8Length,
 }

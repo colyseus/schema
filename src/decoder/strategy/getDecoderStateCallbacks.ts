@@ -121,11 +121,31 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
     const onAddCalls: WeakMap<Function, boolean> = new WeakMap();
     let currentOnAddCallback: Function | undefined;
 
+    // The batch being dispatched: a `listen()` registered from inside a
+    // callback fires immediately only if no later change for the same field
+    // is still ahead (that change calls it instead). Covers both #147 (a
+    // listen registered inside onAdd, whose field follows in the batch) and
+    // a shared instance bound twice in one batch (the second binding's
+    // listener still sees the value the first binding delivered).
+    let currentBatch: DataChange[] | null = null;
+    let currentBatchIndex = 0;
+    const hasPendingChange = (refId: number, field: string): boolean => {
+        const batch = currentBatch;
+        if (batch === null) return false;
+        for (let i = currentBatchIndex + 1, l = batch.length; i < l; i++) {
+            const change = batch[i];
+            if (change.refId === refId && change.field === field) return true;
+        }
+        return false;
+    };
+
     decoder.triggerChanges = function (allChanges: DataChange[]) {
         const uniqueRefIds = new Set<number>();
+        currentBatch = allChanges;
 
         for (let i = 0, l = allChanges.length; i < l; i++) {
             const change = allChanges[i];
+            currentBatchIndex = i;
             const refId = change.refId;
             const ref = change.ref;
             const $callbacks = callbacks[refId];
@@ -229,6 +249,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
 
             uniqueRefIds.add(refId);
         }
+        currentBatch = null;
     };
 
     function getProxy(
@@ -248,13 +269,14 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 prop: string,
                 callback: (value: any, previousValue: any) => void, immediate: boolean
             ) {
-                // immediate trigger
+                // immediate trigger — unless a later change in the batch
+                // being dispatched will deliver the value anyway (#147)
                 if (
                     immediate &&
-                    context.instance[prop] !== undefined &&
-                    !onAddCalls.has(currentOnAddCallback) // Workaround for https://github.com/colyseus/schema/issues/147
+                    (ref as any)[prop] !== undefined &&
+                    !hasPendingChange(ref[$refId], prop)
                 ) {
-                    callback(context.instance[prop], undefined);
+                    callback((ref as any)[prop], undefined);
                 }
                 return $root.addCallback(ref[$refId], prop, callback);
             }
@@ -271,8 +293,8 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                         // collection instance not received yet
                         let detachCallback = () => {};
 
-                        context.onInstanceAvailable((ref: Ref, existing: boolean) => {
-                            detachCallback = onAddListen(ref, prop, callback, immediate && existing && !onAddCalls.has(currentOnAddCallback))
+                        context.onInstanceAvailable((ref: Ref, _existing: boolean) => {
+                            detachCallback = onAddListen(ref, prop, callback, immediate)
                         });
 
                         return () => detachCallback();

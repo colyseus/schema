@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import {
-    uvarint, uvarintSize, readUvarint, writeMask64, string6, readString6, endChunk,
-} from "../../src/v6/encoding";
+    uvarint, uvarintSize, readUvarint, writeMask64, writeString as string6, readString as readString6, endChunk,
+} from "../src/encoding/varint";
 
 /** A chunk opens as `uvarint(refId)` + one reserved length byte (inline in the encoder). */
 function beginChunk(bytes: Uint8Array, refId: number, it: { offset: number }): number {

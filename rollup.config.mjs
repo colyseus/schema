@@ -1,4 +1,16 @@
 import typescript from '@rollup/plugin-typescript';
+import path from 'node:path';
+
+// SCHEMA_ARRAY_IMPL=internal builds the plain-internal-array ArraySchema
+// (src/types/custom/ArraySchemaInternal.ts) in place of the Array subclass —
+// an experiment kept for benchmarking the two storage models.
+const arrayImpl = () => ({
+    name: 'schema-array-impl',
+    resolveId(source, importer) {
+        if (process.env.SCHEMA_ARRAY_IMPL !== 'internal' || !importer || !source.endsWith('custom/ArraySchema.js')) return null;
+        return path.resolve(path.dirname(importer), source.slice(0, -'ArraySchema.js'.length) + 'ArraySchemaInternal.ts');
+    },
+});
 
 /**
  * Build config for the `@colyseus/schema/input` subpath. The input source
@@ -58,19 +70,19 @@ export default [
     {
         input: ['src/index.ts'],
         output: [{ dir: 'build', format: 'esm', entryFileNames: '[name].mjs', sourcemap: true, preserveModules: false }],
-        plugins: [typescript({ tsconfig: './tsconfig/tsconfig.esm.json' })],
+        plugins: [arrayImpl(), typescript({ tsconfig: './tsconfig/tsconfig.esm.json' })],
     },
 
     {
         input: ['src/index.ts'],
         output: [{ dir: 'build', format: 'cjs', entryFileNames: '[name].cjs', sourcemap: true, preserveModules: false}],
-        plugins: [typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],
+        plugins: [arrayImpl(), typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],
     },
 
     {
         input: ['src/index.ts'],
         output: [{ dir: 'build', name: "schema", format: 'umd', entryFileNames: '[name].js', preserveModules: false }],
-        plugins: [typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],
+        plugins: [arrayImpl(), typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],
     },
 
     // `@colyseus/schema/input` — InputEncoder/InputDecoder.
@@ -115,7 +127,7 @@ export default [
             sourcemap: true,
             banner: '#!/usr/bin/env node'
         }],
-        plugins: [typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],
-        external: ['fs', 'path', 'module', 'typescript']
+        plugins: [arrayImpl(), typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],
+        external: ['fs', 'path', 'url', 'module', 'typescript']
     },
 ];

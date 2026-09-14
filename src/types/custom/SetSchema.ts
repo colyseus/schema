@@ -1,10 +1,9 @@
-import { OPERATION } from "../../encoding/spec.js";
+import { CollectionKind, OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
-import { $changes, $childType, $decoder, $deleteByIndex, $encoder, $filter, $getByIndex, $onEncodeEnd, $refId, $reset, $resyncPrune } from "../symbols.js";
+import { $changes, $childType, $deleteByIndex, $filter, $getByIndex, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
 import { Collection } from "../HelperTypes.js";
 import { ChangeTree, installUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
-import { encodeIndexedEntry } from "../../encoder/EncodeOperation.js";
-import { CollectionKind, decodeKeyValueOperation } from "../../decoder/DecodeOperation.js";
+import { KeyedRecorder } from "../../encoder/KeyedRecorder.js";
 import {
     createStreamableState,
     streamDropView,
@@ -15,6 +14,10 @@ import {
 import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
 
+/**
+ * SetSchema — unordered collection of unique values, keyed on the wire by a
+ * monotonic index. `indexByValue` gives O(1) `has` / `delete`.
+ */
 export class SetSchema<V=any> implements Collection<number, V>, IRef {
     [$changes]: ChangeTree;
     [$refId]?: number;
@@ -24,11 +27,11 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     /** The user-visible data, keyed directly by the wire-protocol index. */
     protected $items: Map<number, V> = new Map<number, V>();
 
-    /** Snapshots of values that were deleted this tick (for filter visibility). */
-    protected deletedItems: { [field: string]: V } = {};
+    /** Reverse lookup (value → wire index) for O(1) `has` / `delete`. */
+    protected indexByValue: Map<V, number> = new Map<V, number>();
 
     /** Monotonic counter for assigning indexes to newly-added items. */
-    protected $refId: number = 0;
+    protected nextIndex: number = 0;
 
     /**
      * Streamable state — lazily allocated when the field is opted into
@@ -53,26 +56,14 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         (this._stream ??= createStreamableState()).priority = fn;
     }
 
-    static [$encoder] = encodeIndexedEntry;
-    static [$decoder] = decodeKeyValueOperation;
-    /** Integer tag read by `decodeKeyValueOperation` — see `CollectionKind`. */
-    static readonly COLLECTION_KIND = CollectionKind.Set;
+    static [$recorder] = () => new KeyedRecorder();
+    static readonly COLLECTION_KIND: CollectionKind = CollectionKind.Set;
 
-    /**
-     * Determine if a property must be filtered.
-     * - If returns false, the property is NOT going to be encoded.
-     * - If returns true, the property is going to be encoded.
-     *
-     * Encoding with "filters" happens in two steps:
-     * - First, the encoder iterates over all "not owned" properties and encodes them.
-     * - Then, the encoder iterates over all "owned" properties per instance and encodes them.
-     */
+    /** Per-entry visibility for `StateView` encodes (removed values resolve through the recorder). */
     static [$filter] (ref: SetSchema, index: number, view: StateView) {
-        return (
-            !view ||
-            typeof (ref[$childType]) === "string" ||
-            view.isVisible((ref[$getByIndex](index) ?? ref.deletedItems[index])[$changes])
-        );
+        if (!view || typeof (ref[$childType]) === "string") return true;
+        const value: any = ref.$items.get(index) ?? (ref[$changes].rec as KeyedRecorder | undefined)?.deleted?.get(index);
+        return value !== undefined && view.isVisible(value[$changes]);
     }
 
     static is(type: any) {
@@ -101,38 +92,44 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
      * class-field declarations above.
      */
     static initializeForDecoder<V = any>(): SetSchema<V> {
-        const self: any = Object.create(SetSchema.prototype);
+        const self: any = Object.create(this.prototype);
         self.$items = new Map<number, V>();
-        self.deletedItems = {};
-        self.$refId = 0;
+        self.indexByValue = new Map<V, number>();
+        self.nextIndex = 0;
         self[$childType] = undefined;
         installUntrackedChangeTree(self);
         return self;
     }
 
     add(value: V) {
-        // immediatelly return false if value already added.
-        if (this.has(value)) { return false; }
+        // immediately return false if value already added.
+        if (this.indexByValue.has(value)) { return false; }
+        return this.$add(value);
+    }
 
-        // assign the next wire-protocol index
-        const index = this.$refId++;
-
-        const changeTree = this[$changes];
-        if ((value[$changes]) !== undefined) {
-            value[$changes].setParent(this, changeTree.root, index);
-        }
+    /** Shared by `add` and the duplicate-allowing `CollectionSchema.add`. */
+    protected $add(value: V): number {
+        const index = this.nextIndex++;
+        const tree = this[$changes];
 
         this.$items.set(index, value);
+        this.indexByValue.set(value, index);
 
-        // Streaming-mode ADD: route into per-view pending or broadcast
-        // pending instead of the tree's recorder. See MapSchema.set for
-        // the same branch / rationale.
-        if (changeTree.isStreamCollection) {
-            if (changeTree.root !== undefined) {
-                streamRouteAdd(this, changeTree.root, index);
+        // Streaming-mode ADD: route into per-view or broadcast pending
+        // instead of the tree's recorder. See MapSchema.set for the same
+        // branch / rationale.
+        if (tree.isStreamCollection) {
+            if (tree.root !== undefined) {
+                streamRouteAdd(this, tree.root, index);
             }
-        } else {
-            changeTree.change(index, OPERATION.ADD);
+        } else if (tree.tracking) {
+            (tree.rec as KeyedRecorder).add(index, OPERATION.ADD);
+            tree.touch();
+        }
+
+        // set the parent AFTER recording (the parent's op precedes the child's chunk)
+        if ((value as any)?.[$changes] !== undefined) {
+            (value as any)[$changes].setParent(this, tree.root, index);
         }
         return index;
     }
@@ -142,57 +139,60 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     }
 
     delete(item: V) {
-        const entries = this.$items.entries();
-
-        let index: number;
-        let entry: IteratorResult<[number, V]>;
-        while (entry = entries.next()) {
-            if (entry.done) { break; }
-
-            if (item === entry.value[1]) {
-                index = entry.value[0];
-                break;
-            }
-        }
-
+        const index = this.indexByValue.get(item);
         if (index === undefined) {
             return false;
         }
+        return this.$deleteAt(index, item);
+    }
 
-        const changeTree = this[$changes];
+    protected $deleteAt(index: number, previousValue: V): boolean {
+        const tree = this[$changes];
+        const previousTree = (previousValue as any)?.[$changes];
 
         // Streaming-mode: route through stream's pending/sent bookkeeping
         // — silent drop if never sent to any view, force DELETE for views
         // that already received it. Mirror of MapSchema.delete's streaming
         // branch.
-        if (changeTree.isStreamCollection) {
-            const root = changeTree.root;
-            const previousValue = this.$items.get(index);
+        if (tree.isStreamCollection) {
+            const root = tree.root;
+            let neverSent = false;
             if (root !== undefined) {
-                streamRouteRemove(this, root, (this as any)[$refId], index);
+                neverSent = streamRouteRemove(this, root, this[$refId], index);
             }
-            if ((previousValue as any)?.[$changes] !== undefined) {
-                root?.remove((previousValue as any)[$changes]);
+            if (previousTree !== undefined) {
+                root?.remove(previousTree);
             }
-            this.deletedItems[index] = previousValue as V;
-            return this.$items.delete(index);
+            if (!neverSent) (tree.rec as KeyedRecorder | undefined)?.remember(index, previousValue);
+
+        } else {
+            if (tree.tracking) {
+                (tree.rec as KeyedRecorder).delete(index, previousValue);
+                tree.touch();
+            }
+            if (previousTree !== undefined) tree.root?.remove(previousTree);
         }
 
-        this.deletedItems[index] = changeTree.delete(index);
-
-        return this.$items.delete(index);
+        this.$items.delete(index);
+        if (this.indexByValue.get(previousValue) === index) this.indexByValue.delete(previousValue);
+        return true;
     }
 
     clear() {
-        const changeTree = this[$changes];
+        const tree = this[$changes];
 
-        // discard previous operations.
-        changeTree.discard();
+        // remove children references
+        tree.forEachChild((childChangeTree, _) => {
+            tree.root?.remove(childChangeTree);
+        });
 
-        // clear items
         this.$items.clear();
+        this.indexByValue.clear();
 
-        changeTree.operation(OPERATION.CLEAR);
+        if (tree.tracking) {
+            (tree.rec as KeyedRecorder).clear();
+            tree.touch();
+        }
     }
 
     /**
@@ -202,33 +202,20 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
      * field. The instance must already be detached from the encoder.
      */
     [$reset]() {
-        const changeTree = this[$changes];
-        if (changeTree.isStreamCollection) {
-            throw new Error(`@colyseus/schema: cannot reset a streamed SetSchema (pooling not supported).`);
+        const tree = this[$changes];
+        if (tree.isStreamCollection) {
+            throw new Error(`@colyseus/schema: cannot reset a streamed ${this.constructor.name} (pooling not supported).`);
         }
         this.$items.forEach((value: any) => value?.[$reset]?.());
         this.$items.clear();
-        this.deletedItems = {};
-        this.$refId = 0; // reset the monotonic index counter (field, not the symbol)
-        changeTree.recycle();
+        this.indexByValue.clear();
+        this.nextIndex = 0;
+        tree.recycle();
         this[$refId] = undefined; // drop encoder ref identity by assign (not delete: avoids dict-mode deopt)
     }
 
     has (value: V): boolean {
-        const values = this.$items.values();
-
-        let has = false;
-        let entry: IteratorResult<V>;
-
-        while (entry = values.next()) {
-            if (entry.done) { break; }
-            if (value === entry.value) {
-                has = true;
-                break;
-            }
-        }
-
-        return has;
+        return this.indexByValue.has(value);
     }
 
     forEach(callbackfn: (value: V, key: number, collection: SetSchema<V>) => void) {
@@ -254,26 +241,14 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         return this.$items.values();
     }
 
-    // ────────────────────────────────────────────────────────────────────
-    // Decoder-side index hooks. SetSchema's "key" IS the wire index, so
-    // these are identity operations. Kept for protocol symmetry with
-    // MapSchema (decoder calls them polymorphically).
-    // ────────────────────────────────────────────────────────────────────
-
-    protected setIndex(_index: number, _key: number) {
-        // no-op: indexes are identity
-    }
-
-    protected getIndex(index: number): number {
-        return index;
-    }
-
     [$getByIndex](index: number): any {
         return this.$items.get(index);
     }
 
     [$deleteByIndex](index: number): void {
+        const value = this.$items.get(index);
         this.$items.delete(index);
+        if (value !== undefined && this.indexByValue.get(value) === index) this.indexByValue.delete(value);
     }
 
     [$resyncPrune](
@@ -290,10 +265,6 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         if (toDelete !== null) {
             for (let i = 0; i < toDelete.length; i++) { this[$deleteByIndex](toDelete[i]); }
         }
-    }
-
-    protected [$onEncodeEnd]() {
-        for (const key in this.deletedItems) { delete this.deletedItems[key]; }
     }
 
     // ─── Streamable interface (Encoder priority / broadcast pass) ──────
@@ -324,28 +295,11 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         return values;
     }
 
-    //
-    // Decoding utilities
-    //
-    clone(isDecoding?: boolean): SetSchema<V> {
-        let cloned: SetSchema;
-
-        if (isDecoding) {
-            // client-side
-            cloned = Object.assign(new SetSchema(), this);
-
-        } else {
-            // server-side
-            cloned = new SetSchema();
-            this.forEach((value: any) => {
-                if (value[$changes]) {
-                    cloned.add(value['clone']());
-                } else {
-                    cloned.add(value);
-                }
-            })
-        }
-
+    clone(): this {
+        const cloned = new (this.constructor as any)();
+        this.forEach((value: any) => {
+            cloned.add((value?.[$changes] !== undefined) ? value.clone() : value);
+        });
         return cloned;
     }
 

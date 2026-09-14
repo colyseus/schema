@@ -7,7 +7,7 @@ import {
 import {
     createClientWithView,
     encodeMultiple,
-    getEncoder, CODEC } from "./Schema";
+    getEncoder } from "./Schema";
 
 /**
  * `view.subscribe(collection)` is a persistent opt-in across every
@@ -177,7 +177,7 @@ describe("StateView#subscribe", () => {
         });
     });
 
-    (CODEC === "v5" ? describe : describe.skip)("StreamSchema", () => { // stream emission not ported to the v6 PoC
+    describe("StreamSchema", () => {
         it("subscribe seeds pending; new entities enqueue into per-view pending", () => {
             class Entity extends Schema {
                 @type("uint16") id: number = 0;

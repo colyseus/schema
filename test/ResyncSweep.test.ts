@@ -6,7 +6,6 @@ import {
     getEncoder, getDecoder, createInstanceFromReflection,
     assertRefIdCounts, assertNoOrphanRefs,
     createClientWithView, type ClientWithState,
-    onlyCodec,
 } from "./Schema";
 
 class Item extends Schema {
@@ -212,7 +211,7 @@ describe("Resync sweep (decodeResync)", () => {
         assert.deepStrictEqual(client.toJSON(), state.toJSON());
     });
 
-    onlyCodec("v5", "StreamSchema emission is not ported to the v6 PoC")("retains StreamSchema entries (streams are not part of full-sync)", () => {
+    it("retains StreamSchema entries (streams are not part of full-sync)", () => {
         class StreamState extends Schema {
             @type({ stream: Entity }) feed = new StreamSchema<Entity>();
         }

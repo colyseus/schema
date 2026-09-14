@@ -39,8 +39,13 @@ if (typeof Symbol === "function" && typeof (Symbol as any).for !== "function") {
 
 export const $refId: unique symbol = Symbol.for("$refId");
 export const $track = "~track";
-export const $encoder = "~encoder";
-export const $decoder = "~decoder";
+
+/**
+ * Static factory on every collection class returning its change recorder
+ * (`ArrayLog` for ArraySchema, `KeyedRecorder` for the keyed collections).
+ * Read once per class by `getEncodeDescriptor`.
+ */
+export const $recorder = "~recorder";
 
 export const $filter = "~filter";
 
@@ -92,9 +97,17 @@ export const $onEncodeEnd = '~onEncodeEnd';
 export const $reset = "~reset";
 
 /**
- * When decoding, this method is called after the instance is fully decoded
+ * Decoder-side revision of an `ArraySchema` (the encoder keeps it on the
+ * `ArrayLog`). Real Symbol so it stays out of `for…in` / `JSON` / `Object.keys`.
  */
-export const $onDecodeEnd = "~onDecodeEnd";
+export const $rev: unique symbol = Symbol.for("$rev");
+
+/**
+ * Element storage of an ArraySchema when it is not the instance itself
+ * (the internal-array experiment, see types/custom/ArraySchemaInternal.ts).
+ * Encoder and decoder read `ref[$items] ?? ref` once per structure.
+ */
+export const $items: unique symbol = Symbol.for("$items");
 
 /**
  * Per-instance dense array holding field values by index.

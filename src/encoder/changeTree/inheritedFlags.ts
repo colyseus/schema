@@ -19,10 +19,8 @@ import {
     // INHERITABLE_FLAGS comment in ChangeTree.ts.
     type ChangeTree, type Ref,
 } from "../ChangeTree.js";
-import type { ICollectionChangeRecorder } from "../ChangeRecorder.js";
 import type { Root, Streamable } from "../Root.js";
 import { ensureStreamState } from "../streaming.js";
-import { restageLiveCb } from "./liveIteration.js";
 import { isEdgeLive } from "./parentChain.js";
 
 /**
@@ -296,7 +294,7 @@ function refreshFilterState(tree: ChangeTree): void {
     // Became public: clients that only ever had the view channel never saw
     // this state. Static trees ship via structural walk instead.
     if (!newFiltered && !tree.isFullStateOnly) {
-        tree.forEachLiveWithCtx(tree, restageLiveCb);
+        tree.restage();
         if (tree.has()) root.enqueueChangeTree(tree);
         if (tree.unreliableRecorder?.has()) root.enqueueUnreliable(tree);
     }

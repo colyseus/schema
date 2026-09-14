@@ -1,6 +1,7 @@
 import * as assert from "assert";
-import { Schema, type, encode, decode, defineCustomTypes } from "../src";
+import { Schema, type, encode, decode, defineCustomTypes, ArraySchema, MapSchema } from "../src";
 import { TextDecoder, TextEncoder } from "util";
+import "./Schema"; // encode() / decode() helpers on Schema.prototype
 
 describe("CustomPrimitiveTypes", () => {
 
@@ -240,6 +241,28 @@ describe("CustomPrimitiveTypes", () => {
         assert.strictEqual(decoded.vbi, -0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFFFFFFn);
         assert.strictEqual(decoded.vf32.toPrecision(5), "-5.3235");
         assert.strictEqual(decoded.vf64, 1.7976931348623157e+308);
+    });
+
+    it("custom primitives as collection children", () => {
+        class Data extends Schema {
+            @type(["cstring"]) names = new ArraySchema<string>();
+            @type({ map: "varUint" }) counts = new MapSchema<number>();
+        }
+
+        const data = new Data();
+        data.names.push("one", "two");
+        data.counts.set("a", 2 ** 20);
+
+        const decoded = new Data();
+        decoded.decode(data.encodeAll());
+        assert.deepStrictEqual(decoded.toJSON(), data.toJSON());
+
+        data.names[1] = "three";
+        data.names.push("four");
+        data.counts.set("b", 7);
+        decoded.decode(data.encode());
+        assert.deepStrictEqual(decoded.toJSON(), data.toJSON());
+        assert.deepStrictEqual(decoded.names.toJSON(), ["one", "three", "four"]);
     });
 
 });

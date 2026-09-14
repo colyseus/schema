@@ -604,11 +604,11 @@ describe("InputEncoder / InputDecoder", () => {
             src.seq = 1; src.vx = 0.5; src.vy = -0.25; src.fire = false;
 
             const enc = new InputEncoder(src);
-            const first = enc.encode();
+            const first = enc.encode().slice(); // a view into the shared buffer: copy to retain
             assert.ok(first.length > 0);
 
             src.seq = 2;
-            const second = enc.encode();
+            const second = enc.encode().slice();
 
             const dst = new DeltaInput();
             const dec = new InputDecoder(dst);

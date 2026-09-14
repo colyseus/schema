@@ -1,21 +1,17 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
 import { getType, registeredTypes, TypeDefinition } from "./types/registry.js";
-import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { $descriptors, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
 import { isQuantizedType, makeQuantizedEncoder, resolveQuantize } from "./types/quantize.js";
 
 /**
- * Field indexes ride in the low 6 bits of the operation byte
- * (`(index | operation) & 255`), which leaves room for 0..63. Index 63 is
- * given up: `DELETE_AND_ADD | 63` is 255, the same byte the decoder claims
- * as SWITCH_TO_STRUCTURE before any field decoder sees it. Every nullable
- * field can produce that operation (delete-then-set in one tick merges to
- * DELETE_AND_ADD), so the slot is unusable rather than partly usable.
+ * Field indexes 0..63: the change recorders keep two 32-bit dirty masks per
+ * Schema, and inline bodies carry a 64-bit presence mask.
  */
-export const MAX_FIELDS = 63;
+export const MAX_FIELDS = 64;
 
 export type MetadataField = {
     type: DefinitionType,
@@ -142,8 +138,6 @@ function pushIndexList(metadata: any, key: string, index: number) {
 export const Metadata = {
 
     addField(metadata: any, index: number, name: string, type: DefinitionType, descriptor?: PropertyDescriptor) {
-        // `index` is 0-based, so 62 is the last usable slot — see MAX_FIELDS
-        // for why 63 is off limits.
         if (index >= MAX_FIELDS) {
             throw new Error(`Can't define field '${name}'.\nSchema instances may only have up to ${MAX_FIELDS} fields.`);
         }
@@ -464,8 +458,6 @@ export const Metadata = {
 
         // Use Schema's methods if not defined in the class
         if (!constructor[$track]) { constructor[$track] = Schema[$track]; }
-        if (!constructor[$encoder]) { constructor[$encoder] = Schema[$encoder]; }
-        if (!constructor[$decoder]) { constructor[$decoder] = Schema[$decoder]; }
         if (!constructor.prototype.toJSON) { constructor.prototype.toJSON = Schema.prototype.toJSON; }
 
         //

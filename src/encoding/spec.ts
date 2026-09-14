@@ -1,27 +1,76 @@
-export const SWITCH_TO_STRUCTURE = 255; // same byte as `DELETE_AND_ADD | 63`, which is why field index 63 is unassignable (Metadata.MAX_FIELDS)
-export const TYPE_ID = 213;
+/**
+ * Wire format v6.
+ *
+ * Framing: a message is a sequence of `uvarint(refId) uvarint(byteLen) ops`
+ * chunks. There is no reserved byte — a decoder that does not know a refId
+ * skips exactly `byteLen` bytes.
+ */
+export const PROTOCOL_VERSION = 6;
 
 /**
- * Encoding Schema field operations.
+ * Schema field operations and keyed-collection (Map / Set / Stream)
+ * operations. Also the vocabulary of `DataChange.op` on the decoder side —
+ * array ops are translated into these when callbacks are dispatched.
+ *
+ * Schema fields pack as `uvarint(fieldIndex << 2 | op >>> 6)`; keyed
+ * collections write the byte verbatim: `u8 op, uvarint(index), [key], value?`.
  */
 export enum OPERATION {
     ADD = 128,            // (10000000) add new structure/primitive
-    REPLACE = 0,          // (00000001) replace structure/primitive
+    REPLACE = 0,          // (00000000) replace structure/primitive
     DELETE = 64,          // (01000000) delete field
-    DELETE_AND_MOVE = 96, // () ArraySchema only
-    MOVE_AND_ADD = 160,   // () ArraySchema only
     DELETE_AND_ADD = 192, // (11000000) DELETE field, followed by an ADD
 
     /**
      * Collection operations
      */
     CLEAR = 10,
-
-    /**
-     * ArraySchema operations
-     */
-    REVERSE = 15,
-    MOVE = 32,
-    DELETE_BY_REFID = 33, // This operation is only used at ENCODING time. During DECODING, DELETE_BY_REFID is converted to DELETE
-    ADD_BY_REFID = 129,
 }
+
+/**
+ * ArraySchema operations. An array chunk is `arrayOp*`; each
+ * op advances the array's revision by its weight (see `encoder/ArrayLog.ts`).
+ *
+ * A `const` object rather than a TS `enum` on purpose: the codegen parser
+ * emits every `EnumDeclaration` it finds in the library sources for the other
+ * language targets, and this vocabulary is not part of their generated types.
+ */
+// arrayOp := uvarint(arg * 16 + op) operands...  (arg: the op's first operand, 0 when it has none)
+export const ARRAY_OP = {
+    PUSH: 1,        // arg count            value*                   weight count
+    INSERT: 2,      // arg index            uvarint(count) value*    weight count
+    SET: 3,         // arg index            value                    weight 1
+    REMOVE: 4,      // arg index            uvarint(count)           weight count
+    REVERSE: 5,     //                                               weight 1
+    REORDER: 6,     // arg len              uvarint(oldPos)*len      weight 1
+    RESTATE: 7,     // arg rev*2+identity   uvarint(count) value*    weight 1 (positional) / 0 (identity)
+    ADD_REF: 8,     //                      refValue                 weight 0 (identity mode)
+    DELETE_REF: 9,  // arg refId                                     weight 0 (identity mode)
+    CLEAR: 10,      //                                               weight 1
+    BASE: 11,       // arg baseSeq — the sequence the following ops apply at; sent only when a snapshot was taken this tick
+} as const;
+export type ARRAY_OP = typeof ARRAY_OP[keyof typeof ARRAY_OP];
+
+/** Low bits of a ref value header: `uvarint(refId * 4 + flags)`. */
+export const REF_HAS_TYPE = 1;
+export const REF_HAS_BODY = 2;
+
+/** Structure kinds (per class). Map/Array coincide with `CollectionKind`; Set/Collection/Stream share the indexed layout. */
+export const KIND_SCHEMA = 0;
+export const KIND_MAP = 1;
+export const KIND_ARRAY = 2;
+export const KIND_INDEXED = 3;
+
+/**
+ * Collection-kind discriminator declared on each collection class as
+ * `static COLLECTION_KIND = CollectionKind.X`. A `const` object (not a TS
+ * `enum`) for the same codegen reason as `ARRAY_OP`.
+ */
+export const CollectionKind = {
+    Map: 1,
+    Array: 2,
+    Set: 3,
+    Collection: 4,
+    Stream: 5,
+} as const;
+export type CollectionKind = typeof CollectionKind[keyof typeof CollectionKind];

@@ -31,7 +31,7 @@ registerType("collection", { constructor: CollectionSchema, });
 export { dumpChanges } from "./utils.js";
 
 // Encoder / Decoder
-export { $track, $encoder, $decoder, $filter, $getByIndex, $deleteByIndex, $changes, $childType, $refId } from "./types/symbols.js";
+export { $track, $filter, $getByIndex, $deleteByIndex, $changes, $childType, $refId, $recorder, $rev } from "./types/symbols.js";
 export { encode } from "./encoding/encode.js";
 export { decode, type Iterator } from "./encoding/decode.js";
 
@@ -81,14 +81,14 @@ export { getRawChangesCallback } from "./decoder/strategy/RawChanges.js";
 export { Encoder } from "./encoder/Encoder.js";
 export { Root } from "./encoder/Root.js";
 export { createPool, type SchemaPool, type PoolOptions } from "./encoder/Pool.js";
-export { encodeSchemaOperation, encodeArray, encodeKeyValueOperation, encodeMapEntry, encodeIndexedEntry } from "./encoder/EncodeOperation.js";
+export { ArrayLog } from "./encoder/ArrayLog.js";
+export { KeyedRecorder } from "./encoder/KeyedRecorder.js";
 export { ChangeTree, type Ref, type IRef } from "./encoder/ChangeTree.js";
 export { StateView } from "./encoder/StateView.js";
 
 export { Decoder } from "./decoder/Decoder.js";
-export { decodeSchemaOperation, decodeKeyValueOperation } from "./decoder/DecodeOperation.js";
-
-export { OPERATION } from "./encoding/spec.js";
+export { OPERATION, ARRAY_OP, CollectionKind, PROTOCOL_VERSION } from "./encoding/spec.js";
+export { uvarint, readUvarint, uvarintSize } from "./encoding/varint.js";
 
 // Re-exported for `@colyseus/schema/input` — that subpath bundle is built
 // as a thin wrapper that imports identity-bearing modules from here at
@@ -98,5 +98,3 @@ export { getEncodeDescriptor, type EncodeDescriptor } from "./encoder/EncodeDesc
 // Symbols used by InputEncoder/InputDecoder via the runtime-externalized
 // `@colyseus/schema` import in `build/input/index.mjs`.
 export { $numFields, $values } from "./types/symbols.js";
-// v6 wire format (PoC — experimental)
-export { Encoder6, Decoder6, Reflection6, PROTOCOL_VERSION as V6_PROTOCOL_VERSION, encoding6 } from "./v6/index.js";

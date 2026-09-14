@@ -3,9 +3,8 @@ import * as assert from "assert";
 import { nanoid } from "nanoid";
 import { MapSchema, Schema, type, ArraySchema, Reflection, Encoder, OPERATION, schema, t, $changes, entity } from "../src";
 
-import { SWITCH_TO_STRUCTURE } from "../src/encoding/spec";
 
-import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, encodeAndAssertEquals, onlyCodec } from "./Schema";
+import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, encodeAndAssertEquals } from "./Schema";
 
 describe("Edge cases", () => {
     it("Schema should support up to 63 fields", () => {
@@ -201,26 +200,21 @@ describe("Edge cases", () => {
             assertDeepStrictEqualEncodeAll(state);
         });
 
-        //
-        // The last usable slot is 62: `DELETE_AND_ADD | 63` would be 255, the
-        // SWITCH_TO_STRUCTURE byte, so `Metadata.MAX_FIELDS` stops one short.
-        // Any nullable field can reach that operation (delete-then-set in one
-        // tick merges to DELETE_AND_ADD), so the slot can't be partly allowed.
-        //
-        function padded(lastField: any, name: string, pad = 62) {
+        // Indexes 0..63 are usable (`Metadata.MAX_FIELDS` = 64).
+        function padded(lastField: any, name: string, pad = 63) {
             const def: any = {};
             for (let i = 0; i < pad; i++) { def[`pad_${i}`] = t.uint8(); }
             def.last = lastField;
             return schema(def, name);
         }
 
-        it("should reject a field landing on index 63", () => {
-            const TOO_MANY = /may only have up to 63 fields/;
-            assert.throws(() => padded(t.number(), "PrimitiveAtIndex63", 63), TOO_MANY);
-            assert.throws(() => padded(t.ref(schema({ n: t.number() }, "IdxChildX")), "RefAtIndex63", 63), TOO_MANY);
+        it("should reject a field landing on index 64", () => {
+            const TOO_MANY = /may only have up to 64 fields/;
+            assert.throws(() => padded(t.number(), "PrimitiveAtIndex64", 64), TOO_MANY);
+            assert.throws(() => padded(t.ref(schema({ n: t.number() }, "IdxChildX")), "RefAtIndex64", 64), TOO_MANY);
         });
 
-        onlyCodec("v5", "asserts the v5 op byte 254")("should replace a child Schema at the last usable index", () => {
+        it("should replace a child Schema at the last usable index", () => {
             const ChildT = schema({ n: t.number() }, "IdxChild");
             const State62 = padded(t.ref(ChildT), "RefAtIndex62");
 
@@ -235,11 +229,7 @@ describe("Edge cases", () => {
             state.last = new ChildT();
             state.last.n = 1;
 
-            // the merged op stays one byte — 192|62 is 254, one short of the
-            // SWITCH_TO_STRUCTURE byte that forced index 63 out
             const patch = Uint8Array.from(state.encode());
-            assert.notStrictEqual(patch.indexOf(OPERATION.DELETE_AND_ADD | 62), -1, "expected DELETE_AND_ADD|62 (254)");
-            assert.strictEqual(SWITCH_TO_STRUCTURE, 255);
 
             decodedState.decode(patch);
             assert.strictEqual(decodedState.last.n, 1);

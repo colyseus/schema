@@ -1,212 +1,25 @@
 import type { Schema } from "../Schema.js";
 import { TypeContext } from "../types/TypeContext.js";
-import { $changes, $getByIndex, $refId } from "../types/symbols.js";
-import { Metadata } from "../Metadata.js";
-
-import { encode } from "../encoding/encode.js";
+import { $changes, $childType, $getByIndex, $refId } from "../types/symbols.js";
 import type { Iterator } from "../encoding/decode.js";
-
-import { OPERATION, SWITCH_TO_STRUCTURE, TYPE_ID } from '../encoding/spec.js';
+import { KIND_ARRAY, OPERATION } from "../encoding/spec.js";
+import { Metadata } from "../Metadata.js";
 import { Root } from "./Root.js";
-
-import { ARRAY_SNAPSHOT, type StateView } from "./StateView.js";
-import type { ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree.js";
-import type { EncodeOperation } from "./EncodeOperation.js";
-import { forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
-import { forEachChildWithCtx as _forEachChildWithCtx } from "./changeTree/treeAttachment.js";
+import type { StateView } from "./StateView.js";
+import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode } from "./ChangeTree.js";
+import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
+import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
+import { forEachChildWithCtx } from "./changeTree/treeAttachment.js";
 import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
-
-/**
- * Reusable context passed to the recorder's forEachWithCtx to iterate changes
- * without allocating a closure per ChangeTree. All fields are (re)assigned
- * inside the main encode loop before each `forEachWithCtx` call.
- */
-interface EncodeCtx {
-    self: Encoder;
-    buffer: Uint8Array;
-    it: Iterator;
-    changeTree: ChangeTree;
-    ref: any;
-    encoder: EncodeOperation;
-    filter: ((ref: any, index: number, view?: StateView) => boolean) | undefined;
-    metadata: any;
-    view: StateView | undefined;
-    isEncodeAll: boolean;
-    hasView: boolean;
-
-    /**
-     * Per-tree flags, reset before each `forEachWithCtx` call. The per-field
-     * filter decision (`emitFiltered` == `treeIsFiltered || metadata[i].tag`)
-     * matches `ChangeTree.change()`'s routing rule exactly.
-     */
-    treeIsFiltered: boolean;
-    isSchema: boolean;
-    emitFiltered: boolean;
-
-    /**
-     * Bitmask: bit i set iff field i has a @view tag, for i < 32. Lets the
-     * per-field filter check be a single bitwise op instead of a
-     * metadata[i]?.tag chase. Always 0 for collection trees.
-     */
-    filterBitmask: number;
-
-    /**
-     * Per-field @view tags of the current tree (`undefined` where untagged),
-     * covering the fields the bitmask can't reach. Empty for collections.
-     * Read through the ctx rather than `changeTree.encDescriptor`: a
-     * multi-hop chain here costs ~2% on full-sync even though only Schemas
-     * with 32+ fields ever evaluate it.
-     */
-    tags: (number | undefined)[];
-
-    /**
-     * Current walk's visit stamp. `_fullSyncWalk` compares it against each
-     * tree's `_fullSyncGen` on entry: match means "already visited by
-     * this walk, skip"; mismatch means "first visit, stamp and recurse".
-     * Rewritten per walk by `encodeFullSync` before kicking off the DFS.
-     */
-    gen: number;
-    /** Initial buffer offset at encodeFullSync entry — used by the walker to
-     *  decide whether to emit SWITCH_TO_STRUCTURE for the root tree. */
-    initialOffset: number;
-    rootChangeTree: ChangeTree;
-
-    /**
-     * Lazy structure-switch state. The switch header is emitted right before
-     * the first field of a tree actually passes the filter, so trees that
-     * contribute zero bytes in a given pass don't leave orphaned headers.
-     */
-    structSwitchEmitted: boolean;
-    isRootTree: boolean;
-    shouldEmitSwitch: boolean;
-}
-
-
-/**
- * Emit the lazy structure-switch header (SWITCH_TO_STRUCTURE + refId) for
- * the current tree if it hasn't been emitted yet in this pass.
- */
-function ensureStructSwitch(ctx: EncodeCtx): void {
-    if (ctx.structSwitchEmitted) return;
-    if (ctx.shouldEmitSwitch) {
-        ctx.buffer[ctx.it.offset++] = SWITCH_TO_STRUCTURE & 255;
-        encode.number(ctx.buffer, ctx.ref[$refId], ctx.it);
-    }
-    ctx.structSwitchEmitted = true;
-}
-
-/**
- * Module-level adapter for `forEachLiveWithCtx`. Full-sync emits every live
- * field as ADD, so we re-enter `encodeChangeCb` with that fixed op — keeps
- * the callback closure-free across the entire DFS walk.
- *
- * The resync sweep (decoder/Resync.ts) depends on this shape: full-sync
- * output is dense plain ADDs — no DELETEs, no gap-writes (so decoding it
- * never compacts arrays mid-walk), and replaced occupants arrive as plain
- * ADD (the sweep's touch hook releases them). Changing full-sync emission
- * means revisiting the sweep.
- */
-function encodeFullSyncCb(ctx: EncodeCtx, fieldIndex: number): void {
-    encodeChangeCb(ctx, fieldIndex, OPERATION.ADD);
-}
-
-/**
- * Structural DFS walker for `encodeFullSync`. Hoisted to module scope so
- * the recursion allocates no per-tree closures — `_fullSyncWalkChildCb`
- * captures nothing and is handed to `forEachChildWithCtx` once.
- *
- * The stamp check at the top (`tree._fullSyncGen === ctx.gen`) is how we
- * skip shared refs that are reachable through more than one parent. On
- * first visit the tree's stamp differs from the walk's current `ctx.gen`;
- * we write `ctx.gen` onto the tree and recurse. Any later reach of the
- * same tree during the SAME walk will find matching stamps and bail.
- * Next walk bumps `ctx.gen`, so every tree starts out stale again.
- */
-function _fullSyncWalk(ctx: EncodeCtx, changeTree: ChangeTree): void {
-    if (changeTree._fullSyncGen === ctx.gen) return;
-    changeTree._fullSyncGen = ctx.gen;
-
-    // Visibility gate: when a view is active, a non-visible tree contributes
-    // nothing itself but we still recurse so descendants (possibly added to
-    // the view explicitly) are reachable.
-    const visibleHere = !ctx.hasView || ctx.view!.isChangeTreeVisible(changeTree);
-
-    if (visibleHere) {
-        const desc = changeTree.encDescriptor;
-        ctx.changeTree = changeTree;
-        ctx.ref = changeTree.ref;
-        ctx.encoder = desc.encoder;
-        ctx.filter = desc.filter;
-        ctx.metadata = desc.metadata;
-        ctx.treeIsFiltered = changeTree.isFiltered;
-        ctx.isSchema = desc.isSchema;
-        ctx.filterBitmask = desc.filterBitmask;
-        ctx.tags = desc.tags;
-        ctx.structSwitchEmitted = false;
-        ctx.shouldEmitSwitch = (ctx.hasView || ctx.it.offset > ctx.initialOffset || changeTree !== ctx.rootChangeTree);
-
-        // Call the module function directly — the `forEachLiveWithCtx`
-        // method on ChangeTree is a pass-through that V8 doesn't inline
-        // under the polymorphism the encoder sees (Schema + every
-        // collection class share the method slot). Direct call saves the
-        // dispatched frame.
-        _forEachLiveWithCtx(changeTree, ctx, encodeFullSyncCb);
-    }
-
-    _forEachChildWithCtx(changeTree, ctx, _fullSyncWalkChildCb);
-}
-
-/**
- * Child-iteration callback for `_fullSyncWalk`. Module-level + closure-free:
- * just re-enters `_fullSyncWalk` on each child. Replaces a per-tree
- * `(child, _) => walk(child)` closure that used to allocate 2.5M times in
- * `encodeAll(5000 entities) x 500 iterations`.
- */
-function _fullSyncWalkChildCb(ctx: EncodeCtx, child: ChangeTree, _index: any): void {
-    _fullSyncWalk(ctx, child);
-}
-
-/**
- * Pure (non-capturing) callback for recorder.forEachWithCtx. Module-level so
- * V8 never needs to allocate a fresh function per tree. Decides per-field
- * whether to emit based on the unified filter rule, then defers to the
- * per-type encode function.
- */
-function encodeChangeCb(ctx: EncodeCtx, fieldIndex: number, op: OPERATION): void {
-    if (fieldIndex < 0) {
-        // Pure op (CLEAR/REVERSE): encoded as a single byte. Always emitted
-        // for the pass that matches the tree's filter classification —
-        // collections route pure ops to their single dirty bucket.
-        if (ctx.treeIsFiltered !== ctx.emitFiltered) return;
-        ensureStructSwitch(ctx);
-        ctx.buffer[ctx.it.offset++] = Math.abs(fieldIndex) & 255;
-        return;
-    }
-
-    // Per-field filter decision (same rule as ChangeTree.change()):
-    // a field is filtered iff the tree inherits isFiltered OR the field
-    // itself carries a @view tag. The bitmask only spans 0–31 — `1 << 40`
-    // wraps onto bit 8 — so fields past it read their tag directly. Reaching
-    // that arm needs a Schema with more than 32 fields.
-    const fieldFiltered = ctx.isSchema
-        ? (ctx.treeIsFiltered || (fieldIndex < 32
-            ? (ctx.filterBitmask & (1 << fieldIndex)) !== 0
-            : ctx.tags[fieldIndex] !== undefined))
-        : ctx.treeIsFiltered;
-    if (fieldFiltered !== ctx.emitFiltered) return;
-
-    const operation = ctx.isEncodeAll ? OPERATION.ADD : op;
-    if (operation === undefined) return;
-    if (ctx.filter !== undefined && !ctx.filter(ctx.ref, fieldIndex, ctx.view)) return;
-
-    ensureStructSwitch(ctx);
-    ctx.encoder(ctx.self, ctx.buffer, ctx.changeTree, fieldIndex, operation, ctx.it, ctx.isEncodeAll, ctx.hasView, ctx.metadata);
-}
+import {
+    MODE_DRAIN, MODE_PATCH, MODE_SNAPSHOT, MODE_STREAM,
+    closeChunk, emitKeyedOp, emitLiveChunk, emitViewEntry, encodeKeyedOps, encodeSchemaBits, encodeSchemaOps, encodeTreeOps,
+    enterFrame, openChunk, passFrame, releaseFrames, type Frame,
+} from "./EncodeOperation.js";
 
 /**
  * Grow an encoder's output buffer to the next `BUFFER_SIZE` multiple that
- * fits `usedOffset` bytes, warning once with the value to configure. Shared
- * by every encoder (v5 and the v6 PoC).
+ * fits `usedOffset` bytes, warning once with the value to configure.
  */
 export function growSharedBuffer(owner: { sharedBuffer: Uint8Array }, buffer: Uint8Array, usedOffset: number): Uint8Array {
     const newSize = Math.ceil(usedOffset / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
@@ -240,23 +53,25 @@ export function discardQueue(root: Root, list: ChangeTreeList): void {
     list.tail = undefined;
 }
 
-function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
-    const result = new Uint8Array(a.length + b.length);
-    result.set(a, 0);
-    result.set(b, a.length);
-    return result;
-}
-
+/**
+ * Wire-format encoder.
+ *
+ * - `encodeAll` / `encodeAllView`: full sync — one nested root chunk with
+ *   fresh instances inlined as bodies.
+ * - `encode` / `encodeView`: per-tick patch — one chunk per dirty tree
+ *   (`uvarint(refId) uvarint(len) ops`), fresh instances inlined as bodies
+ *   of the parent's ADD.
+ * - `encodeUnreliable` / `encodeUnreliableView`: the `@unreliable` channel.
+ * - The view variants return `[shared, viewSlice]` — two views into the
+ *   shared buffer, no per-client concat; `Encoder.concat` joins them for
+ *   single-buffer transports.
+ */
 export class Encoder<T extends Schema = any> {
     /**
      * Per-encoder shared output buffer size. The encoder auto-grows on
      * overflow and logs a one-time warning suggesting a higher value, so
      * the default just needs to comfortably cover typical room state.
-     *
-     * Sized to fit ~100 items in a `MapSchema<{x,y,z}>` keyed by
-     * `nanoid(9)` (~4.5 KB worst-case full encode, float64-heavy) with
-     * ~3-4× headroom for surrounding state (player list, world refs,
-     * etc.). Raise per app via `Encoder.BUFFER_SIZE = N * 1024` before
+     * Raise per app via `Encoder.BUFFER_SIZE = N * 1024` before
      * constructing any Encoder.
      */
     static BUFFER_SIZE = 16 * 1024;
@@ -264,19 +79,27 @@ export class Encoder<T extends Schema = any> {
 
     context: TypeContext;
     state: T;
-
     root: Root;
+
+    /** Per-pass stamps written into `ChangeTree._fullSyncGen`. */
+    private _gen = 0;
+
+    // per-tick filtered pass (encodeView): trees with filtered dirty state + chunk cache
+    private _tickPrepared = false;
+    private _filteredDirty: ChangeTree[] = [];
+    private _cacheable: boolean[] = [];
+    private _cacheKey: number[] = [];
+    private _cacheStart: number[] = [];
+    private _cacheEnd: number[] = [];
+    private _scratch: Uint8Array = new Uint8Array(4096);
+    private _scratchOffset = 0;
 
     constructor(state: T, root?: Root) {
         //
         // Use .cache() here to avoid re-creating a new context for every new room instance.
         //
-        // We may need to make this optional in case of dynamically created
-        // schemas - which would lead to memory leaks
-        //
         this.context = TypeContext.cache(state.constructor as typeof Schema);
         this.root = root ?? new Root(this.context);
-
         this.setState(state);
     }
 
@@ -285,32 +108,214 @@ export class Encoder<T extends Schema = any> {
         this.state[$changes].setRoot(this.root);
     }
 
-    private _encodeCtx: EncodeCtx = {
-        self: undefined!, buffer: undefined!, it: undefined!, changeTree: undefined!,
-        ref: undefined, encoder: undefined!, filter: undefined, metadata: undefined,
-        view: undefined, isEncodeAll: false, hasView: false,
-        treeIsFiltered: false, isSchema: false, emitFiltered: false,
-        filterBitmask: 0, tags: undefined!,
-        structSwitchEmitted: false, isRootTree: false, shouldEmitSwitch: false,
-        gen: 0, initialOffset: 0, rootChangeTree: undefined!,
-    };
+    private _beginPass(buffer: Uint8Array, it: Iterator, view: StateView | undefined, emitFiltered: boolean, mode: number): Frame {
+        // Settle any pending per-edge filter re-derivations before routing
+        // fields to channels (see inheritedFlags.drainFilterRefresh).
+        if (this.root.pendingFilterRefresh.length > 0) drainFilterRefresh(this.root);
+        const f = passFrame();
+        f.context = this.context;
+        f.buffer = buffer;
+        f.it = it;
+        f.capacity = buffer.byteLength;
+        f.view = view;
+        f.hasView = view !== undefined;
+        f.emitFiltered = emitFiltered;
+        f.mode = mode;
+        f.genA = ++this._gen;
+        f.genB = ++this._gen;
+        return f;
+    }
+
+    // ── snapshot ────────────────────────────────────────────────────────
+
+    encodeAll(it: Iterator = { offset: 0 }, buffer: Uint8Array = this.sharedBuffer): Uint8Array {
+        const initialOffset = it.offset;
+        const f = this._beginPass(buffer, it, undefined, false, MODE_SNAPSHOT);
+        const rootTree = this.state[$changes];
+        rootTree._fullSyncGen = f.genB;
+        enterFrame(f, rootTree);
+        emitLiveChunk(f, forEachLiveWithCtx);
+        closeChunk(f);
+
+        if (it.offset > buffer.byteLength) {
+            buffer = this._resizeBuffer(buffer, it.offset);
+            it.offset = initialOffset;
+            return this.encodeAll(it, buffer);
+        }
+        // `Reflection.encode` builds a throwaway encoder that never discards:
+        // drop the frame pool's tree references here as well.
+        releaseFrames();
+        return buffer.subarray(initialOffset, it.offset);
+    }
+
+    /** View region of a full sync: filtered fields / trees visible to `view`. */
+    encodeAllView(view: StateView, sharedOffset: number, it: Iterator, buffer: Uint8Array = this.sharedBuffer): [Uint8Array, Uint8Array] {
+        const viewOffset = it.offset;
+        const f = this._beginPass(buffer, it, view, true, MODE_SNAPSHOT);
+        walkView(f, this.state[$changes]);
+
+        if (it.offset > buffer.byteLength) {
+            buffer = this._resizeBuffer(buffer, it.offset);
+            it.offset = viewOffset;
+            return this.encodeAllView(view, sharedOffset, it, buffer);
+        }
+        releaseFrames();
+        return [buffer.subarray(0, sharedOffset), buffer.subarray(viewOffset, it.offset)];
+    }
+
+    // ── patch ───────────────────────────────────────────────────────────
+
+    /** Shared (unfiltered) per-tick patch. */
+    encode(it: Iterator = { offset: 0 }, buffer: Uint8Array = this.sharedBuffer): Uint8Array {
+        const initialOffset = it.offset;
+        const f = this._beginPass(buffer, it, undefined, false, MODE_PATCH);
+        encodeQueue(f, this.root.changes);
+
+        // Broadcast-mode stream emission runs after the main loop (state /
+        // parent refs are already on the wire). Skipped when any StateView
+        // is registered (the priority pass in `encodeView` owns emission).
+        if (this.root.activeViews.size === 0 && this.root.streamTrees.size > 0) {
+            this._emitStreamBroadcast(f);
+        }
+
+        if (it.offset > buffer.byteLength) {
+            buffer = this._resizeBuffer(buffer, it.offset);
+            it.offset = initialOffset;
+            return this.encode(it, buffer);
+        }
+        return buffer.subarray(initialOffset, it.offset);
+    }
 
     /**
-     * Monotonic counter bumped at the start of every `encodeFullSync`
-     * call. The new value is copied to `ctx.gen` and stamped into every
-     * tree the walk touches (`tree._fullSyncGen = ctx.gen`); subsequent
-     * revisits of the same tree detect the equality and return early.
+     * Per-view patch: the stream priority pass, the `view.changes` drain
+     * (visibility bootstrap, with inline bodies for newly-visible subtrees)
+     * and the tick's filtered ops visible to this view. Returns the shared
+     * slice and the view slice.
      */
-    private _fullSyncGen: number = 0;
-
-    encode(
-        it: Iterator = { offset: 0 },
-        view?: StateView,
-        buffer: Uint8Array = this.sharedBuffer,
-        initialOffset = it.offset
-    ): Uint8Array {
-        return this._encodeChannel(it, view, buffer, initialOffset, /* unreliable */ false);
+    encodeView(view: StateView, sharedOffset: number, it: Iterator, buffer: Uint8Array = this.sharedBuffer): [Uint8Array, Uint8Array] {
+        // Runs once, BEFORE the (overflow-recursive) body: it moves stream
+        // positions from pending to sent, which must not happen twice.
+        this._emitStreamPriority(view);
+        return this._encodeViewBody(view, sharedOffset, it, buffer);
     }
+
+    private _encodeViewBody(view: StateView, sharedOffset: number, it: Iterator, buffer: Uint8Array): [Uint8Array, Uint8Array] {
+        const viewOffset = it.offset;
+        const f = this._beginPass(buffer, it, view, true, MODE_DRAIN);
+        const root = this.root;
+
+        // 1. view.changes drain — Map insertion order is topological
+        for (const [refId, entry] of view.changes) {
+            const tree: ChangeTree | undefined = root.changeTrees[refId];
+            if (tree === undefined) {
+                view.changes.delete(refId); // detached instance
+                continue;
+            }
+            if (entry.size === 0) continue;
+            const stamp = tree._fullSyncGen;
+            if (stamp === f.genA || stamp === f.genB) continue; // inlined already
+            enterFrame(f, tree);
+            emitViewEntry(f, entry);
+            closeChunk(f);
+        }
+
+        // 2. per-tick filtered ops (chunk cache across views — only worth it
+        //    when a second view can reuse the copy)
+        f.mode = MODE_PATCH;
+        if (!this._tickPrepared) this._prepareTick();
+        const useCache = root.activeViews.size > 1;
+        const trees = this._filteredDirty;
+        for (let i = 0, len = trees.length; i < len; i++) {
+            const tree = trees[i];
+            if (tree._fullSyncGen === f.genB) continue;
+            if (!view.isChangeTreeVisible(tree)) continue;
+
+            const cacheable = useCache && this._cacheable[i];
+            let key = -1;
+            if (cacheable) {
+                key = tagKey(view, tree);
+                if (this._cacheKey[i] === key) {
+                    const start = this._cacheStart[i];
+                    const len = this._cacheEnd[i] - start;
+                    if (it.offset + len <= buffer.byteLength) {
+                        copyBytes(this._scratch, start, buffer, it.offset, len);
+                    }
+                    it.offset += len;
+                    continue;
+                }
+            }
+
+            const start = it.offset;
+            if (tree.isNew) tree._fullSyncGen = f.genB;
+            enterFrame(f, tree);
+            encodeTreeOps(f);
+            closeChunk(f);
+
+            if (cacheable && it.offset <= buffer.byteLength) {
+                this._cacheChunk(i, key, buffer, start, it.offset);
+            }
+        }
+
+        if (it.offset > buffer.byteLength) {
+            buffer = this._resizeBuffer(buffer, it.offset);
+            it.offset = viewOffset;
+            return this._encodeViewBody(view, sharedOffset, it, buffer);
+        }
+
+        view.changes.clear();
+        return [buffer.subarray(0, sharedOffset), buffer.subarray(viewOffset, it.offset)];
+    }
+
+    /** Collect the tick's trees with filtered dirty state, once per tick. */
+    private _prepareTick(): void {
+        const trees = this._filteredDirty;
+        const cacheable = this._cacheable;
+        trees.length = 0;
+        cacheable.length = 0;
+        this._cacheKey.length = 0;
+        this._scratchOffset = 0;
+
+        let current: ChangeTreeList | ChangeTreeNode = this.root.changes;
+        while (current = current.next) {
+            const tree = (current as ChangeTreeNode).changeTree;
+            if (!tree.has()) continue;
+            const desc = tree.encDescriptor;
+            let include = tree.isFiltered;
+            let canCache = false;
+            if (!include && tree._isSchema && desc.hasAnyView) {
+                include = (tree.dirtyLow & desc.filterBitmask) !== 0
+                    || (tree.dirtyHigh !== 0 && desc.hasTagAbove32);
+            }
+            if (!include) continue;
+            if (tree._isSchema) {
+                // pure-primitive chunk → a function of (tree, view's custom tags); safe to memcpy
+                canCache = (tree.dirtyLow & desc.refTypeBitmask) === 0 && (tree.dirtyHigh === 0 || !desc.hasRefFieldAbove32);
+            } else {
+                // primitive-child collections carry no per-element visibility
+                canCache = typeof (tree.refTarget as any)[$childType] === "string";
+            }
+            trees.push(tree);
+            cacheable.push(canCache);
+            this._cacheKey.push(-1);
+        }
+        this._tickPrepared = true;
+    }
+
+    private _cacheChunk(i: number, key: number, buffer: Uint8Array, start: number, end: number): void {
+        const len = end - start;
+        if (this._scratchOffset + len > this._scratch.byteLength) {
+            const grown = new Uint8Array(Math.max(this._scratch.byteLength * 2, this._scratchOffset + len));
+            grown.set(this._scratch.subarray(0, this._scratchOffset));
+            this._scratch = grown;
+        }
+        copyBytes(buffer, start, this._scratch, this._scratchOffset, len);
+        this._cacheKey[i] = key;
+        this._cacheStart[i] = this._scratchOffset;
+        this._cacheEnd[i] = this._scratchOffset + len;
+        this._scratchOffset += len;
+    }
+
+    // ── unreliable channel ──────────────────────────────────────────────
 
     /**
      * Per-tick encode of the UNRELIABLE channel. Walks `root.unreliableChanges`
@@ -318,337 +323,51 @@ export class Encoder<T extends Schema = any> {
      * cadence than `encode()` (e.g. 60Hz vs 20Hz) — the two channels are
      * fully independent.
      */
-    encodeUnreliable(
-        it: Iterator = { offset: 0 },
-        view?: StateView,
-        buffer: Uint8Array = this.sharedBuffer,
-        initialOffset = it.offset
-    ): Uint8Array {
-        return this._encodeChannel(it, view, buffer, initialOffset, /* unreliable */ true);
-    }
-
-    private _encodeChannel(
-        it: Iterator,
-        view: StateView | undefined,
-        buffer: Uint8Array,
-        initialOffset: number,
-        unreliable: boolean,
-    ): Uint8Array {
-        // Settle any pending per-edge filter re-derivations before routing
-        // fields to channels (see inheritedFlags.drainFilterRefresh).
-        if (this.root.pendingFilterRefresh.length > 0) drainFilterRefresh(this.root);
-
-        const hasView = (view !== undefined);
-        const rootChangeTree = this.state[$changes];
-
-        const ctx = this._encodeCtx;
-        ctx.self = this;
-        ctx.buffer = buffer;
-        ctx.it = it;
-        ctx.view = view;
-        ctx.isEncodeAll = false;
-        ctx.hasView = hasView;
-        // Shared pass (no view): emit unfiltered fields. View pass: emit
-        // filtered fields only. Fields on the other side of the split are
-        // skipped inside encodeChangeCb.
-        ctx.emitFiltered = hasView;
-
-        const queue: ChangeTreeList = unreliable ? this.root.unreliableChanges : this.root.changes;
-        let current: ChangeTreeList | ChangeTreeNode = queue;
-
-        while (current = current.next) {
-            const changeTree = (current as ChangeTreeNode).changeTree;
-
-            if (hasView && !view.isChangeTreeVisible(changeTree)) {
-                continue;
-            }
-
-            const recorder = unreliable ? changeTree.unreliableRecorder : changeTree;
-            if (!recorder || !recorder.has()) { continue; }
-
-            const desc = changeTree.encDescriptor;
-            ctx.changeTree = changeTree;
-            ctx.ref = changeTree.ref;
-            ctx.encoder = desc.encoder;
-            ctx.filter = desc.filter;
-            ctx.metadata = desc.metadata;
-            ctx.treeIsFiltered = changeTree.isFiltered;
-            ctx.isSchema = desc.isSchema;
-            ctx.filterBitmask = desc.filterBitmask;
-            ctx.tags = desc.tags;
-            ctx.structSwitchEmitted = false;
-            ctx.isRootTree = (changeTree === rootChangeTree);
-            // Root's struct switch is skipped at the very start of the shared
-            // pass (matches the legacy wire protocol). In view pass or after
-            // the first emission, always emit the switch.
-            ctx.shouldEmitSwitch = (hasView || it.offset > initialOffset || !ctx.isRootTree);
-
-            recorder.forEachWithCtx(ctx, encodeChangeCb);
-        }
-
-        // Broadcast-mode stream emission runs after the main loop (state /
-        // parent refs are already on the wire, so stream ADD ops can
-        // reference element refIds safely). Reliable shared pass only;
-        // skipped when any StateView is registered (priority pass in
-        // `encodeView` owns emission in that mode).
-        if (!unreliable && !hasView && this.root.activeViews.size === 0 && this.root.streamTrees.size > 0) {
-            this._emitStreamBroadcast(buffer, it);
-        }
+    encodeUnreliable(it: Iterator = { offset: 0 }, buffer: Uint8Array = this.sharedBuffer): Uint8Array {
+        const initialOffset = it.offset;
+        const f = this._beginPass(buffer, it, undefined, false, MODE_PATCH);
+        this._encodeUnreliableQueue(f);
 
         if (it.offset > buffer.byteLength) {
             buffer = this._resizeBuffer(buffer, it.offset);
-            // Reuse `it` (reset its offset) instead of a fresh iterator so the
-            // caller's `it.offset` ends at the true final offset. A fresh one
-            // strands `it.offset` at the overflow value and corrupts the next
-            // view's region in a multi-view encode.
             it.offset = initialOffset;
-            return this._encodeChannel(it, view, buffer, initialOffset, unreliable);
+            return this.encodeUnreliable(it, buffer);
         }
-
-        return buffer.subarray(0, it.offset);
+        return buffer.subarray(initialOffset, it.offset);
     }
 
     /**
-     * Structural DFS walker for full-sync (encodeAll / encodeAllView).
-     * Visits each ChangeTree in DFS preorder starting from the state root,
-     * emitting ADD operations for every currently-populated index via
-     * {@link ChangeTree.forEachLive}.
+     * Per-view unreliable encode: only filtered `@unreliable` fields visible
+     * to this view. No `view.changes` drain — those belong to the reliable
+     * channel's bootstrap.
      */
-    private encodeFullSync(
-        it: Iterator,
-        buffer: Uint8Array,
-        emitFiltered: boolean,
-        view?: StateView,
-        initialOffset: number = it.offset
-    ): Uint8Array {
-        // Full-sync splits fields by the same isFiltered classification.
-        if (this.root.pendingFilterRefresh.length > 0) drainFilterRefresh(this.root);
-
-        const hasView = (view !== undefined);
-        const rootChangeTree = this.state[$changes];
-
-        const ctx = this._encodeCtx;
-        ctx.self = this;
-        ctx.buffer = buffer;
-        ctx.it = it;
-        ctx.view = view;
-        ctx.isEncodeAll = true;
-        ctx.hasView = hasView;
-        ctx.emitFiltered = emitFiltered;
-
-        // Bump the generation counter and carry the new value on `ctx` so
-        // the recursive walker can stamp every tree it visits. Any tree
-        // still holding the previous walk's stamp is treated as unvisited
-        // on first reach, and stamped; a second reach (shared ref via
-        // multiple parents) sees the match and bails.
-        ctx.gen = ++this._fullSyncGen;
-        ctx.initialOffset = initialOffset;
-        ctx.rootChangeTree = rootChangeTree;
-        _fullSyncWalk(ctx, rootChangeTree);
+    encodeUnreliableView(view: StateView, sharedOffset: number, it: Iterator, buffer: Uint8Array = this.sharedBuffer): [Uint8Array, Uint8Array] {
+        const viewOffset = it.offset;
+        const f = this._beginPass(buffer, it, view, true, MODE_PATCH);
+        this._encodeUnreliableQueue(f);
 
         if (it.offset > buffer.byteLength) {
             buffer = this._resizeBuffer(buffer, it.offset);
-            it.offset = initialOffset; // reuse `it` so the caller's offset stays accurate
-            return this.encodeFullSync(it, buffer, emitFiltered, view, initialOffset);
+            it.offset = viewOffset;
+            return this.encodeUnreliableView(view, sharedOffset, it, buffer);
         }
-
-        return buffer.subarray(0, it.offset);
+        return [buffer.subarray(0, sharedOffset), buffer.subarray(viewOffset, it.offset)];
     }
 
-    private _resizeBuffer(buffer: Uint8Array, usedOffset: number): Uint8Array {
-        return growSharedBuffer(this, buffer, usedOffset);
-    }
-
-    encodeAll(
-        it: Iterator = { offset: 0 },
-        buffer: Uint8Array = this.sharedBuffer
-    ) {
-        return this.encodeFullSync(it, buffer, /* emitFiltered */ false);
-    }
-
-    encodeAllView(
-        view: StateView,
-        sharedOffset: number,
-        it: Iterator,
-        bytes: Uint8Array = this.sharedBuffer
-    ) {
-        const viewOffset = it.offset;
-
-        // encodeFullSync() may reallocate the buffer on overflow — keep its
-        // return, not the stale `bytes`, or the concat below reads a dead buffer.
-        bytes = this.encodeFullSync(it, bytes, /* emitFiltered */ true, view, viewOffset);
-
-        return concatBytes(
-            bytes.subarray(0, sharedOffset),
-            bytes.subarray(viewOffset, it.offset)
-        );
-    }
-
-    /** Grow `buffer` to keep BUFFER_SIZE free bytes past `offset`, preserving `[0, offset)`. */
-    protected ensureCapacity(buffer: Uint8Array, offset: number): Uint8Array {
-        if (offset + Encoder.BUFFER_SIZE <= buffer.byteLength) { return buffer; }
-        const size = Math.ceil((offset + Encoder.BUFFER_SIZE) / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
-        const grown = new Uint8Array(size);
-        grown.set(buffer.subarray(0, offset));
-        if (buffer === this.sharedBuffer) { this.sharedBuffer = grown; }
-        return grown;
-    }
-
-    encodeView(
-        view: StateView,
-        sharedOffset: number,
-        it: Iterator,
-        bytes: Uint8Array = this.sharedBuffer
-    ) {
-        const viewOffset = it.offset;
-
-        // Stream priority pass: drain up to `maxPerTick` per-view entries
-        // from every registered stream before draining view.changes. Each
-        // selected element is passed to `view.add()` which populates
-        // view.changes with the stream-link ADD + element-field ADDs.
-        this._emitStreamPriority(view);
-
-        //
-        // `view.changes` Map insertion order IS topological order:
-        //   - `view.add` walks the parent chain to root via `addParentOf`
-        //     (depth-first ancestor-first), inserting every ancestor's
-        //     entry before the descendant's.
-        //   - `view.remove` calls `_touchAncestorsOf` before its own
-        //     write to insert any missing ancestors at the front of the
-        //     chain — empty entries that get skipped by the size==0
-        //     check below but establish Map position.
-        // No per-encode topo sort needed.
-        //
-        for (const refId of view.changes.keys()) {
-            const changes = view.changes.get(refId);
-            const changeTree: ChangeTree = this.root.changeTrees[refId];
-
-            if (changeTree === undefined) {
-                // detached instance, remove from view and skip.
-                view.changes.delete(refId);
-                continue;
-            }
-
-            if (changes.size === 0) {
-                continue;
-            }
-
-            const desc = changeTree.encDescriptor;
-            const encoder = desc.encoder;
-            const metadata = desc.metadata;
-            // `ref` → user-facing identity (Proxy on ArraySchema), used for
-            // `[$refId]`. `refTarget` → raw instance, used for the hot
-            // `[$getByIndex]` lookup that runs once per change.
-            const ref = changeTree.ref;
-            const refTarget = changeTree.refTarget;
-
-            // These writes are unguarded and unrecoverable (view.changes is cleared
-            // below), so unlike encode() they can't re-encode on overflow — grow ahead.
-            bytes = this.ensureCapacity(bytes, it.offset);
-
-            bytes[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-            encode.number(bytes, ref[$refId], it);
-
-            // Iterate entries directly — the inner Map gives us the (index, op)
-            // pair without an intermediate keys array or Number() parse.
-            for (const [key, op] of changes) {
-                // Element-binding entries under a collection parent are keyed
-                // by the child's ChangeTree — resolve its CURRENT wire slot
-                // here (a slot captured at view.add() time goes stale when
-                // the array reindexes later in the same tick).
-                let index: number;
-                if (key === ARRAY_SNAPSHOT) {
-                    // Whole-array snapshot: emit an ADD per live element at
-                    // its CURRENT slot. Structural walk at drain time — a
-                    // reindex after view.add() cannot go stale, and staged
-                    // holes (recorder DELETEs) are skipped by construction.
-                    const tmpItems = refTarget.tmpItems;
-                    const deletedIndexes = refTarget.deletedIndexes;
-                    for (let slot = 0; slot < tmpItems.length; slot++) {
-                        if (tmpItems[slot] === undefined || deletedIndexes[slot] === true) { continue; }
-                        encoder(this, bytes, changeTree, slot, OPERATION.ADD, it, false, true, metadata);
-                    }
-                    continue;
-                }
-                if (typeof key === "number") {
-                    index = key;
-                } else {
-                    const resolved = key.indexInParent(ref);
-                    if (resolved === undefined) { continue; } // detached and re-parented elsewhere
-                    index = resolved;
-
-                    // SAME PATCH view.add + state-removal: the element is
-                    // leaving the array (recorder DELETE at its slot), so the
-                    // binding is moot — and `$getByIndex` on a staged hole
-                    // reads a DIFFERENT element (compacted `items`), which
-                    // would ship a mismatched value payload. Cancel the
-                    // binding AND the child's own pending entry (its refId
-                    // was never introduced to this client). Topological
-                    // drain order guarantees the child entry hasn't been
-                    // visited yet. A recorder ADD at the slot needs no such
-                    // guard — both channels emit ADD_BY_REFID and the
-                    // decoder dedups by identity.
-                    if (op === OPERATION.ADD && changeTree.getChange(index) === OPERATION.DELETE) {
-                        view.changes.delete(key.ref[$refId]);
-                        continue;
-                    }
-                }
-
-                // workaround when using view.add() on item that has been deleted from state
-                // (see test "adding to view item that has been removed from state")
-                const value = refTarget[$getByIndex](index);
-                const operation = (value !== undefined && op) || OPERATION.DELETE;
-
-                // isEncodeAll = false, hasView = true
-                encoder(this, bytes, changeTree, index, operation, it, false, true, metadata);
-            }
+    private _encodeUnreliableQueue(f: Frame): void {
+        let current: ChangeTreeList | ChangeTreeNode = this.root.unreliableChanges;
+        while (current = current.next) {
+            const tree = (current as ChangeTreeNode).changeTree;
+            const rec = tree.unreliableRecorder as SchemaChangeRecorder | undefined;
+            if (rec === undefined || !rec.has()) continue;
+            if (f.hasView && !f.view!.isChangeTreeVisible(tree)) continue;
+            enterFrame(f, tree);
+            encodeSchemaBits(f, rec.dirtyLow, rec.dirtyHigh, rec.ops);
+            closeChunk(f);
         }
-
-        //
-        // TODO: only clear view changes after all views are encoded
-        // (to allow re-using StateView's for multiple clients)
-        //
-        view.changes.clear();
-
-        // Per-tick view-scoped pass: walks the same `changes` queue as the
-        // shared pass, but `encodeChangeCb` emits only filtered fields.
-        // encode() may reallocate the buffer on overflow — keep its return,
-        // not the stale `bytes`. Anchor the re-encode at the current offset
-        // (the default `initialOffset = it.offset`), NOT `viewOffset`: a
-        // resize must not clobber the view.changes already written at
-        // [viewOffset, it.offset).
-        bytes = this.encode(it, view, bytes);
-
-        return concatBytes(
-            bytes.subarray(0, sharedOffset),
-            bytes.subarray(viewOffset, it.offset)
-        );
     }
 
-    /**
-     * Per-view unreliable encode. Walks `root.unreliableChanges` and emits
-     * only filtered fields visible to this view. Unlike `encodeView`, this
-     * doesn't emit `view.changes` entries — those are used only for
-     * reliable view bootstrap (membership ADDs) and are consumed by
-     * `encodeView` on the reliable channel.
-     */
-    encodeUnreliableView(
-        view: StateView,
-        sharedOffset: number,
-        it: Iterator,
-        bytes: Uint8Array = this.sharedBuffer
-    ) {
-        const viewOffset = it.offset;
-
-        // Capture the return: a resize on overflow reallocates the buffer, and
-        // the concat below must read from the live one, not the stale `bytes`.
-        bytes = this.encodeUnreliable(it, view, bytes, viewOffset);
-
-        return concatBytes(
-            bytes.subarray(0, sharedOffset),
-            bytes.subarray(viewOffset, it.offset)
-        );
-    }
+    // ── streams ─────────────────────────────────────────────────────────
 
     /**
      * Broadcast-mode counterpart to `_emitStreamPriority`. Runs when NO
@@ -656,135 +375,73 @@ export class Encoder<T extends Schema = any> {
      * where up to `maxPerTick` pending ADDs per stream emit to ALL clients
      * each shared tick. DELETEs always flush (no cap).
      *
-     * Emits directly to the shared-encode buffer: stream & element trees
-     * are `isFiltered=true` so the main loop would otherwise skip them.
-     * Runs AFTER the main loop so state / parent refs are already encoded
-     * — stream ADD ops reference element refIds, which must be decodable.
+     * Emits into the shared patch: stream & element trees are
+     * `isFiltered=true` so the main loop skipped them. Each added element
+     * rides inline as a live body; already-sent elements emit their dirty
+     * fields as their own chunk. `@unreliable` fields stay out (MODE_STREAM).
      */
-    private _emitStreamBroadcast(buffer: Uint8Array, it: Iterator): void {
-        const streams = this.root.streamTrees;
-        for (const stream of streams) {
+    private _emitStreamBroadcast(f: Frame): void {
+        f.emitFiltered = true;
+        f.mode = MODE_STREAM;
+        for (const stream of this.root.streamTrees) {
             const s: any = stream;
             const tree: ChangeTree = s[$changes];
-            // Stream is registered with Root but not yet assigned a refId
-            // (e.g. created but never attached to state). Skip.
-            const streamRefId = s[$refId];
-            if (streamRefId === undefined) continue;
-
-            // `inheritedFlags.ensureStreamState` allocates `_stream` the
-            // moment the tree picks up `isStreamCollection` — Root only
-            // tracks trees that reached that point, so `_stream` is
-            // guaranteed defined here.
+            if (s[$refId] === undefined) continue; // never attached to the state
             const st = s._stream!;
             const deletes: Set<number> = st.broadcastDeletes;
             const pending: Set<number> = st.broadcastPending;
             const sent: Set<number> = st.sentBroadcast;
-            const hasDeletes = deletes.size > 0;
-            const hasAdds = pending.size > 0;
 
-            const desc = tree.encDescriptor;
-            const streamEncoder = desc.encoder;
-            const streamMetadata = desc.metadata;
+            if (deletes.size > 0 || pending.size > 0) {
+                enterFrame(f, tree);
+                openChunk(f);
 
-            // Emit stream ADD/DELETE ops for this tick, if any.
-            if (hasDeletes || hasAdds) {
-                buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-                encode.number(buffer, streamRefId, it);
+                for (const pos of deletes) emitKeyedOp(f, pos, OPERATION.DELETE);
+                deletes.clear();
 
-                // DELETEs first (flush all).
-                if (hasDeletes) {
-                    for (const pos of deletes) {
-                        streamEncoder(this, buffer, tree, pos, OPERATION.DELETE, it, false, false, streamMetadata);
-                    }
-                    deletes.clear();
-                }
-
-                // ADDs up to maxPerTick.
                 const max: number = st.maxPerTick;
-                const emittedElements: any[] = [];
                 let count = 0;
                 const toDelete: number[] = [];
                 for (const pos of pending) {
                     if (count >= max) break;
-                    // `$getByIndex` works for any streamable collection:
-                    // StreamSchema (Map<number, V>) and MapSchema (string-keyed
-                    // via journal index) both route through the same symbol.
-                    const element = s[$getByIndex](pos);
-                    if (element === undefined) {
+                    if (s[$getByIndex](pos) === undefined) {
                         toDelete.push(pos);
                         continue;
                     }
-                    streamEncoder(this, buffer, tree, pos, OPERATION.ADD, it, false, false, streamMetadata);
+                    emitKeyedOp(f, pos, OPERATION.ADD); // element body inline (MODE_STREAM)
                     sent.add(pos);
-                    emittedElements.push(element);
                     toDelete.push(pos);
                     count++;
                 }
                 for (const pos of toDelete) pending.delete(pos);
-
-                // Emit each element's full state — forEachLive walks populated
-                // fields structurally, mirroring encodeAllView's bootstrap.
-                // Covers both static elements (dirty state was reset by
-                // inheritedFlags' becameFullStateOnly branch) and non-static (still
-                // has dirty state but the main loop skipped them because
-                // they're filtered).
-                for (const element of emittedElements) {
-                    const elTree: ChangeTree | undefined = element[$changes];
-                    if (elTree === undefined) continue;
-                    const elRefId = element[$refId];
-                    if (elRefId === undefined) continue;
-
-                    buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-                    encode.number(buffer, elRefId, it);
-
-                    const elDesc = elTree.encDescriptor;
-                    const elEncoder = elDesc.encoder;
-                    const elMetadata = elDesc.metadata;
-                    elTree.forEachLive((idx: number) => {
-                        // @unreliable fields ship on the unreliable channel only.
-                        if (Metadata.hasUnreliableAtIndex(elMetadata, idx)) return;
-                        elEncoder(this, buffer, elTree, idx, OPERATION.ADD, it, false, false, elMetadata);
-                    });
-                }
+                closeChunk(f);
             }
 
-            // Emit mutation updates for already-sent elements. Element
-            // trees are `isFiltered=true` (inherited from stream field),
-            // so the main loop skips them. We pick up their dirty state
-            // here so broadcast mode sees post-send field mutations.
+            // Mutation updates for already-sent elements: their trees are
+            // filtered, so the main loop skipped them.
             for (const pos of sent) {
                 const element = s[$getByIndex](pos);
                 if (element === undefined) continue;
                 const elTree: ChangeTree | undefined = element[$changes];
-                if (elTree === undefined || !elTree.has()) continue;
-
-                const elRefId = element[$refId];
-                if (elRefId === undefined) continue;
-
-                buffer[it.offset++] = SWITCH_TO_STRUCTURE & 255;
-                encode.number(buffer, elRefId, it);
-
-                const elDesc = elTree.encDescriptor;
-                const elEncoder = elDesc.encoder;
-                const elMetadata = elDesc.metadata;
-                elTree.forEach((idx: number, op: OPERATION) => {
-                    if (idx < 0) return; // pure ops (collection only)
-                    if (Metadata.hasUnreliableAtIndex(elMetadata, idx)) return;
-                    elEncoder(this, buffer, elTree, idx, op, it, false, false, elMetadata);
-                });
+                if (elTree === undefined || !elTree.has() || elTree._fullSyncGen === f.genB) continue;
+                if (element[$refId] === undefined) continue;
+                enterFrame(f, elTree);
+                encodeSchemaOps(f);
+                closeChunk(f);
             }
         }
+        f.emitFiltered = false;
+        f.mode = MODE_PATCH;
     }
 
     /**
      * Walk every registered stream, pick up to `maxPerTick` positions from
      * this view's pending backlog (priority-sorted when the view supplies a
-     * `streamPriority` callback), and hand each element to `view.add()`.
+     * priority callback), and hand each element to `view.add()`.
      * `view.add()` seeds `view.changes` so the subsequent drain emits both
      * the stream-link (position → refId) and the element's field data.
      *
-     * Designed to run at the very top of `encodeView`, BEFORE the
-     * view.changes drain loop.
+     * Runs at the very top of `encodeView`, BEFORE the drain loop.
      */
     private _emitStreamPriority(view: StateView): void {
         const streams = this.root.streamTrees;
@@ -794,36 +451,19 @@ export class Encoder<T extends Schema = any> {
 
         for (const stream of streams) {
             const s: any = stream;
-            // Guaranteed non-undefined: `inheritedFlags.ensureStreamState`
-            // runs before Root.registerStream.
             const st = s._stream!;
             const pending: Set<number> | undefined = st.pendingByView.get(viewId);
             if (pending === undefined || pending.size === 0) continue;
 
-            // Per-stream priority callback: declared at schema time (via
-            // `t.stream(X).priority(fn)` or the decorator form) and seeded
-            // into `_stream.priority` when the stream was attached. Users
-            // can also override per-instance by assigning to the setter.
-            // A per-view callback (registered by `subscribe(coll, fn)`)
-            // wins over the declaration-scope one: it closes over the
-            // client's own entity, so it needs no view-carried anchor.
+            // A per-view callback (registered by `subscribe(coll, fn)`) wins
+            // over the declaration-scope one.
             const perView = st.priorityByView?.get(viewId);
             const usePerView = perView !== undefined;
             const priority = st.priority;
             const max = st.maxPerTick;
 
-            // Select the `max` highest-priority candidates.
-            //
-            // A comparator-based sort invokes the callback twice per
-            // comparison, each with its own `$getByIndex` lookup — ~2·n·log n
-            // of each to pick `max` entries (38k calls to select 8 out of a
-            // 2000-entry backlog). Scoring every candidate once and keeping a
-            // bounded top-`max` window costs n invocations instead, and sizes
-            // the scratch by `max` rather than by the backlog.
-            //
-            // Ties keep the earlier position (both comparisons below are
-            // strict), so equal-priority entries still drain in insertion
-            // order.
+            // Select the `max` highest-priority candidates with a bounded
+            // top-`max` window (n callback invocations, no sort).
             const positions: number[] = [];
             const stale: number[] = [];
 
@@ -833,12 +473,8 @@ export class Encoder<T extends Schema = any> {
                 let filled = 0;
 
                 for (const pos of pending) {
-                    // Symbol-keyed accessor so Map/Set/Stream all route
-                    // through the same lookup regardless of $items layout.
                     const element = s[$getByIndex](pos);
                     if (element === undefined) {
-                        // Removed after being queued — drop it below without
-                        // spending budget on it.
                         stale.push(pos);
                         continue;
                     }
@@ -847,7 +483,6 @@ export class Encoder<T extends Schema = any> {
                         ? perView!(element)
                         : priority!(view, element);
 
-                    // Window not yet full: always insert.
                     if (filled < max) {
                         let j = filled++;
                         while (j > 0 && bestScore[j - 1] < score) {
@@ -858,7 +493,6 @@ export class Encoder<T extends Schema = any> {
                         bestScore[j] = score;
                         bestPos[j] = pos;
 
-                    // Otherwise only a strictly better score displaces the tail.
                     } else if (score > bestScore[max - 1]) {
                         let j = max - 1;
                         while (j > 0 && bestScore[j - 1] < score) {
@@ -883,35 +517,25 @@ export class Encoder<T extends Schema = any> {
 
             for (const pos of stale) pending.delete(pos);
 
-            const count = positions.length;
-
             let sent: Set<number> | undefined = st.sentByView.get(viewId);
             if (sent === undefined) {
                 sent = new Set();
                 st.sentByView.set(viewId, sent);
             }
 
-            for (let i = 0; i < count; i++) {
+            for (let i = 0, count = positions.length; i < count; i++) {
                 const pos = positions[i];
                 const element = s[$getByIndex](pos);
                 if (element === undefined) {
-                    // Element was removed after being queued but before emit.
                     pending.delete(pos);
                     continue;
                 }
                 // `_addImmediate` force-ships the element through view.changes
-                // (markVisible + addParentOf + forEachChild recursion) WITHOUT
-                // routing stream elements back into pending — we're already
-                // draining pending here, so the normal `add()` path would
-                // infinite-loop. addParentOf seeds
-                // `view.changes[stream.refId][pos] = ADD` (stream-link emit).
+                // without routing it back into pending.
                 view._addImmediate(element);
-                // Force-seed element fields even when view.add skipped
-                // forEachLive (isNew && !isChildAdded). Matches the
-                // bootstrap emission encodeAllView does for filtered
-                // refs. `@unreliable` fields are excluded — they ship
-                // on the unreliable channel and force-seeding here
-                // would leak onto the reliable view pass.
+                // Force-seed element fields even when view.add skipped the
+                // live walk (isNew && !isChildAdded). `@unreliable` fields are
+                // excluded — they ship on the unreliable channel.
                 const elTree = element[$changes];
                 if (elTree !== undefined) {
                     const elRefId = element[$refId];
@@ -932,11 +556,15 @@ export class Encoder<T extends Schema = any> {
         }
     }
 
-    discardChanges() {
+    // ── lifecycle ───────────────────────────────────────────────────────
+
+    discardChanges(): void {
         discardQueue(this.root, this.root.changes);
+        this._tickPrepared = false;
+        releaseFrames(); // here, not per pass: a call in `encode()` costs inlining budget on the hot chain
     }
 
-    discardUnreliableChanges() {
+    discardUnreliableChanges(): void {
         const list = this.root.unreliableChanges;
         let current = list.next;
         const root = this.root;
@@ -950,31 +578,90 @@ export class Encoder<T extends Schema = any> {
         list.tail = undefined;
     }
 
-    tryEncodeTypeId(
-        bytes: Uint8Array,
-        baseType: typeof Schema,
-        targetType: typeof Schema,
-        it: Iterator
-    ) {
-        const baseTypeId = this.context.getTypeId(baseType);
-        const targetTypeId = this.context.getTypeId(targetType);
-
-        if (targetTypeId === undefined) {
-            console.warn(`@colyseus/schema WARNING: Class "${targetType.name}" is not registered on TypeRegistry - Please either tag the class with @entity or define a @type() field.`);
-            return;
-        }
-
-        if (baseTypeId !== targetTypeId) {
-            bytes[it.offset++] = TYPE_ID & 255;
-            encode.number(bytes, targetTypeId, it);
-        }
-    }
-
-    get hasChanges() {
+    get hasChanges(): boolean {
         return this.root.changes.next !== undefined;
     }
 
-    get hasUnreliableChanges() {
+    get hasUnreliableChanges(): boolean {
         return this.root.unreliableChanges.next !== undefined;
     }
+
+    /** Join the `[shared, view]` pair into one buffer (tests / single-buffer transports). */
+    static concat(parts: Uint8Array[]): Uint8Array {
+        let total = 0;
+        for (const p of parts) total += p.byteLength;
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const p of parts) { out.set(p, offset); offset += p.byteLength; }
+        return out;
+    }
+
+    private _resizeBuffer(buffer: Uint8Array, usedOffset: number): Uint8Array {
+        return growSharedBuffer(this, buffer, usedOffset);
+    }
+}
+
+/**
+ * Shared patch loop: one chunk per dirty tree, skipping trees inlined earlier
+ * in the pass. Reads flag bits and recorder state directly so the whole
+ * per-tree + per-field path fits V8's cumulative inlining budget (no call
+ * per tree).
+ */
+function encodeQueue(f: Frame, queue: ChangeTreeList): void {
+    let current: ChangeTreeList | ChangeTreeNode = queue;
+    while (current = current.next) {
+        const tree = (current as ChangeTreeNode).changeTree;
+        if (tree._fullSyncGen === f.genB) continue;
+        const flags = tree.flags;
+        if ((flags & IS_FILTERED) !== 0) continue; // every op of a filtered tree belongs to the view pass
+        const isSchema = tree._isSchema;
+        if (isSchema ? (tree.dirtyLow | tree.dirtyHigh) === 0 : !tree.has()) continue;
+        // only a fresh tree can be inlined by a later parent op → only those need the "emitted" stamp
+        if ((flags & IS_NEW) !== 0) tree._fullSyncGen = f.genB;
+        enterFrame(f, tree);
+        if (isSchema) encodeSchemaOps(f);
+        else if (tree.encDescriptor.kind === KIND_ARRAY) encodeTreeOps(f);
+        else encodeKeyedOps(f);
+        closeChunk(f);
+    }
+}
+
+/**
+ * Structural DFS for `encodeAllView`: visible trees emit their filtered-side
+ * live fields as a chunk unless an inline body already carried them;
+ * recursion continues either way so public trees with tagged fields deeper
+ * down are reached.
+ */
+function walkView(f: Frame, tree: ChangeTree): void {
+    const stamp = tree._fullSyncGen;
+    if (stamp === f.genA) return;
+    if (stamp !== f.genB && f.view!.isChangeTreeVisible(tree)) {
+        enterFrame(f, tree);
+        emitLiveChunk(f, forEachLiveWithCtx);
+        closeChunk(f);
+    }
+    tree._fullSyncGen = f.genA;
+    forEachChildWithCtx(tree, f, walkViewChildCb);
+}
+
+function walkViewChildCb(f: Frame, child: ChangeTree, _index: any): void {
+    walkView(f, child);
+}
+
+/** Small chunks are copied byte by byte: `set(subarray())` allocates a view per call. */
+function copyBytes(src: Uint8Array, from: number, dst: Uint8Array, to: number, len: number): void {
+    if (len > 48) {
+        dst.set(src.subarray(from, from + len), to);
+    } else {
+        for (let k = 0; k < len; k++) dst[to + k] = src[from + k];
+    }
+}
+
+function tagKey(view: StateView, tree: ChangeTree): number {
+    const bits = tree.encDescriptor.customTagBits;
+    let key = 0;
+    for (let i = 0; i < bits.length; i++) {
+        if (view.hasTagOnTree(tree, bits[i])) key |= bits[i];
+    }
+    return key;
 }

@@ -1,17 +1,15 @@
-import { OPERATION } from "../encoding/spec.js";
-import { Metadata } from "../Metadata.js";
+import { ARRAY_OP, OPERATION, REF_HAS_BODY, REF_HAS_TYPE, CollectionKind } from "../encoding/spec.js";
+import type { Iterator } from "../encoding/decode.js";
+import { decode } from "../encoding/decode.js";
+import { readString, readUvarint } from "../encoding/varint.js";
 import { Schema } from "../Schema.js";
-import type { IRef, Ref } from "../encoder/ChangeTree.js";
-import type { Decoder } from "./Decoder.js";
-import { Iterator, decode } from "../encoding/decode.js";
-import { $childType, $deleteByIndex, $getByIndex, $proxyTarget, $refId } from "../types/symbols.js";
-
-import type { ArraySchema } from "../types/custom/ArraySchema.js";
-
+import type { IRef } from "../encoder/ChangeTree.js";
+import { $childType, $deleteByIndex, $refId, $rev } from "../types/symbols.js";
 import { getType } from "../types/registry.js";
-import { Collection } from "../types/HelperTypes.js";
 import { decodeQuantized, isQuantizedType } from "../types/quantize.js";
-import { resyncMarkPresent, resyncTouchEntry } from "./Resync.js";
+import { resyncMarkPresent, resyncRecordVisit, resyncTouchEntry } from "./Resync.js";
+import type { Decoder } from "./Decoder.js";
+import { getDecodeInfo, type DecodeInfo } from "./DecodeInfo.js";
 
 export interface DataChange<T = any, F = string> {
     ref: IRef,
@@ -24,526 +22,670 @@ export interface DataChange<T = any, F = string> {
     previousValue: T;
 }
 
-export const DEFINITION_MISMATCH = -1;
+/** Thrown on a definition mismatch inside a chunk; the chunk loop skips to the chunk end. */
+export class ChunkMismatch extends Error {}
 
-/**
- * When no `triggerChanges` subscriber is attached, `Decoder.decode` passes
- * `null` so the per-field change objects are never allocated. Every push
- * site uses `allChanges?.push(...)` — optional chaining also short-circuits
- * the object literal, so there's nothing to collect and nothing to throw
- * away.
- */
-export type DecodeOperation<T extends Schema = any> = (
-    decoder: Decoder<T>,
-    bytes: Uint8Array,
-    it: Iterator,
-    ref: IRef,
-    allChanges: DataChange[] | null,
-) => number | void;
+type Reader = (bytes: Uint8Array, it: Iterator) => any;
 
-/**
- * Collection-kind discriminator declared on each collection class as
- * `static COLLECTION_KIND = CollectionKind.X`. The decoder's key/value
- * dispatch used to make three back-to-back `typeof(ref.method) ===
- * "function"` checks per entry; those collapse into one switch on the
- * target's class tag. Missing / `undefined` on a ref hits the switch's
- * `default` branch and logs a warning — a guard for future collection
- * types that land without a tag.
- *
- * Declared as a `const` object (not a TS `enum`) so the codegen parser —
- * which picks up every `EnumDeclaration` in the lib source via transitive
- * imports — doesn't emit a generated .cs file for it.
- */
-export const CollectionKind = {
-    Map: 1,
-    Array: 2,
-    Set: 3,
-    Collection: 4,
-    Stream: 5,
-} as const;
-export type CollectionKind = typeof CollectionKind[keyof typeof CollectionKind];
+import { arrCopy, arrIndexOf, arrInsertOne, arrRemove, arrReverse } from "../types/custom/arrayOps.js";
+import { $items } from "../types/symbols.js";
 
-/**
- * Structural type for any class that participates in the `decodeKeyValue-
- * Operation` dispatch. Lets the hot-path read `tgt.constructor.COLLECTION_KIND`
- * without an `any` cast.
- */
-export interface CollectionCtor {
-    readonly COLLECTION_KIND: CollectionKind;
+/** Reader for a collection's child type: pre-resolved once per chunk / body, `undefined` for ref children. */
+function childReaderOf(type: any): Reader | undefined {
+    if (typeof type === "string") return (decode as any)[type];
+    if (isQuantizedType(type)) return (bytes, it) => decodeQuantized(type.quantized, bytes, it);
+    return undefined;
 }
 
 /**
- * Decode the next wire value for `ref[index]`. Returns the decoded value.
- *
- * Callers pass `previousValue` explicitly — it's the current value at the
- * slot before decoding and is needed for ref-count bookkeeping (on DELETE)
- * and for the DELETE_AND_ADD self-reassign case. Keeping it as a parameter
- * lets this function return a single primitive instead of a pair, so the
- * hot call path allocates nothing.
+ * Ref header of the value just read by `readSlotValue` (0 for primitives).
+ * Module-level so the per-slot path returns one primitive and allocates
+ * nothing; callers consume it immediately, before any nested read.
  */
-export function decodeValue<T extends Ref>(
-    decoder: Decoder,
-    operation: OPERATION,
-    ref: T,
-    index: number,
+let lastHeader = 0;
+
+function readSlotValue(d: Decoder, reader: Reader | undefined, op: OPERATION, previousValue: any, type: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): any {
+    if (reader !== undefined) {
+        lastHeader = 0;
+        return reader(bytes, it);
+    }
+    const header = readUvarint(bytes, it);
+    lastHeader = header;
+    return resolveRef(d, header, op, previousValue, type, bytes, it, allChanges);
+}
+
+/** `refId` from a ref header; refIds stay far below 2^29 so the shift is exact. */
+function refIdOf(header: number): number {
+    return header < 0x80000000 ? header >>> 2 : Math.floor(header / 4);
+}
+
+/**
+ * Resolve a ref value header into an instance, applying the refcount rules:
+ * increment on an ADD-bit op when the slot's value changed (or on a
+ * DELETE_AND_ADD self-reassign). A collection already known by refId is
+ * merged into, never replaced. Does NOT decode the body.
+ */
+function resolveRef(
+    d: Decoder,
+    header: number,
+    op: OPERATION,
     previousValue: any,
     type: any,
     bytes: Uint8Array,
     it: Iterator,
     allChanges: DataChange[] | null,
 ): any {
-    const $root = decoder.root;
+    const $root = d.root;
+    const refId = refIdOf(header);
+    const typeId = (header & REF_HAS_TYPE) ? readUvarint(bytes, it) : undefined;
 
-    let value: any;
-
-    if ((operation & OPERATION.DELETE) === OPERATION.DELETE)
-    {
-        // Flag `refId` for garbage collection.
-        const previousRefId = previousValue?.[$refId];
-        if (previousRefId !== undefined) { $root.removeRef(previousRefId); }
-
-        //
-        // Delete operations
-        //
-        if (operation !== OPERATION.DELETE_AND_ADD) {
-            ref[$deleteByIndex](index);
+    if (Schema.is(type)) {
+        let value = $root.refs.get(refId);
+        if ((op & OPERATION.ADD) === OPERATION.ADD) {
+            if (value === undefined) {
+                const childType = (typeId !== undefined ? d.context.get(typeId) : undefined) ?? type;
+                value = d.createInstanceOfType(childType);
+            }
+            $root.addRef(refId, value, (
+                value !== previousValue ||
+                (op === OPERATION.DELETE_AND_ADD && value === previousValue)
+            ));
         }
-
-        value = undefined;
+        return value;
     }
 
-    if (operation === OPERATION.DELETE) {
-        //
-        // Don't do anything
-        //
+    // collection: `{ map: X }` / `{ array: X }` … — one key, read without allocating
+    let kind: string = "";
+    let childType: any;
+    for (const k in type) { kind = k; childType = type[k]; break; }
+    if (d.resyncVisited !== null) resyncMarkPresent(d, refId);
 
-    } else if (typeof (type) === "string") {
-        //
-        // Primitive value (number, string, boolean, …). Hot-path first
-        // because steady-state ticks are dominated by primitive field
-        // updates — moves us past a cheap typeof check instead of a
-        // Symbol-metadata lookup via `Schema.is`.
-        //
-        value = (decode as any)[type](bytes, it);
-
-    } else if (isQuantizedType(type)) {
-        // Quantized scalar: read the unsigned-int wire value, then dequantize so
-        // the instance holds (and yields) the wire-exact float — `decodeSchema-
-        // Operation` writes it through the snapping setter (idempotent here).
-        value = decodeQuantized(type.quantized, bytes, it);
-
-    } else if (Schema.is(type)) {
-        const refId = decode.number(bytes, it);
-        value = $root.refs.get(refId);
-
-        if ((operation & OPERATION.ADD) === OPERATION.ADD) {
-            const childType = decoder.getInstanceType(bytes, it, type);
-            if (!value) {
-                value = decoder.createInstanceOfType(childType);
-            }
-
-            $root.addRef(
-                refId,
-                value,
-                (
-                    value !== previousValue || // increment ref count if value has changed
-                    (operation === OPERATION.DELETE_AND_ADD && value === previousValue) // increment ref count if the same instance is being added again
-                )
-            );
-        }
-
-    } else {
-        const typeDef = getType(Object.keys(type)[0]);
-        const refId = decode.number(bytes, it);
-
-        // resync bookkeeping — see Resync.ts
-        if (decoder.resyncVisited !== null) { resyncMarkPresent(decoder, refId); }
-
-        // `initializeForDecoder` is a static on every registered collection
-        // class — it does `Object.create(Class.prototype)` + the class-
-        // field init + assigns an untracked `$changes` directly. Keeps
-        // the decoder free of collection-type internals.
-        const valueRef: Ref = ($root.refs.has(refId))
-            ? previousValue || $root.refs.get(refId)
-            : (typeDef.constructor as any).initializeForDecoder();
-
-        value = valueRef.clone(true);
-        value[$childType] = Object.values(type)[0]; // cache childType for ArraySchema and MapSchema
-
-        if (previousValue) {
-            let previousRefId = previousValue[$refId];
-
-            if (previousRefId !== undefined && refId !== previousRefId) {
-                // Collection field replaced by a different instance.
-                //
-                // Don't decrement children here: GC (`garbageCollectDeletedRefs`)
-                // removes them once the previous collection's refId hits zero.
-                // Doing it here too would double-decrement a *shared* child and
-                // drop it while still referenced ("refId not found").
-                if ((operation & OPERATION.DELETE) !== OPERATION.DELETE) {
-                    // Replacement not tagged DELETE (e.g. pending ADD not upgraded
-                    // to DELETE_AND_ADD), so the previous refId wasn't decremented
-                    // above. Release it here, else it never gets GC'd (leak).
-                    $root.removeRef(previousRefId);
-                }
-
-                // enqueue onRemove callbacks for the previous collection's children.
-                const entries: IterableIterator<[any, any]> = (previousValue as any).entries();
-                let iter: IteratorResult<[any, any]>;
-                while ((iter = entries.next()) && !iter.done) {
-                    const [key, value] = iter.value;
-
-                    if (typeof(value) === "object") {
-                        previousRefId = value[$refId];
-                    }
-
-                    allChanges?.push({
-                        ref: previousValue,
-                        refId: previousRefId,
-                        op: OPERATION.DELETE,
-                        field: key,
-                        value: undefined,
-                        previousValue: value,
-                    });
-                }
-
-            }
-        }
-
-        $root.addRef(refId, value, (
-            valueRef !== previousValue ||
-            (operation === OPERATION.DELETE_AND_ADD && valueRef === previousValue)
-        ));
+    let value: any = $root.refs.get(refId);
+    if (value === undefined) {
+        value = (getType(kind).constructor as any).initializeForDecoder();
+        value[$childType] = childType;
     }
 
+    if (previousValue) {
+        let previousRefId = previousValue[$refId];
+        if (previousRefId !== undefined && refId !== previousRefId) {
+            // replaced by a different collection instance: release it (unless a
+            // DELETE bit already did), enqueue onRemove for its entries, and
+            // leave its children to GC (a shared child must not double-decrement)
+            if ((op & OPERATION.DELETE) !== OPERATION.DELETE) {
+                $root.removeRef(previousRefId);
+            }
+            const entries: IterableIterator<[any, any]> = previousValue.entries();
+            let iter: IteratorResult<[any, any]>;
+            while ((iter = entries.next()) && !iter.done) {
+                const [key, v] = iter.value;
+                if (typeof v === "object") previousRefId = v[$refId];
+                allChanges?.push({ ref: previousValue, refId: previousRefId, op: OPERATION.DELETE, field: key, value: undefined, previousValue: v });
+            }
+        }
+    }
+
+    $root.addRef(refId, value, (
+        value !== previousValue ||
+        (op === OPERATION.DELETE_AND_ADD && value === previousValue)
+    ));
     return value;
 }
 
-export const decodeSchemaOperation: DecodeOperation = function <T extends Schema>(
-    decoder: Decoder<any>,
-    bytes: Uint8Array,
-    it: Iterator,
-    ref: T,
-    allChanges: DataChange[] | null,
-) {
-    const first_byte = bytes[it.offset++];
-    const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
-
-    // "compressed" index + operation
-    const operation = (first_byte >> 6) << 6
-    const index = first_byte % (operation || 255);
-
-    // skip early if field is not defined
-    const field = metadata[index];
-    if (field === undefined) {
-        console.warn("@colyseus/schema: field not defined at", { index, ref: ref.constructor.name, metadata });
-        return DEFINITION_MISMATCH;
-    }
-
-    // a peer that still carries a @deprecated() field keeps sending it — the
-    // bytes must be consumed or the stream desyncs, but the local accessor
-    // may throw: read nothing, write nothing, report nothing.
-    const isDeprecated = field.deprecated === true;
-
-    const previousValue = isDeprecated ? undefined : ref[$getByIndex](index);
-    const value = decodeValue(
-        decoder,
-        operation,
-        ref,
-        index,
-        previousValue,
-        field.type,
-        bytes,
-        it,
-        allChanges,
-    );
-
-    if (isDeprecated) { return; }
-
-    if (value !== null && value !== undefined) {
-        // Write via the generated setter. Bypass to `(ref as any)[$values][index]`
-        // was attempted but only works for @type-decorated classes (which
-        // install accessor descriptors reading from `$values`). Reflection-
-        // decoded classes install a plain data-property descriptor instead,
-        // so their value lives as an own property on the instance — direct
-        // `$values[index]` writes are invisible to the getter on that path.
-        // Two-mode dispatch would cost more than the ~3% it'd save.
-        ref[field.name as keyof T] = value;
-    }
-
-    // add change
-    if (previousValue !== value) {
-        allChanges?.push({
-            ref,
-            refId: decoder.currentRefId,
-            op: operation,
-            field: field.name,
-            value,
-            previousValue,
-        });
-    }
-}
-
-export const decodeKeyValueOperation: DecodeOperation = function (
-    decoder: Decoder<any>,
-    bytes: Uint8Array,
-    it: Iterator,
-    ref: Ref,
-    allChanges: DataChange[] | null,
-) {
-    // Unwrap ArraySchema Proxy once so subsequent property reads skip the
-    // `get` trap. `$proxyTarget` is a self-reference on the target; on
-    // non-proxied collections (Map/Set/Collection/Stream) the lookup is
-    // undefined and we fall back to `ref`.
-    const tgt: any = (ref as any)[$proxyTarget] ?? ref;
-
-    // "uncompressed" index + operation (array/map items)
-    const operation = bytes[it.offset++];
-
-    if (operation === OPERATION.CLEAR) {
-        //
-        // When decoding:
-        // - enqueue items for DELETE callback.
-        // - flag child items for garbage collection.
-        //
-        decoder.removeChildRefs(tgt as Collection, allChanges);
-
-        tgt.clear();
-        return;
-    }
-
-    const index = decode.number(bytes, it);
-    const type = tgt[$childType];
-    // One constructor lookup, one integer read → switch. Replaces three
-    // `typeof(ref.method) === "function"` dispatches per entry.
-    const kind: CollectionKind = (tgt.constructor as CollectionCtor).COLLECTION_KIND;
-
-    let dynamicIndex: number | string;
-
-    if ((operation & OPERATION.ADD) === OPERATION.ADD) { // ADD or DELETE_AND_ADD
-        if (kind === CollectionKind.Map) {
-            dynamicIndex = decode.string(bytes, it); // MapSchema uses a wire-delivered string key
-            tgt.setIndex(index, dynamicIndex);
+/**
+ * Consume a ref value the client already holds (an array op its revision
+ * covers): no refcount change, but an inline body still merges.
+ */
+function consumeRefValue(d: Decoder, header: number, type: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): void {
+    const $root = d.root;
+    const refId = refIdOf(header);
+    const typeId = (header & REF_HAS_TYPE) ? readUvarint(bytes, it) : undefined;
+    let value = $root.refs.get(refId);
+    if (value === undefined) {
+        // not held after all (should not happen): create it without a count
+        if (Schema.is(type)) {
+            value = d.createInstanceOfType((typeId !== undefined ? d.context.get(typeId) : undefined) ?? type);
         } else {
-            dynamicIndex = index;
+            let kind = "", childType: any;
+            for (const k in type) { kind = k; childType = type[k]; break; }
+            value = (getType(kind).constructor as any).initializeForDecoder();
+            (value as any)[$childType] = childType;
         }
-    } else {
-        dynamicIndex = tgt.getIndex(index);
+        $root.addRef(refId, value, false);
+    }
+    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+}
+
+/** Read a value the client already holds: primitives are discarded, refs consumed. */
+function skipValue(d: Decoder, reader: Reader | undefined, type: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): void {
+    if (reader !== undefined) { reader(bytes, it); return; }
+    consumeRefValue(d, readUvarint(bytes, it), type, bytes, it, allChanges);
+}
+
+/** DELETE-bit prologue shared by the Schema / keyed paths: release the previous ref, clear the slot unless it is being re-set. */
+function releaseSlot(d: Decoder, ref: any, index: number, op: OPERATION, previousValue: any): void {
+    const previousRefId = previousValue?.[$refId];
+    if (previousRefId !== undefined) d.root.removeRef(previousRefId);
+    if (op !== OPERATION.DELETE_AND_ADD) ref[$deleteByIndex](index);
+}
+
+function fieldAt(info: DecodeInfo, index: number, ref: any): any {
+    const field = info.fields[index];
+    if (field === undefined) {
+        console.warn("@colyseus/schema: field not defined at", { index, ref: ref.constructor.name });
+        throw new ChunkMismatch();
+    }
+    return field;
+}
+
+/** Decode an inline body into `value` (kind-dispatched). Restores `currentRefId` afterwards. */
+export function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): void {
+    const saved = d.currentRefId;
+    const refId: number = value[$refId];
+    d.currentRefId = refId;
+    const kind = (value.constructor as any).COLLECTION_KIND;
+    if (kind === undefined) decodeSchemaBody(d, bytes, it, value, refId, allChanges);
+    else if (kind === CollectionKind.Array) decodeArrayBody(d, bytes, it, value, refId, allChanges);
+    else decodeKeyValueBody(d, bytes, it, value, refId, allChanges, kind === CollectionKind.Map);
+    d.currentRefId = saved;
+}
+
+// ── Schema ──────────────────────────────────────────────────────────────
+
+function decodeSchemaSlot(
+    d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number,
+    info: DecodeInfo, index: number, field: any, op: OPERATION, allChanges: DataChange[] | null,
+): void {
+    const isDeprecated = field.deprecated === true;
+    const previousValue = isDeprecated ? undefined : ref[field.name];
+    let value: any;
+
+    if ((op & OPERATION.DELETE) === OPERATION.DELETE) {
+        releaseSlot(d, ref, index, op, previousValue);
+        value = undefined;
     }
 
-    const previousValue = tgt[$getByIndex](index);
-    const value = decodeValue(
-        decoder,
-        operation,
-        ref,
-        index,
-        previousValue,
-        type,
-        bytes,
-        it,
-        allChanges,
-    );
+    let header = 0;
+    if (op !== OPERATION.DELETE) {
+        value = readSlotValue(d, info.readers[index], op, previousValue, field.type, bytes, it, allChanges);
+        header = lastHeader;
+    }
 
-    // resync bookkeeping — see Resync.ts
-    if (decoder.resyncVisited !== null) {
-        resyncTouchEntry(decoder, ref, operation, dynamicIndex, previousValue, value, allChanges);
+    if (isDeprecated) {
+        // bytes consumed, nothing written or reported
+        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+        return;
     }
 
     if (value !== null && value !== undefined) {
-        switch (kind) {
-            case CollectionKind.Map:
-                tgt.$items.set(dynamicIndex as string, value);
-                break;
-
-            case CollectionKind.Array:
-                // resync snapshot ADDs are positional overwrites, not inserts
-                tgt.$setAt(index, value,
-                    (decoder.resyncVisited !== null && operation === OPERATION.ADD)
-                        ? OPERATION.REPLACE
-                        : operation);
-                break;
-
-            // SetSchema / CollectionSchema / StreamSchema — use the wire-
-            // index we decoded above so server/client `$items` stay in sync
-            // regardless of duplicate emission (e.g. a bootstrap that walks
-            // both `encodeAll` and the shared recorder emits the same ADD
-            // op twice). Previous implementation called `ref.add(value)`
-            // and let the decoder-side `$refId++` allocate a new index per
-            // call — which for CollectionSchema (no value-dedup) turned
-            // duplicate wire ADDs into duplicate client-side entries.
-            case CollectionKind.Set:
-            case CollectionKind.Collection:
-            case CollectionKind.Stream:
-                if (!tgt.$items.has(index)) {
-                    tgt.$items.set(index, value);
-                    // Keep the decoder's monotonic counter ahead of any
-                    // wire-index we've seen so future server-side `.add()`
-                    // allocations don't collide with ones already decoded.
-                    // (StreamSchema has no `$refId` counter — `typeof`
-                    // guards the Set/Collection path.)
-                    if (typeof tgt.$refId === "number" && index >= tgt.$refId) {
-                        tgt.$refId = index + 1;
-                    }
-                }
-                break;
-
-            default:
-                // A future collection type landed without a COLLECTION_KIND
-                // tag. Surface it loudly instead of silently dropping the
-                // value — the missing entry here is the only place the new
-                // type's item-storage semantics need to be wired up.
-                console.warn(
-                    `@colyseus/schema: missing COLLECTION_KIND on ${tgt.constructor?.name} — item at index ${index} was not stored.`
-                );
-                break;
-        }
+        ref[field.name] = value;
     }
 
-    // add change
     if (previousValue !== value) {
-        allChanges?.push({
-            ref,
-            refId: decoder.currentRefId,
-            op: operation,
-            dynamicIndex,
-            value,
-            previousValue,
-        });
+        allChanges?.push({ ref, refId, op, field: field.name, value, previousValue });
+    }
+
+    // body AFTER the slot's change: `listen()` registered inside onAdd relies on preorder
+    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+}
+
+export function decodeSchemaOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, allChanges: DataChange[] | null): void {
+    const info = getDecodeInfo(ref.constructor);
+    while (it.offset < end) {
+        const h = readUvarint(bytes, it);
+        const index = h >>> 2;
+        decodeSchemaSlot(d, bytes, it, ref, refId, info, index, fieldAt(info, index, ref), ((h & 3) << 6) as OPERATION, allChanges);
     }
 }
 
-export const decodeArray: DecodeOperation = function (
-    decoder: Decoder<any>,
-    bytes: Uint8Array,
-    it: Iterator,
-    ref: ArraySchema,
-    allChanges: DataChange[] | null,
-) {
-    // Unwrap the Proxy once — ref is always an ArraySchema here.
-    const tgt: any = (ref as any)[$proxyTarget] ?? ref;
+function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, allChanges: DataChange[] | null): void {
+    const info = getDecodeInfo(ref.constructor);
 
-    // "uncompressed" index + operation (array/map items)
-    let operation = bytes[it.offset++];
-    let index: number;
+    // whole mask first (values follow it), 7 bits per group, ≤ 64 fields
+    let low = 0, high = 0, group = 0;
+    for (;;) {
+        const b = bytes[it.offset++];
+        const bits = b & 0x7f;
+        const shift = group * 7;
+        if (shift < 32) {
+            low |= bits << shift;
+            if (shift > 25) high |= bits >>> (32 - shift);
+        } else {
+            high |= bits << (shift - 32);
+        }
+        if ((b & 0x80) === 0 || ++group > 9 || it.offset >= bytes.byteLength) break;
+    }
 
-    if (operation === OPERATION.CLEAR) {
-        //
-        // When decoding:
-        // - enqueue items for DELETE callback.
-        // - flag child items for garbage collection.
-        //
-        decoder.removeChildRefs(tgt as Collection, allChanges);
-        tgt.clear();
-        return;
+    decodeMaskedFields(d, bytes, it, ref, refId, info, low, 0, allChanges);
+    decodeMaskedFields(d, bytes, it, ref, refId, info, high, 32, allChanges);
+}
 
-    } else if (operation === OPERATION.REVERSE) {
-        // Positional reverse of the decoder's authoritative storage. Don't
-        // call `tgt.reverse()` — that's the encoder-side method, and its
-        // dirty-tick check would misread the stale recorder a `clone(true)`
-        // instance carries.
-        tgt.items.reverse();
-        return;
+function decodeMaskedFields(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, info: DecodeInfo, mask: number, base: number, allChanges: DataChange[] | null): void {
+    while (mask !== 0) {
+        const bit = mask & -mask;
+        const index = base + 31 - Math.clz32(bit);
+        mask ^= bit;
+        decodeSchemaSlot(d, bytes, it, ref, refId, info, index, fieldAt(info, index, ref), OPERATION.ADD, allChanges);
+    }
+}
 
-    } else if (operation === OPERATION.DELETE_BY_REFID) {
-        const refId = decode.number(bytes, it);
-        const previousValue = decoder.root.refs.get(refId);
+// ── Map / Set / Collection / Stream ──────────────────────────────────────
 
-        // Stale DELETE — refId unknown to this decoder (e.g. it
-        // bootstrapped via encodeAll after the item was already removed).
-        if (previousValue === undefined) { return; }
+export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, allChanges: DataChange[] | null, isMap: boolean): void {
+    const type = ref[$childType];
+    const reader = childReaderOf(type);
 
-        // Decrement the removed child's ref-count so it can be garbage
-        // collected — this refId-based branch returns early and never reaches
-        // decodeValue(), so it must do the same DELETE bookkeeping itself.
-        // Without this the refId leaks; a later encoder reuse then aliases a
-        // different type → "field not defined" / "definition mismatch"
-        // (surfaces under StateView when a filtered ArraySchema element is
-        // spliced while its parent moves through view membership churn).
-        // Must run even when the item is absent from THIS array (view churn).
-        decoder.root.removeRef(refId);
+    while (it.offset < end) {
+        const operation: OPERATION = bytes[it.offset++];
 
-        index = tgt.findIndex((value: any) => value === previousValue);
-
-        // Item not present in this decoder's array — nothing to remove locally.
-        if (index === -1) { return; }
-
-        tgt[$deleteByIndex](index);
-        allChanges?.push({
-            ref,
-            refId: decoder.currentRefId,
-            op: OPERATION.DELETE,
-            dynamicIndex: index,
-            value: undefined,
-            previousValue,
-        });
-
-        return;
-
-    } else if (operation === OPERATION.ADD_BY_REFID) {
-        const refId = decode.number(bytes, it);
-        const itemByRefId = decoder.root.refs.get(refId);
-
-        // if item already exists, use existing index
-        if (itemByRefId) {
-            index = tgt.findIndex((value: any) => value === itemByRefId);
+        if (operation === OPERATION.CLEAR) {
+            d.removeChildRefs(ref, allChanges);
+            ref.clear();
+            continue;
         }
 
-        // fallback to use last index
-        if (index === -1 || index === undefined) {
-            index = tgt.length;
+        const index = readUvarint(bytes, it);
+        let dynamicIndex: number | string;
+        if ((operation & OPERATION.ADD) === OPERATION.ADD) {
+            if (isMap) {
+                dynamicIndex = readString(bytes, it);
+                ref.keyByIndex.set(index, dynamicIndex);
+                ref.indexByKey.set(dynamicIndex, index);
+            } else {
+                dynamicIndex = index;
+            }
+        } else {
+            dynamicIndex = isMap ? ref.keyByIndex.get(index) : index;
         }
 
-    } else {
-        index = decode.number(bytes, it);
+        const previousValue = isMap ? ref.$items.get(dynamicIndex) : ref.$items.get(index);
+        let value: any;
+        let header = 0;
+
+        if ((operation & OPERATION.DELETE) === OPERATION.DELETE) {
+            releaseSlot(d, ref, index, operation, previousValue);
+            value = undefined;
+        }
+        if (operation !== OPERATION.DELETE) {
+            value = readSlotValue(d, reader, operation, previousValue, type, bytes, it, allChanges);
+            header = lastHeader;
+        }
+
+        if (d.resyncVisited !== null) {
+            resyncTouchEntry(d, ref, operation, dynamicIndex, previousValue, value, allChanges);
+        }
+
+        if (value !== null && value !== undefined) storeKeyValue(ref, isMap, index, dynamicIndex, value);
+
+        if (previousValue !== value) {
+            allChanges?.push({ ref, refId, op: operation, dynamicIndex, value, previousValue });
+        }
+
+        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+    }
+}
+
+/**
+ * Map entries are keyed by their string key; Set / Collection / Stream by
+ * the wire index (idempotent — a repeated ADD for a known index is a no-op,
+ * and the client-side counter stays ahead of every index seen).
+ */
+function storeKeyValue(ref: any, isMap: boolean, index: number, dynamicIndex: number | string, value: any): void {
+    if (isMap) {
+        ref.$items.set(dynamicIndex, value);
+    } else if (!ref.$items.has(index)) {
+        ref.$items.set(index, value);
+        if (ref.indexByValue !== undefined) {
+            ref.indexByValue.set(value, index);
+            if (index >= ref.nextIndex) ref.nextIndex = index + 1;
+        } else if (ref._itemIndex !== undefined) {
+            ref._itemIndex.set(value, index);
+            if (index >= ref.$nextPosition) ref.$nextPosition = index + 1;
+        }
+    }
+}
+
+function decodeKeyValueBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, allChanges: DataChange[] | null, isMap: boolean): void {
+    const type = ref[$childType];
+    const reader = childReaderOf(type);
+    const count = readUvarint(bytes, it);
+    for (let i = 0; i < count; i++) {
+        const index = readUvarint(bytes, it);
+        let dynamicIndex: number | string = index;
+        if (isMap) {
+            dynamicIndex = readString(bytes, it);
+            ref.keyByIndex.set(index, dynamicIndex);
+            ref.indexByKey.set(dynamicIndex, index);
+        }
+        const previousValue = ref.$items.get(dynamicIndex);
+        const value = readSlotValue(d, reader, OPERATION.ADD, previousValue, type, bytes, it, allChanges);
+        const header = lastHeader;
+        if (d.resyncVisited !== null) {
+            resyncTouchEntry(d, ref, OPERATION.ADD, dynamicIndex, previousValue, value, allChanges);
+        }
+        if (value !== null && value !== undefined) storeKeyValue(ref, isMap, index, dynamicIndex, value);
+        if (previousValue !== value) {
+            allChanges?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex, value, previousValue });
+        }
+        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+    }
+}
+
+// ── Array ───────────────────────────────────────────────────────────────
+
+/** REPLACE per slot whose occupant changed between `before` and the array's current content (reorders). */
+function reportMoved(arr: any[], before: any[], ref: any, refId: number, allChanges: DataChange[]): void {
+    for (let k = 0, len = arr.length; k < len; k++) {
+        if (arr[k] !== before[k]) {
+            allChanges.push({ ref, refId, op: OPERATION.REPLACE, dynamicIndex: k, value: arr[k], previousValue: before[k] });
+        }
+    }
+}
+
+/** Remove `count` elements at `index`: DELETE per element (pre-removal positions), refs released. */
+function removeRange(d: Decoder, arr: any[], index: number, count: number, ref: any, refId: number, allChanges: DataChange[] | null): void {
+    for (let j = 0; j < count; j++) {
+        const previousValue = arr[index + j];
+        const childRefId = previousValue?.[$refId];
+        if (childRefId !== undefined) d.root.removeRef(childRefId);
+        allChanges?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: index + j, value: undefined, previousValue });
+    }
+    arrRemove(arr, index, count);
+}
+
+/** Append one decoded value (already refcounted) and report ADD. */
+function appendValue(arr: any[], value: any, ref: any, refId: number, allChanges: DataChange[] | null): void {
+    const index = arr.length;
+    arr[index] = value;
+    allChanges?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex: index, value, previousValue: undefined });
+}
+
+/**
+ * Apply a RESTATE: `head` is `rev*2 + identity` (the op's operand, or the
+ * body's leading varint), followed by `uvarint(count) value*`.
+ *
+ * Positional form: authoritative — sets slots 0..count-1, truncates the
+ * rest, and sets the array's revision. Applied only when the client's
+ * revision is older (a snapshot re-sent to a client that already holds it
+ * is consumed without effect). Identity form (filtered arrays): merge —
+ * known refs keep their position, unknown ones append.
+ */
+function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref: any, refId: number, allChanges: DataChange[] | null, head: number): void {
+    const type = ref[$childType];
+    const reader = childReaderOf(type);
+    const $root = d.root;
+    const count = readUvarint(bytes, it);
+    const resync = d.resyncVisited !== null;
+
+    if ((head & 1) === 1) {
+        // identity: merge by refId
+        for (let i = 0; i < count; i++) {
+            const header = readUvarint(bytes, it);
+            const existing = $root.refs.get(refIdOf(header));
+            let index = (existing !== undefined) ? arrIndexOf(arr, existing) : -1;
+            let value: any;
+            if (index === -1) {
+                value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it, allChanges);
+                index = arr.length;
+                appendValue(arr, value, ref, refId, allChanges);
+            } else {
+                value = resolveRef(d, header, OPERATION.ADD, existing, type, bytes, it, allChanges);
+            }
+            if (resync) resyncRecordVisit(d, -1 - value[$refId]);
+            if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+        }
+        return;
     }
 
-    const type = tgt[$childType];
-
-    let dynamicIndex: number | string = index;
-
-    // Direct `items[index]` read — ArraySchema's `$getByIndex` is encoder-only
-    // (it consults `tmpItems`/`deletedIndexes`, which the decoder doesn't
-    // maintain). The decoder's authoritative state is `items`.
-    const previousValue = tgt.items[index];
-    const value = decodeValue(
-        decoder,
-        operation,
-        ref,
-        index,
-        previousValue,
-        type,
-        bytes,
-        it,
-        allChanges,
-    );
-
-    // resync bookkeeping — see Resync.ts. `index` is the RESOLVED position
-    // (ADD_BY_REFID lands on the instance's current client-side index), so
-    // visited entries form a sparse set.
-    if (decoder.resyncVisited !== null) {
-        resyncTouchEntry(decoder, ref, operation, index, previousValue, value, allChanges);
+    const restateRev = head < 0x80000000 ? head >>> 1 : Math.floor(head / 2);
+    const rev: number = ref[$rev] ?? 0;
+    if (rev >= restateRev && !(rev === 0 && restateRev === 0)) {
+        // already at (or past) this revision: consume without applying
+        for (let i = 0; i < count; i++) skipValue(d, reader, type, bytes, it, allChanges);
+        if (resync) for (let i = 0, len = arr.length; i < len; i++) resyncRecordVisit(d, i);
+        return;
     }
 
-    if (
-        value !== null && value !== undefined &&
-        value !== previousValue // avoid setting same value twice (an ADD at an occupied index would splice-insert)
-    ) {
-        // resync snapshot ADDs are positional overwrites, not inserts
-        tgt.$setAt(index, value,
-            (decoder.resyncVisited !== null && operation === OPERATION.ADD)
-                ? OPERATION.REPLACE
-                : operation);
+    if (reader !== undefined || arr.length === 0) {
+        // primitives (or a fresh client array): positional diff
+        for (let i = 0; i < count; i++) {
+            const previousValue = arr[i];
+            let value: any;
+            let header = 0;
+            if (reader !== undefined) {
+                value = reader(bytes, it);
+            } else {
+                header = readUvarint(bytes, it);
+                value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it, allChanges);
+            }
+            if (resync) resyncRecordVisit(d, i);
+            if (previousValue !== value) {
+                arr[i] = value;
+                allChanges?.push({
+                    ref, refId,
+                    op: (previousValue === undefined) ? OPERATION.ADD : OPERATION.REPLACE,
+                    dynamicIndex: i, value, previousValue,
+                });
+            }
+            if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+        }
+        if (arr.length > count) removeRange(d, arr, count, arr.length - count, ref, refId, allChanges);
+        ref[$rev] = restateRev;
+        return;
     }
 
-    // add change
-    if (previousValue !== value) {
-        allChanges?.push({
-            ref,
-            refId: decoder.currentRefId,
-            op: operation,
-            dynamicIndex,
-            value,
-            previousValue,
-        });
+    // Schema children over a populated client array: diff by identity, so a
+    // re-statement reports the elements that actually left / arrived (and a
+    // REPLACE for slots whose survivor moved), never a churn per slot.
+    const before: any[] = arrCopy(arr);
+    const oldSet = new Set<any>(before);
+    const after: any[] = new Array(count);
+    const newSet = new Set<any>();
+    for (let i = 0; i < count; i++) {
+        const header = readUvarint(bytes, it);
+        const existing = $root.refs.get(refIdOf(header));
+        const survivor = (existing !== undefined && oldSet.has(existing)) ? existing : undefined;
+        const value = resolveRef(d, header, OPERATION.ADD, survivor, type, bytes, it, allChanges);
+        after[i] = value;
+        newSet.add(value);
+        if (resync) resyncRecordVisit(d, i);
+        if (survivor === undefined) {
+            allChanges?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex: i, value, previousValue: undefined });
+        }
+        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
     }
+    for (let i = 0; i < before.length; i++) {
+        const previousValue = before[i];
+        if (newSet.has(previousValue)) continue;
+        const previousRefId = previousValue?.[$refId];
+        if (previousRefId !== undefined) $root.removeRef(previousRefId);
+        allChanges?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: i, value: undefined, previousValue });
+    }
+    arr.length = count;
+    for (let i = 0; i < count; i++) {
+        const value = after[i];
+        const previousValue = before[i];
+        arr[i] = value;
+        if (allChanges !== null && previousValue !== undefined && previousValue !== value && oldSet.has(value) && newSet.has(previousValue)) {
+            allChanges.push({ ref, refId, op: OPERATION.REPLACE, dynamicIndex: i, value, previousValue }); // a survivor moved here
+        }
+    }
+    ref[$rev] = restateRev;
+}
+
+/**
+ * Array chunk: `arrayOp*`, each `uvarint(arg * 16 + op)` plus operands. The
+ * sequence starts at the client's revision (or at a `BASE` op's operand);
+ * every op advances it by its weight. An op whose whole weight lies below
+ * the client's revision was already delivered by a snapshot and is consumed
+ * without effect; an op the revision falls inside is applied from that
+ * point on.
+ */
+export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, allChanges: DataChange[] | null): void {
+    const arr: any[] = ref[$items] ?? ref; // element storage (the instance itself for the Array subclass)
+    const type = ref[$childType];
+    const reader = childReaderOf(type);
+    const $root = d.root;
+    const resync = d.resyncVisited !== null;
+
+    let rev: number = ref[$rev] ?? 0;
+    // the log resumes at this client's own revision unless a BASE op says otherwise
+    let seq = rev;
+
+    while (it.offset < end) {
+        const head = readUvarint(bytes, it);
+        const op = head % 16;
+        const arg = (head - op) / 16;
+        switch (op) {
+            case ARRAY_OP.PUSH: {
+                const n = arg;
+                let skip = rev - seq;
+                if (skip < 0) skip = 0; else if (skip > n) skip = n;
+                for (let i = 0; i < n; i++) {
+                    if (i < skip) { skipValue(d, reader, type, bytes, it, allChanges); continue; }
+                    let header = 0, value: any;
+                    if (reader !== undefined) value = reader(bytes, it);
+                    else { header = readUvarint(bytes, it); value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it, allChanges); }
+                    if (resync) resyncRecordVisit(d, arr.length);
+                    appendValue(arr, value, ref, refId, allChanges);
+                    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+                }
+                seq += n;
+                break;
+            }
+            case ARRAY_OP.INSERT: {
+                const index = arg;
+                const n = readUvarint(bytes, it);
+                let skip = rev - seq;
+                if (skip < 0) skip = 0; else if (skip > n) skip = n;
+                for (let i = 0; i < n; i++) {
+                    if (i < skip) { skipValue(d, reader, type, bytes, it, allChanges); continue; }
+                    let header = 0, value: any;
+                    if (reader !== undefined) value = reader(bytes, it);
+                    else { header = readUvarint(bytes, it); value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it, allChanges); }
+                    const at = index + i;
+                    arrInsertOne(arr, at, value);
+                    if (resync) resyncRecordVisit(d, at);
+                    allChanges?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex: at, value, previousValue: undefined });
+                    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+                }
+                seq += n;
+                break;
+            }
+            case ARRAY_OP.SET: {
+                const index = arg;
+                if (rev > seq) {
+                    skipValue(d, reader, type, bytes, it, allChanges);
+                } else {
+                    const previousValue = arr[index];
+                    let header = 0, value: any;
+                    if (reader !== undefined) value = reader(bytes, it);
+                    else { header = readUvarint(bytes, it); value = resolveRef(d, header, OPERATION.ADD, previousValue, type, bytes, it, allChanges); }
+                    if (resync) resyncRecordVisit(d, index);
+                    if (previousValue !== value) {
+                        const previousRefId = previousValue?.[$refId];
+                        if (previousRefId !== undefined) $root.removeRef(previousRefId);
+                        arr[index] = value;
+                        allChanges?.push({
+                            ref, refId,
+                            op: (previousRefId !== undefined) ? OPERATION.DELETE_AND_ADD : OPERATION.REPLACE,
+                            dynamicIndex: index, value, previousValue,
+                        });
+                    }
+                    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+                }
+                seq += 1;
+                break;
+            }
+            case ARRAY_OP.REMOVE: {
+                const index = arg;
+                const n = readUvarint(bytes, it);
+                let skip = rev - seq;
+                if (skip < 0) skip = 0; else if (skip > n) skip = n;
+                if (n - skip > 0) removeRange(d, arr, index, n - skip, ref, refId, allChanges);
+                seq += n;
+                break;
+            }
+            case ARRAY_OP.REVERSE: {
+                if (rev <= seq && arr.length > 1) {
+                    const before = (allChanges !== null) ? arrCopy(arr) : undefined;
+                    arrReverse(arr);
+                    if (before !== undefined) reportMoved(arr, before, ref, refId, allChanges!);
+                }
+                seq += 1;
+                break;
+            }
+            case ARRAY_OP.REORDER: {
+                const n = arg;
+                if (rev <= seq) {
+                    const before = arrCopy(arr);
+                    for (let k = 0; k < n; k++) arr[k] = before[readUvarint(bytes, it)];
+                    if (allChanges !== null) reportMoved(arr, before, ref, refId, allChanges);
+                } else {
+                    for (let k = 0; k < n; k++) readUvarint(bytes, it);
+                }
+                seq += 1;
+                break;
+            }
+            case ARRAY_OP.CLEAR: {
+                if (rev <= seq) {
+                    d.removeChildRefs(ref, allChanges);
+                    arr.length = 0;
+                }
+                seq += 1;
+                break;
+            }
+            case ARRAY_OP.RESTATE: {
+                applyRestate(d, bytes, it, arr, ref, refId, allChanges, arg);
+                const restated: number = ref[$rev] ?? 0;
+                if (restated > seq) seq = restated;
+                rev = restated;
+                break;
+            }
+            case ARRAY_OP.ADD_REF: {
+                // the ref header doubles as the operand: refId once on the wire
+                const header = readUvarint(bytes, it);
+                const existing = $root.refs.get(refIdOf(header));
+                let index = (existing !== undefined) ? arrIndexOf(arr, existing) : -1;
+                let value: any;
+                if (index === -1) {
+                    value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it, allChanges);
+                    appendValue(arr, value, ref, refId, allChanges);
+                } else {
+                    value = resolveRef(d, header, OPERATION.ADD, existing, type, bytes, it, allChanges);
+                }
+                if (resync) resyncRecordVisit(d, -1 - value[$refId]);
+                if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+                break;
+            }
+            case ARRAY_OP.DELETE_REF: {
+                const childRefId = arg;
+                const previousValue = $root.refs.get(childRefId);
+                if (previousValue === undefined) break; // stale: never held here
+                // release even when absent from THIS array (view churn) — the
+                // refId must not leak into a later reuse
+                $root.removeRef(childRefId);
+                const index = arrIndexOf(arr, previousValue);
+                if (index === -1) break;
+                arrRemove(arr, index, 1);
+                allChanges?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: index, value: undefined, previousValue });
+                break;
+            }
+            case ARRAY_OP.BASE: {
+                seq = arg;
+                break;
+            }
+            default:
+                console.warn("@colyseus/schema: unknown array op", op);
+                throw new ChunkMismatch();
+        }
+    }
+
+    if (seq > rev) rev = seq;
+    ref[$rev] = rev;
+}
+
+function decodeArrayBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, allChanges: DataChange[] | null): void {
+    const arr: any[] = ref[$items] ?? ref;
+    applyRestate(d, bytes, it, arr, ref, refId, allChanges, readUvarint(bytes, it));
 }

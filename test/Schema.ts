@@ -3,23 +3,6 @@ import * as assert from "assert";
 import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator, StateView, view } from "../src";
 import { Decoder } from "../src/decoder/Decoder";
 import { Encoder } from "../src/encoder/Encoder";
-import { Encoder6, Decoder6, Reflection6 } from "../src/v6";
-
-/**
- * Wire codec used by the helpers below. `SCHEMA_CODEC=v6` runs the suite
- * against the v6 PoC encoder/decoder; default is the shipping v5 format.
- */
-export const CODEC: "v5" | "v6" = (process.env.SCHEMA_CODEC === "v6") ? "v6" : "v5";
-
-/** `onlyCodec("v5")("name", fn)` — run a case under one codec only (byte-locked or codec-specific behaviour). */
-export function onlyCodec(codec: "v5" | "v6", _reason?: string): Mocha.TestFunction | Mocha.PendingTestFunction {
-    return (CODEC === codec) ? it : it.skip;
-}
-
-/** Standalone decoder for the active codec (for tests that don't go through `getDecoder`'s cache). */
-export function createDecoder<T extends Schema>(state: T): Decoder<T> {
-    return (CODEC === "v6") ? new Decoder6<T>(state) as any : new Decoder<T>(state);
-}
 import { CallbackProxy, getDecoderStateCallbacks, SchemaCallbackProxy } from "../src/decoder/strategy/getDecoderStateCallbacks";
 
 // augment Schema to add encode/decode methods
@@ -28,7 +11,7 @@ declare module "../src/Schema" {
   interface Schema {
     encode(it?: Iterator): Uint8Array;
     encodeAll(): Uint8Array;
-    decode(bytes: Uint8Array): void;
+    decode(bytes: Uint8Array | Uint8Array[]): void;
   }
 }
 
@@ -39,7 +22,7 @@ export function getCallbacks<T extends Schema>(state: T): (<F extends Schema>(in
 
 export function getDecoder<T extends Schema>(state: T) {
     // @ts-ignore
-    if (!state['_decoder']) { state['_decoder'] = createDecoder(state); }
+    if (!state['_decoder']) { state['_decoder'] = new Decoder<T>(state); }
     // @ts-ignore
     return state['_decoder'] as Decoder<T>;
 }
@@ -124,16 +107,14 @@ export function assertNoOrphanRefs<T extends Schema>(source: T, target: T) {
 
 export function getEncoder<T extends Schema>(state: T) {
     // @ts-ignore
-    if (!state['_encoder']) { state['_encoder'] = (CODEC === "v6") ? new Encoder6(state) : new Encoder(state); }
+    if (!state['_encoder']) { state['_encoder'] = new Encoder(state); }
     // @ts-ignore
     return state['_encoder'] as Encoder;
 }
 
 export function createInstanceFromReflection<T extends Schema>(state: T, encoder?: Encoder<T>) {
     encoder ??= getEncoder(state);
-    const decoder = (encoder instanceof Encoder6)
-        ? Reflection6.decode<T>(Reflection6.encode(encoder))
-        : Reflection.decode<T>(Reflection.encode(encoder));
+    const decoder = Reflection.decode<T>(Reflection.encode(encoder));
     // @ts-ignore
     decoder.state['_decoder'] = decoder;
     return decoder.state;
@@ -147,8 +128,8 @@ Schema.prototype.encode = function(it: Iterator) {
 }
 
 Schema.prototype.decode = function(bytes: Uint8Array | Uint8Array[]) {
-    // v6 `encodeView` / `encodeAllView` return a `[shared, view]` pair
-    return (getDecoder(this) as any).decode(bytes);
+    // `encodeView` / `encodeAllView` return a `[shared, view]` pair
+    return getDecoder(this).decode(bytes);
 }
 
 Schema.prototype.encodeAll = function() {
@@ -232,9 +213,9 @@ export function encodeMultiple<T extends Schema>(encoder: Encoder<T>, state: T, 
     return encodedViews;
 }
 
-/** v6 view encodes return `[shared, view]`; tests expect one buffer. */
-function joinSlices(encoded: Uint8Array | Uint8Array[]): Uint8Array {
-    return Array.isArray(encoded) ? Encoder6.concat(encoded) : encoded;
+/** View encodes return `[shared, view]`; these helpers hand tests one buffer. */
+export function joinSlices(encoded: Uint8Array | Uint8Array[]): Uint8Array {
+    return Array.isArray(encoded) ? Encoder.concat(encoded) : encoded;
 }
 
 export function encodeAllMultiple<T extends Schema>(encoder: Encoder<T>, state: T, referenceClients: Array<{ state: Schema, view: StateView }>) {

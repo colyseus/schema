@@ -4,9 +4,10 @@
  * goes through here, which is why the recursive walk uses a hoisted
  * callback + ctx-pool instead of per-call closures.
  */
-import { $changes, $childType, $refTypeFieldIndexes } from "../../types/symbols.js";
+import { $changes, $childType, $proxyTarget, $refTypeFieldIndexes } from "../../types/symbols.js";
+import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
 import { Root } from "../Root.js";
-import type { ChangeTree, Ref } from "../ChangeTree.js";
+import { ChangeTree, type Ref } from "../ChangeTree.js";
 import { checkIsFiltered } from "./inheritedFlags.js";
 import { propagateNewChildToSubscribers } from "../subscriptions.js";
 
@@ -102,35 +103,33 @@ export function forEachChildWithCtx<C>(
     // `refTarget` is the raw backing instance — identical to `ref` for all
     // non-Proxy types (Schema / Map / Set / Collection / Stream), and the
     // un-wrapped `$proxyTarget` for ArraySchema. Reading through it here
-    // skips the ArraySchema Proxy `get` trap on every `$childType`,
-    // `_collectionIndexes`, `.entries()`, `.items` lookup below — hot during
-    // the encodeAll DFS walk which touches every ArraySchema in the tree.
+    // skips the ArraySchema Proxy on every lookup below — hot during the
+    // encodeAll DFS walk which touches every ArraySchema in the tree.
     const ref = tree.refTarget as any;
-    if (ref[$childType]) {
+    const kind = tree.encDescriptor.kind;
+    if (kind !== KIND_SCHEMA) {
         if (typeof ref[$childType] !== "string") {
-            const items = ref.items;
-            if (items !== undefined) {
-                // ArraySchema (raw target): dense index loop — the previous
-                // `for..of entries()` allocated an iterator + a [key, value]
-                // pair array per child (top-10 allocation site in the
-                // stateview and deep-nested heap profiles).
-                for (let i = 0, len = items.length; i < len; i++) {
-                    const value = items[i];
-                    if (!value) { continue; } // sparse arrays can have undefined values
+            if (kind === KIND_ARRAY) {
+                // ArraySchema: dense index loop over the element storage.
+                const els = tree.elements;
+                for (let i = 0, len = els.length; i < len; i++) {
+                    const value = els[i];
+                    if (!value) { continue; }
                     callback(ctx, value[$changes], i);
                 }
-            } else {
-                // Map-backed collections (MapSchema/SetSchema/CollectionSchema/
-                // StreamSchema all store `$items: Map`): keys() loop skips the
-                // per-child [key, value] pair arrays of entries(), with no
-                // closure either (a forEach closure showed up as a GC
-                // regression on the construct bench).
+            } else if (kind === KIND_MAP) {
+                // MapSchema: the child's index is its wire index.
                 const $items = ref.$items as Map<any, any>;
-                const collectionIndexes = ref._collectionIndexes;
-                for (const key of $items.keys()) {
-                    const value = $items.get(key);
+                const indexByKey = ref.indexByKey as Map<any, number>;
+                for (const [key, value] of $items) {
                     if (!value) { continue; }
-                    callback(ctx, value[$changes], collectionIndexes?.[key] ?? key);
+                    callback(ctx, value[$changes], indexByKey.get(key));
+                }
+            } else {
+                // SetSchema / CollectionSchema / StreamSchema: keyed by wire index.
+                for (const [index, value] of ref.$items as Map<number, any>) {
+                    if (!value) { continue; }
+                    callback(ctx, value[$changes], index);
                 }
             }
         }
@@ -151,7 +150,23 @@ export function forEachChildWithCtx<C>(
 // Hoisted callbacks used by setRoot / setParent to avoid per-call
 // closure allocation in the recursive attach path.
 
+/**
+ * A decoder-built instance carries an `UntrackedChangeTree` stub. Attaching
+ * it to an encoder (re-encoding a decoded state) upgrades the stub to a real
+ * tree on the spot; the live walk then covers it like any other instance.
+ * Index writes on a decoder-built ArraySchema stay untracked (no Proxy).
+ */
+function ensureTracked(child: ChangeTree): ChangeTree {
+    if (child instanceof ChangeTree) return child;
+    const ref: any = (child as any).ref;
+    const target = ref[$proxyTarget] ?? ref;
+    const real = new ChangeTree(ref, target);
+    Object.defineProperty(target, $changes, { value: real, enumerable: false, writable: true });
+    return real;
+}
+
 function _setRootChildCb(root: Root, child: ChangeTree, _index: any): void {
+    child = ensureTracked(child);
     if (child.root !== root) {
         child.setRoot(root);
     } else {
@@ -166,6 +181,7 @@ const _setParentCtxPool: SetParentCtx[] = [];
 let _setParentDepth = 0;
 
 function _setParentChildCb(ctx: SetParentCtx, child: ChangeTree, index: any): void {
+    child = ensureTracked(child);
     if (child.root === ctx.root) {
         ctx.root.add(child);
         ctx.root.moveNextToParent(child);

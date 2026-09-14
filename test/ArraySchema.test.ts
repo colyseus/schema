@@ -28,7 +28,8 @@ describe("ArraySchema Tests", () => {
 
     describe("Internals", () => {
         it("Symbol.species", () => {
-            assert.strictEqual(ArraySchema[Symbol.species], ArraySchema);
+            // derived arrays (map/filter/slice/concat) are plain arrays
+            assert.strictEqual(ArraySchema[Symbol.species], Array);
         });
 
         it("should allow to assign a regular array", () => {
@@ -3047,7 +3048,8 @@ describe("ArraySchema Tests", () => {
         it("#concat()", () => {
             const arr = new ArraySchema<number>(1, 2, 3);
             const concat = arr.concat([4, 5, 6]);
-            assert.deepStrictEqual([1, 2, 3, 4, 5, 6], concat.toJSON());
+            assert.deepStrictEqual([1, 2, 3, 4, 5, 6], concat);
+            assert.ok(!(concat instanceof ArraySchema));
         });
 
         it("#join()", () => {
@@ -3220,13 +3222,13 @@ describe("ArraySchema Tests", () => {
         });
 
         it("#flat", () => {
-            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
-            assert.throws(() => { arr.flat(); }, /not supported/i);
+            const arr = new ArraySchema<number[]>([1, 2], [3], [4, 5]);
+            assert.deepStrictEqual([1, 2, 3, 4, 5], arr.flat());
         })
 
         it("#flatMap", () => {
-            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
-            assert.throws(() => { arr.flatMap(() => {}); }, /not supported/i);
+            const arr = new ArraySchema<number>(1, 2, 3);
+            assert.deepStrictEqual([1, 1, 2, 2, 3, 3], arr.flatMap((v) => [v, v]));
         });
 
         it(".length = 0", () => {
@@ -3271,9 +3273,9 @@ describe("ArraySchema Tests", () => {
 
         it("#with()", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
-            assert.deepStrictEqual([1, 6, 3, 4, 5], arr.with(1, 6).toJSON());
-            assert.deepStrictEqual([1, 2, 3, 4, 7], arr.with(-1, 7).toJSON());
-            assert.deepStrictEqual([1, 2, 3, 8, 5], arr.with(-2, 8).toJSON());
+            assert.deepStrictEqual([1, 6, 3, 4, 5], arr.with(1, 6));
+            assert.deepStrictEqual([1, 2, 3, 4, 7], arr.with(-1, 7));
+            assert.deepStrictEqual([1, 2, 3, 8, 5], arr.with(-2, 8));
         });
 
         it(".from()", () => {

@@ -60,42 +60,37 @@ describe("Definition Tests", () => {
     });
 
     describe("field count limit", () => {
-        //
-        // A field operation packs into one byte as `(index | operation)`, so
-        // indexes occupy the low 6 bits. Index 63 is given away: with
-        // DELETE_AND_ADD it packs to 255, the SWITCH_TO_STRUCTURE byte, and
-        // every nullable field can reach that operation. 62 is the last
-        // usable slot. See Metadata.MAX_FIELDS.
-        //
-        const TOO_MANY = /may only have up to 63 fields/;
+        // Field indexes 0..63 are usable (two 32-bit dirty masks per Schema,
+        // a 64-bit presence mask in inline bodies). See Metadata.MAX_FIELDS.
+        const TOO_MANY = /may only have up to 64 fields/;
 
-        it("should accept 63 fields, and reject the 64th (decorators)", () => {
+        it("should accept 64 fields, and reject the 65th (decorators)", () => {
             class Ok extends Schema {}
-            for (let i = 0; i < 63; i++) {
+            for (let i = 0; i < 64; i++) {
                 type("uint8")(Ok.prototype, `f_${i}`);
             }
-            assert.strictEqual((Ok as any)[Symbol.metadata][$numFields], 62, "last index is 62");
+            assert.strictEqual((Ok as any)[Symbol.metadata][$numFields], 63, "last index is 63");
 
-            assert.throws(() => type("uint8")(Ok.prototype, "f_63"), TOO_MANY);
+            assert.throws(() => type("uint8")(Ok.prototype, "f_64"), TOO_MANY);
         });
 
-        it("should accept 63 fields, and reject the 64th (schema builder)", () => {
+        it("should accept 64 fields, and reject the 65th (schema builder)", () => {
             const ok: any = {};
-            for (let i = 0; i < 63; i++) { ok[`f_${i}`] = t.uint8(); }
-            const Ok = schema(ok, "SixtyThreeFields");
-            assert.strictEqual((Ok as any)[Symbol.metadata][$numFields], 62, "last index is 62");
+            for (let i = 0; i < 64; i++) { ok[`f_${i}`] = t.uint8(); }
+            const Ok = schema(ok, "SixtyFourFields");
+            assert.strictEqual((Ok as any)[Symbol.metadata][$numFields], 63, "last index is 63");
 
             const tooMany: any = {};
-            for (let i = 0; i < 64; i++) { tooMany[`f_${i}`] = t.uint8(); }
-            assert.throws(() => schema(tooMany, "SixtyFourFields"), TOO_MANY);
+            for (let i = 0; i < 65; i++) { tooMany[`f_${i}`] = t.uint8(); }
+            assert.throws(() => schema(tooMany, "SixtyFiveFields"), TOO_MANY);
         });
 
         it("should count inherited fields toward the limit", () => {
             const base: any = {};
-            for (let i = 0; i < 63; i++) { base[`f_${i}`] = t.uint8(); }
+            for (let i = 0; i < 64; i++) { base[`f_${i}`] = t.uint8(); }
             const Base = schema(base, "FullBase");
 
-            // the parent already occupies 0..62, so the child has no slot left
+            // the parent already occupies 0..63, so the child has no slot left
             assert.throws(() => (Base as any).extend({ extra: t.uint8() }, "OverflowChild"), TOO_MANY);
         });
 

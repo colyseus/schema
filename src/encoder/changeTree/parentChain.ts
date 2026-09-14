@@ -46,35 +46,6 @@ export function addParent(tree: ChangeTree, parent: Ref, index: number): void {
 }
 
 /**
- * Move `parent`'s existing chain entry to `index`, skipping the attachment
- * work `addParent` does. `parent` must already be a parent of `tree`.
- *
- * Called by collections whose wire slots shift (ArraySchema): StateView
- * addresses per-view ADD/DELETE by that index, so it has to follow the
- * element it names.
- */
-export function setParentIndex(tree: ChangeTree, parent: Ref, index: number): void {
-    if (tree.extraParents === undefined) {
-        tree._parentIndex = index; // sole parent, so it is `parent`
-        return;
-    }
-    // Shared instance — move only the entry `parent` owns. Matching goes
-    // through `$changes` because ArraySchema arrives proxied (see removeParent
-    // below), and `extraParents` only ever fills by demoting `parentRef`, so
-    // the inline parent is set here.
-    if (tree.parentRef[$changes] === parent[$changes]) {
-        tree._parentIndex = index;
-        return;
-    }
-    for (let entry = tree.extraParents; entry !== undefined; entry = entry.next) {
-        if (entry.ref[$changes] === parent[$changes]) {
-            entry.index = index;
-            return;
-        }
-    }
-}
-
-/**
  * Remove a parent from the chain.
  * @returns true if parent was found and removed (Root.remove relies on this).
  */
@@ -118,8 +89,7 @@ export function removeParent(tree: ChangeTree, parent: Ref): boolean {
  * First parent matching `predicate`, as a detached `ParentEntry`. Never returns
  * a live `ParentChain` node — the inline parent has no node to return in the
  * first place, so handing out the real node for the `extraParents` case only
- * would make writes land or vanish depending on which parent matched. Use
- * `setParentIndex` to move an index and `indexInParent` to read one.
+ * would make writes land or vanish depending on which parent matched.
  */
 export function findParent(
     tree: ChangeTree,
@@ -151,29 +121,6 @@ export function hasParent(
 }
 
 /**
- * Wire index `tree` holds inside `parent`, or undefined when `parent` is
- * nowhere in the chain. Allocation-free variant of `findParent` for the
- * encodeView drain, which resolves identity-keyed view entries per emission.
- *
- * A child detached from `parent` this tick usually still resolves: Root.remove
- * leaves the child's own parent link dangling, and the staged snapshot keeps
- * the child in `tmpItems` (so reindexes keep the index current) until
- * `$onEncodeEnd` — which runs after the drain.
- */
-export function indexInParent(tree: ChangeTree, parent: Ref): number | undefined {
-    // `$changes` comparison — ArraySchema parents arrive proxied.
-    if (tree.parentRef && tree.parentRef[$changes] === parent[$changes]) {
-        return tree._parentIndex;
-    }
-    for (let entry = tree.extraParents; entry !== undefined; entry = entry.next) {
-        if (entry.ref[$changes] === parent[$changes]) {
-            return entry.index;
-        }
-    }
-    return undefined;
-}
-
-/**
  * Return all parents as detached entries (debug/test helper).
  */
 export function getAllParents(tree: ChangeTree): ParentEntry[] {
@@ -191,23 +138,18 @@ export function getAllParents(tree: ChangeTree): ParentEntry[] {
 
 /**
  * True iff `parent` currently holds `tree`. Detached edges linger in the
- * parent chain (load-bearing for same-tick view drains — see
- * `indexInParent` above), so the chain alone cannot answer which edges
- * are live. ArraySchema is probed by scanning `items`: the recorded slot
- * can go stale after reorders, and `items` — unlike `$getByIndex`'s staged
- * view — reflects the tick's completed mutations.
+ * parent chain (Root.remove leaves the child's own link dangling until it
+ * is re-parented), so the chain alone cannot answer which edges are live.
+ * ArraySchema is probed by scanning the array itself: the recorded slot is
+ * informational only and goes stale after reorders.
  */
 export function isEdgeLive(tree: ChangeTree, parentTree: ChangeTree, index: number): boolean {
-    const target = parentTree.refTarget as any;
+    const target = parentTree.elements as any;
     if (parentTree.isArray) {
-        // Read `items` directly, not `$getByIndex` — the latter serves the
-        // staged (tmpItems) view, which can still hold a same-tick removal.
-        const items = target.items;
-        const at = items[index];
+        const at = target[index];
         if (at !== undefined && at[$changes] === tree) return true;
-        // Recorded slot goes stale after reorders — scan before declaring dead.
-        for (let i = 0, len = items.length; i < len; i++) {
-            const v = items[i];
+        for (let i = 0, len = target.length; i < len; i++) {
+            const v = target[i];
             if (v !== undefined && v[$changes] === tree) return true;
         }
         return false;

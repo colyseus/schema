@@ -101,7 +101,8 @@ describe("Encoder Root", () => {
     // test + move-to-tail must not. Deterministic PRNG — seeds pinned to
     // ones that desynced under the capped scan.
     //
-    it("keeps encode/decode in sync under 3-container instance sharing", () => {
+    it("keeps encode/decode in sync under 3-container instance sharing", function () {
+        this.timeout(20000); // randomized fuzz over many ticks
         class FLeaf extends Schema {
             @type("number") value = 0;
             @type("string") label = "";

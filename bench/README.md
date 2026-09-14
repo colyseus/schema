@@ -40,19 +40,27 @@ match — a mismatch means the wire format changed).
 - An A/A null run (`--compare X X`) should show p > 0.05 on ≥95% of rows;
   re-certify when changing the harness or machine.
 
-## Wire codecs (v5 vs the v6 PoC)
+## Wire codec
 
-Scenarios that touch the wire run once per codec present in the build:
-`<variant>` is the shipping v5 format, `<variant>-v6` the `src/v6/` PoC
-(`withCodecs()` / `codecOf()` in `lib/fixtures.mjs`). `BENCH_CODECS=v5`
-restricts a run to one codec — use it for cross-build `--compare`, whose
-per-variant byte guard keeps working because the codec lives in the variant
-name. To compare the two codecs within one build:
+The 6.0 wire format is the only codec (`lib.Encoder` / `lib.Decoder`);
+`withCodecs()` / `codecOf()` in `lib/fixtures.mjs` are the scenario-facing
+seam left from the v5/v6 comparison. `bench/v6-results.md` keeps the
+measurements that motivated the format (v5 vs the v6 proof of concept on the
+5.0.23 collections) and the A/B of the 6.0 collections rewrite against both.
 
-```bash
-npm run bench -- --samples 20 --json bench/results/codecs.json
-node bench/lib/codec-compare.mjs bench/results/codecs.json   # Δ bytes, Δ median, Mann-Whitney p per pair
+Comparing against a 5.0.x snapshot build that ships both codecs: scenarios
+construct `lib.Encoder` directly, so `--compare <snapshot>/build` measures
+v5 except in the scenarios that go through `codecOf()` (which prefers
+`Encoder6`). For a consistent baseline point `--compare` at a one-file shim
+next to that build, e.g. `build-poc/index.mjs`:
+
+```js
+export * from "../build/index.mjs";
+export { Encoder6 as Encoder, Decoder6 as Decoder, Reflection6 as Reflection } from "../build/index.mjs";
 ```
+
+(or `export const Encoder6 = undefined, Decoder6 = undefined, Reflection6 = undefined;`
+to force v5 everywhere).
 
 ## Scenario contract
 
@@ -111,3 +119,12 @@ Rules:
 - `lib/` — child harness, stats (Mann-Whitney/HL), GC observer, fixtures, report
 - `scenarios/{encoder,stateview,decoder,callbacks,e2e}/`
 - `results/` — measurement outputs (JSON runs, profile reports); machine-specific, kept out of git along with `.builds/` and `profiles/`
+
+## ArraySchema storage model
+
+`bench/array-impl-comparison.md` compares v5, the 6.0 `Array` subclass and
+a 6.0 build with the 5.x internal-array storage (`SCHEMA_ARRAY_IMPL=internal
+npm run build`, see `src/types/custom/ArraySchemaInternal.ts`) across the
+whole matrix plus `mutations/array-iterate` (encoder-side walks) and
+`decoder/array-read` (client-side walks), with a usage survey of what user
+code does with arrays.

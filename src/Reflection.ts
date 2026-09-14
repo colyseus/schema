@@ -9,6 +9,8 @@ import { t, FieldBuilder } from "./types/builder.js";
 import { ArraySchema } from "./types/custom/ArraySchema.js";
 import { $encodeDescriptor, $numFields } from "./types/symbols.js";
 import { isQuantizedType, resolveQuantize } from "./types/quantize.js";
+import { PROTOCOL_VERSION } from "./encoding/spec.js";
+import { readUvarint } from "./encoding/varint.js";
 
 /**
  * Static methods available on Reflection
@@ -22,9 +24,6 @@ interface ReflectionStatic {
      * @returns
      */
     encode: (encoder: Encoder, it?: Iterator) => Uint8Array;
-
-    /** Handshake decoders keyed by protocol version (see `Reflection.decode`). */
-    codecs: { [version: number]: { decode: <T extends Schema = Schema>(bytes: Uint8Array, it?: Iterator) => Decoder<T> } };
 
     /**
      * Decodes the TypeContext from a buffer into a Decoder instance.
@@ -229,35 +228,35 @@ export function populateReflection(reflection: Reflection, context: TypeContext,
     }
 }
 
-Reflection.encode = function (encoder: Encoder, it: Iterator = { offset: 0 }) {
+/**
+ * Handshake: `uvarint(PROTOCOL_VERSION)` followed by the `Reflection` schema
+ * encoded with the codec itself (nested Schema + array + optional field — a
+ * self-hosting fixture).
+ */
+Reflection.encode = function (encoder: Encoder, _it?: Iterator) {
     const reflection = new Reflection();
     const reflectionEncoder = new Encoder(reflection);
     populateReflection(reflection, encoder.context, encoder.state.constructor as typeof Schema);
-    const buf = reflectionEncoder.encodeAll(it);
-    return buf.slice(0, it.offset);
+    const encoded = reflectionEncoder.encodeAll();
+    const out = new Uint8Array(1 + encoded.byteLength);
+    out[0] = PROTOCOL_VERSION;
+    out.set(encoded, 1);
+    return out;
 };
 
-/**
- * Handshake decoders by protocol version. A v5 payload always starts with
- * byte `0x80` (root field 0 `types`, op ADD); newer codecs prefix a
- * `uvarint(version)` < 0x80 and register themselves here.
- */
-Reflection.codecs = {};
-
-Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it?: Iterator): Decoder<T> {
-    const first = bytes[it?.offset ?? 0];
-    if (first < 0x80) {
-        const codec = Reflection.codecs[first];
-        if (codec === undefined) {
-            throw new Error(`@colyseus/schema: unsupported reflection protocol version ${first}`);
-        }
-        return codec.decode<T>(bytes, it);
+Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it: Iterator = { offset: 0 }): Decoder<T> {
+    const first = bytes[it.offset];
+    if (first >= 0x80) {
+        // a pre-v6 handshake always starts with byte 0x80 (root field 0, op ADD)
+        throw new Error(`@colyseus/schema: received a pre-v6 handshake — server and client must both run @colyseus/schema ${PROTOCOL_VERSION}.x`);
+    }
+    const version = readUvarint(bytes, it);
+    if (version !== PROTOCOL_VERSION) {
+        throw new Error(`@colyseus/schema: unsupported reflection protocol version ${version} (expected ${PROTOCOL_VERSION})`);
     }
 
     const reflection = new Reflection();
-
-    const reflectionDecoder = new Decoder(reflection);
-    reflectionDecoder.decode(bytes, it);
+    new Decoder(reflection).decode(bytes, it);
 
     const { typeContext, state } = materializeReflection<T>(reflection);
     return new Decoder<T>(state, typeContext);

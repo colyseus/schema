@@ -24,6 +24,7 @@
  */
 
 import type { BufferLike } from "./encode.js";
+import { readString } from "./varint.js";
 
 /**
  * msgpack implementation highly based on notepack.io
@@ -258,7 +259,7 @@ export const decode = {
     bigint64,
     biguint64,
     boolean,
-    string,
+    // v6: `uvarint(len) + utf8` strings
+    string: readString,
     number,
-    stringCheck,
 };

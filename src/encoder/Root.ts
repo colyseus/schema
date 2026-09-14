@@ -1,7 +1,6 @@
 import { OPERATION } from "../encoding/spec.js";
 import { TypeContext } from "../types/TypeContext.js";
 import { ChangeTree, ChangeTreeList, createChangeTreeList, PENDING_FILTER_REFRESH, type ChangeTreeNode } from "./ChangeTree.js";
-import { restageLiveCb } from "./changeTree/liveIteration.js";
 import { $changes, $refId } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { StreamSchema } from "../types/custom/StreamSchema.js";
@@ -189,7 +188,7 @@ export class Root {
             //   values would otherwise never be encoded).
             //
             changeTree.needsRestage = false;
-            changeTree.forEachLiveWithCtx(changeTree, restageLiveCb);
+            changeTree.restage();
         }
 
         this.refCount[refId] = (previousRefCount || 0) + 1;

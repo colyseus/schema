@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { Schema, type, ArraySchema, MapSchema, getDecoderStateCallbacks, decodeSchemaOperation, Decoder } from "../../src";
+import { Schema, type, ArraySchema, MapSchema, getDecoderStateCallbacks, Decoder } from "../../src";
 import { createInstanceFromReflection, getCallbacks, getDecoder } from "../Schema";
 import type { SchemaCallbackProxy } from "../../src/decoder/strategy/getDecoderStateCallbacks";
 

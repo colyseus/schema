@@ -373,6 +373,7 @@ const mapFactory: MapFactory = ((child: ChildType) =>
     new FieldBuilder({ map: resolveChild(child) } as DefinitionType)) as MapFactory;
 const setFactory: SetFactory = ((child: ChildType) =>
     new FieldBuilder({ set: resolveChild(child) } as DefinitionType)) as SetFactory;
+/** @deprecated `CollectionSchema` is deprecated — use `t.set()`, `t.array()` or `t.map()`. */
 const collectionFactory: CollectionFactory = ((child: ChildType) =>
     new FieldBuilder({ collection: resolveChild(child) } as DefinitionType)) as CollectionFactory;
 const streamFactory: StreamFactory = ((child: ChildType) => {

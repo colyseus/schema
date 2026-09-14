@@ -1,10 +1,14 @@
 /**
  * ChangeTree — the per-`Ref` mutation tracker attached via `$changes`.
  *
- * This file owns: class shape (fields, flags, ctor), inline
- * ChangeRecorder implementation (record / forEach / …), mutation API
- * (change / delete / operation / …), and encode lifecycle (endEncode /
- * discard / …). Helpers split out into ./changeTree/:
+ * This file owns: class shape (fields, flags, ctor), the inline Schema
+ * change recorder (record / forEach / …), mutation API (change / delete /
+ * …), and the encode lifecycle (endEncode / discard / …). Collections keep
+ * their own recorder (`rec`: an `ArrayLog` or a `KeyedRecorder`, created by
+ * the class's `[$recorder]` factory) and record on it directly; the tree
+ * only owns attachment, flags, queue membership and view bitmaps for them.
+ *
+ * Helpers split out into ./changeTree/:
  *
  *   - parentChain.ts     addParent / removeParent / find / has / getAll
  *   - liveIteration.ts   forEachLive
@@ -15,9 +19,9 @@
  * into the helpers. V8 inlines the pass-throughs; the runtime shape stays
  * a single class to preserve hidden-class + IC behavior.
  */
-import { OPERATION } from "../encoding/spec.js";
+import { ARRAY_OP, KIND_ARRAY, KIND_MAP, KIND_SCHEMA, OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $changes, $childType, $decoder, $onEncodeEnd, $encoder, $getByIndex, $refId, $refTypeFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
+import { $changes, $childType, $onEncodeEnd, $getByIndex, $refId, $refTypeFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
@@ -27,17 +31,17 @@ import type { StreamSchema } from "../types/custom/StreamSchema.js";
 
 import { Root } from "./Root.js";
 import { Metadata } from "../Metadata.js";
-import { type ChangeRecorder, SchemaChangeRecorder, CollectionChangeRecorder, popcount32 } from "./ChangeRecorder.js";
-import type { EncodeOperation } from "./EncodeOperation.js";
+import { type ChangeRecorder, SchemaChangeRecorder, popcount32 } from "./ChangeRecorder.js";
 import { type EncodeDescriptor, getEncodeDescriptor } from "./EncodeDescriptor.js";
-import type { DecodeOperation } from "../decoder/DecodeOperation.js";
+import type { ArrayLog } from "./ArrayLog.js";
+import type { KeyedRecorder } from "./KeyedRecorder.js";
+import { $items } from "../types/symbols.js";
+import { arrCopy } from "../types/custom/arrayOps.js";
 
 import {
     addParent as _addParent, removeParent as _removeParent,
-    setParentIndex as _setParentIndex,
     findParent as _findParent, hasParent as _hasParent,
     getAllParents as _getAllParents,
-    indexInParent as _indexInParent,
 } from "./changeTree/parentChain.js";
 import { forEachLive as _forEachLive, forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import {
@@ -54,9 +58,6 @@ import {
 declare global {
     interface Object {
         [$changes]?: ChangeTree;
-        // [$refId]?: number;
-        [$encoder]?: EncodeOperation,
-        [$decoder]?: DecodeOperation,
     }
 }
 
@@ -128,7 +129,7 @@ export interface ParentChain {
  * Detached copy of one parent link, handed out by the query helpers. Distinct
  * from `ParentChain` on purpose: it carries no `next`, so it cannot be walked
  * as if it were the chain, and it is readonly, so it cannot be mistaken for a
- * way to move a parent's index — `setParentIndex` does that.
+ * way to move a parent's index.
  */
 export interface ParentEntry {
     readonly ref: Ref;
@@ -172,37 +173,46 @@ export const PENDING_FILTER_REFRESH = 256;
  */
 export const INHERITABLE_FLAGS = IS_PATCH_ONLY | IS_FULL_STATE_ONLY;
 
+/** Re-stage callback for Schema trees (`restage()`): every live field as a fresh ADD on its channel. */
+const _restageSchemaCb = (tree: ChangeTree, fieldIndex: number): void => {
+    if (tree.isFieldUnreliable(fieldIndex)) {
+        tree.ensureUnreliableRecorder().record(fieldIndex, OPERATION.ADD);
+    } else {
+        tree.record(fieldIndex, OPERATION.ADD);
+    }
+};
+
+const _restageKeyedCb = (rec: KeyedRecorder, index: number): void => {
+    rec.add(index, OPERATION.ADD);
+};
+
 export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     ref: T;
 
     /**
      * Non-Proxy target of `ref` for encoder hot-path reads. For
-     * `ArraySchema`, `ref` is the Proxy users interact with; every property
-     * access on it runs through the `get` trap (even for symbol keys, which
-     * fall through to `Reflect.get` — one extra hop per lookup). The encoder
-     * loop reads `[$getByIndex]`, `[$childType]`, `.items`, `.tmpItems` at
-     * high frequency during `encode()` / `encodeAll()`; going through
-     * `refTarget` skips all of those traps.
-     *
-     * For non-proxied types (Schema, MapSchema, SetSchema, CollectionSchema,
-     * StreamSchema), `refTarget === ref`. Consumers that need the user-
-     * facing identity (debug output, callback parents) keep using `ref`.
+     * `ArraySchema`, `ref` is the Proxy users interact with (its `set` trap
+     * tracks index writes); `refTarget` is the raw array underneath. For every
+     * other type `refTarget === ref`. Consumers that need the user-facing
+     * identity (debug output, callback parents) keep using `ref`.
      */
     refTarget: T;
 
     /**
-     * True when `ref` is an ArraySchema — the only proxied type, so its
-     * user-facing identity differs from `refTarget`. Canonical predicate for
-     * "is this tree's ref an array" without probing `ref` (which would hit
-     * the Proxy trap) — two monomorphic loads on the tree itself.
+     * Indexable element storage of an ArraySchema (`refTarget` itself for
+     * the Array subclass, its plain `items` array for the internal-array
+     * experiment); `refTarget` for every other type.
      */
-    get isArray(): boolean { return this.refTarget !== this.ref; }
+    elements: any;
+
+    /** True when `ref` is an ArraySchema. */
+    get isArray(): boolean { return this.encDescriptor.kind === KIND_ARRAY; }
 
     metadata: Metadata;
 
     /**
-     * Per-class cache of encoder fn / filter fn / isSchema / metadata /
-     * per-field arrays, looked up once at construction. The encode loop reads
+     * Per-class cache of filter fn / isSchema / metadata / per-field arrays,
+     * looked up once at construction. The encode loop reads
      * `tree.encDescriptor` and never touches `ref.constructor` again. See
      * EncodeDescriptor.ts.
      */
@@ -219,15 +229,13 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     flags: number = IS_NEW;
 
     /**
-     * Per-walk visit stamp written by `Encoder.encodeFullSync`'s DFS. A
-     * tree is considered "already visited by the current walk" iff
-     * `tree._fullSyncGen === ctx.gen` — the encoder bumps its generation
-     * counter once per walk, then stamps each tree with that value on
-     * first visit; any later encounter of the same tree (shared refs
-     * reachable through multiple parents) short-circuits on the equality
-     * check instead of recursing again.
+     * Per-walk visit stamp written by the encoder's snapshot / patch passes.
+     * A tree is "already visited by the current pass" iff its stamp equals
+     * the pass's generation; any later encounter of the same tree (shared
+     * refs reachable through multiple parents) short-circuits on the
+     * equality check instead of recursing or re-emitting.
      */
-    _fullSyncGen: number = 0; // v5 walks stamp positive values; the v6 encoder stamps negative ones (never equal)
+    _fullSyncGen: number = 0;
 
     // Schema vs Collection discriminator. Set once in ctor, never changes —
     // per-tree-stable branch for inline ChangeRecorder dispatch.
@@ -243,11 +251,14 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     opsHigh: number = 0;
     ops?: Uint8Array;
 
-    // Inline reliable CollectionChangeRecorder state (valid only if !_isSchema).
-    // `collDirty` is allocated in the ctor. `collPureOps` stays undefined
-    // until the first CLEAR/REVERSE (most workloads never hit this).
-    collDirty?: Map<number, OPERATION>;
-    collPureOps?: Array<[number, OPERATION]>;
+    /**
+     * Collection recorder (valid only if !_isSchema): an `ArrayLog` for
+     * ArraySchema, a `KeyedRecorder` for Map / Set / Collection / Stream.
+     * Undefined on Schema trees and on the fieldless-Schema edge case (a
+     * Schema class with no declared fields classifies as non-Schema and
+     * has no recorder factory) — every read below is guarded.
+     */
+    rec?: ArrayLog | KeyedRecorder;
 
     // Lazy-allocated unreliable-channel recorder (rare — opt-in via @unreliable).
     unreliableRecorder?: ChangeRecorder;
@@ -306,11 +317,21 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         return this.isFiltered || this.encDescriptor.hasAnyView;
     }
 
+    /**
+     * True when mutations on the ref must be recorded. Collections consult
+     * this before touching their recorder (`paused` and `@fullStateOnly`
+     * short-circuit recording entirely).
+     */
+    get tracking(): boolean {
+        return !this.paused && (this.flags & IS_FULL_STATE_ONLY) === 0;
+    }
+
     ensureUnreliableRecorder(): ChangeRecorder {
         if (this.unreliableRecorder === undefined) {
-            this.unreliableRecorder = this._isSchema
-                ? new SchemaChangeRecorder((this.metadata?.[$numFields] ?? 0) as number)
-                : new CollectionChangeRecorder();
+            if (!this._isSchema) {
+                throw new Error("ChangeTree: collections never carry an unreliable recorder");
+            }
+            this.unreliableRecorder = new SchemaChangeRecorder((this.metadata?.[$numFields] ?? 0) as number);
         }
         return this.unreliableRecorder;
     }
@@ -358,11 +379,12 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // Raw (non-Proxy) target, passed explicitly by ArraySchema's ctor —
         // the only proxied type. Defaulting to `ref` for everything else
         // skips a guaranteed-miss megamorphic `$proxyTarget` probe per
-        // construction. Cached so hot-path reads skip the Proxy `get` trap.
+        // construction.
         this.refTarget = refTarget;
+        this.elements = (refTarget as any)[$items] ?? refTarget;
 
         // Single per-class lookup that subsumes Symbol.metadata,
-        // isValidInstance, $encoder, $filter, and the filter bitmask.
+        // isValidInstance, $filter, the recorder factory and the bitmasks.
         // After this, the encode loop never touches `ref.constructor`.
         const desc = getEncodeDescriptor(ref);
         this.encDescriptor = desc;
@@ -375,21 +397,19 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // one hidden-class transition path (tsconfig useDefineForClassFields=false
         // otherwise leaves uninitialized class fields absent from the shape).
         this.ops = undefined;
-        this.collDirty = undefined;
-        this.collPureOps = undefined;
+        this.rec = undefined;
 
         if (isSchema) {
             const numFields = (this.metadata?.[$numFields] ?? 0) as number;
             if (numFields > 7) this.ops = new Uint8Array(numFields + 1);
         } else {
-            this.collDirty = new Map();
+            this.rec = desc.newRecorder?.();
         }
     }
 
     // ────────────────────────────────────────────────────────────────────
-    // Inline ChangeRecorder implementation. Each method branches once on
-    // `_isSchema` (per-tree-stable → predictable branch). Kills one
-    // CollectionChangeRecorder+Map allocation per Collection tree.
+    // Inline Schema ChangeRecorder implementation. Collections never reach
+    // these — they record on `rec` directly.
     // ────────────────────────────────────────────────────────────────────
 
     // Schema-only helpers that own all inline-vs-array dispatch.
@@ -420,55 +440,24 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     record(index: number, op: OPERATION): void {
-        if (this._isSchema) {
-            const prev = this._opAt(index);
-            if (prev === 0) this._opPut(index, op);
-            else if (prev === OPERATION.DELETE) this._opPut(index, OPERATION.DELETE_AND_ADD);
-            // Promote ADD → DELETE_AND_ADD when a ref is replaced in the
-            // same tick. Otherwise the on-wire op collapses to plain ADD
-            // and the decoder's `refs` map leaks the displaced refId —
-            // harmless on its own, but refId pooling turns that leak into
-            // a catastrophic rebinding when the refId is later reused.
-            else if (prev === OPERATION.ADD && op === OPERATION.DELETE_AND_ADD) {
-                this._opPut(index, OPERATION.DELETE_AND_ADD);
-            }
-            // else: existing ADD / DELETE_AND_ADD — preserve op-byte.
-            this._markDirty(index);
-        } else {
-            const dirty = this.collDirty!;
-            const prev = dirty.get(index);
-            let finalOp: OPERATION;
-            if (prev === undefined) finalOp = op;
-            else if (prev === OPERATION.DELETE) finalOp = OPERATION.DELETE_AND_ADD;
-            else if (prev === OPERATION.ADD && op === OPERATION.DELETE_AND_ADD) finalOp = OPERATION.DELETE_AND_ADD;
-            else finalOp = prev;
-            dirty.set(index, finalOp);
+        const prev = this._opAt(index);
+        if (prev === 0) this._opPut(index, op);
+        else if (prev === OPERATION.DELETE) this._opPut(index, OPERATION.DELETE_AND_ADD);
+        // Promote ADD → DELETE_AND_ADD when a ref is replaced in the
+        // same tick. Otherwise the on-wire op collapses to plain ADD
+        // and the decoder's `refs` map leaks the displaced refId —
+        // harmless on its own, but refId pooling turns that leak into
+        // a catastrophic rebinding when the refId is later reused.
+        else if (prev === OPERATION.ADD && op === OPERATION.DELETE_AND_ADD) {
+            this._opPut(index, OPERATION.DELETE_AND_ADD);
         }
+        // else: existing ADD / DELETE_AND_ADD — preserve op-byte.
+        this._markDirty(index);
     }
 
     recordDelete(index: number, op: OPERATION): void {
-        if (this._isSchema) {
-            this._opPut(index, op);
-            this._markDirty(index);
-        } else {
-            this.collDirty!.set(index, op);
-        }
-    }
-
-    recordRaw(index: number, op: OPERATION): void {
-        if (this._isSchema) {
-            this._opPut(index, op);
-            this._markDirty(index);
-        } else {
-            this.collDirty!.set(index, op);
-        }
-    }
-
-    recordPure(op: OPERATION): void {
-        if (this._isSchema) {
-            throw new Error("ChangeTree (Schema): pure operations are not supported");
-        }
-        (this.collPureOps ??= []).push([this.collDirty!.size, op]);
+        this._opPut(index, op);
+        this._markDirty(index);
     }
 
     operationAt(index: number): OPERATION | undefined {
@@ -476,23 +465,12 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
             const op = this._opAt(index);
             return op === 0 ? undefined : op;
         }
-        return this.collDirty!.get(index);
-    }
-
-    setOperationAt(index: number, op: OPERATION): void {
-        // Schema: overwrite only (no dirty-mark). Collection: overwrite iff key exists (legacy).
-        if (this._isSchema) {
-            this._opPut(index, op);
-        } else {
-            const dirty = this.collDirty!;
-            if (dirty.has(index)) dirty.set(index, op);
-        }
+        return this.rec?.opAt(index);
     }
 
     // Cold-path delegate: all `forEach` callers are debug/dump utilities
     // (Schema.ts debug output, utils.ts change dump, discardAll in tests).
-    // The hot encode loop uses `forEachWithCtx` directly. See ChangeRecorder.ts
-    // for the same adapter pattern.
+    // The hot encode loop walks the storage directly.
     forEach(cb: (index: number, op: OPERATION) => void): void {
         this.forEachWithCtx(cb, _invokeNoCtx);
     }
@@ -527,35 +505,35 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
             }
             return;
         }
-        const dirty = this.collDirty!;
-        const pure = this.collPureOps;
-        if (pure !== undefined && pure.length > 0) {
-            let pureIdx = 0, i = 0;
-            for (const [index, op] of dirty) {
-                while (pureIdx < pure.length && pure[pureIdx][0] <= i) {
-                    const pureOp = pure[pureIdx++][1];
-                    cb(ctx, -pureOp, pureOp);
+        const rec = this.rec;
+        if (rec === undefined) return;
+        if (this.encDescriptor.kind === KIND_ARRAY) {
+            // Debug view of the array log: one ADD per pushed / inserted /
+            // re-stated value, REPLACE per SET, DELETE per removed value;
+            // REVERSE / REORDER / CLEAR report as "pure" (negative index).
+            (rec as ArrayLog).forEach((op, a, b) => {
+                switch (op) {
+                    case ARRAY_OP.PUSH: for (let k = 0; k < a; k++) cb(ctx, b + k, OPERATION.ADD); break;
+                    case ARRAY_OP.INSERT: for (let k = 0; k < b; k++) cb(ctx, a + k, OPERATION.ADD); break;
+                    case ARRAY_OP.RESTATE: for (let k = 0; k < a; k++) cb(ctx, k, OPERATION.ADD); break;
+                    case ARRAY_OP.SET: cb(ctx, a, OPERATION.REPLACE); break;
+                    case ARRAY_OP.REMOVE: for (let k = 0; k < b; k++) cb(ctx, a + k, OPERATION.DELETE); break;
+                    default: cb(ctx, -op, op as any); break;
                 }
-                cb(ctx, index, op);
-                i++;
-            }
-            while (pureIdx < pure.length) {
-                const pureOp = pure[pureIdx++][1];
-                cb(ctx, -pureOp, pureOp);
-            }
+            });
         } else {
-            for (const [index, op] of dirty) cb(ctx, index, op);
+            (rec as KeyedRecorder).forEach((index, op) => cb(ctx, index, op));
         }
     }
 
     size(): number {
         if (this._isSchema) return popcount32(this.dirtyLow) + popcount32(this.dirtyHigh);
-        return this.collDirty!.size + (this.collPureOps?.length ?? 0);
+        return this.rec?.size() ?? 0;
     }
 
     has(): boolean {
         if (this._isSchema) return (this.dirtyLow | this.dirtyHigh) !== 0;
-        return this.collDirty!.size > 0 || (this.collPureOps !== undefined && this.collPureOps.length > 0);
+        return this.rec !== undefined && this.rec.has();
     }
 
     reset(): void {
@@ -566,8 +544,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
             else { this.opsLow = 0; this.opsHigh = 0; }
             return;
         }
-        this.collDirty!.clear();
-        if (this.collPureOps !== undefined) this.collPureOps.length = 0;
+        this.rec?.reset();
     }
 
     /**
@@ -590,8 +567,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
             );
         }
 
-        // dirty/ops buckets (Schema: dirtyLow/High + ops; Collection: collDirty/collPureOps)
-        this.reset();
+        // dirty/ops buckets (Schema: dirtyLow/High + ops; Collection: rec)
+        if (this._isSchema) this.reset();
+        else this.rec?.recycle();
         // keep the recorder object allocated (re-alloc is the cost we avoid), clear contents
         this.unreliableRecorder?.reset();
 
@@ -621,40 +599,28 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     /**
-     * ArraySchema insert (unshift / splice with more inserts than deletes):
-     * re-key pending ops at or above `at` by `+count`, then record ADDs for
-     * the new items at indexes `at..at+count-1`.
-     *
-     * The rebuilt map's insertion order IS the wire order:
-     *   1. ops below `at` — the insert doesn't move them, and an insert of
-     *      their own must still be applied before this one (ascending);
-     *   2. the new ADDs, ascending — the decoder splice-inserts each one,
-     *      which only works lowest-index-first;
-     *   3. the re-keyed ops, in their original relative order — their
-     *      indexes now address the post-insert layout.
-     * See ArraySchema#$setAt.
+     * Re-stage the live contents as fresh ADDs on the matching channel.
+     * Called by `Root.add` for a tree re-entering the encoder (refCount 0 →
+     * 1, or a pooled instance with NEEDS_RESTAGE) and by the filtered→public
+     * flip in `inheritedFlags.refreshFilterState`. Arrays re-state
+     * positionally in one absorbing op (so clients that received elements by
+     * identity get the server order and revision); an empty collection
+     * records nothing, which keeps pooled instances byte-identical to fresh
+     * ones.
      */
-    insertAt(at: number, count: number): void {
-        if (this._isSchema) throw new Error("ChangeTree (Schema): insertAt is not supported");
-        const src = this.collDirty!;
-        const dst = new Map<number, OPERATION>();
-        const track = !this.paused && !this.isFullStateOnly;
-        if (at > 0) {
-            for (const [idx, val] of src) if (idx < at) dst.set(idx, val);
+    restage(): void {
+        if (this._isSchema) {
+            _forEachLiveWithCtx(this, this, _restageSchemaCb);
+            return;
         }
-        if (track) {
-            for (let i = 0; i < count; i++) dst.set(at + i, OPERATION.ADD);
+        const rec = this.rec;
+        if (rec === undefined) return;
+        if (this.encDescriptor.kind === KIND_ARRAY) {
+            const arr = this.elements as any[];
+            if (arr.length > 0) (rec as ArrayLog).restate(arrCopy(arr));
+        } else {
+            _forEachLiveWithCtx(this, rec as KeyedRecorder, _restageKeyedCb);
         }
-        for (const [idx, val] of src) if (idx >= at) dst.set(idx + count, val);
-        this.collDirty = dst;
-        // no unreliable re-key — collection trees never carry an unreliable
-        // recorder (tree-level @unreliable is disabled, see isFieldUnreliable)
-        if (track) this.root?.enqueueChangeTree(this);
-    }
-
-    /** ArraySchema#unshift(): insert `count` items at the head. */
-    unshift(count: number): void {
-        this.insertAt(0, count);
     }
 
     // Tree attachment + child iteration — see ./changeTree/treeAttachment.ts.
@@ -669,32 +635,14 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         _forEachLiveWithCtx(this, ctx, cb);
     }
 
-    operation(op: OPERATION) {
-        if (this.paused || this.isFullStateOnly) return;
-        // Pure ops (CLEAR/REVERSE) only emit from collection trees — the
-        // recorder here is always a CollectionChangeRecorder by construction.
-        //
-        // Tree-level `isUnreliable` is disabled (see INHERITABLE_FLAGS):
-        // no collection tree can be marked unreliable as a whole under the
-        // ref-field rejection rule in `Metadata.setUnreliable`. The branch
-        // is kept as a comment for re-enablement.
-        // if (this.isUnreliable) {
-        //     (this.ensureUnreliableRecorder() as ICollectionChangeRecorder).recordPure(op);
-        //     this.root?.enqueueUnreliable(this);
-        // } else {
-            this.recordPure(op);
-            this.root?.enqueueChangeTree(this);
-        // }
+    /** Enqueue this tree for the next reliable encode (collections call it after recording on `rec`). */
+    touch(): void {
+        this.root?.enqueueChangeTree(this);
     }
 
     /**
-     * Route a field-level mutation to the reliable or unreliable channel
-     * and enqueue into the matching queue. Shared by `change` and
-     * `indexedOperation`; `raw=true` bypasses DELETE→ADD merge
-     * (ArraySchema positional writes), `raw=false` merges inside `record`.
-     *
-     * Note: record() on both channels handles DELETE→ADD merge internally,
-     * so callers do not need to pre-compute the merged op.
+     * Route a Schema field mutation to the reliable or unreliable channel
+     * and enqueue into the matching queue.
      *
      * `@unreliable` is decoration-time-validated to apply only to primitive
      * fields (see annotations.ts), so the per-field unreliable flag here
@@ -713,28 +661,18 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * Ordering matters: `isFieldUnreliable` short-circuits on the class-level
      * `hasAnyUnreliable`, so schemas without the modifier never read `flags`.
      */
-    private _routeAndRecord(index: number, op: OPERATION, raw: boolean): void {
+    change(index: number, operation: OPERATION = OPERATION.ADD) {
         if (this.paused || this.isFieldFullStateOnly(index)) return;
         if (this.isFieldUnreliable(index) && !this.isNew) {
-            const r = this.ensureUnreliableRecorder();
-            if (raw) r.recordRaw(index, op);
-            else r.record(index, op);
+            this.ensureUnreliableRecorder().record(index, operation);
             this.root?.enqueueUnreliable(this);
             return;
         }
-        if (raw) this.recordRaw(index, op);
-        else this.record(index, op);
+        this.record(index, operation);
         this.root?.enqueueChangeTree(this);
     }
 
-    change(index: number, operation: OPERATION = OPERATION.ADD) {
-        this._routeAndRecord(index, operation, false);
-    }
-
-    indexedOperation(index: number, operation: OPERATION) {
-        this._routeAndRecord(index, operation, true);
-    }
-
+    /** Pending op at `index`: a Schema field op, or a keyed collection entry op (arrays have none). */
     getChange(index: number) {
         return this.operationAt(index);
     }
@@ -762,13 +700,12 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         finally { this.paused = wasPaused; }
     }
 
-    // used during `.encode()` — `isEncodeAll` is only consumed by ArraySchema.
-    // Reads via `refTarget` so ArraySchema's Proxy trap is bypassed on the
-    // hot per-field encode path.
-    getValue(index: number, isEncodeAll: boolean = false) {
-        return this.refTarget[$getByIndex](index, isEncodeAll);
+    // Reads via `refTarget` so ArraySchema's Proxy is bypassed.
+    getValue(index: number, _isEncodeAll: boolean = false) {
+        return this.refTarget[$getByIndex](index);
     }
 
+    /** Schema field DELETE (collections record removals on their own recorder). */
     delete(index: number, operation?: OPERATION) {
         if (index === undefined) {
             try {
@@ -781,8 +718,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
         if (this.paused || this.isFieldFullStateOnly(index)) return this.getValue(index);
 
-        // Same pre-ADD hold as `_routeAndRecord` — a DELETE naming a ref the
-        // decoder hasn't seen is dropped just like a field write.
+        // Same pre-ADD hold as `change` — a DELETE naming a ref the decoder
+        // hasn't seen is dropped just like a field write.
         const unreliable = this.isFieldUnreliable(index) && !this.isNew;
         if (unreliable) this.ensureUnreliableRecorder().recordDelete(index, operation ?? OPERATION.DELETE);
         else this.recordDelete(index, operation ?? OPERATION.DELETE);
@@ -801,16 +738,13 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         return previousValue;
     }
 
-    // Clear the reliable dirty bucket after a reliable encode pass.
+    // Clear the reliable dirty bucket after a reliable encode pass. The
+    // collection hook runs BEFORE the recorder reset: `MapSchema` purges
+    // the index mappings of entries removed this tick from `rec.deleted`.
     endEncode() {
+        if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.();
         this.reset();
         this.changesNode = undefined;
-        // Every collection class defines [$onEncodeEnd]; Schema never does —
-        // probing it was a guaranteed megamorphic miss per drained tree.
-        // `?.` stays: a FIELDLESS Schema has no metadata, so its tree is
-        // `_isSchema === false` too. refTarget receiver skips ArraySchema's
-        // proxy hops.
-        if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.();
         this.isNew = false;
     }
 
@@ -818,7 +752,6 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     endEncodeUnreliable() {
         this.unreliableRecorder?.reset();
         this.unreliableChangesNode = undefined;
-        if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.();
     }
 
     discard() {
@@ -829,13 +762,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     // Recursively discard all changes on this + child structures. Tests only.
     discardAll() {
-        const discardChild = (index: number) => {
-            if (index < 0) return;
-            const value = this.getValue(index);
-            if (value && value[$changes]) value[$changes].discardAll();
-        };
-        this.forEach(discardChild);
-        this.unreliableRecorder?.forEach(discardChild);
+        this.forEachChild((child) => child.discardAll());
         this.discard();
     }
 
@@ -849,12 +776,15 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     /** Immediate parent (primary). See `extraParents` for the 2nd+ chain. */
     get parent(): Ref | undefined { return this.parentRef; }
+    /**
+     * Index this tree holds in its primary parent. Stable for Schema fields
+     * and keyed collections; informational only under an ArraySchema parent
+     * (written at attach, not maintained across reorders — the encoder never
+     * addresses array elements by slot).
+     */
     get parentIndex(): number | undefined { return this._parentIndex; }
 
     addParent(parent: Ref, index: number): void { _addParent(this, parent, index); }
-
-    /** Re-point an existing parent's cached index after the parent reindexed. */
-    setParentIndex(parent: Ref, index: number): void { _setParentIndex(this, parent, index); }
 
     /** @returns true if parent was found and removed */
     removeParent(parent: Ref = this.parent): boolean { return _removeParent(this, parent); }
@@ -866,9 +796,6 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     hasParent(predicate: (parent: Ref, index: number) => boolean): boolean {
         return _hasParent(this, predicate);
     }
-
-    /** Wire index this tree holds inside `parent`, or undefined if not a parent. */
-    indexInParent(parent: Ref): number | undefined { return _indexInParent(this, parent); }
 
     getAllParents(): ParentEntry[] { return _getAllParents(this); }
 
@@ -896,9 +823,12 @@ export class UntrackedChangeTree {
     // freshly-constructed tree that never participated in a Root).
     root: undefined = undefined;
     parentRef: undefined = undefined;
+    rec: undefined = undefined;
     paused: boolean = false;
     isNew: boolean = false;
     flags: number = 0;
+    readonly tracking = false;
+    readonly isArray = false;
 
     constructor(ref: Ref) {
         this.ref = ref;
@@ -907,11 +837,10 @@ export class UntrackedChangeTree {
     // Mutation surface — all no-ops.
     change(): void {}
     delete(): void {}
-    indexedOperation(): void {}
-    operation(): void {}
+    touch(): void {}
+    restage(): void {}
     setParent(): void {}
     addParent(): void {}
-    setParentIndex(): void {}
     removeParent(): boolean { return false; }
     getChange(): number { return 0; }
     discard(): void {}
@@ -922,21 +851,35 @@ export class UntrackedChangeTree {
     markDirty(): void {}
 
     // Tree-walk surface. Mirrors `treeAttachment.forEachChild` so debug tools
-    // and `ArraySchema.clear()` can still descend from a tracked root into
-    // decoder-built subtrees and read each child's `$changes` (which is
-    // itself an UntrackedChangeTree carrying the right `ref`).
+    // can still descend from a tracked root into decoder-built subtrees and
+    // read each child's `$changes` (which is itself an UntrackedChangeTree
+    // carrying the right `ref`).
     forEachChild(callback: (change: any, at: any) => void): void {
         const ref = this.ref as any;
-        if (ref[$childType]) {
+        const ctor = ref.constructor as any;
+        const kind = ctor?.COLLECTION_KIND;
+        if (kind !== undefined) {
             if (typeof ref[$childType] !== "string") {
-                for (const [key, value] of ref.entries()) {
-                    if (!value) continue;
-                    callback(value[$changes], ref._collectionIndexes?.[key] ?? key);
+                if (kind === KIND_ARRAY) {
+                    for (let i = 0, len = ref.length; i < len; i++) {
+                        const value = ref[i];
+                        if (!value) continue;
+                        callback(value[$changes], i);
+                    }
+                } else if (kind === KIND_MAP) {
+                    for (const [key, value] of ref.$items as Map<any, any>) {
+                        if (!value) continue;
+                        callback(value[$changes], ref.indexByKey.get(key));
+                    }
+                } else {
+                    for (const [index, value] of ref.$items as Map<number, any>) {
+                        if (!value) continue;
+                        callback(value[$changes], index);
+                    }
                 }
             }
             return;
         }
-        const ctor = ref.constructor as any;
         const metadata = ctor?.[Symbol.metadata];
         if (!metadata) return;
         const refFieldIndexes: number[] = metadata[$refTypeFieldIndexes] ?? [];
@@ -967,9 +910,7 @@ export function createUntrackedChangeTree(ref: Ref): ChangeTree {
 /**
  * Install a non-enumerable `$changes: UntrackedChangeTree` on `target`.
  * Shared by `Schema.initializeForDecoder` and every collection's
- * `initializeForDecoder`. `publicRef` defaults to `target` — pass a Proxy
- * instead (ArraySchema) so children attached to this tree see the Proxy
- * as their parent, not the raw target.
+ * `initializeForDecoder`.
  *
  * `enumerable: false` is load-bearing — tests use `deepStrictEqual` on
  * decoded instances and walking into `$changes` would recurse through
