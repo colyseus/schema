@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.32]
+
+### Fixed
+
+- Adding a Schema instance whose fields are already set to a `SetSchema` or `CollectionSchema` after the first patch no longer desyncs clients, which logged `"refId" not found` and got the item with `undefined` fields. Thanks @vmaark! [#234](https://github.com/colyseus/schema/issues/234)
+
 ## [5.0.31]
 
 ### Changed

@@ -118,10 +118,6 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         const index = this.$refId++;
 
         const changeTree = this[$changes];
-        if ((value[$changes]) !== undefined) {
-            value[$changes].setParent(this, changeTree.root, index);
-        }
-
         this.$items.set(index, value);
 
         // Streaming-mode ADD: route into per-view pending or broadcast
@@ -133,6 +129,11 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
             }
         } else {
             changeTree.change(index, OPERATION.ADD);
+        }
+
+        // after the ADD — setParent queues the child's changes, which must follow it
+        if (value[$changes] !== undefined) {
+            value[$changes].setParent(this, changeTree.root, index);
         }
         return index;
     }

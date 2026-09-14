@@ -1,6 +1,7 @@
 import * as assert from "assert";
 
 import { Schema, type, CollectionSchema } from "../src";
+import { encodeAndAssertEquals } from "./Schema";
 
 describe("CollectionSchema", () => {
 
@@ -39,6 +40,27 @@ describe("CollectionSchema", () => {
 
         assert.strictEqual(1, decoded.players.size);
     })
+
+    it("add() populated schema instances after the initial patch", () => {
+        class Effect extends Schema {
+            @type("string") id: string;
+        }
+
+        class State extends Schema {
+            @type({ collection: Effect })
+            effects = new CollectionSchema<Effect>();
+        }
+
+        const state = new State();
+        const decoded = new State();
+        encodeAndAssertEquals(state, decoded);
+
+        // child fields are already dirty when added — their changes must follow the collection's ADD
+        for (let i = 0; i < 3; i++) {
+            state.effects.add(new Effect().assign({ id: `slow ${i}` }));
+            encodeAndAssertEquals(state, decoded);
+        }
+    });
 
     it("add() - should support adding multiple references", () => {
         class Player extends Schema {

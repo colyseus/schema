@@ -114,11 +114,6 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
         const index = this.$refId++;
 
         const changeTree = this[$changes];
-        const isRef = (value[$changes]) !== undefined;
-        if (isRef) {
-            value[$changes].setParent(this, changeTree.root, index);
-        }
-
         this.$items.set(index, value);
 
         if (changeTree.isStreamCollection) {
@@ -127,6 +122,11 @@ export class CollectionSchema<V=any> implements Collection<K, V>, IRef {
             }
         } else {
             changeTree.change(index);
+        }
+
+        // after the ADD — setParent queues the child's changes, which must follow it
+        if (value[$changes] !== undefined) {
+            value[$changes].setParent(this, changeTree.root, index);
         }
 
         return index;

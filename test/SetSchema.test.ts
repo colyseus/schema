@@ -2,7 +2,7 @@ import * as assert from "assert";
 
 import { Schema, type, SetSchema, MapSchema } from "../src";
 import "./Schema";
-import { assertDeepStrictEqualEncodeAll } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, encodeAndAssertEquals } from "./Schema";
 
 describe("Type: SetSchema", () => {
 
@@ -46,6 +46,27 @@ describe("Type: SetSchema", () => {
 
         assert.strictEqual(1, decoded.players.size);
     })
+
+    it("add() populated schema instances after the initial patch", () => {
+        class Effect extends Schema {
+            @type("string") id: string;
+        }
+
+        class State extends Schema {
+            @type({ set: Effect })
+            effects = new SetSchema<Effect>();
+        }
+
+        const state = new State();
+        const decoded = new State();
+        encodeAndAssertEquals(state, decoded);
+
+        // child fields are already dirty when added — their changes must follow the set's ADD
+        for (let i = 0; i < 3; i++) {
+            state.effects.add(new Effect().assign({ id: `slow ${i}` }));
+            encodeAndAssertEquals(state, decoded);
+        }
+    });
 
     it("add() - should support adding multiple references", () => {
         class Player extends Schema {
