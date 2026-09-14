@@ -20,6 +20,10 @@ const __dirname = path.dirname(__filename);
 const INPUT_DIR = path.resolve(__dirname, "sources");
 const OUTPUT_DIR = path.resolve(__dirname, "tmp-codegen-output");
 
+// patterns are built with path.resolve(), so on Windows they carry backslashes,
+// which glob would otherwise read as escape characters and match nothing
+const globSync = (pattern: string) => glob.sync(pattern, { windowsPathsNoEscape: true });
+
 describe("schema-codegen", () => {
     beforeEach(() => {
         rimraf.sync(OUTPUT_DIR);
@@ -40,7 +44,7 @@ describe("schema-codegen", () => {
 
         generate("csharp", { files: inputFiles, output: OUTPUT_DIR });
 
-        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.cs"));
         assert.strictEqual(3, outputFiles.length);
     });
 
@@ -49,50 +53,50 @@ describe("schema-codegen", () => {
 
         generate("csharp", { files: [input], output: OUTPUT_DIR });
 
-        const inputFiles = glob.sync(input);
-        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        const inputFiles = globSync(input);
+        const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.cs"));
         assert.strictEqual(outputFiles.length, inputFiles.length);
     });
 
     it("should auto-import related schema files", async () => {
-        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Inheritance.ts"));
+        const inputFiles = globSync(path.resolve(INPUT_DIR, "Inheritance.ts"));
 
         generate("csharp", { files: inputFiles, output: OUTPUT_DIR });
 
-        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.cs"));
         assert.strictEqual(2, outputFiles.length);
     });
 
     it("should support using 'type' along with `defineTypes` (deprecated)", async () => {
-        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "DefineTypes.js"));
+        const inputFiles = globSync(path.resolve(INPUT_DIR, "DefineTypes.js"));
 
         generate("csharp", { files: inputFiles, output: OUTPUT_DIR });
 
-        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.cs"));
         assert.strictEqual(1, outputFiles.length);
     });
 
     it("should support generating abstract classes with no fields", async () => {
-        const inputFiles = glob.sync(
+        const inputFiles = globSync(
             path.resolve(INPUT_DIR, "AbstractSchema.ts")
         );
 
         generate("csharp", { files: inputFiles, output: OUTPUT_DIR, });
 
-        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.cs"));
         assert.strictEqual(2, outputFiles.length);
     });
 
     it("should support generating enums", async () => {
-        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Enums.ts"));
+        const inputFiles = globSync(path.resolve(INPUT_DIR, "Enums.ts"));
         generate("csharp", { files: inputFiles, output: OUTPUT_DIR, });
 
-        const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs"));
+        const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.cs"));
         assert.strictEqual(2, outputFiles.length);
     });
 
     it("should emit native C# enum for positive-int enums, struct otherwise", () => {
-        const inputFiles = glob.sync(path.resolve(INPUT_DIR, "EnumsAllKinds.ts"));
+        const inputFiles = globSync(path.resolve(INPUT_DIR, "EnumsAllKinds.ts"));
         generate("csharp", { files: inputFiles, output: OUTPUT_DIR });
 
         const read = (name: string) => fs.readFileSync(path.resolve(OUTPUT_DIR, name), "utf8");
@@ -130,41 +134,41 @@ describe("schema-codegen", () => {
 
     describe("Metadata.setFields", () => {
         it("single structure ", async () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Metadata.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "Metadata.ts"));
 
             generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts"));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.ts"));
             assert.strictEqual(1, outputFiles.length);
         });
     });
 
     describe("plain schema()", () => {
         it("single structure ", async () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "PlainSchema.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "PlainSchema.ts"));
 
             generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts"));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.ts"));
             assert.strictEqual(1, outputFiles.length);
         });
 
         it("using extends", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "PlainSchemaExtends.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "PlainSchemaExtends.ts"));
 
             generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts"));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.ts"));
 
             assert.strictEqual(3, outputFiles.length);
         });
 
         it("with map", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "PlainSchemaMap.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "PlainSchemaMap.ts"));
 
             generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts"));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.ts"));
 
             assert.strictEqual(2, outputFiles.length);
         });
@@ -172,11 +176,11 @@ describe("schema-codegen", () => {
         it("should infer class names from the variable when no name arg is given", () => {
             // Exercises the parser's name-inference branch (no explicit name arg)
             // for both `schema({...})` and `Base.extend({...})`.
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "InferName.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "InferName.ts"));
 
             generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts")).map((f) => path.basename(f));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.ts")).map((f) => path.basename(f));
             assert.deepStrictEqual(outputFiles.sort(), ["Vec3.ts", "Vec4.ts"]);
 
             // `.extend()` with no name → inferred "Vec4", extending the inferred "Vec3".
@@ -187,10 +191,10 @@ describe("schema-codegen", () => {
 
     describe("invalid/error", () => {
         it("should not throw error", async () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Invalid.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "Invalid.ts"));
             generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts"));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.ts"));
             outputFiles.map((file) => {
                 console.log(fs.readFileSync(file).toString());
             })
@@ -199,7 +203,7 @@ describe("schema-codegen", () => {
 
     describe("builder as collection element", () => {
         it("throws pointing at the type-name form instead of emitting an undefined child type", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "BuilderChild.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "BuilderChild.ts"));
             assert.throws(
                 () => generate("csharp", { files: inputFiles, output: OUTPUT_DIR }),
                 /field 'items'.*t\.array\("string"\)/,
@@ -273,10 +277,10 @@ describe("schema-codegen", () => {
         it("generates a chained schema().extend() without hanging", () => {
             // The outer `.extend`'s base is a call (not an identifier), so it
             // can't be named — codegen drops that layer (warns) but must finish.
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "InferNameChain.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "InferNameChain.ts"));
             generate("ts", { files: inputFiles, output: OUTPUT_DIR, });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.ts")).map((f) => path.basename(f));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.ts")).map((f) => path.basename(f));
             assert.deepStrictEqual(outputFiles, ["Vec5.ts"]);
             assert.match(fs.readFileSync(path.resolve(OUTPUT_DIR, "Vec5.ts"), "utf8"), /class Vec5 extends Schema/);
         });
@@ -287,10 +291,10 @@ describe("schema-codegen", () => {
             fs.readFileSync(path.resolve(OUTPUT_DIR, name), "utf8");
 
         it("should emit SchemaRef façades", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "SwiftSchema.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "SwiftSchema.ts"));
             generate("swift", { files: inputFiles, output: OUTPUT_DIR });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.swift")).map((f) => path.basename(f));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.swift")).map((f) => path.basename(f));
             assert.deepStrictEqual(outputFiles.sort(), ["Item.swift", "Player.swift", "TestRoomState.swift"]);
 
             const player = read("Player.swift");
@@ -320,10 +324,10 @@ describe("schema-codegen", () => {
         });
 
         it("should bundle every structure into a single file", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "SwiftSchema.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "SwiftSchema.ts"));
             generate("swift", { files: inputFiles, output: OUTPUT_DIR, bundle: true });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.swift")).map((f) => path.basename(f));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.swift")).map((f) => path.basename(f));
             assert.deepStrictEqual(outputFiles, ["Schema.swift"]);
 
             const bundle = read("Schema.swift");
@@ -335,7 +339,7 @@ describe("schema-codegen", () => {
         });
 
         it("should stand a namespace in as a caseless enum", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "SwiftSchema.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "SwiftSchema.ts"));
             generate("swift", { files: inputFiles, output: OUTPUT_DIR, bundle: true, namespace: "Lab" });
 
             const bundle = read("Lab.swift");
@@ -345,7 +349,7 @@ describe("schema-codegen", () => {
         });
 
         it("should escape a field name that is a Swift keyword", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "SwiftKeywords.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "SwiftKeywords.ts"));
             generate("swift", { files: inputFiles, output: OUTPUT_DIR });
 
             const out = read("KeywordState.swift");
@@ -355,7 +359,7 @@ describe("schema-codegen", () => {
         });
 
         it("should emit enums as caseless enums of constants", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Enums.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "Enums.ts"));
             generate("swift", { files: inputFiles, output: OUTPUT_DIR });
 
             const shipType = read("ShipType.swift");
@@ -408,10 +412,10 @@ describe("schema-codegen", () => {
             fs.readFileSync(path.resolve(OUTPUT_DIR, name), "utf8");
 
         it("should emit SchemaRef façades", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "DartSchema.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "DartSchema.ts"));
             generate("dart", { files: inputFiles, output: OUTPUT_DIR });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.dart")).map((f) => path.basename(f));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.dart")).map((f) => path.basename(f));
             assert.deepStrictEqual(outputFiles.sort(), ["Item.dart", "Player.dart", "TestRoomState.dart"]);
 
             const player = read("Player.dart");
@@ -452,10 +456,10 @@ describe("schema-codegen", () => {
         });
 
         it("should bundle every structure into a single file", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "DartSchema.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "DartSchema.ts"));
             generate("dart", { files: inputFiles, output: OUTPUT_DIR, bundle: true });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.dart")).map((f) => path.basename(f));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.dart")).map((f) => path.basename(f));
             assert.deepStrictEqual(outputFiles, ["schema.dart"]);
 
             const bundle = read("schema.dart");
@@ -467,7 +471,7 @@ describe("schema-codegen", () => {
         });
 
         it("should emit enums as const holders", () => {
-            const inputFiles = glob.sync(path.resolve(INPUT_DIR, "Enums.ts"));
+            const inputFiles = globSync(path.resolve(INPUT_DIR, "Enums.ts"));
             generate("dart", { files: inputFiles, output: OUTPUT_DIR });
 
             const shipType = read("ShipType.dart");
@@ -665,7 +669,7 @@ describe("schema-codegen", () => {
 
             // the exact list also pins that `nanoid` was not followed into
             // node_modules, and that the library's own source stayed out
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs")).map((f) => path.basename(f));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.cs")).map((f) => path.basename(f));
             assert.deepStrictEqual(outputFiles.sort(), ["AliasedEnemy.cs", "AliasedPlayer.cs", "AliasedRoomState.cs"]);
 
             const state = fs.readFileSync(path.resolve(OUTPUT_DIR, "AliasedRoomState.cs"), "utf8");
@@ -680,7 +684,7 @@ describe("schema-codegen", () => {
                 tsconfig: path.resolve(ALIAS_DIR, "tsconfig.json"),
             });
 
-            const outputFiles = glob.sync(path.resolve(OUTPUT_DIR, "*.cs")).map((f) => path.basename(f));
+            const outputFiles = globSync(path.resolve(OUTPUT_DIR, "*.cs")).map((f) => path.basename(f));
             assert.deepStrictEqual(outputFiles.sort(), ["AliasedPlayer.cs", "OutsideRoomState.cs"]);
         });
 

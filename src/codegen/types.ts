@@ -1,8 +1,9 @@
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
 
 if (typeof(__dirname) === "undefined") {
-    global.__dirname = path.dirname(new URL(import.meta.url).pathname);
+    global.__dirname = path.dirname(fileURLToPath(import.meta.url));
 }
 
 /** Root of the @colyseus/schema package — `src/codegen/` in dev, `build/codegen/` once bundled. */
