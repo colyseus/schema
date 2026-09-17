@@ -234,10 +234,12 @@ ${generateInterfaceBody(struct)}
 }
 
 function getInterfaceType(prop: Property): string {
-    if (prop.type === "array") {
-        return `List<${typeMaps[prop.childType] ?? prop.childType ?? "dynamic"}>`;
+    const child = typeMaps[prop.childType] ?? prop.childType ?? "dynamic";
+    switch (prop.type) {
+        case "array": return `List<${child}>`;
+        case "map": return `Map<String, ${child}>`;
+        default: return typeMaps[prop.type] ?? prop.type ?? "dynamic";
     }
-    return typeMaps[prop.type] ?? prop.type ?? "dynamic";
 }
 
 /**

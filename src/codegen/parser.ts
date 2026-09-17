@@ -48,6 +48,36 @@ function extractBuilderBase(node: ts.CallExpression): { methodName: string, firs
 }
 
 /**
+ * Collection kind of a message field's type annotation, and the type it holds:
+ * - "array" for `T[]`, `readonly T[]`, `Array<T>` or `ReadonlyArray<T>`
+ * - "map" for `Record<K, V>`, `Map<K, V>`, `ReadonlyMap<K, V>` or `{ [key: K]: V }`
+ *
+ * Returns undefined for any other type.
+ */
+function getCollectionType(node: ts.TypeNode): { type: "array" | "map", child: ts.TypeNode } | undefined {
+    if (ts.isTypeOperatorNode(node) && node.operator === ts.SyntaxKind.ReadonlyKeyword) {
+        node = node.type;
+    }
+    if (ts.isArrayTypeNode(node)) {
+        return { type: "array", child: node.elementType };
+    }
+    if (ts.isTypeReferenceNode(node)) {
+        const name = node.typeName.getText();
+        const args = node.typeArguments;
+        if (args?.length === 1 && (name === "Array" || name === "ReadonlyArray")) {
+            return { type: "array", child: args[0] };
+        }
+        if (args?.length === 2 && (name === "Record" || name === "Map" || name === "ReadonlyMap")) {
+            return { type: "map", child: args[1] };
+        }
+    }
+    if (ts.isTypeLiteralNode(node) && node.members.length === 1 && ts.isIndexSignatureDeclaration(node.members[0])) {
+        return { type: "map", child: node.members[0].type };
+    }
+    return undefined;
+}
+
+/**
  * Statically evaluate a default value: a string/boolean literal or a constant
  * numeric expression, `const`s included (local or imported). Returns
  * undefined for anything else (a factory function, an object).
@@ -387,9 +417,13 @@ function inspectNode(node: ts.Node, context: Context, decoratorName: string) {
                 }
 
                 // define a property of an interface
+                const signature = node as ts.PropertySignature;
+                const collection = getCollectionType(signature.type);
+
                 const property = new Property();
-                property.name = (node as any).name.escapedText.toString();
-                property.type = (node as any).type.getText();
+                property.name = (signature.name as ts.Identifier).escapedText.toString();
+                property.type = collection?.type ?? signature.type.getText();
+                property.childType = collection?.child.getText();
                 currentStructure.addProperty(property);
             }
             break;

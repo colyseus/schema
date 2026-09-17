@@ -76,8 +76,18 @@ ${klass.properties.map(prop => `    ${generateProperty(prop)}`).join("\n")}
  */
 function generateInterfaceBody(iface: Interface): string {
     return `export interface ${iface.name} {
-${iface.properties.map(prop => `    ${prop.name}: ${prop.type};`).join("\n")}
+${iface.properties.map(prop => `    ${prop.name}: ${getInterfaceType(prop)};`).join("\n")}
 }`;
+}
+
+// Array<T> rather than T[], which would need parentheses around a union element.
+// Maps are Record<string, V>: msgpack keys arrive as strings, and a Map arrives as a plain object.
+function getInterfaceType(prop: Property) {
+    switch (prop.type) {
+        case "array": return `Array<${prop.childType}>`;
+        case "map": return `Record<string, ${prop.childType}>`;
+        default: return prop.type;
+    }
 }
 
 /**

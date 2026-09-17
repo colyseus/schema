@@ -85,15 +85,7 @@ export class Interface implements IStructure {
     properties: Property[] = [];
 
     addProperty(property: Property): void {
-        if (property.type.indexOf("[]") >= 0) {
-            // is array!
-            property.childType = property.type.match(/([^\[]+)/i)[1];
-            property.type = "array";
-            this.properties.push(property);
-
-        } else {
-            this.properties.push(property);
-        }
+        this.properties.push(property);
     }
 }
 

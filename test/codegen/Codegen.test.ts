@@ -658,6 +658,45 @@ describe("schema-codegen", () => {
         });
     });
 
+    // https://github.com/colyseus/schema/issues/235
+    describe("message interfaces", () => {
+        const gen = (lang: string) => {
+            generate(lang, { files: [path.resolve(INPUT_DIR, "MessageCollections.ts")], output: OUTPUT_DIR });
+            const ext = (lang === "csharp") ? "cs" : lang;
+            return fs.readFileSync(path.resolve(OUTPUT_DIR, `CollectionMessage.${ext}`), "utf8");
+        };
+
+        const dictionary = "global::System.Collections.Generic.Dictionary";
+        const expected: { [lang: string]: string[] } = {
+            csharp: [
+                "public string[] targets;", "public string[] generic;", "public double[] frozen;", "public MsgItem[] items;", "public MsgItem item;",
+                `public ${dictionary}<string, double> scores;`, `public ${dictionary}<string, bool> flags;`, `public ${dictionary}<string, MsgItem> byName;`,
+            ],
+            ts: [
+                "targets: Array<string>;", "generic: Array<string>;", "frozen: Array<number>;", "items: Array<MsgItem>;", "ids: Array<string | number>;",
+                "scores: Record<string, number>;", "flags: Record<string, boolean>;", "byName: Record<string, MsgItem>;",
+            ],
+            dart: [
+                "List<String>? targets;", "List<String>? generic;", "List<double>? frozen;", "List<MsgItem>? items;", "MsgItem? item;",
+                "Map<String, double>? scores;", "Map<String, bool>? flags;", "Map<String, MsgItem>? byName;",
+            ],
+            swift: [
+                "var targets: [String]?", "var generic: [String]?", "var frozen: [Double]?", "var items: [MsgItem]?", "var item: MsgItem?",
+                "var scores: [String: Double]?", "var flags: [String: Bool]?", "var byName: [String: MsgItem]?",
+            ],
+        };
+
+        for (const lang in expected) {
+            it(`${lang}: emits every array and map spelling as a plain collection`, () => {
+                const out = gen(lang);
+                expected[lang].forEach(line => assert.ok(out.includes(line), `missing: ${line}\n${out}`));
+
+                if (lang === "csharp") { assert.doesNotMatch(out, /ArraySchema|MapSchema|undefined/); }
+                if (lang === "dart") { assert.deepStrictEqual(out.match(/^import .*$/gm), ["import 'MsgItem.dart';"]); }
+            });
+        }
+    });
+
     // https://github.com/colyseus/schema/issues/186 — a bare specifier that a
     // tsconfig `paths`/`baseUrl` maps onto first-party source used to be dropped
     // silently, so the schemas it exported never reached the generated output.

@@ -226,10 +226,12 @@ ${fields}
 }
 
 function getInterfaceType(prop: Property): string {
-    if (prop.type === "array") {
-        return `[${typeMaps[prop.childType] ?? prop.childType ?? "Double"}]`;
+    const child = typeMaps[prop.childType] ?? prop.childType ?? "Double";
+    switch (prop.type) {
+        case "array": return `[${child}]`;
+        case "map": return `[String: ${child}]`;
+        default: return typeMaps[prop.type] ?? prop.type ?? "Double";
     }
-    return typeMaps[prop.type] ?? prop.type ?? "Double";
 }
 
 /**

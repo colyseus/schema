@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.33]
+
+### Fixed
+
+- `schema-codegen` now emits arrays and maps in `*Message` interfaces as plain collections that compile in every target: C# gets `string[]` instead of `ArraySchema<string>`, and `Array<T>`, `Record<K, V>`, `Map<K, V>` and `{ [key: string]: V }` no longer come out as `undefined` or raw TypeScript. Thanks @konistehrad! [#235](https://github.com/colyseus/schema/issues/235)
+
 ## [5.0.32]
 
 ### Fixed

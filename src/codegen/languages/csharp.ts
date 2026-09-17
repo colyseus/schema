@@ -288,7 +288,7 @@ function defaultLiteral(value: Property["defaultValue"], langType: string): stri
  */
 function generateInterfaceBody(struct: Interface, indent: string = ""): string {
     return `${indent}public class ${struct.name} {
-${struct.properties.map(prop => `\t${indent}public ${getType(prop)} ${identifier(prop.name)};`).join("\n")}
+${struct.properties.map(prop => `\t${indent}public ${getInterfaceType(prop)} ${identifier(prop.name)};`).join("\n")}
 ${indent}}`;
 }
 
@@ -326,8 +326,16 @@ function getType(prop: Property) {
         return type;
 
     } else {
-        return (prop.type === "array")
-            ? `${typeMaps[prop.childType] || prop.childType}[]`
-            : typeMaps[prop.type];
+        return typeMaps[prop.type];
+    }
+}
+
+// messages arrive as msgpack, so collections are plain C# ones rather than ArraySchema/MapSchema
+function getInterfaceType(prop: Property) {
+    const child = typeMaps[prop.childType] ?? prop.childType;
+    switch (prop.type) {
+        case "array": return `${child}[]`;
+        case "map": return `global::System.Collections.Generic.Dictionary<string, ${child}>`;
+        default: return typeMaps[prop.type] ?? prop.type;
     }
 }
