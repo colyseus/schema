@@ -13,13 +13,16 @@ let defineTypesWarned = false;
 
 const BUILDER_COLLECTION_KINDS = new Set(["array", "map", "set", "collection"]);
 
+/** Object-literal keys that name the collection kind in `@type({ map: X })`-style declarations. */
+const COLLECTION_LITERAL_KEYS = ["map", "array", "set", "collection", "stream", "type"];
+
 /**
  * For a t.*().chain().calls() expression, walk down to the base `t.X(...)`
- * call and return its method name, first argument, and the names of the
- * chained modifiers (`.view()`, `.deprecated()`, …). Returns null if the
- * node does not look like a builder chain.
+ * call and return its method name, its arguments (`firstArg` is `args[0]`),
+ * and the names of the chained modifiers (`.view()`, `.deprecated()`, …).
+ * Returns null if the node does not look like a builder chain.
  */
-function extractBuilderBase(node: ts.CallExpression): { methodName: string, firstArg?: ts.Expression, modifiers: Set<string> } | null {
+function extractBuilderBase(node: ts.CallExpression): { methodName: string, firstArg?: ts.Expression, args: readonly ts.Expression[], modifiers: Set<string> } | null {
     const modifiers = new Set<string>();
     let current: ts.CallExpression = node;
     while (true) {
@@ -35,9 +38,37 @@ function extractBuilderBase(node: ts.CallExpression): { methodName: string, firs
         return {
             methodName: expr.name.text,
             firstArg: current.arguments[0],
+            args: current.arguments,
             modifiers,
         };
     }
+}
+
+/**
+ * Read a `key: "number"` entry out of an object literal (`t.map(X, { key })`
+ * options or the `@type({ map: X, key })` literal itself). Returns undefined
+ * when there is no `key` entry, or when it is the default `"string"` — so a
+ * string-keyed map is indistinguishable from one that declares no key at all.
+ * Throws when the key is not a string literal: silently dropping it would
+ * generate a client that reads every key of that map wrong.
+ */
+function parseMapKeyType(node: ts.Expression | undefined, propertyName: string): string | undefined {
+    if (!node || !ts.isObjectLiteralExpression(node)) { return undefined; }
+
+    for (const prop of node.properties) {
+        if (!ts.isPropertyAssignment(prop) || !prop.name || (prop.name as ts.Identifier).text !== "key") { continue; }
+
+        if (!ts.isStringLiteralLike(prop.initializer)) {
+            throw new Error(
+                `schema-codegen: cannot statically resolve the map key type of field '${propertyName}' — ` +
+                `\`key\` must be a string literal (e.g. \`key: "number"\`).`
+            );
+        }
+        const keyType = prop.initializer.text;
+        return (keyType === "string") ? undefined : keyType;
+    }
+
+    return undefined;
 }
 
 /**
@@ -152,6 +183,11 @@ function defineProperty(property: Property, initializer: any) {
                     }
                     property.childType = (childArg as any).text ?? childArg.getText();
                 }
+                if (base.methodName === "map") {
+                    // t.map(X, { key: "number" })
+                    const keyType = parseMapKeyType(base.args[1], property.name);
+                    if (keyType) { property.keyType = keyType; }
+                }
             } else if (base.methodName === "ref") {
                 property.type = "ref";
                 if (base.firstArg) {
@@ -172,13 +208,27 @@ function defineProperty(property: Property, initializer: any) {
         property.childType = initializer.text;
 
     } else if (initializer.kind == ts.SyntaxKind.ObjectLiteralExpression) {
-        if (initializer.properties[0].name.text === "quantized") {
+        // Look the kind up by name rather than assuming it is the first entry:
+        // `{ key: "number", map: X }` is as valid as `{ map: X, key: "number" }`.
+        const literal = initializer as ts.ObjectLiteralExpression;
+        const entries = literal.properties.filter(ts.isPropertyAssignment);
+        const kindEntry: any =
+            entries.find((entry) => (entry.name as ts.Identifier).text === "quantized") ??
+            entries.find((entry) => COLLECTION_LITERAL_KEYS.includes((entry.name as ts.Identifier).text)) ??
+            literal.properties[0];
+
+        if (kindEntry.name.text === "quantized") {
             // decorator-style: @type({ quantized: { min, max, ... } })
             property.type = "quantized";
-            property.quantized = parseQuantizedOptions(initializer.properties[0].initializer, property.name);
+            property.quantized = parseQuantizedOptions(kindEntry.initializer, property.name);
         } else {
-            property.type = initializer.properties[0].name.text;
-            property.childType = initializer.properties[0].initializer.text;
+            property.type = kindEntry.name.text;
+            property.childType = kindEntry.initializer?.text;
+            if (property.type === "map") {
+                // decorator-style: @type({ map: X, key: "number" })
+                const keyType = parseMapKeyType(literal, property.name);
+                if (keyType) { property.keyType = keyType; }
+            }
         }
 
     } else if (initializer.kind == ts.SyntaxKind.ArrayLiteralExpression) {

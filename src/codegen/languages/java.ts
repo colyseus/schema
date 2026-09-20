@@ -35,6 +35,18 @@ const typeInitializer: { [key: string]: string } = {
     "float64": "0",
 }
 
+/** Generic type arguments must be reference types: the boxed form of each primitive in `typeMaps`. */
+const boxedTypes: { [key: string]: string } = {
+    "byte": "Byte",
+    "short": "Short",
+    "int": "Integer",
+    "long": "Long",
+    "float": "Float",
+    "double": "Double",
+    "boolean": "Boolean",
+}
+const boxed = (langType: string) => boxedTypes[langType] ?? langType;
+
 const COMMON_IMPORTS = `import io.colyseus.serializer.schema.Schema;
 import io.colyseus.serializer.schema.annotations.SchemaClass;
 import io.colyseus.serializer.schema.annotations.SchemaField;`;
@@ -131,17 +143,30 @@ function generateProperty(prop: Property, indent: string = "") {
             initializer = `new ArraySchema${(isUpcaseFirst) ? "<>" : ""}(${ctorArgs})`;
 
         } else if(prop.type === "map") {
-            langType = (isUpcaseFirst)
-                ? `MapSchema<${prop.childType}>`
-                : `MapSchema`;
+            if (prop.keyType) {
+                // `MapSchema<V, K>` with both arguments boxed (Float, Integer, …)
+                const valueType = (isUpcaseFirst) ? prop.childType : boxed(typeMaps[prop.childType]);
+                langType = `MapSchema<${valueType}, ${boxed(typeMaps[prop.keyType])}>`;
+                initializer = `new MapSchema<>(${ctorArgs})`;
 
-            initializer = `new MapSchema${(isUpcaseFirst) ? "<>" : ""}(${ctorArgs})`;
+            } else {
+                langType = (isUpcaseFirst)
+                    ? `MapSchema<${prop.childType}>`
+                    : `MapSchema`;
+
+                initializer = `new MapSchema${(isUpcaseFirst) ? "<>" : ""}(${ctorArgs})`;
+            }
         }
 
         if (prop.type !== "ref") {
             typeArgs += (isUpcaseFirst)
                 ? `/ref`
                 : `/${prop.childType}`;
+
+            if (prop.type === "map" && prop.keyType) {
+                // 4th segment: the key's wire type ("index/map/ref/number")
+                typeArgs += `/${prop.keyType}`;
+            }
         }
 
     } else {

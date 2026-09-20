@@ -53,6 +53,18 @@ const distinct = (value: string, index: number, self: string[]) =>
     self.indexOf(value) === index;
 
 /**
+ * `MapSchema<V>` for a string-keyed map, `MapSchema<V, K>` (K from `typeMaps`,
+ * e.g. `varint_t`) when the map declares a non-string key type.
+ */
+function mapLangType(prop: Property) {
+    const valueType = (typeMaps[prop.childType] === undefined)
+        ? `${prop.childType}*`
+        : typeMaps[prop.childType];
+    const keyType = (prop.keyType) ? `, ${typeMaps[prop.keyType]}` : "";
+    return `MapSchema<${valueType}${keyType}>`;
+}
+
+/**
  * Generate individual files for each class
  */
 export function generate (context: Context, options: GenerateOptions): File[] {
@@ -126,7 +138,7 @@ ${klass.properties.map(prop => generateProperty(prop)).join("\n")}
 \t\tthis->_indexes = ${generateAllIndexes(allProperties)};
 \t\tthis->_types = ${generateAllTypes(allProperties)};
 \t\tthis->_childPrimitiveTypes = ${generateAllChildPrimitiveTypes(allProperties)};
-\t\tthis->_childSchemaTypes = ${generateAllChildSchemaTypes(allProperties)};
+\t\tthis->_childSchemaTypes = ${generateAllChildSchemaTypes(allProperties)};${generateAllKeyTypes(allProperties)}
 \t}
 
 \tvirtual ~${klass.name}() {
@@ -198,9 +210,7 @@ function generateProperty(prop: Property) {
             initializer = `new ${langType}()`;
 
         } else if(prop.type === "map") {
-            langType = (isUpcaseFirst)
-                ? `MapSchema<${prop.childType}*>`
-                : `MapSchema<${typeMaps[prop.childType]}>`;
+            langType = mapLangType(prop);
             initializer = `new ${langType}()`;
         }
         isPropPointer = "*";
@@ -261,9 +271,7 @@ function generateGettersAndSetters(klass: Class, type: string, properties: Prope
                 : `(ArraySchema<${typeMaps[property.childType]}> *)`;
 
         } else if (type === "map") {
-            typeCast = (isSchemaType)
-                ? `(MapSchema<${property.childType}*> *)`
-                : `(MapSchema<${typeMaps[property.childType]}> *)`;
+            typeCast = `(${mapLangType(property)} *)`;
         }
 
         return `this->${property.name} = ${typeCast}value;\n\t\t\treturn;`
@@ -327,6 +335,20 @@ function generateAllChildPrimitiveTypes(properties: Property[]) {
             return null;
         }
     }).filter(r => r !== null).join(", ")}}`
+}
+
+/**
+ * Per-field key wire types of the number-keyed maps. Emitted only when at
+ * least one exists, so a schema without one keeps its constructor unchanged.
+ */
+function generateAllKeyTypes(properties: Property[]) {
+    const entries = properties
+        .map((property, i) => (property.type === "map" && property.keyType) ? `{${i}, "${property.keyType}"}` : null)
+        .filter(r => r !== null);
+
+    return (entries.length === 0)
+        ? ""
+        : `\n\t\tthis->_keyTypes = {${entries.join(", ")}};`;
 }
 
 function generateDestructors(properties: Property[]) {

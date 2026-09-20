@@ -1,7 +1,9 @@
 import { Metadata } from "../Metadata.js";
-import { $childType, $refId } from "../types/symbols.js";
+import { refTreeOf, installUntrackedChangeTree, decodedRefIdOf } from "../encoder/ChangeTree.js";
+import { $childType } from "../types/symbols.js";
 import type { IRef } from "../encoder/ChangeTree.js";
 import { spliceOne } from "../types/utils.js";
+import { RefTable } from "../RefTable.js";
 import { OPERATION } from "../encoding/spec.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
@@ -20,15 +22,21 @@ class DecodingWarning extends Error {
 
 export type SchemaCallbacks = { [field: string | number]: Function[] };
 
-// Reused across addRef calls — saves a descriptor object per decoded ref.
-const $refIdDescriptor = { value: 0, enumerable: false, writable: true };
 
 export class ReferenceTracker {
     //
     // Relation of refId => Schema structure
     // For direct access of structures during decoding time.
+    // A `RefTable` has the read surface of the `Map<number, IRef>` it
+    // replaces (get / has / size / keys / values / entries / forEach /
+    // iteration, in ascending refId order).
     //
-    public refs = new Map<number, IRef>();
+    public refs = new RefTable<IRef>();
+
+    /** The decode loop's lookup (two array loads — see `RefTable`). */
+    getRef(refId: number): IRef | undefined {
+        return this.refs.get(refId);
+    }
 
     public refCount: { [refId: number]: number; } = {};
     public deletedRefs = new Set<number>();
@@ -44,16 +52,17 @@ export class ReferenceTracker {
     addRef(refId: number, ref: IRef, incrementCount: boolean = true) {
         this.refs.set(refId, ref);
 
-        // `enumerable: false` is load-bearing: tests use `deepStrictEqual`
-        // on decoded instances, which WOULD walk enumerable Symbol-keyed
-        // properties and include `$refId` in the comparison. Keep the
-        // descriptor dance for semantic compatibility.
-        if (ref[$refId] === undefined) {
-            $refIdDescriptor.value = refId;
-            Object.defineProperty(ref, $refId, $refIdDescriptor);
-        } else if (ref[$refId] !== refId) {
-            ref[$refId] = refId; // property exists (writable) — plain write keeps flags
+        // The refId lives on the ref's (Untracked)ChangeTree; `ref[$refId]` is
+        // a prototype accessor over it, so it stays out of `deepStrictEqual`.
+        let tree = refTreeOf(ref);
+        if (tree === undefined) {
+            // A ref no factory of this library built: give it the same stub a
+            // decoder-built instance carries — one home for the refId, and the
+            // decode loop finds the tree it expects.
+            installUntrackedChangeTree(ref);
+            tree = refTreeOf(ref)!;
         }
+        tree.refId = refId;
 
         if (incrementCount) {
             this.refCount[refId] = (this.refCount[refId] || 0) + 1;
@@ -101,13 +110,14 @@ export class ReferenceTracker {
 
     // for decoding
     garbageCollectDeletedRefs() {
+        if (this.deletedRefs.size === 0) return; // the common patch: nothing released this decode
         this.deletedRefs.forEach((refId) => {
             //
             // Skip active references.
             //
             if (this.refCount[refId] > 0) { return; }
 
-            const ref = this.refs.get(refId);
+            const ref = this.getRef(refId)!;
 
             //
             // Ensure child schema instances have their references removed as well.
@@ -118,7 +128,7 @@ export class ReferenceTracker {
                     const field = metadata[index as any as number].name;
                     const child = ref[field as keyof IRef];
                     if (typeof(child) === "object" && child) {
-                        const childRefId = (child as any)[$refId];
+                        const childRefId = decodedRefIdOf(child);
                         if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
                             this.removeRef(childRefId);
                         }
@@ -127,13 +137,14 @@ export class ReferenceTracker {
 
             } else {
                 if (typeof ((ref as any)[$childType]) === "function") {
-                    Array.from((ref as MapSchema).values())
-                        .forEach((child) => {
-                            const childRefId = child[$refId];
-                            if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
-                                this.removeRef(childRefId);
-                            }
-                        });
+                    // removeRef only appends to deletedRefs (a Set: safe to grow during forEach),
+                    // so the values can be walked directly instead of copied into an array first
+                    for (const child of (ref as MapSchema).values()) {
+                        const childRefId = decodedRefIdOf(child);
+                        if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
+                            this.removeRef(childRefId);
+                        }
+                    }
                 }
             }
 

@@ -10,7 +10,7 @@ import {
     $refId,
     $resyncPrune,
 } from "../symbols.js";
-import { ChangeTree, installUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
+import { ChangeTree, installUntrackedChangeTree, type IRef, stampTree, treeOf, refTreeOf, defineRefAccessors, refIdOf } from "../../encoder/ChangeTree.js";
 import { KeyedRecorder } from "../../encoder/KeyedRecorder.js";
 import {
     createStreamableState,
@@ -35,8 +35,9 @@ import type { Schema } from "../../Schema.js";
  * post-add mutation tracking entirely.
  */
 export class StreamSchema<V = any> implements IRef {
-    [$changes]: ChangeTree;
-    [$refId]?: number;
+    /** Prototype accessors over the private tree slot — see `defineRefAccessors`. */
+    declare [$changes]: ChangeTree;
+    declare [$refId]?: number;
 
     protected [$childType]: string | typeof Schema;
 
@@ -104,7 +105,7 @@ export class StreamSchema<V = any> implements IRef {
         if (!view) return true;
         const value = (ref as any)[$getByIndex](index);
         if (value === undefined) return false;
-        return view.isVisible(value[$changes]);
+        return view.isVisible(refTreeOf(value));
     }
 
     static is(type: any): boolean {
@@ -112,11 +113,7 @@ export class StreamSchema<V = any> implements IRef {
     }
 
     constructor() {
-        Object.defineProperty(this, $changes, {
-            value: new ChangeTree(this),
-            enumerable: false,
-            writable: true,
-        });
+        stampTree(this, new ChangeTree(this));
         this[$childType] = undefined;
         // `isFiltered` / `isStreamCollection` are set via `inheritedFlags`
         // when this stream is attached to a parent field — no constructor-
@@ -150,13 +147,13 @@ export class StreamSchema<V = any> implements IRef {
         this.$items.set(position, value);
         this._itemIndex.set(value, position);
 
-        const tree = this[$changes];
+        const tree = treeOf(this);
         const root = tree.root;
 
         // Attach element as a child — assigns $refId and wires the parent
         // chain so the element's own ChangeTree participates in encoding.
-        if (value[$changes] !== undefined) {
-            value[$changes].setParent(this, root, position);
+        if (refTreeOf(value) !== undefined) {
+            refTreeOf(value).setParent(this, root, position, tree);
         }
 
         if (root !== undefined) streamRouteAdd(this, root, position);
@@ -175,11 +172,11 @@ export class StreamSchema<V = any> implements IRef {
         this._itemIndex.delete(value);
         this.$items.delete(position);
 
-        const root = this[$changes].root;
+        const root = treeOf(this).root;
         if (root !== undefined) {
-            streamRouteRemove(this, root, (this as any)[$refId], position);
-            if (value[$changes] !== undefined) {
-                root.remove((value as any)[$changes]);
+            streamRouteRemove(this, root, refIdOf(this), position);
+            if (refTreeOf(value) !== undefined) {
+                root.remove(refTreeOf(value));
             }
         }
 
@@ -192,12 +189,12 @@ export class StreamSchema<V = any> implements IRef {
 
     /** Remove every element; queue DELETE wire ops for already-sent items. */
     clear(): void {
-        const root = this[$changes].root;
+        const root = treeOf(this).root;
         if (root !== undefined) {
-            streamRouteClear(this, root, (this as any)[$refId]);
+            streamRouteClear(this, root, refIdOf(this));
             for (const el of this.$items.values()) {
-                if (el[$changes] !== undefined) {
-                    root.remove((el as any)[$changes]);
+                if (refTreeOf(el) !== undefined) {
+                    root.remove(refTreeOf(el));
                 }
             }
         }
@@ -287,3 +284,5 @@ export class StreamSchema<V = any> implements IRef {
 }
 
 registerType("stream", { constructor: StreamSchema });
+
+defineRefAccessors(StreamSchema.prototype);

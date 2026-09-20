@@ -41,7 +41,7 @@ export function codecOf(lib, _variant) {
 }
 
 // Decorators applied manually (same call shape __decorate produces): type first, then view.
-function field(lib, Klass, name, typeDef, viewTag) {
+export function field(lib, Klass, name, typeDef, viewTag) {
     lib.type(typeDef)(Klass.prototype, name, undefined);
     if (viewTag !== undefined) {
         lib.view(viewTag === true ? undefined : viewTag)(Klass.prototype, name, undefined);
@@ -214,6 +214,97 @@ export function makeDeepPlayer(shapes, j) {
     return player;
 }
 
+// --- Tree shape (untagged) -------------------------------------------------
+
+// The root `bench_encode.js` shape: State → Map<Player{position, Map<Item{price,
+// Attribute[]}>}>, no view tags. One player = 73 tracked instances
+// (player + position + items map + 10 × (item + array + 5 attributes)).
+
+export function defineTree(lib) {
+    setBufferSize(lib);
+
+    class Attribute extends lib.Schema {}
+    field(lib, Attribute, "name", "string");
+    field(lib, Attribute, "value", "number");
+
+    class Item extends lib.Schema {
+        constructor() {
+            super(...arguments);
+            this.attributes = new lib.ArraySchema();
+        }
+    }
+    field(lib, Item, "price", "number");
+    field(lib, Item, "attributes", [Attribute]);
+
+    class Position extends lib.Schema {}
+    field(lib, Position, "x", "number");
+    field(lib, Position, "y", "number");
+
+    class Player extends lib.Schema {
+        constructor() {
+            super(...arguments);
+            this.position = new Position();
+            this.items = new lib.MapSchema();
+        }
+    }
+    field(lib, Player, "position", Position);
+    field(lib, Player, "items", { map: Item });
+
+    class State extends lib.Schema {
+        constructor() {
+            super(...arguments);
+            this.players = new lib.MapSchema();
+        }
+    }
+    field(lib, State, "players", { map: Player });
+    field(lib, State, "currentTurn", "string");
+
+    return { State, Player, Item, Attribute, Position };
+}
+
+/** One fully-populated Tree player (10 items × 5 attributes), built detached as bench_encode.js does. */
+export function makeTreePlayer(shapes, j) {
+    const player = new shapes.Player();
+    player.position.x = (j + 1) * 100;
+    player.position.y = (j + 1) * 100;
+    for (let k = 0; k < 10; k++) {
+        const item = new shapes.Item();
+        item.price = (j + 1) * 50;
+        for (let l = 0; l < 5; l++) {
+            const attr = new shapes.Attribute();
+            attr.name = `Attribute ${l}`;
+            attr.value = l;
+            item.attributes.push(attr);
+        }
+        player.items.set(`item-${k}`, item);
+    }
+    return player;
+}
+
+/** State + Encoder holding Tree players 0..n-1, already encoded and discarded. */
+export function buildTreeState(lib, n) {
+    const shapes = defineTree(lib);
+    const state = new shapes.State();
+    const encoder = new lib.Encoder(state);
+    for (let i = 0; i < n; i++) state.players.set(KEY(i), makeTreePlayer(shapes, i));
+    encoder.encode();
+    encoder.discardChanges();
+    return { state, encoder, ...shapes };
+}
+
+/** Frames that each drop the `batch` oldest Tree players and add `batch` new ones (room size stays `n`). */
+export function genTreeTurnoverFrames(shapes, state, encoder, frames, n, batch) {
+    const out = [];
+    let oldest = 0, next = n;
+    for (let i = 0; i < frames; i++) {
+        for (let j = 0; j < batch; j++) state.players.delete(KEY(oldest++));
+        for (let j = 0; j < batch; j++) state.players.set(KEY(next++), makeTreePlayer(shapes, j));
+        out.push(encoder.encode().slice());
+        encoder.discardChanges();
+    }
+    return out;
+}
+
 // --- Multi-view encode (mirrors test/Schema.ts encodeMultiple) ------------
 
 /**
@@ -237,4 +328,92 @@ export function encodeAllForView(_codec, encoder, view) {
     const it = { offset: 0 };
     encoder.encodeAll(it);
     return encoder.encodeAllView(view, it.offset, it);
+}
+
+// --- Map shape (string- or number-keyed) ----------------------------------
+//
+// `State { players: Map<Player{name, position{x,y}}>, scores: Map<number> }`
+// keyed either by 8-char strings (`KEY(i)`, session-id sized) or by the
+// integer `i` (`key: "number"` — a build without typed keys ignores the
+// option and stringifies, so the same scenario runs on every build; its byte
+// counts differ by design).
+
+export function defineMapState(lib, keyType = "string") {
+    setBufferSize(lib);
+
+    class Position extends lib.Schema {}
+    field(lib, Position, "x", "number");
+    field(lib, Position, "y", "number");
+
+    class Player extends lib.Schema {
+        constructor() {
+            super(...arguments);
+            this.position = new Position();
+        }
+    }
+    field(lib, Player, "name", "string");
+    field(lib, Player, "position", Position);
+
+    class State extends lib.Schema {
+        constructor() {
+            super(...arguments);
+            this.players = new lib.MapSchema();
+            this.scores = new lib.MapSchema();
+        }
+    }
+    const mapDef = (child) => (keyType === "string") ? { map: child } : { map: child, key: keyType };
+    field(lib, State, "players", mapDef(Player));
+    field(lib, State, "scores", mapDef("number"));
+
+    // A build without typed keys stringifies number keys in set(); reads by
+    // number would then miss, so such a build gets the integer as a string.
+    const typedKeys = "~applyKeyType" in lib.MapSchema.prototype;
+    const key = (keyType === "string") ? KEY : (typedKeys ? (i) => i : (i) => String(i));
+    return { State, Player, Position, key, typedKeys };
+}
+
+export function makeMapPlayer(Player, i) {
+    const p = new Player();
+    p.name = `Player ${i}`;
+    p.position.x = i;
+    p.position.y = i;
+    return p;
+}
+
+/** State + Encoder with `players` entries 0..n-1 and `scores` entries 0..m-1. */
+export function buildMapState(lib, keyType, n, m = 0) {
+    const shapes = defineMapState(lib, keyType);
+    const state = new shapes.State();
+    const encoder = new lib.Encoder(state);
+    for (let i = 0; i < n; i++) state.players.set(shapes.key(i), makeMapPlayer(shapes.Player, i));
+    for (let i = 0; i < m; i++) state.scores.set(shapes.key(i), i);
+    return { state, encoder, ...shapes };
+}
+
+/** Churn frames over `players`: delete `churn` keys, encode, re-add them, encode (two frames per cycle). */
+export function genMapChurnFrames(shapes, state, encoder, cycles, n, churn) {
+    const frames = [];
+    for (let i = 0; i < cycles; i++) {
+        for (let j = 0; j < churn; j++) state.players.delete(shapes.key((i * churn + j) % n));
+        frames.push(encoder.encode().slice());
+        encoder.discardChanges();
+        for (let j = 0; j < churn; j++) {
+            const k = (i * churn + j) % n;
+            state.players.set(shapes.key(k), makeMapPlayer(shapes.Player, i * churn + j));
+        }
+        frames.push(encoder.encode().slice());
+        encoder.discardChanges();
+    }
+    return frames;
+}
+
+/** Replace frames over `scores`: the first `count` entries get a new value each tick. */
+export function genMapReplaceFrames(shapes, state, encoder, ticks, count) {
+    const frames = [];
+    for (let i = 0; i < ticks; i++) {
+        for (let j = 0; j < count; j++) state.scores.set(shapes.key(j), i + j);
+        frames.push(encoder.encode().slice());
+        encoder.discardChanges();
+    }
+    return frames;
 }

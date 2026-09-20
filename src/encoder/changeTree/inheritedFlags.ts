@@ -17,7 +17,7 @@ import {
     INHERITABLE_FLAGS, IS_FULL_STATE_ONLY, IS_PATCH_ONLY, PENDING_FILTER_REFRESH,
     // IS_UNRELIABLE — tree-level unreliable currently disabled; see
     // INHERITABLE_FLAGS comment in ChangeTree.ts.
-    type ChangeTree, type Ref,
+    type ChangeTree, type Ref, refTreeOf,
 } from "../ChangeTree.js";
 import type { Root, Streamable } from "../Root.js";
 import { ensureStreamState } from "../streaming.js";
@@ -84,13 +84,14 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
     // Walk up a collection level so `parent` lands on the Schema that
     // owns the field at `parentIndex`. Field annotations live on Schema
     // metadata; collections have none.
-    const parentChangeTree: ChangeTree = parent[$changes];
+    const primary = tree.parentTree;
+    const parentChangeTree: ChangeTree = (primary !== undefined && primary.ref === parent) ? primary : refTreeOf(parent)!;
     const parentIsCollection = !parentChangeTree._isSchema;
     let parentMetadata: any;
     if (parentIsCollection) {
         parent = parentChangeTree.parent;
         parentIndex = parentChangeTree.parentIndex;
-        parentMetadata = parent?.[$changes].metadata;
+        parentMetadata = parentChangeTree.parentTree?.metadata;
     } else {
         parentMetadata = parentChangeTree.metadata;
     }
@@ -271,14 +272,15 @@ function _sharesEligible(tree: ChangeTree): boolean {
 function refreshFilterState(tree: ChangeTree): void {
     tree.flags &= ~PENDING_FILTER_REFRESH;
     const root = tree.root;
-    if (root === undefined || tree.parentRef === undefined) return;
+    const primary = tree.parentTree;
+    if (root === undefined || primary === undefined) return;
 
     const sharesEligible = _sharesEligible(tree);
 
-    let bits = _edgeBits(tree, tree.parentRef, tree._parentIndex, sharesEligible);
+    let bits = _edgeBits(tree, primary, tree._parentIndex, sharesEligible);
     // Saturated means no further edge can change the outcome.
     for (let e = tree.extraParents; e !== undefined && bits !== EDGE_SATURATED; e = e.next) {
-        bits |= _edgeBits(tree, e.ref, e.index, sharesEligible);
+        bits |= _edgeBits(tree, refTreeOf(e.ref)!, e.index, sharesEligible);
     }
 
     // No live edge resolved (mid-detach churn) — keep the current
@@ -309,8 +311,7 @@ const EDGE_SATURATED = EDGE_LIVE | EDGE_PUBLIC | EDGE_SHARES;
  * Classify one parent edge: is it live, does it make the tree publicly
  * reachable, does view visibility flow through it.
  */
-function _edgeBits(tree: ChangeTree, parentRef: Ref, index: number, sharesEligible: boolean): number {
-    const parentTree: ChangeTree = parentRef[$changes];
+function _edgeBits(tree: ChangeTree, parentTree: ChangeTree, index: number, sharesEligible: boolean): number {
     if (parentTree.root !== tree.root || !isEdgeLive(tree, parentTree, index)) return 0;
 
     // A queued parent must settle first — this edge reads its `isFiltered`.
@@ -336,7 +337,7 @@ function _edgeBits(tree: ChangeTree, parentRef: Ref, index: number, sharesEligib
     } else if (sharesEligible && !parentTree.isStreamCollection) {
         // #226: default-tag @view() collections keep per-item gating;
         // untagged and non-default-tag @view(N) ones share.
-        const gp = parentTree.parent?.[$changes];
+        const gp = parentTree.parentTree;
         const tag = gp?._isSchema ? gp.encDescriptor.tags[parentTree.parentIndex] : undefined;
         if (tag !== DEFAULT_VIEW_TAG) bits |= EDGE_SHARES;
     }

@@ -89,12 +89,48 @@ export function writeMask64(bytes: Uint8Array, low: number, high: number, it: It
     }
 }
 
-/** `uvarint(utf8ByteLength) utf8Bytes`. `null` / `undefined` ride as `""`. */
+const _lenIt: Iterator = { offset: 0 };
+
+/**
+ * Strings of at least this many UTF-16 units are encoded by
+ * `TextEncoder.encodeInto` (one native call, ~80 ns flat) instead of the
+ * char loop (~3 ns per char); measured crossover for ASCII, accented and CJK
+ * text alike (bench/realworld-results.md, "Round 2 — D").
+ */
+const ENCODE_INTO_MIN = 32;
+
+/**
+ * `uvarint(utf8ByteLength) utf8Bytes`. `null` / `undefined` ride as `""`.
+ *
+ * Single pass: the UTF-8 is written behind one reserved length byte and the
+ * length is back-patched; only a body of 128+ bytes has to move up by the
+ * extra prefix bytes (the same scheme as `endChunk`). A write past the buffer
+ * end leaves `it.offset` beyond `bytes.byteLength` so the caller's overflow
+ * check triggers a resize + re-encode, exactly as the char loop always did.
+ */
 export function writeString(bytes: Uint8Array, value: string | null | undefined, it: Iterator): void {
-    if (!value) { value = ""; }
-    const length = encode.utf8Length(value, "utf8");
-    uvarint(bytes, length, it);
-    encode.utf8Write(bytes, value, it);
+    if (!value) { bytes[it.offset++] = 0; return; }
+    const lenPos = it.offset++;
+    if (value.length < ENCODE_INTO_MIN || encode.textEncoder === undefined) {
+        encode.utf8Write(bytes, value, it);
+    } else {
+        encode.utf8EncodeInto(bytes, value, it);
+    }
+    const len = it.offset - lenPos - 1;
+    if (len < 0x80) {
+        bytes[lenPos] = len;
+        return;
+    }
+    const n = uvarintSize(len);
+    const extra = n - 1;
+    if (it.offset + extra > bytes.byteLength) {
+        it.offset += extra; // overflow: the caller resizes and re-encodes
+        return;
+    }
+    bytes.copyWithin(lenPos + n, lenPos + 1, it.offset);
+    _lenIt.offset = lenPos;
+    uvarint(bytes, len, _lenIt);
+    it.offset += extra;
 }
 
 export function readString(bytes: Uint8Array, it: Iterator): string {
@@ -162,8 +198,6 @@ export function writeNumber(bytes: Uint8Array, value: number, it: Iterator): voi
     bytes[it.offset++] = (bits >> 24) & 255;
 }
 
-const _lenIt: Iterator = { offset: 0 };
-
 /**
  * Close a chunk (opened as `uvarint(refId)` + one reserved byte) by
  * back-patching its length. Lengths ≥ 128 need more than the reserved byte:
@@ -172,13 +206,14 @@ const _lenIt: Iterator = { offset: 0 };
  * caller's overflow check triggers a resize + re-encode (a clamped
  * `copyWithin` would silently corrupt the tail).
  */
-export function endChunk(bytes: Uint8Array, lenPos: number, it: Iterator, capacity: number): void {
+export function endChunk(bytes: Uint8Array, lenPos: number, it: Iterator, capacity: number, flag: number = 0): void {
     const len = it.offset - lenPos - 1;
-    if (len < 0x80) {
-        bytes[lenPos] = len;
+    const v = len * 2 + flag; // low bit: 0 = chunk, 1 = same-shape run
+    if (v < 0x80) {
+        bytes[lenPos] = v;
         return;
     }
-    const n = uvarintSize(len);
+    const n = uvarintSize(v);
     const extra = n - 1;
     if (it.offset + extra > capacity) {
         it.offset += extra;
@@ -186,6 +221,6 @@ export function endChunk(bytes: Uint8Array, lenPos: number, it: Iterator, capaci
     }
     bytes.copyWithin(lenPos + n, lenPos + 1, it.offset);
     _lenIt.offset = lenPos;
-    uvarint(bytes, len, _lenIt);
+    uvarint(bytes, v, _lenIt);
     it.offset += extra;
 }

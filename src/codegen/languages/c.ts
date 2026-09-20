@@ -195,8 +195,12 @@ function getFieldType(prop: Property): string {
 }
 
 function getFieldTypeString(prop: Property): string {
-    // Always return the type itself (ref, array, map, string, number, etc.)
-    return prop.type;
+    // Always return the type itself (ref, array, map, string, number, etc.).
+    // The field initializer is positional, so a map's non-string key type
+    // rides along in this slot: "map:number", "map:int32", …
+    return (prop.type === "map" && prop.keyType)
+        ? `map:${prop.keyType}`
+        : prop.type;
 }
 
 function generateFieldsArray(klass: Class, typeName: string, snakeName: string, allProperties: Property[]) {

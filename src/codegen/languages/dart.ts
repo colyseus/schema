@@ -167,18 +167,23 @@ function generateGetter(prop: Property): string {
 
     let body: string;
 
+    // Number-keyed map: `MapSchema<V, double>` over `mapOf(..., keyType: 'number')`.
+    // Every numeric key reads as `double`, like every numeric scalar.
+    const keyGeneric = (prop.type === "map" && prop.keyType) ? `, ${typeMaps[prop.keyType] ?? "dynamic"}` : "";
+    const keyArg = (prop.type === "map" && prop.keyType) ? `, keyType: '${prop.keyType}'` : "";
+
     if (prop.childType && isSchemaType(prop.childType)) {
         if (prop.type === "ref") {
             body = `  ${prop.childType}? get ${prop.name} => refOf('${prop.name}', ${prop.childType}.new);`;
         } else if (prop.type === "map") {
-            body = `  MapSchema<${prop.childType}> get ${prop.name} => mapOf('${prop.name}', ${prop.childType}.new);`;
+            body = `  MapSchema<${prop.childType}${keyGeneric}> get ${prop.name} => mapOf('${prop.name}', ${prop.childType}.new${keyArg});`;
         } else {
             body = `  ArraySchema<${prop.childType}> get ${prop.name} => arrayOf('${prop.name}', ${prop.childType}.new);`;
         }
     } else if (prop.childType) {
         const child = typeMaps[prop.childType] ?? "dynamic";
         if (prop.type === "map") {
-            body = `  MapSchema<${child}> get ${prop.name} => primitiveMapOf('${prop.name}');`;
+            body = `  MapSchema<${child}${keyGeneric}> get ${prop.name} => primitiveMapOf('${prop.name}'${keyArg});`;
         } else if (prop.type === "array") {
             body = `  ArraySchema<${child}> get ${prop.name} => primitiveArrayOf('${prop.name}');`;
         } else {

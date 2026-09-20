@@ -1,7 +1,8 @@
 import { OPERATION } from "../encoding/spec.js";
 import { TypeContext } from "../types/TypeContext.js";
-import { ChangeTree, ChangeTreeList, createChangeTreeList, PENDING_FILTER_REFRESH, type ChangeTreeNode } from "./ChangeTree.js";
+import { ChangeTree, ChangeTreeList, createChangeTreeList, PENDING_FILTER_REFRESH, type ChangeTreeNode, refTreeOf } from "./ChangeTree.js";
 import { $changes, $refId } from "../types/symbols.js";
+import { RefTable } from "../RefTable.js";
 import type { StateView } from "./StateView.js";
 import type { StreamSchema } from "../types/custom/StreamSchema.js";
 import type { StreamableState } from "./streaming.js";
@@ -22,10 +23,6 @@ export interface Streamable {
     _unregister(): void;
 }
 
-// Reused across Root.add calls — defineProperty is unavoidable ($refId must
-// stay non-enumerable for deepStrictEqual) but the descriptor literal isn't.
-const $refIdDescriptor = { value: 0, enumerable: false, writable: true };
-
 export class Root {
     /**
      * Monotonic refId counter. RefIds are never recycled — a refId is a
@@ -35,8 +32,16 @@ export class Root {
      */
     protected nextUniqueId: number = 0;
 
-    refCount: {[id: number]: number} = {};
-    changeTrees: {[refId: number]: ChangeTree} = {};
+    /**
+     * refId → number of parent edges, for ATTACHED trees only: the entry goes
+     * away with the last edge. (It used to stay behind as `0` for every refId
+     * ever removed — unbounded growth in a long-lived room with churn; the
+     * "was removed, re-stage on re-add" fact it carried is the tree's
+     * `needsRestage` flag now.)
+     */
+    refCount = new RefTable<number>();
+    /** refId → attached tree (see `RefTable`: Map-like `get` / `has` / `values()`, not index access). */
+    changeTrees = new RefTable<ChangeTree>();
 
     /**
      * Queue of all ChangeTrees with reliable dirty state. Per-tick encode()
@@ -159,31 +164,27 @@ export class Root {
     }
 
     add(changeTree: ChangeTree) {
-        const ref = changeTree.ref;
-
-        // Assign unique `refId` to ref if it doesn't have one yet.
-        // $refId is a Symbol but assert.deepStrictEqual still walks
-        // *enumerable* own Symbols, so we keep defineProperty(enumerable:false)
-        // to keep $refId hidden from deep-equal comparisons in tests.
-        if (ref[$refId] === undefined) {
-            $refIdDescriptor.value = this.nextUniqueId++;
-            Object.defineProperty(ref, $refId, $refIdDescriptor);
+        // Assign unique `refId` if the tree doesn't have one yet. It lives on
+        // the ChangeTree (`ref[$refId]` is a prototype accessor over it): a
+        // plain store, where an own non-enumerable property cost a
+        // defineProperty runtime call per attached instance.
+        let refId = changeTree.refId;
+        if (refId === undefined) {
+            refId = changeTree.refId = this.nextUniqueId++;
         }
 
-        const refId = ref[$refId];
+        const isNewChangeTree = (this.changeTrees.get(refId) === undefined);
+        if (isNewChangeTree) { this.changeTrees.set(refId, changeTree); }
 
-        const isNewChangeTree = (this.changeTrees[refId] === undefined);
-        if (isNewChangeTree) { this.changeTrees[refId] = changeTree; }
-
-        const previousRefCount = this.refCount[refId];
-        if (previousRefCount === 0 || changeTree.needsRestage) {
+        const previousRefCount = this.refCount.get(refId); // undefined: not attached
+        if (changeTree.needsRestage) {
             //
             // Re-stage every currently-populated non-patchOnly index as a
             // fresh ADD in the matching dirty bucket so the next encode
-            // re-emits it on the correct channel. Two triggers:
-            // - refCount 0: a previously-removed tree re-added under the
+            // re-emits it on the correct channel. NEEDS_RESTAGE is set by:
+            // - `remove()`: a previously-removed tree re-added under the
             //   same refId (its ops were consumed by an earlier encode).
-            // - NEEDS_RESTAGE: a `Schema.reset` instance re-entering under
+            // - `recycle()`: a `Schema.reset` instance re-entering under
             //   a fresh refId (reset cleared the buckets; its retained
             //   values would otherwise never be encoded).
             //
@@ -191,26 +192,28 @@ export class Root {
             changeTree.restage();
         }
 
-        this.refCount[refId] = (previousRefCount || 0) + 1;
+        this.refCount.set(refId, (previousRefCount ?? 0) + 1);
 
         // Gained a 2nd+ parent edge (instance sharing / re-assignment) —
         // re-derive filter state before the next encode. Chokepoint for
         // every attach path; mirrors the edge-loss enqueue in `remove()`.
-        if (previousRefCount > 0) this.enqueueFilterRefresh(changeTree);
+        if (previousRefCount !== undefined) this.enqueueFilterRefresh(changeTree);
 
         return isNewChangeTree;
     }
 
     remove(changeTree: ChangeTree) {
-        const refId = changeTree.ref[$refId];
-        const refCount = (this.refCount[refId]) - 1;
+        const refId = changeTree.refId;
+        if (refId === undefined) { return 0; } // never attached to a root: nothing to release
+        // no entry = already removed: `0 - 1` takes the (idempotent) removal branch again
+        const refCount = (this.refCount.get(refId) ?? 0) - 1;
 
         if (refCount <= 0) {
             //
             // Only remove "root" reference if it's the last reference
             //
             changeTree.root = undefined;
-            delete this.changeTrees[refId];
+            this.changeTrees.delete(refId);
 
             // Streamable-collection detach (StreamSchema + any `.stream()`
             // collection). Tree flag is cheaper than the class-level
@@ -224,17 +227,18 @@ export class Root {
             this.removeFromQueue(changeTree);
             this.removeFromUnreliableQueue(changeTree);
 
-            this.refCount[refId] = 0;
+            this.refCount.delete(refId);
+            changeTree.needsRestage = true; // a re-add must re-emit it: its ops were consumed
 
             changeTree.forEachChild((child, _) => {
                 if (child.removeParent(changeTree.ref)) {
                     if ((
-                        child.parentRef === undefined || // no parent, remove it
-                        (child.parentRef && this.refCount[child.ref[$refId]] > 0) // parent is still in use, but has more than one reference, remove it
+                        child.parentTree === undefined || // no parent, remove it
+                        (child.parentTree && this.refCount.get(child.refId) !== undefined) // parent is still in use, but has more than one reference, remove it
                     )) {
                         this.remove(child);
 
-                    } else if (child.parentRef) {
+                    } else if (child.parentTree) {
                         // re-assigning a child of the same root, move it next to parent
                         this.moveNextToParent(child);
                     }
@@ -242,7 +246,7 @@ export class Root {
             });
 
         } else {
-            this.refCount[refId] = refCount;
+            this.refCount.set(refId, refCount);
 
             // Lost one of several parent edges — the surviving edge set may
             // no longer include a public path (or may have gained one).
@@ -283,10 +287,10 @@ export class Root {
         node: ChangeTreeNode,
         nodeField: "changesNode" | "unreliableChangesNode",
     ): void {
-        const parent = changeTree.parent;
-        if (!parent || !parent[$changes]) return;
+        const parentTree = changeTree.parentTree;
+        if (parentTree === undefined) return;
 
-        const parentNode = parent[$changes][nodeField];
+        const parentNode = parentTree[nodeField];
         if (!parentNode || parentNode === node) return;
 
         // Positions are strictly increasing along the list, so this is an

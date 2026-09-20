@@ -73,6 +73,17 @@ export const $changes: unique symbol = Symbol.for("$changes");
 export const $childType: unique symbol = Symbol.for("$childType");
 
 /**
+ * Declared key type of a MapSchema (`"string"` / `"number"` / a numeric
+ * primitive name). `undefined` on a map that has not been attached to a
+ * typed field yet (legacy behavior: keys are stringified). Real Symbol —
+ * same rationale as $childType.
+ */
+export const $keyType: unique symbol = Symbol.for("$keyType");
+
+/** Attach-time hook: `MapSchema[$applyKeyType](keyType)` sets `$keyType` and re-keys pre-existing entries if needed. */
+export const $applyKeyType = "~applyKeyType";
+
+/**
  * Self-reference an instance sets on `this` so its own methods can recover
  * the underlying object even when `this` is a Proxy wrapper. Used by
  * ArraySchema (whose public API is a Proxy) to grab the underlying instance

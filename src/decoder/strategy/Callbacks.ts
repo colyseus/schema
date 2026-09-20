@@ -1,11 +1,12 @@
 import { Metadata } from "../../Metadata.js";
+import { refIdOf, decodedRefIdOf } from "../../encoder/ChangeTree.js";
 import { Collection, NonFunctionPropNames, CollectionLike } from "../../types/HelperTypes.js";
 import type { IRef, Ref } from "../../encoder/ChangeTree.js";
 import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { Schema } from "../../Schema.js";
-import { $refId } from "../../types/symbols.js";
+import { } from "../../types/symbols.js";
 import { MapSchema } from "../../types/custom/MapSchema.js";
 import { ArraySchema } from "../../types/custom/ArraySchema.js";
 import { getDecoderStateCallbacks, type SchemaCallbackProxy } from "./getDecoderStateCallbacks.js";
@@ -87,16 +88,16 @@ export class StateCallbackStrategy<TState extends IRef> {
         const collection = (instance as any)[propertyName] as TReturn;
 
         // Collection not available yet. Listen for its availability before attaching the handler.
-        if (!collection || collection[$refId] === undefined) {
+        if (!collection || refIdOf(collection) === undefined) {
             let removePropertyCallback: () => void;
             removePropertyCallback = this.addCallback(
-                instance[$refId]!,
+                refIdOf(instance)!,
                 propertyName,
                 (value: TReturn, _: TReturn) => {
                     if (value !== null && value !== undefined) {
                         // Remove the property listener now that collection is available
                         removePropertyCallback();
-                        removeHandler = this.addCallback(value[$refId]!, operation, handler);
+                        removeHandler = this.addCallback(refIdOf(value)!, operation, handler);
                     }
                 }
             );
@@ -115,7 +116,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 });
             }
 
-            return this.addCallback(collection[$refId]!, operation, handler);
+            return this.addCallback(refIdOf(collection)!, operation, handler);
         }
     }
 
@@ -160,7 +161,7 @@ export class StateCallbackStrategy<TState extends IRef> {
         // instance bound twice in one batch: the second binding's listener
         // still sees the value the first binding's body delivered.)
         if (immediate && this.isTriggering) {
-            immediate = !this.hasPendingChange(instance[$refId]!, propertyName);
+            immediate = !this.hasPendingChange(refIdOf(instance)!, propertyName);
         }
 
         //
@@ -171,7 +172,7 @@ export class StateCallbackStrategy<TState extends IRef> {
             handler(currentValue, undefined as any);
         }
 
-        return this.addCallback(instance[$refId]!, propertyName, handler);
+        return this.addCallback(refIdOf(instance)!, propertyName, handler);
     }
 
     /**
@@ -204,7 +205,7 @@ export class StateCallbackStrategy<TState extends IRef> {
             // onChange(instance, handler) - instance change
             const instance = args[0] as Schema;
             const handler = args[1] as InstanceChangeCallback;
-            return this.addCallback(instance[$refId]!, OPERATION.REPLACE, handler);
+            return this.addCallback(refIdOf(instance)!, OPERATION.REPLACE, handler);
         }
 
         if (typeof args[0] === 'string') {
@@ -336,7 +337,7 @@ export class StateCallbackStrategy<TState extends IRef> {
             action();
         }
 
-        return this.addCallback((from as IRef)[$refId]!, OPERATION.REPLACE, action);
+        return this.addCallback(refIdOf(from)!, OPERATION.REPLACE, action);
     }
 
     /** True iff a change for (`refId`, `field`) is still ahead in the batch being dispatched. */
@@ -379,7 +380,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
                 Schema.isSchema(change.previousValue)
             ) {
-                const childRefId = (change.previousValue as Ref)[$refId]!;
+                const childRefId = decodedRefIdOf(change.previousValue)!;
                 const deleteCallbacks = this.callbacks[childRefId]?.[OPERATION.DELETE];
                 if (deleteCallbacks) {
                     for (let j = deleteCallbacks.length - 1; j >= 0; j--) {

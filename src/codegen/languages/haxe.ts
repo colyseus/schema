@@ -121,9 +121,14 @@ function generateProperty(prop: Property) {
             initializer = `new ${langType}()`;
 
         } else if(prop.type === "map") {
-            langType = (isUpcaseFirst)
-                ? `MapSchema<${prop.childType}>`
-                : `MapSchema<${typeMaps[prop.childType]}>`;
+            const valueType = (isUpcaseFirst) ? prop.childType : typeMaps[prop.childType];
+            if (prop.keyType) {
+                // @:type("map", Value, "number") / MapSchema<Value, KeyType>
+                typeArgs += `, "${prop.keyType}"`;
+                langType = `MapSchema<${valueType}, ${typeMaps[prop.keyType]}>`;
+            } else {
+                langType = `MapSchema<${valueType}>`;
+            }
             initializer = `new ${langType}()`;
         }
 

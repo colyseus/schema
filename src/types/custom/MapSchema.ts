@@ -1,5 +1,7 @@
-import { $changes, $childType, $deleteByIndex, $onEncodeEnd, $filter, $getByIndex, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
-import { ChangeTree, installUntrackedChangeTree, IRef } from "../../encoder/ChangeTree.js";
+import { $applyKeyType, $changes, $childType, $deleteByIndex, $onEncodeEnd, $filter, $getByIndex, $keyType, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
+import { RefTable } from "../../RefTable.js";
+import type { MapKeyType } from "../../annotations.js";
+import { ChangeTree, installUntrackedChangeTree, IRef, stampTree, treeOf, refTreeOf, defineRefAccessors, refIdOf } from "../../encoder/ChangeTree.js";
 import { KeyedRecorder } from "../../encoder/KeyedRecorder.js";
 import { CollectionKind, OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
@@ -15,12 +17,21 @@ import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
 import { assertInstanceType } from "../../encoding/assert.js";
 
-export class MapSchema<V=any, K extends string = string> implements Map<K, V>, Collection<K, V, [K, V]>, IRef {
-    [$changes]: ChangeTree;
-    [$refId]?: number;
+export class MapSchema<V=any, K extends string | number = string> implements Map<K, V>, Collection<K, V, [K, V]>, IRef {
+    /** Prototype accessors over the private tree slot — see `defineRefAccessors`. */
+    declare [$changes]: ChangeTree;
+    declare [$refId]?: number;
 
     protected childType: new () => V;
     protected [$childType]: string | typeof Schema;
+
+    /**
+     * Declared key type (`"string"` / `"number"` / numeric primitive name).
+     * `undefined` until the map is attached to a typed field: keys are then
+     * stringified (legacy behavior) and re-keyed at attach time if the field
+     * declares a numeric key.
+     */
+    [$keyType]: MapKeyType | undefined;
 
     protected $items: Map<K, V> = new Map<K, V>();
 
@@ -32,7 +43,8 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      * resolve ops. Mappings of removed keys are purged at the end of the
      * tick they were removed in (`$onEncodeEnd`).
      */
-    keyByIndex: Map<number, K> = new Map();
+    /** Wire index → key. Indexes are handed out in order and never recycled: an array-backed table, not a hash map (see `RefTable`). */
+    keyByIndex: RefTable<K> = new RefTable<K>();
     indexByKey: Map<K, number> = new Map();
     nextIndex: number = 0;
 
@@ -75,8 +87,8 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      */
     static [$filter] (ref: MapSchema, index: number, view: StateView) {
         if (!view || typeof (ref[$childType]) === "string") return true;
-        const value = ref[$getByIndex](index) ?? (ref[$changes].rec as KeyedRecorder | undefined)?.deleted?.get(index);
-        return value !== undefined && view.isChangeTreeVisible(value[$changes]);
+        const value = ref[$getByIndex](index) ?? (refTreeOf(ref).rec as KeyedRecorder | undefined)?.deleted?.get(index);
+        return value !== undefined && view.isChangeTreeVisible(refTreeOf(value));
     }
 
     static is(type: any) {
@@ -84,13 +96,9 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     constructor (initialValues?: Map<K, V> | Record<K, V>) {
-        // $changes MUST be non-enumerable — see Schema.initialize comment.
-        Object.defineProperty(this, $changes, {
-            value: new ChangeTree(this),
-            enumerable: false,
-            writable: true,
-        });
+        stampTree(this, new ChangeTree(this));
         this[$childType] = undefined as any;
+        this[$keyType] = undefined;
 
         if (initialValues) {
             if (
@@ -113,15 +121,48 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      * replicate the minimum slot init here. Must stay in sync with the
      * class-field declarations above and with the constructor body.
      */
-    static initializeForDecoder<V = any, K extends string = string>(): MapSchema<V, K> {
+    static initializeForDecoder<V = any, K extends string | number = string>(): MapSchema<V, K> {
         const self: any = Object.create(MapSchema.prototype);
         self.$items = new Map<K, V>();
-        self.keyByIndex = new Map();
+        self.keyByIndex = new RefTable();
         self.indexByKey = new Map();
         self.nextIndex = 0;
         self[$childType] = undefined;
+        self[$keyType] = undefined;
         installUntrackedChangeTree(self);
         return self;
+    }
+
+    /**
+     * Attach-time hook (field setter / auto-conversion): declare the key
+     * type. Entries set before the map was attached were stringified; when
+     * the field declares a numeric key they are re-keyed in place, keeping
+     * each entry's wire index (recorder ops and child parent indexes are
+     * index-based, so anything pending stays valid). No-op when empty.
+     */
+    [$applyKeyType](keyType: MapKeyType | undefined) {
+        this[$keyType] = keyType;
+        if (this.$items.size === 0 || keyType === undefined) return;
+        const wantNumber = keyType !== "string";
+        let needsRekey = false;
+        for (const key of this.$items.keys()) {
+            if ((typeof key === "number") !== wantNumber) { needsRekey = true; break; }
+        }
+        if (!needsRekey) return;
+
+        const items = new Map<K, V>();
+        const indexByKey = new Map<K, number>();
+        const keyByIndex = new RefTable<K>();
+        for (const [key, value] of this.$items) {
+            const index = this.indexByKey.get(key)!;
+            const newKey = coerceKey<K>(keyType, key);
+            items.set(newKey, value);
+            indexByKey.set(newKey, index);
+            keyByIndex.set(index, newKey);
+        }
+        this.$items = items;
+        this.indexByKey = indexByKey;
+        this.keyByIndex = keyByIndex;
     }
 
     /** Iterator */
@@ -138,12 +179,19 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
             assertInstanceType(value as any, this[$childType] as typeof Schema, this, key);
         }
 
-        // Force "key" as string
-        // See: https://github.com/colyseus/colyseus/issues/561#issuecomment-1646733468
-        key = key.toString() as K;
+        // Coerce the key to the declared key type. String (or not yet
+        // attached): force "key" as string —
+        // https://github.com/colyseus/colyseus/issues/561#issuecomment-1646733468
+        // Inline fast paths: a key already of the declared type costs one typeof.
+        const keyType = this[$keyType];
+        if (keyType === undefined || keyType === "string") {
+            if (typeof key !== "string") key = String(key) as K;
+        } else if (typeof key !== "number" || key !== key) {
+            key = coerceKey<K>(keyType, key);
+        }
 
-        const tree = this[$changes];
-        const isRef = (value[$changes]) !== undefined;
+        const tree = treeOf(this);
+        const isRef = refTreeOf(value) !== undefined;
 
         let index = this.indexByKey.get(key);
         let operation: OPERATION;
@@ -161,7 +209,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
                 // a replaced ref must be released and re-introduced
                 operation = OPERATION.DELETE_AND_ADD;
                 if (previousValue !== undefined) {
-                    tree.root?.remove(previousValue[$changes]);
+                    tree.root?.remove(refTreeOf(previousValue));
                 }
             }
 
@@ -193,7 +241,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         // set the parent AFTER recording (the parent's op precedes the child's chunk)
         if (isRef) {
-            value[$changes].setParent(this, tree.root, index);
+            refTreeOf(value).setParent(this, tree.root, index, tree);
         }
 
         return this;
@@ -243,8 +291,8 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
 
         const index = this.indexByKey.get(key)!;
         const previousValue = this.$items.get(key)!;
-        const tree = this[$changes];
-        const previousTree = (previousValue as any)?.[$changes];
+        const tree = treeOf(this);
+        const previousTree = refTreeOf(previousValue);
 
         // Streaming-mode: silent-drop if the entry never made it out to any
         // client (still in pending). Otherwise force DELETE on the channels
@@ -254,7 +302,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
             const root = tree.root;
             let neverSent = false;
             if (root !== undefined) {
-                neverSent = streamRouteRemove(this, root, this[$refId], index);
+                neverSent = streamRouteRemove(this, root, tree.refId!, index);
             }
             if (previousTree !== undefined) {
                 root?.remove(previousTree);
@@ -278,7 +326,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     clear() {
-        const tree = this[$changes];
+        const tree = treeOf(this);
 
         // remove children references
         tree.forEachChild((childChangeTree, _) => {
@@ -305,7 +353,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      * map field. The instance must already be detached from the encoder.
      */
     [$reset]() {
-        const tree = this[$changes];
+        const tree = treeOf(this);
         if (tree.isStreamCollection) {
             throw new Error(`@colyseus/schema: cannot reset a streamed MapSchema (pooling not supported).`);
         }
@@ -316,7 +364,6 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         this.indexByKey.clear();
         this.nextIndex = 0;
         tree.recycle();
-        this[$refId] = undefined; // assign (not delete) to avoid V8 dictionary-mode deopt
     }
 
     has (key: K) {
@@ -344,10 +391,10 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
     }
 
     // ────── Change tracking control (same API as Schema) ──────
-    pauseTracking(): void { this[$changes].pause(); }
-    resumeTracking(): void { this[$changes].resume(); }
-    untracked<T>(fn: () => T): T { return this[$changes].untracked(fn); }
-    get isTrackingPaused(): boolean { return this[$changes].paused; }
+    pauseTracking(): void { treeOf(this).pause(); }
+    resumeTracking(): void { treeOf(this).resume(); }
+    untracked<T>(fn: () => T): T { return treeOf(this).untracked(fn); }
+    get isTrackingPaused(): boolean { return treeOf(this).paused; }
 
     [$getByIndex](index: number): V | undefined {
         const key = this.keyByIndex.get(index);
@@ -400,7 +447,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
      * its index (`set` forgets the snapshot and the entry is live again).
      */
     protected [$onEncodeEnd]() {
-        const deleted = (this[$changes].rec as KeyedRecorder | undefined)?.deleted;
+        const deleted = (treeOf(this).rec as KeyedRecorder | undefined)?.deleted;
         if (deleted === undefined) return;
         for (const index of deleted.keys()) {
             const key = this.keyByIndex.get(index);
@@ -433,14 +480,30 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         return map;
     }
 
-    clone(): MapSchema<V> {
-        const cloned = new MapSchema<V>();
+    clone(): MapSchema<V, K> {
+        const cloned = new MapSchema<V, K>();
+        cloned[$childType] = this[$childType];
+        cloned[$keyType] = this[$keyType];
         this.forEach((value: any, key) => {
-            cloned.set(key, (value?.[$changes] !== undefined) ? value.clone() : value);
+            cloned.set(key, (refTreeOf(value) !== undefined) ? value.clone() : value);
         });
         return cloned;
     }
 
 }
 
+/** Coerce a user-supplied key to the declared key type (string when undeclared). */
+function coerceKey<K>(keyType: MapKeyType | undefined, key: any): K {
+    if (keyType === undefined || keyType === "string") {
+        return (typeof key === "string" ? key : String(key)) as K;
+    }
+    const n = (typeof key === "number") ? key : Number(key);
+    if (n !== n) {
+        throw new Error(`MapSchema#set(): key '${String(key)}' is not a valid ${keyType} key.`);
+    }
+    return n as K;
+}
+
 registerType("map", { constructor: MapSchema });
+
+defineRefAccessors(MapSchema.prototype);

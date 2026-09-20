@@ -4,10 +4,10 @@
  * goes through here, which is why the recursive walk uses a hoisted
  * callback + ctx-pool instead of per-call closures.
  */
-import { $changes, $childType, $proxyTarget, $refTypeFieldIndexes } from "../../types/symbols.js";
+import { $childType, $proxyTarget, $refTypeFieldIndexes } from "../../types/symbols.js";
 import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
 import { Root } from "../Root.js";
-import { ChangeTree, type Ref } from "../ChangeTree.js";
+import { ChangeTree, type Ref, refTreeOf, setTree } from "../ChangeTree.js";
 import { checkIsFiltered } from "./inheritedFlags.js";
 import { propagateNewChildToSubscribers } from "../subscriptions.js";
 
@@ -29,8 +29,9 @@ export function setParent(
     parent: Ref,
     root?: Root,
     parentIndex?: number,
+    parentTree?: ChangeTree,
 ): void {
-    tree.addParent(parent, parentIndex);
+    tree.addParent(parent, parentIndex, parentTree);
 
     // avoid setting parents with empty `root`
     if (!root) { return; }
@@ -49,7 +50,12 @@ export function setParent(
     // Gated by `parent` being a collection (not a Schema) and the parent
     // tree having a non-empty `subscribedViews` bitmap; both common-case
     // short circuits are cheap.
-    const parentTree = parent?.[$changes];
+    // Handed in by the caller, or recorded by `addParent` above when `parent` is
+    // the primary parent; a 2nd+ parent of a shared instance is derived from the ref.
+    if (parentTree === undefined) {
+        const primary = tree.parentTree;
+        parentTree = (primary !== undefined && primary.ref === parent) ? primary : refTreeOf(parent);
+    }
     if (
         parentTree !== undefined &&
         parentTree.subscribedViews !== undefined &&
@@ -66,10 +72,11 @@ export function setParent(
     if (isNewChangeTree) {
         let ctx = _setParentCtxPool[_setParentDepth];
         if (ctx === undefined) {
-            ctx = { parentRef: undefined!, root: undefined! };
+            ctx = { parentRef: undefined!, parentTree: undefined!, root: undefined! };
             _setParentCtxPool[_setParentDepth] = ctx;
         }
         ctx.parentRef = tree.ref;
+        ctx.parentTree = tree;
         ctx.root = root;
         _setParentDepth++;
         forEachChildWithCtx(tree, ctx, _setParentChildCb);
@@ -115,7 +122,7 @@ export function forEachChildWithCtx<C>(
                 for (let i = 0, len = els.length; i < len; i++) {
                     const value = els[i];
                     if (!value) { continue; }
-                    callback(ctx, value[$changes], i);
+                    callback(ctx, refTreeOf(value), i);
                 }
             } else if (kind === KIND_MAP) {
                 // MapSchema: the child's index is its wire index.
@@ -123,13 +130,13 @@ export function forEachChildWithCtx<C>(
                 const indexByKey = ref.indexByKey as Map<any, number>;
                 for (const [key, value] of $items) {
                     if (!value) { continue; }
-                    callback(ctx, value[$changes], indexByKey.get(key));
+                    callback(ctx, refTreeOf(value), indexByKey.get(key));
                 }
             } else {
                 // SetSchema / CollectionSchema / StreamSchema: keyed by wire index.
                 for (const [index, value] of ref.$items as Map<number, any>) {
                     if (!value) { continue; }
-                    callback(ctx, value[$changes], index);
+                    callback(ctx, refTreeOf(value), index);
                 }
             }
         }
@@ -138,11 +145,15 @@ export function forEachChildWithCtx<C>(
         const indexes = metadata?.[$refTypeFieldIndexes];
         if (!indexes) return;
         const names = tree.encDescriptor.names;
+        const values = tree.values;
         for (let i = 0, len = indexes.length; i < len; i++) {
             const index = indexes[i];
-            const value = ref[names[index]];
+            // The tree's `$values` slot first — `ref[name]` is a megamorphic
+            // keyed load that lands in the field's getter. Named fallback:
+            // manual fields skip `$values` (same rule as `readSchemaValue`).
+            const value = (values !== undefined ? values[index] : undefined) ?? ref[names[index]];
             if (!value) { continue; }
-            callback(ctx, value[$changes], index);
+            callback(ctx, refTreeOf(value), index);
         }
     }
 }
@@ -161,7 +172,8 @@ function ensureTracked(child: ChangeTree): ChangeTree {
     const ref: any = (child as any).ref;
     const target = ref[$proxyTarget] ?? ref;
     const real = new ChangeTree(ref, target);
-    Object.defineProperty(target, $changes, { value: real, enumerable: false, writable: true });
+    real.refId = (child as any).refId; // keep the decoder-assigned identity
+    setTree(target, real);
     return real;
 }
 
@@ -174,7 +186,7 @@ function _setRootChildCb(root: Root, child: ChangeTree, _index: any): void {
     }
 }
 
-interface SetParentCtx { parentRef: Ref; root: Root; }
+interface SetParentCtx { parentRef: Ref; parentTree: ChangeTree; root: Root; }
 // Pool of ctx objects, indexed by setParent recursion depth. Grows to
 // max depth seen (typically tree height = 3-5 in bench), then stays put.
 const _setParentCtxPool: SetParentCtx[] = [];
@@ -187,5 +199,5 @@ function _setParentChildCb(ctx: SetParentCtx, child: ChangeTree, index: any): vo
         ctx.root.moveNextToParent(child);
         return;
     }
-    child.setParent(ctx.parentRef, ctx.root, index);
+    child.setParent(ctx.parentRef, ctx.root, index, ctx.parentTree);
 }

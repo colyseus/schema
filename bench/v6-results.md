@@ -261,3 +261,550 @@ node bench/run.mjs --compare <snapshot>/build-v5  ./build --samples 10 --filter 
 | stateview/views/v10 | ms/tick | 0.0196 | 0.0132 | −32.9 % ✓ | <.001 | 2 580 | 2 404 |
 | stateview/views/v100heavy | ms/tick | 0.2498 | 0.1092 | −56.3 % ✓ | <.001 | 120 862 | 111 166 |
 | stateview/views/v50 | ms/tick | 0.0574 | 0.0276 | −51.9 % ✓ | <.001 | 12 240 | 11 424 |
+
+
+# MapSchema rewrite — A/B (keyed-op fold + typed keys)
+
+Machine: win32-x64, Node v20.13.1, `bench/` harness, isolated child process
+per sample, interleaved ABBA, medians; `p` is Mann-Whitney U on wall-clock
+(✓ / ✗ = significant at p < .05, Δ < 0 means B faster). Bytes are
+deterministic and printed per side (they differ by design: that is the wire
+change). A = the baseline named in each table's heading, B = this change
+(`bench/.builds/map-keys-3`).
+
+- **v5** = the `bfda4d9` snapshot behind the `build-v5` shim (5.0.23
+  collections, v5 codec).
+- **6.0-pre** = the 6.0 tree before this change (`a7e4b21`, frozen as
+  `bench/.builds/v6-head`), which isolates the map work from the array rewrite.
+
+The map scenarios (`encoder/map-*`, `decoder/map-*`, `callbacks/map-churn`,
+`mutations/map-ops`, 15 samples per side) use `State { players: Map<Player{name,
+position{x,y}}>, scores: Map<number> }` keyed by 8-char strings (`str`) or by
+integers declared `key: "number"` (`num`; a build without typed keys
+stringifies them, so its `num` rows carry short string keys). The regression
+sweep re-runs the existing map-backed matrix against 6.0-pre (10 samples).
+
+```
+node bench/run.mjs --compare <baseline> bench/.builds/map-keys-3 --samples 15 --filter "<group>/map-*" --json bench/results/ab3-<baseline>-map-<group>.json
+node bench/run.mjs --compare bench/.builds/v6-head bench/.builds/map-keys-3 --samples 10 --filter "<scenario>" --json bench/results/ab3-v6head-sweep-<scenario>.json
+```
+
+## What the numbers say
+
+- **Full syncs** of a map: −34…−53 % time and −13…−33 % bytes against v5;
+  against 6.0-pre the body path is −2.5 % (string keys, same bytes) and −24 %
+  with number keys (a 10 000-entry `Map<number, number>` snapshot is 79 KB
+  instead of 98 KB; on v5 it was 118 KB).
+- **REPLACE ticks** (`Map<string, number>`, the hottest primitive-map op):
+  −15…−26 % time and −16…−25 % bytes against v5. Against 6.0-pre the op fold
+  makes each op one byte shorter (4 971 vs 5 875 bytes for 1 000 entries) at
+  the same time for string keys, and −10…−16 % time with number keys.
+- **Churn** (delete 10 / re-add 10 players per cycle): encode at parity
+  (−2…+2 %) with −30…−37 % bytes against v5; decode −1…+3 % against 6.0-pre
+  (the scenario's A/A noise floor is ±4 %: `decoder/map-churn/num` measured
+  the pre-change build 3.8 % "slower" than itself). Against v5 the churn
+  *decode* is +15 %: that gap was already there before this change (the 6.0
+  inline-body ADD does more per entry than the 5.x per-field walk) and is
+  unchanged by it. `callbacks/map-churn` reads +7…+10 % against 6.0-pre with
+  a tight A/A (±0.4 %); a counting probe shows byte-identical decoder work
+  (same instance creations, ref releases, callbacks) and the existing
+  `callbacks/add-remove-churn` in the sweep is neutral, so this row is
+  reported as unresolved rather than explained.
+- **Typed keys**: `Map<number, V>` costs nothing extra on the wire beyond the
+  number itself (1–5 bytes vs 9 for an 8-char string on every ADD) and turns
+  key reads into integer lookups: `get` −20 %, `has` −46 %, `set` on an
+  existing key −6 % (`mutations/map-ops`). Callbacks receive the number.
+- **API** (`mutations/map-ops`, string keys): parity with 6.0-pre on every
+  op. `set` on an existing string key is +7 % against v5 — that is the 6.0
+  `KeyedRecorder` merge and predates this change (6.0-pre reads the same).
+- **Regression sweep** (existing map-backed matrix vs 6.0-pre): every row
+  within ±2 % or not significant; bytes identical except `entity-churn`
+  (458 vs 467, the fold). `stateview/views/v10` +4.6 % (p = .001) on a
+  14 µs tick is the one significant reading above 2 %; `v1` / `v50` /
+  `v100heavy` are flat.
+
+## Lessons
+
+- A first cut used a 3-bit op field (`uvarint(index * 8 + op)`) so `CLEAR`
+  and `DELETE_AND_ADD` could both ride the wire. Wire indexes are never
+  recycled, so a churned map passes index 2 048 within a few hundred cycles
+  and every op grew to three bytes — measured as +8…+17 % on churn decode.
+  The shipped layout is two bits (`index * 4 + op`, REPLACE / DELETE / ADD /
+  CLEAR): `DELETE_AND_ADD` is derived by the decoder from an ADD onto an
+  occupied index, and an op stays two bytes up to index 8 191 (the previous
+  op-byte + index layout stayed two bytes up to 16 383 and was never smaller).
+- Recycling wire indexes after their DELETE has shipped would keep indexes
+  bounded by the live size and is the natural follow-up; it needs the
+  per-view `changes` drain to re-check visibility (a stale entry for a
+  recycled index would otherwise ADD the new occupant to that view).
+
+## vs v5 (map scenarios)
+
+| scenario/variant | unit | A | B | Δ time | p | A bytes | B bytes |
+|---|---|---:|---:|---:|---:|---:|---:|
+| callbacks/map-churn/num | ms/frame | 0.0250 | 0.0280 | +12.2 % ✗ | <.001 | – | – |
+| callbacks/map-churn/str | ms/frame | 0.0267 | 0.0291 | +9.0 % ✗ | <.001 | – | – |
+| decoder/map-bootstrap/players-num-1000 | ms/op | 2.25 | 2.19 | −2.7 % ✓ | <.001 | 40 878 | 26 592 |
+| decoder/map-bootstrap/players-str-1000 | ms/op | 2.41 | 2.39 | −1.1 % | 0.115 | 45 988 | 32 976 |
+| decoder/map-bootstrap/scores-num-10000 | ms/op | 1.89 | 1.40 | −26.3 % ✓ | <.001 | 118 128 | 79 115 |
+| decoder/map-bootstrap/scores-str-10000 | ms/op | 3.69 | 2.73 | −25.9 % ✓ | <.001 | 158 734 | 139 067 |
+| decoder/map-churn/num | ms/frame | 0.0192 | 0.0221 | +15.3 % ✗ | <.001 | 241 | 167 |
+| decoder/map-churn/str | ms/frame | 0.0194 | 0.0227 | +16.8 % ✗ | <.001 | 266 | 198 |
+| decoder/map-replace/num-100pct | ms/frame | 0.0497 | 0.0228 | −54.1 % ✓ | <.001 | 6 199 | 4 578 |
+| decoder/map-replace/str-100pct | ms/frame | 0.0565 | 0.0365 | −35.5 % ✓ | <.001 | 6 199 | 4 578 |
+| encoder/map-churn/num-100 | ms/cycle | 0.0412 | 0.0430 | +4.5 % ✗ | <.001 | 573 | 361 |
+| encoder/map-churn/num-1000 | ms/cycle | 0.0440 | 0.0446 | +1.3 % ✗ | 0.003 | 584 | 377 |
+| encoder/map-churn/str-100 | ms/cycle | 0.0470 | 0.0474 | +0.7 % | 0.300 | 634 | 441 |
+| encoder/map-churn/str-1000 | ms/cycle | 0.0497 | 0.0488 | −1.7 % | 0.051 | 635 | 441 |
+| encoder/map-encode-all/players-num-1000 | ms/op | 0.471 | 0.241 | −48.9 % ✓ | <.001 | 40 878 | 26 592 |
+| encoder/map-encode-all/players-str-1000 | ms/op | 0.517 | 0.278 | −46.1 % ✓ | <.001 | 45 988 | 32 976 |
+| encoder/map-encode-all/scores-num-10000 | ms/op | 0.819 | 0.386 | −52.8 % ✓ | <.001 | 118 128 | 79 115 |
+| encoder/map-encode-all/scores-str-10000 | ms/op | 1.09 | 0.718 | −34.2 % ✓ | <.001 | 158 734 | 139 067 |
+| encoder/map-replace/num-100pct | ms/tick | 0.126 | 0.103 | −18.3 % ✓ | <.001 | 6 618 | 4 971 |
+| encoder/map-replace/num-10pct | ms/tick | 0.0132 | 0.0103 | −21.7 % ✓ | <.001 | 502 | 471 |
+| encoder/map-replace/str-100pct | ms/tick | 0.269 | 0.201 | −25.5 % ✓ | <.001 | 6 618 | 4 971 |
+| encoder/map-replace/str-10pct | ms/tick | 0.0260 | 0.0222 | −14.9 % ✓ | <.001 | 502 | 471 |
+| mutations/map-ops/add-delete-num | µs/op | 357.6 | 359.9 | +0.6 % ✗ | 0.011 | – | – |
+| mutations/map-ops/add-delete-str | µs/op | 407.5 | 393.4 | −3.5 % ✓ | 0.001 | – | – |
+| mutations/map-ops/for-of-num | µs/op | 6.74 | 6.79 | +0.7 % | 0.803 | – | – |
+| mutations/map-ops/for-of-str | µs/op | 6.77 | 6.79 | +0.3 % | 1.000 | – | – |
+| mutations/map-ops/forEach-num | µs/op | 7.58 | 7.62 | +0.4 % | 0.534 | – | – |
+| mutations/map-ops/forEach-str | µs/op | 7.65 | 7.71 | +0.8 % | 0.590 | – | – |
+| mutations/map-ops/get-num | µs/op | 9.40 | 7.56 | −19.6 % ✓ | <.001 | – | – |
+| mutations/map-ops/get-str | µs/op | 18.9 | 19.5 | +3.4 % ✗ | 0.013 | – | – |
+| mutations/map-ops/has-num | µs/op | 6.29 | 3.37 | −46.4 % ✓ | <.001 | – | – |
+| mutations/map-ops/has-str | µs/op | 13.0 | 13.0 | −0.1 % | 0.934 | – | – |
+| mutations/map-ops/keys-num | µs/op | 1.61 | 1.60 | −0.4 % | 0.384 | – | – |
+| mutations/map-ops/keys-str | µs/op | 1.63 | 1.63 | +0.3 % | 0.507 | – | – |
+| mutations/map-ops/set-replace-num | µs/op | 65.1 | 64.2 | −1.4 % ✓ | 0.002 | – | – |
+| mutations/map-ops/set-replace-str | µs/op | 79.8 | 85.4 | +7.0 % ✗ | <.001 | – | – |
+
+## vs 6.0-pre (map scenarios)
+
+| scenario/variant | unit | A | B | Δ time | p | A bytes | B bytes |
+|---|---|---:|---:|---:|---:|---:|---:|
+| callbacks/map-churn/num | ms/frame | 0.0255 | 0.0273 | +6.8 % ✗ | <.001 | – | – |
+| callbacks/map-churn/str | ms/frame | 0.0261 | 0.0287 | +9.9 % ✗ | <.001 | – | – |
+| decoder/map-bootstrap/players-num-1000 | ms/op | 2.31 | 2.18 | −5.7 % ✓ | <.001 | 27 866 | 26 592 |
+| decoder/map-bootstrap/players-str-1000 | ms/op | 2.39 | 2.37 | −0.8 % ✓ | 0.025 | 32 976 | 32 976 |
+| decoder/map-bootstrap/scores-num-10000 | ms/op | 1.87 | 1.34 | −28.2 % ✓ | <.001 | 98 389 | 79 115 |
+| decoder/map-bootstrap/scores-str-10000 | ms/op | 2.60 | 2.59 | −0.5 % | 0.068 | 139 067 | 139 067 |
+| decoder/map-churn/num | ms/frame | 0.0211 | 0.0216 | +2.2 % | 0.056 | 180 | 167 |
+| decoder/map-churn/str | ms/frame | 0.0219 | 0.0225 | +2.5 % ✗ | 0.003 | 205 | 198 |
+| decoder/map-replace/num-100pct | ms/frame | 0.0313 | 0.0228 | −27.3 % ✓ | <.001 | 5 468 | 4 578 |
+| decoder/map-replace/str-100pct | ms/frame | 0.0369 | 0.0368 | −0.4 % | 0.678 | 5 468 | 4 578 |
+| encoder/map-churn/num-100 | ms/cycle | 0.0447 | 0.0440 | −1.5 % ✓ | 0.007 | 398 | 361 |
+| encoder/map-churn/num-1000 | ms/cycle | 0.0465 | 0.0461 | −0.9 % ✓ | 0.046 | 408 | 377 |
+| encoder/map-churn/str-100 | ms/cycle | 0.0482 | 0.0492 | +2.0 % | 0.115 | 459 | 441 |
+| encoder/map-churn/str-1000 | ms/cycle | 0.0512 | 0.0500 | −2.4 % ✓ | 0.010 | 459 | 441 |
+| encoder/map-encode-all/players-num-1000 | ms/op | 0.272 | 0.245 | −9.9 % ✓ | <.001 | 27 866 | 26 592 |
+| encoder/map-encode-all/players-str-1000 | ms/op | 0.284 | 0.288 | +1.6 % | 0.125 | 32 976 | 32 976 |
+| encoder/map-encode-all/scores-num-10000 | ms/op | 0.523 | 0.398 | −23.9 % ✓ | <.001 | 98 389 | 79 115 |
+| encoder/map-encode-all/scores-str-10000 | ms/op | 0.777 | 0.757 | −2.5 % ✓ | <.001 | 139 067 | 139 067 |
+| encoder/map-replace/num-100pct | ms/tick | 0.111 | 0.100 | −10.2 % ✓ | <.001 | 5 875 | 4 971 |
+| encoder/map-replace/num-10pct | ms/tick | 0.0122 | 0.0103 | −15.5 % ✓ | <.001 | 503 | 471 |
+| encoder/map-replace/str-100pct | ms/tick | 0.197 | 0.201 | +1.9 % ✗ | <.001 | 5 875 | 4 971 |
+| encoder/map-replace/str-10pct | ms/tick | 0.0227 | 0.0220 | −3.0 % ✓ | 0.002 | 503 | 471 |
+| mutations/map-ops/add-delete-num | µs/op | 361.1 | 357.9 | −0.9 % ✓ | 0.009 | – | – |
+| mutations/map-ops/add-delete-str | µs/op | 478.5 | 472.5 | −1.3 % | 0.361 | – | – |
+| mutations/map-ops/for-of-num | µs/op | 6.74 | 6.81 | +1.0 % | 0.125 | – | – |
+| mutations/map-ops/for-of-str | µs/op | 7.14 | 7.12 | −0.2 % | 0.803 | – | – |
+| mutations/map-ops/forEach-num | µs/op | 7.57 | 7.60 | +0.4 % | 0.171 | – | – |
+| mutations/map-ops/forEach-str | µs/op | 7.73 | 7.85 | +1.6 % | 0.481 | – | – |
+| mutations/map-ops/get-num | µs/op | 9.38 | 7.49 | −20.2 % ✓ | <.001 | – | – |
+| mutations/map-ops/get-str | µs/op | 18.8 | 19.0 | +1.3 % | 0.455 | – | – |
+| mutations/map-ops/has-num | µs/op | 6.33 | 3.39 | −46.5 % ✓ | <.001 | – | – |
+| mutations/map-ops/has-str | µs/op | 13.2 | 13.2 | +0.1 % | 0.901 | – | – |
+| mutations/map-ops/keys-num | µs/op | 1.62 | 1.62 | +0.0 % | 0.967 | – | – |
+| mutations/map-ops/keys-str | µs/op | 1.64 | 1.64 | −0.1 % | 0.709 | – | – |
+| mutations/map-ops/set-replace-num | µs/op | 67.7 | 63.7 | −5.8 % ✓ | <.001 | – | – |
+| mutations/map-ops/set-replace-str | µs/op | 88.2 | 88.1 | −0.1 % | 0.340 | – | – |
+
+## Regression sweep vs 6.0-pre (existing map-backed matrix)
+
+| scenario/variant | unit | A | B | Δ time | p | A bytes | B bytes |
+|---|---|---:|---:|---:|---:|---:|---:|
+| callbacks/add-remove-churn/default | ms/frame | 0.0538 | 0.0539 | +0.1 % | 0.678 | – | – |
+| callbacks/density/dense | ms/frame | 0.583 | 0.584 | +0.2 % | 0.571 | – | – |
+| callbacks/density/none | ms/frame | 0.486 | 0.487 | +0.2 % | 0.678 | – | – |
+| callbacks/density/sparse1pct | ms/frame | 0.490 | 0.489 | −0.2 % | 0.678 | – | – |
+| callbacks/strategies/legacy | ms/frame | 0.584 | 0.580 | −0.6 % | 0.273 | – | – |
+| callbacks/strategies/raw | ms/frame | 0.482 | 0.486 | +0.8 % | 0.427 | – | – |
+| callbacks/strategies/state | ms/frame | 0.594 | 0.593 | −0.3 % | 0.678 | – | – |
+| decoder/bootstrap/default | ms/op | 3.61 | 3.59 | −0.5 % | 0.571 | 37 862 | 37 862 |
+| decoder/churn/default | ms/frame | 0.0453 | 0.0485 | +7.0 % | 0.385 | – | – |
+| decoder/resync/churn | ms/frame | 2.11 | 2.11 | −0.3 % | 0.571 | 36 287 | 36 287 |
+| decoder/resync/full | ms/frame | 1.95 | 1.95 | −0.0 % | 0.571 | 37 862 | 37 862 |
+| decoder/tick/default | ms/frame | 0.428 | 0.432 | +0.9 % ✗ | 0.014 | – | – |
+| e2e/room-tick/default | ms/tick | 0.0457 | 0.0461 | +0.9 % | 0.241 | 1 248 | 1 248 |
+| encoder/encode-all/default | ms/op | 3.10 | 3.17 | +2.2 % ✗ | 0.021 | 212 768 | 212 768 |
+| encoder/entity-churn/default | ms/cycle | 0.0854 | 0.0857 | +0.4 % | 0.121 | 467 | 458 |
+| encoder/heavy-tick/default | ms/tick | 0.577 | 0.584 | +1.3 % ✗ | 0.045 | 17 770 | 17 770 |
+| encoder/matrix/full-1000 | ms/op | 0.569 | 0.578 | +1.7 % | 0.140 | 37 862 | 37 862 |
+| encoder/matrix/full-2000 | ms/op | 1.23 | 1.22 | −1.0 % | 0.307 | 80 768 | 80 768 |
+| encoder/matrix/patch100pct-1000 | ms/op | 0.112 | 0.113 | +1.1 % | 0.104 | 13 887 | 13 887 |
+| encoder/matrix/patch100pct-2000 | ms/op | 0.246 | 0.247 | +0.3 % | 0.791 | 27 820 | 27 820 |
+| encoder/matrix/patch10pct-1000 | ms/op | 0.0120 | 0.0118 | −1.8 % | 0.623 | 1 358 | 1 358 |
+| encoder/matrix/patch10pct-2000 | ms/op | 0.0235 | 0.0236 | +0.7 % | 0.678 | 2 757 | 2 757 |
+| encoder/steady-tick/mut10 | ms/tick | 0.00182 | 0.00180 | −1.0 % | 0.307 | 100 | 100 |
+| encoder/steady-tick/mut100 | ms/tick | 0.0146 | 0.0148 | +0.8 % | 0.427 | 1 058 | 1 058 |
+| stateview/bootstrap/default | ms/op | 2.10 | 2.13 | +1.2 % | 0.385 | 129 754 | 129 754 |
+| stateview/view-churn/default | ms/tick | 0.591 | 0.593 | +0.5 % | 0.678 | 13 189 | 13 189 |
+| stateview/views/v1 | ms/tick | 0.00894 | 0.00907 | +1.4 % | 0.162 | 365 | 365 |
+| stateview/views/v10 | ms/tick | 0.0136 | 0.0142 | +4.6 % ✗ | 0.001 | 2 404 | 2 404 |
+| stateview/views/v100heavy | ms/tick | 0.112 | 0.114 | +1.6 % | 0.791 | 111 166 | 111 166 |
+| stateview/views/v50 | ms/tick | 0.0289 | 0.0288 | −0.3 % | 0.571 | 11 424 | 11 424 |
+
+# Construction and attach — A/B (refId on the tree, private tree slot)
+
+Machine: win32-x64, Node v22.23.2, `bench/` harness, isolated child process
+per sample, interleaved ABBA, medians; `p` is Mann-Whitney U on wall-clock
+(Δ < 0 means B faster). A = the 6.0 tree before this change (`a7e4b21` plus the
+working tree, frozen as `bench/.builds/R3-base`), B = this change
+(`bench/.builds/R3-S5`; `R3-S6` for the `stateview` / `entities-aoi` rows).
+Bytes are identical on every row: none of this touches the wire.
+
+```
+node bench/run.mjs --compare bench/.builds/R3-base bench/.builds/R3-S5 --samples 10 --json bench/results/r3-full-base-vs-S5.json
+```
+
+## Where the time was
+
+`node bench_encode.js` (root of the repo: 100 ticks, each adding 50 players ×
+73 tracked instances, then `encode()`) spent its time on the mutation side, not
+in the encoder, and the cost structure was inherited from 5.x unchanged:
+
+| phase, ms per tick (3 650 new instances) | 5.0.32 | 6.0 before | 6.0 now |
+| --- | --- | --- | --- |
+| construct (`new` + setters, detached) | 2.69 | 2.41 | 1.52–1.73 |
+| attach (`players.set` → `setParent` → `Root.add`) | 2.93 | 2.50 | 0.86–1.09 |
+| encode | 0.81 | 0.83 | 0.77–0.93 |
+| `discardChanges` | 0.07 | 0.09 | 0.09 |
+| **`bench_encode.js` total, ms** | 897–923 | 835–865 | **546–570** |
+| full-state bytes | 8 884 124 | 5 458 157 | 5 458 157 |
+
+Three `Object.defineProperty` lines were 22.4 % of the process (line-level CPU
+ticks): `$refId` in `Root.add` (13.2 % — the class declared the field, so the
+call was a *reconfigure* of an existing enumerable property, the slowest path,
+~380 ns), `$changes` in `Schema.initialize` (6.4 %) and in the `ArraySchema`
+constructor (2.8 %). The decoder paid the same two calls per decoded instance.
+
+## What changed
+
+- **`refId` lives on the ChangeTree** (`tree.refId`, also on
+  `UntrackedChangeTree`). `Root.add` / `ReferenceTracker.addRef` are plain
+  stores; `recycle()` resets it; upgrading a decoder stub to a real tree
+  (`ensureTracked`) carries it across.
+- **The tree lives in a private slot** stamped through a return-override class
+  (`TreeStamp`, `src/encoder/ChangeTree.ts`) — as invisible to
+  `deepStrictEqual` / `util.inspect` as the non-enumerable property was, written
+  by a plain store. One stamper per process (published under a `Symbol.for`
+  key) so two bundled copies of the library share the private name.
+  `instance[$changes]` / `instance[$refId]` remain as non-enumerable prototype
+  accessors (`defineRefAccessors`) for everything outside the hot paths.
+- **`ArraySchema` keeps an own `$changes` property.** Its public identity is a
+  Proxy; V8 stores a Proxy's private fields in a side dictionary (~137 B per
+  array: `encoder/memory-footprint` +6.3 %) and stamping one is slower than the
+  `defineProperty` it would replace. Readers branch on `Array.isArray`, which
+  sees through the Proxy.
+- `enterFrame` asks only collections for `$childType` (on a Schema tree the
+  probe is a guaranteed megamorphic miss: 8.7 % of a bulk-ADD encode) and reads
+  `tree.values`; `addParent` / `removeParent` compare identities before trees;
+  the attach walk reads Schema children from `tree.values`, not the getter.
+
+## What the numbers say
+
+| scenario | unit | before | after | Δ |
+| --- | --- | --- | --- | --- |
+| mutations/tree-build/construct | ms/op | 2.284 | 1.526 | −33.2 % |
+| mutations/tree-build/attach-fresh (build + attach) | ms/op | 6.327 | 3.699 | −41.5 % |
+| mutations/tree-build/attach-steady | ms/op | 6.682 | 4.021 | −39.8 % |
+| encoder/construct | µs/entity | 5.726 | 3.298 | −42.4 % |
+| encoder/deep-nested | ms/tick | 7.299 | 4.520 | −38.1 % |
+| encoder/map-churn (4 variants) | ms/cycle | | | −29…−32 % |
+| encoder/entity-churn | ms/cycle | 0.0829 | 0.0579 | −30.2 % |
+| mutations/map-ops/add-delete-{str,num} | µs/op | 383 / 364 | 255 / 231 | −33 / −37 % |
+| mutations/array-refs/push-pop-100 | ms/tick | 0.00216 | 0.00141 | −34.8 % |
+| encoder/bulk-add/{patch,full} | ms/op | 0.713 / 8.13 | 0.663 / 7.47 | −7 / −8 % |
+| encoder/encode-all, matrix/full-* | | | | −13…−14 % |
+| decoder/map-bootstrap/players-{num,str}-1000 | ms/op | 1.829 / 2.004 | 0.942 / 1.118 | −48 / −44 % |
+| decoder/bootstrap | ms/op | 3.376 | 2.163 | −35.9 % |
+| decoder/bulk-add/bootstrap | ms/op | 45.86 | 29.34 | −36.0 % |
+| realworld/big-state/decode-{10k,20k} | ms/op | 19.87 / 40.76 | 13.46 / 26.98 | −32 / −34 % |
+| decoder/map-churn/{str,num} | ms/frame | 0.0242 / 0.0206 | 0.0204 / 0.0165 | −16 / −20 % |
+| stateview/views/{v1,v10,v50,v100heavy} | ms/tick | | | −8…−16 % |
+| realworld/entities-aoi (4 of 5 variants) | ms/tick | | | −4…−7 % |
+| encoder/memory-footprint | KB | 2 578 | 2 583 | +0.2 % |
+
+`encoder/bulk-add/patch` also closes a gap the new isolated scenario exposed:
+against 5.0.31 the 6.0 encode of a bulk-ADD tick was +10.6 % before this change.
+
+Full sweep: 65 rows faster, every steady-state decode / callbacks / resync /
+view-churn row within ±2 % or not significant. What is left above 2 %:
+
+- `callbacks/map-churn` reads +12…+20 % in the default window (50 warm-up +
+  1 000 measured frames) and **−9…−11.5 % (p < .001) with `--iters 3000`**; a
+  plain 12 000-frame loop agrees (0.0204–0.0219 vs 0.0240–0.0242 ms/frame). The
+  default window measures JIT tier-up of this scenario's re-`listen` path, not
+  its steady state. A/A noise floor on the default window: ±6.6 %.
+- `mutations/map-ops/has-str` +8.9 % (A/A −0.7 %). `MapSchema.has` is
+  byte-identical in both bundles (`return this.$items.has(key)`) and
+  `has-num` / `get-str` on the same map are flat: a heap-placement effect on
+  the native string-keyed lookup, not code.
+- `realworld/large-patch/enc-5k-nested` flips sign between runs (−2.0 %, −1.8 %,
+  +2.4 %); `enc-5k-quantized` measured +2.6 % once and +0.6 % (p = .37) at 20
+  samples.
+
+## Lessons
+
+- **Inline-cache feedback belongs to the function literal.** The first version
+  routed every tree read in the library through one reader (`TreeStamp.of`).
+  Setters and the encoder feed it every shape in the process, so it is
+  megamorphic at *every* caller — including sites that used to own a cheap
+  polymorphic `ref[$changes]` cache. Encoder sites were already megamorphic and
+  stayed neutral, which hid it; the decoder's per-chunk read was not, and
+  `decoder/tick` went +14…+16 %, `callbacks/*` +5…+11 %, `entities-aoi nested`
+  +5.5 %. A textually separate static with the same body (`ofDecoded`, `ofView`)
+  restored all three. Closures created from one literal do not help: they share
+  a feedback cell.
+- A prototype getter over the slot costs +10…+20 ns on a polymorphic site, and
+  `ref[$refId]` implemented through `this[$changes]` pays two. The rows that
+  regressed in the first sweep (`stateview/view-churn` +28 %, `decoder/resync`
+  +9.5 %) were exactly the modules still reading through the accessors.
+- A `#field in obj` brand check measured ~20 ns in situ (9 % of a bulk-ADD
+  encode). The value reader is `try { o.#tree } catch { o[$changes] }` behind a
+  `typeof` guard: nothing throws in practice.
+- Rejected: one shared descriptor object for `defineProperty($changes)` — +3.5…
+  +3.8 %; V8 handles the fresh literal better than store / call / reset.
+- A cold-memory micro-benchmark showed private slots reading 2× slower than the
+  symbol property at 300 000 live objects; object layout is identical
+  (`%DebugPrint`: both in-object) and the gap vanishes at cache-resident sizes —
+  heap placement in the synthetic loop, not a property of private fields.
+- Not caused by this change, found while testing it: driving copy A's classes
+  with copy B's `Encoder` / `Decoder` (two bundled copies in one process) does
+  not round-trip on the baseline build either (`instanceof MapSchema` fails in
+  the decoder; the encoder path produces a wrong result).
+
+Open leads from the profiles: `$root.refs.get(refId)` is 22…27 % of a steady
+decode tick (a dense array indexed by refId beside the Map); `Root.add` is ~12 %
+of attach / delete churn (`changeTrees` / `refCount` are plain objects with
+integer keys and `delete`); a `parentTree` field on the ChangeTree would remove
+about ten tree loads per StateView add / remove; GC is ~15 % of construction.
+
+# Reference tables — A/B (`RefTable` for `decoder.root.refs` and `encoder.root.changeTrees`)
+
+Same machine and protocol as the previous section. A = the tree after
+"Construction and attach" (`bench/.builds/R3-S6`), B = this change
+(`bench/.builds/R4-G` for the full sweep; `R4-H` adds the append fast path and
+was re-measured on the rows it affects). Bytes identical on every row.
+
+```
+node bench/run.mjs --compare bench/.builds/R3-S6 bench/.builds/R4-G --samples 10 --json bench/results/r4-full-S6-vs-R4G.json
+```
+
+## Where the time was
+
+- **Decoder**: `const ref = $root.refs.get(refId)` — a `Map` hash probe per
+  chunk and per ref-valued slot — was 22…27 % of a steady decode tick
+  (line-level ticks, `decoder/tick`).
+- **Encoder**: `Root.changeTrees` was a plain object indexed by refId. In an
+  attach / detach loop `this.changeTrees[refId] = tree` was 10.6 % and
+  `delete this.changeTrees[refId]` 3.8 %: growth plus `delete` on integer keys.
+  At 2 000 pushes + 2 000 pops per tick it fell off a dictionary-mode cliff.
+
+Both are now a `RefTable` (`src/RefTable.ts`): page 0 is a growable packed
+array behind a direct field, further pages are fixed (4 096 entries) and
+released when their last entry goes, except the frontier page.
+
+## What the numbers say
+
+| scenario | unit | before | after | Δ |
+| --- | --- | --- | --- | --- |
+| decoder/tick | ms/frame | 0.0954 | 0.0666 | −30.2 % |
+| realworld/large-patch/dec-5k{,-typed} | ms/tick | 0.581 / 0.548 | 0.516 / 0.494 | −11 / −10 % |
+| realworld/small-patch/dec-one-entity | µs/tick | 0.1318 | 0.1118 | −15.2 % |
+| realworld/inventory-rpg/dec | ms/tick | 0.0335 | 0.0285 | −15.0 % |
+| decoder/deep-nested | ms/frame | 0.00696 | 0.00546 | −21.6 % |
+| callbacks/density/{none,sparse1pct,dense} | ms/frame | | | −19 / −21 / −15 % |
+| callbacks/strategies/{raw,state,legacy} | ms/frame | | | −27 / −16 / −12 % |
+| decoder/bulk-add/{bootstrap,turnover} | ms/op | 28.37 / 6.19 | 24.30 / 5.34 | −14 / −14 % |
+| realworld/big-state/decode-20k | ms/op | 27.24 | 24.72 | −9.2 % |
+| encoder/map-churn (4 variants) | ms/cycle | | | −24…−31 % |
+| encoder/entity-churn | ms/cycle | 0.0576 | 0.0448 | −22.2 % |
+| mutations/map-ops/add-delete-{str,num} | µs/op | 260 / 228 | 183 / 151 | −30 / −34 % |
+| mutations/array-refs/push-pop-2000 | ms/tick | 0.1708 | 0.0015 | −99.1 % |
+| stateview/array-reindex/pop-1000 | ms/tick | 0.0506 | 0.0116 | −77.0 % |
+| mutations/array-refs/push-pop-100 | ms/tick | 0.00143 | 0.00111 | −22.3 % |
+| mutations/tree-build/attach-steady | ms/op | 3.844 | 3.624 | −5.7 % |
+| realworld/turn-based/broadcast-1000 | µs/tick | 267.1 | 248.0 | −7.2 % |
+| encoder/memory-footprint | KB | 2 583 | 2 590 | +0.3 % |
+
+Full sweep: 49 rows faster, 4 flagged. `realworld/big-state/handshake`
+(+5.4 %) and `encoder/matrix/patch10pct-2000` (+2.6 %) read +0.9 % and −1.1 %
+(both n.s.) on `R4-H`. `encoder/construct` reads +4…+6 % in its default window
+(2 warm-up runs + 35 measured), +2.7 % (p = .09) with `--iters 40`, and a plain
+60-run loop has `R4-H` level with or ahead of the build without the change
+(3.49–3.50 vs 3.50–3.59 µs/entity): tier-up of new code in a short window.
+`node bench_encode.js` is unchanged (536–580 ms): it neither decodes nor churns.
+
+## Lessons (three layouts were measured before this one held)
+
+- **Never drop the frontier page.** RefIds only grow, so the highest page is
+  the one that receives the next entries. Releasing it when it emptied made a
+  push-100 / pop-100 tick re-allocate a page every tick: `array-refs/push-pop-100`
+  +136 %, GC ×5. It is released when the table grows past it.
+- **1 024-entry pages behind the directory**: `turn-based/broadcast-1000`
+  (1 000 small decoders in one process — every lookup is cold) +10…+12 % from
+  the extra dependent load, and `mmo-shards/enc-c500` +4…+6 % because a
+  1 500-refId room falls outside page 0 (the per-view drain does a few
+  `changeTrees` lookups per client per tick, and the old dense object was a
+  single load there).
+- **4 096-entry pre-allocated pages**: fixes `enc-c500`, but every new Encoder /
+  Decoder pays a 32 KB page — `big-state/handshake` +11.5 %, `broadcast-1000`
+  +10.8 %.
+- **Growable page 0 + fixed pages after it** serves both: a 12-ref turn-based
+  decoder owns a 12-slot array, a 1 500-ref room stays on the one-load path, and
+  an append (`i === page.length`) is a single `push`.
+- The churn scenarios (`decoder/churn`, `decoder/map-churn`, `callbacks/map-churn`,
+  `callbacks/add-remove-churn`) had `warmup: 50` on 20–45 µs frames; the decode
+  path needs ~1 500 frames to reach the optimizing tier, so their window
+  measured tier-up. A build that is 6–11 % faster at steady state read +12…+20 %
+  slower, twice. They now warm up for 2 000 frames (A/A −1.6 %, n.s.); their
+  absolute numbers are ~40 % lower than in the sections above and not comparable
+  with them. Rule of thumb that came out of it: on a µs-scale scenario, run A/A
+  for the noise floor and `--iters ×3` before believing a regression.
+
+Not changed, worth a decision: `Root.refCount` (encoder) keeps a `0` entry for
+every refId ever removed — tests assert that `0` — so it grows without bound in
+a long-lived room with churn. Moving the "re-stage on re-add" signal it carries
+to the existing `needsRestage` flag would let the entry be deleted on removal.
+
+## Decoder against 5.x (5.0.32 vs `R4-H` / `R4-I`, 10 samples)
+
+Every decode path is faster than 5.0.32 (bytes differ by design):
+
+| group | Δ vs 5.0.32 |
+| --- | --- |
+| decoder/tick | −91 % |
+| decoder/deep-nested | −85 % |
+| decoder/resync/{full,churn} | −75 / −72 % |
+| decoder/bootstrap, bulk-add/{bootstrap,turnover} | −68, −65 / −53 % |
+| decoder/churn, map-churn/{str,num} | −51, −49 / −52 % |
+| decoder/map-bootstrap (4 variants), map-replace/{str,num} | −30…−63, −21 / −49 % |
+| callbacks/density, callbacks/strategies | −77…−85, −75…−87 % |
+| callbacks/add-remove-churn, callbacks/map-churn | −41, −34…−35 % |
+| realworld/large-patch/dec-5k{,-typed}, small-patch/dec-one-entity | −86 / −87, −77 % |
+| realworld/big-state/decode-{10k,20k,10k-callbacks} | −70 / −69 / −52 % |
+| realworld/entities-aoi-decode (3 variants) | −28…−54 % |
+| realworld/inventory-rpg, lobby-chat (dec / callbacks) | −55 / −39, −29 / −21 % |
+| realworld/turn-based/broadcast-{100,1000}, mmo-shards/e2e-c20, e2e/room-tick | −75 / −85, −58, −36 % |
+
+Reading a decoded `ArraySchema` (`decoder/array-read`, 2 000 elements): `index`
+−98 %, `length+at` −96 %, `map` −18 %, `spread` −7 %, `forEach` / `filter`
+within ±1 %. Two rows are slower than 5.x, both a consequence of `ArraySchema`
+being an `Array` subclass instead of wrapping a plain internal array:
+
+- `for-of` was +84 % (and allocating: a `{ value, done }` per element, GC 0 →
+  21 ms). The values iterator now updates ONE result object in place: −27 %
+  (−20 % on the encoder side, `spread` −6 %, no GC) and +38 % against 5.x
+  (7.2 vs 5.2 µs). The native array iterator is no alternative: on a subclass
+  instance it measures 15.9 µs against 10.0 µs for the hand-written one, and
+  only a plain array's gets inlined into an index loop (5.4 µs). Code that
+  holds a result across `next()` calls sees it change; `keys()` / `entries()`
+  still hand out fresh results.
+- `indexOf-last` +113 % (1.7 vs 0.8 µs): 5.x ran the native `indexOf` on its
+  plain internal array; on a subclass receiver the native builtin is 3–4×
+  slower than the typed index loop used here. Closing it needs the
+  internal-array storage model.
+
+# Per-instance storage — A/B (`refCount`, `$values`, `keyByIndex`, array trees, `parentTree`)
+
+Same machine and protocol. A = the tree after "Reference tables" plus the
+iterator change (`bench/.builds/R4-I`), B = `bench/.builds/R6-E`. Bytes identical
+on every row.
+
+```
+node bench/run.mjs --compare bench/.builds/R4-I bench/.builds/R6-E --samples 10 --json bench/results/r6-full-R4I-vs-R6E.json
+```
+
+Full sweep: **67 rows faster, none slower**, no byte mismatch. `node bench_encode.js`:
+484–497 ms (546–570 before this section, 835–865 at the start of the work,
+892 on 5.0.32), make-changes 3.4–3.6 ms / tick, encode 1.29–1.33 ms / tick.
+
+## What changed
+
+- **`Root.refCount` no longer leaks.** It was a plain object that kept a `0` for
+  every refId ever removed. It is a `RefTable` holding attached trees only;
+  `remove()` deletes the entry and arms the tree's `needsRestage` flag, which
+  now carries "re-stage on re-add" for removal as it did for `recycle()`.
+  Timing neutral; heap growth over a churn run: `encoder/map-churn` 2 175 →
+  213 KB, `encoder/entity-churn` 3 120 → 180 KB, `tree-build/attach-steady`
+  6 007 → 108 KB.
+- **`$values` is an exact-size packed array**: a `.slice()` of a per-class
+  template (`EncodeDescriptor.valuesTemplate`). `[]` grows to a 17-slot backing
+  store on the first index store — 192 B for a two-field instance against 72 B.
+- **`MapSchema.keyByIndex` is a `RefTable`** (wire indexes are handed out in
+  order and never recycled).
+- **An ArraySchema's tree is stamped on the raw target only** (113 ns; the
+  `defineProperty` it replaces was 287 ns and the hottest line of entity
+  construction, 9.1 %). Readers that can meet an array branch on
+  `Array.isArray` and hop through `$proxyTarget`.
+- **`ChangeTree.parentTree` replaces the `parentRef` slot** (`parentRef` is a
+  getter over it) and `setParent` / `addParent` take the parent's tree from the
+  caller, who always holds it: nothing derives a parent tree from a ref any more
+  (it was three megamorphic loads per attached instance, plus every StateView
+  add / remove / visibility check).
+
+## What the numbers say
+
+| scenario | unit | before | after | Δ |
+| --- | --- | --- | --- | --- |
+| encoder/construct | µs/entity | 3.556 | 2.569 | −27.8 % |
+| mutations/tree-build/attach-{fresh,steady} | ms/op | 3.476 / 3.693 | 3.003 / 3.095 | −14 / −16 % |
+| encoder/deep-nested | ms/tick | 4.864 | 4.194 | −13.8 % |
+| encoder/memory-footprint | KB | 2 586 | 2 326 | −10.0 % |
+| realworld/big-state/decode-{10k,20k} | ms/op | 11.89 / 25.28 | 9.39 / 23.14 | −21 / −8.5 % |
+| decoder/bootstrap | ms/op | 2.230 | 1.991 | −10.7 % |
+| decoder/map-bootstrap/scores-{num,str}-10000 | ms/op | 1.561 / 2.898 | 1.215 / 2.447 | −22 / −16 % |
+| decoder/map-replace/{str,num}-100pct | ms/frame | 0.0431 / 0.0285 | 0.0335 / 0.0227 | −22 / −20 % |
+| encoder/map-replace/num-{100,10}pct | ms/op | | | −13 / −11 % |
+| mutations/map-ops get / keys / for-of (num) | µs/op | 11.55 / 1.76 / 8.70 | 8.33 / 1.42 / 7.11 | −28 / −19 / −18 % |
+| mutations/map-ops/add-delete-{num,str} | µs/op | 157 / 184 | 143 / 168 | −9 / −9 % |
+| mutations/array-iterate forEach / for-of / map / filter | µs/op | 7.17 / 8.18 / 5.65 / 7.43 | 5.76 / 6.84 / 5.03 / 6.68 | −20 / −16 / −11 / −10 % |
+| decoder/array-read index / forEach / for-of / length+at | µs/op | 5.83 / 6.68 / 7.93 / 1.09 | 4.81 / 5.60 / 6.77 / 0.94 | −18 / −16 / −15 / −14 % |
+| realworld/entities-aoi/n2000-c50-nested | ms/tick | 3.226 | 2.932 | −9.1 % |
+| stateview/array-reindex/shift-1000 | ms/tick | 0.01735 | 0.01606 | −7.4 % |
+| callbacks/strategies/raw, callbacks/density/sparse1pct | ms/frame | | | −10 / −9 % |
+
+Reading a decoded array against 5.0.32 now: `index` −99 %, `length+at` −96 %,
+`map` −26 %, `forEach` −19 %, `spread` −13 %, `filter` −11 %; `for-of` +17.6 %
+(it was +84 %), `indexOf-last` +80 % (needs the internal-array storage model).
+
+## Lessons (each of these was found by a sweep and bisected across the frozen per-step builds)
+
+- **Elements kind matters as much as size.** The first pre-sized `$values` was
+  `new Array(numFields + 1)`: as small as the final version, but HOLEY, and a
+  holey `$values` made every field read 5…10 % slower in tight loops
+  (`array-iterate/for-of` +9.7 %, `filter` +6 %). It passed the targeted runs
+  (memory, construction, decode) and only showed two steps later, in the full
+  sweep. The packed template clone is the same 72 B and reads *faster* than the
+  old 17-slot array did.
+- **A decoder-built ArraySchema is its own raw target.** Sending the decoder's
+  reader through the `Array.isArray` → `$proxyTarget` hop cost `decoder/tick`
+  +18 %, `callbacks/density/none` +16 %, `turn-based/broadcast-100` +17 %. The
+  decoder reads the slot directly and falls back only for an encoder-built Proxy
+  (the initial value of an array field on the state handed to `new Decoder`).
+- **Hand the tree down, do not re-derive it.** `parentTree` derived inside
+  `addParent` with `refTreeOf(parent)` cost `tree-build/construct` +12.5 % (most
+  parents are array Proxies); as an extra field it cost memory +1.1 %. Passed in
+  by the caller and stored *instead of* `parentRef`, it costs neither.
+- `undefined >>> 12` is `0`: a table keyed by small integers must reject a
+  missing key explicitly, or it reads — and deletes — slot 0 (here, the root).
+- A generator-backed `forEach` on the table cost `encoder/map-encode-all` ~2 %;
+  the hot walk uses plain loops.
+
+Open leads: `MapSchema.set` still does one Map read and two Map writes per ADD
+(`indexByKey`, `$items`) — ~10 % of entity construction; GC is ~12 % of it;
+`assertInstanceType` runs an `instanceof` per `set` / `push`; `Root.remove` and
+StateView allocate a `forEachChild` closure per removed node; the decoder's
+`refCount` / `callbacks` are still plain objects with integer keys and `delete`.

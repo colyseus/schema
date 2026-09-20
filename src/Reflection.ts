@@ -79,6 +79,9 @@ export const ReflectionField = schema({
     /** Set only on `t.quantized()` fields (`.optional()` — no auto-instantiated
      *  default; its absence is the "not quantized" signal on decode). */
     quantized: t.ref(QuantizedDescriptor).optional(),
+    /** Declared key type of a `map` field (`"number"`, `"int32"`, …). Absent
+     *  for string-keyed maps, so their handshake bytes are unchanged. */
+    keyType: t.string().optional(),
 }, "ReflectionField");
 export type ReflectionField = SchemaType<typeof ReflectionField>;
 
@@ -199,6 +202,11 @@ export function populateReflection(reflection: Reflection, context: TypeContext,
                     } else {
                         fieldType = Object.keys(field.type)[0];
 
+                        const keyType = (field.type as any).key;
+                        if (fieldType === "map" && keyType !== undefined && keyType !== "string") {
+                            reflectionField.keyType = keyType;
+                        }
+
                         if (typeof (field.type[fieldType as keyof typeof field.type]) === "string") {
                             // primitive child gets its own slot (was packed as "array:string")
                             reflectionField.childPrimitive = field.type[fieldType as keyof typeof field.type] as string;
@@ -233,11 +241,19 @@ export function populateReflection(reflection: Reflection, context: TypeContext,
  * encoded with the codec itself (nested Schema + array + optional field — a
  * self-hosting fixture).
  */
+// One buffer for every handshake in the process (the payload is copied out
+// below): a room with a large `Encoder.BUFFER_SIZE` must not allocate that
+// much per client join. `encodeAll` grows it if a schema's reflection is
+// larger, and the grown buffer is kept.
+let reflectionBuffer: Uint8Array | undefined;
+
 Reflection.encode = function (encoder: Encoder, _it?: Iterator) {
     const reflection = new Reflection();
-    const reflectionEncoder = new Encoder(reflection);
+    const reflectionEncoder = new Encoder(reflection, undefined, 0);
+    reflectionEncoder.sharedBuffer = (reflectionBuffer ??= new Uint8Array(64 * 1024));
     populateReflection(reflection, encoder.context, encoder.state.constructor as typeof Schema);
     const encoded = reflectionEncoder.encodeAll();
+    reflectionBuffer = reflectionEncoder.sharedBuffer;
     const out = new Uint8Array(1 + encoded.byteLength);
     out[0] = PROTOCOL_VERSION;
     out.set(encoded, 1);
@@ -301,7 +317,9 @@ export function materializeReflection<T extends Schema = Schema>(reflection: Ref
                     Metadata.addField(metadata, fieldIndex, field.name, refType);
 
                 } else {
-                    Metadata.addField(metadata, fieldIndex, field.name, { [fieldType]: refType });
+                    const def: any = { [fieldType]: refType };
+                    if (fieldType === "map" && field.keyType) def.key = field.keyType;
+                    Metadata.addField(metadata, fieldIndex, field.name, def);
                 }
 
             } else {

@@ -1,6 +1,7 @@
 import { OPERATION } from "../encoding/spec.js";
+import { decodedRefIdOf } from "../encoder/ChangeTree.js";
 import { Schema } from "../Schema.js";
-import { $proxyTarget, $refId, $refTypeFieldIndexes, $resyncPrune, $patchOnlyFieldIndexes } from "../types/symbols.js";
+import { $proxyTarget, $refTypeFieldIndexes, $resyncPrune, $patchOnlyFieldIndexes } from "../types/symbols.js";
 import type { Metadata } from "../Metadata.js";
 import type { Decoder } from "./Decoder.js";
 import type { DataChange } from "./DecodeOperation.js";
@@ -58,7 +59,7 @@ export function resyncTouchEntry(
     set.add(identity);
 
     if (previousValue !== undefined && operation === OPERATION.ADD && previousValue !== value) {
-        const previousRefId = previousValue[$refId];
+        const previousRefId = decodedRefIdOf(previousValue);
         if (previousRefId !== undefined) {
             decoder.root.removeRef(previousRefId);
             allChanges?.push({
@@ -120,7 +121,7 @@ export function resyncSweep(decoder: Decoder, allChanges: DataChange[] | null) {
 }
 
 function sweepSchema(decoder: Decoder, ref: Schema, seen: Set<number>, allChanges: DataChange[] | null) {
-    const refId = (ref as any)[$refId];
+    const refId = decodedRefIdOf(ref);
     if (refId === undefined || seen.has(refId)) { return; }
     seen.add(refId);
 
@@ -148,7 +149,7 @@ function sweepSchema(decoder: Decoder, ref: Schema, seen: Set<number>, allChange
 
 function sweepCollection(decoder: Decoder, coll: any, seen: Set<number>, allChanges: DataChange[] | null) {
     const tgt: any = coll[$proxyTarget] ?? coll;
-    const refId = tgt[$refId];
+    const refId = decodedRefIdOf(tgt);
     if (refId === undefined || seen.has(refId)) { return; }
     seen.add(refId);
 
@@ -171,7 +172,7 @@ function sweepCollection(decoder: Decoder, coll: any, seen: Set<number>, allChan
                 value: undefined,
                 previousValue: value,
             });
-            const childRefId = value?.[$refId];
+            const childRefId = decodedRefIdOf(value);
             if (childRefId !== undefined) { $root.removeRef(childRefId); }
         },
         (value: any) => {

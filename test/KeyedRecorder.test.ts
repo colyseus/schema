@@ -24,7 +24,7 @@ describe("KeyedRecorder", () => {
     cases.forEach(([label, pending, incoming, expected]) => {
         it(label, () => {
             const rec = new KeyedRecorder();
-            if (pending !== undefined) rec.ops.set(3, pending);
+            if (pending !== undefined) rec.add(3, pending); // first record on an index stores the op as is
             rec.add(3, incoming);
             assert.strictEqual(rec.opAt(3), expected);
         });
@@ -45,7 +45,10 @@ describe("KeyedRecorder", () => {
         rec.delete(2, "two");
         rec.clear();
         assert.strictEqual(rec.cleared, true);
-        assert.strictEqual(rec.ops.size, 0);
+        assert.strictEqual(rec.count, 0);
+        assert.deepStrictEqual(rec.indexes(), []);
+        assert.strictEqual(rec.opAt(1), undefined);
+        assert.strictEqual(rec.opAt(2), undefined);
         assert.strictEqual(rec.deleted!.size, 0);
         rec.add(3, ADD);
         const seen: number[] = [];
@@ -73,5 +76,66 @@ describe("KeyedRecorder", () => {
         rec.reset();
         assert.strictEqual(rec.has(), false);
         assert.strictEqual(rec.size(), 0);
+    });
+
+    it("emits in first-record order; merging never moves an index (REPLACE is op 0)", () => {
+        const rec = new KeyedRecorder<string>();
+        rec.add(7, REPLACE);
+        rec.add(2, ADD);
+        rec.delete(9, "nine");
+        rec.add(7, REPLACE);        // REPLACE over REPLACE: stays where it was
+        rec.add(2, REPLACE);        // REPLACE over ADD: still an ADD, still second
+        rec.add(9, ADD);            // ADD over DELETE: DELETE_AND_ADD, still third
+        assert.deepStrictEqual(rec.indexes(), [7, 2, 9]);
+        const seen: [number, number][] = [];
+        rec.forEach((index, op) => seen.push([index, op]));
+        assert.deepStrictEqual(seen, [[7, REPLACE], [2, ADD], [9, DELETE_AND_ADD]]);
+        assert.strictEqual(rec.opAt(7), REPLACE, "a pending REPLACE (0) is not 'no op'");
+        assert.strictEqual(rec.opAt(8), undefined);
+        assert.strictEqual(rec.size(), 3);
+    });
+
+    it("reset() forgets every op and the next tick starts clean", () => {
+        const rec = new KeyedRecorder();
+        for (let tick = 0; tick < 3; tick++) {
+            for (let i = 0; i < 50; i++) rec.add(i * 3, tick === 0 ? ADD : REPLACE);
+            assert.strictEqual(rec.count, 50);
+            assert.strictEqual(rec.opAt(6), tick === 0 ? ADD : REPLACE);
+            rec.reset();
+            assert.strictEqual(rec.count, 0);
+            assert.strictEqual(rec.opAt(6), undefined);
+            assert.deepStrictEqual(rec.indexes(), []);
+        }
+    });
+
+    it("handles indexes far apart and drops pages that went idle", () => {
+        const rec = new KeyedRecorder();
+        const pagesOf = () => (rec as any).pages as (Uint8Array | undefined)[];
+        rec.add(5, ADD);
+        rec.reset();
+        rec.add(1_000_000, ADD);                 // a new page is needed: the idle first page goes
+        assert.strictEqual(rec.opAt(1_000_000), ADD);
+        assert.strictEqual(pagesOf()[0], undefined, "idle page dropped");
+        assert.strictEqual(pagesOf().filter((page) => page !== undefined).length, 1);
+
+        rec.add(3, REPLACE);                     // same tick, back in the first page: both stay
+        rec.add(2_000_000, DELETE_AND_ADD);      // growth again, in the SAME tick: nothing pending is lost
+        assert.deepStrictEqual(rec.indexes(), [1_000_000, 3, 2_000_000]);
+        assert.strictEqual(rec.opAt(3), REPLACE);
+        assert.strictEqual(rec.opAt(1_000_000), ADD);
+        assert.strictEqual(rec.opAt(2_000_000), DELETE_AND_ADD);
+    });
+
+    it("clear() inside a tick restarts at index 0 without leaking the dropped ops", () => {
+        const rec = new KeyedRecorder<string>();
+        rec.add(0, ADD);
+        rec.add(1, ADD);
+        rec.clear();
+        rec.add(0, ADD);
+        assert.deepStrictEqual(rec.indexes(), [0]);
+        assert.strictEqual(rec.opAt(1), undefined);
+        const seen: number[] = [];
+        rec.forEach((index) => seen.push(index));
+        assert.deepStrictEqual(seen, [-OPERATION.CLEAR, 0], "CLEAR is reported first");
     });
 });

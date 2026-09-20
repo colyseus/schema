@@ -1,17 +1,18 @@
-import { ARRAY_OP, KIND_ARRAY, KIND_MAP, KIND_SCHEMA, OPERATION, REF_HAS_BODY, REF_HAS_TYPE } from "../encoding/spec.js";
+import { ARRAY_OP, KEYED_OP, KEYED_OP_CODE, KIND_ARRAY, KIND_MAP, KIND_SCHEMA, OPERATION, REF_HAS_BODY, REF_HAS_TYPE } from "../encoding/spec.js";
 import type { Iterator } from "../encoding/decode.js";
 import { encode } from "../encoding/encode.js";
 import { uvarint, writeMask64, writeString, endChunk } from "../encoding/varint.js";
-import { $changes, $childType, $getByIndex, $refId, $values } from "../types/symbols.js";
+import { $childType, $getByIndex, $keyType, $values } from "../types/symbols.js";
 import { Metadata } from "../Metadata.js";
 import { isQuantizedType, makeQuantizedEncoder } from "../types/quantize.js";
-import { IS_FILTERED, type ChangeTree } from "./ChangeTree.js";
+import { IS_FILTERED, type ChangeTree, refTreeOf, refIdOf, viewTreeOf } from "./ChangeTree.js";
 import type { EncodeDescriptor } from "./EncodeDescriptor.js";
 import type { StateView } from "./StateView.js";
 import { ARRAY_SNAPSHOT } from "./StateView.js";
 import type { TypeContext } from "../types/TypeContext.js";
 import type { ArrayLog } from "./ArrayLog.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
+import type { RefTable } from "../RefTable.js";
 import { isEdgeLive } from "./changeTree/parentChain.js";
 
 export const MODE_SNAPSHOT = 0;
@@ -52,6 +53,14 @@ export interface Frame {
     mode: number;
     genA: number;
     genB: number;
+    /**
+     * refId of the previous chunk written in this slice; -1 before the first
+     * one. Chunk headers are `uvarint(refId*2+1)` (absolute) for the first
+     * chunk of a slice and `uvarint(zigzag(refId - prevRefId)*2)` after it —
+     * consecutive dirty structures usually have neighbouring refIds, so the
+     * delta stays one byte long after absolute ids have grown past 127.
+     */
+    prevRefId: number;
     // ── tree ──
     depth: number;
     tree: ChangeTree;
@@ -73,6 +82,8 @@ export interface Frame {
     filter: ((ref: any, index: number, view?: StateView) => boolean) | undefined;
     childType: any;
     childEncoder: ValueWriter | undefined;
+    /** MapSchema key writer per the map's declared key type (`writeString` for string maps); undefined on every other kind. */
+    keyWriter: ValueWriter | undefined;
     /** Collection whose children are refs (Schema instances). */
     isSchemaChild: boolean;
     /** Filtered Schema-child array in a view pass: identity ops (ADD_REF / DELETE_REF), no positions. */
@@ -84,23 +95,33 @@ export interface Frame {
     maskHigh: number;
     vals: any[];
     keys: number[];
-    strs: string[];
+    /** Map keys of the scratch entries (string or number per the map's key type). */
+    strs: any[];
+    /**
+     * High-water marks of `vals` / `strs` since the last `releaseFrames`:
+     * every body writer raises them to the entries it filled, so the release
+     * clears exactly those (a one-chunk tick touches none and pays nothing).
+     * `keys` holds numbers only and is never cleared.
+     */
+    valsLen: number;
+    strsLen: number;
     /** Entry a DRAIN body is sourced from (set by `canInline`, consumed by `writeBody`). */
     entryForBody: Map<number | ChangeTree, OPERATION> | undefined;
 }
 
 const framePool: Frame[] = [];
 
-function frameAt(depth: number): Frame {
+/** Frame for `depth` (created on first use). Exported for the frame-pool tests only. */
+export function frameAt(depth: number): Frame {
     let f = framePool[depth];
     if (f === undefined) {
         f = framePool[depth] = {
             context: undefined!, buffer: undefined!, it: undefined!, capacity: 0, view: undefined, hasView: false,
-            emitFiltered: false, mode: MODE_SNAPSHOT, genA: 0, genB: 0,
+            emitFiltered: false, mode: MODE_SNAPSHOT, genA: 0, genB: 0, prevRefId: -1,
             depth, tree: undefined!, ref: undefined, refTarget: undefined, elements: undefined, values: undefined!, desc: undefined!, kind: 0,
-            treeIsFiltered: false, emitMask: 0, filter: undefined, childType: undefined, childEncoder: undefined,
+            treeIsFiltered: false, emitMask: 0, filter: undefined, childType: undefined, childEncoder: undefined, keyWriter: undefined,
             isSchemaChild: false, identityMode: false,
-            lenPos: -1, maskLow: 0, maskHigh: 0, vals: [], keys: [], strs: [], entryForBody: undefined,
+            lenPos: -1, maskLow: 0, maskHigh: 0, vals: [], keys: [], strs: [], valsLen: 0, strsLen: 0, entryForBody: undefined,
         };
     }
     return f;
@@ -111,7 +132,14 @@ export function passFrame(): Frame {
     return frameAt(0);
 }
 
-/** Drop the tree references every frame of the finished pass still holds, so a disposed state can be collected. */
+/**
+ * Drop the tree references every frame of the finished pass still holds, so
+ * a disposed state can be collected. Frames are entered in depth order
+ * (`childFrame` = parent depth + 1), so the first frame without a tree ends
+ * the used range. Scratch is cleared up to its high-water mark and never
+ * truncated: `length = 0` makes V8 drop the backing store, and the next body
+ * pass would regrow it.
+ */
 export function releaseFrames(): void {
     for (let i = 0; i < framePool.length; i++) {
         const f = framePool[i];
@@ -121,10 +149,25 @@ export function releaseFrames(): void {
         f.refTarget = undefined;
         f.elements = undefined;
         f.values = undefined!;
-        f.vals.length = 0;
-        f.strs.length = 0;
         f.entryForBody = undefined;
+        if (f.valsLen !== 0) releaseScratch(f); // strs are only ever filled alongside vals
     }
+}
+
+/** Out of line: only frames that wrote a body reach it. */
+function releaseScratch(f: Frame): void {
+    const vals = f.vals;
+    for (let k = 0, n = f.valsLen; k < n; k++) vals[k] = undefined;
+    f.valsLen = 0;
+    const strs = f.strs;
+    for (let k = 0, n = f.strsLen; k < n; k++) strs[k] = undefined;
+    f.strsLen = 0;
+}
+
+/** Raise the frame's scratch high-water marks after a body filled `n` sequential entries (`strs` only for maps). */
+function noteScratch(f: Frame, n: number, withStrs: boolean): void {
+    if (n > f.valsLen) f.valsLen = n;
+    if (withStrs && n > f.strsLen) f.strsLen = n;
 }
 
 /** Load `tree` into `f` (tree fields only). Straight-line on purpose: it must inline into the patch loop. */
@@ -132,12 +175,15 @@ export function enterFrame(f: Frame, tree: ChangeTree): void {
     const desc = tree.encDescriptor;
     const refTarget = tree.refTarget as any;
     const treeIsFiltered = (tree.flags & IS_FILTERED) !== 0;
-    const childType = refTarget[$childType]; // per-instance child type; undefined on Schema trees
+    // Per-instance child type. A Schema tree has none, and probing for it is a
+    // megamorphic MISS (full prototype-chain walk) on every Schema instance —
+    // 8.7 % of a bulk-ADD encode — so only collections are asked.
+    const childType = (desc.kind === KIND_SCHEMA) ? undefined : refTarget[$childType];
     f.tree = tree;
     f.ref = tree.ref;
     f.refTarget = refTarget;
     f.elements = tree.elements;
-    f.values = refTarget[$values];
+    f.values = tree.values!; // the tree's cached `$values` (monomorphic load); undefined on collections
     f.desc = desc;
     f.kind = desc.kind;
     f.treeIsFiltered = treeIsFiltered;
@@ -147,6 +193,7 @@ export function enterFrame(f: Frame, tree: ChangeTree): void {
     f.childType = childType;
     const childEncoder = childWriterOf(childType);
     f.childEncoder = childEncoder;
+    f.keyWriter = (desc.kind === KIND_MAP) ? keyWriterOf(refTarget[$keyType]) : undefined;
     f.isSchemaChild = childType !== undefined && childEncoder === undefined;
     f.identityMode = f.hasView && treeIsFiltered && f.isSchemaChild && desc.kind === KIND_ARRAY;
     f.lenPos = -1;
@@ -158,6 +205,11 @@ function childWriterOf(type: any): ValueWriter | undefined {
     if (typeof type === "string") return (encode as any)[type];
     if (isQuantizedType(type)) return makeQuantizedEncoder(type.quantized);
     return undefined;
+}
+
+/** Writer for a MapSchema's declared key type; string (or undeclared) keys ride as `string`. */
+function keyWriterOf(keyType: string | undefined): ValueWriter {
+    return (keyType === undefined || keyType === "string") ? writeString : (encode as any)[keyType];
 }
 
 /** Frame for an inline body of `child` under `parent`. */
@@ -181,39 +233,143 @@ function childFrame(parent: Frame, child: ChangeTree): Frame {
 // inline and the rest out of line, so the patch loop fits V8's cumulative
 // inlining budget (a cold call site costs no budget until it runs).
 export function openChunk(f: Frame): void {
-    const refId: number = f.ref[$refId]; // read only when a chunk actually opens
-    if (refId >= 0x4000) { openChunkLong(f, refId); return; }
+    writeChunkHeader(f, f.tree.refId); // refId read only when a chunk actually opens
+    f.lenPos = f.it.offset++;            // reserve the length byte
+}
+
+/**
+ * Chunk header only (no length byte): absolute `refId*2+1` for the first
+ * chunk of a slice, `zigzag(refId - prevRefId)*2` for the following ones.
+ * Also used by the per-view chunk cache, which replays a cached body under
+ * a header computed against the receiving view's own previous chunk.
+ */
+export function writeChunkHeader(f: Frame, refId: number): void {
+    const prev = f.prevRefId;
+    f.prevRefId = refId;
+    let h: number;
+    if (prev < 0) h = refId * 2 + 1;
+    else {
+        const d = refId - prev;
+        h = (d < 0) ? (-4 * d - 2) : (4 * d); // zigzag(d) * 2
+    }
+    if (h >= 0x4000) { uvarint(f.buffer, h, f.it); return; }
     const it = f.it;
     const buffer = f.buffer;
     let o = it.offset;
-    if (refId < 0x80) {
-        buffer[o++] = refId;
+    if (h < 0x80) {
+        buffer[o++] = h;
     } else {
-        buffer[o++] = (refId & 0x7f) | 0x80;
-        buffer[o++] = refId >>> 7;
+        buffer[o++] = (h & 0x7f) | 0x80;
+        buffer[o++] = h >>> 7;
     }
-    f.lenPos = o;
-    it.offset = o + 1;
-}
-
-function openChunkLong(f: Frame, refId: number): void {
-    const it = f.it;
-    uvarint(f.buffer, refId, it);
-    f.lenPos = it.offset++;
+    it.offset = o;
 }
 
 
+/** Length prefix `uvarint(byteLen * 2)`: the low bit is the run flag (see `closeRun`). */
 export function closeChunk(f: Frame): void {
     const lenPos = f.lenPos;
     if (lenPos === -1) return;
     f.lenPos = -1;
-    const len = f.it.offset - lenPos - 1;
-    if (len < 0x80) f.buffer[lenPos] = len;
-    else closeChunkLong(f, lenPos);
+    const v = (f.it.offset - lenPos - 1) * 2;
+    if (v < 0x80) f.buffer[lenPos] = v;
+    else closeChunkLong(f, lenPos, 0);
 }
 
-function closeChunkLong(f: Frame, lenPos: number): void {
-    endChunk(f.buffer, lenPos, f.it, f.capacity);
+/** Same as `closeChunk` with the run flag set: `uvarint(byteLen * 2 + 1)`. */
+function closeRun(f: Frame): void {
+    const lenPos = f.lenPos;
+    f.lenPos = -1;
+    const v = (f.it.offset - lenPos - 1) * 2 + 1;
+    if (v < 0x80) f.buffer[lenPos] = v;
+    else closeChunkLong(f, lenPos, 1);
+}
+
+function closeChunkLong(f: Frame, lenPos: number, flag: number): void {
+    endChunk(f.buffer, lenPos, f.it, f.capacity, flag);
+}
+
+// ── same-shape runs ──────────────────────────────────────────────────────
+//
+// `run := chunkHeader uvarint(byteLen*2+1) uvarint(typeId) mask64 uvarint(extra)
+//         values { uvarint(zigzag(refId_k − refId_k−1)) values }×extra`
+//
+// Consecutive dirty Schemas of one class whose dirty fields are the same set
+// of primitives, all written (ADD), collapse into one chunk: the class and
+// the field mask ride once, each member costs its refId delta plus its values
+// — no per-member length, no per-field op byte. On a room of N same-class
+// entities updating the same fields per tick this is ~19 % of the patch.
+
+/**
+ * Can `tree` be a run member in this pass? Schema, ≤ 8 fields (inline op
+ * bytes), no per-class filter function, no stream fields, every dirty field a
+ * primitive written with ADD, and — in the shared pass — none of them
+ * `@view`-tagged (a filtered tree in the view pass emits all its fields).
+ */
+export function runEligible(tree: ChangeTree, _treeIsFiltered: boolean): boolean {
+    if (tree.ops !== undefined || tree.dirtyHigh !== 0) return false;
+    const low = tree.dirtyLow;
+    if (low === 0) return false;
+    const desc = tree.encDescriptor;
+    if (!desc.runnable) return false;
+    if ((low & desc.refTypeBitmask) !== 0) return false;
+    // no `@view`-tagged dirty field: the stock filter passes untagged fields
+    // unconditionally in both passes, tagged ones need the per-view check
+    if ((low & desc.filterBitmask) !== 0) return false;
+    // every dirty op must be ADD (0x80): op bytes are packed 4 per number
+    let bits = low;
+    const ol = tree.opsLow, oh = tree.opsHigh;
+    while (bits !== 0) {
+        const bit = bits & -bits;
+        const index = 31 - Math.clz32(bit);
+        bits ^= bit;
+        if ((((index < 4 ? ol : oh) >>> ((index & 3) << 3)) & 0xFF) !== OPERATION.ADD) return false;
+    }
+    return true;
+}
+
+/** Same run as `first`: same class descriptor and the same dirty field set (ops are all ADD by eligibility). */
+export function runContinues(first: ChangeTree, next: ChangeTree, treeIsFiltered: boolean): boolean {
+    return next.encDescriptor === first.encDescriptor
+        && next.dirtyLow === first.dirtyLow
+        && runEligible(next, treeIsFiltered);
+}
+
+/** Open a run for `first` (frame already entered): header, length byte, typeId, mask, member count. */
+export function openRun(f: Frame, first: ChangeTree, extra: number): void {
+    writeChunkHeader(f, first.refId);
+    f.lenPos = f.it.offset++;
+    const typeId = f.context.getTypeId(first.ref.constructor);
+    uvarint(f.buffer, typeId!, f.it);
+    writeMask64(f.buffer, first.dirtyLow, 0, f.it);
+    uvarint(f.buffer, extra, f.it);
+    writeRunValues(f, first.values, first.dirtyLow);
+}
+
+/** One more run member: refId delta from the previous member, then its values. */
+export function addRunMember(f: Frame, tree: ChangeTree): void {
+    const refId: number = tree.refId;
+    const d = refId - f.prevRefId;
+    uvarint(f.buffer, (d < 0) ? (-2 * d - 1) : (2 * d), f.it);
+    f.prevRefId = refId;
+    writeRunValues(f, tree.values!, tree.dirtyLow);
+}
+
+export function endRun(f: Frame): void {
+    closeRun(f);
+}
+
+/** The values of the masked fields in ascending field order, each with its declared primitive writer. */
+function writeRunValues(f: Frame, values: any[], mask: number): void {
+    const desc = f.desc;
+    const buffer = f.buffer;
+    const it = f.it;
+    while (mask !== 0) {
+        const bit = mask & -mask;
+        const index = 31 - Math.clz32(bit);
+        mask ^= bit;
+        desc.encoders[index]!(buffer, values[index], it);
+    }
 }
 
 /** Schema field gate: filter class of the field, then the class filter; the stream pass drops `@unreliable`. */
@@ -299,9 +455,14 @@ export function encodeKeyedOps(f: Frame): void {
     if (rec === undefined) return;
     if (rec.cleared) {
         if (f.lenPos === -1) openChunk(f);
-        f.buffer[f.it.offset++] = OPERATION.CLEAR;
+        f.buffer[f.it.offset++] = KEYED_OP.CLEAR;
     }
-    for (const [index, op] of rec.ops) keyedOp(f, index, op);
+    // first-record order = wire order
+    const order = rec.order;
+    for (let k = 0, n = rec.count; k < n; k++) {
+        const index = order[k];
+        keyedOp(f, index, rec.opAt(index)!);
+    }
 }
 
 function keyedOp(f: Frame, index: number, op: OPERATION): void {
@@ -419,12 +580,14 @@ function encodeArrayIdentity(f: Frame, log: ArrayLog): void {
 }
 
 function elementVisible(f: Frame, value: any): boolean {
-    return value !== undefined && f.view!.isChangeTreeVisible(value[$changes]);
+    return value !== undefined && f.view!.isChangeTreeVisible(viewTreeOf(value));
 }
 
 function identityAdd(f: Frame, value: any): void {
-    if (!elementVisible(f, value)) return;
-    if (value[$changes]._fullSyncGen === f.genA) return; // this view's drain body already carried it
+    if (value === undefined) return;
+    const tree = viewTreeOf(value)!;
+    if (!f.view!.isChangeTreeVisible(tree)) return;
+    if (tree._fullSyncGen === f.genA) return; // this view's drain body already carried it
     if (f.lenPos === -1) openChunk(f);
     f.buffer[f.it.offset++] = ARRAY_OP.ADD_REF;
     writeRef(f, f.childType, value, true);
@@ -433,7 +596,7 @@ function identityAdd(f: Frame, value: any): void {
 function identityDelete(f: Frame, value: any): void {
     if (!elementVisible(f, value)) return;
     if (f.lenPos === -1) openChunk(f);
-    uvarint(f.buffer, value[$refId] * 16 + ARRAY_OP.DELETE_REF, f.it);
+    uvarint(f.buffer, refIdOf(value) * 16 + ARRAY_OP.DELETE_REF, f.it);
 }
 
 /** Identity-form RESTATE from `n` scratch values starting at `from`: the visible refs, merged by the decoder. */
@@ -444,6 +607,7 @@ function identityRestate(f: Frame, source: any[], from: number, n: number): void
         const value = source[from + k];
         if (elementVisible(f, value)) scratch[count++] = value;
     }
+    noteScratch(f, count, false);
     if (f.lenPos === -1) openChunk(f);
     uvarint(f.buffer, 1 * 16 + ARRAY_OP.RESTATE, f.it); // identity form
     uvarint(f.buffer, count, f.it);
@@ -527,6 +691,11 @@ function emitSchemaOp(f: Frame, index: number, op: OPERATION): void {
     else uvarint(buffer, h, it);
     if (op === OP_DELETE) return;
     const value = readSchemaValue(f, index);
+    // One call site for every primitive writer (megamorphic on a mixed-type
+    // schema). Measured alternative — direct `number` / `string` calls behind
+    // type-name compares — gained nothing on encode and cost float32 /
+    // quantized schemas 4–6 % (bench/realworld-results.md, x4), so the
+    // pre-resolved function slot stays.
     const encoderFn = f.desc.encoders[index];
     if (encoderFn !== undefined) encoderFn(buffer, value, it); // primitive fast path stays inline
     else writeSchemaRef(f, index, value, op);
@@ -536,16 +705,22 @@ function writeSchemaRef(f: Frame, index: number, value: any, op: OPERATION): voi
     writeNonPrimitive(f, f.desc.types[index], value, (op & OP_ADD) === OP_ADD);
 }
 
+/**
+ * Keyed op: `uvarint(index * 4 + code)`, the map key (ADD-bit ops of a
+ * MapSchema only, per its declared key type), then the value. A recorded
+ * DELETE_AND_ADD goes out as ADD — the decoder derives the replacement
+ * from the slot being occupied.
+ */
 export function emitKeyedOp(f: Frame, index: number, op: OPERATION): void {
     const buffer = f.buffer;
     const it = f.it;
-    buffer[it.offset++] = op & 255;
-    uvarint(buffer, index, it);
-    if (op === OPERATION.DELETE) return;
-    if (f.kind === KIND_MAP && (op & OPERATION.ADD) === OPERATION.ADD) {
-        writeString(buffer, f.refTarget.keyByIndex.get(index), it);
+    uvarint(buffer, index * 4 + KEYED_OP_CODE[op >>> 6], it);
+    if (op === OP_DELETE) return;
+    const isAdd = (op & OP_ADD) === OP_ADD;
+    if (isAdd && f.kind === KIND_MAP) {
+        f.keyWriter!(buffer, f.refTarget.keyByIndex.get(index), it);
     }
-    writeValue(f, f.childType, f.childEncoder, f.refTarget[$getByIndex](index), (op & OPERATION.ADD) === OPERATION.ADD);
+    writeValue(f, f.childType, f.childEncoder, f.refTarget[$getByIndex](index), isAdd);
 }
 
 function writeValue(f: Frame, type: any, encoderFn: ValueWriter | undefined, value: any, allowBody: boolean): void {
@@ -564,8 +739,8 @@ function writeNonPrimitive(f: Frame, type: any, value: any, allowBody: boolean):
  * instance is a registered subclass of it.
  */
 function writeRef(f: Frame, baseType: any, value: any, allowBody: boolean): void {
-    const child: ChangeTree | undefined = value[$changes];
-    const refId: number | undefined = value[$refId];
+    const child: ChangeTree | undefined = refTreeOf(value);
+    const refId = child?.refId;
     if (refId === undefined) {
         throw new Error(`@colyseus/schema: cannot encode a ${value.constructor?.name} without a refId (detached from the state tree?)`);
     }
@@ -664,7 +839,7 @@ function canInline(f: Frame, child: ChangeTree): number {
 
         default: { // MODE_DRAIN
             if (stamp === f.genA || stamp === f.genB) return NO_BODY;
-            const entry = f.view!.changes.get(child.ref[$refId]);
+            const entry = f.view!.changes.get(child.refId);
             if (entry !== undefined && entry.size > 0) {
                 // the child's own entry drains normally unless it is a pure
                 // visibility bootstrap (all ADDs) we can fold into this body
@@ -727,7 +902,7 @@ function writeMapBodyEntry(f: Frame, entry: Map<number | ChangeTree, OPERATION>)
     const keys = f.keys;
     const vals = f.vals;
     let n = 0;
-    const keyByIndex: Map<number, string> = ref.keyByIndex;
+    const keyByIndex: RefTable<any> = ref.keyByIndex;
     const strs = f.strs;
     for (const index of entry.keys()) {
         if (typeof index !== "number") continue;
@@ -740,15 +915,17 @@ function writeMapBodyEntry(f: Frame, entry: Map<number | ChangeTree, OPERATION>)
     writeMapEntries(f, n);
 }
 
-/** `count` then `{ index key value }` for the first `n` scratch entries (`keys` hold wire indexes, `strs` the string keys). */
+/** `count` then `{ index key value }` for the first `n` scratch entries (`keys` hold wire indexes, `strs` the map keys). */
 function writeMapEntries(f: Frame, n: number): void {
     const keys = f.keys;
     const strs = f.strs;
     const vals = f.vals;
+    const keyWriter = f.keyWriter!;
+    noteScratch(f, n, true);
     uvarint(f.buffer, n, f.it);
     for (let i = 0; i < n; i++) {
         uvarint(f.buffer, keys[i], f.it);
-        writeString(f.buffer, strs[i], f.it);
+        keyWriter(f.buffer, strs[i], f.it);
         writeValue(f, f.childType, f.childEncoder, vals[i], true);
     }
 }
@@ -760,6 +937,8 @@ function maskAdd(f: Frame, index: number): void {
 
 function writeSchemaMaskAndValues(f: Frame): void {
     writeMask64(f.buffer, f.maskLow, f.maskHigh, f.it);
+    // `vals` is indexed by field here: the mask's highest bit bounds what was written
+    noteScratch(f, (f.maskHigh !== 0) ? 64 : 32 - Math.clz32(f.maskLow), false);
     const desc = f.desc;
     let low = f.maskLow;
     while (low !== 0) {
@@ -812,19 +991,39 @@ function writeSchemaBodyRecorder(f: Frame): void {
     writeSchemaMaskAndValues(f);
 }
 
+/**
+ * Live map body: every entry, in the map's own (insertion) order. Iterating
+ * `$items` costs one `indexByKey` lookup per entry and never meets the
+ * mappings of keys removed this tick (they linger in `keyByIndex` until end
+ * of tick). Unfiltered maps know the count up front and stream straight to
+ * the buffer; filtered maps collect the passing entries first.
+ */
 function writeMapBody(f: Frame): void {
     const ref = f.refTarget;
-    const keyByIndex: Map<number, string> = ref.keyByIndex;
-    const $items: Map<string, any> = ref.$items;
+    const indexByKey: Map<any, number> = ref.indexByKey;
+    const $items: Map<any, any> = ref.$items;
     const filter = f.filter;
+    if (filter === undefined) {
+        const buffer = f.buffer;
+        const it = f.it;
+        const keyWriter = f.keyWriter!;
+        const type = f.childType;
+        const enc = f.childEncoder;
+        uvarint(buffer, $items.size, it);
+        for (const [key, value] of $items) {
+            uvarint(buffer, indexByKey.get(key)!, it);
+            keyWriter(buffer, key, it);
+            writeValue(f, type, enc, value, true);
+        }
+        return;
+    }
     const keys = f.keys;
     const strs = f.strs;
     const vals = f.vals;
     let n = 0;
-    for (const [index, key] of keyByIndex) {
-        const value = $items.get(key);
-        if (value === undefined) continue; // mappings of keys removed this tick linger until end of tick
-        if (filter !== undefined && !filter(f.ref, index, f.view)) continue;
+    for (const [key, value] of $items) {
+        const index = indexByKey.get(key)!;
+        if (!filter(f.ref, index, f.view)) continue;
         keys[n] = index;
         strs[n] = key;
         vals[n++] = value;
@@ -843,6 +1042,7 @@ function writeIndexedBody(f: Frame): void {
         keys[n] = index;
         vals[n++] = value;
     }
+    noteScratch(f, n, false);
     uvarint(f.buffer, n, f.it);
     for (let i = 0; i < n; i++) {
         uvarint(f.buffer, keys[i], f.it);
@@ -864,6 +1064,7 @@ function writeArrayBody(f: Frame): void {
         for (let i = 0, len = arr.length; i < len; i++) {
             if (elementVisible(f, arr[i])) scratch[count++] = arr[i];
         }
+        noteScratch(f, count, false);
         uvarint(f.buffer, 1, f.it);
         uvarint(f.buffer, count, f.it);
         for (let k = 0; k < count; k++) writeRef(f, f.childType, scratch[k], true);
@@ -894,11 +1095,12 @@ function writeArrayBodyEntry(f: Frame, entry: Map<number | ChangeTree, OPERATION
     for (const key of entry.keys()) {
         if (typeof key === "number") continue;
         if (!isEdgeLive(key, f.tree, key._parentIndex ?? -1)) {
-            f.view!.changes.delete(key.ref[$refId]); // removed this patch: its own entry must not ship
+            f.view!.changes.delete(key.refId); // removed this patch: its own entry must not ship
             continue;
         }
         if (elementVisible(f, key.ref)) scratch[count++] = key.ref;
     }
+    noteScratch(f, count, false);
     uvarint(f.buffer, 1, f.it);
     uvarint(f.buffer, count, f.it);
     for (let k = 0; k < count; k++) writeRef(f, f.childType, scratch[k], true);
@@ -925,14 +1127,14 @@ export function emitViewEntry(f: Frame, entry: Map<number | ChangeTree, OPERATIO
             if (!f.identityMode) continue;
             if (op === OPERATION.DELETE) {
                 if (f.lenPos === -1) openChunk(f);
-                uvarint(f.buffer, key.ref[$refId] * 16 + ARRAY_OP.DELETE_REF, f.it);
+                uvarint(f.buffer, key.refId * 16 + ARRAY_OP.DELETE_REF, f.it);
                 continue;
             }
             // same-patch view.add + state removal: the binding is moot and the
             // child's own pending entry must not ship (its refId was never
             // introduced to this client)
             if (!isEdgeLive(key, f.tree, key._parentIndex ?? -1)) {
-                view.changes.delete(key.ref[$refId]);
+                view.changes.delete(key.refId);
                 continue;
             }
             if (f.lenPos === -1) openChunk(f);

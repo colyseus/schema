@@ -91,7 +91,7 @@ describe("v6 encoding", () => {
         endChunk(bytes, lenPos, it, bytes.length);
         const rit = { offset: 0 };
         assert.strictEqual(readUvarint(bytes, rit), 300);
-        assert.strictEqual(readUvarint(bytes, rit), 200);
+        assert.strictEqual(readUvarint(bytes, rit), 200 * 2); // length prefix = byteLen * 2 + runFlag
         assert.strictEqual(rit.offset, 4);
         for (let i = 0; i < 200; i++) assert.strictEqual(bytes[rit.offset + i], i & 0xff);
         assert.strictEqual(it.offset, 4 + 200);
@@ -101,7 +101,7 @@ describe("v6 encoding", () => {
         const lp2 = beginChunk(bytes, 5, it2);
         bytes[it2.offset++] = 42;
         endChunk(bytes, lp2, it2, bytes.length);
-        assert.deepStrictEqual(Array.from(bytes.subarray(0, 3)), [5, 1, 42]);
+        assert.deepStrictEqual(Array.from(bytes.subarray(0, 3)), [5, 1 * 2, 42]);
     });
 
     it("chunk back-patch refuses to move past capacity and only advances the offset", () => {

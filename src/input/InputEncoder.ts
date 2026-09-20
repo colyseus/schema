@@ -1,4 +1,5 @@
-import { $numFields, $values, $changes } from "../types/symbols.js";
+import { $numFields, $values } from "../types/symbols.js";
+import { refTreeOf } from "../encoder/ChangeTree.js";
 import { encode } from "../encoding/encode.js";
 import { Encoder } from "../encoder/Encoder.js";
 import { getEncodeDescriptor, type EncodeDescriptor } from "../encoder/EncodeDescriptor.js";
@@ -157,7 +158,7 @@ export class InputEncoder<T extends Schema = any> {
         this._slotHead = 0;
         this._slotCount = 0;
         this._encoder.discardChanges();
-        const tree = this.instance[$changes];
+        const tree = refTreeOf(this.instance);
         const values = this.instance[$values];
         for (let i = 0; i <= this._numFields; i++) {
             if (values[i] === undefined || values[i] === null) continue;

@@ -1,11 +1,11 @@
 import { Metadata } from "../../Metadata.js";
 import { Collection, NonFunctionNonPrimitivePropNames, NonFunctionPropNames, CollectionLike } from "../../types/HelperTypes.js";
-import { IRef, Ref } from "../../encoder/ChangeTree.js";
+import { IRef, Ref, refIdOf, decodedRefIdOf } from "../../encoder/ChangeTree.js";
 import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { Schema } from "../../Schema.js";
-import { $refId } from "../../types/symbols.js";
+import { } from "../../types/symbols.js";
 import type { DefinitionType } from "../../annotations.js";
 import type { CollectionSchema } from "../../types/custom/CollectionSchema.js";
 
@@ -159,7 +159,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
                 Schema.isSchema(change.previousValue)
             ) {
-                const deleteCallbacks = callbacks[(change.previousValue as Ref)[$refId]]?.[OPERATION.DELETE];
+                const deleteCallbacks = callbacks[decodedRefIdOf(change.previousValue)]?.[OPERATION.DELETE];
                 for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
                     deleteCallbacks[i]();
                 }
@@ -274,11 +274,11 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 if (
                     immediate &&
                     (ref as any)[prop] !== undefined &&
-                    !hasPendingChange(ref[$refId], prop)
+                    !hasPendingChange(refIdOf(ref), prop)
                 ) {
                     callback((ref as any)[prop], undefined);
                 }
-                return $root.addCallback(ref[$refId], prop, callback);
+                return $root.addCallback(refIdOf(ref), prop, callback);
             }
 
             /**
@@ -303,7 +303,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
 
                 onChange: function onChange(callback: () => void) {
                     return $root.addCallback(
-                        context.instance[$refId],
+                        refIdOf(context.instance),
                         OPERATION.REPLACE,
                         callback
                     );
@@ -318,7 +318,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                         properties = Object.keys(metadata).map((index) => metadata[index as any as number].name);
                     }
                     return $root.addCallback(
-                        context.instance[$refId],
+                        refIdOf(context.instance),
                         OPERATION.REPLACE,
                         () => {
                             properties.forEach((prop) =>
@@ -344,7 +344,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                                 }, false);
 
                                 // has existing value
-                                if (instance?.[$refId] !== undefined) {
+                                if (refIdOf(instance) !== undefined) {
                                     callback(instance, true);
                                 }
                             }
@@ -352,7 +352,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
 
                         return getProxy(metadataField.type, {
                             // make sure refId is available, otherwise need to wait for the instance to be available.
-                            instance: (instance?.[$refId] !== undefined && instance),
+                            instance: (refIdOf(instance) !== undefined && instance),
                             parentInstance: context.instance,
                             onInstanceAvailable,
                         });
@@ -378,7 +378,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     (ref as CollectionSchema).forEach((v, k) => callback(v, k));
                 }
 
-                return $root.addCallback(ref[$refId], OPERATION.ADD, (value: any, key: any) => {
+                return $root.addCallback(refIdOf(ref), OPERATION.ADD, (value: any, key: any) => {
                     onAddCalls.set(callback, true);
                     currentOnAddCallback = callback;
                     callback(value, key);
@@ -388,11 +388,11 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
             };
 
             const onRemove = function (ref: Ref, callback: (value: any, key: any) => void) {
-                return $root.addCallback(ref[$refId], OPERATION.DELETE, callback);
+                return $root.addCallback(refIdOf(ref), OPERATION.DELETE, callback);
             };
 
             const onChange = function (ref: Ref, callback: (value: any, key: any) => void) {
-                return $root.addCallback(ref[$refId], OPERATION.REPLACE, callback);
+                return $root.addCallback(refIdOf(ref), OPERATION.REPLACE, callback);
             };
 
             return new Proxy({

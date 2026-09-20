@@ -57,6 +57,7 @@ export {
     schema,
     entity,
     type DefinitionType,
+    type MapKeyType,
     type PrimitiveType,
     type Definition,
     type FieldsAndMethods,
@@ -87,6 +88,7 @@ export { ChangeTree, type Ref, type IRef } from "./encoder/ChangeTree.js";
 export { StateView } from "./encoder/StateView.js";
 
 export { Decoder } from "./decoder/Decoder.js";
+export { RefTable } from "./RefTable.js";
 export { OPERATION, ARRAY_OP, CollectionKind, PROTOCOL_VERSION } from "./encoding/spec.js";
 export { uvarint, readUvarint, uvarintSize } from "./encoding/varint.js";
 

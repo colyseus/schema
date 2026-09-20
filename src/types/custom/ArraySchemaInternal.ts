@@ -1,6 +1,6 @@
 import { $changes, $childType, $deleteByIndex, $getByIndex, $items, $proxyTarget, $recorder, $refId, $reset, $resyncPrune, $rev } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
-import { type IRef, ChangeTree, installUntrackedChangeTree } from "../../encoder/ChangeTree.js";
+import { type IRef, ChangeTree, installUntrackedChangeTree, refTreeOf, defineRefAccessors, refIdOf, stampTree, treeOf } from "../../encoder/ChangeTree.js";
 import { ArrayLog } from "../../encoder/ArrayLog.js";
 import { CollectionKind } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
@@ -74,12 +74,12 @@ const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
 };
 
 function releaseChild(tree: ChangeTree, value: any): void {
-    const childTree = value?.[$changes];
+    const childTree = refTreeOf(value);
     if (childTree !== undefined) tree.root?.remove(childTree);
 }
 
 function attachChild(tree: ChangeTree, parent: any, value: any, index: number): void {
-    value?.[$changes]?.setParent(parent, tree.root, index);
+    refTreeOf(value)?.setParent(parent, tree.root, index, tree);
 }
 
 function permutationOf(before: any[], after: any[]): number[] | undefined {
@@ -116,8 +116,9 @@ function permutationOf(before: any[], after: any[]): number[] | undefined {
 }
 
 export class ArraySchema<V = any> implements Collection<number, V>, IRef {
-    [$changes]: ChangeTree;
-    [$refId]?: number;
+    /** Prototype accessor; the tree itself is stamped on the raw target (see ChangeTree.ts). */
+    declare [$changes]: ChangeTree;
+    declare [$refId]?: number;
     [$proxyTarget]: this;
     [$rev]?: number;
     [$moving]?: boolean;
@@ -154,11 +155,8 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         this[$moving] = false;
 
         const proxy = new Proxy(this, ARRAY_PROXY_HANDLER);
-        Object.defineProperty(this, $changes, {
-            value: new ChangeTree(proxy, this),
-            enumerable: false,
-            writable: true,
-        });
+        const tree = new ChangeTree(proxy, this);
+        stampTree(this, tree); // the raw target only — never the Proxy (see ChangeTree.ts)
         if (items.length > 0) this.$pushAll(items);
         return proxy;
     }
@@ -175,10 +173,10 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         return new Proxy(self, ARRAY_PROXY_HANDLER);
     }
 
-    pauseTracking(): void { this[$changes].pause(); }
-    resumeTracking(): void { this[$changes].resume(); }
-    untracked<T>(fn: () => T): T { return this[$changes].untracked(fn); }
-    get isTrackingPaused(): boolean { return this[$changes].paused; }
+    pauseTracking(): void { treeOf(this[$proxyTarget]).pause(); }
+    resumeTracking(): void { treeOf(this[$proxyTarget]).resume(); }
+    untracked<T>(fn: () => T): T { return treeOf(this[$proxyTarget]).untracked(fn); }
+    get isTrackingPaused(): boolean { return treeOf(this[$proxyTarget]).paused; }
 
     get length(): number { return this[$proxyTarget].items.length; }
     set length(n: number) { this[$proxyTarget].$setLength(n); }
@@ -192,7 +190,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
     protected $pushAll(values: V[]): number {
         const self = this[$proxyTarget];
         const items = self.items;
-        const tree = self[$changes];
+        const tree = treeOf(self);
         const childType = self[$childType];
         let n = values.length;
         for (let i = 0; i < n; i++) {
@@ -226,7 +224,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         const items = self.items;
         const length = items.length;
         if (length === 0) return undefined;
-        const tree = self[$changes];
+        const tree = treeOf(self);
         const value = items[length - 1];
         if (tree.tracking) {
             (tree.rec as ArrayLog).remove(length - 1, [value]);
@@ -241,7 +239,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         const self = this[$proxyTarget];
         const items = self.items;
         if (items.length === 0) return undefined;
-        const tree = self[$changes];
+        const tree = treeOf(self);
         const value = items[0];
         if (tree.tracking) {
             (tree.rec as ArrayLog).remove(0, [value]);
@@ -257,7 +255,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         const items = self.items;
         const n = values.length;
         if (n === 0) return items.length;
-        const tree = self[$changes];
+        const tree = treeOf(self);
         const childType = self[$childType];
         for (let i = 0; i < n; i++) {
             const value = values[i];
@@ -285,7 +283,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         else if (start > length) start = length;
         if (deleteCount === undefined) deleteCount = length - start;
         else deleteCount = Math.min(Math.max(Math.trunc(deleteCount) || 0, 0), length - start);
-        const tree = self[$changes];
+        const tree = treeOf(self);
         const childType = self[$childType];
         const insertCount = newItems.length;
         for (let i = 0; i < insertCount; i++) {
@@ -319,7 +317,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         const self = this[$proxyTarget];
         const items = self.items;
         if (items.length < 2) return this;
-        const tree = self[$changes];
+        const tree = treeOf(self);
         if (!tree.tracking) {
             items.sort(compareFn);
             return this;
@@ -338,7 +336,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         const self = this[$proxyTarget];
         const items = self.items;
         if (items.length < 2) return this;
-        const tree = self[$changes];
+        const tree = treeOf(self);
         if (tree.tracking) {
             (tree.rec as ArrayLog).reverse();
             tree.touch();
@@ -383,7 +381,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         const self = this[$proxyTarget];
         const items = self.items;
         if (items.length === 0) return;
-        const tree = self[$changes];
+        const tree = treeOf(self);
         for (let i = 0, len = items.length; i < len; i++) releaseChild(tree, items[i]);
         if (tree.tracking) {
             (tree.rec as ArrayLog).clear();
@@ -395,7 +393,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
     move(cb: (arr: this) => void): this {
         const self = this[$proxyTarget];
         const items = self.items;
-        const tree = self[$changes];
+        const tree = treeOf(self);
         if (!tree.tracking) {
             cb(this);
             return this;
@@ -475,7 +473,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
             this.$removeAt(index);
             return;
         }
-        const tree = this[$changes];
+        const tree = treeOf(this[$proxyTarget]);
         const childType = this[$childType];
         if (childType !== undefined && typeof value === "object") {
             assertInstanceType(value as any, childType as typeof Schema, this as any, index);
@@ -504,7 +502,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
     protected $removeAt(index: number): void {
         const items = this.items;
         if (index >= items.length) return;
-        const tree = this[$changes];
+        const tree = treeOf(this[$proxyTarget]);
         const value = items[index];
         if (tree.tracking) {
             (tree.rec as ArrayLog).remove(index, [value]);
@@ -529,11 +527,10 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
     [$reset]() {
         const self = this[$proxyTarget];
         const items = self.items;
-        const tree = self[$changes];
+        const tree = treeOf(self);
         for (let i = 0, len = items.length; i < len; i++) (items[i] as any)?.[$reset]?.();
         items.length = 0;
         tree.recycle();
-        self[$refId] = undefined;
     }
 
     [$resyncPrune](visited: Set<number | string>, prune: (value: V, identity: number | string) => void, keep: (value: V) => void): void {
@@ -542,7 +539,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         let w = 0;
         for (let i = 0; i < len; i++) {
             const value = items[i];
-            const refId = (value as any)?.[$refId];
+            const refId = refIdOf(value);
             if (visited.has(i) || (refId !== undefined && visited.has(-1 - refId))) {
                 keep(value);
                 items[w++] = value;
@@ -571,7 +568,7 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
         const copy: V[] = new Array(items.length);
         for (let i = 0, len = items.length; i < len; i++) {
             const item: any = items[i];
-            copy[i] = (item?.[$changes] !== undefined) ? item.clone() : item;
+            copy[i] = (refTreeOf(item) !== undefined) ? item.clone() : item;
         }
         const cloned = new ArraySchema<V>();
         cloned.$pushAll(copy);
@@ -580,3 +577,5 @@ export class ArraySchema<V = any> implements Collection<number, V>, IRef {
 }
 
 registerType("array", { constructor: ArraySchema });
+
+defineRefAccessors(ArraySchema.prototype);

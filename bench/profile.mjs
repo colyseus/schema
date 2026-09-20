@@ -4,12 +4,13 @@
 //
 //   node bench/profile.mjs --cpu  decoder/tick [--build ./build] [--top 25] [--filter substr]
 //   node bench/profile.mjs --heap decoder/tick/default [--build ./build]
+//   --interval N   cpu: sampling interval in µs (default 1000); heap: bytes between samples (default 32768)
 //
 // BENCH_PROFILE=1 makes the child multiply iterations ×10 and skip heap
 // snapshots so samples dominate setup noise. Profiles land in bench/profiles/.
 import { readdirSync, statSync, readFileSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { resolve, dirname, join } from "node:path";
+import { resolve, dirname, join, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { analyzeCpuProfile, printCpuReport } from "./lib/analyze-cpu.mjs";
 import { analyzeHeapProfile, printHeapReport } from "./lib/analyze-heap.mjs";
@@ -25,6 +26,9 @@ const target = args.find((a) => !a.startsWith("--"));
 const buildDir = args.includes("--build") ? resolve(args[args.indexOf("--build") + 1]) : resolve(BENCH_DIR, "..", "build");
 const top = args.includes("--top") ? +args[args.indexOf("--top") + 1] : 25;
 const filter = args.includes("--filter") ? args[args.indexOf("--filter") + 1] : null;
+// sampling interval: --cpu-prof-interval in µs (default 1000; use 100 for µs-scale units),
+// --heap-prof-interval in bytes (default 32768; use 4096 to catch small per-op allocations)
+const interval = args.includes("--interval") ? +args[args.indexOf("--interval") + 1] : (mode === "cpu" ? 1000 : 32768);
 if (!target) { console.error("usage: profile.mjs --cpu|--heap <scenario>[/<variant>] [--build dir]"); process.exit(1); }
 
 function* walk(dir) {
@@ -50,11 +54,13 @@ for (const file of walk(SCENARIOS_DIR)) {
 if (!found) { console.error(`no scenario matches "${target}"`); process.exit(1); }
 
 mkdirSync(PROFILES_DIR, { recursive: true });
-const profName = `${found.scenario.name.replace(/\//g, "__")}__${found.variant}.${mode === "cpu" ? "cpuprofile" : "heapprofile"}`;
+// a non-default build gets its directory name as a suffix so A/B profiles do not overwrite each other
+const buildTag = (buildDir === resolve(BENCH_DIR, "..", "build")) ? "" : `__${basename(buildDir)}`;
+const profName = `${found.scenario.name.replaceAll("/", "__")}__${found.variant}${buildTag}.${mode === "cpu" ? "cpuprofile" : "heapprofile"}`;
 
 const nodeArgs = mode === "cpu"
-    ? ["--cpu-prof", "--cpu-prof-dir", PROFILES_DIR, "--cpu-prof-name", profName]
-    : ["--heap-prof", "--heap-prof-dir", PROFILES_DIR, "--heap-prof-name", profName, "--heap-prof-interval", "32768"];
+    ? ["--cpu-prof", "--cpu-prof-dir", PROFILES_DIR, "--cpu-prof-name", profName, "--cpu-prof-interval", String(interval)]
+    : ["--heap-prof", "--heap-prof-dir", PROFILES_DIR, "--heap-prof-name", profName, "--heap-prof-interval", String(interval)];
 
 console.error(`profiling (${mode}) ${found.scenario.name}/${found.variant} against ${buildDir} ...`);
 const res = spawnSync(process.execPath, ["--expose-gc", ...nodeArgs, CHILD, found.file, found.variant, buildDir], {

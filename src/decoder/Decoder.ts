@@ -1,12 +1,12 @@
 import { TypeContext } from "../types/TypeContext.js";
-import { $childType, $refId } from "../types/symbols.js";
+import { $childType } from "../types/symbols.js";
 import { Schema } from "../Schema.js";
 import { CollectionKind, OPERATION } from "../encoding/spec.js";
-import { type IRef, type Ref } from "../encoder/ChangeTree.js";
+import { type IRef, type Ref, decodedRefIdOf } from "../encoder/ChangeTree.js";
 import type { Iterator } from "../encoding/decode.js";
 import { readUvarint } from "../encoding/varint.js";
 import { ReferenceTracker } from "./ReferenceTracker.js";
-import { ChunkMismatch, decodeArrayOps, decodeKeyValueOps, decodeSchemaOps, type DataChange } from "./DecodeOperation.js";
+import { ChunkMismatch, decodeArrayOps, decodeKeyValueOps, decodeSchemaOps, decodeRun, refInfoOf, REF_SCHEMA, REF_ARRAY, REF_MAP, type DataChange } from "./DecodeOperation.js";
 import { resyncSweep } from "./Resync.js";
 import { Collection } from "../types/HelperTypes.js";
 
@@ -103,9 +103,25 @@ export class Decoder<T extends IRef = any> {
         const total = bytes.byteLength;
         const $root = this.root;
 
+        // chunk header: `refId*2+1` (absolute, first chunk of a slice) or
+        // `zigzag(refId - prevRefId)*2` (delta from the previous chunk)
+        let prevRefId = -1;
         while (it.offset < total) {
-            const refId = readUvarint(bytes, it);
-            const len = readUvarint(bytes, it);
+            // (bit ops: refIds stay far below 2^29, so both header forms and the
+            // length prefix fit 31 bits; see `refIdOf`)
+            const h = readUvarint(bytes, it);
+            let refId: number;
+            if ((h & 1) === 1) {
+                refId = h >>> 1;
+            } else {
+                const z = h >>> 1;
+                refId = prevRefId + (((z & 1) === 1) ? -((z + 1) >>> 1) : (z >>> 1));
+            }
+            prevRefId = refId;
+            // length prefix `byteLen*2 + flag`: flag 1 = same-shape run
+            const l = readUvarint(bytes, it);
+            const isRun = (l & 1) === 1;
+            const len = l >>> 1;
             const end = it.offset + len;
 
             if (end > total) {
@@ -114,7 +130,22 @@ export class Decoder<T extends IRef = any> {
                 break;
             }
 
-            const ref = $root.refs.get(refId);
+            if (isRun) {
+                try {
+                    prevRefId = decodeRun(this, bytes, it, end, refId, allChanges);
+                } catch (e) {
+                    if (!(e instanceof ChunkMismatch)) throw e;
+                    this.damaged("definition mismatch");
+                    it.offset = end;
+                }
+                if (it.offset !== end) {
+                    this.damaged(`run desync at refId ${refId} (${it.offset - end} bytes)`);
+                    it.offset = end;
+                }
+                continue;
+            }
+
+            const ref = $root.getRef(refId);
             if (ref === undefined) {
                 console.error(`"refId" not found: ${refId}`, { previousRefId: this.currentRefId });
                 this.resyncDamaged = true;
@@ -124,10 +155,11 @@ export class Decoder<T extends IRef = any> {
 
             this.currentRefId = refId;
             try {
-                const kind = (ref.constructor as any).COLLECTION_KIND;
-                if (kind === undefined) decodeSchemaOps(this, bytes, it, end, ref, refId, allChanges);
-                else if (kind === CollectionKind.Array) decodeArrayOps(this, bytes, it, end, ref, refId, allChanges);
-                else decodeKeyValueOps(this, bytes, it, end, ref, refId, allChanges, kind === CollectionKind.Map);
+                const ri = refInfoOf(ref);
+                const kind = ri.kind;
+                if (kind === REF_SCHEMA) decodeSchemaOps(this, bytes, it, end, ref, refId, allChanges, ri);
+                else if (kind === REF_ARRAY) decodeArrayOps(this, bytes, it, end, ref, refId, allChanges, ri);
+                else decodeKeyValueOps(this, bytes, it, end, ref, refId, allChanges, kind === REF_MAP, ri);
             } catch (e) {
                 if (!(e instanceof ChunkMismatch)) throw e;
                 this.damaged("definition mismatch");
@@ -153,7 +185,7 @@ export class Decoder<T extends IRef = any> {
 
     removeChildRefs(ref: Collection, allChanges: DataChange[] | null) {
         const needRemoveRef = typeof ((ref as any)[$childType]) !== "string";
-        const refId = (ref as Ref)[$refId];
+        const refId = decodedRefIdOf(ref);
 
         ref.forEach((value: any, key: any) => {
             allChanges?.push({
@@ -166,7 +198,7 @@ export class Decoder<T extends IRef = any> {
             });
 
             if (needRemoveRef) {
-                this.root.removeRef(value[$refId]);
+                this.root.removeRef(decodedRefIdOf(value));
             }
         });
     }

@@ -43,9 +43,90 @@ const _float64 = new Float64Array(_convoBuffer);
 const _uint64 = new BigUint64Array(_convoBuffer);
 const _int64 = new BigInt64Array(_convoBuffer);
 
+// `ignoreBOM: true` keeps a leading U+FEFF, as the char loop does. `undefined`
+// where the global is missing: every length then takes the JS paths.
+let textDecoder: TextDecoder | undefined;
+// @ts-ignore
+try { textDecoder = new TextDecoder("utf-8", { ignoreBOM: true }); } catch (e) { }
+
+/**
+ * Length thresholds (UTF-8 bytes) of the three decode paths, measured on
+ * Node 20 for ASCII, accented and CJK text (bench/realworld-results.md,
+ * "Round 2 — D"):
+ *  - below `APPLY_MIN`: the `+=` char loop (no allocation beyond the string);
+ *  - from `APPLY_MIN`: the same loop collects UTF-16 units and builds the
+ *    string with one `String.fromCharCode.apply` — flat, never a cons
+ *    string (the `+=` loop returns a ConsString from 13 chars on, whose
+ *    flattening the consumer pays later: a map key hash, a compare);
+ *  - from `TEXT_DECODER_MIN`, pure ASCII only (one scan, early exit on the
+ *    first high bit): `TextDecoder` (~130 ns flat). Its non-ASCII path is
+ *    2× slower than the loop up to several hundred bytes, hence the gate;
+ *  - from `TEXT_DECODER_FORCE`: `TextDecoder` regardless — an `apply`
+ *    argument list that long risks the stack limit.
+ */
+const APPLY_MIN = 16;
+const TEXT_DECODER_MIN = 48;
+const TEXT_DECODER_FORCE = 4096;
+
+function isAscii(bytes: BufferLike, start: number, end: number): boolean {
+  for (let i = start; i < end; i++) {
+    if (bytes[i] > 0x7f) return false;
+  }
+  return true;
+}
+
+function utf8ReadApply(bytes: BufferLike, it: Iterator, length: number) {
+  const units = new Array<number>(length);
+  let n = 0, chr = 0;
+  for (var i = it.offset, end = it.offset + length; i < end; i++) {
+    var byte = bytes[i];
+    if ((byte & 0x80) === 0x00) {
+      units[n++] = byte;
+      continue;
+    }
+    if ((byte & 0xe0) === 0xc0) {
+      units[n++] = ((byte & 0x1f) << 6) | (bytes[++i] & 0x3f);
+      continue;
+    }
+    if ((byte & 0xf0) === 0xe0) {
+      units[n++] = ((byte & 0x0f) << 12) | ((bytes[++i] & 0x3f) << 6) | ((bytes[++i] & 0x3f) << 0);
+      continue;
+    }
+    if ((byte & 0xf8) === 0xf0) {
+      chr = ((byte & 0x07) << 18) | ((bytes[++i] & 0x3f) << 12) | ((bytes[++i] & 0x3f) << 6) | ((bytes[++i] & 0x3f) << 0);
+      if (chr >= 0x010000) { // surrogate pair
+        chr -= 0x010000;
+        units[n++] = (chr >>> 10) + 0xD800;
+        units[n++] = (chr & 0x3FF) + 0xDC00;
+      } else {
+        units[n++] = chr;
+      }
+      continue;
+    }
+    console.error('decode.utf8Read(): Invalid byte ' + byte + ' at offset ' + i + '. Skip to end of string: ' + (it.offset + length));
+    break;
+  }
+  it.offset += length;
+  if (n !== length) units.length = n;
+  return String.fromCharCode.apply(null, units);
+}
+
 function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
   // boundary check
   if (length > bytes.length - it.offset) { length = bytes.length - it.offset; }
+
+  if (length >= APPLY_MIN) {
+    if (textDecoder !== undefined && (bytes as Uint8Array).subarray !== undefined) {
+      if (length >= TEXT_DECODER_FORCE || (length >= TEXT_DECODER_MIN && isAscii(bytes, it.offset, it.offset + length))) {
+        const string = textDecoder.decode((bytes as Uint8Array).subarray(it.offset, it.offset + length));
+        it.offset += length;
+        return string;
+      }
+      return utf8ReadApply(bytes, it, length);
+    }
+    if (length < TEXT_DECODER_FORCE) { return utf8ReadApply(bytes, it, length); }
+    // no TextDecoder and a huge string: the char loop below is the safe path
+  }
 
   var string = '', chr = 0;
   for (var i = it.offset, end = it.offset + length; i < end; i++) {

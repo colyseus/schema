@@ -207,6 +207,11 @@ function generateProperty(prop: Property, indent: string = "") {
             typeArgs += `, "${prop.childType}"`;
         }
 
+        if (prop.keyType) {
+            // named argument, after the positional ones (like the Quantize* options)
+            typeArgs += `, KeyType = "${prop.keyType}"`;
+        }
+
         initializer = `null`;
 
     } else {
@@ -260,9 +265,10 @@ function getType(prop: Property) {
                 : getChildType(prop);
         } else {
             const containerClass = capitalize(prop.type);
-            type = (isUpcaseFirst)
-                ? `${containerClass}Schema<${prop.childType}>`
-                : `${containerClass}Schema<${getChildType(prop)}>`;
+            const valueType = (isUpcaseFirst) ? prop.childType : getChildType(prop);
+            // `MapSchema<V, K>`: the key's C# type only when a non-string key is declared
+            const keyType = (prop.keyType) ? `, ${typeMaps[prop.keyType]}` : "";
+            type = `${containerClass}Schema<${valueType}${keyType}>`;
         }
         return type;
 

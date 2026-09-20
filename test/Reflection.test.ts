@@ -3,6 +3,7 @@ import * as assert from "assert";
 import { Reflection, Schema, type, MapSchema, ArraySchema, $changes, TypeContext, Decoder, entity, schema, t, Encoder } from "../src";
 import { InputEncoder, InputDecoder } from "../src/input";
 import { createInstanceFromReflection, getEncoder } from "./Schema";
+import { populateReflection } from "../src/Reflection";
 
 // `$values` is shared cross-bundle via Symbol.for. Re-derive locally
 // for the white-box assertion in the encode-source tests below.
@@ -188,6 +189,41 @@ describe("Reflection", () => {
         decodedState.decode(state.encode());
 
         assert.strictEqual(JSON.stringify(decodedState), '{"mapOfStrings":{"one":"one","two":"two"}}');
+    });
+
+    it("should reflect the key type of number-keyed maps (absent for string keys)", () => {
+        class Item extends Schema {
+            @type("string") name: string;
+        }
+        class MyState extends Schema {
+            @type({ map: Item, key: "number" }) byId = new MapSchema<Item, number>();
+            @type({ map: "number", key: "int32" }) scores = new MapSchema<number, number>();
+            @type({ map: Item }) byName = new MapSchema<Item>();
+        }
+
+        const state = new MyState();
+        const encoder = new Encoder(state);
+        const reflection = new Reflection();
+        populateReflection(reflection, encoder.context, MyState);
+        const fields = reflection.types.find((t) => t.id === encoder.context.getTypeId(MyState)).fields;
+        assert.strictEqual(fields.find((f) => f.name === "byId").keyType, "number");
+        assert.strictEqual(fields.find((f) => f.name === "scores").keyType, "int32");
+        assert.strictEqual(fields.find((f) => f.name === "byName").keyType, undefined);
+
+        const decodedState = Reflection.decode<MyState>(Reflection.encode(encoder)).state;
+        const metadata = (decodedState.constructor as any)[Symbol.metadata];
+        assert.deepStrictEqual(metadata[metadata.byId].type.key, "number");
+        assert.deepStrictEqual(metadata[metadata.scores].type.key, "int32");
+        assert.strictEqual(metadata[metadata.byName].type.key, undefined);
+
+        state.byId.set(42, new Item().assign({ name: "answer" }));
+        state.scores.set(-7, 3);
+        state.byName.set("x", new Item().assign({ name: "x" }));
+        decodedState.decode(encoder.encodeAll());
+        assert.deepStrictEqual(Array.from(decodedState.byId.keys()), [42]);
+        assert.deepStrictEqual(Array.from(decodedState.scores.keys()), [-7]);
+        assert.deepStrictEqual(Array.from(decodedState.byName.keys()), ["x"]);
+        assert.strictEqual(decodedState.byId.get(42).name, "answer");
     });
 
     it("should reflect array of primitive type", () => {

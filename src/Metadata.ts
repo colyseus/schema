@@ -1,7 +1,9 @@
-import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
+import { DefinitionType, getPropertyDescriptor, type MapKeyType } from "./annotations.js";
+import { MAP_KEY_TYPES } from "./encoding/spec.js";
 import { Schema } from "./Schema.js";
+import { defineRefAccessors } from "./encoder/ChangeTree.js";
 import { getType, registeredTypes, TypeDefinition } from "./types/registry.js";
-import { $descriptors, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { $changes, $descriptors, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
@@ -50,11 +52,12 @@ export type Metadata =
  * `@type()` decoration and `Metadata.setFields` — both need to build a
  * property accessor that knows whether the slot holds a collection.
  */
-export function resolveFieldType(type: any): { complexTypeKlass: TypeDefinition | false, childType: any } {
+export function resolveFieldType(type: any): { complexTypeKlass: TypeDefinition | false, childType: any, keyType: MapKeyType | undefined } {
     const complexTypeKlass = typeof (Object.keys(type)[0]) === "string" && getType(Object.keys(type)[0]);
     return {
         complexTypeKlass,
         childType: complexTypeKlass ? Object.values(type)[0] : type,
+        keyType: complexTypeKlass ? type.key : undefined,
     };
 }
 
@@ -83,6 +86,25 @@ export function getNormalizedType(type: any): DefinitionType  {
         // Handle collection types
         const collectionType = Object.keys(type).find(k => registeredTypes[k] !== undefined);
         if (collectionType) {
+            const keyType = type.key;
+            if (keyType !== undefined) {
+                // `{ map: X, key: "number" }` — validate, and rebuild with the
+                // collection kind as the FIRST own key: resolveFieldType,
+                // TypeContext, Reflection, Schema.restore and the decoder all
+                // read the kind as `Object.keys(type)[0]`. A fresh object also
+                // keeps a literal the user reuses across fields untouched.
+                if (collectionType !== "map") {
+                    throw new Error(`@colyseus/schema: 'key' is only valid on map fields (got { ${collectionType}: ..., key: "${keyType}" })`);
+                }
+                if (!MAP_KEY_TYPES.has(keyType)) {
+                    throw new Error(`@colyseus/schema: invalid map key type "${keyType}" — expected one of ${Array.from(MAP_KEY_TYPES).join(", ")}`);
+                }
+                const rebuilt: any = { map: getNormalizedType(type.map), key: keyType };
+                for (const k in type) {
+                    if (k !== "map" && k !== "key") rebuilt[k] = type[k];
+                }
+                return rebuilt;
+            }
             type[collectionType] = getNormalizedType(type[collectionType]);
             return type;
         }
@@ -416,14 +438,14 @@ export const Metadata = {
         type: DefinitionType,
     ) {
         const normalized = getNormalizedType(type);
-        const { complexTypeKlass, childType } = resolveFieldType(normalized);
+        const { complexTypeKlass, childType, keyType } = resolveFieldType(normalized);
 
         Metadata.addField(
             metadata,
             fieldIndex,
             fieldName,
             normalized,
-            getPropertyDescriptor(fieldName, fieldIndex, childType, complexTypeKlass),
+            getPropertyDescriptor(fieldName, fieldIndex, childType, complexTypeKlass, keyType),
         );
 
         // Install accessor descriptor on the prototype (once per class field).
@@ -448,6 +470,9 @@ export const Metadata = {
     },
 
     setFields<T extends { new (...args: any[]): InstanceType<T> } = any>(target: T, fields: { [field in keyof InstanceType<T>]?: DefinitionType }) {
+        // A class that does not extend Schema reads its tree / refId through the
+        // same prototype accessors (inherited ones count).
+        if (!($changes in target.prototype)) { defineRefAccessors(target.prototype); }
         // for inheritance support
         const constructor = target.prototype.constructor;
         TypeContext.register(constructor);

@@ -1,9 +1,10 @@
 import "./symbol.shim.js";
 import { Schema } from './Schema.js';
+import { treeOf, refTreeOf } from './encoder/ChangeTree.js';
 import { ArraySchema } from './types/custom/ArraySchema.js';
 import { MapSchema } from './types/custom/MapSchema.js';
 import { getNormalizedType, Metadata, resolveFieldType } from "./Metadata.js";
-import { $changes, $childType, $descriptors, $encoders, $numFields, $track, $values } from "./types/symbols.js";
+import { $applyKeyType, $childType, $descriptors, $encoders, $keyType, $numFields, $track, $values } from "./types/symbols.js";
 import { encode } from "./encoding/encode.js";
 import { TypeDefinition, getType } from "./types/registry.js";
 import { OPERATION } from "./encoding/spec.js";
@@ -34,12 +35,30 @@ export type RawPrimitiveType = "string" |
 
 export type PrimitiveType = RawPrimitiveType | typeof Schema | object;
 
+/**
+ * Key types a `MapSchema` field may declare: `"string"` (default) or any
+ * numeric primitive. Numeric keys are JS `number`s on both sides and ride
+ * the wire with that primitive's encoder.
+ */
+export type MapKeyType = "string" |
+    "number" |
+    "int8" |
+    "uint8" |
+    "int16" |
+    "uint16" |
+    "int32" |
+    "uint32" |
+    "int64" |
+    "uint64" |
+    "float32" |
+    "float64";
+
 // TODO: infer "default" value type correctly.
 export type DefinitionType<T extends PrimitiveType = PrimitiveType> = T
     | T[]
     | { type: T, default?: InferValueType<T>, view?: boolean | number, sync?: boolean }
     | { array: T, default?: ArraySchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
-    | { map: T, default?: MapSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
+    | { map: T, key?: MapKeyType, default?: MapSchema<InferValueType<T>, any>, view?: boolean | number, sync?: boolean }
     | { collection: T, default?: CollectionSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
     | { set: T, default?: SetSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean }
     | { stream: T, default?: StreamSchema<InferValueType<T>>, view?: boolean | number, sync?: boolean, priority?: (view: any, element: InferValueType<T>) => number };
@@ -347,14 +366,14 @@ export function type (
             );
 
         } else {
-            const { complexTypeKlass, childType } = resolveFieldType(type);
+            const { complexTypeKlass, childType, keyType } = resolveFieldType(type);
 
             Metadata.addField(
                 metadata,
                 fieldIndex,
                 field,
                 type,
-                getPropertyDescriptor(field, fieldIndex, childType, complexTypeKlass)
+                getPropertyDescriptor(field, fieldIndex, childType, complexTypeKlass, keyType)
             );
         }
 
@@ -407,8 +426,15 @@ function makePrimitiveSetter(fieldName: string, fieldIndex: number, type: string
     const typeofTarget = PRIMITIVE_TYPEOF[type]; // undefined for custom types
     const allowNull = type === "string";
     const isBool = type === "boolean";
+    // One closure per (class, field): every class that declares this field
+    // shape runs the same code, so each `this[...]` access here is
+    // megamorphic. Everything is therefore reached through ONE such load
+    // (`this[$changes]`) and the tree's monomorphic fields: `tree.values`
+    // instead of `this[$values]`, `tree.change()` instead of
+    // `this.constructor[$track](this[$changes], ...)`.
     return function (this: Schema, value: any) {
-        const values = this[$values];
+        const tree = treeOf(this);
+        const values = tree.values!;
         const previousValue = values[fieldIndex];
         if (value === previousValue) return;
 
@@ -425,9 +451,9 @@ function makePrimitiveSetter(fieldName: string, fieldIndex: number, type: string
                     `a '${typeofTarget}' was expected, but '${JSON.stringify(value)}'${ctorSuffix} was provided in ${this.constructor.name}#${fieldName}`
                 );
             }
-            (this.constructor as typeof Schema)[$track](this[$changes], fieldIndex, OPERATION.ADD);
+            tree.change(fieldIndex, OPERATION.ADD);
         } else if (previousValue !== undefined && previousValue !== null) {
-            this[$changes].delete(fieldIndex);
+            tree.delete(fieldIndex);
         }
         values[fieldIndex] = value;
     };
@@ -435,28 +461,27 @@ function makePrimitiveSetter(fieldName: string, fieldIndex: number, type: string
 
 function makeSchemaRefSetter(fieldName: string, fieldIndex: number, type: typeof Schema) {
     return function (this: Schema, value: any) {
-        const values = this[$values];
+        const changeTree = treeOf(this);
+        const values = changeTree.values!;
         const previousValue = values[fieldIndex];
         if (value === previousValue) return;
 
         if (value !== undefined && value !== null) {
             assertInstanceType(value, type, this, fieldName);
 
-            const changeTree = this[$changes];
-            const ctor = this.constructor as typeof Schema;
-
-            if (previousValue !== undefined && previousValue !== null && previousValue[$changes]) {
-                changeTree.root?.remove(previousValue[$changes]);
-                ctor[$track](changeTree, fieldIndex, OPERATION.DELETE_AND_ADD);
+            const previousTree = refTreeOf(previousValue);
+            if (previousTree !== undefined) {
+                changeTree.root?.remove(previousTree);
+                changeTree.change(fieldIndex, OPERATION.DELETE_AND_ADD);
             } else {
-                ctor[$track](changeTree, fieldIndex, OPERATION.ADD);
+                changeTree.change(fieldIndex, OPERATION.ADD);
             }
 
             // External Schema-like instances may not carry a ChangeTree.
-            value[$changes]?.setParent(this, changeTree.root, fieldIndex);
+            refTreeOf(value)?.setParent(this, changeTree.root, fieldIndex, changeTree);
 
         } else if (previousValue !== undefined && previousValue !== null) {
-            this[$changes].delete(fieldIndex);
+            changeTree.delete(fieldIndex);
         }
         values[fieldIndex] = value;
     };
@@ -467,11 +492,14 @@ function makeCollectionSetter(
     fieldIndex: number,
     type: DefinitionType,
     complexTypeKlass: TypeDefinition,
+    keyType?: MapKeyType,
 ) {
     const isArrayKlass = complexTypeKlass.constructor === ArraySchema;
     const isMapKlass = complexTypeKlass.constructor === MapSchema;
+    const mapKeyType: MapKeyType | undefined = isMapKlass ? (keyType ?? "string") : undefined;
     return function (this: Schema, value: any) {
-        const values = this[$values];
+        const changeTree = treeOf(this);
+        const values = changeTree.values!;
         const previousValue = values[fieldIndex];
         if (value === previousValue) return;
 
@@ -488,6 +516,7 @@ function makeCollectionSetter(
             } else if (isMapKlass && !(value instanceof MapSchema)) {
                 const map: any = new MapSchema();
                 map[$childType] = type;
+                map[$keyType] = mapKeyType; // before populating: set() coerces keys per key type
                 if (value instanceof Map) {
                     value.forEach((v, k) => map.set(k, v));
                 } else {
@@ -497,22 +526,21 @@ function makeCollectionSetter(
 
             } else {
                 value[$childType] = type;
+                if (isMapKlass) value[$applyKeyType](mapKeyType);
             }
 
-            const changeTree = this[$changes];
-            const ctor = this.constructor as typeof Schema;
-
-            if (previousValue !== undefined && previousValue !== null && previousValue[$changes]) {
-                changeTree.root?.remove(previousValue[$changes]);
-                ctor[$track](changeTree, fieldIndex, OPERATION.DELETE_AND_ADD);
+            const previousTree = refTreeOf(previousValue);
+            if (previousTree !== undefined) {
+                changeTree.root?.remove(previousTree);
+                changeTree.change(fieldIndex, OPERATION.DELETE_AND_ADD);
             } else {
-                ctor[$track](changeTree, fieldIndex, OPERATION.ADD);
+                changeTree.change(fieldIndex, OPERATION.ADD);
             }
 
-            value[$changes]?.setParent(this, changeTree.root, fieldIndex);
+            refTreeOf(value)?.setParent(this, changeTree.root, fieldIndex, changeTree);
 
         } else if (previousValue !== undefined && previousValue !== null) {
-            this[$changes].delete(fieldIndex);
+            changeTree.delete(fieldIndex);
         }
         values[fieldIndex] = value;
     };
@@ -529,7 +557,8 @@ function makeCollectionSetter(
  */
 function makeQuantizedSetter(fieldName: string, fieldIndex: number, desc: QuantizeDescriptor) {
     return function (this: Schema, value: any) {
-        const values = this[$values];
+        const tree = treeOf(this);
+        const values = tree.values!;
         const previousValue = values[fieldIndex];
         if (value !== undefined && value !== null) {
             if (typeof value !== "number") {
@@ -539,11 +568,11 @@ function makeQuantizedSetter(fieldName: string, fieldIndex: number, desc: Quanti
             }
             value = dequantize(desc, quantize(desc, value)); // snap to wire-exact
             if (value === previousValue) return;
-            (this.constructor as typeof Schema)[$track](this[$changes], fieldIndex, OPERATION.ADD);
+            tree.change(fieldIndex, OPERATION.ADD);
         } else {
             if (value === previousValue) return; // undefined === undefined
             if (previousValue !== undefined && previousValue !== null) {
-                this[$changes].delete(fieldIndex);
+                tree.delete(fieldIndex);
             }
         }
         values[fieldIndex] = value;
@@ -555,10 +584,11 @@ export function getPropertyDescriptor(
     fieldIndex: number,
     type: DefinitionType,
     complexTypeKlass: TypeDefinition | false,
+    keyType?: MapKeyType,
 ) {
     let setter: (this: Schema, value: any) => void;
     if (complexTypeKlass) {
-        setter = makeCollectionSetter(fieldName, fieldIndex, type, complexTypeKlass);
+        setter = makeCollectionSetter(fieldName, fieldIndex, type, complexTypeKlass, keyType);
     } else if (typeof type === "string") {
         setter = makePrimitiveSetter(fieldName, fieldIndex, type);
     } else if (isQuantizedType(type)) {
@@ -725,7 +755,12 @@ export interface SchemaWithExtendsConstructor<
 function makeAutoDefaultFactory(rawType: any): (() => any) | undefined {
     if (rawType && typeof rawType === "object") {
         if (rawType.array !== undefined) { return () => new ArraySchema(); }
-        if (rawType.map !== undefined) { return () => new MapSchema(); }
+        if (rawType.map !== undefined) {
+            const keyType = rawType.key;
+            return (keyType === undefined)
+                ? () => new MapSchema()
+                : () => { const m: any = new MapSchema(); m[$keyType] = keyType; return m; };
+        }
         if (rawType.set !== undefined) { return () => new SetSchema(); }
         if (rawType.collection !== undefined) { return () => new CollectionSchema(); }
         if (rawType.stream !== undefined) { return () => new StreamSchema(); }

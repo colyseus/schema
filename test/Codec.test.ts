@@ -50,7 +50,7 @@ describe("Codec (chunks, bodies, robustness)", () => {
         // splice a bogus chunk (refId 250, 2 bytes) in front of the real one
         const bogus = new Uint8Array(8);
         const it = { offset: 0 };
-        uvarint(bogus, 250, it); uvarint(bogus, 2, it); bogus[it.offset++] = 0; bogus[it.offset++] = 0;
+        uvarint(bogus, 250 * 2 + 1, it); uvarint(bogus, 2 * 2, it); bogus[it.offset++] = 0; bogus[it.offset++] = 0; // absolute header, len*2
         const spliced = Encoder.concat([bogus.subarray(0, it.offset), patch]);
 
         const warnings = withWarnings(() => client.decode(spliced));
@@ -65,13 +65,13 @@ describe("Codec (chunks, bodies, robustness)", () => {
         client.decode(state.encodeAll());
 
         // truncated: declares more bytes than available
-        const truncated = new Uint8Array([0, 40, 2]);
+        const truncated = new Uint8Array([1, 80, 2]); // header 1 = refId 0 (absolute), len 40 (*2)
         let warnings = withWarnings(() => client.decode(truncated));
         assert.ok(warnings.some((w) => w.includes("truncated")));
 
         // unknown field index 9 on the root
         const bad = new Uint8Array(3);
-        bad[0] = 0; bad[1] = 1; bad[2] = (9 << 2) | 2;
+        bad[0] = 1; bad[1] = 2; bad[2] = (9 << 2) | 2; // header 1 = refId 0, len 1 (*2)
         warnings = withWarnings(() => client.decode(bad));
         assert.ok(warnings.some((w) => w.includes("field not defined") || w.includes("definition mismatch")));
         assert.deepStrictEqual(client.toJSON(), state.toJSON());

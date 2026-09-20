@@ -296,7 +296,7 @@ describe("ArraySchema wire format (op log + revision)", () => {
             // each client holds only its subset: no orphan refs, and every held ref is live on the encoder
             for (const client of [client1, client2]) {
                 for (const refId of getDecoder(client.state).root.refs.keys()) {
-                    assert.ok(encoder.root.refCount[refId] > 0, `orphan refId ${refId}`);
+                    assert.ok(encoder.root.refCount.get(refId) > 0, `orphan refId ${refId}`);
                 }
             }
         });

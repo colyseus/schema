@@ -129,9 +129,10 @@ function generatePropertyDeclaration(className: string, prop: Property) {
                 : `[ "${prop.childType}" ]`;
 
         } else if(prop.type === "map") {
-            typeArgs = (isUpcaseFirst)
-                ? `{ map: ${prop.childType} }`
-                : `{ map: "${prop.childType}" }`;
+            const child = (isUpcaseFirst) ? prop.childType : `"${prop.childType}"`;
+            typeArgs = (prop.keyType)
+                ? `{ map: ${child}, key: "${prop.keyType}" }`
+                : `{ map: ${child} }`;
         }
 
     } else {

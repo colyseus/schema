@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import * as util from "util";
 import { Schema, type, view, schema, t, ArraySchema, MapSchema, StateView, Encoder, ChangeTree, $changes, $refId, OPERATION, SetSchema, CollectionSchema } from "../src";
-import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts, assertNoOrphanRefs, InheritanceRoot, Position } from "./Schema";
+import { createClientWithView, encodeMultiple, assertEncodeAllMultiple, getDecoder, getEncoder, createInstanceFromReflection, encodeAllForView, encodeAllMultiple, assertRefIdCounts, assertNoOrphanRefs, InheritanceRoot, Position, joinSlices } from "./Schema";
 import { nanoid } from "nanoid";
 
 describe("StateView", () => {
@@ -6104,6 +6104,95 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [outer, inner, none]);
         });
 
+    });
+
+
+    describe("cross-view chunk cache with custom tags", () => {
+        // Per-field `@view(tag)` on an unfiltered tree: each view's chunk is a
+        // function of the custom tags it holds on the tree, and the encoder
+        // memoizes chunks across views per (tree, tag key) within a tick.
+        class Player extends Schema {
+            @type("number") x: number;
+            @view(1) @type("number") gold: number;
+            @view(2) @type("string") secret: string;
+        }
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+        }
+
+        function setup(tags: number[]) {
+            const state = new State();
+            const players = [0, 1, 2].map((i) => new Player().assign({ x: i, gold: i, secret: `s${i}` }));
+            players.forEach((p, i) => state.players.set(`p${i}`, p));
+            const encoder = getEncoder(state);
+            const clients = tags.map((tag) => {
+                const client = createClientWithView(state);
+                client.view.add(state);
+                for (const p of players) client.view.add(p, tag);
+                return client;
+            });
+            encodeMultiple(encoder, state, clients);
+            return { state, players, encoder, clients };
+        }
+
+        it("views alternating between tags each receive their own tag's fields", () => {
+            const tags = [1, 2, 1, 2, 1 | 2, 1];
+            const { state, players, encoder, clients } = setup(tags);
+
+            for (let tick = 1; tick <= 3; tick++) {
+                players.forEach((p, i) => { p.x = tick * 10 + i; p.gold = tick * 100 + i; p.secret = `t${tick}-${i}`; });
+                encodeMultiple(encoder, state, clients);
+
+                clients.forEach((client, c) => {
+                    const tag = tags[c];
+                    players.forEach((p, i) => {
+                        const decoded = client.state.players.get(`p${i}`);
+                        assert.strictEqual(decoded.x, p.x, `client ${c} untagged field`);
+                        assert.strictEqual(decoded.gold, (tag & 1) ? p.gold : undefined, `client ${c} (tag ${tag}) gold at tick ${tick}`);
+                        assert.strictEqual(decoded.secret, (tag & 2) ? p.secret : undefined, `client ${c} (tag ${tag}) secret at tick ${tick}`);
+                    });
+                });
+            }
+        });
+
+        it("a tag changed between two view passes of the same tick is honoured", () => {
+            const { state, players, encoder, clients } = setup([1, 2, 1]);
+            const [clientA, clientB, clientC] = clients;
+            const player = players[0];
+            const tree = player[$changes];
+
+            player.gold = 500;
+            player.secret = "changed";
+
+            const it = { offset: 0 };
+            encoder.encode(it);
+            const sharedOffset = it.offset;
+
+            clientA.state.decode(joinSlices(encoder.encodeView(clientA.view, sharedOffset, it)));
+            clientB.state.decode(joinSlices(encoder.encodeView(clientB.view, sharedOffset, it)));
+
+            // clientC held tag 1 (same key as clientA, whose chunk is now cached);
+            // swap it to tag 2 before its pass — it must not replay clientA's chunk
+            clientC.view.removeTag(tree, 1);
+            clientC.view.addTag(tree, 2);
+            clientC.state.decode(joinSlices(encoder.encodeView(clientC.view, sharedOffset, it)));
+            encoder.discardChanges();
+
+            assert.strictEqual(clientA.state.players.get("p0").gold, 500);
+            assert.strictEqual(clientA.state.players.get("p0").secret, undefined, "tag-1 client must not receive the tag-2 field");
+            assert.strictEqual(clientB.state.players.get("p0").secret, "changed");
+            assert.strictEqual(clientB.state.players.get("p0").gold, undefined, "tag-2 client must not receive the tag-1 field");
+            assert.strictEqual(clientC.state.players.get("p0").secret, "changed", "tag swapped to 2 mid-tick: gets the tag-2 field");
+            assert.strictEqual(clientC.state.players.get("p0").gold, 0, "tag swapped to 2 mid-tick: no longer gets the tag-1 field");
+
+            // and the next tick uses the new tag
+            player.gold = 501;
+            player.secret = "again";
+            encodeMultiple(encoder, state, clients);
+            assert.strictEqual(clientC.state.players.get("p0").secret, "again");
+            assert.strictEqual(clientC.state.players.get("p0").gold, 0);
+            assert.strictEqual(clientA.state.players.get("p0").gold, 501);
+        });
     });
 
 });

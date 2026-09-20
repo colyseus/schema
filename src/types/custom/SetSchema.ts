@@ -2,7 +2,7 @@ import { CollectionKind, OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { $changes, $childType, $deleteByIndex, $filter, $getByIndex, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
 import { Collection } from "../HelperTypes.js";
-import { ChangeTree, installUntrackedChangeTree, type IRef } from "../../encoder/ChangeTree.js";
+import { ChangeTree, installUntrackedChangeTree, type IRef, stampTree, treeOf, refTreeOf, defineRefAccessors, refIdOf } from "../../encoder/ChangeTree.js";
 import { KeyedRecorder } from "../../encoder/KeyedRecorder.js";
 import {
     createStreamableState,
@@ -19,8 +19,9 @@ import type { Schema } from "../../Schema.js";
  * monotonic index. `indexByValue` gives O(1) `has` / `delete`.
  */
 export class SetSchema<V=any> implements Collection<number, V>, IRef {
-    [$changes]: ChangeTree;
-    [$refId]?: number;
+    /** Prototype accessors over the private tree slot — see `defineRefAccessors`. */
+    declare [$changes]: ChangeTree;
+    declare [$refId]?: number;
 
     protected [$childType]: string | typeof Schema;
 
@@ -62,8 +63,8 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     /** Per-entry visibility for `StateView` encodes (removed values resolve through the recorder). */
     static [$filter] (ref: SetSchema, index: number, view: StateView) {
         if (!view || typeof (ref[$childType]) === "string") return true;
-        const value: any = ref.$items.get(index) ?? (ref[$changes].rec as KeyedRecorder | undefined)?.deleted?.get(index);
-        return value !== undefined && view.isVisible(value[$changes]);
+        const value: any = ref.$items.get(index) ?? (refTreeOf(ref).rec as KeyedRecorder | undefined)?.deleted?.get(index);
+        return value !== undefined && view.isVisible(refTreeOf(value));
     }
 
     static is(type: any) {
@@ -71,13 +72,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     }
 
     constructor (initialValues?: Array<V>) {
-        // $changes must be non-enumerable to avoid deepStrictEqual recursing
-        // into ChangeTree's circular refs.
-        Object.defineProperty(this, $changes, {
-            value: new ChangeTree(this),
-            enumerable: false,
-            writable: true,
-        });
+        stampTree(this, new ChangeTree(this));
         this[$childType] = undefined as any;
 
         if (initialValues) {
@@ -110,7 +105,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     /** Shared by `add` and the duplicate-allowing `CollectionSchema.add`. */
     protected $add(value: V): number {
         const index = this.nextIndex++;
-        const tree = this[$changes];
+        const tree = treeOf(this);
 
         this.$items.set(index, value);
         this.indexByValue.set(value, index);
@@ -128,8 +123,8 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         }
 
         // set the parent AFTER recording (the parent's op precedes the child's chunk)
-        if ((value as any)?.[$changes] !== undefined) {
-            (value as any)[$changes].setParent(this, tree.root, index);
+        if (refTreeOf(value) !== undefined) {
+            refTreeOf(value).setParent(this, tree.root, index, tree);
         }
         return index;
     }
@@ -147,8 +142,8 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     }
 
     protected $deleteAt(index: number, previousValue: V): boolean {
-        const tree = this[$changes];
-        const previousTree = (previousValue as any)?.[$changes];
+        const tree = treeOf(this);
+        const previousTree = refTreeOf(previousValue);
 
         // Streaming-mode: route through stream's pending/sent bookkeeping
         // — silent drop if never sent to any view, force DELETE for views
@@ -158,7 +153,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
             const root = tree.root;
             let neverSent = false;
             if (root !== undefined) {
-                neverSent = streamRouteRemove(this, root, this[$refId], index);
+                neverSent = streamRouteRemove(this, root, tree.refId!, index);
             }
             if (previousTree !== undefined) {
                 root?.remove(previousTree);
@@ -179,7 +174,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     }
 
     clear() {
-        const tree = this[$changes];
+        const tree = treeOf(this);
 
         // remove children references
         tree.forEachChild((childChangeTree, _) => {
@@ -202,7 +197,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
      * field. The instance must already be detached from the encoder.
      */
     [$reset]() {
-        const tree = this[$changes];
+        const tree = treeOf(this);
         if (tree.isStreamCollection) {
             throw new Error(`@colyseus/schema: cannot reset a streamed ${this.constructor.name} (pooling not supported).`);
         }
@@ -211,7 +206,6 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         this.indexByValue.clear();
         this.nextIndex = 0;
         tree.recycle();
-        this[$refId] = undefined; // drop encoder ref identity by assign (not delete: avoids dict-mode deopt)
     }
 
     has (value: V): boolean {
@@ -231,10 +225,10 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     }
 
     // ────── Change tracking control (same API as Schema) ──────
-    pauseTracking(): void { this[$changes].pause(); }
-    resumeTracking(): void { this[$changes].resume(); }
-    untracked<T>(fn: () => T): T { return this[$changes].untracked(fn); }
-    get isTrackingPaused(): boolean { return this[$changes].paused; }
+    pauseTracking(): void { treeOf(this).pause(); }
+    resumeTracking(): void { treeOf(this).resume(); }
+    untracked<T>(fn: () => T): T { return treeOf(this).untracked(fn); }
+    get isTrackingPaused(): boolean { return treeOf(this).paused; }
 
     /** Iterator */
     [Symbol.iterator](): IterableIterator<V> {
@@ -298,7 +292,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     clone(): this {
         const cloned = new (this.constructor as any)();
         this.forEach((value: any) => {
-            cloned.add((value?.[$changes] !== undefined) ? value.clone() : value);
+            cloned.add((refTreeOf(value) !== undefined) ? value.clone() : value);
         });
         return cloned;
     }
@@ -306,3 +300,5 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
 }
 
 registerType("set", { constructor: SetSchema });
+
+defineRefAccessors(SetSchema.prototype);

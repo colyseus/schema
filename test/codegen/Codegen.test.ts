@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 import * as rimraf from "rimraf";
 import * as glob from "glob";
 import * as assert from "assert";
-import { generate } from "../../src/codegen/api.js";
+import { generate, generators } from "../../src/codegen/api.js";
 import { Context, Class, getInheritanceTree } from "../../src/codegen/types.js";
 
 // ESM-compatible __dirname
@@ -439,6 +439,140 @@ describe("schema-codegen", () => {
 
             const messageType = read("MessageType.dart");
             assert.match(messageType, /static const DeployMiner = "deploy-miner";/);
+        });
+    });
+
+    describe("number-keyed maps", () => {
+        // Emitted file name for a class, per target.
+        const extensions: Record<string, string> = {
+            csharp: "cs", cpp: "hpp", haxe: "hx", ts: "ts", js: "js", java: "java",
+            lua: "lua", c: "h", gdscript: "gd", dart: "dart", swift: "swift",
+        };
+        const toSnakeCase = (s: string) => s.replace(/([A-Z])/g, (_, p1, offset) => (offset > 0 ? "_" : "") + p1.toLowerCase());
+        const fileFor = (lang: string, className: string) =>
+            `${lang === "c" ? toSnakeCase(className) : className}.${extensions[lang]}`;
+
+        const gen = (fixture: string, lang: string, className: string) => {
+            fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
+            generate(lang, { files: [path.resolve(INPUT_DIR, fixture)], output: OUTPUT_DIR });
+            return fs.readFileSync(path.resolve(OUTPUT_DIR, fileFor(lang, className)), "utf8");
+        };
+
+        // The three fixture classes differ only by name: fold the names (and
+        // their SCREAMING / snake_case forms in C guards and identifiers) so
+        // the outputs can be compared byte-for-byte.
+        const foldName = (out: string) => out
+            .replace(/Keyed(Decorator|Builder|Control)/g, "Keyed")
+            .replace(/KEYED(DECORATOR|BUILDER|CONTROL)/g, "KEYED")
+            .replace(/keyed_(decorator|builder|control)/g, "keyed");
+
+        // Every line mentioning the string-keyed control field, plus the line
+        // right before it (the C#/Java attribute lives there) — except for
+        // lines that list every field (Lua `_fields_by_index`, C++ `_indexes`),
+        // whose predecessor is legitimately a number-keyed field.
+        const controlLines = (out: string) => {
+            const lines = out.split("\n");
+            return lines.flatMap((line, i) => {
+                if (!line.includes("byName")) { return []; }
+                const onlyControl = !line.includes("byId") && !line.includes("scores");
+                return onlyControl ? [lines[i - 1], line] : [line];
+            });
+        };
+
+        // Number-keyed spelling per target: `byId` is a schema-valued map
+        // keyed by "number", `scores` a primitive-valued map keyed by "int32".
+        const expectations: Record<string, RegExp[]> = {
+            ts: [
+                /@type\(\{ map: Item, key: "number" \}\) public byId: MapSchema<Item, number> = new MapSchema<Item, number>\(\);/,
+                /@type\(\{ map: "number", key: "int32" \}\) public scores: MapSchema<number, number> = new MapSchema<number, number>\(\);/,
+            ],
+            js: [
+                /type\(\{ map: Item, key: "number" \}\)\(Keyed\w*\.prototype, "byId"\);/,
+                /type\(\{ map: "number", key: "int32" \}\)\(Keyed\w*\.prototype, "scores"\);/,
+            ],
+            csharp: [
+                /\[Type\(1, "map", typeof\(MapSchema<Item, float>\), KeyType = "number"\)\]\s+public MapSchema<Item, float> byId = null;/,
+                /\[Type\(2, "map", typeof\(MapSchema<float, int>\), "number", KeyType = "int32"\)\]\s+public MapSchema<float, int> scores = null;/,
+            ],
+            cpp: [
+                /MapSchema<Item\*, varint_t> \*byId = new MapSchema<Item\*, varint_t>\(\);/,
+                /MapSchema<varint_t, int32_t> \*scores = new MapSchema<varint_t, int32_t>\(\);/,
+                /this->byId = \(MapSchema<Item\*, varint_t> \*\)value;/,
+                /this->scores = \(MapSchema<varint_t, int32_t> \*\)value;/,
+                /this->_keyTypes = \{\{1, "number"\}, \{2, "int32"\}\};/,
+            ],
+            java: [
+                /@SchemaField\("1\/map\/ref\/number"\)\s+public MapSchema<Item, Float> byId = new MapSchema<>\(Item\.class\);/,
+                /@SchemaField\("2\/map\/number\/int32"\)\s+public MapSchema<Float, Integer> scores = new MapSchema<>\(\);/,
+            ],
+            haxe: [
+                /@:type\("map", Item, "number"\)\s+public var byId: MapSchema<Item, Dynamic> = new MapSchema<Item, Dynamic>\(\);/,
+                /@:type\("map", "number", "int32"\)\s+public var scores: MapSchema<Dynamic, Int> = new MapSchema<Dynamic, Int>\(\);/,
+            ],
+            lua: [
+                /\["byId"\] = \{ map = Item, key = "number" \}/,
+                /\["scores"\] = \{ map = "number", key = "int32" \}/,
+            ],
+            c: [
+                /\{1, "byId", COLYSEUS_FIELD_MAP, "map:number", offsetof\(keyed_\w*_t, byId\), &item_vtable, NULL, NULL\}/,
+                /\{2, "scores", COLYSEUS_FIELD_MAP, "map:int32", offsetof\(keyed_\w*_t, scores\), NULL, "number", NULL\}/,
+            ],
+            gdscript: [
+                /Colyseus\.Schema\.Field\.new\("byId", Colyseus\.Schema\.MAP, Item, Colyseus\.Schema\.NUMBER\)/,
+                /Colyseus\.Schema\.Field\.new\("scores", Colyseus\.Schema\.MAP, Colyseus\.Schema\.NUMBER, Colyseus\.Schema\.INT32\)/,
+            ],
+            dart: [
+                /MapSchema<Item, double> get byId => mapOf\('byId', Item\.new, keyType: 'number'\);/,
+                /MapSchema<double, double> get scores => primitiveMapOf\('scores', keyType: 'int32'\);/,
+            ],
+            swift: [
+                /public var byId: MapSchema<Item, Double> \{ mapOf\("byId", keyType: "number"\) \}/,
+                /public var scores: MapSchema<Double, Double> \{ mapOf\("scores", keyType: "int32"\) \}/,
+            ],
+        };
+
+        it("covers every generator", () => {
+            assert.deepStrictEqual(Object.keys(expectations).sort(), Object.keys(generators).sort());
+        });
+
+        for (const lang of Object.keys(generators)) {
+            describe(lang, () => {
+                it("emits the key type for number-keyed maps", () => {
+                    const out = gen("NumberKeyedMap.ts", lang, "KeyedDecorator");
+                    for (const pattern of expectations[lang]) {
+                        assert.match(out, pattern);
+                    }
+                });
+
+                it("leaves the string-keyed control field byte-identical to a source without any `key`", () => {
+                    const keyed = gen("NumberKeyedMap.ts", lang, "KeyedDecorator");
+                    const control = gen("StringKeyedMap.ts", lang, "KeyedControl");
+
+                    const keyedLines = controlLines(foldName(keyed));
+                    assert.ok(keyedLines.length > 0, "control field 'byName' not found in output");
+                    assert.deepStrictEqual(keyedLines, controlLines(foldName(control)));
+                });
+
+                it("generates the same output from the decorator and the builder forms", () => {
+                    const decorator = gen("NumberKeyedMap.ts", lang, "KeyedDecorator");
+                    const builder = gen("NumberKeyedMap.ts", lang, "KeyedBuilder");
+                    assert.strictEqual(foldName(builder), foldName(decorator));
+                });
+            });
+        }
+
+        it("accepts `key` before the collection kind in the literal", () => {
+            // parser looks the kind up by name, not position
+            const src = path.resolve(OUTPUT_DIR, "KeyFirst.ts");
+            fs.writeFileSync(src, `
+import { Schema, type, MapSchema } from "../../../src";
+export class KeyFirst extends Schema {
+    @type({ key: "uint8", map: "string" }) names = new MapSchema<string, number>();
+}
+`);
+            generate("ts", { files: [src], output: OUTPUT_DIR });
+            const out = fs.readFileSync(path.resolve(OUTPUT_DIR, "KeyFirst.ts"), "utf8");
+            assert.match(out, /@type\(\{ map: "string", key: "uint8" \}\) public names: MapSchema<string, number>/);
         });
     });
 

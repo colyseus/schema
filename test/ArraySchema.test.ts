@@ -2757,10 +2757,10 @@ describe("ArraySchema Tests", () => {
 
             decodedState.decode(state.encode());
 
-            assert.strictEqual(1, encoder.root.refCount[state.cards[0][$refId]]);
-            assert.strictEqual(1, encoder.root.refCount[state.cards[1][$refId]]);
-            assert.strictEqual(1, encoder.root.refCount[state.cards[2][$refId]]);
-            assert.strictEqual(1, encoder.root.refCount[state.cards[3][$refId]]);
+            assert.strictEqual(1, encoder.root.refCount.get(state.cards[0][$refId]));
+            assert.strictEqual(1, encoder.root.refCount.get(state.cards[1][$refId]));
+            assert.strictEqual(1, encoder.root.refCount.get(state.cards[2][$refId]));
+            assert.strictEqual(1, encoder.root.refCount.get(state.cards[3][$refId]));
 
             const removedCard = state.cards.splice(2, 1)[0];
             console.log("removedCard, refId =>", removedCard[$refId]);
@@ -2773,9 +2773,9 @@ describe("ArraySchema Tests", () => {
                 [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
             });
 
-            assert.strictEqual(1, encoder.root.refCount[state.cards[0][$refId]]);
-            assert.strictEqual(1, encoder.root.refCount[state.cards[1][$refId]]);
-            assert.strictEqual(1, encoder.root.refCount[state.cards[2][$refId]]);
+            assert.strictEqual(1, encoder.root.refCount.get(state.cards[0][$refId]));
+            assert.strictEqual(1, encoder.root.refCount.get(state.cards[1][$refId]));
+            assert.strictEqual(1, encoder.root.refCount.get(state.cards[2][$refId]));
 
             const encoded = state.encode();
             console.log({ encoded: Array.from(encoded) });
@@ -3065,6 +3065,177 @@ describe("ArraySchema Tests", () => {
         it("#lastIndexOf()", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 1, 2, 3);
             assert.strictEqual(4, arr.lastIndexOf(2));
+        });
+
+        describe("search builtins match Array (fromIndex, NaN, refs)", () => {
+            // Every case is run against a plain Array with the same contents:
+            // the overrides must agree with the spec on fromIndex handling
+            // (negative, past the end, NaN/undefined, fractional) and on the
+            // comparison (=== for indexOf/lastIndexOf, SameValueZero for includes).
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class SearchState extends Schema {
+                @type(["number"]) numbers = new ArraySchema<number>();
+                @type(["string"]) strings = new ArraySchema<string>();
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+            const froms: any[] = [undefined, 0, 1, 2, 3, 5, 6, 100, -1, -2, -5, -6, -100, 1.5, -1.5, NaN, null, "2", Infinity, -Infinity];
+
+            function check(arr: ArraySchema<any>, plain: any[], values: any[]) {
+                for (const v of values) {
+                    for (const from of froms) {
+                        assert.strictEqual(arr.indexOf(v, from), plain.indexOf(v, from), `indexOf(${String(v)}, ${from})`);
+                        assert.strictEqual(arr.lastIndexOf(v, from), plain.lastIndexOf(v, from), `lastIndexOf(${String(v)}, ${from})`);
+                        assert.strictEqual(arr.includes(v, from), plain.includes(v, from), `includes(${String(v)}, ${from})`);
+                    }
+                    // arity 1 (not the same as an explicit undefined for lastIndexOf)
+                    assert.strictEqual(arr.indexOf(v), plain.indexOf(v));
+                    assert.strictEqual(arr.lastIndexOf(v), plain.lastIndexOf(v));
+                    assert.strictEqual(arr.includes(v), plain.includes(v));
+                }
+            }
+
+            it("numbers (including NaN, -0 and doubles)", () => {
+                const state = new SearchState();
+                const plain = [1, 2, 3, 1, 2.5, NaN, 0, 3];
+                state.numbers.push(...plain);
+                check(state.numbers, plain, [1, 2, 3, 2.5, NaN, 0, -0, 4, "1" as any, undefined, null]);
+                // decoder side (plain subclass instance, no Proxy); NaN is not
+                // representable on the wire (decodes as 0), so it is left out here
+                const decoded = createInstanceFromReflection(state);
+                decoded.decode(state.encodeAll());
+                const decodedPlain = decoded.numbers.toArray();
+                assert.deepStrictEqual(decodedPlain, [1, 2, 3, 1, 2.5, 0, 0, 3]);
+                check(decoded.numbers, decodedPlain, [1, 2, 3, 2.5, NaN, 0, -0, 4]);
+            });
+
+            it("strings", () => {
+                const state = new SearchState();
+                const plain = ["a", "b", "c", "a", "", "b"];
+                state.strings.push(...plain);
+                check(state.strings, plain, ["a", "b", "c", "", "d", 1 as any, undefined]);
+                const decoded = createInstanceFromReflection(state);
+                decoded.decode(state.encodeAll());
+                check(decoded.strings, plain, ["a", "b", "c", "", "d"]);
+            });
+
+            it("refs (identity)", () => {
+                const state = new SearchState();
+                const mk = (i: number) => new Item().assign({ i });
+                const a = mk(1), b = mk(2), c = mk(3);
+                state.items.push(a, b, c, a, b);
+                const plain = [a, b, c, a, b];
+                check(state.items, plain, [a, b, c, mk(1), undefined, null, {} as any]);
+                const decoded = createInstanceFromReflection(state);
+                decoded.decode(state.encodeAll());
+                // the same instance pushed twice shares one refId: the decoder holds one object at both indexes
+                const d = decoded.items;
+                assert.strictEqual(d[0], d[3]);
+                check(d, d.toArray(), [d[0], d[1], d[2], a, undefined, null, {} as any]);
+                assert.strictEqual(d.indexOf(d[3]), 0);
+                assert.strictEqual(d.lastIndexOf(d[0]), 3);
+                assert.strictEqual(d.includes(d[4]), true);
+                assert.strictEqual(d.indexOf(a), -1);
+            });
+
+            it("empty array and after mutations", () => {
+                const state = new SearchState();
+                check(state.numbers, [], [1, undefined]);
+                state.numbers.push(1, 2, 3, 4);
+                state.numbers.shift();
+                state.numbers.splice(1, 1, 9);
+                state.numbers.pop();
+                const plain = [2, 9];
+                assert.deepStrictEqual(state.numbers.toArray(), plain);
+                check(state.numbers, plain, [1, 2, 9, 4]);
+            });
+        });
+
+        describe("callback builtins match Array (thisArg, arguments, holes-free)", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class CbState extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+                @type(["number"]) numbers = new ArraySchema<number>();
+            }
+
+            function checkAll(arr: ArraySchema<any>, plain: any[]) {
+                const thisArg = { tag: "ctx" };
+                for (const method of ["forEach", "map", "filter", "find", "findIndex", "findLast", "findLastIndex", "some", "every"] as const) {
+                    for (const ctx of [undefined, thisArg, null, 0]) {
+                        const seenA: any[] = [], seenB: any[] = [];
+                        const mkCb = (seen: any[]) => function (this: any, value: any, index: number, array: any) {
+                            seen.push([this, value, index, array.length, arguments.length]);
+                            return typeof value === "number" ? value > 1 : value.i > 1;
+                        };
+                        const outA = (arr as any)[method](mkCb(seenA), ctx);
+                        const outB = (plain as any)[method](mkCb(seenB), ctx);
+                        assert.deepStrictEqual(outA, outB, `${method} result (thisArg=${String(ctx)})`);
+                        assert.strictEqual(seenA.length, seenB.length, `${method} call count`);
+                        for (let k = 0; k < seenA.length; k++) {
+                            const [tA, vA, iA, lenA, argcA] = seenA[k];
+                            const [tB, vB, iB, lenB, argcB] = seenB[k];
+                            // sloppy-mode functions: undefined/null `this` becomes the global object on both sides
+                            assert.strictEqual(tA, tB, `${method} this (thisArg=${String(ctx)})`);
+                            assert.strictEqual(vA, vB);
+                            assert.strictEqual(iA, iB);
+                            assert.strictEqual(lenA, lenB);
+                            assert.strictEqual(argcA, argcB);
+                        }
+                        // the `array` argument is the ArraySchema itself (its public identity)
+                        if (seenA.length > 0) {
+                            let arg: any;
+                            (arr as any)[method]((_v: any, _i: number, a: any) => { arg = a; return false; });
+                            assert.strictEqual(arg, arr);
+                        }
+                    }
+                }
+                // reduce / reduceRight: (acc, value, index, array)
+                const rA: any[] = [], rB: any[] = [];
+                const red = (seen: any[]) => (acc: number, v: any, i: number, a: any) => { seen.push([i, a.length]); return acc + (typeof v === "number" ? v : v.i); };
+                assert.strictEqual(arr.reduce(red(rA), 10), plain.reduce(red(rB), 10));
+                assert.deepStrictEqual(rA, rB);
+                if (plain.length > 0) {
+                    assert.strictEqual(arr.reduce((acc: any, v: any) => (typeof acc === "number" ? acc : acc.i) + (typeof v === "number" ? v : v.i)), plain.reduce((acc: any, v: any) => (typeof acc === "number" ? acc : acc.i) + (typeof v === "number" ? v : v.i)));
+                } else {
+                    assert.throws(() => arr.reduce((acc: any, v: any) => acc + v), TypeError);
+                }
+            }
+
+            it("numbers", () => {
+                const state = new CbState();
+                const plain = [0, 1, 2, 3, 4];
+                state.numbers.push(...plain);
+                checkAll(state.numbers, plain);
+                const decoded = createInstanceFromReflection(state);
+                decoded.decode(state.encodeAll());
+                checkAll(decoded.numbers, plain);
+            });
+
+            it("refs", () => {
+                const state = new CbState();
+                const items = [0, 1, 2, 3].map((i) => new Item().assign({ i }));
+                state.items.push(...items);
+                checkAll(state.items, items);
+            });
+
+            it("empty", () => {
+                const state = new CbState();
+                checkAll(state.numbers, []);
+            });
+
+            it("writes through the `array` argument are tracked", () => {
+                const state = new CbState();
+                state.numbers.push(1, 2, 3);
+                const decoded = createInstanceFromReflection(state);
+                decoded.decode(state.encodeAll());
+                state.numbers.forEach((v, i, arr) => { arr[i] = v * 10; });
+                decoded.decode(state.encode());
+                assert.deepStrictEqual(decoded.numbers.toArray(), [10, 20, 30]);
+                assertDeepStrictEqualEncodeAll(state);
+            });
         });
 
         it("#reverse()", () => {

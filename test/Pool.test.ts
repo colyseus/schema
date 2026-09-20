@@ -158,7 +158,7 @@ describe("SchemaPool", () => {
         decoded.decode(state.encode());
 
         const refId = (bob as any)[$refId];
-        assert.ok(refId !== undefined && encoder.root.changeTrees[refId]?.ref === bob, "must hold a live, freshly-acquired refId");
+        assert.ok(refId !== undefined && encoder.root.changeTrees.get(refId)?.ref === bob, "must hold a live, freshly-acquired refId");
         assert.deepStrictEqual(decoded.toJSON(), state.toJSON());
         assert.strictEqual(decoded.entities.get("p")!.name, "bob");
         assertRefIdCounts(state, decoded);

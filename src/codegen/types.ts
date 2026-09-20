@@ -158,6 +158,13 @@ export class Property {
     name: string;
     type: string;
     childType: string;
+    /**
+     * Wire type of a map's keys (`"number"`, `"int32"`, …), as declared by
+     * `{ map: X, key: "number" }` / `t.map(X, { key: "number" })`. Only set
+     * for a non-default key — a string-keyed map leaves it undefined so
+     * every emitter keeps producing exactly what it did before.
+     */
+    keyType?: string;
     quantized?: QuantizedProperty;
     deprecated?: boolean;
 }

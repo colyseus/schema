@@ -8,6 +8,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed (breaking)
 
+- **Chunk header carries a refId delta** (`SPEC.md`, "Message and chunks"):
+  `uvarint(refId * 2 + 1)` for the first chunk of a slice, then
+  `uvarint(zigzag(refId − prevRefId) * 2)`. Dirty structures come out in
+  change order, which mostly follows allocation order, so the header stays one
+  byte long after absolute refIds pass 127: −3.6 % on a 5000-entity patch,
+  −6 % on the RPG / shard patches. The first chunk of every slice is
+  self-describing, so `[shared, view]` decodes concatenated or separately.
+- **Same-shape runs**: the length prefix is `uvarint(byteLen * 2 + flag)`;
+  with the flag set the chunk is a run — consecutive dirty Schemas of one
+  class whose dirty fields are the same primitives (all writes) share one
+  header, class id and field mask, each member costing its refId delta plus
+  its values. On a room of same-class entities updating the same fields per
+  tick this is about −19 % (5000-entity patch, area-of-interest view slices,
+  RPG hero patch). A run never carries ref fields, DELETEs, `@view`-tagged
+  fields or fields past index 31; those structures keep their own chunk.
+- **Encoder / decoder hot paths** (`bench/realworld-results.md`): the per-view
+  pass walks per-view work lists built once per tick from the visibility
+  bitmaps instead of scanning every dirty filtered tree for every client
+  (area-of-interest rooms −24…−43 %, 500 owner-only clients −25 %); idle views
+  skip the pass and share the tick's shared slice; the per-tick scratch arrays
+  keep their backing store instead of being truncated (no GC churn per view); the decoder keeps a per-ref
+  record on the ref's tree and writes primitive slots straight into the
+  backing array instead of a dynamic `ref[name]` access (a 5000-entity patch
+  decodes 5× faster); generated setters reach the change tree through one
+  load; the reflection handshake reuses one buffer instead of allocating
+  `Encoder.BUFFER_SIZE` per client join (`new Encoder(state, root,
+  bufferSize)`). The internal `static [$track]` hook is no longer consulted by generated
+  setters — override `ChangeTree.change` semantics through `markDirty` /
+  `pause` instead.
+- **Round-2 hot-path fixes** (`bench/realworld-results.md`, "Round 2"): the
+  encoder no longer truncates its body scratch arrays per tick (one-field
+  patches −30 %, at parity with 5.x); the cross-view chunk cache is keyed
+  per (tree, tag key) so views with different `@view(tag)` sets share
+  encoded chunks (`stateview/tags` −46 %); `ArraySchema` search and callback
+  builtins run monomorphic loops (`indexOf` −27 %, `forEach` / `map` /
+  `filter` −7…−10 %); strings are written in one pass and long ones through
+  `TextEncoder` / `TextDecoder` when available (string-heavy patches −22 %).
+  Lone surrogates now encode as U+FFFD on every path (the length prefix and
+  body used to disagree for ill-formed strings); well-formed strings are
+  byte-identical. `decodeInfo` lives on `UntrackedChangeTree` and is added
+  lazily to a tracked root that a `Decoder` decodes into.
 - **Wire format 6** (see `SPEC.md`): length-prefixed chunks
   (`uvarint(refId) uvarint(len) ops`) replace the `255 + refId` switch byte,
   fresh instances ride inline as bodies of the parent's ADD, every structural
@@ -44,6 +85,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `refId len op value`, four bytes for small values. The revision base is
   sent only in a tick that snapshotted the array (`BASE` op); otherwise the
   log resumes from the client's own revision.
+- **Keyed wire model** (Map / Set / Collection / Stream): every op is one
+  varint carrying its index, `uvarint(index * 4 + op)` (REPLACE 0, DELETE 1,
+  ADD 2, CLEAR 3), instead of an op byte followed by the index. A REPLACE
+  or DELETE on one of the first 32 entries is one byte (two below index
+  8192); four deletes on a map cost six bytes on the wire (chunk header
+  included). `DELETE_AND_ADD` no longer rides the keyed wire: an ADD onto
+  an occupied index is the replacement, and the decoder releases the
+  previous value and still reports `onRemove` + `onAdd`. Full-sync map
+  bodies stream straight from the map (no scratch copy).
+- **Typed map keys.** `@type({ map: X, key: "number" })` and
+  `t.map(X, { key: "number" })` declare a `MapSchema<X, number>`: keys are
+  JS numbers on both sides, ride the wire as a dynamic number (or the
+  fixed-width `int8…uint64` / `float32` / `float64` type when one of those
+  is declared as the key type) only on ADD-bit ops, and reach `onAdd` /
+  `onRemove` / `onChange` as numbers. `"string"` stays the default and its
+  wire bytes, metadata and codegen output are unchanged. A `MapSchema`
+  populated before it is attached to a typed field is re-keyed on attach.
+  `Reflection` carries the key type (`ReflectionField.keyType`, absent for
+  string keys); `schema-codegen` emits it for every target. Declaring `key`
+  on a non-map field, or an unknown key type, throws at declaration time.
 - Binding an element of a filtered array to a view (`view.add(element)`)
   inlines that element only into the parent's re-binding; the rest of the
   array is not re-sent.
@@ -75,6 +136,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   it with `Reflection.decode`, or skip the first byte for a raw `Decoder`.
 - The other-language SDK decoders (C#, Lua, Haxe, …) and the fixture
   generators in `test-external/` still speak the 5.x format and need a port.
+- **`$changes` and `$refId` are no longer own properties of an instance**
+  (`bench/v6-results.md`, "Construction and attach"). Both cost an
+  `Object.defineProperty` runtime call per instance — 22 % of a bulk-ADD
+  workload, the `$refId` one a reconfigure of an already-declared field. The
+  refId now lives on the ChangeTree (`tree.refId`) and the tree in a private
+  slot; `instance[$changes]` / `instance[$refId]` keep working through
+  non-enumerable prototype accessors on `Schema`, every collection, and any
+  external class passed to `Metadata.setFields`. Code that looked for them with
+  `Object.getOwnPropertySymbols` / `hasOwnProperty` no longer finds them
+  (`ArraySchema` keeps an own `$changes`: its public identity is a Proxy).
+  Building a tree of instances is −32 %, attaching it to the state −40 %, a
+  full-state decode −36…−48 %, with no change to the wire bytes.
+- **`decoder.root.refs` and `encoder.root.changeTrees` are `RefTable`s**
+  (`src/RefTable.ts`, exported), an array-backed `refId → value` table with
+  the read surface of a `Map<number, V>` (`get` / `has` / `size` / `keys` /
+  `values` / `entries` / `forEach` / iteration, in ascending refId order) — it
+  is not `instanceof Map`. `refs` was a `Map`: the hash probe per decoded chunk
+  was 22…27 % of a steady decode tick (`decoder/tick` −30 %, large-patch decode
+  −8…−10 %, `callbacks/density` −10…−21 %). `changeTrees` was a plain object
+  indexed by refId — use `changeTrees.get(refId)` and `for (const [refId, tree]
+  of changeTrees)` instead of index access / `for…in`: its store and `delete`
+  were 14 % of attach / detach churn (`encoder/map-churn` −25…−29 %,
+  `encoder/entity-churn` −22 %, map add + delete −31…−34 %) and a push-2000 /
+  pop-2000 array tick fell off a dictionary-mode cliff (−99 %). Memory follows
+  the live refs, not the highest refId: emptied pages are released.
+- **`encoder.root.refCount` is a `RefTable` and holds attached instances
+  only.** It was a plain object that kept a `0` entry for every refId ever
+  removed — unbounded growth in a long-lived room with churn (heap growth over
+  a churn run: 2 175 → 213 KB). Read it with `refCount.get(refId)`; a removed
+  instance reads `undefined`, not `0`. Re-adding a removed instance still
+  re-emits it (the signal moved to the tree's `needsRestage` flag).
+  `MapSchema.keyByIndex` is a `RefTable` too (decoding a 10 000-entry map
+  −18…−20 %).
+- **`$values` is created at its exact size** (`numFields + 1`, a clone of a
+  packed per-class template) instead of `[]`, which V8 grows to a 17-slot
+  backing store on the first write: retained memory per entity −10 %,
+  `encoder/construct` −26 % (GC time ÷3), a 10 000-entity full-state decode
+  −22 %, and field reads in tight loops −10…−20 % (`ArraySchema` `forEach` /
+  `for…of` / `map` / `filter`, reads of a decoded array). `$values.length` is
+  the class's field count from construction, not the highest field written.
+- `ArraySchema` trees live in a private slot on the raw array (not on the
+  Proxy): array construction −60 %, entity construction −9 %, decoder bootstrap
+  −10 %. `arraySchema[$changes]` keeps working through the accessor.
+- `ChangeTree.parentTree` replaces the `parentRef` slot (`parentRef` is now a
+  getter over it), and `setParent` / `addParent` take the parent's tree as an
+  optional last argument: attaching −6…−9 %, nested area-of-interest rooms
+  −7 %, no memory cost.
+- **`ArraySchema` `for…of` / `values()` reuse one iterator result object**,
+  updated in place, instead of allocating a `{ value, done }` per element:
+  −27 % on a decoded array, −20 % on the encoder side, no GC. `for…of`, spread,
+  destructuring, `Array.from` and `yield*` are unaffected; code that keeps a
+  result across `next()` calls (`const a = it.next(); const b = it.next();`)
+  sees `a.value` change. `keys()` / `entries()` still return fresh results.
 
 ### Added
 

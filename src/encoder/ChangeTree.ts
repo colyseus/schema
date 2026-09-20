@@ -21,7 +21,7 @@
  */
 import { ARRAY_OP, KIND_ARRAY, KIND_MAP, KIND_SCHEMA, OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $changes, $childType, $onEncodeEnd, $getByIndex, $refId, $refTypeFieldIndexes, $numFields, type $deleteByIndex } from "../types/symbols.js";
+import { $changes, $childType, $onEncodeEnd, $getByIndex, $proxyTarget, $refId, $refTypeFieldIndexes, $numFields, $values, type $deleteByIndex } from "../types/symbols.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
@@ -61,6 +61,132 @@ declare global {
     }
 }
 
+// ── `$changes` storage (Schema instances and every collection) ──────────
+// A non-enumerable own `$changes` data property needs Object.defineProperty
+// — a runtime call of ~200 ns per constructed instance (the largest single
+// construction cost). A private field is just as invisible to
+// `deepStrictEqual` / `util.inspect` and is written by a plain store. The
+// return-override base lets one private name be stamped on ANY object,
+// including `Object.create`-built decoder instances.
+//
+// ArraySchema: its public identity is a Proxy. V8 keeps a Proxy's private
+// fields in a side dictionary (~137 B per array, +6 % retained memory per
+// entity) and stamping one is slower than defineProperty, so only the RAW
+// TARGET is stamped (113 ns against 287 ns for defineProperty — it was 9 % of
+// entity construction). A reader that can meet an array branches on
+// `Array.isArray` (sees through the Proxy, a cheap intrinsic) and hops through
+// `$proxyTarget` — an own data property, reachable through the Proxy.
+class TreeStampTarget { constructor(target: object) { return target; } }
+class LocalTreeStamp extends TreeStampTarget {
+    #tree: any;
+    constructor(target: object, tree: any) { super(target); this.#tree = tree; }
+    /** Same-copy instances that are not a Proxy (throws otherwise): `this`-based hot paths of Schema / Map / Set / Stream, and an ArraySchema's raw target. */
+    static of(target: any): ChangeTree { return target.#tree; }
+    /**
+     * Same load as `of`, as a SEPARATE function on purpose: inline-cache
+     * feedback belongs to the function literal, and `of` is fed every shape in
+     * the process by the setters and the encoder (megamorphic). The decoder
+     * only ever sees decoder-built shapes; with its own feedback slot its
+     * per-chunk read stays polymorphic, as its `ref[$changes]` site used to be.
+     */
+    static ofDecoded(target: any): ChangeTree {
+        // No array branch: a decoder-built ArraySchema IS its raw target and is
+        // stamped directly (the `$proxyTarget` hop cost decoder/tick +18 %). Only
+        // an encoder-built Proxy reaching the decoder — the initial value of an
+        // array field on the state handed to `new Decoder(state)` — takes the catch.
+        try { return target.#tree; } catch { return LocalTreeStamp.ofAny(target)!; }
+    }
+    /** An array value: the ArraySchema Proxy, its raw target, or a decoder-built one (its own target). A plain array has no tree. */
+    static ofArray(target: any): ChangeTree | undefined {
+        const raw = target[$proxyTarget];
+        return (raw !== undefined) ? raw.#tree : undefined;
+    }
+    /** Install or replace: the cold path behind the `[$changes]` setter and the public `Schema.initialize`. */
+    static put(target: any, tree: any): void {
+        if (Array.isArray(target)) { target = (target as any)[$proxyTarget] ?? target; } // always the raw target, never the Proxy
+        if (#tree in target) { target.#tree = tree; }
+        else { new LocalTreeStamp(target, tree); }
+    }
+    /** `undefined` on an object without the slot (a prototype, a plain object) — never falls back to the accessor, so the accessor can use it. */
+    static peek(target: any): ChangeTree | undefined {
+        if (Array.isArray(target)) { target = (target as any)[$proxyTarget] ?? target; }
+        try { return target.#tree; } catch { return undefined; }
+    }
+    /**
+     * Any OBJECT a user can hand us. No `#tree in target` brand check: it
+     * measured ~20 ns per call in the encode loop (9 % of a bulk-ADD encode).
+     * The private load throws on an object without the slot — a plain object,
+     * or an instance of a library build that predates the shared stamper (its
+     * tree is then on the `[$changes]` symbol) — so only that rare path pays.
+     */
+    static ofAny(target: any): ChangeTree | undefined {
+        if (Array.isArray(target)) { return LocalTreeStamp.ofArray(target); }
+        try { return target.#tree; } catch { return target[$changes]; }
+    }
+    /** `ofAny` for the per-view pass (StateView + the view branch of the encoder), on its own feedback — see `ofDecoded`. */
+    static ofView(target: any): ChangeTree | undefined {
+        if (Array.isArray(target)) { return LocalTreeStamp.ofArray(target); }
+        try { return target.#tree; } catch { return target[$changes]; }
+    }
+}
+// A private name belongs to ONE class evaluation. Bundlers that ship two copies
+// of this library in a process (server + client builds side by side) would
+// otherwise get two names, and every cross-copy read — a Decoder of copy B
+// instantiates copy A's classes through A's own factory — would miss. So the
+// first copy to load publishes its stamper and every later copy adopts it: one
+// private name per process, the same guarantee `Symbol.for("$changes")` gave.
+const SHARED_STAMP = Symbol.for("@colyseus/schema:TreeStamp");
+const TreeStamp: typeof LocalTreeStamp = ((globalThis as any)[SHARED_STAMP] ??= LocalTreeStamp);
+
+/** Install `tree` on a freshly-built instance (throws if it already has one — see `setTree`). */
+export function stampTree(target: object, tree: any): void { new TreeStamp(target, tree); }
+/** The instance's tree, read as a data load (the `[$changes]` prototype accessor is ~10 ns slower on polymorphic sites). */
+export const treeOf = TreeStamp.of;
+/** `treeOf` for the decoder's hot loop — see `TreeStamp.ofDecoded`. */
+export const treeOfDecoded = TreeStamp.ofDecoded;
+/** `refIdOf` for decoder-side values (a primitive, or a ref this process built), on the decoder's own feedback. */
+export function decodedRefIdOf(value: any): number | undefined {
+    return (typeof value === "object" && value !== null) ? TreeStamp.ofDecoded(value).refId : undefined;
+}
+export const setTree = TreeStamp.put;
+export const treeOfAny = TreeStamp.ofAny;
+/** The tree of any VALUE — `undefined` for primitives, null and plain objects. Drop-in for `value?.[$changes]`. */
+export function refTreeOf(value: any): ChangeTree | undefined {
+    return (typeof value === "object" && value !== null) ? TreeStamp.ofAny(value) : undefined;
+}
+/** `refTreeOf` for the per-view pass — see `TreeStamp.ofView`. */
+export function viewTreeOf(value: any): ChangeTree | undefined {
+    return (typeof value === "object" && value !== null) ? TreeStamp.ofView(value) : undefined;
+}
+/** The refId of any VALUE (`undefined` for non-refs and for refs never attached / decoded). Drop-in for `value?.[$refId]`. */
+export function refIdOf(value: any): number | undefined {
+    const tree = refTreeOf(value);
+    return (tree !== undefined) ? tree.refId : undefined;
+}
+
+// `ref[$changes]` / `ref[$refId]` for everyone OUTSIDE this library's hot
+// paths (user code, other packages, a second bundled copy reaching our
+// instances through `Symbol.for`): prototype accessors over the private slot.
+// Non-own, so `deepStrictEqual` / `util.inspect` never see them. Internal
+// code reads with `treeOf` / `refTreeOf` / `refIdOf` / `tree.refId` instead —
+// an accessor costs ~10-20 ns more per read on a polymorphic site.
+const REF_ACCESSORS: PropertyDescriptorMap = {
+    [$changes]: {
+        get(this: any) { return TreeStamp.peek(this); },
+        set(this: any, tree: ChangeTree) { TreeStamp.put(this, tree); },
+        enumerable: false, configurable: true,
+    },
+    [$refId]: {
+        get(this: any) { return TreeStamp.peek(this)?.refId; },
+        set(this: any, value: number | undefined) { const tree = TreeStamp.peek(this); if (tree !== undefined) { tree.refId = value; } },
+        enumerable: false, configurable: true,
+    },
+};
+/** Install the `[$changes]` / `[$refId]` accessors on a class prototype (Schema, each collection, external classes via `Metadata.setFields`). */
+export function defineRefAccessors(proto: object): void {
+    Object.defineProperties(proto, REF_ACCESSORS);
+}
+
 // Pure arithmetic, no `this` — V8 inlines into encode-loop forEach.
 // Mirror of `ChangeTree._opAt` for the inline-ops-only branch.
 export function readInlineOpByte(low: number, high: number, index: number): number {
@@ -93,7 +219,7 @@ export interface IRef {
     [$deleteByIndex](index: number): void;
 }
 
-export type Ref = Schema | ArraySchema | MapSchema | CollectionSchema | SetSchema | StreamSchema;
+export type Ref = Schema | ArraySchema | MapSchema<any, any> | CollectionSchema | SetSchema | StreamSchema;
 
 // Linked list node for change trees
 export interface ChangeTreeNode {
@@ -190,6 +316,13 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     ref: T;
 
     /**
+     * Wire identity, assigned by `Root.add` on first attach (`undefined`
+     * until then, and again after `Schema.reset`). `ref[$refId]` is a
+     * prototype accessor over this slot.
+     */
+    refId: number | undefined;
+
+    /**
      * Non-Proxy target of `ref` for encoder hot-path reads. For
      * `ArraySchema`, `ref` is the Proxy users interact with (its `set` trap
      * tracks index writes); `refTarget` is the raw array underneath. For every
@@ -204,6 +337,15 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * experiment); `refTarget` for every other type.
      */
     elements: any;
+
+    /**
+     * The Schema instance's `$values` backing array (`undefined` for
+     * collections). Cached here so the generated field setters reach it
+     * through one `this[$changes]` load — a setter closure is shared by
+     * every class that declares that field shape, so each `this[...]`
+     * access in it is megamorphic; the tree's own fields are not.
+     */
+    values: any[] | undefined;
 
     /** True when `ref` is an ArraySchema. */
     get isArray(): boolean { return this.encDescriptor.kind === KIND_ARRAY; }
@@ -220,8 +362,14 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     root?: Root;
 
-    // Inline single parent (the common case)
-    parentRef?: Ref;
+    /**
+     * Inline single parent (the common case), held as its ChangeTree. The attach
+     * path, the filter classification and every StateView add / remove /
+     * visibility check need the parent TREE; deriving it from the parent ref is a
+     * megamorphic load each time (three per attached instance). The ref is one
+     * monomorphic hop away (`parentRef` below), so it needs no slot of its own.
+     */
+    parentTree?: ChangeTree;
     _parentIndex?: number;
     extraParents?: ParentChain; // linked list for 2nd+ parents (rare: instance sharing)
 
@@ -275,9 +423,14 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     // Lazy: undefined until the tree participates in any view.
     visibleViews?: number[];
 
-    // Per-(view, tag) bitmap, indexed by tag. Custom tags only —
-    // DEFAULT_VIEW_TAG visibility lives in `visibleViews`.
-    tagViews?: Map<number, number[]>;
+    // Per-(view, tag) bitmaps. Custom tags only — DEFAULT_VIEW_TAG
+    // visibility lives in `visibleViews`. Parallel arrays: `tagBits[j]` is
+    // one power-of-two tag bit, `tagViews[j]` the `visibleViews`-shaped
+    // bitmap of the views holding it on this tree. A tree carries one to a
+    // few bits, so the hot readers (`StateView.hasTagOnTree`, `tagsOnTree`)
+    // scan them linearly — a `Map.get` per bit cost more than the scan.
+    tagBits?: number[];
+    tagViews?: number[][];
 
     /**
      * Per-view subscription bitmap — same layout as `visibleViews`. Set by
@@ -376,18 +529,33 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     constructor(ref: T, refTarget: T = ref) {
         this.ref = ref;
+        this.refId = undefined;
+        // Parent slots exist from construction: added later they are three shape
+        // transitions per tree and land outside the object (tree-build/construct
+        // +12.5 %, memory +1.1 % when `parentTree` was introduced that way).
+        this.parentTree = undefined;
+        this._parentIndex = undefined;
         // Raw (non-Proxy) target, passed explicitly by ArraySchema's ctor —
         // the only proxied type. Defaulting to `ref` for everything else
         // skips a guaranteed-miss megamorphic `$proxyTarget` probe per
         // construction.
         this.refTarget = refTarget;
         this.elements = (refTarget as any)[$items] ?? refTarget;
+        this.values = undefined; // filled below, once the class descriptor is known (slot kept here: one field order for every tree)
 
         // Single per-class lookup that subsumes Symbol.metadata,
         // isValidInstance, $filter, the recorder factory and the bitmasks.
         // After this, the encode loop never touches `ref.constructor`.
         const desc = getEncodeDescriptor(ref);
         this.encDescriptor = desc;
+        if (desc.isSchema) {
+            // The instance's `$values` array, created HERE: exact size and packed
+            // (see `EncodeDescriptor.valuesTemplate`). A decoder-built instance
+            // being upgraded (`ensureTracked`) already has one.
+            let values: any[] | undefined = (refTarget as any)[$values];
+            if (values === undefined) { values = (refTarget as any)[$values] = desc.valuesTemplate.slice(); }
+            this.values = values;
+        }
         this.metadata = desc.metadata;
 
         const isSchema = desc.isSchema;
@@ -578,10 +746,12 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // NEEDS_RESTAGE makes the next Root.add re-stage retained field values.
         this.flags = IS_NEW | NEEDS_RESTAGE;
         this._fullSyncGen = 0;
+        // drop the wire identity: a reused instance re-enters under a fresh refId
+        this.refId = undefined;
 
         // drop parent links — Root.remove clears `root` and the CHILDREN's
         // parent links, but leaves this tree's own parentRef dangling.
-        this.parentRef = undefined;
+        this.parentTree = undefined;
         this._parentIndex = undefined;
         this.extraParents = undefined;
 
@@ -594,6 +764,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // per-view visibility lives on the tree (NOT keyed by refId), so a
         // recycled tree must not inherit its previous life's view membership.
         this.visibleViews = undefined;
+        this.tagBits = undefined;
         this.tagViews = undefined;
         this.subscribedViews = undefined;
     }
@@ -625,7 +796,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     // Tree attachment + child iteration — see ./changeTree/treeAttachment.ts.
     setRoot(root: Root): void { _setRoot(this, root); }
-    setParent(parent: Ref, root?: Root, parentIndex?: number): void { _setParent(this, parent, root, parentIndex); }
+    /** `parentTree`: the parent's ChangeTree when the caller has it (it always does internally) — saves deriving it from `parent`. */
+    setParent(parent: Ref, root?: Root, parentIndex?: number, parentTree?: ChangeTree): void { _setParent(this, parent, root, parentIndex, parentTree); }
     forEachChild(cb: (change: ChangeTree, at: any) => void): void { _forEachChild(this, cb); }
     forEachChildWithCtx<C>(ctx: C, cb: (ctx: C, change: ChangeTree, at: any) => void): void {
         _forEachChildWithCtx(this, ctx, cb);
@@ -730,7 +902,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // (they're built via `initializeForDecoder`, which skips Root
         // attachment). The optional chain handles both sides; this is
         // an intentional invariant, not a bug.
-        if (previousValue && previousValue[$changes]) this.root?.remove(previousValue[$changes]);
+        const previousTree = refTreeOf(previousValue);
+        if (previousTree !== undefined) this.root?.remove(previousTree);
 
         if (unreliable) this.root?.enqueueUnreliable(this);
         else this.root?.enqueueChangeTree(this);
@@ -776,6 +949,11 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     /** Immediate parent (primary). See `extraParents` for the 2nd+ chain. */
     get parent(): Ref | undefined { return this.parentRef; }
+    /** The primary parent's public identity (for an ArraySchema: its Proxy). */
+    get parentRef(): Ref | undefined {
+        const parentTree = this.parentTree;
+        return (parentTree !== undefined) ? parentTree.ref : undefined;
+    }
     /**
      * Index this tree holds in its primary parent. Stable for Schema fields
      * and keyed collections; informational only under an ArraySchema parent
@@ -784,7 +962,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      */
     get parentIndex(): number | undefined { return this._parentIndex; }
 
-    addParent(parent: Ref, index: number): void { _addParent(this, parent, index); }
+    addParent(parent: Ref, index: number, parentTree?: ChangeTree): void { _addParent(this, parent, index, parentTree); }
 
     /** @returns true if parent was found and removed */
     removeParent(parent: Ref = this.parent): boolean { return _removeParent(this, parent); }
@@ -817,6 +995,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
  */
 export class UntrackedChangeTree {
     ref: Ref;
+    /** Wire identity, assigned by `ReferenceTracker.addRef` (see ChangeTree.refId). */
+    refId: number | undefined = undefined;
 
     // Mirror the subset of ChangeTree state that decoder-path readers touch.
     // Everything else is deliberately undefined (matches the shape of a
@@ -824,14 +1004,28 @@ export class UntrackedChangeTree {
     root: undefined = undefined;
     parentRef: undefined = undefined;
     rec: undefined = undefined;
+    /**
+     * Decoder-side per-ref record (`DecodeOperation.refInfoOf`): kind, the
+     * class's DecodeInfo and the `$values` array for Schemas, the child /
+     * key readers for collections. Lives here so one `ref[$changes]` load
+     * replaces four megamorphic loads per decoded chunk. Only decoder-built
+     * instances carry the slot: a tracked `ChangeTree` has no decoder
+     * business, so the rare Decoder that decodes into a normally-constructed
+     * instance (the root passed to `new Decoder(state)`) adds the property
+     * to that one tree lazily instead of costing every server-side tree a field.
+     */
+    decodeInfo: unknown = undefined;
     paused: boolean = false;
     isNew: boolean = false;
     flags: number = 0;
     readonly tracking = false;
     readonly isArray = false;
+    /** The instance's `$values` array (see ChangeTree.values); `undefined` for collections. */
+    values: any[] | undefined;
 
     constructor(ref: Ref) {
         this.ref = ref;
+        this.values = (ref as any)[$values];
     }
 
     // Mutation surface — all no-ops.
@@ -864,17 +1058,17 @@ export class UntrackedChangeTree {
                     for (let i = 0, len = ref.length; i < len; i++) {
                         const value = ref[i];
                         if (!value) continue;
-                        callback(value[$changes], i);
+                        callback(refTreeOf(value)!, i);
                     }
                 } else if (kind === KIND_MAP) {
                     for (const [key, value] of ref.$items as Map<any, any>) {
                         if (!value) continue;
-                        callback(value[$changes], ref.indexByKey.get(key));
+                        callback(refTreeOf(value)!, ref.indexByKey.get(key));
                     }
                 } else {
                     for (const [index, value] of ref.$items as Map<number, any>) {
                         if (!value) continue;
-                        callback(value[$changes], index);
+                        callback(refTreeOf(value)!, index);
                     }
                 }
             }
@@ -887,7 +1081,7 @@ export class UntrackedChangeTree {
             const index = refFieldIndexes[i];
             const value = ref[metadata[index].name];
             if (!value) continue;
-            callback(value[$changes], index);
+            callback(refTreeOf(value)!, index);
         }
     }
 
@@ -907,20 +1101,7 @@ export function createUntrackedChangeTree(ref: Ref): ChangeTree {
     return new UntrackedChangeTree(ref) as unknown as ChangeTree;
 }
 
-/**
- * Install a non-enumerable `$changes: UntrackedChangeTree` on `target`.
- * Shared by `Schema.initializeForDecoder` and every collection's
- * `initializeForDecoder`.
- *
- * `enumerable: false` is load-bearing — tests use `deepStrictEqual` on
- * decoded instances and walking into `$changes` would recurse through
- * circular refs. Same descriptor shape as the tracked `Schema.initialize`
- * + collection ctors.
- */
-export function installUntrackedChangeTree(target: object, publicRef: object = target): void {
-    Object.defineProperty(target, $changes, {
-        value: createUntrackedChangeTree(publicRef as Ref),
-        enumerable: false,
-        writable: true,
-    });
+/** Stamp a fresh `UntrackedChangeTree` on a decoder-built instance (every `initializeForDecoder`). */
+export function installUntrackedChangeTree(target: object): void {
+    setTree(target, createUntrackedChangeTree(target as Ref));
 }

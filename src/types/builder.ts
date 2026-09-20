@@ -4,7 +4,7 @@ import type { SetSchema } from "./custom/SetSchema.js";
 import type { CollectionSchema } from "./custom/CollectionSchema.js";
 import type { StreamSchema } from "./custom/StreamSchema.js";
 import type { Schema } from "../Schema.js";
-import type { DefinitionType, RawPrimitiveType } from "../annotations.js";
+import type { DefinitionType, MapKeyType, RawPrimitiveType } from "../annotations.js";
 import type { InferValueType, Constructor, CodecFor } from "./HelperTypes.js";
 import { $builder } from "./symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "../encoder/streaming.js";
@@ -345,10 +345,19 @@ interface ArrayFactory {
     <P extends RawPrimitiveType>(child: P): FieldBuilder<ArraySchema<InferValueType<P>>, true, false>;
     <T>(child: CodecFor<T>): FieldBuilder<ArraySchema<T>, true, false>;
 }
+/** `t.map(X, { key: "number" })` — declare the map's key type (default `"string"`). */
+export interface MapOptions<K extends MapKeyType = MapKeyType> { key?: K }
+/** Runtime key type of a map declared with `MapOptions` (`string` for `"string"` / none, `number` for every numeric key type). */
+export type MapKeyOf<O> = O extends { key: infer K } ? (K extends "string" ? string : number) : string;
+// Bare overloads first (see PrimitiveFactory: a defaulted generic degrades
+// `schema()` inference); the options overloads add the key type parameter.
 interface MapFactory {
     <C extends Constructor<Schema>>(child: C): FieldBuilder<MapSchema<InstanceType<C>>, true, false>;
     <P extends RawPrimitiveType>(child: P): FieldBuilder<MapSchema<InferValueType<P>>, true, false>;
     <T>(child: CodecFor<T>): FieldBuilder<MapSchema<T>, true, false>;
+    <C extends Constructor<Schema>, O extends MapOptions>(child: C, opts: O): FieldBuilder<MapSchema<InstanceType<C>, MapKeyOf<O>>, true, false>;
+    <P extends RawPrimitiveType, O extends MapOptions>(child: P, opts: O): FieldBuilder<MapSchema<InferValueType<P>, MapKeyOf<O>>, true, false>;
+    <T, O extends MapOptions>(child: CodecFor<T>, opts: O): FieldBuilder<MapSchema<T, MapKeyOf<O>>, true, false>;
 }
 interface SetFactory {
     <C extends Constructor<Schema>>(child: C): FieldBuilder<SetSchema<InstanceType<C>>, true, false>;
@@ -369,8 +378,12 @@ interface StreamFactory {
 
 const arrayFactory: ArrayFactory = ((child: ChildType) =>
     new FieldBuilder({ array: resolveChild(child) } as DefinitionType)) as ArrayFactory;
-const mapFactory: MapFactory = ((child: ChildType) =>
-    new FieldBuilder({ map: resolveChild(child) } as DefinitionType)) as MapFactory;
+// `key` is added to the definition only when given, so a string-keyed map
+// stays `{ map: X }` byte-for-byte in metadata, Reflection and codegen.
+const mapFactory: MapFactory = ((child: ChildType, opts?: MapOptions) =>
+    new FieldBuilder((opts?.key !== undefined
+        ? { map: resolveChild(child), key: opts.key }
+        : { map: resolveChild(child) }) as DefinitionType)) as MapFactory;
 const setFactory: SetFactory = ((child: ChildType) =>
     new FieldBuilder({ set: resolveChild(child) } as DefinitionType)) as SetFactory;
 /** @deprecated `CollectionSchema` is deprecated — use `t.set()`, `t.array()` or `t.map()`. */

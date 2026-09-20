@@ -7,7 +7,10 @@ export default {
     unit: "ms/frame",
     iterations: 200,
     reps: 5,
-    warmup: 50,
+    // 2000, not 50: these frames take 20–45 µs and the decode path needs ~1500 of them to
+    // reach the optimizing tier; a short window measured tier-up, not steady state (a build
+    // that is 6–11 % faster at steady state read +12…+20 % slower — bench/v6-results.md).
+    warmup: 2000,
     setup(lib, _variant, plan) {
         const { state, encoder, State, Player } = buildBloatState(lib, 100);
         const bootstrap = encoder.encodeAll().slice();

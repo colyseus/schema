@@ -22,8 +22,14 @@ Contents: [primitives](#primitives) · [message and chunks](#message-and-chunks)
 ## Message and chunks
 
 ```
-message      := chunk*
-chunk        := uvarint(refId) uvarint(byteLen) ops[byteLen]
+message      := (chunk | run)*
+chunk        := chunkHeader uvarint(byteLen * 2)     ops[byteLen]
+run          := chunkHeader uvarint(byteLen * 2 + 1) runBody[byteLen]
+chunkHeader  := uvarint(refId * 2 + 1)                    -- first chunk of a slice: absolute refId
+              | uvarint(zigzag(refId - prevRefId) * 2)     -- later chunks: delta from the previous chunk's refId
+zigzag(d)    := d >= 0 ? 2d : -2d - 1
+runBody      := uvarint(typeId) mask64 uvarint(extra) values { uvarint(zigzag(refId_k - refId_k-1)) values }×extra
+values       := one value per set bit of mask, ascending field index, each in its declared primitive encoding
 ```
 
 A message is a sequence of chunks, each addressing one structure by refId and
@@ -31,6 +37,31 @@ carrying exactly `byteLen` bytes of ops for it. There is no reserved byte: a
 decoder that does not know `refId` skips `byteLen` bytes and continues. Which
 op grammar applies is decided by the kind of the structure the refId names
 (Schema, Map, Array, Set/Collection/Stream). The root structure has refId 0.
+
+The refId rides as a delta from the previous chunk of the same slice (a
+shared encode, or one client's view slice): dirty structures are emitted in
+change order, which mostly follows allocation order, so the delta stays a
+single byte long after absolute refIds have grown past 127 (deltas of −16…+31
+fit one byte; a 5000-entity 100 %-patch saves ~3.6 %, a 50-chunk owner-only
+view slice ~19 %). The low bit tells the two forms apart, so the first chunk
+of every slice is self-describing and the `[shared, view]` pair can be
+decoded concatenated or separately. A decoder resets `prevRefId` at the start
+of each buffer it is handed.
+
+The low bit of the length prefix marks a **same-shape run**: consecutive dirty
+Schemas of one class whose dirty fields are the same set of primitives, all
+written (ADD), collapse into one chunk. The header names the first member;
+the body carries the class (`typeId` from the handshake), the field mask
+(the same LEB128-shaped mask as inline bodies) and the number of further
+members, then every member's values in ascending field order — later members
+prefixed by their refId delta from the previous member. No per-member length,
+no per-field op byte: on a room of N same-class entities updating the same
+fields each tick this is about 19 % of the patch. After a run, `prevRefId` is
+the last member's refId. A member the client does not know is consumed by
+type (the class table gives every value's size); an unknown `typeId` skips
+the whole run by its length. Runs never carry fields past index 31, ref-typed
+fields, DELETEs, `@view`-tagged fields, stream fields, or classes that
+override the stock `[$filter]` — those structures keep their own chunk.
 
 A full sync (`encodeAll`) is one root chunk whose ref values inline their
 bodies (see [bodies](#ref-values-and-bodies)); a patch is one chunk per
@@ -49,15 +80,44 @@ Fields 0–31 fit one byte; a Schema may declare up to 64 fields (indexes 0..63)
 ## Keyed collections (Map / Set / Collection / Stream)
 
 ```
-keyedOp      := u8 op uvarint(index) [string key] value?
-op           := REPLACE 0 | DELETE 64 | ADD 128 | DELETE_AND_ADD 192 | CLEAR 10
+keyedOp      := uvarint(index * 4 + op) [key] value?
+op           := REPLACE 0 | DELETE 1 | ADD 2 | CLEAR 3
+key          := <key type encoding>            -- MapSchema, ADD only
+value        := <child type encoding> | refValue -- absent for DELETE / CLEAR
 ```
 
 Entries are addressed by a stable wire index (a monotonic counter per
-collection). `MapSchema` sends the string key with every ADD-bit op and
-addresses the entry by index afterwards; Set / Collection / Stream entries
-carry no key. `CLEAR` is a lone byte, always the first op of its chunk: it
-empties the collection and everything after it re-adds.
+collection). An op on an index below 32 costs one byte, below 8192 two.
+`MapSchema` sends the key with every ADD and addresses the entry by index
+afterwards; Set / Collection / Stream entries carry no key. There is no
+`DELETE_AND_ADD` on the keyed wire: an `ADD` onto an index that already
+holds a *different* value is a replacement — the decoder releases the
+previous value and reports `DELETE_AND_ADD` (`onRemove` + `onAdd`); an `ADD`
+carrying the value the client already holds (a mid-tick snapshot overlap)
+is a no-op. `CLEAR` is the lone byte `0x03`, always the first op of its
+chunk: it empties the collection, resets its index counter, and everything
+after it re-adds.
+
+The key is encoded per the map's **declared key type** (`@type({ map: X,
+key: "number" })`, `t.map(X, { key: "number" })`; carried by the reflection
+handshake): `"string"` (the default) as `string`, `"number"` as the dynamic
+`number`, `int8…uint64` / `float32` / `float64` as that fixed-width type.
+Number keys are JS numbers on both sides (callbacks receive them as
+numbers); JSON output stringifies them like any object key.
+
+Entry order on the decoder is the order of first arrival: a key deleted and
+re-set in the same tick keeps its wire index and its client-side position.
+
+Worked example — `scores: Map<string, number>` patch after `scores.set("d", 7)`
+(index 3) and `scores.delete("c")` (index 2) in one tick:
+
+```
+01          chunk refId 1 (the map)
+03          chunk length
+0c          index 3, REPLACE                     = 3 * 4 + 0
+07          value 7
+09          index 2, DELETE                      = 2 * 4 + 1
+```
 
 ## Arrays
 
@@ -141,7 +201,7 @@ refValue     := uvarint(refId * 4 + hasBody * 2 + hasTypeId) [uvarint typeId] [b
 body(Schema)   := mask values*               -- values in ascending field order, one per set mask bit
 mask           := 7-bit groups, LEB128 shape: bit i of the presence set lives in group i/7, bit i%7;
                   only groups up to the highest set bit are written (empty instance = one 0x00 byte)
-body(Map)      := uvarint(count) { uvarint(index) string(key) value }*
+body(Map)      := uvarint(count) { uvarint(index) key value }*       -- key per the declared key type
 body(Set|Collection|Stream) := uvarint(count) { uvarint(index) value }*
 body(Array)    := uvarint(rev*2) uvarint(count) value*          -- positional: the whole array at revision `rev`
                 | uvarint(1) uvarint(count) refValue*           -- identity: the visible refs, merged
@@ -178,6 +238,11 @@ handshake    := uvarint(6) chunk*        -- the Reflection schema encoded with t
 
 A 5.x handshake always starts with byte `0x80`; a 6.x decoder rejects it
 with an explicit error instead of desynchronizing.
+
+`ReflectionField` carries `name`, `type`, `referencedType`, `childPrimitive`,
+an optional `quantized` descriptor and an optional `keyType` (field index 5):
+the declared key type of a `map` field, present only when it is not
+`"string"`, so string-keyed maps produce the same handshake bytes as before.
 
 ## Encoder rules
 
@@ -236,6 +301,11 @@ views into the shared buffer; a transport sends both (or `Encoder.concat`).
 
 ## Callbacks
 
+Keyed ops map onto the callback vocabulary (`OPERATION`): ADD / REPLACE /
+DELETE one to one, an ADD onto an occupied index → `DELETE_AND_ADD`
+(`onRemove` then `onAdd`), CLEAR → `onRemove` per entry — with the map key
+(a number for a number-keyed map) as the key argument.
+
 Array ops map onto the callback vocabulary (`OPERATION`): PUSH / INSERT →
 `onAdd` per element; REMOVE / CLEAR → `onRemove` per element; SET → `onChange`
 (primitive) or `onRemove` + `onAdd` + `onChange` (Schema child); REVERSE /
@@ -278,10 +348,16 @@ references point at the grammar above.
    refs. Full syncs are one root chunk with nested bodies, so the 5.x
    "structure by structure" full-sync walk no longer exists.
 7. **Keyed collections** ([keyed collections](#keyed-collections-map--set--collection--stream)):
-   op byte (values unchanged: ADD 128, REPLACE 0, DELETE 64, DELETE_AND_ADD
-   192, CLEAR 10) then `uvarint(index)`, then for `MapSchema` the key string
-   on every ADD-bit op. `CLEAR` is a lone byte, always the first op of its
-   chunk. Set / Collection / Stream carry no key.
+   one varint `uvarint(index * 4 + op)` with op REPLACE 0 / DELETE 1 / ADD 2
+   / CLEAR 3 replaces the 5.x op byte + msgpack index. `DELETE_AND_ADD` is
+   gone from the keyed wire: an ADD onto an index that holds a different
+   value releases the previous value and reports `DELETE_AND_ADD`; an ADD
+   of the value already held is a no-op. For `MapSchema` the key follows
+   every ADD, encoded per the field's declared key type from the handshake
+   (`keyType`: absent → `string`, `"number"` → dynamic number, a fixed-width
+   name → that type); a typed map is `Map<number, V>` on the client. `CLEAR`
+   is the lone byte `0x03`, always the first op of its chunk. Set /
+   Collection / Stream carry no key.
 8. **Arrays** ([arrays](#arrays)): an entirely new grammar. The 5.x
    index-addressed ADD / REPLACE / DELETE and the ops `MOVE` (32),
    `DELETE_AND_MOVE` (96), `MOVE_AND_ADD` (160), `ADD_BY_REFID` (129),

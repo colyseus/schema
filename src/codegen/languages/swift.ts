@@ -172,11 +172,16 @@ function generateProperty(prop: Property): string {
     const escaped = escapeName(prop.name);
     let body: string;
 
+    // Number-keyed map: `MapSchema<V, Double>` over `mapOf(..., keyType: "number")`.
+    // Every numeric key reads as Double, the same collapse the scalar getters make.
+    const keyGeneric = (prop.type === "map" && prop.keyType) ? `, ${typeMaps[prop.keyType] === "String" ? "String" : "Double"}` : "";
+    const keyArg = (prop.type === "map" && prop.keyType) ? `, keyType: "${prop.keyType}"` : "";
+
     if (prop.childType && isSchemaType(prop.childType)) {
         if (prop.type === "ref") {
             body = `    public var ${escaped}: ${prop.childType}? { refOf("${prop.name}") }`;
         } else if (prop.type === "map") {
-            body = `    public var ${escaped}: MapSchema<${prop.childType}> { mapOf("${prop.name}") }`;
+            body = `    public var ${escaped}: MapSchema<${prop.childType}${keyGeneric}> { mapOf("${prop.name}"${keyArg}) }`;
         } else {
             body = `    public var ${escaped}: ArraySchema<${prop.childType}> { arrayOf("${prop.name}") }`;
         }
@@ -185,7 +190,7 @@ function generateProperty(prop: Property): string {
         // same collapse the scalar getters make.
         const child = typeMaps[prop.childType] === "String" ? "String" : "Double";
         if (prop.type === "map") {
-            body = `    public var ${escaped}: MapSchema<${child}> { mapOf("${prop.name}") }`;
+            body = `    public var ${escaped}: MapSchema<${child}${keyGeneric}> { mapOf("${prop.name}"${keyArg}) }`;
         } else if (prop.type === "array") {
             body = `    public var ${escaped}: ArraySchema<${child}> { arrayOf("${prop.name}") }`;
         } else {

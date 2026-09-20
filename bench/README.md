@@ -120,6 +120,21 @@ Rules:
 - `scenarios/{encoder,stateview,decoder,callbacks,e2e}/`
 - `results/` — measurement outputs (JSON runs, profile reports); machine-specific, kept out of git along with `.builds/` and `profiles/`
 
+## MapSchema scenarios
+
+`lib/fixtures.mjs` `defineMapState(lib, keyType)` builds `State { players:
+Map<Player{name, position}>, scores: Map<number> }` keyed by 8-char strings
+or by integers (`key: "number"`; a build without typed keys ignores the
+option and stringifies, so every scenario runs unchanged on a 5.x snapshot —
+the number-key rows differ in bytes by design). Scenarios:
+`encoder/map-churn` (delete 10 / re-add 10 per cycle, 100 and 1000 entries),
+`encoder/map-replace` (10 % / 100 % of 1000 primitive entries per tick),
+`encoder/map-encode-all` and `decoder/map-bootstrap` (1000 players / 10000
+scores snapshots), `decoder/map-churn`, `decoder/map-replace`,
+`callbacks/map-churn`, and `mutations/map-ops` (API cost, no wire). The
+6.0 keyed-op fold and typed keys were measured with them against v5 and
+the pre-change 6.0 build (`bench/v6-results.md`, "MapSchema rewrite").
+
 ## ArraySchema storage model
 
 `bench/array-impl-comparison.md` compares v5, the 6.0 `Array` subclass and
@@ -128,3 +143,62 @@ npm run build`, see `src/types/custom/ArraySchemaInternal.ts`) across the
 whole matrix plus `mutations/array-iterate` (encoder-side walks) and
 `decoder/array-read` (client-side walks), with a usage survey of what user
 code does with arrays.
+
+## Real-world scenarios (`scenarios/realworld/`)
+
+`lib/realworld.mjs` builds the shapes a Colyseus room actually has and drives
+them with the server's own per-tick sequence (`serverTick` mirrors
+`SchemaSerializer.applyPatches`: byte 0 is the protocol code, no state change
+means only views with pending `add()`/`remove()` get a frame, otherwise one
+shared `encode` and one `encodeView` per client into the same buffer, then
+`discardChanges`). Every shape runs unchanged against a 5.0.x build.
+
+- `entities-aoi` / `entities-aoi-large` — N moving entities (`x, y, vx, vy,
+  rotation, hp, kind, name`) in a `@view()` map, C stationary clients each
+  seeing the 3×3 cells around them (~9 % of a 3000×3000 world, cell 300);
+  cell crossings turn into `view.add/remove`. Variants: plain `number`,
+  `typed` (float32/int16), `nested` (`position: Vec2`), `numkeys` (6.0 typed
+  map keys); 500/10, 2000/50 and 10000/200 entities/clients.
+- `entities-aoi-decode` — one client's frames of that room, decoded once each.
+- `big-state` — 10k / 20k entities + 100 players + 2000 tiles: `encodeAll`,
+  a fresh `Decoder` per snapshot (with and without `onAdd → listen`), handshake.
+- `large-patch` — 100 % of 5000 entities change `x, y, vx, vy` per tick
+  (`number` / `typed` / `nested` / `quantized`), encode and decode.
+- `small-patch` — the fixed cost when almost nothing changed among 5000
+  entities: one root field, 1 or 5 entities, the same with 50 idle views, an
+  idle tick.
+- `lobby-chat`, `inventory-rpg`, `turn-based`, `mmo-shards` — chat ring
+  buffer + presence, nested inventories with ref replacement, tiny state
+  broadcast to 100/1000 clients, owner-only (`@view()`) and party (`@view(1)`)
+  fields with 100/500 connected clients.
+
+Results and the optimization round they drove: `bench/realworld-results.md`;
+the rows where v6 still trails v5, with causes and next experiments:
+`bench/v6-open-gaps.md`.
+A/B rows against a 5.x build show `A:≠B !!` in the bytes column by design
+(different wire formats); the byte guard is meaningful for 6.0-vs-6.0 only.
+Do not edit `lib/*.mjs` or a scenario while a sweep runs: each unit's child
+processes import them fresh.
+
+## V8-level profiling (`profile-v8.mjs`)
+
+`profile.mjs --cpu|--heap` samples; `profile-v8.mjs` asks V8 directly, on a
+single unit with one rep:
+
+```bash
+npm run profile:deopt -- realworld/large-patch/enc-5k          # --trace-deopt-verbose: deopts per function + source position, LOOP flags
+npm run profile:ic -- realworld/large-patch/enc-5k --iters 60  # --log-ic: inline-cache sites that went polymorphic/megamorphic (N/P/G), keyed by function:line:col
+npm run profile:inlining -- realworld/large-patch/enc-5k --fn encodeQueue   # --trace-turbo-inlining: what got inlined into a function, what was refused
+npm run profile:shapes                                          # --allow-natives-syntax: %HasDictionaryElements / %HaveSameMap over live encoder + decoder objects
+npm run profile:cpu -- <unit> --interval 100                    # 100 µs sampling for µs-scale units
+```
+
+Raw logs land in `profiles/`; the `--ic` log grows by ~100 MB/s, so keep
+`--iters` small (transitions happen during warm-up). Caveats printed with the
+IC report: optimized code with inlined monomorphic handlers logs nothing, a
+site that reached megamorphic stays silent afterwards, and call-site
+polymorphism is not an IC event (use `--inlining` for calls). `profile.mjs`
+suffixes the profile name with the build directory when `--build` is given,
+so A/B profiles do not overwrite each other. `lib/wire-whatif.mjs
+<unit> [--delta]` captures a unit's frames, parses the chunk stream and
+projects the byte effect of format proposals before any is implemented.

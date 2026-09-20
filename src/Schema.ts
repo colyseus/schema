@@ -1,9 +1,11 @@
 import { OPERATION } from './encoding/spec.js';
+import { getEncodeDescriptor } from './encoder/EncodeDescriptor.js';
 import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
-import { ChangeTree, installUntrackedChangeTree, IRef, Ref } from './encoder/ChangeTree.js';
+import { ChangeTree, createUntrackedChangeTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, refTreeOf, refIdOf } from './encoder/ChangeTree.js';
+import { RefTable } from './RefTable.js';
 import { $changes, $deleteByIndex, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
@@ -17,7 +19,9 @@ import { getIndent } from './utils.js';
 export class Schema<C = any> implements IRef {
     static [Symbol.metadata]: Metadata;
 
-    [$refId]?: number;
+    /** Prototype accessors over the private tree slot — see `defineRefAccessors`. */
+    declare [$changes]: ChangeTree;
+    declare [$refId]?: number;
     [$values]: any[];
 
     /**
@@ -27,19 +31,26 @@ export class Schema<C = any> implements IRef {
      * to allocating a ChangeTree and a values array.
      */
     static initialize(instance: any) {
-        // $changes MUST be non-enumerable: tests use assert.deepStrictEqual on
-        // Schema instances (e.g. arrayOfPlayers.toArray()), which walks
-        // enumerable own Symbol properties. ChangeTree has circular refs
-        // (root → changeTrees → other ChangeTrees), so a visible $changes
-        // would send deepStrictEqual into exponential recursion. Plain
-        // assignment of a Symbol key would be enumerable: true — hence we
-        // keep defineProperty here.
-        Object.defineProperty(instance, $changes, {
-            value: new ChangeTree(instance),
-            enumerable: false,
-            writable: true
-        });
-        instance[$values] = [];
+        // The tree must stay invisible to `assert.deepStrictEqual` / `util.inspect`
+        // (ChangeTree has circular refs: root → changeTrees → other trees), so it
+        // lives in a private slot rather than an own property — see `stampTree`.
+        // The ChangeTree creates `$values` (pre-sized to the class) and caches it
+        // as `tree.values` for the generated setters.
+        //
+        // Public entry point: also serves classes that do NOT extend Schema
+        // (`Metadata.setFields` on an external class), possibly once per
+        // level of their own inheritance chain. The Schema constructor takes
+        // the unconditional path below instead.
+        // (`Metadata.setFields` installs the accessors at class-definition time;
+        // this covers an external class that reaches here without it.)
+        if (!($changes in instance)) { defineRefAccessors(Object.getPrototypeOf(instance)); }
+        instance[$values] = undefined; // re-initialization starts from a fresh array (the ChangeTree creates it, pre-sized)
+        setTree(instance, new ChangeTree(instance)); // install, or replace on re-initialization
+    }
+
+    /** Constructor fast path of {@link Schema.initialize}: a fresh `this` that extends Schema. */
+    private static initializeOwn(instance: any) {
+        stampTree(instance, new ChangeTree(instance)); // the tree creates `$values`, sized to the class
     }
 
     /**
@@ -47,17 +58,17 @@ export class Schema<C = any> implements IRef {
      * decoder-built instances are passive mirrors of server state, so any
      * field initializer / ctor body work would be overwritten by the
      * decoded ADDs immediately after. Assignment order matches
-     * {@link Schema.initialize} so V8 assigns the same hidden class
-     * ($changes, then $values), keeping decode-path ICs monomorphic even
-     * when tracked and untracked instances coexist.
+     * {@link Schema.initialize} ($values, then $changes) so tracked and
+     * untracked instances follow the same property-addition order, and so
+     * the UntrackedChangeTree can cache the `$values` array like ChangeTree.
      *
      * The `this:` constraint pins the return type to the concrete subclass
      * when called as `Player.initializeForDecoder()`, not the base Schema.
      */
     static initializeForDecoder<T extends Schema = Schema>(this: { prototype: T } & typeof Schema): T {
         const inst: any = Object.create(this.prototype);
-        installUntrackedChangeTree(inst);
-        inst[$values] = [];
+        inst[$values] = getEncodeDescriptor(inst).valuesTemplate.slice(); // exact size, packed — see EncodeDescriptor.valuesTemplate
+        stampTree(inst, createUntrackedChangeTree(inst));
         return inst;
     }
 
@@ -77,7 +88,7 @@ export class Schema<C = any> implements IRef {
      * object-pool discipline).
      */
     static reset(instance: Schema): void {
-        const changeTree: ChangeTree = (instance as any)?.[$changes];
+        const changeTree: ChangeTree = refTreeOf(instance);
 
         // Only tracked (encoder-side) instances are poolable. Decoder-side
         // instances carry an UntrackedChangeTree, which has no recycle().
@@ -114,12 +125,11 @@ export class Schema<C = any> implements IRef {
             child?.[$reset]?.();
         }
 
-        this[$changes].recycle();
+        treeOf(this).recycle();
         // Clear the refId by ASSIGNMENT (not `delete`): `delete` would force the
         // instance into V8 dictionary mode, making release() as expensive as the
         // construction it saves. `=== undefined` in Root.add still assigns a fresh
         // refId exactly like a freshly-constructed instance.
-        this[$refId] = undefined;
     }
 
     /**
@@ -185,18 +195,18 @@ export class Schema<C = any> implements IRef {
 
         } else if (tag === DEFAULT_VIEW_TAG) {
             // view pass: default tag
-            return view.isChangeTreeVisible(ref[$changes]);
+            return view.isChangeTreeVisible(refTreeOf(ref));
 
         } else {
             // view pass: custom tag (bitmask) — field's stored mask matches
             // if it shares any bit with a tag this view was add()ed with.
-            return view.hasTagOnTree(ref[$changes], tag);
+            return view.hasTagOnTree(refTreeOf(ref), tag);
         }
     }
 
     // allow inherited classes to have a constructor
     constructor(arg?: C) {
-        Schema.initialize(this);
+        Schema.initializeOwn(this);
         if (arg) {
             Schema.assignProps(this, arg);
         }
@@ -309,7 +319,7 @@ export class Schema<C = any> implements IRef {
      */
     public setDirty<K extends NonFunctionPropNames<this>>(property: K | number, operation?: OPERATION) {
         const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
-        this[$changes].change(
+        treeOf(this).change(
             metadata[metadata[property as string]].index,
             operation
         );
@@ -338,12 +348,12 @@ export class Schema<C = any> implements IRef {
 
     /** Stop recording mutations until resumeTracking() is called. */
     public pauseTracking(): void {
-        this[$changes].pause();
+        treeOf(this).pause();
     }
 
     /** Re-enable automatic change tracking. */
     public resumeTracking(): void {
-        this[$changes].resume();
+        treeOf(this).resume();
     }
 
     /**
@@ -351,12 +361,12 @@ export class Schema<C = any> implements IRef {
      * Returns the function's return value. Safe to nest.
      */
     public untracked<T>(fn: () => T): T {
-        return this[$changes].untracked(fn);
+        return treeOf(this).untracked(fn);
     }
 
     /** True while tracking is paused. */
     public get isTrackingPaused(): boolean {
-        return this[$changes].paused;
+        return treeOf(this).paused;
     }
 
     clone (): this {
@@ -409,7 +419,7 @@ export class Schema<C = any> implements IRef {
      * @internal
      */
     discardAllChanges() {
-        this[$changes].discardAll();
+        treeOf(this).discardAll();
     }
 
     [$getByIndex](index: number): any {
@@ -431,14 +441,17 @@ export class Schema<C = any> implements IRef {
      */
     static debugRefIds<T extends Schema>(ref: T, showContents: boolean = false, level: number = 0, decoder?: Decoder, keyPrefix: string = "") {
         const contents = (showContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
-        const changeTree: ChangeTree = ref[$changes];
+        const changeTree: ChangeTree = refTreeOf(ref);
 
-        const refId = (ref as IRef)[$refId];
+        const refId = refIdOf(ref);
         const root = (decoder) ? decoder.root : changeTree.root;
 
          // log reference count if > 1
-        const refCount = (root?.refCount?.[refId] > 1)
-            ? ` [×${root.refCount[refId]}]`
+        // encoder Root: a RefTable; decoder ReferenceTracker: a plain object
+        const counts: any = root?.refCount;
+        const count: number | undefined = (counts instanceof RefTable) ? counts.get(refId) : counts?.[refId];
+        const refCount = (count > 1)
+            ? ` [×${count}]`
             : '';
 
         let output = `${getIndent(level)}${keyPrefix}${ref.constructor.name} (refId: ${refId})${refCount}${contents}\n`;
@@ -469,13 +482,13 @@ export class Schema<C = any> implements IRef {
         changeSet: "changes" | "allChanges" | "allFilteredChanges" = 'allChanges'
     ) {
         const encodeOrder: number[] = [];
-        const rootChangeTree = ref[$changes];
+        const rootChangeTree = refTreeOf(ref);
 
         if (changeSet === "changes") {
             let current = rootChangeTree.root.changes?.next;
             while (current) {
                 if (current.changeTree) {
-                    encodeOrder.push(current.changeTree.ref[$refId]);
+                    encodeOrder.push(current.changeTree.refId);
                 }
                 current = current.next;
             }
@@ -490,7 +503,7 @@ export class Schema<C = any> implements IRef {
             if (visited.has(changeTree)) return;
             visited.add(changeTree);
             if (changeTree.isFiltered === wantFiltered) {
-                encodeOrder.push(changeTree.ref[$refId]);
+                encodeOrder.push(changeTree.refId);
             }
             changeTree.forEachChild((child, _) => walk(child));
         };
@@ -511,9 +524,9 @@ export class Schema<C = any> implements IRef {
      * @returns
      */
     static debugChanges<T extends Ref>(instance: T, isEncodeAll: boolean = false) {
-        const changeTree: ChangeTree = instance[$changes];
+        const changeTree: ChangeTree = refTreeOf(instance);
         const label = isEncodeAll ? "allChanges" : "changes";
-        let output = `${instance.constructor.name} (${instance[$refId]}) -> .${label}:\n`;
+        let output = `${instance.constructor.name} (${refIdOf(instance)}) -> .${label}:\n`;
 
         if (isEncodeAll) {
             changeTree.forEachLive((index) => {
@@ -531,3 +544,4 @@ export class Schema<C = any> implements IRef {
 
 }
 
+defineRefAccessors(Schema.prototype);

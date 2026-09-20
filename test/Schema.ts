@@ -67,18 +67,17 @@ export function assertRefIdCounts<T extends Schema>(source: T, target: T) {
  * encoder refCount matches the decoder's, and the decoder holds no ref the
  * encoder considers dead. `detail` is appended to failure messages.
  */
-export function assertRefParity(encoderRoot: { refCount: any, changeTrees: any }, decoderRoot: { refCount: any, refs: Map<number, any> }, detail: (() => string) | string = "") {
+export function assertRefParity(encoderRoot: { refCount: any, changeTrees: any }, decoderRoot: { refCount: any, refs: { get(refId: number): any, has(refId: number): boolean, keys(): IterableIterator<number> } }, detail: (() => string) | string = "") {
     const more = () => (typeof detail === "function") ? `\n${detail()}` : detail;
-    for (const refId in encoderRoot.refCount) {
-        const ref = encoderRoot.changeTrees[refId]?.ref;
-        const encoderRefCount = encoderRoot.refCount[refId];
+    for (const [refId, encoderRefCount] of encoderRoot.refCount as Iterable<[number, number]>) {
+        const ref = encoderRoot.changeTrees.get(refId)?.ref;
         const decoderRefCount = decoderRoot.refCount[refId] ?? 0;
         assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for '${ref?.constructor.name}' (refId: ${refId}) => (Encoder count: ${encoderRefCount}, Decoder count: ${decoderRefCount})${more()}`);
     }
     for (const refId of decoderRoot.refs.keys()) {
         assert.ok(
-            encoderRoot.refCount[refId] > 0,
-            `decoder holds orphan refId ${refId} (${decoderRoot.refs.get(refId)?.constructor.name}) — encoder refCount=${encoderRoot.refCount[refId] ?? "absent"}${more()}`,
+            encoderRoot.refCount.get(refId) > 0,
+            `decoder holds orphan refId ${refId} (${decoderRoot.refs.get(refId)?.constructor.name}) — encoder refCount=${encoderRoot.refCount.get(refId) ?? "absent"}${more()}`,
         );
     }
 }
@@ -98,8 +97,8 @@ export function assertNoOrphanRefs<T extends Schema>(source: T, target: T) {
 
     for (const refId of decoder.root.refs.keys()) {
         assert.ok(
-            encoder.root.refCount[refId] > 0,
-            `decoder holds orphan refId ${refId} (${decoder.root.refs.get(refId)?.constructor.name}) — encoder refCount=${encoder.root.refCount[refId] ?? "absent"}
+            encoder.root.refCount.get(refId) > 0,
+            `decoder holds orphan refId ${refId} (${decoder.root.refs.get(refId)?.constructor.name}) — encoder refCount=${encoder.root.refCount.get(refId) ?? "absent"}
 \n${Schema.debugRefIds(source)}`,
         );
     }

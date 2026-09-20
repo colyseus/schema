@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll } from "./Schema";
-import { ArraySchema, Schema, type, Reflection, $changes, Metadata, SetSchema, MapSchema } from "../src";
+import { ArraySchema, Schema, type, Reflection, $changes, $refId, Metadata, SetSchema, MapSchema } from "../src";
 import { $numFields } from "../src/types/symbols";
 
 describe("Metadata Tests", () => {
@@ -68,6 +68,38 @@ describe("Metadata Tests", () => {
 
         assert.strictEqual((Raw2State as any)[Symbol.metadata][$numFields], 2);
         assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+    });
+
+    it("external class exposes $changes / $refId without own properties", () => {
+        class RawState {
+            x: number;
+            constructor() {
+                Schema.initialize(this);
+            }
+        }
+        Metadata.setFields(RawState, { x: "number" });
+
+        class State extends Schema {
+            @type(RawState) raw = new RawState();
+        }
+
+        const state = new State();
+        state.raw.x = 10;
+        getEncoder(state); // attaches the tree: refIds are assigned
+
+        const raw: any = state.raw;
+        assert.ok(raw[$changes] !== undefined, "tree reachable through the accessor");
+        assert.strictEqual(typeof raw[$refId], "number", "refId reachable through the accessor");
+        assert.strictEqual(raw[$refId], raw[$changes].refId);
+
+        // neither lives on the instance: invisible to deepStrictEqual / inspect
+        const ownSymbols = Object.getOwnPropertySymbols(raw);
+        assert.ok(!ownSymbols.includes($changes));
+        assert.ok(!ownSymbols.includes($refId));
+
+        const other: any = new RawState();
+        other.x = 10;
+        assert.deepStrictEqual(other, raw, "attached and detached instances compare by fields only");
     });
 
     it("should support nested external classes", () => {

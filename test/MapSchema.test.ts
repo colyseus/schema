@@ -474,8 +474,8 @@ describe("Type: MapSchema", () => {
 
         const encoded = state.encode();
 
-        // TODO: we could get lower than that.
-        assert.ok(encoded.length <= 12);
+        // chunk: refId + length + four 1-byte DELETEs (`uvarint(index * 8 + DELETE)`)
+        assert.strictEqual(encoded.length, 6);
 
         assert.strictEqual(state.mapOfPlayers.keyByIndex.size, 0);
         assertDeepStrictEqualEncodeAll(state);

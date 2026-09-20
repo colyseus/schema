@@ -28,6 +28,41 @@ export enum OPERATION {
 }
 
 /**
+ * Keyed-collection operations (Map / Set / Collection / Stream). A keyed op
+ * is `uvarint(index * 4 + op) [key] value?` — two op bits, so an index below
+ * 32 costs one byte and one below 8192 two. `REPLACE` / `DELETE` / `ADD` are
+ * the Schema `op2` codes; `DELETE_AND_ADD` is not on the wire: an `ADD` onto
+ * an index that holds a different value is a replacement, and the decoder
+ * releases the previous value (the recorder still merges to `DELETE_AND_ADD`,
+ * the emitter writes it as `ADD`). `CLEAR` is the lone byte `0x03`, always
+ * the first op of its chunk. The key rides only on MapSchema `ADD` ops,
+ * encoded per the map's declared key type.
+ *
+ * A `const` object (not a TS `enum`) for the same codegen reason as `ARRAY_OP`.
+ */
+export const KEYED_OP = {
+    REPLACE: 0,
+    DELETE: 1,
+    ADD: 2,
+    CLEAR: 3,
+} as const;
+export type KEYED_OP = typeof KEYED_OP[keyof typeof KEYED_OP];
+
+/** `OPERATION >>> 6` → keyed op code: REPLACE, DELETE, ADD, and DELETE_AND_ADD written as ADD. */
+export const KEYED_OP_CODE: readonly number[] = [KEYED_OP.REPLACE, KEYED_OP.DELETE, KEYED_OP.ADD, KEYED_OP.ADD];
+
+/**
+ * Key types a MapSchema may declare (`@type({ map: X, key: "number" })`).
+ * The key writer / reader is the primitive table entry of the same name;
+ * `"string"` is the default.
+ */
+export const MAP_KEY_TYPES: ReadonlySet<string> = new Set([
+    "string", "number",
+    "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64",
+    "float32", "float64",
+]);
+
+/**
  * ArraySchema operations. An array chunk is `arrayOp*`; each
  * op advances the array's revision by its weight (see `encoder/ArrayLog.ts`).
  *

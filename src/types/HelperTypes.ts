@@ -10,6 +10,13 @@ import type { FieldBuilder } from "./builder.js";
 
 export type Constructor<T = {}> = new (...args: any[]) => T;
 
+/**
+ * Key type of a map declared as `{ map: X, key: "number" }`: `string` when
+ * no key (or `"string"`) is declared, `number` for every numeric key type.
+ * One shallow conditional on purpose (TS7 instantiation depth).
+ */
+export type MapKeyOf<T> = T extends { key: infer K extends string } ? (K extends "string" ? string : number) : string;
+
 // Helper to convert primitive type literals to actual runtime types
 type PrimitiveStringToType<T> =
     T extends "string" ? string
@@ -62,7 +69,7 @@ export type InferValueType<T> =
     : T extends { type: infer ChildType extends PrimitiveType } ? InferValueType<ChildType>
     : T extends { type: infer ChildType extends Constructor } ? InstanceType<ChildType>
     : T extends { type: Array<infer ChildType> } ? (ChildType extends Record<string | number, string | number> ? ChildType[keyof ChildType][] : ChildType[]) // TS ENUM
-    : T extends { type: { map: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType]> : MapSchema<ChildType>) // TS ENUM
+    : T extends { type: { map: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType], MapKeyOf<T["type"]>> : MapSchema<ChildType, MapKeyOf<T["type"]>>) // TS ENUM
     : T extends { type: { set: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? SetSchema<ChildType[keyof ChildType]> : SetSchema<ChildType>) // TS ENUM
     : T extends { type: { collection: infer ChildType } } ? (ChildType extends Record<string | number, string | number> ? CollectionSchema<ChildType[keyof ChildType]> : CollectionSchema<ChildType>) // TS ENUM
     : T extends { type: { stream: infer ChildType extends Constructor } } ? StreamSchema<InstanceType<ChildType>>
@@ -77,8 +84,8 @@ export type InferValueType<T> =
     : T extends { array: infer ChildType extends Constructor } ? ArraySchema<InstanceType<ChildType>>
     : T extends { array: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? ArraySchema<ChildType[keyof ChildType]> : ArraySchema<PrimitiveStringToType<ChildType>>) // TS ENUM
 
-    : T extends { map: infer ChildType extends Constructor } ? MapSchema<InstanceType<ChildType>>
-    : T extends { map: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType]> : MapSchema<PrimitiveStringToType<ChildType>>) // TS ENUM
+    : T extends { map: infer ChildType extends Constructor } ? MapSchema<InstanceType<ChildType>, MapKeyOf<T>>
+    : T extends { map: infer ChildType } ? (ChildType extends Record<string | number, string | number> ? MapSchema<ChildType[keyof ChildType], MapKeyOf<T>> : MapSchema<PrimitiveStringToType<ChildType>, MapKeyOf<T>>) // TS ENUM
 
     : T extends { set: infer ChildType extends Constructor } ? SetSchema<InstanceType<ChildType>>
     : T extends { set: infer ChildType extends RawPrimitiveType } ? SetSchema<InferValueType<ChildType>> // primitive types
@@ -154,7 +161,7 @@ export type NonFunctionNonPrimitivePropNames<T> = {
 type ToJSONValue<U> = U extends Schema ? ToJSON<U> : PrimitiveStringToType<U>;
 
 type ToJSONField<X> =
-    X extends MapSchema<infer U> ? Record<string, ToJSONValue<U>>
+    X extends MapSchema<infer U, any> ? Record<string, ToJSONValue<U>>
     : X extends Map<string, infer U> ? Record<string, ToJSONValue<U>>
     : X extends ArraySchema<infer U> ? ToJSONValue<U>[]
     : X extends SetSchema<infer U> ? ToJSONValue<U>[]
@@ -221,8 +228,8 @@ export type AssignableProps<T> = {
  * plain-object / array shape" pattern.
  */
 export type AssignableValue<V> =
-    V extends MapSchema<infer U>
-        ? MapSchema<U> | Record<string, U extends Schema ? (U | AssignableProps<U>) : U>
+    V extends MapSchema<infer U, infer K>
+        ? MapSchema<U, K> | Record<string, U extends Schema ? (U | AssignableProps<U>) : U>
         : V extends ArraySchema<infer U>
             ? ArraySchema<U> | (U extends Schema ? (U | AssignableProps<U>)[] : U[])
             : V extends SetSchema<infer U>

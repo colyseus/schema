@@ -174,6 +174,11 @@ function generateFieldDefinition(prop: Property): string {
         const containerType = containerMaps[prop.type];
         const childTypeRef = isUpcaseFirst ? prop.childType : typeMaps[prop.childType] || `"${prop.childType}"`;
         args = [`"${prop.name}"`, containerType, childTypeRef];
+
+        if (prop.type === "map" && prop.keyType) {
+            // 4th arg: the key type constant (Colyseus.Schema.NUMBER, .INT32, …)
+            args.push(typeMaps[prop.keyType] || `"${prop.keyType}"`);
+        }
     } else {
         // Primitive type
         const typeRef = typeMaps[prop.type] || `"${prop.type}"`;

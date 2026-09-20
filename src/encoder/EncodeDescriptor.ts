@@ -29,6 +29,14 @@ export interface EncodeDescriptor {
     /** Highest field index (`metadata[$numFields]`), -1 for collections. */
     numFields: number;
     /**
+     * A PACKED array of `numFields + 1` `undefined`s; every instance's `$values`
+     * is a `.slice()` of it. Exact size (72 B for two fields, where `[]` grows to
+     * a 17-slot store: 192 B) and packed elements — `new Array(n)` is as small but
+     * HOLEY, and a holey `$values` made every field read 5…10 % slower in tight
+     * loops (`array-iterate/for-of` +9.7 %).
+     */
+    valuesTemplate: any[];
+    /**
      * Bit i set iff field i has a @view tag. 0 for collection trees.
      * Fields 0–31 only, like the bitmasks below — readers consult `tags`
      * past that.
@@ -82,6 +90,13 @@ export interface EncodeDescriptor {
     tags: (number | undefined)[];
     encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
 
+    /**
+     * Class-level half of same-shape-run eligibility: a Schema whose
+     * `[$filter]` is the stock one (only tagged fields consult it) and that
+     * has no stream fields. The per-tree half (dirty set, op kinds) is
+     * checked per tick by `runEligible`.
+     */
+    runnable: boolean;
     /** Field indexes a full sync walks: declared and not `@patchOnly` / `@deprecated`. */
     liveIndexes: number[];
     /** Bit i set iff field i (< 32) is ref-typed. */
@@ -89,8 +104,8 @@ export interface EncodeDescriptor {
     hasRefFieldAbove32: boolean;
     /** Any `@view` tag on a field index ≥ 32 (past `filterBitmask`). */
     hasTagAbove32: boolean;
-    /** Distinct custom `@view(tag)` bits declared on this class. */
-    customTagBits: number[];
+    /** Mask of the custom `@view(tag)` bits declared on this class. */
+    customTagMask: number;
 }
 
 /**
@@ -135,7 +150,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     let refTypeBitmask = 0;
     let hasRefFieldAbove32 = false;
     let hasTagAbove32 = false;
-    const tagBits = new Set<number>();
+    let customTagMask = 0;
     const numFields: number = (isSchema && metadata !== undefined) ? (metadata[$numFields] ?? -1) : -1;
     const srcEncoders = metadata?.[$encoders];
     const skip: number[] | undefined = metadata?.[$fullSyncSkipIndexes];
@@ -164,7 +179,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         const tag = field.tag;
         if (tag !== undefined && i >= 32) hasTagAbove32 = true;
         if (tag !== undefined && tag !== DEFAULT_VIEW_TAG) {
-            for (let bits = tag; bits > 0; bits &= bits - 1) tagBits.add(bits & -bits);
+            customTagMask |= tag;
         }
     }
 
@@ -174,6 +189,11 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     // skips the call. Keyed collections keep their instance-level filter;
     // arrays have none (the emitter checks element visibility directly).
     const filter = (isSchema && !hasAnyView) ? undefined : ctor[$filter];
+    // stock filter = the one owned by the root Schema class (its [[Prototype]] is Function.prototype)
+    let filterOwner: any = ctor;
+    while (filterOwner && !Object.prototype.hasOwnProperty.call(filterOwner, $filter)) filterOwner = Object.getPrototypeOf(filterOwner);
+    const stockFilter = filterOwner === null || filterOwner === undefined || Object.getPrototypeOf(filterOwner) === Function.prototype;
+    const hasAnyStream = (metadata?.[$streamFieldIndexes]?.length ?? 0) > 0;
     const desc: EncodeDescriptor = {
         filter,
         metadata,
@@ -181,11 +201,13 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         kind,
         newRecorder: ctor[$recorder],
         numFields,
+        valuesTemplate: Array.from({ length: numFields + 1 }, (): any => undefined),
         filterBitmask: isSchema ? indexesToBitmask(metadata?.[$viewFieldIndexes]) : 0,
         hasAnyFullStateOnly: (metadata?.[$fullStateOnlyFieldIndexes]?.length ?? 0) > 0,
         hasAnyUnreliable: (metadata?.[$unreliableFieldIndexes]?.length ?? 0) > 0,
-        hasAnyStream: (metadata?.[$streamFieldIndexes]?.length ?? 0) > 0,
+        hasAnyStream,
         hasAnyView,
+        runnable: isSchema && stockFilter && !hasAnyStream,
         fullStateOnlyBitmask: indexesToBitmask(metadata?.[$fullStateOnlyFieldIndexes]),
         unreliableBitmask: indexesToBitmask(metadata?.[$unreliableFieldIndexes]),
         streamBitmask: indexesToBitmask(metadata?.[$streamFieldIndexes]),
@@ -197,7 +219,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         refTypeBitmask,
         hasRefFieldAbove32,
         hasTagAbove32,
-        customTagBits: Array.from(tagBits),
+        customTagMask,
     };
     Object.defineProperty(ctor, $encodeDescriptor, {
         value: desc,

@@ -1,6 +1,7 @@
 import type { Schema } from "./Schema.js";
+import { refTreeOf } from "./encoder/ChangeTree.js";
 import { OPERATION } from "./encoding/spec.js";
-import { $changes, $refId } from "./types/symbols.js";
+import { } from "./types/symbols.js";
 
 interface ChangeDump {
     ops: {
@@ -18,7 +19,7 @@ export function getIndent(level: number) {
 }
 
 export function dumpChanges(schema: Schema) {
-    const $root = schema[$changes].root;
+    const $root = refTreeOf(schema).root;
 
     const dump: ChangeDump = {
         ops: {},
@@ -35,7 +36,7 @@ export function dumpChanges(schema: Schema) {
             continue;
         }
 
-        dump.refs.push(`refId#${changeTree.ref[$refId]}`);
+        dump.refs.push(`refId#${changeTree.refId}`);
         changeTree.forEach((index, op) => {
             if (index < 0 || !op) return;
             const opName = OPERATION[op];

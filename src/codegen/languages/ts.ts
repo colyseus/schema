@@ -141,13 +141,16 @@ function generateProperty(prop: Property) {
                 : `[ "${prop.childType}" ]`;
 
         } else if(prop.type === "map") {
-            langType = (isUpcaseFirst)
-                ? `MapSchema<${prop.childType}>`
-                : `MapSchema<${typeMaps[prop.childType]}>`;
+            const valueType = (isUpcaseFirst) ? prop.childType : typeMaps[prop.childType];
+            const child = (isUpcaseFirst) ? prop.childType : `"${prop.childType}"`;
+            // `MapSchema<V, K>`: every numeric key type reads as `number`
+            langType = (prop.keyType)
+                ? `MapSchema<${valueType}, ${typeMaps[prop.keyType]}>`
+                : `MapSchema<${valueType}>`;
             initializer = `new ${langType}()`;
-            typeArgs = (isUpcaseFirst)
-                ? `{ map: ${prop.childType} }`
-                : `{ map: "${prop.childType}" }`;
+            typeArgs = (prop.keyType)
+                ? `{ map: ${child}, key: "${prop.keyType}" }`
+                : `{ map: ${child} }`;
         } else if (prop.type === "set") {
             langType = (isUpcaseFirst)
                 ? `SetSchema<${prop.childType}>`

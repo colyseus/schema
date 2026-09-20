@@ -4,45 +4,63 @@
  * primary parent is stored inline on the tree (`parentRef` / `_parentIndex`);
  * additional parents live in the `extraParents` linked list.
  */
-import { $changes } from "../../types/symbols.js";
-import type { ChangeTree, ParentEntry, Ref } from "../ChangeTree.js";
+import { } from "../../types/symbols.js";
+import { refTreeOf, type ChangeTree, type ParentEntry, type Ref } from "../ChangeTree.js";
+
+/**
+ * Same structure? An ArraySchema is reachable both as its Proxy and as the raw
+ * target, so identity alone can miss — the trees are compared then. Identity
+ * first: it is the overwhelmingly common answer (a subtree being attached
+ * re-adds the parent every node already has) and costs no tree load.
+ */
+function sameRef(a: Ref, b: Ref): boolean {
+    return a === b || refTreeOf(a) === refTreeOf(b);
+}
 
 /**
  * Add a parent to the chain. If `parent` already exists anywhere in the
  * chain, update the primary parent's index instead (matches legacy
  * behavior).
  */
-export function addParent(tree: ChangeTree, parent: Ref, index: number): void {
-    // Check if this parent already exists anywhere in the chain
-    if (tree.parentRef) {
-        if (tree.parentRef[$changes] === parent[$changes]) {
+/**
+ * Same parent? `parentTree` when the caller handed it in; otherwise identity of
+ * the ref first, its tree second (an ArraySchema is reachable as Proxy and as
+ * raw target).
+ */
+function isPrimaryParent(current: ChangeTree, parent: Ref, parentTree: ChangeTree | undefined): boolean {
+    return (parentTree !== undefined) ? current === parentTree : (current.ref === parent || current === refTreeOf(parent));
+}
+
+export function addParent(tree: ChangeTree, parent: Ref, index: number, parentTree?: ChangeTree): void {
+    const current = tree.parentTree;
+    if (current !== undefined) {
+        // Check if this parent already exists anywhere in the chain
+        if (isPrimaryParent(current, parent, parentTree)) {
             // Primary parent matches — update index
             tree._parentIndex = index;
             return;
         }
 
-        // Check extra parents for duplicate
-        if (hasParent(tree, (p, _) => p[$changes] === parent[$changes])) {
-            // Match old behavior: update primary parent's index
-            tree._parentIndex = index;
-            return;
+        // Check extra parents for duplicate (walked in place: no closure per re-parent)
+        for (let entry = tree.extraParents; entry !== undefined; entry = entry.next) {
+            if (sameRef(entry.ref, parent)) {
+                // Match old behavior: update primary parent's index
+                tree._parentIndex = index;
+                return;
+            }
         }
-    }
 
-    if (tree.parentRef === undefined) {
-        // First parent — store inline
-        tree.parentRef = parent;
-        tree._parentIndex = index;
-    } else {
         // Push current inline parent to extraParents, set new as primary
         tree.extraParents = {
-            ref: tree.parentRef,
+            ref: current.ref,
             index: tree._parentIndex,
             next: tree.extraParents
         };
-        tree.parentRef = parent;
-        tree._parentIndex = index;
     }
+
+    // from the caller when it has it (every internal attach does); derived from the ref otherwise
+    tree.parentTree = (parentTree !== undefined) ? parentTree : refTreeOf(parent);
+    tree._parentIndex = index;
 }
 
 /**
@@ -54,14 +72,16 @@ export function removeParent(tree: ChangeTree, parent: Ref): boolean {
     // FIXME: it is required to check against `$changes` here because
     // ArraySchema is instance of Proxy
     //
-    if (tree.parentRef && tree.parentRef[$changes] === parent[$changes]) {
+    const primary = tree.parentTree;
+    if (primary !== undefined && isPrimaryParent(primary, parent, undefined)) {
         // Removing inline parent — promote first extra parent if exists
-        if (tree.extraParents) {
-            tree.parentRef = tree.extraParents.ref;
-            tree._parentIndex = tree.extraParents.index;
-            tree.extraParents = tree.extraParents.next;
+        const promoted = tree.extraParents;
+        if (promoted !== undefined) {
+            tree.parentTree = refTreeOf(promoted.ref);
+            tree._parentIndex = promoted.index;
+            tree.extraParents = promoted.next;
         } else {
-            tree.parentRef = undefined;
+            tree.parentTree = undefined;
             tree._parentIndex = undefined;
         }
         return true;
@@ -71,7 +91,7 @@ export function removeParent(tree: ChangeTree, parent: Ref): boolean {
     let current = tree.extraParents;
     let previous = null;
     while (current) {
-        if (current.ref[$changes] === parent[$changes]) {
+        if (sameRef(current.ref, parent)) {
             if (previous) {
                 previous.next = current.next;
             } else {
@@ -82,7 +102,7 @@ export function removeParent(tree: ChangeTree, parent: Ref): boolean {
         previous = current;
         current = current.next;
     }
-    return tree.parentRef === undefined;
+    return tree.parentTree === undefined;
 }
 
 /**
@@ -147,13 +167,13 @@ export function isEdgeLive(tree: ChangeTree, parentTree: ChangeTree, index: numb
     const target = parentTree.elements as any;
     if (parentTree.isArray) {
         const at = target[index];
-        if (at !== undefined && at[$changes] === tree) return true;
+        if (at !== undefined && refTreeOf(at) === tree) return true;
         for (let i = 0, len = target.length; i < len; i++) {
             const v = target[i];
-            if (v !== undefined && v[$changes] === tree) return true;
+            if (v !== undefined && refTreeOf(v) === tree) return true;
         }
         return false;
     }
     const at = parentTree.getValue(index);
-    return at !== undefined && at[$changes] === tree;
+    return at !== undefined && refTreeOf(at) === tree;
 }

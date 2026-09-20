@@ -15,10 +15,10 @@
  * — every new child attachment to a collection checks the parent tree's
  * `subscribedViews` bitmap and fans out to subscribed views.
  */
-import type { ChangeTree, Ref } from "./ChangeTree.js";
+import { refTreeOf, type ChangeTree, type Ref } from "./ChangeTree.js";
 import type { Root, Streamable } from "./Root.js";
 import { streamEnqueueForView } from "./streaming.js";
-import { $changes } from "../types/symbols.js";
+import { } from "../types/symbols.js";
 
 /**
  * Walk the `subscribedViews` bitmap of `parentTree` and propagate a new
@@ -36,7 +36,7 @@ export function propagateNewChildToSubscribers(
 
     const isStream = parentTree.isStreamCollection;
     const streamable = isStream ? (parentTree.ref as unknown as Streamable) : undefined;
-    const childTree = isStream ? undefined : childRef[$changes];
+    const childTree = isStream ? undefined : refTreeOf(childRef);
 
     // Walk set bits via clz32 — same pattern as the inline recorder
     // iteration elsewhere in the encoder.

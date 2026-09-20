@@ -1,6 +1,6 @@
-import { ChangeTree, Ref } from "./ChangeTree.js";
+import { ChangeTree, Ref, viewTreeOf, refIdOf } from "./ChangeTree.js";
 import { isEdgeLive } from "./changeTree/parentChain.js";
-import { $changes, $childType, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols.js";
+import { $childType, $fieldIndexesByViewTag, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
@@ -28,18 +28,17 @@ export function createView(iterable: boolean = false) {
  */
 function _clearViewBitFromAllTrees(root: Root, slot: number, bit: number): void {
     const clearMask = ~bit;
-    const trees = root.changeTrees;
-    for (const refId in trees) {
-        const tree = trees[refId];
+    for (const tree of root.changeTrees.values()) {
         const v = tree.visibleViews;
         if (v !== undefined && slot < v.length) v[slot] &= clearMask;
         const s = tree.subscribedViews;
         if (s !== undefined && slot < s.length) s[slot] &= clearMask;
         const t = tree.tagViews;
         if (t !== undefined) {
-            t.forEach((bitmap) => {
+            for (let j = 0; j < t.length; j++) {
+                const bitmap = t[j];
                 if (slot < bitmap.length) bitmap[slot] &= clearMask;
-            });
+            }
         }
     }
 }
@@ -239,42 +238,64 @@ export class StateView {
     /**
      * True iff this view shares at least one tag bit with `tree`.
      *
-     * `tagViews` is keyed by individual power-of-two bits (custom tags must
-     * be powers of two; `@view(A|B)` field masks are decomposed on store).
-     * A field whose mask is `tag` is visible if the view was `add()`ed with
-     * any overlapping bit — so we walk `tag`'s set bits and return on the
-     * first match. Passing DEFAULT_VIEW_TAG (-1, all bits) answers "does
-     * this view hold ANY custom tag on the tree".
+     * `tree.tagBits` holds individual power-of-two bits (custom tags must
+     * be powers of two; `@view(A|B)` field masks are decomposed on store),
+     * `tree.tagViews[j]` the per-view bitmap of bit `j`. A field whose mask
+     * is `tag` is visible if the view was `add()`ed with any overlapping
+     * bit — so we scan the tree's bits and return on the first match.
+     * Passing DEFAULT_VIEW_TAG (-1, all bits) answers "does this view hold
+     * ANY custom tag on the tree".
      */
     public hasTagOnTree(tree: ChangeTree, tag: number): boolean {
-        const map = tree.tagViews;
-        if (map === undefined) return false;
+        const tagBits = tree.tagBits;
+        if (tagBits === undefined) return false;
+        const bitmaps = tree.tagViews!;
         const slot = this._slot;
         const bit = this._bit;
-        for (let bits = tag; bits !== 0; bits &= bits - 1) {
-            const arr = map.get(bits & -bits); // isolate lowest set bit
-            if (arr !== undefined && slot < arr.length && (arr[slot] & bit) !== 0) return true;
+        for (let j = 0; j < tagBits.length; j++) {
+            if ((tagBits[j] & tag) === 0) continue;
+            const arr = bitmaps[j];
+            if (slot < arr.length && (arr[slot] & bit) !== 0) return true;
         }
         return false;
+    }
+
+    /** Mask of every custom tag bit this view holds on `tree` (0 when none). */
+    public tagsOnTree(tree: ChangeTree): number {
+        const tagBits = tree.tagBits;
+        if (tagBits === undefined) return 0;
+        const bitmaps = tree.tagViews!;
+        const slot = this._slot;
+        const bit = this._bit;
+        let mask = 0;
+        for (let j = 0; j < tagBits.length; j++) {
+            const arr = bitmaps[j];
+            if (slot < arr.length && (arr[slot] & bit) !== 0) mask |= tagBits[j];
+        }
+        return mask;
     }
 
     /** Mark `tree` as carrying `tag` (each of its bits) for this view. */
     public addTag(tree: ChangeTree, tag: number): void {
         // DEFAULT_VIEW_TAG visibility lives in `visibleViews`, not here.
         if (tag === DEFAULT_VIEW_TAG) return;
-        let map = tree.tagViews;
-        if (map === undefined) {
-            map = tree.tagViews = new Map();
+        let tagBits = tree.tagBits;
+        let bitmaps = tree.tagViews;
+        if (tagBits === undefined || bitmaps === undefined) {
+            tagBits = tree.tagBits = [];
+            bitmaps = tree.tagViews = [];
         }
         const slot = this._slot;
         const bit = this._bit;
         for (let bits = tag; bits > 0; bits &= bits - 1) {
             const b = bits & -bits; // isolate lowest set bit
-            let arr = map.get(b);
-            if (arr === undefined) {
-                arr = [];
-                map.set(b, arr);
+            let j = tagBits.indexOf(b);
+            if (j === -1) {
+                j = tagBits.length;
+                tagBits.push(b);
+                bitmaps.push([]);
             }
+            const arr = bitmaps[j];
             while (arr.length <= slot) arr.push(0);
             arr[slot] |= bit;
         }
@@ -283,25 +304,27 @@ export class StateView {
     /** Clear each of `tag`'s bits for this view on `tree`. */
     public removeTag(tree: ChangeTree, tag: number): void {
         if (tag === DEFAULT_VIEW_TAG) return;
-        const map = tree.tagViews;
-        if (map === undefined) return;
+        const tagBits = tree.tagBits;
+        if (tagBits === undefined) return;
+        const bitmaps = tree.tagViews!;
         const slot = this._slot;
         const clearMask = ~this._bit;
         for (let bits = tag; bits > 0; bits &= bits - 1) {
-            const arr = map.get(bits & -bits);
-            if (arr !== undefined && slot < arr.length) arr[slot] &= clearMask;
+            const j = tagBits.indexOf(bits & -bits);
+            if (j !== -1 && slot < bitmaps[j].length) bitmaps[j][slot] &= clearMask;
         }
     }
 
     /** Clear ALL tag bits this view holds on `tree` (used when the per-tag isn't known). */
     public removeAllTagsOnTree(tree: ChangeTree): void {
-        const map = tree.tagViews;
-        if (map === undefined) return;
+        const bitmaps = tree.tagViews;
+        if (bitmaps === undefined) return;
         const slot = this._slot;
         const clearMask = ~this._bit;
-        map.forEach((arr) => {
+        for (let j = 0; j < bitmaps.length; j++) {
+            const arr = bitmaps[j];
             if (slot < arr.length) arr[slot] &= clearMask;
-        });
+        }
     }
 
     // TODO: allow to set multiple tags at once
@@ -321,7 +344,7 @@ export class StateView {
     }
 
     private _add(obj: Ref, tag: number, checkIncludeParent: boolean, _skipStreamRouting: boolean) {
-        const changeTree: ChangeTree = obj?.[$changes];
+        const changeTree: ChangeTree = viewTreeOf(obj);
         if (!changeTree) {
             console.warn(
                 `StateView#add(): expected a Schema instance or collection, received ${describeArg(obj)}`,
@@ -333,7 +356,7 @@ export class StateView {
 
         if (
             !parentChangeTree &&
-            obj[$refId] !== 0 // allow root object
+            changeTree.refId !== 0 // allow root object
         ) {
             /**
              * Detached adds are refused: addParentOf() walks the parent
@@ -370,7 +393,7 @@ export class StateView {
         // logic discovers visibility. This matches the rationale that led
         // to StateView in the first place: per-client visibility as a
         // game-loop-cadence operation, not an encode-time predicate.
-        const parentStreamTree = parentChangeTree?.[$changes];
+        const parentStreamTree = viewTreeOf(parentChangeTree);
         if (!_skipStreamRouting && parentStreamTree?.isStreamCollection) {
             streamEnqueueForView(
                 parentChangeTree as unknown as Streamable,
@@ -439,10 +462,11 @@ export class StateView {
         // into `this.add(child, ...)`, which inserts child refIds — if we
         // deferred this insert past that point, children would be emitted
         // first and the decoder would see "refId not found".
-        let changes = this.changes.get(obj[$refId]);
+        const refId = changeTree.refId!;
+        let changes = this.changes.get(refId);
         if (changes === undefined) {
             changes = new Map<number, OPERATION>();
-            this.changes.set(obj[$refId], changes);
+            this.changes.set(refId, changes);
         }
 
         let isChildAdded = false;
@@ -576,7 +600,7 @@ export class StateView {
     }
 
     protected addParentOf(childChangeTree: ChangeTree, tag: number) {
-        const changeTree = childChangeTree.parent[$changes];
+        const changeTree = childChangeTree.parentTree;
         const parentIndex = childChangeTree.parentIndex;
 
         if (!this.isVisible(changeTree)) {
@@ -599,7 +623,7 @@ export class StateView {
         // still gated on `hasFilteredFields` so non-filtered ancestors
         // don't emit redundant wire bytes (the decoder already knows them
         // via the shared encode pass).
-        const parentChangeTree: ChangeTree = changeTree.parent?.[$changes];
+        const parentChangeTree: ChangeTree = changeTree.parentTree;
         if (parentChangeTree) {
             this.addParentOf(changeTree, tag);
         }
@@ -615,10 +639,10 @@ export class StateView {
             ? isEdgeLive(childChangeTree, changeTree, parentIndex ?? -1)
             : changeTree.getChange(parentIndex) !== OPERATION.DELETE;
         if (bound) {
-            let changes = this.changes.get(changeTree.ref[$refId]);
+            let changes = this.changes.get(changeTree.refId);
             if (changes === undefined) {
                 changes = new Map<number | ChangeTree, OPERATION>();
-                this.changes.set(changeTree.ref[$refId], changes);
+                this.changes.set(changeTree.refId, changes);
             }
 
             this.addTag(changeTree, tag);
@@ -651,7 +675,7 @@ export class StateView {
      * upheld by every prior caller).
      */
     private _touchAncestorsOf(tree: ChangeTree): void {
-        let cursor = tree.parent?.[$changes] as ChangeTree | undefined;
+        let cursor = tree.parentTree;
         if (cursor === undefined) return;
 
         // Collect the missing prefix of the chain, deepest-first. Only
@@ -661,23 +685,23 @@ export class StateView {
         const stack: ChangeTree[] = [];
         while (cursor !== undefined) {
             if (cursor.hasFilteredFields) {
-                const refId = cursor.ref[$refId];
+                const refId = cursor.refId;
                 if (this.changes.has(refId)) break;
                 stack.push(cursor);
             }
-            cursor = cursor.parent?.[$changes] as ChangeTree | undefined;
+            cursor = cursor.parentTree;
         }
 
         // Insert root-first so Map order is topological.
         for (let i = stack.length - 1; i >= 0; i--) {
-            this.changes.set(stack[i].ref[$refId], new Map());
+            this.changes.set(stack[i].refId, new Map());
         }
     }
 
     remove(obj: Ref, tag?: number): this; // hide _isClear parameter from public API
     remove(obj: Ref, tag?: number, _isClear?: boolean): this;
     remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG, _isClear: boolean = false): this {
-        const changeTree: ChangeTree = obj?.[$changes];
+        const changeTree: ChangeTree = viewTreeOf(obj);
         if (!changeTree) {
             console.warn(
                 `StateView#remove(): expected a Schema instance or collection, received ${describeArg(obj)}`,
@@ -690,7 +714,7 @@ export class StateView {
         // out of the stream's per-view state. If it never made it to the
         // wire (still in pending), silent drop; if already sent, queue
         // DELETE via `view.changes` for the next encodeView drain.
-        const parentTree = changeTree.parent?.[$changes];
+        const parentTree = changeTree.parentTree;
         if (parentTree?.isStreamCollection) {
             this.unmarkVisible(changeTree);
             if (this.iterable && !_isClear) {
@@ -699,7 +723,7 @@ export class StateView {
             streamDequeueForView(
                 changeTree.parent as unknown as Streamable,
                 this.id,
-                (changeTree.parent as any)[$refId],
+                parentTree.refId!,
                 changeTree.parentIndex!,
                 this.changes,
             );
@@ -723,7 +747,7 @@ export class StateView {
                 st.pendingByView.get(this.id)?.clear();
                 const sent = st.sentByView.get(this.id);
                 if (sent !== undefined && sent.size > 0) {
-                    const streamRefId = streamRef[$refId];
+                    const streamRefId = refIdOf(streamRef);
                     let changes = this.changes.get(streamRefId);
                     if (changes === undefined) {
                         changes = new Map();
@@ -749,7 +773,7 @@ export class StateView {
         const ref = changeTree.ref;
         const metadata: Metadata = ref.constructor[Symbol.metadata]; // ArraySchema/MapSchema do not have metadata
 
-        const refId = ref[$refId];
+        const refId = changeTree.refId!;
 
         // Pre-insert any missing ancestors into view.changes so the Map's
         // iteration order stays topological — the entries we're about to
@@ -772,7 +796,7 @@ export class StateView {
                 const key = parentTree!.isArray
                     ? changeTree
                     : changeTree.parentIndex;
-                const parentRefId = parent[$refId];
+                const parentRefId = parentTree!.refId!;
                 let changes = this.changes.get(parentRefId);
                 if (changes === undefined) {
                     changes = new Map<number | ChangeTree, OPERATION>();
@@ -822,11 +846,11 @@ export class StateView {
     }
 
     has(obj: Ref) {
-        return this.isVisible(obj[$changes]);
+        return this.isVisible(viewTreeOf(obj));
     }
 
     hasTag(ob: Ref, tag: number = DEFAULT_VIEW_TAG) {
-        return this.hasTagOnTree(ob[$changes], tag);
+        return this.hasTagOnTree(viewTreeOf(ob), tag);
     }
 
     /**
@@ -871,7 +895,7 @@ export class StateView {
     ): this;
     subscribe(collection: Ref): this;
     subscribe(collection: Ref, priority?: ((element: any) => number) | null): this {
-        const tree: ChangeTree = collection?.[$changes];
+        const tree: ChangeTree = viewTreeOf(collection);
         if (!tree) {
             console.warn(
                 `StateView#subscribe(): expected a Schema collection, received ${describeArg(collection)}`,
@@ -961,7 +985,7 @@ export class StateView {
      * direct `view.add(element)` calls still work for per-entity use).
      */
     unsubscribe(collection: Ref): this {
-        const tree: ChangeTree = collection?.[$changes];
+        const tree: ChangeTree = viewTreeOf(collection);
         if (!tree) {
             console.warn(
                 `StateView#unsubscribe(): expected a Schema collection, received ${describeArg(collection)}`,
@@ -971,7 +995,7 @@ export class StateView {
         if (!this.isSubscribed(tree)) return this;
         this._clearSubscribed(tree);
 
-        const collectionRefId = tree.ref[$refId];
+        const collectionRefId = tree.refId;
 
         if (tree.isStreamCollection) {
             // Streams: clear pending + queue DELETE for everything in sent.
@@ -1039,7 +1063,7 @@ export class StateView {
         if (!isVisible && changeTree.isVisibilitySharedWithParent){
             // Primary grant is intentionally unguarded — pre-existing
             // semantics; the extras walk below is stricter on purpose.
-            if (this.isVisible(changeTree.parent[$changes])) {
+            if (this.isVisible(changeTree.parentTree)) {
                 this.markVisible(changeTree);
                 isVisible = true;
             } else {
@@ -1048,7 +1072,7 @@ export class StateView {
                 // Only filtered parents can grant (public ones never share
                 // visibility downward).
                 for (let e = changeTree.extraParents; e !== undefined; e = e.next) {
-                    const parentTree = e.ref[$changes];
+                    const parentTree = viewTreeOf(e.ref);
                     if (parentTree.isFiltered && this.isVisible(parentTree)) {
                         this.markVisible(changeTree);
                         isVisible = true;
@@ -1075,7 +1099,7 @@ export class StateView {
      * refIds the decoder cannot resolve ("refId" not found).
      */
     private _dropPendingEntries(tree: ChangeTree): void {
-        this.changes.delete(tree.ref[$refId]);
+        this.changes.delete(tree.refId);
         tree.forEachChild((child) => this._dropPendingEntries(child));
     }
 
@@ -1090,7 +1114,7 @@ export class StateView {
         changes.set(index, OPERATION.DELETE);
 
         const value = changeTree.ref[changeTree.encDescriptor.names[index] as keyof Ref];
-        const valueTree: ChangeTree = value?.[$changes];
+        const valueTree: ChangeTree = viewTreeOf(value);
         if (valueTree) {
             this.unmarkVisible(valueTree);
             this._recursiveDeleteVisibleChangeTree(valueTree);

@@ -42,12 +42,20 @@ class Annotated extends Schema {
 
     @type({ map: Child, view: true }) viewTagged = new MapSchema<Child>();
     @type({ map: Child, sync: false }) unsynced = new MapSchema<Child>();
+
+    @type({ map: Child, key: "number" }) byNum = new MapSchema<Child, number>();
+    @type({ map: "number", key: "int32" }) scoresByNum = new MapSchema<number, number>();
+    @type({ map: Child, key: "string" }) byStr = new MapSchema<Child, string>();
 }
 
 declare const annotated: Annotated;
 const annotatedMap: MapSchema<Child> = annotated.map;
 const annotatedArray: ArraySchema<Child> = annotated.array;
 const annotatedRef: Child = annotated.ref;
+const annotatedByNum: MapSchema<Child, number> = annotated.byNum;
+const annotatedByNumKeys: number[] = Array.from(annotated.byNum.keys());
+const annotatedByStr: MapSchema<Child, string> = annotated.byStr;
+void annotatedByNum; void annotatedByNumKeys; void annotatedByStr;
 void annotatedMap; void annotatedArray; void annotatedRef;
 
 // `Reflection.decode`, inferred and explicit

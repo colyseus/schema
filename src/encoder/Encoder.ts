@@ -1,12 +1,12 @@
 import type { Schema } from "../Schema.js";
 import { TypeContext } from "../types/TypeContext.js";
-import { $changes, $childType, $getByIndex, $refId } from "../types/symbols.js";
+import { $childType, $getByIndex } from "../types/symbols.js";
 import type { Iterator } from "../encoding/decode.js";
 import { KIND_ARRAY, OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
 import { Root } from "./Root.js";
 import type { StateView } from "./StateView.js";
-import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode } from "./ChangeTree.js";
+import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode, refTreeOf, refIdOf } from "./ChangeTree.js";
 import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { forEachChildWithCtx } from "./changeTree/treeAttachment.js";
@@ -14,7 +14,8 @@ import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
 import {
     MODE_DRAIN, MODE_PATCH, MODE_SNAPSHOT, MODE_STREAM,
     closeChunk, emitKeyedOp, emitLiveChunk, emitViewEntry, encodeKeyedOps, encodeSchemaBits, encodeSchemaOps, encodeTreeOps,
-    enterFrame, openChunk, passFrame, releaseFrames, type Frame,
+    enterFrame, openChunk, passFrame, releaseFrames, writeChunkHeader, type Frame,
+    runEligible, runContinues, openRun, addRunMember, endRun,
 } from "./EncodeOperation.js";
 
 /**
@@ -66,6 +67,8 @@ export function discardQueue(root: Root, list: ChangeTreeList): void {
  *   shared buffer, no per-client concat; `Encoder.concat` joins them for
  *   single-buffer transports.
  */
+const EMPTY_SLICE = new Uint8Array(0);
+
 export class Encoder<T extends Schema = any> {
     /**
      * Per-encoder shared output buffer size. The encoder auto-grows on
@@ -75,7 +78,7 @@ export class Encoder<T extends Schema = any> {
      * constructing any Encoder.
      */
     static BUFFER_SIZE = 16 * 1024;
-    sharedBuffer: Uint8Array = new Uint8Array(Encoder.BUFFER_SIZE);
+    sharedBuffer: Uint8Array;
 
     context: TypeContext;
     state: T;
@@ -88,13 +91,57 @@ export class Encoder<T extends Schema = any> {
     private _tickPrepared = false;
     private _filteredDirty: ChangeTree[] = [];
     private _cacheable: boolean[] = [];
-    private _cacheKey: number[] = [];
-    private _cacheStart: number[] = [];
-    private _cacheEnd: number[] = [];
+    /**
+     * Cross-view chunk cache: per tree (index into `_filteredDirty`) a chain
+     * of entries, one per tag key encoded this tick — views that hold
+     * different custom tags on the same tree produce different chunks, and
+     * each must be replayable by the next view with that key. Chains live in
+     * the flat `_cacheEntry*` arrays (allocation-free, reset per tick).
+     */
+    private _cacheHead: number[] = [];
+    private _cacheEntryKey: number[] = [];
+    private _cacheEntryStart: number[] = [];
+    private _cacheEntryEnd: number[] = [];
+    private _cacheEntryNext: number[] = [];
+    private _cacheEntryLen = 0;
     private _scratch: Uint8Array = new Uint8Array(4096);
     private _scratchOffset = 0;
+    /**
+     * Per-view work lists, keyed by `view.id`: indexes into `_filteredDirty`
+     * of the trees whose visibility bit that view holds. Built once per tick
+     * in `_prepareTick` by fanning each dirty tree out over its bitmap, so a
+     * view's pass costs O(its visible dirty trees) instead of
+     * O(all filtered dirty trees) — the difference between 9 % and 100 % of
+     * the world for an area-of-interest room with hundreds of clients.
+     */
+    private _viewDirty: number[][] = [];
+    /**
+     * Trees that inherit visibility from a parent and have no bit of their
+     * own yet (`isVisibilitySharedWithParent`, memoized by
+     * `isChangeTreeVisible` on first check). Every view checks these.
+     */
+    private _sharedVisDirty: number[] = [];
+    /** Scratch: the current view's filtered work list (indexes into `_filteredDirty`). */
+    private _viewSeq: number[] = [];
+    /**
+     * Live lengths of the scratch arrays above. They are never truncated with
+     * `length = 0`: V8 drops the backing store on that and every push then
+     * regrows it — one allocation chain per view per tick (stateview/tags
+     * doubled its minor GCs before this).
+     */
+    private _filteredDirtyLen = 0;
+    private _viewDirtyLen: number[] = [];
+    private _sharedVisLen = 0;
 
-    constructor(state: T, root?: Root) {
+    /**
+     * @param bufferSize size of this encoder's shared output buffer
+     * (default `Encoder.BUFFER_SIZE`). Throwaway encoders — the reflection
+     * handshake — pass a small size and provide their own buffer, so a room
+     * configured with a large `BUFFER_SIZE` does not allocate (and collect)
+     * that much per client join.
+     */
+    constructor(state: T, root?: Root, bufferSize: number = Encoder.BUFFER_SIZE) {
+        this.sharedBuffer = new Uint8Array(bufferSize);
         //
         // Use .cache() here to avoid re-creating a new context for every new room instance.
         //
@@ -105,7 +152,7 @@ export class Encoder<T extends Schema = any> {
 
     protected setState(state: T) {
         this.state = state;
-        this.state[$changes].setRoot(this.root);
+        refTreeOf(this.state).setRoot(this.root);
     }
 
     private _beginPass(buffer: Uint8Array, it: Iterator, view: StateView | undefined, emitFiltered: boolean, mode: number): Frame {
@@ -123,6 +170,7 @@ export class Encoder<T extends Schema = any> {
         f.mode = mode;
         f.genA = ++this._gen;
         f.genB = ++this._gen;
+        f.prevRefId = -1; // first chunk of this slice carries an absolute refId
         return f;
     }
 
@@ -131,7 +179,7 @@ export class Encoder<T extends Schema = any> {
     encodeAll(it: Iterator = { offset: 0 }, buffer: Uint8Array = this.sharedBuffer): Uint8Array {
         const initialOffset = it.offset;
         const f = this._beginPass(buffer, it, undefined, false, MODE_SNAPSHOT);
-        const rootTree = this.state[$changes];
+        const rootTree = refTreeOf(this.state);
         rootTree._fullSyncGen = f.genB;
         enterFrame(f, rootTree);
         emitLiveChunk(f, forEachLiveWithCtx);
@@ -152,7 +200,7 @@ export class Encoder<T extends Schema = any> {
     encodeAllView(view: StateView, sharedOffset: number, it: Iterator, buffer: Uint8Array = this.sharedBuffer): [Uint8Array, Uint8Array] {
         const viewOffset = it.offset;
         const f = this._beginPass(buffer, it, view, true, MODE_SNAPSHOT);
-        walkView(f, this.state[$changes]);
+        walkView(f, refTreeOf(this.state));
 
         if (it.offset > buffer.byteLength) {
             buffer = this._resizeBuffer(buffer, it.offset);
@@ -201,12 +249,24 @@ export class Encoder<T extends Schema = any> {
 
     private _encodeViewBody(view: StateView, sharedOffset: number, it: Iterator, buffer: Uint8Array): [Uint8Array, Uint8Array] {
         const viewOffset = it.offset;
+
+        // Idle view: nothing queued for it and none of its visible trees are
+        // dirty. Skip the pass setup and the per-view slice allocation — with
+        // hundreds of clients most views are idle on most ticks.
+        if (view.changes.size === 0) {
+            if (!this._tickPrepared) this._prepareTick();
+            const ownLen = this._viewDirtyLen[view.id];
+            if ((ownLen === undefined || ownLen === 0) && this._sharedVisLen === 0) {
+                return [this._sharedSlice(buffer, sharedOffset), EMPTY_SLICE];
+            }
+        }
+
         const f = this._beginPass(buffer, it, view, true, MODE_DRAIN);
         const root = this.root;
 
         // 1. view.changes drain — Map insertion order is topological
         for (const [refId, entry] of view.changes) {
-            const tree: ChangeTree | undefined = root.changeTrees[refId];
+            const tree: ChangeTree | undefined = root.changeTrees.get(refId);
             if (tree === undefined) {
                 view.changes.delete(refId); // detached instance
                 continue;
@@ -219,42 +279,12 @@ export class Encoder<T extends Schema = any> {
             closeChunk(f);
         }
 
-        // 2. per-tick filtered ops (chunk cache across views — only worth it
-        //    when a second view can reuse the copy)
+        // 2. per-tick filtered ops for this view (runs, the cross-view chunk
+        //    cache); its own method keeps both functions small enough for
+        //    TurboFan to optimize well
         f.mode = MODE_PATCH;
         if (!this._tickPrepared) this._prepareTick();
-        const useCache = root.activeViews.size > 1;
-        const trees = this._filteredDirty;
-        for (let i = 0, len = trees.length; i < len; i++) {
-            const tree = trees[i];
-            if (tree._fullSyncGen === f.genB) continue;
-            if (!view.isChangeTreeVisible(tree)) continue;
-
-            const cacheable = useCache && this._cacheable[i];
-            let key = -1;
-            if (cacheable) {
-                key = tagKey(view, tree);
-                if (this._cacheKey[i] === key) {
-                    const start = this._cacheStart[i];
-                    const len = this._cacheEnd[i] - start;
-                    if (it.offset + len <= buffer.byteLength) {
-                        copyBytes(this._scratch, start, buffer, it.offset, len);
-                    }
-                    it.offset += len;
-                    continue;
-                }
-            }
-
-            const start = it.offset;
-            if (tree.isNew) tree._fullSyncGen = f.genB;
-            enterFrame(f, tree);
-            encodeTreeOps(f);
-            closeChunk(f);
-
-            if (cacheable && it.offset <= buffer.byteLength) {
-                this._cacheChunk(i, key, buffer, start, it.offset);
-            }
-        }
+        this._emitViewTrees(f, view, buffer, it);
 
         if (it.offset > buffer.byteLength) {
             buffer = this._resizeBuffer(buffer, it.offset);
@@ -263,17 +293,138 @@ export class Encoder<T extends Schema = any> {
         }
 
         view.changes.clear();
-        return [buffer.subarray(0, sharedOffset), buffer.subarray(viewOffset, it.offset)];
+        return [this._sharedSlice(buffer, sharedOffset), buffer.subarray(viewOffset, it.offset)];
     }
+
+    /**
+     * Phase 2 of a view pass: this view's dirty filtered trees — same-shape
+     * runs, the cross-view chunk cache, plain chunks. Separate from
+     * `_encodeViewBody` on purpose: one big function regressed every
+     * active-view unit by 3–13 % each time it grew (bench/realworld-results.md).
+     */
+    private _emitViewTrees(f: Frame, view: StateView, buffer: Uint8Array, it: Iterator): void {
+        const root = this.root;
+        const useCache = root.activeViews.size > 1;
+        const trees = this._filteredDirty;
+        // This view's work list: its own list merged with the shared-visibility
+        // list (both ascending; a memoized tree can sit in both — emit once),
+        // filtered down to visible, not-yet-emitted trees. Materialized so the
+        // run detection below can look ahead.
+        const seq = this._viewSeq;
+        let seqLen = 0;
+        {
+            const own = this._viewDirty[view.id];
+            const shared = this._sharedVisDirty;
+            const ownLen = (own === undefined) ? 0 : this._viewDirtyLen[view.id];
+            const sharedLen = this._sharedVisLen;
+            if (sharedLen === 0) {
+                for (let a = 0; a < ownLen; a++) {
+                    const i = own![a];
+                    const tree = trees[i];
+                    if (tree._fullSyncGen !== f.genB && view.isChangeTreeVisible(tree)) seq[seqLen++] = i;
+                }
+            } else {
+                let a = 0, b = 0;
+                while (a < ownLen || b < sharedLen) {
+                    const ia = (a < ownLen) ? own![a] : 0x7fffffff;
+                    const ib = (b < sharedLen) ? shared[b] : 0x7fffffff;
+                    let i: number;
+                    if (ia <= ib) { i = ia; a++; if (ia === ib) b++; }
+                    else { i = ib; b++; }
+                    const tree = trees[i];
+                    if (tree._fullSyncGen !== f.genB && view.isChangeTreeVisible(tree)) seq[seqLen++] = i;
+                }
+            }
+        }
+
+        for (let s = 0; s < seqLen; s++) {
+            const i = seq[s];
+            const tree = trees[i];
+
+            // same-shape run over consecutive visible filtered trees of one class
+            // (cheap peek at the next tree first; typeId lookup only for a real run)
+            const peek = (s + 1 < seqLen) ? trees[seq[s + 1]] : undefined;
+            if (peek !== undefined && peek.encDescriptor === tree.encDescriptor && peek.dirtyLow === tree.dirtyLow && tree.isFiltered && runEligible(tree, true)) {
+                let n = 0;
+                while (s + 1 + n < seqLen) {
+                    const next = trees[seq[s + 1 + n]];
+                    if (!next.isFiltered || !runContinues(tree, next, true)) break;
+                    n++;
+                }
+                if (n > 0 && f.context.getTypeId(tree.ref.constructor) !== undefined) {
+                    if (tree.isNew) tree._fullSyncGen = f.genB;
+                    enterFrame(f, tree);
+                    openRun(f, tree, n);
+                    for (let k = 1; k <= n; k++) {
+                        const member = trees[seq[s + k]];
+                        if (member.isNew) member._fullSyncGen = f.genB;
+                        addRunMember(f, member);
+                    }
+                    endRun(f);
+                    s += n;
+                    continue;
+                }
+            }
+
+            const cacheable = useCache && this._cacheable[i];
+            let key = -1;
+            if (cacheable) {
+                key = tagKey(view, tree);
+                let e = this._cacheHead[i];
+                while (e !== -1 && this._cacheEntryKey[e] !== key) e = this._cacheEntryNext[e];
+                if (e !== -1) {
+                    // cached = length byte(s) + body; the refId header is a
+                    // delta against THIS view's previous chunk, so it is
+                    // rewritten per view
+                    const start = this._cacheEntryStart[e];
+                    const len = this._cacheEntryEnd[e] - start;
+                    if (len > 0) {
+                        writeChunkHeader(f, tree.refId);
+                        if (it.offset + len <= buffer.byteLength) {
+                            copyBytes(this._scratch, start, buffer, it.offset, len);
+                        }
+                        it.offset += len;
+                    }
+                    continue;
+                }
+            }
+
+            if (tree.isNew) tree._fullSyncGen = f.genB;
+            enterFrame(f, tree);
+            encodeTreeOps(f);
+            const lenPos = f.lenPos; // -1 when nothing passed the gate (no chunk opened)
+            closeChunk(f);
+
+            if (cacheable && it.offset <= buffer.byteLength) {
+                this._cacheChunk(i, key, buffer, (lenPos === -1) ? it.offset : lenPos, it.offset);
+            }
+        }
+    }
+
+    /** The tick's shared slice, one Uint8Array view reused by every client (read-only for the transport). */
+    private _sharedSlice(buffer: Uint8Array, sharedOffset: number): Uint8Array {
+        let slice = this._sharedSliceCache;
+        if (slice === undefined || slice.buffer !== buffer.buffer || slice.byteOffset !== buffer.byteOffset || slice.byteLength !== sharedOffset) {
+            slice = this._sharedSliceCache = buffer.subarray(0, sharedOffset);
+        }
+        return slice;
+    }
+    private _sharedSliceCache: Uint8Array | undefined = undefined;
 
     /** Collect the tick's trees with filtered dirty state, once per tick. */
     private _prepareTick(): void {
         const trees = this._filteredDirty;
         const cacheable = this._cacheable;
-        trees.length = 0;
-        cacheable.length = 0;
-        this._cacheKey.length = 0;
+        const cacheHead = this._cacheHead;
+        const prevLen = this._filteredDirtyLen;
+        let n = 0;
         this._scratchOffset = 0;
+        this._cacheEntryLen = 0;
+        const viewDirty = this._viewDirty;
+        const viewDirtyLen = this._viewDirtyLen;
+        for (let k = 0; k < viewDirtyLen.length; k++) viewDirtyLen[k] = 0;
+        const sharedVis = this._sharedVisDirty;
+        let sharedVisLen = 0;
 
         let current: ChangeTreeList | ChangeTreeNode = this.root.changes;
         while (current = current.next) {
@@ -294,10 +445,32 @@ export class Encoder<T extends Schema = any> {
                 // primitive-child collections carry no per-element visibility
                 canCache = typeof (tree.refTarget as any)[$childType] === "string";
             }
-            trees.push(tree);
-            cacheable.push(canCache);
-            this._cacheKey.push(-1);
+            const i = n++;
+            trees[i] = tree;
+            cacheable[i] = canCache;
+            cacheHead[i] = -1;
+
+            // fan out to the views that hold this tree's visibility bit
+            const vv = tree.visibleViews;
+            if (vv !== undefined) {
+                for (let s = 0; s < vv.length; s++) {
+                    let w = vv[s] | 0; // a hole reads as undefined
+                    while (w !== 0) {
+                        const bit = w & -w;
+                        w ^= bit;
+                        const id = (s << 5) + (31 - Math.clz32(bit));
+                        let list = viewDirty[id];
+                        if (list === undefined) { list = viewDirty[id] = []; viewDirtyLen[id] = 0; }
+                        list[viewDirtyLen[id]++] = i;
+                    }
+                }
+            }
+            if (tree.isVisibilitySharedWithParent) sharedVis[sharedVisLen++] = i;
         }
+        // drop stale tree references past this tick's count (no truncation: keeps the backing store)
+        for (let k = n; k < prevLen; k++) trees[k] = undefined!;
+        this._filteredDirtyLen = n;
+        this._sharedVisLen = sharedVisLen;
         this._tickPrepared = true;
     }
 
@@ -309,9 +482,13 @@ export class Encoder<T extends Schema = any> {
             this._scratch = grown;
         }
         copyBytes(buffer, start, this._scratch, this._scratchOffset, len);
-        this._cacheKey[i] = key;
-        this._cacheStart[i] = this._scratchOffset;
-        this._cacheEnd[i] = this._scratchOffset + len;
+        // prepend to the tree's chain
+        const e = this._cacheEntryLen++;
+        this._cacheEntryKey[e] = key;
+        this._cacheEntryStart[e] = this._scratchOffset;
+        this._cacheEntryEnd[e] = this._scratchOffset + len;
+        this._cacheEntryNext[e] = this._cacheHead[i];
+        this._cacheHead[i] = e;
         this._scratchOffset += len;
     }
 
@@ -385,8 +562,8 @@ export class Encoder<T extends Schema = any> {
         f.mode = MODE_STREAM;
         for (const stream of this.root.streamTrees) {
             const s: any = stream;
-            const tree: ChangeTree = s[$changes];
-            if (s[$refId] === undefined) continue; // never attached to the state
+            const tree: ChangeTree = refTreeOf(s);
+            if (tree.refId === undefined) continue; // never attached to the state
             const st = s._stream!;
             const deletes: Set<number> = st.broadcastDeletes;
             const pending: Set<number> = st.broadcastPending;
@@ -422,9 +599,9 @@ export class Encoder<T extends Schema = any> {
             for (const pos of sent) {
                 const element = s[$getByIndex](pos);
                 if (element === undefined) continue;
-                const elTree: ChangeTree | undefined = element[$changes];
+                const elTree: ChangeTree | undefined = refTreeOf(element);
                 if (elTree === undefined || !elTree.has() || elTree._fullSyncGen === f.genB) continue;
-                if (element[$refId] === undefined) continue;
+                if (elTree.refId === undefined) continue;
                 enterFrame(f, elTree);
                 encodeSchemaOps(f);
                 closeChunk(f);
@@ -536,9 +713,9 @@ export class Encoder<T extends Schema = any> {
                 // Force-seed element fields even when view.add skipped the
                 // live walk (isNew && !isChildAdded). `@unreliable` fields are
                 // excluded — they ship on the unreliable channel.
-                const elTree = element[$changes];
+                const elTree = refTreeOf(element);
                 if (elTree !== undefined) {
-                    const elRefId = element[$refId];
+                    const elRefId = elTree.refId;
                     let elChanges = view.changes.get(elRefId);
                     if (elChanges === undefined) {
                         elChanges = new Map();
@@ -619,7 +796,32 @@ function encodeQueue(f: Frame, queue: ChangeTreeList): void {
         // only a fresh tree can be inlined by a later parent op → only those need the "emitted" stamp
         if ((flags & IS_NEW) !== 0) tree._fullSyncGen = f.genB;
         enterFrame(f, tree);
-        if (isSchema) encodeSchemaOps(f);
+        if (isSchema) {
+            // same-shape run: look ahead for consecutive trees of this class with
+            // the same dirty primitives. Cheap peek first (interleaved classes and
+            // single-chunk ticks must not pay the eligibility loop), the handshake
+            // typeId lookup only once a run actually forms.
+            let node: ChangeTreeNode | undefined = (current as ChangeTreeNode).next;
+            if (node !== undefined && node.changeTree.encDescriptor === tree.encDescriptor && node.changeTree.dirtyLow === tree.dirtyLow && runEligible(tree, false)) {
+                let n = 0;
+                while (node !== undefined && node.changeTree._fullSyncGen !== f.genB && (node.changeTree.flags & IS_FILTERED) === 0 && runContinues(tree, node.changeTree, false)) {
+                    n++;
+                    node = node.next;
+                }
+                if (n > 0 && f.context.getTypeId(tree.ref.constructor) !== undefined) {
+                    openRun(f, tree, n);
+                    for (let k = 0; k < n; k++) {
+                        current = (current as ChangeTreeNode).next!;
+                        const member = (current as ChangeTreeNode).changeTree;
+                        if ((member.flags & IS_NEW) !== 0) member._fullSyncGen = f.genB;
+                        addRunMember(f, member);
+                    }
+                    endRun(f);
+                    continue;
+                }
+            }
+            encodeSchemaOps(f);
+        }
         else if (tree.encDescriptor.kind === KIND_ARRAY) encodeTreeOps(f);
         else encodeKeyedOps(f);
         closeChunk(f);
@@ -657,11 +859,7 @@ function copyBytes(src: Uint8Array, from: number, dst: Uint8Array, to: number, l
     }
 }
 
+/** Cross-view chunk cache key: the custom tag bits `view` holds on `tree` that the tree's class declares. */
 function tagKey(view: StateView, tree: ChangeTree): number {
-    const bits = tree.encDescriptor.customTagBits;
-    let key = 0;
-    for (let i = 0; i < bits.length; i++) {
-        if (view.hasTagOnTree(tree, bits[i])) key |= bits[i];
-    }
-    return key;
+    return view.tagsOnTree(tree) & tree.encDescriptor.customTagMask;
 }
