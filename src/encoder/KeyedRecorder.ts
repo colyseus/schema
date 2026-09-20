@@ -22,10 +22,14 @@ import { OPERATION } from "../encoding/spec.js";
  * 1000 dirty entries, 67 → 28 ns at 10). A reset zeroes the touched bytes and
  * keeps the pages; a page costs 4 KB, and since wire indexes are never
  * recycled, pages that went idle are dropped whenever a new one is needed.
+ * The FIRST page grows with the collection (32 bytes, doubling): a state made
+ * of many small maps would otherwise pay 4 KB per map on its first recorded op
+ * (`tree-build/attach-steady` +4.4 %, `encoder/deep-nested` +5.4 %).
  */
 const PAGE_BITS = 12;
 const PAGE_SIZE = 1 << PAGE_BITS;
 const PAGE_MASK = PAGE_SIZE - 1;
+const FIRST_PAGE_MIN = 32;
 
 export class KeyedRecorder<V = any> {
     /** Dirty wire indexes in first-record order; only `[0, count)` is meaningful (never truncated: no regrowth per tick). */
@@ -92,8 +96,8 @@ export class KeyedRecorder<V = any> {
     opAt(index: number): OPERATION | undefined {
         const page = this.pages[index >>> PAGE_BITS];
         if (page === undefined) return undefined;
-        const stored = page[index & PAGE_MASK];
-        return (stored === 0) ? undefined : stored - 1;
+        const stored = page[index & PAGE_MASK]; // beyond a short first page: `undefined`
+        return (stored === 0 || stored === undefined) ? undefined : stored - 1;
     }
 
     has(): boolean {
@@ -162,11 +166,23 @@ export class KeyedRecorder<V = any> {
     private pageFor(index: number): Uint8Array {
         const p = index >>> PAGE_BITS;
         const page = this.pages[p];
-        if (page !== undefined) {
+        if (page !== undefined && (p !== 0 || index < page.length)) {
             this.pageEpoch[p] = this.epoch;
             return page;
         }
-        return this.newPage(p);
+        return (p === 0) ? this.growFirstPage(index) : this.newPage(p);
+    }
+
+    /** Page 0 starts at 32 bytes and doubles up to PAGE_SIZE (pending bytes are carried over). */
+    private growFirstPage(index: number): Uint8Array {
+        const old = this.pages[0];
+        let size = (old !== undefined) ? old.length : FIRST_PAGE_MIN;
+        while (size <= index) size <<= 1;
+        const page = new Uint8Array(size);
+        if (old !== undefined) page.set(old);
+        if (this.pages.length === 0) { this.pages.push(page); this.pageEpoch.push(this.epoch); }
+        else { this.pages[0] = page; this.pageEpoch[0] = this.epoch; }
+        return page;
     }
 
     /** Out of line: a collection needs a new page once per 4096 wire indexes. */

@@ -23,6 +23,25 @@ export interface Streamable {
     _unregister(): void;
 }
 
+interface RemoveCtx { root: Root; parentRef: any; }
+// One ctx per recursion depth of `Root.remove` (tree height), reused — see treeAttachment's setParent pool.
+const _removeCtxPool: RemoveCtx[] = [];
+let _removeDepth = 0;
+
+function _removeChildCb(ctx: RemoveCtx, child: ChangeTree, _index: any): void {
+    if (!child.removeParent(ctx.parentRef)) { return; }
+    const root = ctx.root;
+    if (
+        child.parentTree === undefined || // no parent, remove it
+        root.refCount.get(child.refId!) !== undefined // parent is still in use, but has more than one reference, remove it
+    ) {
+        root.remove(child);
+    } else {
+        // re-assigning a child of the same root, move it next to parent
+        root.moveNextToParent(child);
+    }
+}
+
 export class Root {
     /**
      * Monotonic refId counter. RefIds are never recycled — a refId is a
@@ -230,20 +249,15 @@ export class Root {
             this.refCount.delete(refId);
             changeTree.needsRestage = true; // a re-add must re-emit it: its ops were consumed
 
-            changeTree.forEachChild((child, _) => {
-                if (child.removeParent(changeTree.ref)) {
-                    if ((
-                        child.parentTree === undefined || // no parent, remove it
-                        (child.parentTree && this.refCount.get(child.refId) !== undefined) // parent is still in use, but has more than one reference, remove it
-                    )) {
-                        this.remove(child);
-
-                    } else if (child.parentTree) {
-                        // re-assigning a child of the same root, move it next to parent
-                        this.moveNextToParent(child);
-                    }
-                }
-            });
+            // closure-free walk: `remove` recurses once per detached node (every despawn)
+            let ctx = _removeCtxPool[_removeDepth];
+            if (ctx === undefined) { ctx = _removeCtxPool[_removeDepth] = { root: this, parentRef: undefined! }; }
+            ctx.root = this;
+            ctx.parentRef = changeTree.ref;
+            _removeDepth++;
+            changeTree.forEachChildWithCtx(ctx, _removeChildCb);
+            _removeDepth--;
+            ctx.parentRef = undefined!; // do not keep the detached ref alive through the pool
 
         } else {
             this.refCount.set(refId, refCount);

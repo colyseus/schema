@@ -808,3 +808,96 @@ Open leads: `MapSchema.set` still does one Map read and two Map writes per ADD
 `assertInstanceType` runs an `instanceof` per `set` / `push`; `Root.remove` and
 StateView allocate a `forEachChild` closure per removed node; the decoder's
 `refCount` / `callbacks` are still plain objects with integer keys and `delete`.
+
+# Keyed recorder, and what was measured and left alone in `MapSchema`
+
+Same machine and protocol. A = `bench/.builds/R6-E` ("Per-instance storage"),
+B = `bench/.builds/R8-A`. Bytes identical on every row.
+
+```
+node bench/run.mjs --compare bench/.builds/R6-E bench/.builds/R8-A --samples 10 --json bench/results/r8-full-R6E-vs-R8A.json
+```
+
+## `KeyedRecorder` without a Map
+
+The question was `MapSchema.set`. The profile of a REPLACE-heavy tick (1 000
+`scores.set(key, n)` per tick) answered with the recorder instead:
+`ops.set(index, next)` in `KeyedRecorder.add` was the hottest line, 22.9 %. The
+recorder kept its pending ops in a `Map<wireIndex, op>` that is **cleared every
+tick**, and a cleared Map drops its table and re-grows it with rehashing.
+
+The recorder needs two things from that structure: an O(1) merge lookup by wire
+index, and iteration in first-record order — that order *is* the wire order, so
+the bytes may not change. It is now `order[0 … count)` (first-record order,
+never truncated) plus one byte per wire index in lazily allocated pages
+(`op + 1`, since `REPLACE` is 0). A reset zeroes the bytes it touched and keeps
+the pages; pages that went idle are dropped whenever a new one is needed (wire
+indexes only grow); the first page starts at 32 bytes and doubles.
+
+| scenario | unit | before | after | Δ |
+| --- | --- | --- | --- | --- |
+| mutations/map-ops/set-replace-{str,num} | µs/op | 79.8 / 59.1 | 56.3 / 33.4 | −29 / −43 % |
+| encoder/map-replace/num-{10,100}pct | ms/tick | 0.0124 / 0.0961 | 0.0071 / 0.0580 | −43 / −40 % |
+| encoder/map-replace/str-{10,100}pct | ms/tick | 0.0205 / 0.2207 | 0.0163 / 0.1584 | −21 / −28 % |
+| encoder/map-churn (4 variants), entity-churn | ms/cycle | | | −4…−8 % |
+| GC time, encoder/map-replace/num-100pct | ms | 105 | 0.2 | |
+
+A micro-benchmark of the two structures (add + emit + reset, ns per recorded
+op): 1 000 dirty indexes 31.4 → 6.6; 10 dirty 66.7 → 28.3; 10 dirty at index
+500 000 equal (54.7 vs 64.5).
+
+The first version allocated a full 4 KB page on a collection's first recorded
+op. A state made of many small maps paid for it: `tree-build/attach-steady`
++4.4 %, `encoder/deep-nested` +5.4 % in the sweep; both within noise with the
+growing first page. Same lesson as `RefTable`: the first page follows the
+content, only the later ones are fixed-size.
+
+## Measured and declined: collapsing `$items` and `indexByKey`
+
+With the recorder out of the way, `set` on an existing key is three string-hash
+operations on the same key — `indexByKey.get` 28 %, `$items.get` 14 %,
+`$items.set` 13 % of the tick. `$items` (key → value) and `indexByKey`
+(key → wire index) cover the same key set, so one Map plus values addressed by
+index would do. Per entry, 1 000-entry string-keyed map:
+
+| | two Maps (kept) | both Maps + value table | one Map + value table |
+| --- | --- | --- | --- |
+| REPLACE | 30.9 ns | 25.1 (−19 %) | 13.8 (−55 %) |
+| `get` | 10.6 ns | ≈ | 14.6 (+38 %) |
+| `forEach` | 6.0 ns | ≈ | 8.7 (+45 %) |
+| `for…of` | 7.1 ns | ≈ | 19.1 hand-written iterator (+70 %); 36.3 generator |
+
+Once the values leave the Map, V8's native Map iterator cannot serve
+`for…of` / `entries()` any more, and `get` pays a second dependent load.
+Iterating the index table instead of a Map is worse: it is proportional to
+slots, not to live entries, and a few long-lived entries scattered over many
+pages is exactly what a long-running room produces. Game loops read and
+iterate maps far more often than they replace primitives in them; not done.
+For whoever reopens it: membership is defined by `$items` alone (after
+`delete`, the index mappings linger until `$onEncodeEnd` so a same-tick re-set
+keeps its wire index), and a re-set key moves to the end of iteration order.
+
+## Two small ones
+
+- `assertInstanceType` compares `value.constructor === type` before falling
+  back to `instanceof` (a prototype-chain walk on every ref `set` / `push`).
+- `Root.remove` walks the detached node's children through
+  `forEachChildWithCtx` with a per-depth pooled context instead of allocating a
+  closure per removed node.
+
+Together: `tree-build/attach-{fresh,steady}` −2.7 / −2.9 % (p < .05),
+`tree-build/construct` −5.8 % (p = .06), `array-refs/push-pop-2000` −11 %.
+
+## Sweep
+
+Full sweep (`R6-E` → `R8-A`): 20 rows faster, no byte mismatch. Five rows
+flagged; `decoder/array-read/for-of` (+7.1 %), `small-patch/five-entities`
+(+3.8 %) and `entities-aoi-decode/n10000-c1` (+2.4 %) re-measure at +0.5 %,
+−0.1 % and −0.3 % (all n.s.) at 14 samples. `mutations/map-ops/has-str` (+14 %) and
+`forEach-num` (+5 %) do reproduce, with a tight A/A (−2.0 % / −2.9 %, n.s.) —
+on code that is byte-identical in both bundles (`has(key) { return
+this.$items.has(key); }`), and only from the last step on, which changed
+`assertInstanceType` and `Root.remove`: neither runs in a `has()` loop. A 13 ns
+native string-keyed `Map.has` is sensitive to where the setup happened to place
+the table and the key strings; the same row read +8.9 % on identical code in
+"Construction and attach" and −4 % in between. Reported, not chased.

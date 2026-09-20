@@ -61,7 +61,9 @@ export function assertInstanceType(
     instance: Ref,
     field: string | number,
 ) {
-    if (!(value instanceof type)) {
+    // Exact class first: one load and a compare answers the common case, where
+    // `instanceof` walks the prototype chain on every ref `set` / `push`.
+    if ((value as any).constructor !== type && !(value instanceof type)) {
         throw new EncodeSchemaError(`a '${type.name}' was expected, but '${value && (value as any).constructor.name}' was provided in ${instance.constructor.name}#${field}`);
     }
 }

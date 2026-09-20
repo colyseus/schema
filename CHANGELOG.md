@@ -169,6 +169,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   re-emits it (the signal moved to the tree's `needsRestage` flag).
   `MapSchema.keyByIndex` is a `RefTable` too (decoding a 10 000-entry map
   −18…−20 %).
+- **`KeyedRecorder` (Map / Set / Stream change recorder) no longer keeps its
+  pending ops in a `Map`.** That Map was cleared every tick, and a cleared Map
+  drops its table and re-grows it with rehashing — `ops.set` was 23 % of a
+  REPLACE-heavy tick. Pending ops are now an insertion-order list plus one
+  byte per wire index in lazily allocated 4 KB pages (same wire order, same
+  bytes): `MapSchema.set` on existing keys −31 % (string keys) / −45 % (number
+  keys), `encoder/map-replace` −23…−38 % with GC time → ~0. `recorder.ops` is
+  gone: use `opAt(index)`, `forEach`, `indexes()`, `order` / `count`.
 - **`$values` is created at its exact size** (`numFields + 1`, a clone of a
   packed per-class template) instead of `[]`, which V8 grows to a 17-slot
   backing store on the first write: retained memory per entity −10 %,
