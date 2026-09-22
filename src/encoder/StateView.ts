@@ -1,6 +1,6 @@
 import { ChangeTree, Ref, viewTreeOf, refIdOf } from "./ChangeTree.js";
 import { isEdgeLive } from "./changeTree/parentChain.js";
-import { $childType, $fieldIndexesByViewTag, $viewFieldIndexes } from "../types/symbols.js";
+import { $fieldIndexesByViewTag, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";

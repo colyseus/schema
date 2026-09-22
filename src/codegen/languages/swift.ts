@@ -36,8 +36,6 @@ const enumNames = new Set<string>();
 
 const COMMON_IMPORTS = `import Colyseus`;
 
-const distinct = (value: string, index: number, self: string[]) =>
-    self.indexOf(value) === index;
 
 const isSchemaType = (childType: string) =>
     childType !== undefined && /^[A-Z]/.test(childType) && !enumNames.has(childType);

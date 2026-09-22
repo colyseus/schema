@@ -1,7 +1,7 @@
 import { TypeContext } from "../types/TypeContext.js";
 import { $childType } from "../types/symbols.js";
 import { Schema } from "../Schema.js";
-import { CollectionKind, OPERATION } from "../encoding/spec.js";
+import { OPERATION } from "../encoding/spec.js";
 import { type IRef, type Ref, decodedRefIdOf } from "../encoder/ChangeTree.js";
 import type { Iterator } from "../encoding/decode.js";
 import { readUvarint } from "../encoding/varint.js";

@@ -1,5 +1,5 @@
 import { $resyncPrune } from "./symbols.js";
-import type { Definition, DefinitionType, PrimitiveType, RawPrimitiveType } from "../annotations.js";
+import type { PrimitiveType, RawPrimitiveType } from "../annotations.js";
 import type { Schema } from "../Schema.js";
 import type { ArraySchema } from "./custom/ArraySchema.js";
 import type { CollectionSchema } from "./custom/CollectionSchema.js";

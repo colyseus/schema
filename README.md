@@ -301,6 +301,7 @@ up-to-date version of the schema definitions.
 - `Infinity` numbers are encoded as `Number.MAX_SAFE_INTEGER`
 - Multi-dimensional arrays are not supported.
 - Items inside Arrays and Maps must be all instance of the same type.
+- `ArraySchema` is an `Array` subclass. In hot client loops prefer an index loop (`for (let i = 0; i < arr.length; i++)`) or `forEach` — both are at or ahead of 5.x. `for…of` and `indexOf` are slower on an `Array` subclass than on a plain array.
 - `@colyseus/schema` encodes only field values in the specified order.
   - Both encoder (server) and decoder (client) must have same schema definition.
   - The order of the fields must be the same.

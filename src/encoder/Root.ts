@@ -1,10 +1,8 @@
-import { OPERATION } from "../encoding/spec.js";
 import { TypeContext } from "../types/TypeContext.js";
-import { ChangeTree, ChangeTreeList, createChangeTreeList, PENDING_FILTER_REFRESH, type ChangeTreeNode, refTreeOf } from "./ChangeTree.js";
+import { ChangeTree, ChangeTreeList, createChangeTreeList, PENDING_FILTER_REFRESH, type ChangeTreeNode } from "./ChangeTree.js";
 import { $changes, $refId } from "../types/symbols.js";
 import { RefTable } from "../RefTable.js";
 import type { StateView } from "./StateView.js";
-import type { StreamSchema } from "../types/custom/StreamSchema.js";
 import type { StreamableState } from "./streaming.js";
 
 /**
@@ -16,6 +14,8 @@ import type { StreamableState } from "./streaming.js";
  * allocation cost.
  */
 export interface Streamable {
+    // Prototype accessors over the stamped tree (see `defineRefAccessors`
+    // in ChangeTree.ts), not own properties.
     [$refId]?: number;
     [$changes]: ChangeTree;
     _stream?: StreamableState;

@@ -6,7 +6,7 @@ import { KIND_ARRAY, OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
 import { Root } from "./Root.js";
 import type { StateView } from "./StateView.js";
-import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode, refTreeOf, refIdOf } from "./ChangeTree.js";
+import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode, refTreeOf } from "./ChangeTree.js";
 import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { forEachChildWithCtx } from "./changeTree/treeAttachment.js";

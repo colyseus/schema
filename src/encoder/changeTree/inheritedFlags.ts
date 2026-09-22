@@ -6,7 +6,7 @@
 import { Metadata } from "../../Metadata.js";
 import { DEFAULT_VIEW_TAG } from "../../annotations.js";
 import {
-    $changes, $childType,
+    $childType,
     $fullStateOnlyFieldIndexes, $streamFieldIndexes,
     $patchOnlyFieldIndexes, $viewFieldIndexes,
     // $unreliableFieldIndexes — tree-level unreliable currently disabled

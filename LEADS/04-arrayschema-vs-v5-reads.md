@@ -1,7 +1,12 @@
 # 04 — `ArraySchema` reads that are still slower than 5.x
 
-**Status:** open, blocked on a storage-model decision the user has declined so
-far · **Kind:** perf · **Risk:** high (API + the collections rewrite)
+**Status:** parked (doc note added) · **Kind:** perf · **Risk:** high (API +
+the collections rewrite)
+
+The owner keeps the `Array` subclass. `README.md` ("Limitations and best
+practices") now tells users to prefer an index loop or `forEach` in hot
+client loops. The internal-array implementation was deleted (lead 11); it
+lives in git history at `16ff6be`.
 
 ## Evidence (5.0.32 vs `R6-E`, `decoder/array-read`, 2 000 elements)
 
@@ -32,13 +37,14 @@ Only the "internal plain array" storage model (the instance holds a plain
 `items` array and forwards to it): native `indexOf` / iterator speed back, at
 the price of what 6.0 gained — `arr[i]` / `length` through a Proxy `get` on
 both sides (5.x: `index` 503 µs vs 4.7 µs). `bench/array-impl-comparison.md`
-has the earlier comparison; `src/types/custom/ArraySchemaInternal.ts` is the
-dormant alternative implementation (imported nowhere — see lead 11).
+has the earlier comparison; the alternative implementation
+(`ArraySchemaInternal.ts`) was removed in lead 11 and is in git history at
+`16ff6be`.
 
 ## Cheap things still untried
 
 - `includes` / `lastIndexOf` share `indexOf`'s helper — nothing extra to win.
 - `keys()` / `entries()` still allocate a fresh result per step (the user chose
   "reuse for `values()` only"); `entries()` also allocates the `[i, v]` pair.
-- Document the guidance instead: hot client loops should use an index loop or
-  `forEach` (both at or ahead of 5.x).
+- ~~Document the guidance instead~~ — done: `README.md` recommends an index
+  loop or `forEach` (both at or ahead of 5.x) for hot client loops.

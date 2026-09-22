@@ -123,8 +123,6 @@ ${generateVtable(klass, snakeName, typeName, allProperties)}`;
  * Generate a complete class file with guards/includes (for individual file mode)
  */
 function generateClass(klass: Class, namespace: string, allClasses: Class[]) {
-    const snakeName = toSnakeCase(klass.name);
-    const typeName = `${snakeName}_t`;
     const guardName = `__SCHEMA_CODEGEN_${klass.name.toUpperCase()}_H__`;
 
     const allRefs: Property[] = [];

@@ -1,6 +1,6 @@
 import { Metadata } from "../../Metadata.js";
-import { Collection, NonFunctionNonPrimitivePropNames, NonFunctionPropNames, CollectionLike } from "../../types/HelperTypes.js";
-import { IRef, Ref, refIdOf, decodedRefIdOf } from "../../encoder/ChangeTree.js";
+import { NonFunctionNonPrimitivePropNames, NonFunctionPropNames, CollectionLike } from "../../types/HelperTypes.js";
+import { Ref, refIdOf, decodedRefIdOf } from "../../encoder/ChangeTree.js";
 import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
 import { OPERATION } from "../../encoding/spec.js";

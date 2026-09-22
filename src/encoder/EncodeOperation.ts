@@ -2,7 +2,7 @@ import { ARRAY_OP, KEYED_OP, KEYED_OP_CODE, KIND_ARRAY, KIND_MAP, KIND_SCHEMA, O
 import type { Iterator } from "../encoding/decode.js";
 import { encode } from "../encoding/encode.js";
 import { uvarint, writeMask64, writeString, endChunk } from "../encoding/varint.js";
-import { $childType, $getByIndex, $keyType, $values } from "../types/symbols.js";
+import { $childType, $getByIndex, $keyType } from "../types/symbols.js";
 import { Metadata } from "../Metadata.js";
 import { isQuantizedType, makeQuantizedEncoder } from "../types/quantize.js";
 import { IS_FILTERED, type ChangeTree, refTreeOf, refIdOf, viewTreeOf } from "./ChangeTree.js";

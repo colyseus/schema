@@ -1,5 +1,7 @@
 # ArraySchema storage model — v5 vs 6.0 subclass vs 6.0 internal array
 
+> The internal-array implementation (`ArraySchemaInternal.ts`, `SCHEMA_ARRAY_IMPL=internal`) has been removed; it lives in git history at commit `16ff6be`.
+
 Decision input for 6.0: keep `ArraySchema extends Array` (an Array subclass
 behind a `set`-only Proxy on the encoder side, no Proxy on the decoder
 side), or go back to the 5.x storage model (a plain internal `items` array
@@ -207,7 +209,6 @@ recover the server-side `shift` and iteration wins at the cost of two
 implementations, `Array.isArray` differing by side, and 2× slower `arr[i]`
 in server game logic; not worth it on this evidence.
 
-The experiment stays in the tree (`ArraySchemaInternal.ts`,
-`SCHEMA_ARRAY_IMPL=internal`) so the comparison can be re-run; it is not
-part of the test matrix.
+The experiment was later removed from the tree; check out `16ff6be` to
+re-run the comparison (`SCHEMA_ARRAY_IMPL=internal npm run build`).
 

@@ -1,7 +1,7 @@
 import { $applyKeyType, $changes, $childType, $deleteByIndex, $onEncodeEnd, $filter, $getByIndex, $keyType, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
 import { RefTable } from "../../RefTable.js";
 import type { MapKeyType } from "../../annotations.js";
-import { ChangeTree, installUntrackedChangeTree, IRef, stampTree, treeOf, refTreeOf, defineRefAccessors, refIdOf } from "../../encoder/ChangeTree.js";
+import { ChangeTree, installUntrackedChangeTree, IRef, stampTree, treeOf, refTreeOf, defineRefAccessors } from "../../encoder/ChangeTree.js";
 import { KeyedRecorder } from "../../encoder/KeyedRecorder.js";
 import { CollectionKind, OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";

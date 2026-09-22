@@ -114,9 +114,10 @@ export const $reset = "~reset";
 export const $rev: unique symbol = Symbol.for("$rev");
 
 /**
- * Element storage of an ArraySchema when it is not the instance itself
- * (the internal-array experiment, see types/custom/ArraySchemaInternal.ts).
- * Encoder and decoder read `ref[$items] ?? ref` once per structure.
+ * Element storage of an ArraySchema when it is not the instance itself.
+ * No implementation sets it today (the internal-array experiment was
+ * removed; see git history at 16ff6be); encoder and decoder still read
+ * `ref[$items] ?? ref` once per structure, which resolves to the instance.
  */
 export const $items: unique symbol = Symbol.for("$items");
 

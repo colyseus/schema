@@ -12,14 +12,14 @@ Everything here came out of the profiling rounds recorded in
 | [01](01-construction-allocations.md) | Per-instance allocations / GC in construction | perf + memory | medium (GC ≈ 12 % of construction) | medium |
 | [02](02-decoder-refcount-callbacks-tables.md) | Decoder `refCount` / `callbacks` are integer-keyed plain objects | perf + memory | small–medium on churn | low |
 | [03](03-stateview-child-walk-closures.md) | Closure per node in StateView / ChangeTree child walks | perf (GC) | small | low |
-| [04](04-arrayschema-vs-v5-reads.md) | `ArraySchema` `indexOf` +80 %, `for…of` +18 % against 5.x | perf | medium, only with a storage-model change | high (user declined the model change) |
+| [04](04-arrayschema-vs-v5-reads.md) | `ArraySchema` `indexOf` +80 %, `for…of` +18 % against 5.x | perf | medium, only with a storage-model change | parked (doc note added) |
 | [05](05-mapschema-set-hashes.md) | `MapSchema.set`: three string hashes per REPLACE | perf | large on writes, **negative on reads** | declined — reference only |
 | [06](06-wire-index-recycling.md) | Recycle map / set wire indexes | bytes + memory | small bytes, bounds tables | medium (view drain) |
 | [07](07-tree-values-invariant.md) | `tree.values` ↔ `$values` invariant is unenforced | robustness | none (correctness) | low |
 | [08](08-refid-collision-on-reencode.md) | Re-encoding a decoded state can collide refIds | correctness | none (bug) | low–medium |
 | [09](09-cross-copy-interop.md) | Two bundled library copies do not round-trip | correctness / product | none (decision) | unknown |
 | [10](10-bench-harness.md) | Harness: short windows and layout-sensitive rows | tooling | avoids false alarms | low |
-| [11](11-dead-code.md) | `ArraySchemaInternal.ts` is imported nowhere | cleanup | — | low |
+| [11](11-dead-code.md) | `ArraySchemaInternal.ts` is imported nowhere | cleanup | — | closed (deleted) |
 
 ## How to work a lead (the protocol that held up)
 

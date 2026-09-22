@@ -120,7 +120,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   array grammars, handshake, refcounts, callbacks.
 - `ArraySchema` stays an `Array` subclass after a three-way comparison with
   v5 and a 5.x-style internal-array build (`bench/array-impl-comparison.md`);
-  the alternative remains buildable with `SCHEMA_ARRAY_IMPL=internal`.
+  the alternative implementation was removed afterwards (git history,
+  `16ff6be`).
 - `encodeView` / `encodeAllView` / `encodeUnreliableView` return
   `[shared, viewSlice]`; `Decoder.decode` accepts the pair (or a single
   buffer). `Encoder.concat(parts)` joins them for single-buffer transports.

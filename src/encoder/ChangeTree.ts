@@ -19,7 +19,7 @@
  * into the helpers. V8 inlines the pass-throughs; the runtime shape stays
  * a single class to preserve hidden-class + IC behavior.
  */
-import { ARRAY_OP, KIND_ARRAY, KIND_MAP, KIND_SCHEMA, OPERATION } from "../encoding/spec.js";
+import { ARRAY_OP, KIND_ARRAY, KIND_MAP, OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
 import { $changes, $childType, $onEncodeEnd, $getByIndex, $proxyTarget, $refId, $refTypeFieldIndexes, $numFields, $values, type $deleteByIndex } from "../types/symbols.js";
 
@@ -210,6 +210,9 @@ export interface IRef {
     // cross-version interop (Cocos Creator bundles server- and client-
     // side schema types together; a strict declaration here would reject
     // one side's instances at compile time).
+    // `[$refId]` is a prototype accessor over `tree.refId` (see
+    // `defineRefAccessors`), not an own property; internal code reads
+    // `refIdOf(ref)` / `tree.refId`.
     [$refId]?: number;
     // `$getByIndex` / `$deleteByIndex` are required on every actual ref
     // the decoder / encoder ever touches (Schema + every collection

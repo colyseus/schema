@@ -138,8 +138,8 @@ the pre-change 6.0 build (`bench/v6-results.md`, "MapSchema rewrite").
 ## ArraySchema storage model
 
 `bench/array-impl-comparison.md` compares v5, the 6.0 `Array` subclass and
-a 6.0 build with the 5.x internal-array storage (`SCHEMA_ARRAY_IMPL=internal
-npm run build`, see `src/types/custom/ArraySchemaInternal.ts`) across the
+a 6.0 build with the 5.x internal-array storage (the `ArraySchemaInternal.ts`
+experiment, since removed; it lives in git history at `16ff6be`) across the
 whole matrix plus `mutations/array-iterate` (encoder-side walks) and
 `decoder/array-read` (client-side walks), with a usage survey of what user
 code does with arrays.

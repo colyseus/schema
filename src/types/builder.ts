@@ -10,8 +10,6 @@ import { $builder } from "./symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "../encoder/streaming.js";
 import { resolveQuantize, type QuantizeOptions } from "./quantize.js";
 
-type CollectionKind = "array" | "map" | "set" | "collection";
-
 /**
  * Internal record produced by FieldBuilder#toDefinition() and consumed by schema().
  */
