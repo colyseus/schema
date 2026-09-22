@@ -11,7 +11,7 @@ Everything here came out of the profiling rounds recorded in
 | --- | --- | --- | --- | --- |
 | [01](01-construction-allocations.md) | Per-instance allocations / GC in construction | perf + memory | medium (GC ≈ 12 % of construction) | medium |
 | [02](02-decoder-refcount-callbacks-tables.md) | Decoder `refCount` / `callbacks` are integer-keyed plain objects | perf + memory | small–medium on churn | low |
-| [03](03-stateview-child-walk-closures.md) | Closure per node in StateView / ChangeTree child walks | perf (GC) | small | low |
+| [03](03-stateview-child-walk-closures.md) | Closure per node in StateView / ChangeTree child walks | perf (GC) | add+remove micro −3.8 %, bench rows neutral | closed, not landed (below resolution) |
 | [04](04-arrayschema-vs-v5-reads.md) | `ArraySchema` `indexOf` +80 %, `for…of` +18 % against 5.x | perf | medium, only with a storage-model change | parked (doc note added) |
 | [05](05-mapschema-set-hashes.md) | `MapSchema.set`: three string hashes per REPLACE | perf | large on writes, **negative on reads** | declined — reference only |
 | [06](06-wire-index-recycling.md) | Recycle map / set wire indexes | bytes + memory | small bytes, bounds tables | medium (view drain) |
