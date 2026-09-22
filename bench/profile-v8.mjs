@@ -79,7 +79,7 @@ else if (mode === "ic") nodeArgs = ["--log-ic", "--log-code", `--logfile=${logPa
 else nodeArgs = ["--trace-turbo-inlining", "--trace-opt", "--no-concurrent-recompilation"];
 
 console.error(`v8 ${mode}: ${found.scenario.name}/${found.variant.name} against ${buildDir} (1 rep × ${iters} iterations) ...`);
-const res = spawnSync(process.execPath, ["--expose-gc", ...nodeArgs, CHILD, found.file, found.variant.name, buildDir, "1", String(iters)], {
+const res = spawnSync(process.execPath, ["--expose-gc", ...(found.scenario.nodeFlags ?? []), ...nodeArgs, CHILD, found.file, found.variant.name, buildDir, "1", String(iters)], {
     encoding: "utf8",
     maxBuffer: 4 * 1024 * 1024 * 1024,
     timeout: 15 * 60_000,

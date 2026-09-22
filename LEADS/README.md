@@ -18,7 +18,7 @@ Everything here came out of the profiling rounds recorded in
 | [07](07-tree-values-invariant.md) | `tree.values` ↔ `$values` invariant is unenforced | robustness | none (correctness) | low |
 | [08](08-refid-collision-on-reencode.md) | Re-encoding a decoded state can collide refIds | correctness | none (bug) | low–medium |
 | [09](09-cross-copy-interop.md) | Two bundled library copies do not round-trip | correctness / product | none (decision) | unknown |
-| [10](10-bench-harness.md) | Harness: short windows and layout-sensitive rows | tooling | avoids false alarms | low |
+| [10](10-bench-harness.md) | Harness: short windows and layout-sensitive rows — **closed**: warm-up time floor, layout padding, A/A column, `--bisect` | tooling | avoids false alarms | low |
 | [11](11-dead-code.md) | `ArraySchemaInternal.ts` is imported nowhere | cleanup | — | closed (deleted) |
 
 ## How to work a lead (the protocol that held up)
@@ -28,12 +28,13 @@ Everything here came out of the profiling rounds recorded in
 2. Micro-benchmark the candidate structure in isolation — one variant per
    process/function (a shared call site goes megamorphic and lies).
 3. One change = one frozen build: `bash bench/snapshot-build.sh <label>`,
-   compare with `node bench/run.mjs --compare bench/.builds/<a> bench/.builds/<b> --samples 10 --filter "<pattern>"`
-   (`--filter` takes ONE pattern).
+   compare with `node bench/run.mjs --compare bench/.builds/<a> bench/.builds/<b> --samples 10 --filter "<p1>,<p2>"`
+   (comma list; flagged rows get an automatic A/A column).
 4. Full sweep before calling it done; it found a real regression in every
    round that the targeted runs had missed. It runs ~46 min: launch it detached
    and keep the machine quiet.
-5. A regression is bisected across the frozen per-step builds in one run.
+5. A regression is bisected across the frozen per-step builds in one run
+   (`run.mjs --bisect <base> <b1> <b2> …`).
    Before believing a µs-scale row: A/A for the noise floor, then `--iters ×3`.
 6. Bytes must be identical unless the lead is about the wire.
 

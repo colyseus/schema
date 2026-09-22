@@ -901,3 +901,15 @@ this.$items.has(key); }`), and only from the last step on, which changed
 native string-keyed `Map.has` is sensitive to where the setup happened to place
 the table and the key strings; the same row read +8.9 % on identical code in
 "Construction and attach" and −4 % in between. Reported, not chased.
+
+# Harness round (LEADS/10, 2026-09-22)
+
+Numbers in older sections were taken with the scenario warm-up counts only.
+From here on `run.mjs` enforces a 100 ms minimum warm-up per sample
+(`--min-warmup-ms 0` reproduces the old windows), randomises heap layout on
+the `map-ops` read rows, and runs `encoder/construct` with
+`--no-allocation-site-pretenuring` (pretenuring was a per-process lottery worth
++30 % on that row). A/A `R8-A` vs `R8-A`, 8 samples, 18 rows (map-ops,
+construct, array-read/for-of, views): one flag (`views/v100heavy` −1.0 %,
+p = .014), within the 5 % expected. `forEach-num` `R6-E → R8-A`: +7.3 % / +6.4 %
+(p < .001) under the old harness, −2.1 % / +0.9 % (n.s.) now.

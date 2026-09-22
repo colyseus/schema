@@ -12,6 +12,7 @@ or samples.
 npm run build                 # scenarios import the compiled bundle
 npm run bench                 # full matrix, 5 samples each, median±IQR table
 npm run bench -- --filter encoder/*        # subset
+npm run bench -- --filter "decoder/churn,encoder/construct"  # comma list = union
 npm run bench -- --filter gate --samples 3 # the release-gate subset
 npm run profile:cpu -- decoder/tick        # CPU sampling profile + ranked report
 npm run profile:heap -- decoder/tick      # allocation-site profile (--heap-prof)
@@ -39,6 +40,37 @@ match — a mismatch means the wire format changed).
   AND no other scenario regresses > 2% at p < 0.05 (full-matrix sweep).
 - An A/A null run (`--compare X X`) should show p > 0.05 on ≥95% of rows;
   re-certify when changing the harness or machine.
+
+### Harness options
+
+```bash
+# re-run of the flagged rows as A-vs-A happens automatically (column "A/A Δ% (p)");
+# --no-aa turns it off
+node bench/run.mjs --compare bench/.builds/R8-A bench/.builds/cand --samples 10 --filter "mutations/map-ops/*,encoder/construct"
+# base vs several frozen steps in one run: one row per unit, one Δ column per build
+node bench/run.mjs --bisect bench/.builds/R6-E bench/.builds/R7-A bench/.builds/R7-B bench/.builds/R8-A --samples 8 --filter decoder/array-read/for-of
+# fix the warm-up count for every unit (overrides the scenario and the time floor)
+node bench/run.mjs --compare A B --samples 10 --filter decoder/churn --warmup 5000
+```
+
+- **Minimum warm-up time** (`--min-warmup-ms`, default 100; `0` = scenario
+  counts only, the pre-2026-09 behaviour). The discarded warm pair (single
+  mode: the first sample) calibrates it: if a unit warmed up for less than the
+  floor, every measured sample gets `ceil(floor / steady ms-per-run)` warm-up
+  runs (same count on both sides; progress shows `[warmup 400→7675]`). The
+  count is known before `setup()`, so frame lists sized to `plan.totalRuns`
+  stay correct. `measure: "heap"` scenarios and `minWarmupMs: 0` opt out.
+- **Layout-sensitive rows** (`layoutSensitive: true` on a scenario or
+  variant; today the `mutations/map-ops` read ops) get a seeded-random heap
+  padding before `setup()` in every sample pair (`child.mjs --pad=SEED`) so
+  a build-frozen placement averages out; they print `(layout)`. `--pad` forces
+  it on for every unit, `--no-pad` off.
+- **`(2 modes)`**: a side whose samples split into two regimes (each process
+  tight, processes in one of two modes — V8 pretenuring, code / heap
+  placement). Its Δ follows the mode mix; add samples and read the A/A.
+- `nodeFlags: [...]` on a scenario adds V8 flags to its child processes
+  (`encoder/construct` runs with `--no-allocation-site-pretenuring`: the
+  pretenuring decision is a per-process lottery worth ±30 % on that row).
 
 ## Wire codec
 
@@ -73,7 +105,11 @@ export default {
   variants: [{ name: "mut10", mutations: 10, iterations: 5000 }],
   iterations: 5000,          // per rep (variant.iterations overrides)
   reps: 7,                   // child reports median-of-reps
-  warmup: 50,                // optional (default max(50, iterations/5))
+  warmup: 50,                // optional (default max(50, iterations/5)); raised to
+                             // ≥ --min-warmup-ms of runs by run.mjs
+  minWarmupMs: 100,          // optional per-scenario floor (0 = counts only)
+  layoutSensitive: true,     // optional (or per variant): randomise heap layout per sample
+  nodeFlags: [],             // optional extra node/V8 flags for the child
   valueScale: 1,             // optional value multiplier (e.g. µs/entity)
   measure: "time",           // or "heap" → value = retained KB
   gate: true,                // include in `--filter gate`
@@ -113,7 +149,7 @@ Rules:
 
 ## Directory map
 
-- `run.mjs` — runner CLI (single / `--compare` / `--assert`)
+- `run.mjs` — runner CLI (single / `--compare` / `--bisect` / `--assert`)
 - `profile.mjs` — CPU / allocation profiler driver (`lib/analyze-*.mjs` rankers)
 - `snapshot-build.sh <label>` — freeze a build into `.builds/<label>/`
 - `lib/` — child harness, stats (Mann-Whitney/HL), GC observer, fixtures, report

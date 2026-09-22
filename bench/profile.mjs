@@ -63,7 +63,7 @@ const nodeArgs = mode === "cpu"
     : ["--heap-prof", "--heap-prof-dir", PROFILES_DIR, "--heap-prof-name", profName, "--heap-prof-interval", String(interval)];
 
 console.error(`profiling (${mode}) ${found.scenario.name}/${found.variant} against ${buildDir} ...`);
-const res = spawnSync(process.execPath, ["--expose-gc", ...nodeArgs, CHILD, found.file, found.variant, buildDir], {
+const res = spawnSync(process.execPath, ["--expose-gc", ...(found.scenario.nodeFlags ?? []), ...nodeArgs, CHILD, found.file, found.variant, buildDir], {
     encoding: "utf8",
     timeout: 15 * 60_000,
     env: { ...process.env, BENCH_PROFILE: "1" },

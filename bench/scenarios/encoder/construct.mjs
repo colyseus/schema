@@ -6,7 +6,14 @@ export default {
     unit: "µs/entity",
     iterations: 5,
     reps: 7,
-    warmup: 2,
+    // Warm-up comes from the harness minimum (run.mjs --min-warmup-ms).
+    // V8 allocation-site pretenuring is a per-process lottery here: in 10–50 %
+    // of processes the entity sites get pretenured and GC time per run jumps
+    // ~2.5× (2.4 → 3.2 µs/entity), independent of the warm-up length. That
+    // bimodality, not code, moved this row by ±5–20 % in A/A runs, so the
+    // scenario measures the non-pretenured regime (LEADS/10-bench-harness.md).
+    nodeFlags: ["--no-allocation-site-pretenuring"],
+    warmup: 10, // ≥ 100 ms, and enough run() invocations for its own tier-up
     valueScale: 1000 / 5000, // ms per 5000-entity run -> µs/entity
     setup(lib) {
         return { lib, ...defineBloat(lib) };

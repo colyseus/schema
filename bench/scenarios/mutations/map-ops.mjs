@@ -6,6 +6,11 @@ import { buildMapState, makeMapPlayer } from "../../lib/fixtures.mjs";
 
 const SIZE = 1000;
 const OPS = ["get", "has", "forEach", "for-of", "keys", "set-replace", "add-delete"];
+// The read ops time a native Map walk / lookup of a few ns per entry: where
+// setup() happens to place the table and the key strings moves them by
+// ±5–15 % between builds with byte-identical code (LEADS/10-bench-harness.md).
+// run.mjs randomises the heap layout per sample for them (child --pad).
+const LAYOUT_SENSITIVE = new Set(["get", "has", "forEach", "for-of", "keys"]);
 
 export default {
     name: "mutations/map-ops",
@@ -14,8 +19,8 @@ export default {
     iterations: 2000,
     valueScale: 1000, // ms/op -> µs/op
     variants: [
-        ...OPS.map((op) => ({ name: `${op}-str`, op, key: "string" })),
-        ...OPS.map((op) => ({ name: `${op}-num`, op, key: "number" })),
+        ...OPS.map((op) => ({ name: `${op}-str`, op, key: "string", layoutSensitive: LAYOUT_SENSITIVE.has(op) })),
+        ...OPS.map((op) => ({ name: `${op}-num`, op, key: "number", layoutSensitive: LAYOUT_SENSITIVE.has(op) })),
     ],
     setup(lib, variant) {
         const { state, encoder, Player, key } = buildMapState(lib, variant.key, SIZE, SIZE);

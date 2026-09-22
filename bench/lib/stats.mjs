@@ -93,3 +93,22 @@ export function hlShift(a, b) {
     for (const x of a) for (const y of b) diffs.push(y - x);
     return median(diffs);
 }
+
+/**
+ * Two-regime detector: true when the sorted samples split at a gap wider than
+ * `minGap` × median with at least 20 % (≥ 2) of the samples on each side.
+ * Such rows are per-process lotteries (V8 pretenuring, code / heap placement):
+ * each process is tight, processes land in one of two modes, and a median
+ * compare flips with the mode mix rather than with the code.
+ */
+export function bimodal(xs, minGap = 0.06) {
+    const s = sorted(xs);
+    const n = s.length;
+    if (n < 6) return false;
+    const minSide = Math.max(2, Math.ceil(n * 0.2));
+    const med = median(s);
+    for (let i = minSide; i <= n - minSide; i++) {
+        if ((s[i] - s[i - 1]) / med > minGap) return true;
+    }
+    return false;
+}
