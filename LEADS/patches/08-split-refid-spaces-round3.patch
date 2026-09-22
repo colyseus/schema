@@ -1,0 +1,1424 @@
+diff --git a/src/Schema.ts b/src/Schema.ts
+index 2eee8dc..164c1bc 100644
+--- a/src/Schema.ts
++++ b/src/Schema.ts
+@@ -4,7 +4,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
+ 
+ import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
+ 
+-import { ChangeTree, createUntrackedChangeTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, refTreeOf, refIdOf } from './encoder/ChangeTree.js';
++import { ChangeTree, createUntrackedChangeTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, refTreeOf, refIdOf, decodedRefIdOf, ensureTracked } from './encoder/ChangeTree.js';
+ import { RefTable } from './RefTable.js';
+ import { $changes, $deleteByIndex, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $track, $values } from './types/symbols.js';
+ import { StateView } from './encoder/StateView.js';
+@@ -31,21 +31,33 @@ export class Schema<C = any> implements IRef {
+      * to allocating a ChangeTree and a values array.
+      */
+     static initialize(instance: any) {
+-        // The tree must stay invisible to `assert.deepStrictEqual` / `util.inspect`
+-        // (ChangeTree has circular refs: root → changeTrees → other trees), so it
+-        // lives in a private slot rather than an own property — see `stampTree`.
+-        // The ChangeTree creates `$values` (pre-sized to the class) and caches it
+-        // as `tree.values` for the generated setters.
+-        //
+         // Public entry point: also serves classes that do NOT extend Schema
+-        // (`Metadata.setFields` on an external class), possibly once per
+-        // level of their own inheritance chain. The Schema constructor takes
+-        // the unconditional path below instead.
+-        // (`Metadata.setFields` installs the accessors at class-definition time;
+-        // this covers an external class that reaches here without it.)
++        // (`Metadata.setFields` on an external class). The Schema constructor
++        // takes `initializeOwn` (below) instead.
++        //
++        // Idempotent: an instance that already owns a tree keeps it. An
++        // external class calls this once per level of its own inheritance
++        // chain, and the first call already built the tree for the final
++        // class (`instance.constructor` is that class from the start); fields
++        // assigned between the calls — a child's `parentTree`, recorded
++        // changes — belong to that tree. A decoder-built instance's stub is
++        // upgraded in place (`ensureTracked`: decoded values and the decoder's
++        // bookkeeping survive). A fresh tree is only ever built for an
++        // instance that has none; pooling reuses the tree through `Schema.reset`.
++        //
++        // The tree lives in a private slot, not an own property, so it stays
++        // invisible to `assert.deepStrictEqual` / `util.inspect` (ChangeTree has
++        // circular refs: root → changeTrees → other trees) — see `stampTree`.
++        // The ChangeTree creates `$values` (pre-sized to the class) and caches
++        // it as `tree.values` for the generated setters.
++        //
++        // `Metadata.setFields` installs the accessors at class-definition time;
++        // this covers an external class that reaches here without it.
+         if (!($changes in instance)) { defineRefAccessors(Object.getPrototypeOf(instance)); }
+-        instance[$values] = undefined; // re-initialization starts from a fresh array (the ChangeTree creates it, pre-sized)
+-        setTree(instance, new ChangeTree(instance)); // install, or replace on re-initialization
++        const existing: ChangeTree | undefined = instance[$changes];
++        if (existing !== undefined && existing.ref === instance) { ensureTracked(existing); return; }
++        instance[$values] = undefined; // the ChangeTree creates it, pre-sized
++        setTree(instance, new ChangeTree(instance));
+     }
+ 
+     /** Constructor fast path of {@link Schema.initialize}: a fresh `this` that extends Schema. */
+@@ -443,7 +455,7 @@ export class Schema<C = any> implements IRef {
+         const contents = (showContents) ? ` - ${JSON.stringify(ref.toJSON())}` : "";
+         const changeTree: ChangeTree = refTreeOf(ref);
+ 
+-        const refId = refIdOf(ref);
++        const refId = (decoder) ? decodedRefIdOf(ref, decoder.root) : refIdOf(ref);
+         const root = (decoder) ? decoder.root : changeTree.root;
+ 
+          // log reference count if > 1
+diff --git a/src/decoder/DecodeOperation.ts b/src/decoder/DecodeOperation.ts
+index 355cea0..a7aa16c 100644
+--- a/src/decoder/DecodeOperation.ts
++++ b/src/decoder/DecodeOperation.ts
+@@ -83,20 +83,23 @@ function buildRefInfo(ref: any): RefInfo {
+ }
+ 
+ /** Tiny on purpose (it must inline into the chunk loop): every ref the decoder meets carries a `$changes` tree. */
+-export function refInfoOf(ref: any): RefInfo {
++export function refInfoOf(d: Decoder, ref: any): RefInfo {
+     const ri: RefInfo | undefined = (treeOfDecoded(ref) as any).decodeInfo;
+-    return (ri !== undefined) ? ri : refInfoSlow(ref);
++    return (ri !== undefined) ? ri : refInfoSlow(d, ref);
+ }
+ 
+-function refInfoSlow(ref: any): RefInfo {
+-    const ri = buildRefInfo(ref);
++function refInfoSlow(d: Decoder, ref: any): RefInfo {
+     // Decoder-built instances carry an `UntrackedChangeTree`, which declares
+     // the slot. A tracked `ChangeTree` does not (it is server-side state and
+-    // pays for no decoder field); the rare tracked instance a Decoder decodes
+-    // into — the root handed to `new Decoder(state)`, a test decoding into a
+-    // live server instance — gets the record as a lazily added property: one
+-    // map transition on that tree only, no side table to keep alive.
+-    (treeOfDecoded(ref) as any).decodeInfo = ri;
++    // pays for no decoder field, and no lazily added property either — every
++    // tracked tree keeps one hidden class); the rare tracked instance a
++    // Decoder decodes into — the root handed to `new Decoder(state)`, a
++    // decoded instance an Encoder took over — keeps its record in the
++    // decoder's `trackedRecords`, and takes this slow path on every chunk:
++    // one Map lookup per chunk of such a tree.
++    const rec: any = d.root.recordOf(treeOfDecoded(ref), ref);
++    let ri: RefInfo | undefined = rec.decodeInfo;
++    if (ri === undefined) { ri = rec.decodeInfo = buildRefInfo(ref); }
+     return ri;
+ }
+ 
+@@ -176,7 +179,7 @@ function resolveRef(
+     }
+ 
+     if (previousValue) {
+-        let previousRefId = refIdOfValue(previousValue);
++        let previousRefId = refIdOfValue(previousValue, d.root);
+         if (previousRefId !== undefined && refId !== previousRefId) {
+             // replaced by a different collection instance: release it (unless a
+             // DELETE bit already did), enqueue onRemove for its entries, and
+@@ -188,7 +191,7 @@ function resolveRef(
+             let iter: IteratorResult<[any, any]>;
+             while ((iter = entries.next()) && !iter.done) {
+                 const [key, v] = iter.value;
+-                if (typeof v === "object") previousRefId = refIdOfValue(v);
++                if (typeof v === "object") previousRefId = refIdOfValue(v, d.root);
+                 allChanges?.push({ ref: previousValue, refId: previousRefId, op: OPERATION.DELETE, field: key, value: undefined, previousValue: v });
+             }
+         }
+@@ -233,7 +236,7 @@ function skipValue(d: Decoder, reader: Reader | undefined, type: any, bytes: Uin
+ 
+ /** DELETE-bit prologue shared by the Schema / keyed paths: release the previous ref, clear the slot unless it is being re-set. */
+ function releaseSlot(d: Decoder, ref: any, index: number, op: OPERATION, previousValue: any): void {
+-    const previousRefId = refIdOfValue(previousValue);
++    const previousRefId = refIdOfValue(previousValue, d.root);
+     if (previousRefId !== undefined) d.root.removeRef(previousRefId);
+     if (op !== OPERATION.DELETE_AND_ADD) ref[$deleteByIndex](index);
+ }
+@@ -250,10 +253,14 @@ function fieldAt(info: DecodeInfo, index: number, ref: any): any {
+ /** Decode an inline body into `value` (kind-dispatched). Restores `currentRefId` afterwards. */
+ export function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): void {
+     const saved = d.currentRefId;
+-    const tree: any = treeOfDecoded(value); // one load serves both the refId and the decode record
+-    const refId: number = tree.refId;
++    // one load serves both the decoder id and the decode record; a tracked
++    // tree (no `decodeInfo` of its own) resolves both through its record
++    const tree: any = treeOfDecoded(value);
++    let ri: RefInfo | undefined = tree.decodeInfo;
++    let refId: number;
++    if (ri !== undefined) { refId = tree.decodedRefId; }
++    else { const rec: any = d.root.recordOf(tree, value); refId = rec.decodedRefId; ri = rec.decodeInfo ?? (rec.decodeInfo = buildRefInfo(value)); }
+     d.currentRefId = refId;
+-    const ri: RefInfo = (tree.decodeInfo !== undefined) ? tree.decodeInfo : refInfoOf(value);
+     const kind = ri.kind;
+     if (kind === REF_SCHEMA) decodeSchemaBody(d, bytes, it, value, refId, allChanges, ri);
+     else if (kind === REF_ARRAY) decodeArrayBody(d, bytes, it, value, refId, allChanges, ri);
+@@ -384,7 +391,7 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
+             continue;
+         }
+         d.currentRefId = id;
+-        const values = refInfoOf(ref).values;
++        const values = refInfoOf(d, ref).values;
+         while (m !== 0) {
+             const bit = m & -m;
+             const index = 31 - Math.clz32(bit);
+@@ -397,7 +404,7 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
+ }
+ 
+ export function decodeSchemaOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, allChanges: DataChange[] | null, ri?: RefInfo): void {
+-    if (ri === undefined) ri = refInfoOf(ref);
++    if (ri === undefined) ri = refInfoOf(d, ref);
+     const info = ri.info!;
+     const values = ri.values;
+     while (it.offset < end) {
+@@ -449,7 +456,7 @@ function decodeMaskedFields(d: Decoder, bytes: Uint8Array, it: Iterator, ref: an
+  * ADD ops only) is read per the map's key type.
+  */
+ export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, allChanges: DataChange[] | null, isMap: boolean, ri?: RefInfo): void {
+-    if (ri === undefined) ri = refInfoOf(ref);
++    if (ri === undefined) ri = refInfoOf(d, ref);
+     const type = ri.childType;
+     const reader = ri.reader;
+     const keyReader = ri.keyReader;
+@@ -495,7 +502,7 @@ export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, e
+                 // previous collection was already released by resolveRef (no
+                 // DELETE bit) and a primitive holds no ref.
+                 operation = OPERATION.DELETE_AND_ADD;
+-                const previousRefId = refIdOfValue(previousValue);
++                const previousRefId = refIdOfValue(previousValue, d.root);
+                 if (previousRefId !== undefined && Schema.is(type)) d.root.removeRef(previousRefId);
+             }
+         }
+@@ -576,7 +583,7 @@ function reportMoved(arr: any[], before: any[], ref: any, refId: number, allChan
+ function removeRange(d: Decoder, arr: any[], index: number, count: number, ref: any, refId: number, allChanges: DataChange[] | null): void {
+     for (let j = 0; j < count; j++) {
+         const previousValue = arr[index + j];
+-        const childRefId = refIdOfValue(previousValue);
++        const childRefId = refIdOfValue(previousValue, d.root);
+         if (childRefId !== undefined) d.root.removeRef(childRefId);
+         allChanges?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: index + j, value: undefined, previousValue });
+     }
+@@ -687,7 +694,7 @@ function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref
+     for (let i = 0; i < before.length; i++) {
+         const previousValue = before[i];
+         if (newSet.has(previousValue)) continue;
+-        const previousRefId = refIdOfValue(previousValue);
++        const previousRefId = refIdOfValue(previousValue, d.root);
+         if (previousRefId !== undefined) $root.removeRef(previousRefId);
+         allChanges?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: i, value: undefined, previousValue });
+     }
+@@ -712,7 +719,7 @@ function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref
+  * point on.
+  */
+ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, allChanges: DataChange[] | null, ri?: RefInfo): void {
+-    if (ri === undefined) ri = refInfoOf(ref);
++    if (ri === undefined) ri = refInfoOf(d, ref);
+     const arr: any[] = ref[$items] ?? ref; // element storage (the instance itself for the Array subclass)
+     const type = ri.childType;
+     const reader = ri.reader;
+@@ -774,7 +781,7 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
+                     else { header = readUvarint(bytes, it); value = resolveRef(d, header, OPERATION.ADD, previousValue, type, bytes, it, allChanges); }
+                     if (resync) resyncRecordVisit(d, index);
+                     if (previousValue !== value) {
+-                        const previousRefId = refIdOfValue(previousValue);
++                        const previousRefId = refIdOfValue(previousValue, d.root);
+                         if (previousRefId !== undefined) $root.removeRef(previousRefId);
+                         arr[index] = value;
+                         allChanges?.push({
+diff --git a/src/decoder/Decoder.ts b/src/decoder/Decoder.ts
+index 8495c99..d8c218a 100644
+--- a/src/decoder/Decoder.ts
++++ b/src/decoder/Decoder.ts
+@@ -155,7 +155,7 @@ export class Decoder<T extends IRef = any> {
+ 
+             this.currentRefId = refId;
+             try {
+-                const ri = refInfoOf(ref);
++                const ri = refInfoOf(this, ref);
+                 const kind = ri.kind;
+                 if (kind === REF_SCHEMA) decodeSchemaOps(this, bytes, it, end, ref, refId, allChanges, ri);
+                 else if (kind === REF_ARRAY) decodeArrayOps(this, bytes, it, end, ref, refId, allChanges, ri);
+@@ -185,7 +185,7 @@ export class Decoder<T extends IRef = any> {
+ 
+     removeChildRefs(ref: Collection, allChanges: DataChange[] | null) {
+         const needRemoveRef = typeof ((ref as any)[$childType]) !== "string";
+-        const refId = decodedRefIdOf(ref);
++        const refId = decodedRefIdOf(ref, this.root);
+ 
+         ref.forEach((value: any, key: any) => {
+             allChanges?.push({
+@@ -198,7 +198,7 @@ export class Decoder<T extends IRef = any> {
+             });
+ 
+             if (needRemoveRef) {
+-                this.root.removeRef(decodedRefIdOf(value));
++                this.root.removeRef(decodedRefIdOf(value, this.root));
+             }
+         });
+     }
+diff --git a/src/decoder/ReferenceTracker.ts b/src/decoder/ReferenceTracker.ts
+index b758af2..e831230 100644
+--- a/src/decoder/ReferenceTracker.ts
++++ b/src/decoder/ReferenceTracker.ts
+@@ -1,5 +1,5 @@
+ import { Metadata } from "../Metadata.js";
+-import { refTreeOf, installUntrackedChangeTree, decodedRefIdOf } from "../encoder/ChangeTree.js";
++import { type ChangeTree, type UntrackedChangeTree, refTreeOf, installUntrackedChangeTree, createUntrackedChangeTree, decodedRefIdOf } from "../encoder/ChangeTree.js";
+ import { $childType } from "../types/symbols.js";
+ import type { IRef } from "../encoder/ChangeTree.js";
+ import { spliceOne } from "../types/utils.js";
+@@ -44,6 +44,26 @@ export class ReferenceTracker {
+     public callbacks: { [refId: number]: SchemaCallbacks } = {};
+     protected nextUniqueId: number = 0;
+ 
++    /**
++     * Bookkeeping of the TRACKED trees this decoder addresses (the root of
++     * `new Decoder(state)`, instances an Encoder took over), as
++     * `UntrackedChangeTree` records — see `DecoderRecords` in ChangeTree.ts.
++     * Empty for a decoder over a decoder-built root.
++     */
++    public trackedRecords = new Map<ChangeTree, UntrackedChangeTree>();
++
++    /** The record of a tracked tree (created on first use); a stub is its own record. */
++    recordOf(tree: ChangeTree, ref: any): UntrackedChangeTree {
++        if ((tree as any).isTracked === false) return tree as unknown as UntrackedChangeTree;
++        let rec = this.trackedRecords.get(tree);
++        if (rec === undefined) {
++            rec = createUntrackedChangeTree(ref) as unknown as UntrackedChangeTree;
++            rec.tracker = this;
++            this.trackedRecords.set(tree, rec);
++        }
++        return rec;
++    }
++
+     getNextUniqueId() {
+         return this.nextUniqueId++;
+     }
+@@ -52,17 +72,23 @@ export class ReferenceTracker {
+     addRef(refId: number, ref: IRef, incrementCount: boolean = true) {
+         this.refs.set(refId, ref);
+ 
+-        // The refId lives on the ref's (Untracked)ChangeTree; `ref[$refId]` is
+-        // a prototype accessor over it, so it stays out of `deepStrictEqual`.
++        // The id lives in the ref's decoder record (`decodedRefId` on its
++        // `UntrackedChangeTree`; for a TRACKED tree — the root of
++        // `new Decoder(state)`, a relay's re-encoded state — in the record the
++        // tree maps to, see `recordOf`), apart from the encoder's
++        // `refId`, so an instance that lives on both sides keeps one id per
++        // side. `ref[$refId]` is a prototype accessor over both, so neither
++        // shows up in `deepStrictEqual`.
+         let tree = refTreeOf(ref);
+         if (tree === undefined) {
+             // A ref no factory of this library built: give it the same stub a
+-            // decoder-built instance carries — one home for the refId, and the
++            // decoder-built instance carries — one home for the id, and the
+             // decode loop finds the tree it expects.
+             installUntrackedChangeTree(ref);
+             tree = refTreeOf(ref)!;
+         }
+-        tree.refId = refId;
++        if (tree.isTracked === false) { const stub = tree as unknown as UntrackedChangeTree; stub.decodedRefId = refId; stub.tracker = this; }
++        else { this.recordOf(tree, ref).decodedRefId = refId; }
+ 
+         if (incrementCount) {
+             this.refCount[refId] = (this.refCount[refId] || 0) + 1;
+@@ -103,6 +129,7 @@ export class ReferenceTracker {
+ 
+     clearRefs() {
+         this.refs.clear();
++        this.trackedRecords.clear();
+         this.deletedRefs.clear();
+         this.callbacks = {};
+         this.refCount = {};
+@@ -128,7 +155,7 @@ export class ReferenceTracker {
+                     const field = metadata[index as any as number].name;
+                     const child = ref[field as keyof IRef];
+                     if (typeof(child) === "object" && child) {
+-                        const childRefId = decodedRefIdOf(child);
++                        const childRefId = decodedRefIdOf(child, this);
+                         if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
+                             this.removeRef(childRefId);
+                         }
+@@ -140,7 +167,7 @@ export class ReferenceTracker {
+                     // removeRef only appends to deletedRefs (a Set: safe to grow during forEach),
+                     // so the values can be walked directly instead of copied into an array first
+                     for (const child of (ref as MapSchema).values()) {
+-                        const childRefId = decodedRefIdOf(child);
++                        const childRefId = decodedRefIdOf(child, this);
+                         if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
+                             this.removeRef(childRefId);
+                         }
+diff --git a/src/decoder/Resync.ts b/src/decoder/Resync.ts
+index 4a33606..0b0869d 100644
+--- a/src/decoder/Resync.ts
++++ b/src/decoder/Resync.ts
+@@ -59,7 +59,7 @@ export function resyncTouchEntry(
+     set.add(identity);
+ 
+     if (previousValue !== undefined && operation === OPERATION.ADD && previousValue !== value) {
+-        const previousRefId = decodedRefIdOf(previousValue);
++        const previousRefId = decodedRefIdOf(previousValue, decoder.root);
+         if (previousRefId !== undefined) {
+             decoder.root.removeRef(previousRefId);
+             allChanges?.push({
+@@ -121,7 +121,7 @@ export function resyncSweep(decoder: Decoder, allChanges: DataChange[] | null) {
+ }
+ 
+ function sweepSchema(decoder: Decoder, ref: Schema, seen: Set<number>, allChanges: DataChange[] | null) {
+-    const refId = decodedRefIdOf(ref);
++    const refId = decodedRefIdOf(ref, decoder.root);
+     if (refId === undefined || seen.has(refId)) { return; }
+     seen.add(refId);
+ 
+@@ -149,7 +149,7 @@ function sweepSchema(decoder: Decoder, ref: Schema, seen: Set<number>, allChange
+ 
+ function sweepCollection(decoder: Decoder, coll: any, seen: Set<number>, allChanges: DataChange[] | null) {
+     const tgt: any = coll[$proxyTarget] ?? coll;
+-    const refId = decodedRefIdOf(tgt);
++    const refId = decodedRefIdOf(tgt, decoder.root);
+     if (refId === undefined || seen.has(refId)) { return; }
+     seen.add(refId);
+ 
+@@ -172,12 +172,13 @@ function sweepCollection(decoder: Decoder, coll: any, seen: Set<number>, allChan
+                 value: undefined,
+                 previousValue: value,
+             });
+-            const childRefId = decodedRefIdOf(value);
++            const childRefId = decodedRefIdOf(value, decoder.root);
+             if (childRefId !== undefined) { $root.removeRef(childRefId); }
+         },
+         (value: any) => {
+             // recurse so nested collections of retained entries sweep too
+             if (Schema.isSchema(value)) { sweepSchema(decoder, value, seen, allChanges); }
+         },
++        $root,
+     );
+ }
+diff --git a/src/decoder/strategy/Callbacks.ts b/src/decoder/strategy/Callbacks.ts
+index d622848..7be8ff4 100644
+--- a/src/decoder/strategy/Callbacks.ts
++++ b/src/decoder/strategy/Callbacks.ts
+@@ -1,5 +1,5 @@
+ import { Metadata } from "../../Metadata.js";
+-import { refIdOf, decodedRefIdOf } from "../../encoder/ChangeTree.js";
++import { decodedRefIdOf } from "../../encoder/ChangeTree.js";
+ import { Collection, NonFunctionPropNames, CollectionLike } from "../../types/HelperTypes.js";
+ import type { IRef, Ref } from "../../encoder/ChangeTree.js";
+ import { Decoder } from "../Decoder.js";
+@@ -88,16 +88,16 @@ export class StateCallbackStrategy<TState extends IRef> {
+         const collection = (instance as any)[propertyName] as TReturn;
+ 
+         // Collection not available yet. Listen for its availability before attaching the handler.
+-        if (!collection || refIdOf(collection) === undefined) {
++        if (!collection || decodedRefIdOf(collection, this.decoder.root) === undefined) {
+             let removePropertyCallback: () => void;
+             removePropertyCallback = this.addCallback(
+-                refIdOf(instance)!,
++                decodedRefIdOf(instance, this.decoder.root)!,
+                 propertyName,
+                 (value: TReturn, _: TReturn) => {
+                     if (value !== null && value !== undefined) {
+                         // Remove the property listener now that collection is available
+                         removePropertyCallback();
+-                        removeHandler = this.addCallback(refIdOf(value)!, operation, handler);
++                        removeHandler = this.addCallback(decodedRefIdOf(value, this.decoder.root)!, operation, handler);
+                     }
+                 }
+             );
+@@ -116,7 +116,7 @@ export class StateCallbackStrategy<TState extends IRef> {
+                 });
+             }
+ 
+-            return this.addCallback(refIdOf(collection)!, operation, handler);
++            return this.addCallback(decodedRefIdOf(collection, this.decoder.root)!, operation, handler);
+         }
+     }
+ 
+@@ -161,7 +161,7 @@ export class StateCallbackStrategy<TState extends IRef> {
+         // instance bound twice in one batch: the second binding's listener
+         // still sees the value the first binding's body delivered.)
+         if (immediate && this.isTriggering) {
+-            immediate = !this.hasPendingChange(refIdOf(instance)!, propertyName);
++            immediate = !this.hasPendingChange(decodedRefIdOf(instance, this.decoder.root)!, propertyName);
+         }
+ 
+         //
+@@ -172,7 +172,7 @@ export class StateCallbackStrategy<TState extends IRef> {
+             handler(currentValue, undefined as any);
+         }
+ 
+-        return this.addCallback(refIdOf(instance)!, propertyName, handler);
++        return this.addCallback(decodedRefIdOf(instance, this.decoder.root)!, propertyName, handler);
+     }
+ 
+     /**
+@@ -205,7 +205,7 @@ export class StateCallbackStrategy<TState extends IRef> {
+             // onChange(instance, handler) - instance change
+             const instance = args[0] as Schema;
+             const handler = args[1] as InstanceChangeCallback;
+-            return this.addCallback(refIdOf(instance)!, OPERATION.REPLACE, handler);
++            return this.addCallback(decodedRefIdOf(instance, this.decoder.root)!, OPERATION.REPLACE, handler);
+         }
+ 
+         if (typeof args[0] === 'string') {
+@@ -337,7 +337,7 @@ export class StateCallbackStrategy<TState extends IRef> {
+             action();
+         }
+ 
+-        return this.addCallback(refIdOf(from)!, OPERATION.REPLACE, action);
++        return this.addCallback(decodedRefIdOf(from, this.decoder.root)!, OPERATION.REPLACE, action);
+     }
+ 
+     /** True iff a change for (`refId`, `field`) is still ahead in the batch being dispatched. */
+@@ -380,7 +380,7 @@ export class StateCallbackStrategy<TState extends IRef> {
+                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
+                 Schema.isSchema(change.previousValue)
+             ) {
+-                const childRefId = decodedRefIdOf(change.previousValue)!;
++                const childRefId = decodedRefIdOf(change.previousValue, this.decoder.root)!;
+                 const deleteCallbacks = this.callbacks[childRefId]?.[OPERATION.DELETE];
+                 if (deleteCallbacks) {
+                     for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
+diff --git a/src/decoder/strategy/getDecoderStateCallbacks.ts b/src/decoder/strategy/getDecoderStateCallbacks.ts
+index 4972eee..89b08ac 100644
+--- a/src/decoder/strategy/getDecoderStateCallbacks.ts
++++ b/src/decoder/strategy/getDecoderStateCallbacks.ts
+@@ -1,6 +1,6 @@
+ import { Metadata } from "../../Metadata.js";
+ import { Collection, NonFunctionNonPrimitivePropNames, NonFunctionPropNames, CollectionLike } from "../../types/HelperTypes.js";
+-import { IRef, Ref, refIdOf, decodedRefIdOf } from "../../encoder/ChangeTree.js";
++import { IRef, Ref, decodedRefIdOf } from "../../encoder/ChangeTree.js";
+ import { Decoder } from "../Decoder.js";
+ import { DataChange } from "../DecodeOperation.js";
+ import { OPERATION } from "../../encoding/spec.js";
+@@ -159,7 +159,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
+                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
+                 Schema.isSchema(change.previousValue)
+             ) {
+-                const deleteCallbacks = callbacks[decodedRefIdOf(change.previousValue)]?.[OPERATION.DELETE];
++                const deleteCallbacks = callbacks[decodedRefIdOf(change.previousValue, $root)]?.[OPERATION.DELETE];
+                 for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
+                     deleteCallbacks[i]();
+                 }
+@@ -274,11 +274,11 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
+                 if (
+                     immediate &&
+                     (ref as any)[prop] !== undefined &&
+-                    !hasPendingChange(refIdOf(ref), prop)
++                    !hasPendingChange(decodedRefIdOf(ref, $root), prop)
+                 ) {
+                     callback((ref as any)[prop], undefined);
+                 }
+-                return $root.addCallback(refIdOf(ref), prop, callback);
++                return $root.addCallback(decodedRefIdOf(ref, $root), prop, callback);
+             }
+ 
+             /**
+@@ -303,7 +303,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
+ 
+                 onChange: function onChange(callback: () => void) {
+                     return $root.addCallback(
+-                        refIdOf(context.instance),
++                        decodedRefIdOf(context.instance, $root),
+                         OPERATION.REPLACE,
+                         callback
+                     );
+@@ -318,7 +318,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
+                         properties = Object.keys(metadata).map((index) => metadata[index as any as number].name);
+                     }
+                     return $root.addCallback(
+-                        refIdOf(context.instance),
++                        decodedRefIdOf(context.instance, $root),
+                         OPERATION.REPLACE,
+                         () => {
+                             properties.forEach((prop) =>
+@@ -344,7 +344,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
+                                 }, false);
+ 
+                                 // has existing value
+-                                if (refIdOf(instance) !== undefined) {
++                                if (decodedRefIdOf(instance, $root) !== undefined) {
+                                     callback(instance, true);
+                                 }
+                             }
+@@ -352,7 +352,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
+ 
+                         return getProxy(metadataField.type, {
+                             // make sure refId is available, otherwise need to wait for the instance to be available.
+-                            instance: (refIdOf(instance) !== undefined && instance),
++                            instance: (decodedRefIdOf(instance, $root) !== undefined && instance),
+                             parentInstance: context.instance,
+                             onInstanceAvailable,
+                         });
+@@ -378,7 +378,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
+                     (ref as CollectionSchema).forEach((v, k) => callback(v, k));
+                 }
+ 
+-                return $root.addCallback(refIdOf(ref), OPERATION.ADD, (value: any, key: any) => {
++                return $root.addCallback(decodedRefIdOf(ref, $root), OPERATION.ADD, (value: any, key: any) => {
+                     onAddCalls.set(callback, true);
+                     currentOnAddCallback = callback;
+                     callback(value, key);
+@@ -388,11 +388,11 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
+             };
+ 
+             const onRemove = function (ref: Ref, callback: (value: any, key: any) => void) {
+-                return $root.addCallback(refIdOf(ref), OPERATION.DELETE, callback);
++                return $root.addCallback(decodedRefIdOf(ref, $root), OPERATION.DELETE, callback);
+             };
+ 
+             const onChange = function (ref: Ref, callback: (value: any, key: any) => void) {
+-                return $root.addCallback(refIdOf(ref), OPERATION.REPLACE, callback);
++                return $root.addCallback(decodedRefIdOf(ref, $root), OPERATION.REPLACE, callback);
+             };
+ 
+             return new Proxy({
+diff --git a/src/encoder/ChangeTree.ts b/src/encoder/ChangeTree.ts
+index 8d07912..e0a62ba 100644
+--- a/src/encoder/ChangeTree.ts
++++ b/src/encoder/ChangeTree.ts
+@@ -144,10 +144,31 @@ export function stampTree(target: object, tree: any): void { new TreeStamp(targe
+ export const treeOf = TreeStamp.of;
+ /** `treeOf` for the decoder's hot loop — see `TreeStamp.ofDecoded`. */
+ export const treeOfDecoded = TreeStamp.ofDecoded;
+-/** `refIdOf` for decoder-side values (a primitive, or a ref this process built), on the decoder's own feedback. */
+-export function decodedRefIdOf(value: any): number | undefined {
+-    return (typeof value === "object" && value !== null) ? TreeStamp.ofDecoded(value).refId : undefined;
++/**
++ * The DECODER's id of a value (`undefined` for primitives and for refs no
++ * decoder addresses), on the decoder's own feedback. A separate id from the
++ * encoder's `refId`: a decoder and an encoder can share an instance (a relay
++ * re-encodes what it decodes) without sharing an id space. Lives on the
++ * instance's `UntrackedChangeTree`; for a tracked tree, in its decoder record.
++ */
++export function decodedRefIdOf(value: any, records?: DecoderRecords): number | undefined {
++    if (typeof value !== "object" || value === null) return undefined;
++    const tree: any = TreeStamp.ofDecoded(value);
++    return (tree.isTracked === false) ? tree.decodedRefId : records?.trackedRecords.get(tree)?.decodedRefId;
+ }
++
++/**
++ * Where a Decoder keeps the bookkeeping of the TRACKED trees it addresses
++ * (the root handed to `new Decoder(state)`, a decoded instance an Encoder
++ * took over): decoder id and per-ref decode record, as an
++ * `UntrackedChangeTree` per tree. Implemented by `ReferenceTracker`. Kept
++ * OFF the `ChangeTree` — no slot (memory per server-side tree) and no lazily
++ * added property (a second hidden class for the encoder's hot loops in a
++ * relay Root) — and off any process-wide `WeakMap` (a fresh ephemeron key per
++ * `new Decoder(state)` made the scavenger five times slower: `decoder/bootstrap`
++ * +38 %). A strong per-decoder `Map` dies with its decoder.
++ */
++export interface DecoderRecords { trackedRecords: Map<ChangeTree, UntrackedChangeTree>; }
+ export const setTree = TreeStamp.put;
+ export const treeOfAny = TreeStamp.ofAny;
+ /** The tree of any VALUE — `undefined` for primitives, null and plain objects. Drop-in for `value?.[$changes]`. */
+@@ -173,12 +194,31 @@ export function refIdOf(value: any): number | undefined {
+ const REF_ACCESSORS: PropertyDescriptorMap = {
+     [$changes]: {
+         get(this: any) { return TreeStamp.peek(this); },
++        // Contract: a tree belongs to the instance it was built for
++        // (`new ChangeTree(instance)` adopts its `$values`; a decoder stub is
++        // built for it). Installing one instance's tree on another is
++        // unsupported — descriptor, ops sizing, parent links and `values` stay
++        // bound to the original owner; nothing here re-targets them.
+         set(this: any, tree: ChangeTree) { TreeStamp.put(this, tree); },
+         enumerable: false, configurable: true,
+     },
+     [$refId]: {
+-        get(this: any) { return TreeStamp.peek(this)?.refId; },
+-        set(this: any, value: number | undefined) { const tree = TreeStamp.peek(this); if (tree !== undefined) { tree.refId = value; } },
++        // Encoder identity first; a decoder-built instance (or a decoder's
++        // root) reports the id its decoder knows it by. The setter writes the
++        // side the instance is on: a stub's decoder id, a tracked tree's `refId`.
++        // (A tracked tree a decoder addresses without an encoder — the root of
++        // `new Decoder(state)` — reads `undefined`: its decoder id lives in that
++        // decoder's records, see `DecoderRecords`.)
++        get(this: any) {
++            const tree: any = TreeStamp.peek(this);
++            if (tree === undefined) return undefined;
++            return tree.refId ?? ((tree.isTracked === false) ? tree.decodedRefId : undefined);
++        },
++        set(this: any, value: number | undefined) {
++            const tree: any = TreeStamp.peek(this);
++            if (tree === undefined) return;
++            if (tree.isTracked === false) { tree.decodedRefId = value; } else { tree.refId = value; }
++        },
+         enumerable: false, configurable: true,
+     },
+ };
+@@ -316,12 +356,22 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
+     ref: T;
+ 
+     /**
+-     * Wire identity, assigned by `Root.add` on first attach (`undefined`
+-     * until then, and again after `Schema.reset`). `ref[$refId]` is a
+-     * prototype accessor over this slot.
++     * Wire identity in the ENCODER's Root, assigned by `Root.add` on first
++     * attach (`undefined` until then, and again after `Schema.reset`).
++     * `ref[$refId]` is a prototype accessor over this slot. Never inherited
++     * from a decoder: an instance that also lives in a Decoder keeps that id
++     * in its decoder's records (`DecoderRecords`), never on this tree.
+      */
+     refId: number | undefined;
+ 
++    /**
++     * Tracked (encoder-side) tree; `false` on an `UntrackedChangeTree`. A
++     * prototype getter: no instance slot, no `instanceof`. Readers test for
++     * the stub POSITIVELY (`=== false`): a tracked tree another library copy
++     * built may not define this at all and must still be treated as tracked.
++     */
++    get isTracked(): boolean { return true; }
++
+     /**
+      * Non-Proxy target of `ref` for encoder hot-path reads. For
+      * `ArraySchema`, `ref` is the Proxy users interact with (its `set` trap
+@@ -344,6 +394,14 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
+      * through one `this[$changes]` load — a setter closure is shared by
+      * every class that declares that field shape, so each `this[...]`
+      * access in it is megamorphic; the tree's own fields are not.
++     *
++     * Contract: `values === ref[$values]` for every Schema-kind tree — the
++     * constructor creates or adopts the array, `Schema.initialize` never
++     * rebuilds a tree the instance already owns, and the `[$changes]` setter
++     * re-reads it for an own tree. The kind-gated encode loop reads it
++     * unguarded; the attach walk (`forEachChildWithCtx`) keeps a
++     * `values !== undefined` guard because it can meet a tree another
++     * library copy built.
+      */
+     values: any[] | undefined;
+ 
+@@ -981,11 +1039,12 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
+ 
+ /**
+  * Lightweight per-instance no-op ChangeTree used for instances the decoder
+- * builds. Those instances never feed back into an Encoder, so the full
++ * builds. Those instances rarely feed back into an Encoder, so the full
+  * `ChangeTree` machinery (EncodeDescriptor lookup, recorder state, Maps /
+  * Uint8Arrays for change slots) is pure overhead — this stub carries only a
+  * `ref` back-pointer and no-op methods, so tree walkers and debug tooling
+- * continue to work.
++ * continue to work. The moment an encoder adopts the instance (`setParent` /
++ * `setRoot`), the stub upgrades itself to a real tree — see `ensureTracked`.
+  *
+  * Plug-in contract: each collection class and the `Decoder` pick between
+  * `new ChangeTree(ref)` and `createUntrackedChangeTree(ref)` explicitly via
+@@ -995,8 +1054,18 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
+  */
+ export class UntrackedChangeTree {
+     ref: Ref;
+-    /** Wire identity, assigned by `ReferenceTracker.addRef` (see ChangeTree.refId). */
+-    refId: number | undefined = undefined;
++    /**
++     * The id this instance has in the Decoder that built it, assigned by
++     * `ReferenceTracker.addRef`. Deliberately NOT `refId`: that slot is the
++     * encoder's, and stays `undefined` here — an encoder that adopts this
++     * instance (`ensureTracked`) allocates its own id, so a decoder and an
++     * encoder never share an id space. `ref[$refId]` falls back to this.
++     * (An instance of this class also serves as the decoder record of a
++     * tracked tree — see `DecoderRecords` / `ReferenceTracker.recordOf`.)
++     */
++    decodedRefId: number | undefined = undefined;
++    /** Never set on a stub; declared so readers shared with `ChangeTree` type-check. */
++    declare refId: undefined;
+ 
+     // Mirror the subset of ChangeTree state that decoder-path readers touch.
+     // Everything else is deliberately undefined (matches the shape of a
+@@ -1015,6 +1084,13 @@ export class UntrackedChangeTree {
+      * to that one tree lazily instead of costing every server-side tree a field.
+      */
+     decodeInfo: unknown = undefined;
++    /**
++     * The Decoder that assigned `decodedRefId` (set by `ReferenceTracker.addRef`).
++     * When an encoder upgrades this stub (`ensureTracked`), the stub is handed
++     * to that decoder as the tracked tree's record, so it keeps addressing the
++     * instance by its own id.
++     */
++    tracker: DecoderRecords | undefined = undefined;
+     paused: boolean = false;
+     isNew: boolean = false;
+     flags: number = 0;
+@@ -1028,12 +1104,28 @@ export class UntrackedChangeTree {
+         this.values = (ref as any)[$values];
+     }
+ 
++    get isTracked(): boolean { return false; }
++
++    /**
++     * Attachment to an ENCODER: upgrade to a real tree on the spot and attach
++     * that. Reached from `Encoder.setState` on a decoder-built root, and from
++     * a parent that adopts this instance (a setter, a collection op) while
++     * that parent is attached to a Root. A parent without a Root — the
++     * normally-constructed root of `new Decoder(state)` whose fields the
++     * decoder itself assigns, or a detached tracked instance — leaves the stub
++     * as it is: the walk upgrades it if that parent ever enters an encoder.
++     */
++    setRoot(root: Root): void { ensureTracked(this as unknown as ChangeTree).setRoot(root); }
++    setParent(parent: Ref, root?: Root, parentIndex?: number, parentTree?: ChangeTree): void {
++        if (root === undefined) return;
++        ensureTracked(this as unknown as ChangeTree).setParent(parent, root, parentIndex, parentTree);
++    }
++
+     // Mutation surface — all no-ops.
+     change(): void {}
+     delete(): void {}
+     touch(): void {}
+     restage(): void {}
+-    setParent(): void {}
+     addParent(): void {}
+     removeParent(): boolean { return false; }
+     getChange(): number { return 0; }
+@@ -1105,3 +1197,30 @@ export function createUntrackedChangeTree(ref: Ref): ChangeTree {
+ export function installUntrackedChangeTree(target: object): void {
+     setTree(target, createUntrackedChangeTree(target as Ref));
+ }
++
++/**
++ * The tracked tree of an instance entering an encoder. Anything that is not
++ * positively an `UntrackedChangeTree` stub is returned as is (a tracked tree
++ * of another library copy included). A stub is upgraded to a real
++ * `ChangeTree` here (adopting the instance's `$values`); the stub object
++ * lives on as the tree's record in the Decoder that built the instance
++ * (`stub.tracker`), which keeps addressing it by ITS id. The encoder's `refId` starts
++ * `undefined`: `Root.add` allocates it like for any new instance, so ids a
++ * decoder handed out never enter the encoder's id space. Index writes on a
++ * decoder-built ArraySchema stay untracked (no Proxy).
++ */
++export function ensureTracked(tree: ChangeTree): ChangeTree {
++    if ((tree as any).isTracked !== false) return tree;
++    const stub = tree as unknown as UntrackedChangeTree;
++    const ref: any = stub.ref;
++    const target = ref[$proxyTarget] ?? ref;
++    const real = new ChangeTree(ref, target);
++    // Its contents were never recorded (the decoder wrote them behind the
++    // no-op stub), so `Root.add` must re-stage every populated field / entry
++    // as ADD for the incremental patch — the same flag a pooled instance
++    // re-enters with (`recycle`). Full-sync output reads the live values.
++    real.flags = IS_NEW | NEEDS_RESTAGE;
++    stub.tracker?.trackedRecords.set(real, stub); // the stub lives on as the decoder's record of the tracked tree
++    setTree(target, real);
++    return real;
++}
+diff --git a/src/encoder/Encoder.ts b/src/encoder/Encoder.ts
+index 118e491..cc2ff87 100644
+--- a/src/encoder/Encoder.ts
++++ b/src/encoder/Encoder.ts
+@@ -152,6 +152,11 @@ export class Encoder<T extends Schema = any> {
+ 
+     protected setState(state: T) {
+         this.state = state;
++        // A decoded state (relay / peer-to-peer) is taken over here: a
++        // decoder-built root's stub upgrades itself in `setRoot`, and the
++        // attach walk upgrades every decoder-built child. This Root allocates
++        // its own refIds for all of them — the decoder's ids stay with the
++        // decoder and never enter this id space (see LEADS/08).
+         refTreeOf(this.state).setRoot(this.root);
+     }
+ 
+diff --git a/src/encoder/changeTree/treeAttachment.ts b/src/encoder/changeTree/treeAttachment.ts
+index d7a613e..90d0544 100644
+--- a/src/encoder/changeTree/treeAttachment.ts
++++ b/src/encoder/changeTree/treeAttachment.ts
+@@ -4,10 +4,10 @@
+  * goes through here, which is why the recursive walk uses a hoisted
+  * callback + ctx-pool instead of per-call closures.
+  */
+-import { $childType, $proxyTarget, $refTypeFieldIndexes } from "../../types/symbols.js";
++import { $childType, $refTypeFieldIndexes } from "../../types/symbols.js";
+ import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
+ import { Root } from "../Root.js";
+-import { ChangeTree, type Ref, refTreeOf, setTree } from "../ChangeTree.js";
++import { ChangeTree, type Ref, refTreeOf } from "../ChangeTree.js";
+ import { checkIsFiltered } from "./inheritedFlags.js";
+ import { propagateNewChildToSubscribers } from "../subscriptions.js";
+ 
+@@ -18,9 +18,21 @@ export function setRoot(tree: ChangeTree, root: Root): void {
+ 
+     checkIsFiltered(tree, tree.parent, tree.parentIndex, isNewChangeTree);
+ 
+-    // Recursively set root on child structures (closure-free hot path).
++    // Recursively set root on child structures (closure-free hot path; one
++    // ctx per recursion depth, as in setParent — the parent link is needed
++    // for a decoder-built child, see `_setRootChildCb`).
+     if (isNewChangeTree) {
+-        forEachChildWithCtx(tree, root, _setRootChildCb);
++        let ctx = _setRootCtxPool[_setRootDepth];
++        if (ctx === undefined) {
++            ctx = { parentRef: undefined!, parentTree: undefined!, root: undefined! };
++            _setRootCtxPool[_setRootDepth] = ctx;
++        }
++        ctx.parentRef = tree.ref;
++        ctx.parentTree = tree;
++        ctx.root = root;
++        _setRootDepth++;
++        forEachChildWithCtx(tree, ctx, _setRootChildCb);
++        _setRootDepth--;
+     }
+ }
+ 
+@@ -161,39 +173,32 @@ export function forEachChildWithCtx<C>(
+ // Hoisted callbacks used by setRoot / setParent to avoid per-call
+ // closure allocation in the recursive attach path.
+ 
+-/**
+- * A decoder-built instance carries an `UntrackedChangeTree` stub. Attaching
+- * it to an encoder (re-encoding a decoded state) upgrades the stub to a real
+- * tree on the spot; the live walk then covers it like any other instance.
+- * Index writes on a decoder-built ArraySchema stay untracked (no Proxy).
+- */
+-function ensureTracked(child: ChangeTree): ChangeTree {
+-    if (child instanceof ChangeTree) return child;
+-    const ref: any = (child as any).ref;
+-    const target = ref[$proxyTarget] ?? ref;
+-    const real = new ChangeTree(ref, target);
+-    real.refId = (child as any).refId; // keep the decoder-assigned identity
+-    setTree(target, real);
+-    return real;
+-}
++interface SetParentCtx { parentRef: Ref; parentTree: ChangeTree; root: Root; }
++// Pools of ctx objects, indexed by recursion depth. Grow to the max depth
++// seen (typically tree height = 3-5 in bench), then stay put.
++const _setRootCtxPool: SetParentCtx[] = [];
++let _setRootDepth = 0;
++const _setParentCtxPool: SetParentCtx[] = [];
++let _setParentDepth = 0;
+ 
+-function _setRootChildCb(root: Root, child: ChangeTree, _index: any): void {
+-    child = ensureTracked(child);
+-    if (child.root !== root) {
+-        child.setRoot(root);
++function _setRootChildCb(ctx: SetParentCtx, child: ChangeTree, index: any): void {
++    // A decoder-built child carries an `UntrackedChangeTree` stub and never
++    // recorded its parent edge (the decoder's writes bypass `setParent`).
++    // Attach it exactly like a freshly assigned instance: `setParent` upgrades
++    // it (`ensureTracked`), records the edge and inherits the parent's
++    // filter / view / stream flags. Positive stub check — a tracked tree
++    // another library copy built may not know `isTracked` at all.
++    if (child.isTracked === false) {
++        child.setParent(ctx.parentRef, ctx.root, index, ctx.parentTree);
++    } else if (child.root !== ctx.root) {
++        child.setRoot(ctx.root);
+     } else {
+-        root.add(child); // increment refCount
++        ctx.root.add(child); // increment refCount
+     }
+ }
+ 
+-interface SetParentCtx { parentRef: Ref; parentTree: ChangeTree; root: Root; }
+-// Pool of ctx objects, indexed by setParent recursion depth. Grows to
+-// max depth seen (typically tree height = 3-5 in bench), then stays put.
+-const _setParentCtxPool: SetParentCtx[] = [];
+-let _setParentDepth = 0;
+-
+ function _setParentChildCb(ctx: SetParentCtx, child: ChangeTree, index: any): void {
+-    child = ensureTracked(child);
++    // (a decoder-built child: `root` is never this root; its `setParent` upgrades it — see `_setRootChildCb`)
+     if (child.root === ctx.root) {
+         ctx.root.add(child);
+         ctx.root.moveNextToParent(child);
+diff --git a/src/types/custom/ArraySchema.ts b/src/types/custom/ArraySchema.ts
+index a51b463..635bac2 100644
+--- a/src/types/custom/ArraySchema.ts
++++ b/src/types/custom/ArraySchema.ts
+@@ -1,6 +1,6 @@
+ import { $changes, $childType, $deleteByIndex, $getByIndex, $proxyTarget, $recorder, $refId, $reset, $resyncPrune, $rev } from "../symbols.js";
+ import type { Schema } from "../../Schema.js";
+-import { type IRef, ChangeTree, installUntrackedChangeTree, refTreeOf, defineRefAccessors, refIdOf, stampTree, treeOf } from "../../encoder/ChangeTree.js";
++import { type IRef, type DecoderRecords, ChangeTree, installUntrackedChangeTree, refTreeOf, defineRefAccessors, decodedRefIdOf, stampTree, treeOf } from "../../encoder/ChangeTree.js";
+ import { ArrayLog } from "../../encoder/ArrayLog.js";
+ import { CollectionKind } from "../../encoding/spec.js";
+ import { registerType } from "../registry.js";
+@@ -1000,13 +1000,14 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
+         visited: Set<number | string>,
+         prune: (value: V, identity: number | string) => void,
+         keep: (value: V) => void,
++        records?: DecoderRecords, // the decoder's bookkeeping of tracked elements (a re-encoded state)
+     ): void {
+         const self = this[$proxyTarget];
+         const len = self.length;
+         let w = 0; // survivors compact in place
+         for (let i = 0; i < len; i++) {
+             const value = self[i];
+-            const refId = refIdOf(value);
++            const refId = decodedRefIdOf(value, records); // the decoder's id: this runs under a resync decode
+             if (visited.has(i) || (refId !== undefined && visited.has(-1 - refId))) {
+                 keep(value);
+                 self[w++] = value;
+diff --git a/test/Metadata.test.ts b/test/Metadata.test.ts
+index 7900bc5..80b6c6c 100644
+--- a/test/Metadata.test.ts
++++ b/test/Metadata.test.ts
+@@ -1,8 +1,9 @@
+ import * as assert from "assert";
+ 
+ import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll } from "./Schema";
+-import { ArraySchema, Schema, type, Reflection, $changes, $refId, Metadata, SetSchema, MapSchema } from "../src";
+-import { $numFields } from "../src/types/symbols";
++import { ArraySchema, Schema, type, Reflection, $changes, $refId, Metadata, SetSchema, MapSchema, Encoder } from "../src";
++import { ChangeTree } from "../src/encoder/ChangeTree";
++import { $numFields, $values } from "../src/types/symbols";
+ 
+ describe("Metadata Tests", () => {
+ 
+@@ -70,6 +71,105 @@ describe("Metadata Tests", () => {
+         assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+     });
+ 
++    it("Schema.initialize() per inheritance level keeps children assigned in between", () => {
++        class Child extends Schema {
++            @type("number") v: number;
++        }
++        class Base {
++            child: Child;
++            a: number;
++            constructor() {
++                Schema.initialize(this);
++                // assigned BETWEEN the two initialize() calls
++                this.child = new Child().assign({ v: 7 });
++                this.a = 1;
++            }
++        }
++        Metadata.setFields(Base, { child: Child, a: "number" });
++
++        class Derived extends Base {
++            b: number;
++            constructor() {
++                super();
++                Schema.initialize(this);
++                this.b = 2;
++            }
++        }
++        Metadata.setFields(Derived, { b: "number" });
++
++        class State extends Schema {
++            @type(Derived) d = new Derived();
++        }
++
++        const state = new State();
++        const encoder = new Encoder(state);
++        const decoded = createInstanceFromReflection(state, encoder);
++        decoded.decode(encoder.encodeAll());
++        assert.deepStrictEqual(decoded.toJSON(), { d: { child: { v: 7 }, a: 1, b: 2 } });
++
++        // incremental patches on the child still reach the decoder
++        state.d.child.v = 8;
++        state.d.a = 3;
++        decoded.decode(encoder.encode());
++        assert.deepStrictEqual(decoded.toJSON(), { d: { child: { v: 8 }, a: 3, b: 2 } });
++        assert.strictEqual((state.d.child as any)[$changes].parentTree, (state.d as any)[$changes]);
++
++        // initialize() is idempotent: an instance that owns a tracked tree keeps it
++        const before = (state.d as any)[$changes];
++        Schema.initialize(state.d);
++        assert.strictEqual((state.d as any)[$changes], before);
++        assert.strictEqual(before.values, (state.d as any)[$values]);
++    });
++
++    it("Schema.initialize() on a Schema subclass instance keeps the constructor's tree", () => {
++        class Item extends Schema {
++            @type("number") n: number;
++        }
++        const item = new Item().assign({ n: 1 });
++        const tree = (item as any)[$changes];
++        Schema.initialize(item);
++        assert.strictEqual((item as any)[$changes], tree);
++        assert.strictEqual(item.n, 1);
++    });
++
++    it("[$changes] setter keeps tree.values on the instance's own $values", () => {
++        class Item extends Schema {
++            @type("number") n: number;
++        }
++        class State extends Schema {
++            @type(Item) item: Item;
++        }
++
++        const item = new Item().assign({ n: 1 });
++        // a second tree built FOR this instance (adopts its `$values`), installed through the public setter
++        const ownTree = new ChangeTree(item);
++        (item as any)[$changes] = ownTree;
++        assert.strictEqual((item as any)[$changes], ownTree);
++        assert.strictEqual(ownTree.values, (item as any)[$values]);
++        item.n = 5;
++        assert.strictEqual(item.n, 5);
++
++        const state = new State();
++        state.item = item;
++        const encoder = new Encoder(state);
++        const decoded = createInstanceFromReflection(state, encoder);
++        decoded.decode(encoder.encodeAll());
++        assert.deepStrictEqual(decoded.toJSON(), { item: { n: 5 } });
++    });
++
++    // UNSUPPORTED by contract (LEADS/07): a tree is bound to the instance it
++    // was built for (descriptor, ops sizing, parent links, `values`). The
++    // setter installs it as-is and does not re-target it.
++    it.skip("[$changes] setter does not move another instance's tree", () => {
++        class Item extends Schema {
++            @type("number") n: number;
++        }
++        const item = new Item();
++        (item as any)[$changes] = (new Item() as any)[$changes];
++        item.n = 5;
++        assert.strictEqual(item.n, 5);
++    });
++
+     it("external class exposes $changes / $refId without own properties", () => {
+         class RawState {
+             x: number;
+diff --git a/test/Schema.test.ts b/test/Schema.test.ts
+index ee999e4..b020325 100644
+--- a/test/Schema.test.ts
++++ b/test/Schema.test.ts
+@@ -7,8 +7,8 @@
+ // import "core-js";
+ 
+ import * as assert from "assert";
+-import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
+-import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema, schema, t, ToJSON, $refId } from "../src";
++import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, createClientWithView, encodeMultiple, joinSlices } from "./Schema";
++import { Schema, ArraySchema, MapSchema, type, view, Metadata, $changes, Encoder, Decoder, SetSchema, schema, t, ToJSON, $refId, StateView, ChangeTree } from "../src";
+ import { getNormalizedType } from "../src/Metadata";
+ 
+ describe("Type: Schema", () => {
+@@ -1298,6 +1298,345 @@ describe("Type: Schema", () => {
+             assert.deepStrictEqual(decodedState2.toJSON(), state.toJSON());
+         });
+ 
++        it('should not collide refIds when re-encoding a decoded state with Schema children', () => {
++            class Item extends Schema {
++                @type("string") name: string;
++            }
++            class Player extends Schema {
++                @type("number") x: number;
++                @type([Item]) items = new ArraySchema<Item>();
++            }
++            class RelayState extends Schema {
++                @type(Player) player: Player;
++                @type({ map: Player }) players = new MapSchema<Player>();
++                @type([Item]) list = new ArraySchema<Item>();
++            }
++
++            // original server state
++            const state = new RelayState();
++            state.player = new Player().assign({ x: 1 });
++            state.player.items.push(new Item().assign({ name: "a" }));
++            state.players.set("one", new Player().assign({ x: 2 }));
++            state.list.push(new Item().assign({ name: "b" }));
++
++            // relay: decode, then re-encode from the decoded instance
++            const relayed = new RelayState();
++            new Decoder(relayed).decode(new Encoder(state).encodeAll());
++            assert.deepStrictEqual(relayed.toJSON(), state.toJSON());
++
++            const relayEncoder = new Encoder(relayed);
++
++            // NEW instances created on the relay side
++            relayed.player = new Player().assign({ x: 3 });
++            relayed.player.items.push(new Item().assign({ name: "c" }));
++            relayed.players.set("two", new Player().assign({ x: 4 }));
++            relayed.list.push(new Item().assign({ name: "d" }));
++
++            // every reachable ref has a unique refId, registered in the relay Root
++            const seen = new Map<number, any>();
++            const visit = (ref: any) => {
++                const refId = ref[$refId];
++                assert.ok(refId !== undefined, `${ref.constructor.name} has no refId`);
++                assert.ok(!seen.has(refId), `refId ${refId} shared by ${seen.get(refId)?.constructor.name} and ${ref.constructor.name}`);
++                seen.set(refId, ref);
++                assert.strictEqual(relayEncoder.root.changeTrees.get(refId)?.ref, ref, `refId ${refId} (${ref.constructor.name}) not registered in the relay Root`);
++                const children = (ref instanceof Schema) ? Object.keys(ref.toJSON()).map((field) => ref[field]) : Array.from(ref.values());
++                for (const child of children) {
++                    if (child !== null && typeof child === "object") { visit(child); }
++                }
++            };
++            visit(relayed);
++
++            // full sync from the relay
++            const client = new RelayState();
++            new Decoder(client).decode(relayEncoder.encodeAll());
++            assert.deepStrictEqual(client.toJSON(), relayed.toJSON());
++        });
++
++        it('should not collide refIds when a decoded state gains children BEFORE the new Encoder attaches it', () => {
++            class Item extends Schema {
++                @type("string") name: string;
++            }
++            class Player extends Schema {
++                @type([Item]) items = new ArraySchema<Item>();
++            }
++            class RelayState extends Schema {
++                @type(Player) player: Player;
++                @type({ map: Player }) players = new MapSchema<Player>();
++            }
++
++            const state = new RelayState();
++            state.player = new Player();
++            state.player.items.push(new Item().assign({ name: "a" }));
++            state.players.set("one", new Player());
++
++            const relayed = new RelayState();
++            new Decoder(relayed).decode(new Encoder(state).encodeAll());
++
++            // new instance attached (by the walk) before a decoded sibling with a higher refId
++            relayed.player.items.push(new Item().assign({ name: "b" }));
++            const relayEncoder = new Encoder(relayed);
++
++            const ids = [relayed, relayed.player, relayed.player.items, ...relayed.player.items, relayed.players, ...relayed.players.values()]
++                .map((ref: any) => ref[$refId]);
++            assert.strictEqual(new Set(ids).size, ids.length, `duplicate refIds: ${ids}`);
++
++            const client = new RelayState();
++            new Decoder(client).decode(relayEncoder.encodeAll());
++            assert.deepStrictEqual(client.toJSON(), relayed.toJSON());
++        });
++
++        it('should keep decoder ids apart from encoder ids when a relay keeps decoding upstream after re-encoding', () => {
++            class Item extends Schema {
++                @type("string") name: string;
++            }
++            class RelayState extends Schema {
++                @type(Item) upstream: Item;
++                @type("number") tick: number;
++                @type({ map: Item }) local = new MapSchema<Item>();
++            }
++
++            const state = new RelayState();
++            state.upstream = new Item().assign({ name: "a" });
++            const upstreamEncoder = new Encoder(state);
++
++            const relayed = new RelayState();
++            const relayDecoder = new Decoder(relayed);
++            relayDecoder.decode(upstreamEncoder.encodeAll());
++            upstreamEncoder.discardChanges();
++            const upstreamWireId = relayed.upstream[$refId];
++
++            const relayEncoder = new Encoder(relayed);
++            // the relay allocated its own ids: the decoder still knows the instance by the upstream's id
++            assert.strictEqual(relayDecoder.root.refs.get(upstreamWireId), relayed.upstream);
++            relayed.local.set("x", new Item().assign({ name: "x" })); // relay allocates the next id
++
++            // upstream: a primitive change and a replaced child (the upstream
++            // allocates ids the relay already handed out)
++            state.tick = 1;
++            state.upstream = new Item().assign({ name: "b" });
++            relayDecoder.decode(upstreamEncoder.encode());
++            assert.strictEqual(relayed.tick, 1);
++            assert.strictEqual(relayed.upstream.name, "b");
++            assert.strictEqual(relayDecoder.root.refCount[upstreamWireId], undefined, "decoder released the replaced child by ITS id");
++
++            const ids = [relayed, relayed.upstream, relayed.local, ...relayed.local.values()].map((ref: any) => ref[$refId]);
++            assert.strictEqual(new Set(ids).size, ids.length, `duplicate refIds: ${ids}`);
++            for (const ref of [relayed.upstream, ...relayed.local.values()]) {
++                assert.strictEqual(relayEncoder.root.changeTrees.get(ref[$refId])?.ref, ref, `${ref.name} not registered under its refId`);
++            }
++
++            const client = new RelayState();
++            const clientDecoder = new Decoder(client);
++            clientDecoder.decode(relayEncoder.encodeAll());
++            assert.deepStrictEqual(client.toJSON(), relayed.toJSON());
++            relayEncoder.discardChanges();
++
++            // the relay's incremental patch carries its LOCAL changes (what the
++            // decoder writes into an instance after the takeover reaches
++            // `encodeAll` only — see LEADS/08)
++            relayed.local.set("y", new Item().assign({ name: "y" }));
++            relayed.local.get("x").name = "x2";
++            clientDecoder.decode(relayEncoder.encode());
++            assert.deepStrictEqual(client.local.toJSON(), relayed.local.toJSON());
++        });
++
++        // UNSUPPORTED (LEADS/08, owner decision): the decoder writes collection
++        // entries straight into `$items` (no `set()` → no attach, and the
++        // upstream's wire indexes would share the relay's index space), so an
++        // entry the upstream adds to a collection AFTER the relay Encoder took
++        // the state over is not attached on the relay side.
++        it.skip('should re-encode collection entries the upstream adds after the relay took over', () => {
++            class Item extends Schema {
++                @type("string") name: string;
++            }
++            class RelayState extends Schema {
++                @type({ map: Item }) upstream = new MapSchema<Item>();
++            }
++
++            const state = new RelayState();
++            state.upstream.set("a", new Item().assign({ name: "a" }));
++            const upstreamEncoder = new Encoder(state);
++
++            const relayed = new RelayState();
++            const relayDecoder = new Decoder(relayed);
++            relayDecoder.decode(upstreamEncoder.encodeAll());
++            upstreamEncoder.discardChanges();
++
++            const relayEncoder = new Encoder(relayed);
++            state.upstream.set("b", new Item().assign({ name: "b" }));
++            relayDecoder.decode(upstreamEncoder.encode());
++
++            const client = new RelayState();
++            new Decoder(client).decode(relayEncoder.encodeAll());
++            assert.deepStrictEqual(client.toJSON(), relayed.toJSON());
++        });
++
++        it('should re-encode a decoded subtree placed under a fresh root', () => {
++            class Item extends Schema {
++                @type("string") name: string;
++            }
++            class Player extends Schema {
++                @type([Item]) items = new ArraySchema<Item>();
++            }
++            class RelayState extends Schema {
++                @type(Player) player: Player;
++                @type({ map: Player }) players = new MapSchema<Player>();
++            }
++
++            const state = new RelayState();
++            state.player = new Player();
++            state.player.items.push(new Item().assign({ name: "a" }));
++            state.players.set("one", new Player());
++            state.players.get("one").items.push(new Item().assign({ name: "b" }));
++
++            const decoded = new RelayState();
++            new Decoder(decoded).decode(new Encoder(state).encodeAll());
++
++            // decoded instances (carrying decoder ids) under a root that never saw a decoder
++            const fresh = new RelayState();
++            fresh.player = decoded.player;
++            fresh.players.set("one", decoded.players.get("one"));
++            fresh.players.set("two", new Player());
++            const encoder = new Encoder(fresh);
++            fresh.players.get("two").items.push(new Item().assign({ name: "c" }));
++
++            const ids = [fresh, fresh.player, fresh.player.items, ...fresh.player.items, fresh.players,
++                ...fresh.players.values(), ...[...fresh.players.values()].flatMap((p) => [p.items, ...p.items])]
++                .map((ref: any) => ref[$refId]);
++            assert.strictEqual(new Set(ids).size, ids.length, `duplicate refIds: ${ids}`);
++            for (const id of ids) { assert.ok(encoder.root.changeTrees.get(id) !== undefined, `refId ${id} not registered`); }
++
++            // the upgraded instances carry their parent edge like any attached instance
++            assert.strictEqual((fresh.player as any)[$changes].parentTree, (fresh as any)[$changes]);
++            assert.strictEqual((fresh.player.items as any)[$changes].parentTree, (fresh.player as any)[$changes]);
++            assert.strictEqual((fresh.players.get("one") as any)[$changes].parentTree, (fresh.players as any)[$changes]);
++            assert.doesNotThrow(() => new StateView().add(fresh.player));
++
++            const client = new RelayState();
++            new Decoder(client).decode(encoder.encodeAll());
++            assert.deepStrictEqual(client.toJSON(), fresh.toJSON());
++        });
++
++        it('should give upgraded instances of a re-encoded state their parent edge and inherited @view flags', () => {
++            class Item extends Schema {
++                @type("string") name: string;
++            }
++            class RelayState extends Schema {
++                @type({ map: Item }) items = new MapSchema<Item>();
++                @view() @type(Item) secret: Item;
++                @type("string") pub: string;
++            }
++
++            const state = new RelayState();
++            state.items.set("a", new Item().assign({ name: "a" }));
++            state.secret = new Item().assign({ name: "s" });
++            state.pub = "p";
++            const upstream = new Encoder(state);
++            const fullView = new StateView();
++            fullView.add(state);
++
++            const relayed = new RelayState();
++            const it = { offset: 0 };
++            upstream.encodeAll(it);
++            new Decoder(relayed).decode(joinSlices(upstream.encodeAllView(fullView, it.offset, it)));
++            assert.deepStrictEqual(relayed.toJSON(), state.toJSON());
++
++            const relayEncoder = new Encoder(relayed);
++            const relayedTree = (relayed as any)[$changes];
++            const itemTree = (relayed.items.get("a") as any)[$changes];
++            const secretTree = (relayed.secret as any)[$changes];
++            // parent edges, as on a normally-built state
++            assert.strictEqual((relayed.items as any)[$changes].parentTree, relayedTree);
++            assert.strictEqual(itemTree.parentTree, (relayed.items as any)[$changes]);
++            assert.strictEqual(secretTree.parentTree, relayedTree);
++            // the @view field's child inherits the filter flag
++            assert.strictEqual(secretTree.isFiltered, ((state.secret as any)[$changes] as ChangeTree).isFiltered);
++            assert.strictEqual(secretTree.isFiltered, true);
++
++            // a client of the relay WITH the view sees the secret, one without does not
++            const withView = createClientWithView(relayed, new StateView(), relayEncoder);
++            withView.view.add(relayed);
++            assert.doesNotThrow(() => withView.view.add(relayed.items.get("a")));
++            const noView = createClientWithView(relayed, new StateView(), relayEncoder);
++            encodeMultiple(relayEncoder, relayed, [withView, noView]);
++            assert.deepStrictEqual(withView.state.toJSON(), relayed.toJSON());
++            assert.deepStrictEqual(noView.state.toJSON(), { items: { a: { name: "a" } }, pub: "p" });
++        });
++
++        it('should attach a decoded instance grafted into a running Encoder', () => {
++            class Item extends Schema {
++                @type("string") name: string;
++            }
++            class Player extends Schema {
++                @type("number") x: number;
++                @type([Item]) items = new ArraySchema<Item>();
++            }
++            class RelayState extends Schema {
++                @type(Player) player: Player;
++                @type({ map: Player }) players = new MapSchema<Player>();
++            }
++
++            const state = new RelayState();
++            state.player = new Player().assign({ x: 1 });
++            state.player.items.push(new Item().assign({ name: "a" }));
++            state.players.set("one", new Player().assign({ x: 2 }));
++            const decoded = new RelayState();
++            new Decoder(decoded).decode(new Encoder(state).encodeAll());
++
++            // a live server state, already synced to a client
++            const server = new RelayState();
++            server.players.set("local", new Player().assign({ x: 3 }));
++            const encoder = new Encoder(server);
++            const client = new RelayState();
++            const clientDecoder = new Decoder(client);
++            clientDecoder.decode(encoder.encodeAll());
++            encoder.discardChanges();
++
++            // graft decoded instances (a Schema field, a map entry) — incremental patch
++            server.player = decoded.player;
++            server.players.set("one", decoded.players.get("one"));
++            clientDecoder.decode(encoder.encode());
++            encoder.discardChanges();
++            assert.deepStrictEqual(client.toJSON(), server.toJSON());
++
++            // the grafted instances are tracked now
++            server.player.x = 10;
++            server.player.items.push(new Item().assign({ name: "b" }));
++            server.players.get("one").x = 20;
++            clientDecoder.decode(encoder.encode());
++            assert.deepStrictEqual(client.toJSON(), server.toJSON());
++            assert.deepStrictEqual(client.player.toJSON(), { x: 10, items: [{ name: "a" }, { name: "b" }] });
++        });
++
++        it('should re-encode a state whose root was built by the decoder', () => {
++            class Item extends Schema {
++                @type("string") name: string;
++            }
++            class RelayState extends Schema {
++                @type({ map: Item }) items = new MapSchema<Item>();
++                @type(Item) item: Item;
++            }
++
++            const state = new RelayState();
++            state.items.set("a", new Item().assign({ name: "a" }));
++            state.item = new Item().assign({ name: "i" });
++
++            // a decoder-built root (UntrackedChangeTree) handed to `new Decoder`
++            const decoded = RelayState.initializeForDecoder();
++            new Decoder(decoded).decode(new Encoder(state).encodeAll());
++            assert.deepStrictEqual(decoded.toJSON(), state.toJSON());
++
++            const relayEncoder = new Encoder(decoded); // used to throw: `setRoot is not a function`
++            decoded.items.set("b", new Item().assign({ name: "b" }));
++            decoded.item = new Item().assign({ name: "j" });
++
++            const client = new RelayState();
++            new Decoder(client).decode(relayEncoder.encodeAll());
++            assert.deepStrictEqual(client.toJSON(), decoded.toJSON());
++            assert.deepStrictEqual(client.toJSON(), { items: { a: { name: "a" }, b: { name: "b" } }, item: { name: "j" } });
++        });
++
+         it('should discard deleted map items', () => {
+             class Player extends Schema {
+                 @type("number") xp: number;

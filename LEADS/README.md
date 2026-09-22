@@ -16,7 +16,7 @@ Everything here came out of the profiling rounds recorded in
 | [05](05-mapschema-set-hashes.md) | `MapSchema.set`: three string hashes per REPLACE | perf | large on writes, **negative on reads** | declined — reference only |
 | [06](06-wire-index-recycling.md) | Recycle map / set wire indexes | bytes + memory | small bytes, bounds tables | medium (view drain) |
 | [07](07-tree-values-invariant.md) | `tree.values` ↔ `$values` invariant is unenforced | robustness | none (correctness) | low |
-| [08](08-refid-collision-on-reencode.md) | Re-encoding a decoded state can collide refIds | correctness | none (bug) | low–medium |
+| [08](08-refid-collision-on-reencode.md) | Re-encoding a decoded state can collide refIds | correctness | none (bug) | **parked** — owner decision (relay support); attempt log in the lead |
 | [09](09-cross-copy-interop.md) | Two bundled library copies do not round-trip | correctness / product | none (decision) | unknown |
 | [10](10-bench-harness.md) | Harness: short windows and layout-sensitive rows — **closed**: warm-up time floor, layout padding, A/A column, `--bisect` | tooling | avoids false alarms | low |
 | [11](11-dead-code.md) | `ArraySchemaInternal.ts` is imported nowhere | cleanup | — | closed (deleted) |
