@@ -2,7 +2,9 @@ import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll } from "./Schema";
 import { ArraySchema, Schema, type, Reflection, $changes, $refId, Metadata, SetSchema, MapSchema } from "../src";
-import { $numFields } from "../src/types/symbols";
+import { $numFields, $values } from "../src/types/symbols";
+import { Encoder } from "../src/encoder/Encoder";
+import { Decoder } from "../src/decoder/Decoder";
 
 describe("Metadata Tests", () => {
 
@@ -150,6 +152,114 @@ describe("Metadata Tests", () => {
         decodedState.decode(state.encode());
 
         assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+    });
+
+    describe("Schema.initialize idempotence / tree.values contract (LEADS 07)", () => {
+        it("per-inheritance-level initialize keeps a child assigned between the calls", () => {
+            class Item { v: number; }
+            Metadata.setFields(Item, { v: "number" });
+
+            class Base {
+                item: Item;
+                constructor() {
+                    Schema.initialize(this);
+                    const item = new Item();
+                    Schema.initialize(item);
+                    item.v = 1;
+                    this.item = item; // assigned BEFORE the subclass's initialize
+                }
+            }
+            Metadata.setFields(Base, { item: Item });
+
+            class Derived extends Base {
+                n: number;
+                constructor() {
+                    super();
+                    Schema.initialize(this);
+                    this.n = 2;
+                }
+            }
+            Metadata.setFields(Derived, { n: "number" });
+
+            class Root extends Schema {
+                @type(Derived) d = new Derived();
+            }
+
+            const state = new Root();
+            const d: any = state.d;
+            assert.strictEqual(d[$changes].values, d[$values], "tree.values === $values");
+            assert.strictEqual(d.item.v, 1);
+
+            const encoder = new Encoder(state);
+            const decoded = createInstanceFromReflection(state, encoder);
+            decoded.decode(encoder.encodeAll());
+            assert.deepStrictEqual(decoded.toJSON(), { d: { item: { v: 1 }, n: 2 } });
+
+            // incremental: the child is attached under the kept tree
+            encoder.discardChanges();
+            d.item.v = 5;
+            decoded.decode(encoder.encode());
+            encoder.discardChanges();
+            assert.deepStrictEqual(decoded.toJSON(), { d: { item: { v: 5 }, n: 2 } });
+        });
+
+        it("a second initialize is a no-op on a Schema subclass", () => {
+            const player: any = new Player("a", 1, 2);
+            const tree = player[$changes];
+            Schema.initialize(player);
+            assert.strictEqual(player[$changes], tree);
+            assert.strictEqual(tree.values, player[$values]);
+            assert.deepStrictEqual(player.toJSON(), { name: "a", x: 1, y: 2 });
+        });
+
+        it("a second initialize is a no-op on an external class", () => {
+            class Raw { x: number; }
+            Metadata.setFields(Raw, { x: "number" });
+            const raw: any = new Raw();
+            Schema.initialize(raw);
+            const tree = raw[$changes];
+            raw.x = 10;
+            Schema.initialize(raw);
+            assert.strictEqual(raw[$changes], tree);
+            assert.strictEqual(tree.values, raw[$values]);
+            assert.strictEqual(raw.x, 10);
+        });
+
+        it("initialize on a decoder-built instance installs a real tree (encodable as root and as child)", () => {
+            const state = new State();
+            state.player = new Player("p", 3, 4);
+            // decoder-built root + child (both carry decoder stubs)
+            const decoded = State.initializeForDecoder();
+            new Decoder(decoded).decode(state.encodeAll());
+            assert.strictEqual((decoded as any)[$changes].isTracked, false);
+
+            // as root
+            Schema.initialize(decoded);
+            assert.deepStrictEqual(decoded.player.toJSON(), { name: "p", x: 3, y: 4 }, "decoded values survive initialize");
+            decoded.fieldString = "relay";
+            const encoder = new Encoder(decoded);
+            const copy = createInstanceFromReflection(decoded, encoder);
+            copy.decode(encoder.encodeAll());
+            assert.deepStrictEqual(copy.toJSON(), decoded.toJSON());
+            assert.strictEqual(copy.toJSON().fieldString, "relay");
+
+            // as child, under a fresh state
+            const decoded2 = new State();
+            new Decoder(decoded2).decode(state.encodeAll());
+            const player: any = decoded2.player;
+            assert.strictEqual(player[$changes].isTracked, false);
+            Schema.initialize(player);
+            assert.strictEqual(player.y, 4, "decoded values survive initialize");
+            player.name = "q"; player.x = 5;
+            const fresh = new State();
+            fresh.player = player;
+            const encoder2 = new Encoder(fresh);
+            const copy2 = createInstanceFromReflection(fresh, encoder2);
+            copy2.decode(encoder2.encodeAll());
+            assert.deepStrictEqual(copy2.toJSON(), fresh.toJSON());
+            assert.strictEqual(copy2.player.name, "q");
+            assert.strictEqual(copy2.player.y, 4);
+        });
     });
 
 });

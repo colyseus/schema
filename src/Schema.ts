@@ -4,7 +4,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
-import { ChangeTree, createUntrackedChangeTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, refTreeOf, refIdOf } from './encoder/ChangeTree.js';
+import { ChangeTree, createUntrackedChangeTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, peekTree, refTreeOf, refIdOf } from './encoder/ChangeTree.js';
 import { RefTable } from './RefTable.js';
 import { $changes, $deleteByIndex, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
@@ -40,12 +40,19 @@ export class Schema<C = any> implements IRef {
         // Public entry point: also serves classes that do NOT extend Schema
         // (`Metadata.setFields` on an external class), possibly once per
         // level of their own inheritance chain. The Schema constructor takes
-        // the unconditional path below instead.
+        // `initializeOwn` (unconditional stamp) instead.
         // (`Metadata.setFields` installs the accessors at class-definition time;
         // this covers an external class that reaches here without it.)
         if (!($changes in instance)) { defineRefAccessors(Object.getPrototypeOf(instance)); }
-        instance[$values] = undefined; // re-initialization starts from a fresh array (the ChangeTree creates it, pre-sized)
-        setTree(instance, new ChangeTree(instance)); // install, or replace on re-initialization
+        // Idempotent on an own TRACKED tree, so per-level calls keep fields
+        // assigned between them; a decoder stub (`isTracked === false`), a
+        // foreign tree or none gets a fresh tree. Contract: `ChangeTree.values`.
+        const existing: any = peekTree(instance);
+        if (existing !== undefined && existing.ref === instance && existing.isTracked !== false) { return; }
+        // A decoder stub of this instance keeps its decoded `$values` (the new
+        // tree adopts them); anything else starts from a fresh, pre-sized array.
+        if (existing === undefined || existing.ref !== instance) { instance[$values] = undefined; }
+        setTree(instance, new ChangeTree(instance));
     }
 
     /** Constructor fast path of {@link Schema.initialize}: a fresh `this` that extends Schema. */

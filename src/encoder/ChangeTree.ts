@@ -149,6 +149,8 @@ export function decodedRefIdOf(value: any): number | undefined {
     return (typeof value === "object" && value !== null) ? TreeStamp.ofDecoded(value).refId : undefined;
 }
 export const setTree = TreeStamp.put;
+/** The instance's tree, or `undefined` on an object without the slot (cold paths; never the public accessor). */
+export const peekTree = TreeStamp.peek;
 export const treeOfAny = TreeStamp.ofAny;
 /** The tree of any VALUE — `undefined` for primitives, null and plain objects. Drop-in for `value?.[$changes]`. */
 export function refTreeOf(value: any): ChangeTree | undefined {
@@ -171,6 +173,7 @@ export function refIdOf(value: any): number | undefined {
 // code reads with `treeOf` / `refTreeOf` / `refIdOf` / `tree.refId` instead —
 // an accessor costs ~10-20 ns more per read on a polymorphic site.
 const REF_ACCESSORS: PropertyDescriptorMap = {
+    // Setter: installs `tree` as-is — ownership contract on `ChangeTree.values`.
     [$changes]: {
         get(this: any) { return TreeStamp.peek(this); },
         set(this: any, tree: ChangeTree) { TreeStamp.put(this, tree); },
@@ -347,6 +350,24 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * through one `this[$changes]` load — a setter closure is shared by
      * every class that declares that field shape, so each `this[...]`
      * access in it is megamorphic; the tree's own fields are not.
+     *
+     * Contract (the one place it is written down):
+     * - Schema tree: `values === ref[$values]` for as long as the tree is
+     *   installed. `$values` is created by this constructor (or, for a
+     *   decoder-built instance, by `initializeForDecoder` before its stub
+     *   caches it; the attach-time upgrade of that stub keeps it) and is
+     *   only replaced together with the tree, by `Schema.initialize`'s
+     *   fresh-tree branch. Collection tree: `undefined`.
+     * - A tree belongs to the instance it was built for (`ref`). Installing
+     *   a tree built for ANOTHER instance through the `[$changes]` setter is
+     *   unsupported: its `values`, `ref` and parent edges keep pointing at
+     *   the other instance.
+     * - `Schema.initialize` keeps an own tracked tree (idempotent), and
+     *   replaces anything else (no tree, a decoder stub, a foreign tree).
+     * - Readers: the encoder (`enterFrame`, the encode loop) reads `values`
+     *   unguarded — only Schema trees reach it; the attach walk
+     *   (`forEachChildWithCtx`) keeps its `values !== undefined` guard (one
+     *   compare) for trees built by another library copy.
      */
     values: any[] | undefined;
 
@@ -1023,6 +1044,12 @@ export class UntrackedChangeTree {
     flags: number = 0;
     readonly tracking = false;
     readonly isArray = false;
+    /**
+     * Positive stub test: `false` only here (prototype getter, no instance
+     * slot). Any other tree — a `ChangeTree`, or one from another library
+     * copy without the getter — reads as tracked. Test `isTracked === false`.
+     */
+    get isTracked(): false { return false; }
     /** The instance's `$values` array (see ChangeTree.values); `undefined` for collections. */
     values: any[] | undefined;
 
