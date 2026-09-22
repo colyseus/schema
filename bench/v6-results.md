@@ -913,3 +913,22 @@ the `map-ops` read rows, and runs `encoder/construct` with
 construct, array-read/for-of, views): one flag (`views/v100heavy` −1.0 %,
 p = .014), within the 5 % expected. `forEach-num` `R6-E → R8-A`: +7.3 % / +6.4 %
 (p < .001) under the old harness, −2.1 % / +0.9 % (n.s.) now.
+
+## Decoder `refCount` / `callbacks` on `RefTable` (LEADS 02, `L02-base` → `L02-both`, 10 samples)
+
+As integer-keyed plain objects, the `refCount` store / `delete` / decrement cost
+8–17 % of the decoder churn loops (line ticks), and the `callbacks` store and
+`delete` cost another 1–3 %. Both are now `RefTable`s, with the same `undefined`
+(not tracked) versus `0` (pending GC) distinction.
+
+| row | Δ |
+| --- | --- |
+| decoder/churn | −36.8 % |
+| decoder/map-churn str / num | −22.7 % / −20.7 % |
+| decoder/bulk-add/turnover | −25.6 % |
+| callbacks/add-remove-churn | −29.7 % |
+| callbacks/map-churn str / num | −35.4 % / −35.1 % |
+| decoder/bootstrap | +1.6 % (a second table grown by `push`; accepted) |
+| decoder/tick, callbacks/density, callbacks/strategies, realworld decode-10k-callbacks | neutral |
+
+Per-step numbers are in `LEADS/02-decoder-refcount-callbacks-tables.md`.

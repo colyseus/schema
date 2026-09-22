@@ -2,7 +2,8 @@
  * Small-dense-integer → value table with the read surface of a `Map<number, V>`.
  *
  * Users: the decoder's `refs` (refId → ref: a `Map` hash probe per chunk and per
- * ref-valued slot was 22…27 % of a steady decode tick), the encoder's
+ * ref-valued slot was 22…27 % of a steady decode tick) and its `refCount` /
+ * `callbacks` (as plain objects, 9…17 % of a decoder churn loop), the encoder's
  * `Root.changeTrees` / `Root.refCount` (as plain objects with integer keys the
  * store and the `delete` were 14 % of an attach / detach churn loop, and a
  * push-2000 / pop-2000 tick fell off a dictionary-mode cliff, ×100), and

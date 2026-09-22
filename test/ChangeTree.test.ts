@@ -234,8 +234,8 @@ describe("ChangeTree", () => {
             assert.strictEqual(1, encoder.root.refCount.get(entity2[$refId]));
             assert.strictEqual(undefined, encoder.root.refCount.get(entity1[$refId]), "a removed instance leaves no refCount entry behind");
 
-            assert.strictEqual(1, decoder.root.refCount[entity2[$refId]]);
-            assert.strictEqual(undefined, decoder.root.refCount[entity1[$refId]]);
+            assert.strictEqual(1, decoder.root.refCount.get(entity2[$refId]));
+            assert.strictEqual(undefined, decoder.root.refCount.get(entity1[$refId]));
 
             assertDeepStrictEqualEncodeAll(state);
         })
@@ -265,8 +265,8 @@ describe("ChangeTree", () => {
             assert.strictEqual(1, encoder.root.refCount.get(entity2[$refId]));
             assert.strictEqual(undefined, encoder.root.refCount.get(entity1[$refId]), "a removed instance leaves no refCount entry behind");
 
-            assert.strictEqual(1, decoder.root.refCount[entity2[$refId]]);
-            assert.strictEqual(undefined, decoder.root.refCount[entity1[$refId]]);
+            assert.strictEqual(1, decoder.root.refCount.get(entity2[$refId]));
+            assert.strictEqual(undefined, decoder.root.refCount.get(entity1[$refId]));
 
             assertDeepStrictEqualEncodeAll(state);
 
@@ -298,8 +298,8 @@ describe("ChangeTree", () => {
             assert.strictEqual(1, encoder.root.refCount.get(entity2[$refId]));
             assert.strictEqual(undefined, encoder.root.refCount.get(entity1[$refId]), "a removed instance leaves no refCount entry behind");
 
-            assert.strictEqual(1, decoder.root.refCount[entity2[$refId]]);
-            assert.strictEqual(undefined, decoder.root.refCount[entity1[$refId]]);
+            assert.strictEqual(1, decoder.root.refCount.get(entity2[$refId]));
+            assert.strictEqual(undefined, decoder.root.refCount.get(entity1[$refId]));
 
             assertDeepStrictEqualEncodeAll(state);
         });

@@ -5,7 +5,6 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
 import { ChangeTree, createUntrackedChangeTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, peekTree, refTreeOf, refIdOf } from './encoder/ChangeTree.js';
-import { RefTable } from './RefTable.js';
 import { $changes, $deleteByIndex, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
@@ -454,9 +453,8 @@ export class Schema<C = any> implements IRef {
         const root = (decoder) ? decoder.root : changeTree.root;
 
          // log reference count if > 1
-        // encoder Root: a RefTable; decoder ReferenceTracker: a plain object
-        const counts: any = root?.refCount;
-        const count: number | undefined = (counts instanceof RefTable) ? counts.get(refId) : counts?.[refId];
+        // encoder Root and decoder ReferenceTracker: both a RefTable
+        const count: number | undefined = root?.refCount.get(refId);
         const refCount = (count > 1)
             ? ` [×${count}]`
             : '';

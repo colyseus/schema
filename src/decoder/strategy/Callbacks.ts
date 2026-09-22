@@ -368,7 +368,7 @@ export class StateCallbackStrategy<TState extends IRef> {
             const ref = change.ref;
             this.batchIndex = i;
 
-            const $callbacks = this.callbacks[refId];
+            const $callbacks = this.callbacks.get(refId);
             if (!$callbacks) {
                 continue;
             }
@@ -381,7 +381,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 Schema.isSchema(change.previousValue)
             ) {
                 const childRefId = decodedRefIdOf(change.previousValue)!;
-                const deleteCallbacks = this.callbacks[childRefId]?.[OPERATION.DELETE];
+                const deleteCallbacks = this.callbacks.get(childRefId)?.[OPERATION.DELETE];
                 if (deleteCallbacks) {
                     for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
                         try { deleteCallbacks[j](); } catch (e) { console.error(e); }

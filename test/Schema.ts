@@ -71,7 +71,7 @@ export function assertRefParity(encoderRoot: { refCount: any, changeTrees: any }
     const more = () => (typeof detail === "function") ? `\n${detail()}` : detail;
     for (const [refId, encoderRefCount] of encoderRoot.refCount as Iterable<[number, number]>) {
         const ref = encoderRoot.changeTrees.get(refId)?.ref;
-        const decoderRefCount = decoderRoot.refCount[refId] ?? 0;
+        const decoderRefCount = decoderRoot.refCount.get(refId) ?? 0;
         assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for '${ref?.constructor.name}' (refId: ${refId}) => (Encoder count: ${encoderRefCount}, Decoder count: ${decoderRefCount})${more()}`);
     }
     for (const refId of decoderRoot.refs.keys()) {

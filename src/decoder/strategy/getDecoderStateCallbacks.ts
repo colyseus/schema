@@ -148,7 +148,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
             currentBatchIndex = i;
             const refId = change.refId;
             const ref = change.ref;
-            const $callbacks = callbacks[refId];
+            const $callbacks = callbacks.get(refId);
 
             if (!$callbacks) { continue; }
 
@@ -159,7 +159,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
                 Schema.isSchema(change.previousValue)
             ) {
-                const deleteCallbacks = callbacks[decodedRefIdOf(change.previousValue)]?.[OPERATION.DELETE];
+                const deleteCallbacks = callbacks.get(decodedRefIdOf(change.previousValue)!)?.[OPERATION.DELETE];
                 for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
                     deleteCallbacks[i]();
                 }

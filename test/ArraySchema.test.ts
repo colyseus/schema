@@ -2635,7 +2635,7 @@ describe("ArraySchema Tests", () => {
         assert.strictEqual(6, onRemoveCount);
 
         const refCounts = getDecoder(decodedState).root.refCount;
-        assert.deepStrictEqual(refCounts, {
+        assert.deepStrictEqual(Object.fromEntries(refCounts), {
             0: 1,
             2: 1
         });
@@ -2700,13 +2700,13 @@ describe("ArraySchema Tests", () => {
             const refCounts = $root.refCount;
 
             assert.strictEqual($root.refs.size, 7, "should have 7 refs");
-            assert.strictEqual(refCounts[0], 1, JSON.stringify(($root.refs.get(0) as Schema).toJSON()));
-            assert.strictEqual(refCounts[1], 1, JSON.stringify(($root.refs.get(1) as Schema).toJSON()));
-            assert.strictEqual(refCounts[2], 1, JSON.stringify(($root.refs.get(2) as Schema).toJSON()));
-            assert.strictEqual(refCounts[3], 1, JSON.stringify(($root.refs.get(3) as Schema).toJSON()));
-            assert.strictEqual(refCounts[4], 1, JSON.stringify(($root.refs.get(4) as Schema).toJSON()));
-            assert.strictEqual(refCounts[5], 1, JSON.stringify(($root.refs.get(5) as Schema).toJSON()));
-            assert.strictEqual(refCounts[6], 1, JSON.stringify(($root.refs.get(6) as Schema).toJSON()));
+            assert.strictEqual(refCounts.get(0), 1, JSON.stringify(($root.refs.get(0) as Schema).toJSON()));
+            assert.strictEqual(refCounts.get(1), 1, JSON.stringify(($root.refs.get(1) as Schema).toJSON()));
+            assert.strictEqual(refCounts.get(2), 1, JSON.stringify(($root.refs.get(2) as Schema).toJSON()));
+            assert.strictEqual(refCounts.get(3), 1, JSON.stringify(($root.refs.get(3) as Schema).toJSON()));
+            assert.strictEqual(refCounts.get(4), 1, JSON.stringify(($root.refs.get(4) as Schema).toJSON()));
+            assert.strictEqual(refCounts.get(5), 1, JSON.stringify(($root.refs.get(5) as Schema).toJSON()));
+            assert.strictEqual(refCounts.get(6), 1, JSON.stringify(($root.refs.get(6) as Schema).toJSON()));
 
             assertDeepStrictEqualEncodeAll(state);
         });
@@ -2788,7 +2788,7 @@ describe("ArraySchema Tests", () => {
 
             console.log(Schema.debugRefIds(state));
 
-            assert.deepStrictEqual(decoder.root.refCount, {
+            assert.deepStrictEqual(Object.fromEntries(decoder.root.refCount), {
                 0: 1,
                 1: 1,
                 2: 1,
@@ -2821,7 +2821,7 @@ describe("ArraySchema Tests", () => {
             decodedState.decode(state.encode());
 
             const refCounts = getDecoder(decodedState).root.refCount;
-            assert.deepStrictEqual(refCounts, {
+            assert.deepStrictEqual(Object.fromEntries(refCounts), {
                 0: 1,
                 1: 1,
                 2: 1,
@@ -2874,7 +2874,7 @@ describe("ArraySchema Tests", () => {
             assertDeepStrictEqualEncodeAll(state);
 
             const refCounts = getDecoder(decodedState).root.refCount;
-            assert.deepStrictEqual(refCounts, {
+            assert.deepStrictEqual(Object.fromEntries(refCounts), {
                 0: 1,
                 1: 1,
             });

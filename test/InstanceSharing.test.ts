@@ -110,8 +110,8 @@ describe("Instance sharing", () => {
         // entry for a removed refId (it used to keep a `0` forever)
         assert.strictEqual(encoder.root.refCount.size, 3);
         assert.strictEqual(encoder.root.refCount.get(player[$refId]), undefined);
-        for (let refId in decoder.root.refCount) {
-            assert.strictEqual(decoder.root.refCount[refId], encoder.root.refCount.get(Number(refId)));
+        for (const [refId, count] of decoder.root.refCount) {
+            assert.strictEqual(count, encoder.root.refCount.get(refId));
         }
 
         console.log("Encoder =>", Schema.debugRefIds(state));
@@ -294,7 +294,7 @@ describe("Instance sharing", () => {
         assert.strictEqual(numRefs, decoder.root.refs.size, "should've dropped reference to previous ArraySchema");
         assert.strictEqual(
             true,
-            Object.values(decoder.root.refCount).every(refCount => refCount > 0),
+            Array.from(decoder.root.refCount.values()).every(refCount => refCount > 0),
             "all refCount's should have a valid number."
         );
 
@@ -375,7 +375,7 @@ describe("Instance sharing", () => {
         item.x = 999;
 
         decodedState.decode(state.encode());
-        assert.strictEqual(1, decoder.root.refCount[item[$refId]]);
+        assert.strictEqual(1, decoder.root.refCount.get(item[$refId]));
 
         assert.strictEqual(999, decodedState.player.item.x);
 

@@ -38,10 +38,18 @@ export class ReferenceTracker {
         return this.refs.get(refId);
     }
 
-    public refCount: { [refId: number]: number; } = {};
+    /**
+     * refId → reference count. A `RefTable` (refIds are handed out in order and
+     * never recycled): as an integer-keyed plain object the store in `addRef`
+     * and the `delete` in `garbageCollectDeletedRefs` were ~10–15 % of a
+     * decoder churn loop. `undefined` = not tracked (never added, or
+     * collected); `0` = released, pending GC.
+     */
+    public refCount = new RefTable<number>();
     public deletedRefs = new Set<number>();
 
-    public callbacks: { [refId: number]: SchemaCallbacks } = {};
+    /** refId → registered callbacks; a `RefTable` for the same reason as `refCount`. */
+    public callbacks = new RefTable<SchemaCallbacks>();
     protected nextUniqueId: number = 0;
 
     getNextUniqueId() {
@@ -65,7 +73,8 @@ export class ReferenceTracker {
         tree.refId = refId;
 
         if (incrementCount) {
-            this.refCount[refId] = (this.refCount[refId] || 0) + 1;
+            const count = this.refCount.get(refId);
+            this.refCount.set(refId, (count === undefined) ? 1 : count + 1);
         }
 
         if (this.deletedRefs.has(refId)) {
@@ -75,7 +84,7 @@ export class ReferenceTracker {
 
     // for decoding
     removeRef(refId: number) {
-        const refCount = this.refCount[refId];
+        const refCount = this.refCount.get(refId);
 
         if (refCount === undefined) {
             try {
@@ -96,7 +105,8 @@ export class ReferenceTracker {
             return;
         }
 
-        if ((this.refCount[refId] = refCount - 1) <= 0) {
+        this.refCount.set(refId, refCount - 1);
+        if (refCount <= 1) {
             this.deletedRefs.add(refId);
         }
     }
@@ -104,8 +114,8 @@ export class ReferenceTracker {
     clearRefs() {
         this.refs.clear();
         this.deletedRefs.clear();
-        this.callbacks = {};
-        this.refCount = {};
+        this.callbacks.clear();
+        this.refCount.clear();
     }
 
     // for decoding
@@ -115,7 +125,7 @@ export class ReferenceTracker {
             //
             // Skip active references.
             //
-            if (this.refCount[refId] > 0) { return; }
+            if (this.refCount.get(refId)! > 0) { return; } // undefined > 0 is false
 
             const ref = this.getRef(refId)!;
 
@@ -149,8 +159,8 @@ export class ReferenceTracker {
             }
 
             this.refs.delete(refId); // remove ref
-            delete this.refCount[refId]; // remove ref count
-            delete this.callbacks[refId]; // remove callbacks
+            this.refCount.delete(refId); // remove ref count
+            this.callbacks.delete(refId); // remove callbacks
         });
 
         // clear deleted refs.
@@ -166,20 +176,25 @@ export class ReferenceTracker {
                 `Can't addCallback on '${name}' (refId is undefined)`
             );
         }
-        if (!this.callbacks[refId]) {
-            this.callbacks[refId] = {};
+        let $callbacks = this.callbacks.get(refId);
+        if ($callbacks === undefined) {
+            $callbacks = {};
+            this.callbacks.set(refId, $callbacks);
         }
-        if (!this.callbacks[refId][fieldOrOperation]) {
-            this.callbacks[refId][fieldOrOperation] = [];
+        let list = $callbacks[fieldOrOperation];
+        if (list === undefined) {
+            list = $callbacks[fieldOrOperation] = [];
         }
-        this.callbacks[refId][fieldOrOperation].push(callback);
+        list.push(callback);
         return () => this.removeCallback(refId, fieldOrOperation, callback);
     }
 
     removeCallback(refId: number, field: string | number, callback: Function) {
-        const index: number | undefined = this.callbacks?.[refId]?.[field]?.indexOf(callback);
-        if (index !== undefined && index !== -1) {
-            spliceOne(this.callbacks[refId][field], index);
+        const list = this.callbacks.get(refId)?.[field];
+        if (list === undefined) { return; }
+        const index = list.indexOf(callback);
+        if (index !== -1) {
+            spliceOne(list, index);
         }
     }
 
