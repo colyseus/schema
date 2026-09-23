@@ -53,3 +53,11 @@ Everything here came out of the profiling rounds recorded in
   and re-grown); a scratch array should not be reset with `length = 0`.
 - Hand a value down instead of re-deriving it (parent tree, refId from the
   wire header).
+
+## Rejected cleanup (2026-09-23)
+
+Moving the UTF-8 helpers out of `encoding/encode.ts` / `decode.ts` into their own
+module (to break the `encode` ↔ `decode` ↔ `varint` import cycle) is a pure move in
+source, but measured **+2.6 %** on `encoder/map-replace/str-100pct` (20 samples,
+bisected to that change alone; A/A −1.0 %). The cycle is type-level only after
+rollup flattens the bundle, so it was left in place.
