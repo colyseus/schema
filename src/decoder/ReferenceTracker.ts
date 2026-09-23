@@ -1,13 +1,11 @@
-import { Metadata } from "../Metadata.js";
 import { refTreeOf, installUntrackedChangeTree, decodedRefIdOf } from "../encoder/ChangeTree.js";
-import { $childType } from "../types/symbols.js";
+import { $childType, $refTypeFieldIndexes } from "../types/symbols.js";
 import type { IRef } from "../encoder/ChangeTree.js";
 import { spliceOne } from "../types/utils.js";
 import { RefTable, CallbacksTable } from "../RefTable.js";
 import { OPERATION } from "../encoding/spec.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
-import type { Schema } from "../Schema.js";
 
 class DecodingWarning extends Error {
     constructor(message: string) {
@@ -134,11 +132,13 @@ export class ReferenceTracker {
             //
             // Ensure child schema instances have their references removed as well.
             //
-            if ((ref.constructor as typeof Schema)[Symbol.metadata] !== undefined) {
-                const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
-                for (const index in metadata) {
-                    const field = metadata[index as any as number].name;
-                    const child = ref[field as keyof IRef];
+            const metadata = (ref.constructor as any)[Symbol.metadata];
+            if (metadata !== undefined) {
+                // Only the ref-typed fields (the per-class list the encoder
+                // side keeps), not a `for...in` over the whole metadata object.
+                const refIndexes: number[] | undefined = metadata[$refTypeFieldIndexes];
+                if (refIndexes !== undefined) for (let i = 0, len = refIndexes.length; i < len; i++) {
+                    const child = ref[metadata[refIndexes[i]].name as keyof IRef];
                     if (typeof(child) === "object" && child) {
                         const childRefId = decodedRefIdOf(child);
                         if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {

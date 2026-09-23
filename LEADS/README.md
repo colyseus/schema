@@ -20,6 +20,7 @@ Everything here came out of the profiling rounds recorded in
 | [09](09-cross-copy-interop.md) | Two bundled library copies do not round-trip | correctness / product | none (decision) | unknown |
 | [10](10-bench-harness.md) | Harness: short windows and layout-sensitive rows — **closed**: warm-up time floor, layout padding, A/A column, `--bisect` | tooling | avoids false alarms | low |
 | [11](11-dead-code.md) | `ArraySchemaInternal.ts` is imported nowhere | cleanup | — | closed (deleted) |
+| [12](12-decoder-gc-metadata-walk.md) | Decoder GC released a collected Schema's children with `for…in` over the metadata — **closed**: walks `$refTypeFieldIndexes` | perf | decoder churn −13…−37 %, callbacks churn −15…−29 %, bootstrap / tick neutral | landed (pending commit) |
 
 ## How to work a lead (the protocol that held up)
 
