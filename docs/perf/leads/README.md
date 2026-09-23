@@ -61,3 +61,11 @@ module (to break the `encode` ↔ `decode` ↔ `varint` import cycle) is a pure 
 source, but measured **+2.6 %** on `encoder/map-replace/str-100pct` (20 samples,
 bisected to that change alone; A/A −1.0 %). The cycle is type-level only after
 rollup flattens the bundle, so it was left in place.
+
+Also measured and kept (2026-09-23, 20 samples vs 9b9adee, A/A ≤ 1.2 %):
+
+- `CallbacksTable` → plain `RefTable`: `callbacks/density/none` +5.0 % (p .002), `sparse1pct` +2.8 %,
+  `dense` +6.0 % (n.s.); `none` +8.8 % on the `--iters 3` re-run (n.s.). The separate `get` stays.
+- ×8-unrolled `indexOfRef` / `lastIndexOfRef` → plain loop: `decoder/array-read/indexOf-last` +46 %
+  (+44 % on the re-run), `mutations/array-iterate/indexOf-last` +27 %. The unroll stays.
+- `KeyedRecorder` page-0 field (lead 01 s2) → directory/pages: see lead 01, Open follow-up.

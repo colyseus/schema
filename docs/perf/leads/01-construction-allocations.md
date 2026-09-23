@@ -119,3 +119,9 @@ Re-check at 20 samples, `W2` (bb40a07) vs the landed build: `encoder/map-encode-
 flags did not reproduce (`map-churn/num-1000` −3.5 %, `unshift-pop-500` +0.6 % n.s.). Suspect: the s2
 `KeyedRecorder` change on maps past 4 096 indexes (earlier runs with and without s2 were inconclusive on a noisy
 machine). The frozen builds `L01b-s1/s2/s3/s3v/s3v-noS2/final` are in `%TEMP%\schema-L01b\bench\.builds`.
+
+Re-check (2026-09-23, 20 samples, `W6` = 9b9adee vs `W6` with only s2 reverted to the directory/pages
+layout of 44f64d2): **s2 is not the cause.** With the revert, `map-encode-all/scores-str-10000` is +1.2 %
+(p .006, A/A +0.4 %), then −1.2 % (n.s.) at `--iters 3`; `map-replace/num-10pct` / `num-100pct` get slower
+(+4.0 % / +3.5 %, A/A ≤ 0.2 %; num-100pct +2.7 % on the re-run); memory-footprint and tree-build are flat.
+s2 stays.
