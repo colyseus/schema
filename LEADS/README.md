@@ -14,7 +14,7 @@ Everything here came out of the profiling rounds recorded in
 | [03](03-stateview-child-walk-closures.md) | Closure per node in StateView / ChangeTree child walks | perf (GC) | add+remove micro −3.8 %, bench rows neutral | closed, not landed (below resolution) |
 | [04](04-arrayschema-vs-v5-reads.md) | `ArraySchema` `indexOf` +80 %, `for…of` +18 % against 5.x | perf | medium, only with a storage-model change | parked (doc note added) |
 | [05](05-mapschema-set-hashes.md) | `MapSchema.set`: three string hashes per REPLACE | perf | large on writes, **negative on reads** | declined — reference only |
-| [06](06-wire-index-recycling.md) | Recycle map / set wire indexes | bytes + memory | small bytes, bounds tables | medium (view drain) |
+| [06](06-wire-index-recycling.md) | Recycle map / set wire indexes | bytes + memory | small bytes, bounds tables | design ready — awaiting owner review (`06-wire-index-recycling-design.md`) |
 | [07](07-tree-values-invariant.md) | `tree.values` ↔ `$values` invariant is unenforced — **closed**: idempotent `Schema.initialize`, documented setter / `values` contracts | robustness | none (correctness) | closed |
 | [08](08-refid-collision-on-reencode.md) | Re-encoding a decoded state can collide refIds | correctness | none (bug) | **parked** — owner decision (relay support); attempt log in the lead |
 | [09](09-cross-copy-interop.md) | Two bundled library copies do not round-trip | correctness / product | none (decision) | unknown |
