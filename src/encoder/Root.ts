@@ -53,10 +53,8 @@ export class Root {
 
     /**
      * refId → number of parent edges, for ATTACHED trees only: the entry goes
-     * away with the last edge. (It used to stay behind as `0` for every refId
-     * ever removed — unbounded growth in a long-lived room with churn; the
-     * "was removed, re-stage on re-add" fact it carried is the tree's
-     * `needsRestage` flag now.)
+     * away with the last edge, so the table stays bounded under churn ("was
+     * removed, re-stage on re-add" is the tree's `needsRestage` flag).
      */
     refCount = new RefTable<number>();
     /** refId → attached tree (see `RefTable`: Map-like `get` / `has` / `values()`, not index access). */

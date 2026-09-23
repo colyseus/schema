@@ -99,10 +99,9 @@ export class StateView {
     private _bit: number = 0;
 
     /**
-     * Per-tree custom-tag membership lives on each ChangeTree's `tagViews`
-     * map (keyed by tag, value is a per-view bitmap). The StateView only
-     * needs its slot/bit pair to read/write it. Replaces the legacy
-     * `tags: WeakMap<ChangeTree, Set<number>>` allocation per (view, tree).
+     * Per-tree custom-tag membership lives on each ChangeTree's `tagBits` /
+     * `tagViews` (per tag bit, a per-view bitmap). The StateView only needs
+     * its slot/bit pair to read/write it.
      */
 
     /**
@@ -533,8 +532,7 @@ export class StateView {
             } else {
                 // Full-sync snapshot: walk the live ref structurally instead of
                 // iterating a cumulative recorder bucket. Every populated index
-                // is emitted as ADD (matching the op-coercion previously done
-                // at encode time). Per-field tags come from the descriptor's
+                // is emitted as ADD. Per-field tags come from the descriptor's
                 // precomputed `tags[]` array — direct index vs a metadata[i].tag
                 // object hop.
                 //

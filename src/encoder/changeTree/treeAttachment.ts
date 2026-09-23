@@ -98,8 +98,7 @@ function _forEachChildTrampoline(cb: (change: ChangeTree, at: any) => void, chan
 /**
  * Closure-free variant of {@link forEachChild}. Hot setRoot / setParent
  * recursion calls this once per new Schema instance attached to the
- * tree — the per-call closure was the #1 JS hotspot in profile-baseline.
- * Pass an explicit `ctx` so callers can hoist the callback to module
+ * tree, so a per-call closure would be a hotspot. Pass an explicit `ctx` so callers can hoist the callback to module
  * scope and avoid the allocation.
  */
 export function forEachChildWithCtx<C>(

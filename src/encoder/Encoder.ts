@@ -111,8 +111,7 @@ export class Encoder<T extends Schema = any> {
      * of the trees whose visibility bit that view holds. Built once per tick
      * in `_prepareTick` by fanning each dirty tree out over its bitmap, so a
      * view's pass costs O(its visible dirty trees) instead of
-     * O(all filtered dirty trees) — the difference between 9 % and 100 % of
-     * the world for an area-of-interest room with hundreds of clients.
+     * O(all filtered dirty trees).
      */
     private _viewDirty: number[][] = [];
     /**
@@ -126,8 +125,7 @@ export class Encoder<T extends Schema = any> {
     /**
      * Live lengths of the scratch arrays above. They are never truncated with
      * `length = 0`: V8 drops the backing store on that and every push then
-     * regrows it — one allocation chain per view per tick (stateview/tags
-     * doubled its minor GCs before this).
+     * regrows it — one allocation chain per view per tick.
      */
     private _filteredDirtyLen = 0;
     private _viewDirtyLen: number[] = [];
@@ -142,9 +140,7 @@ export class Encoder<T extends Schema = any> {
      */
     constructor(state: T, root?: Root, bufferSize: number = Encoder.BUFFER_SIZE) {
         this.sharedBuffer = new Uint8Array(bufferSize);
-        //
         // Use .cache() here to avoid re-creating a new context for every new room instance.
-        //
         this.context = TypeContext.cache(state.constructor as typeof Schema);
         this.root = root ?? new Root(this.context);
         this.setState(state);
@@ -299,8 +295,8 @@ export class Encoder<T extends Schema = any> {
     /**
      * Phase 2 of a view pass: this view's dirty filtered trees — same-shape
      * runs, the cross-view chunk cache, plain chunks. Separate from
-     * `_encodeViewBody` on purpose: one big function regressed every
-     * active-view unit by 3–13 % each time it grew (bench/realworld-results.md).
+     * `_encodeViewBody` on purpose: one big function optimizes worse
+     * (bench/realworld-results.md, x9).
      */
     private _emitViewTrees(f: Frame, view: StateView, buffer: Uint8Array, it: Iterator): void {
         const root = this.root;

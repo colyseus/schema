@@ -17,7 +17,7 @@ export interface DecodeInfo {
      * `true` when the slot is a primitive whose accessor is the generated
      * `$values`-backed one, so the decoder may read/write `values[index]`
      * directly instead of a dynamic `ref[name]` access (a megamorphic keyed
-     * load + store through the tracked setter, ~100 ns per slot). Fields
+     * load + store through the tracked setter). Fields
      * declared `{ manual: true }` have no accessor and keep the named path.
      */
     direct: boolean[];

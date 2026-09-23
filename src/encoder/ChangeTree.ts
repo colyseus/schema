@@ -61,19 +61,17 @@ declare global {
 }
 
 // ── `$changes` storage (Schema instances and every collection) ──────────
-// A non-enumerable own `$changes` data property needs Object.defineProperty
-// — a runtime call of ~200 ns per constructed instance (the largest single
-// construction cost). A private field is just as invisible to
-// `deepStrictEqual` / `util.inspect` and is written by a plain store. The
-// return-override base lets one private name be stamped on ANY object,
-// including `Object.create`-built decoder instances.
+// A private field instead of a non-enumerable own property: just as invisible
+// to `deepStrictEqual` / `util.inspect`, and written by a plain store instead
+// of an `Object.defineProperty` call per instance. The return-override base
+// lets one private name be stamped on ANY object, including
+// `Object.create`-built decoder instances.
 //
-// ArraySchema: its public identity is a Proxy. V8 keeps a Proxy's private
-// fields in a side dictionary (~137 B per array, +6 % retained memory per
-// entity) and stamping one is slower than defineProperty, so only the RAW
-// TARGET is stamped (113 ns against 287 ns for defineProperty — it was 9 % of
-// entity construction). A reader that can meet an array branches on
-// `Array.isArray` (sees through the Proxy, a cheap intrinsic) and hops through
+// ArraySchema: its public identity is a Proxy, whose private fields V8 keeps in
+// a side dictionary (slow and memory-heavy), so only the RAW TARGET is stamped
+// (measured: bench/v6-results.md § Construction and attach). A reader that can
+// meet an array branches on `Array.isArray` (sees through the Proxy, a cheap
+// intrinsic) and hops through
 // `$proxyTarget` — an own data property, reachable through the Proxy.
 class TreeStampTarget { constructor(target: object) { return target; } }
 class LocalTreeStamp extends TreeStampTarget {
@@ -90,7 +88,7 @@ class LocalTreeStamp extends TreeStampTarget {
      */
     static ofDecoded(target: any): ChangeTree {
         // No array branch: a decoder-built ArraySchema IS its raw target and is
-        // stamped directly (the `$proxyTarget` hop cost decoder/tick +18 %). Only
+        // stamped directly (the `$proxyTarget` hop is measurable per chunk). Only
         // an encoder-built Proxy reaching the decoder — the initial value of an
         // array field on the state handed to `new Decoder(state)` — takes the catch.
         try { return target.#tree; } catch { return LocalTreeStamp.ofAny(target)!; }
@@ -112,9 +110,8 @@ class LocalTreeStamp extends TreeStampTarget {
         try { return target.#tree; } catch { return undefined; }
     }
     /**
-     * Any OBJECT a user can hand us. No `#tree in target` brand check: it
-     * measured ~20 ns per call in the encode loop (9 % of a bulk-ADD encode).
-     * The private load throws on an object without the slot — a plain object,
+     * Any OBJECT a user can hand us. No `#tree in target` brand check (too
+     * slow for the encode loop). The private load throws on an object without the slot — a plain object,
      * or an instance of a library build that predates the shared stamper (its
      * tree is then on the `[$changes]` symbol) — so only that rare path pays.
      */
@@ -139,7 +136,7 @@ const TreeStamp: typeof LocalTreeStamp = ((globalThis as any)[SHARED_STAMP] ??= 
 
 /** Install `tree` on a freshly-built instance (throws if it already has one — see `setTree`). */
 export function stampTree(target: object, tree: any): void { new TreeStamp(target, tree); }
-/** The instance's tree, read as a data load (the `[$changes]` prototype accessor is ~10 ns slower on polymorphic sites). */
+/** The instance's tree, read as a data load (the `[$changes]` prototype accessor is slower on polymorphic sites). */
 export const treeOf = TreeStamp.of;
 /** `treeOf` for the decoder's hot loop — see `TreeStamp.ofDecoded`. */
 export const treeOfDecoded = TreeStamp.ofDecoded;
@@ -168,8 +165,8 @@ export function refIdOf(value: any): number | undefined {
 // paths (user code, other packages, a second bundled copy reaching our
 // instances through `Symbol.for`): prototype accessors over the private slot.
 // Non-own, so `deepStrictEqual` / `util.inspect` never see them. Internal
-// code reads with `treeOf` / `refTreeOf` / `refIdOf` / `tree.refId` instead —
-// an accessor costs ~10-20 ns more per read on a polymorphic site.
+// code reads with `treeOf` / `refTreeOf` / `refIdOf` / `tree.refId` instead
+// (an accessor is slower per read on a polymorphic site).
 const REF_ACCESSORS: PropertyDescriptorMap = {
     // Setter: installs `tree` as-is — ownership contract on `ChangeTree.values`.
     [$changes]: {
@@ -322,13 +319,12 @@ const _restageKeyedCb = (rec: KeyedRecorder, index: number): void => {
  * Per-tree state that only some trees ever use, behind ONE slot of the
  * ChangeTree (`aux`), allocated on the first write: instance sharing
  * (`extraParents`), the `@unreliable` channel and view subscriptions
- * (`subscribedViews`, only on subscribed collections). Each was an in-object
- * slot on every tree (8 bytes × 4 on ~365 000 trees per `bench_encode.js`
- * run). Accessors on ChangeTree keep the field names for cold readers and
- * all writers; hot readers (attach / detach / discard / enqueue) read
- * `tree.aux?.x` directly, so no getter is inlined into `setParent` & co.
+ * (`subscribedViews`, only on subscribed collections), kept off the in-object
+ * slots of every tree. Accessors on ChangeTree keep the field names for cold
+ * readers and all writers; hot readers (attach / detach / discard / enqueue)
+ * read `tree.aux?.x` directly, so no getter is inlined into `setParent` & co.
  * `visibleViews`, `tagBits` and `tagViews` stay in-object: a view encode reads
- * them per tree (`stateview/tags` +3 % when the tag pair sat here).
+ * them per tree (measured: bench/v6-results.md § Construction allocations).
  */
 class ChangeTreeAux {
     extraParents: ParentChain | undefined = undefined;
@@ -468,10 +464,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     set unreliableChangesNode(v: ChangeTreeNode | undefined) { const aux = this.aux; if (aux !== undefined) aux.unreliableChangesNode = v; else if (v !== undefined) this.ensureAux().unreliableChangesNode = v; }
 
     // Per-StateView visibility bitmaps. Bit `(viewId & 31)` in slot
-    // `(viewId >> 5)` is set iff the view can see this tree. Replaces
-    // per-view WeakSet lookups with direct bitwise ops.
-    // Lazy: undefined until the tree participates in any view. In-object
-    // slot (not on `aux`): every tree under a view carries one, and the
+    // `(viewId >> 5)` is set iff the view can see this tree. Lazy: undefined
+    // until the tree participates in any view. In-object (not on `aux`): the
     // per-tree visibility check is the hottest read of a view encode.
     visibleViews?: number[];
 
@@ -480,9 +474,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     // one power-of-two tag bit, `tagViews[j]` the `visibleViews`-shaped
     // bitmap of the views holding it on this tree. A tree carries one to a
     // few bits, so the hot readers (`StateView.hasTagOnTree`, `tagsOnTree`)
-    // scan them linearly — a `Map.get` per bit cost more than the scan.
-    // In-object slots: `hasTagOnTree` runs per field of a tagged tree on
-    // every view encode (`stateview/tags` +3 % when they sat on `aux`).
+    // scan them linearly (cheaper than a `Map.get` per bit). In-object slots:
+    // `hasTagOnTree` runs per field of a tagged tree on every view encode
+    // (measured: bench/realworld-results.md § Round 2 — B).
     tagBits?: number[];
     tagViews?: number[][];
 
@@ -547,11 +541,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     isFieldUnreliable(index: number): boolean {
-        // Tree-level `isUnreliable` is disabled — @unreliable is rejected
-        // on ref-type fields at decoration time, so no tree ever carries
-        // the flag. Kept as a comment in case a safe semantics is added
-        // later (see INHERITABLE_FLAGS rationale).
-        // if (this.isUnreliable) return true;
+        // No tree-level `isUnreliable` check: @unreliable is rejected on
+        // ref-type fields, so no tree carries the flag (see INHERITABLE_FLAGS).
         // Class-level fast path: most schemas have zero unreliable fields,
         // so the per-mutation check resolves without the symbol-keyed
         // metadata lookup. For schemas that DO have unreliable fields, the
@@ -588,8 +579,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         this.ref = ref;
         this.refId = undefined;
         // Parent slots exist from construction: added later they are three shape
-        // transitions per tree and land outside the object (tree-build/construct
-        // +12.5 %, memory +1.1 % when `parentTree` was introduced that way).
+        // transitions per tree and land outside the object.
         this.parentTree = undefined;
         this._parentIndex = undefined;
         this.aux = undefined;
@@ -623,7 +613,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // class fields (all slots defined, in declaration order, before this
         // body runs); the test build uses useDefineForClassFields=false, where
         // an uninitialized field is absent until assigned — these stores keep
-        // both on one shape. Every tree: 22 in-object slots, 200 bytes.
+        // both on one shape.
         this.ops = undefined;
         this.rec = undefined;
         this.visibleViews = undefined;

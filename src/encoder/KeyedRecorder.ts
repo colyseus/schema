@@ -15,20 +15,15 @@ import { OPERATION } from "../encoding/spec.js";
  *
  * Storage: `order[0 … count)` lists the dirty indexes in first-record order;
  * the pending op of index `i` is a byte in a page (`0` = none, else `op + 1` —
- * `REPLACE` is 0). It replaced a `Map<index, op>` that was cleared every tick:
- * a cleared Map drops its table and re-grows it with rehashing, which made
- * `ops.set` the hottest line of a REPLACE-heavy tick (22.9 %; 31 → 7 ns per
- * recorded op at 1000 dirty entries, 67 → 28 ns at 10). A reset zeroes the
- * touched bytes and keeps the pages.
+ * `REPLACE` is 0). Not a `Map`: one cleared every tick drops its table and
+ * re-grows it with rehashing (measured: bench/v6-results.md § Keyed recorder).
+ * A reset zeroes the touched bytes and keeps the pages.
  *
  * Page 0 (indexes `0 … 4095`) is a direct field, created on the first recorded
- * op and growing with the collection (32 bytes, doubling): a state made of many
- * small maps would otherwise pay 4 KB per map on its first recorded op
- * (`tree-build/attach-steady` +4.4 %, `encoder/deep-nested` +5.4 %). Further
- * pages are fixed 4 KB and live in a directory that exists only once a
- * collection has passed 4096 wire indexes — the directory and its epoch array
- * were two array allocations per recorder (four counting their first growth)
- * that all but the largest collections never used. Since wire indexes are never
+ * op and growing with the collection (32 bytes, doubling), so many small maps
+ * do not pay 4 KB each. Further pages are fixed 4 KB and live in a directory
+ * that exists only once a collection has passed 4096 wire indexes (most
+ * recorders never allocate it). Since wire indexes are never
  * recycled, a directory page that went idle is dropped whenever a new one is
  * needed (page 0 is kept: at most 4 KB, and only on a collection that large).
  */

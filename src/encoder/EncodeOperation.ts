@@ -176,8 +176,8 @@ export function enterFrame(f: Frame, tree: ChangeTree): void {
     const refTarget = tree.refTarget as any;
     const treeIsFiltered = (tree.flags & IS_FILTERED) !== 0;
     // Per-instance child type. A Schema tree has none, and probing for it is a
-    // megamorphic MISS (full prototype-chain walk) on every Schema instance —
-    // 8.7 % of a bulk-ADD encode — so only collections are asked.
+    // megamorphic MISS (full prototype-chain walk) on every Schema instance,
+    // so only collections are asked.
     const childType = (desc.kind === KIND_SCHEMA) ? undefined : refTarget[$childType];
     f.tree = tree;
     f.ref = tree.ref;
@@ -297,8 +297,7 @@ function closeChunkLong(f: Frame, lenPos: number, flag: number): void {
 // Consecutive dirty Schemas of one class whose dirty fields are the same set
 // of primitives, all written (ADD), collapse into one chunk: the class and
 // the field mask ride once, each member costs its refId delta plus its values
-// — no per-member length, no per-field op byte. On a room of N same-class
-// entities updating the same fields per tick this is ~19 % of the patch.
+// — no per-member length, no per-field op byte (bench/realworld-results.md, x7).
 
 /**
  * Can `tree` be a run member in this pass? Schema, ≤ 8 fields (inline op
@@ -692,10 +691,8 @@ function emitSchemaOp(f: Frame, index: number, op: OPERATION): void {
     if (op === OP_DELETE) return;
     const value = readSchemaValue(f, index);
     // One call site for every primitive writer (megamorphic on a mixed-type
-    // schema). Measured alternative — direct `number` / `string` calls behind
-    // type-name compares — gained nothing on encode and cost float32 /
-    // quantized schemas 4–6 % (bench/realworld-results.md, x4), so the
-    // pre-resolved function slot stays.
+    // schema); the pre-resolved function slot beat direct `number` / `string`
+    // calls behind type-name compares (bench/realworld-results.md, x4).
     const encoderFn = f.desc.encoders[index];
     if (encoderFn !== undefined) encoderFn(buffer, value, it); // primitive fast path stays inline
     else writeSchemaRef(f, index, value, op);

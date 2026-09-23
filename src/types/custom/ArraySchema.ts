@@ -23,12 +23,12 @@ import { arrAppend, arrCopy, arrInsert, arrRemove, arrReverse, arrSplice } from 
  *
  * The common builtins (`forEach`, `map`, `filter`, `indexOf`, `slice`, …)
  * are overridden with index loops: V8 runs an `Array.prototype` builtin on
- * a subclass instance through its generic per-property path, 10–100× slower
+ * a subclass instance through its generic per-property path, far slower
  * than on a plain array. `for…of` / `values` / `keys` / `entries` hand out
  * a small iterator over the raw target (the native array iterator would
  * read every element through the Proxy). What cannot be helped is a read
  * through the Proxy itself — `arr[i]` on the encoder side costs a Proxy
- * [[Get]] (~70 ns) even without a `get` trap — so a hot server-side loop
+ * [[Get]] even without a `get` trap — so a hot server-side loop
  * over a large array should use `forEach`, `for…of` or `toArray()`.
  *
  * Mutations are recorded on an `ArrayLog` (see encoder/ArrayLog.ts): an
@@ -88,10 +88,9 @@ const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
 class ArrayValues<V> implements IterableIterator<V> {
     private i = 0;
     /**
-     * ONE result object per iterator, updated in place: a fresh `{ value, done }`
-     * per element is what made `for…of` over a decoded array +84 % against 5.x
-     * (it halves the loop: 7.6 → 3.7 µs per 2000 elements, faster than a plain
-     * array's iterator). Every built-in consumer (`for…of`, spread,
+     * ONE result object per iterator, updated in place (a fresh `{ value, done }`
+     * per element roughly doubles the loop; measured: bench/realworld-results.md
+     * § Round 2 — C). Every built-in consumer (`for…of`, spread,
      * destructuring, `Array.from`, `yield*`) reads the result before asking for
      * the next one; only code holding a result ACROSS `next()` calls sees it
      * change. `keys()` / `entries()` hand out fresh results.
@@ -183,10 +182,10 @@ function permutationOf(before: any[], after: any[]): number[] | undefined {
 // ────── Search loops, one per element kind ──────
 // A single shared loop sees refs, numbers and strings through the same `===`
 // feedback slot and ends up calling the generic StrictEqual stub per element
-// (3–6× slower on numbers and strings); one loop per kind keeps every
+// (several times slower on numbers and strings); one loop per kind keeps every
 // compare monomorphic. The ref loops are unrolled ×8: a pointer compare is
-// cheap enough that the loop overhead dominates (×8 measured 8–15 % faster
-// than ×4 through the harness, ×16 as a nested loop slower than ×1). Callers normalize `from`
+// cheap enough that the loop overhead dominates (measured: bench/realworld-results.md
+// § Round 2 — C). Callers normalize `from`
 // (0 ≤ from) and `to` (to ≤ length); the arrays never hold holes.
 
 function indexOfRef(arr: ArrayLike<any>, value: object, from: number, len: number): number {
@@ -715,11 +714,10 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     // Callbacks receive the public identity (`this`, the Proxy on the encoder
     // side) so writes made through the `array` argument are tracked.
 
-    // Without a `thisArg` the callback is called directly: `Function#call`
-    // is free once TurboFan has inlined it but costs a builtin call per
-    // element before that (and in every caller whose callback feedback is
-    // polymorphic). A direct call passes `this = undefined` exactly like
-    // `.call(undefined, …)`, so the two branches are equivalent.
+    // Without a `thisArg` the callback is called directly (`Function#call`
+    // costs a builtin call per element until TurboFan inlines it, and on
+    // polymorphic callers). A direct call passes `this = undefined` exactly
+    // like `.call(undefined, …)`, so the two branches are equivalent.
 
     forEach(callbackfn: (value: V, index: number, array: V[]) => void, thisArg?: any): void {
         const self = this[$proxyTarget];
@@ -826,8 +824,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
 
     // `indexOf` / `lastIndexOf` / `includes` are JS loops on purpose: the
     // native builtins reject a subclass receiver (`Cast<FastJSArray>` needs
-    // the initial Array.prototype) and fall back to a runtime path that is
-    // 3× slower than these loops on 2000 refs (`lastIndexOf` 60×).
+    // the initial Array.prototype) and fall back to a much slower runtime path.
 
     indexOf(searchElement: V, fromIndex?: number): number {
         const self = this[$proxyTarget];

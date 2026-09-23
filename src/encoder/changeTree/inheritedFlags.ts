@@ -119,23 +119,10 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
         tree.reset();
         tree.aux?.unreliableRecorder?.reset();
     }
-    // Tree-level unreliable promotion is disabled — no tree can gain
-    // IS_UNRELIABLE via inheritance under the current decoration-time
-    // rejection (`Metadata.setUnreliable` on ref-type fields throws). The
-    // promotion block used to migrate reliable-recorder entries populated
-    // before attach (`new Item().assign({...})` then push into an
-    // unreliable collection) over to the unreliable recorder. Kept here
-    // as a comment for re-enablement if a safe tree-level unreliable
-    // semantics is designed later.
-    //
-    // else if ((gainedBits & IS_UNRELIABLE) && tree.has()) {
-    //     const dst = tree.ensureUnreliableRecorder() as ICollectionChangeRecorder;
-    //     tree.forEach((index, op) => {
-    //         if (index < 0) dst.recordPure(op);
-    //         else dst.record(index, op);
-    //     });
-    //     tree.reset();
-    // }
+    // No tree-level unreliable promotion: no tree can gain IS_UNRELIABLE via
+    // inheritance (`Metadata.setUnreliable` rejects ref-type fields). A safe
+    // tree-level semantics would have to move pre-attach reliable entries to
+    // the unreliable recorder here (see git history for the removed block).
 
     // Filter inheritance — only when the type context has any @view or
     // @stream fields registered anywhere.
@@ -187,10 +174,7 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
     if (newFiltered) {
         const sharesEligible = _sharesEligible(tree);
         // #218: nested Schema fields inherit visibility from a @view-gated
-        // parent regardless of whether the parent is a collection. The
-        // `parentIsCollection` constraint that used to live here blocked
-        // nested-Schema-field-of-@view-tagged-Schema from sharing visibility,
-        // forcing users to wrap the child in an ArraySchema as a workaround.
+        // parent regardless of whether the parent is a collection.
         //
         // #226 (4.0.25): items inside a non-default-tag `@view(N)` collection
         // also inherit visibility from the parent collection, so items

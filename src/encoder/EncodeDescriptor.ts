@@ -30,10 +30,9 @@ export interface EncodeDescriptor {
     numFields: number;
     /**
      * A PACKED array of `numFields + 1` `undefined`s; every instance's `$values`
-     * is a `.slice()` of it. Exact size (72 B for two fields, where `[]` grows to
-     * a 17-slot store: 192 B) and packed elements — `new Array(n)` is as small but
-     * HOLEY, and a holey `$values` made every field read 5…10 % slower in tight
-     * loops (`array-iterate/for-of` +9.7 %).
+     * is a `.slice()` of it: exact size (`[]` would grow a larger store) and
+     * packed elements (`new Array(n)` is as small but HOLEY, which slows every
+     * field read in tight loops).
      */
     valuesTemplate: any[];
     /**

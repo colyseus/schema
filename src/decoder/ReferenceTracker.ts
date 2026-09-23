@@ -38,10 +38,9 @@ export class ReferenceTracker {
 
     /**
      * refId → reference count. A `RefTable` (refIds are handed out in order and
-     * never recycled): as an integer-keyed plain object the store in `addRef`
-     * and the `delete` in `garbageCollectDeletedRefs` were ~10–15 % of a
-     * decoder churn loop. `undefined` = not tracked (never added, or
-     * collected); `0` = released, pending GC.
+     * never recycled), not an integer-keyed plain object (see `RefTable`).
+     * `undefined` = not tracked (never added, or collected); `0` = released,
+     * pending GC.
      */
     public refCount = new RefTable<number>();
     public deletedRefs = new Set<number>();
