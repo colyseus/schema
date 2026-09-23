@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.34]
+
+### Fixed
+
+- `view.subscribe(collection)` now works on its own for a `.view()` collection; it no longer needs a prior `view.add()` of the collection or its parent, which logged `"refId" not found` and never delivered the items.
+- A stream backlog (`t.stream()`, `.stream()` maps and sets) now keeps draining `maxPerTick` per tick while the rest of the state is idle; it used to stall until something else changed.
+
 ## [5.0.33]
 
 ### Fixed

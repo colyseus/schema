@@ -16,6 +16,7 @@ import type { EncodeOperation } from "./EncodeOperation.js";
 import { forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { forEachChildWithCtx as _forEachChildWithCtx } from "./changeTree/treeAttachment.js";
 import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
+import { streamHasBroadcastBacklog, streamHasViewBacklog } from "./streaming.js";
 
 /**
  * Reusable context passed to the recorder's forEachWithCtx to iterate changes
@@ -362,7 +363,7 @@ export class Encoder<T extends Schema = any> {
         // reference element refIds safely). Reliable shared pass only;
         // skipped when any StateView is registered (priority pass in
         // `encodeView` owns emission in that mode).
-        if (!unreliable && !hasView && this.root.activeViews.size === 0 && this.root.streamTrees.size > 0) {
+        if (!unreliable && !hasView && this._isStreamBroadcastMode) {
             this._emitStreamBroadcast(buffer, it);
         }
 
@@ -966,8 +967,30 @@ export class Encoder<T extends Schema = any> {
         }
     }
 
+    /**
+     * True when the next `encode()` / `encodeView()` has something to send,
+     * including a stream backlog still draining under `maxPerTick` while
+     * the rest of the state is idle.
+     */
     get hasChanges() {
-        return this.root.changes.next !== undefined;
+        return this.root.changes.next !== undefined || this._hasStreamBacklog();
+    }
+
+    // No StateView registered: streams drain through the shared encode().
+    private get _isStreamBroadcastMode(): boolean {
+        return this.root.activeViews.size === 0 && this.root.streamTrees.size > 0;
+    }
+
+    private _hasStreamBacklog(): boolean {
+        const root = this.root;
+        if (root.streamTrees.size === 0) return false;
+        const broadcast = root.activeViews.size === 0;
+        for (const stream of root.streamTrees) {
+            if (broadcast
+                ? streamHasBroadcastBacklog(stream)
+                : streamHasViewBacklog(stream, root)) return true;
+        }
+        return false;
     }
 
     get hasUnreliableChanges() {

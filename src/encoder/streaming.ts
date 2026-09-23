@@ -179,6 +179,25 @@ export function streamRouteClear(s: Streamable, root: Root, refId: number): void
 }
 
 /**
+ * True while a live view still has positions waiting on `maxPerTick`.
+ * Entries of garbage-collected views are ignored — they never drain.
+ */
+export function streamHasViewBacklog(s: Streamable, root: Root): boolean {
+    const byView = s._stream?.pendingByView;
+    if (byView === undefined) return false;
+    for (const [viewId, pending] of byView) {
+        if (pending.size > 0 && root.activeViews.get(viewId)?.deref() !== undefined) return true;
+    }
+    return false;
+}
+
+/** True while broadcast-mode ADDs or DELETEs are still queued. */
+export function streamHasBroadcastBacklog(s: Streamable): boolean {
+    const st = s._stream;
+    return st !== undefined && (st.broadcastPending.size > 0 || st.broadcastDeletes.size > 0);
+}
+
+/**
  * Push a single position into `_pendingByView[viewId]` — the building
  * block for `StateView.add(element)` when the element lives under a
  * streamable collection. Idempotent for already-pending positions.

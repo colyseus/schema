@@ -51,6 +51,9 @@ function _clearViewBitFromAllTrees(root: Root, slot: number, bit: number): void 
 const _disposeRegistry = new FinalizationRegistry<{ root: Root; id: number; slot: number; bit: number }>(
     ({ root, id, slot, bit }) => {
         _clearViewBitFromAllTrees(root, slot, bit);
+        // Stream backlog too: it would keep `encoder.hasChanges` true, and leak into the id's next owner.
+        root.activeViews.delete(id);
+        for (const stream of root.streamTrees) stream._dropView(id);
         root.releaseViewId(id);
     },
 );
@@ -928,13 +931,22 @@ export class StateView {
 
         if (this.isSubscribed(tree)) return this;
 
-        // Mark collection visible so its own ADD/DELETE ops emit in the
-        // view pass. Also flip on the subscription bit.
-        this.markVisible(tree);
+        // Introduce the collection like add() would: without the parent's
+        // field ADD a `.view()` collection never reaches the client. Ancestors
+        // first, so view.changes stays topological. Skips `items` on purpose.
+        // Marks the collection and (non-stream) children visible.
+        const introduced = tree.parent !== undefined && !this.isVisible(tree);
+        if (introduced) {
+            this.addParentOf(tree, DEFAULT_VIEW_TAG);
+            this._add(collection, DEFAULT_VIEW_TAG, false, false);
+        } else {
+            // Its own ADD/DELETE ops must pass the view filter.
+            this.markVisible(tree);
+        }
         this._setSubscribed(tree);
 
-        // Bootstrap: walk current children and mark them visible to this
-        // view. We DO NOT force-seed via `_addImmediate` / view.changes
+        // Already-visible collection: walk current children and mark them
+        // visible. We DO NOT force-seed via `_addImmediate` / view.changes
         // — the encoder's natural emission paths handle it:
         //
         //   - `encodeAllView` (first-tick bootstrap): walks the tree
@@ -955,7 +967,7 @@ export class StateView {
             tree.forEachChild((_child, index) => {
                 streamEnqueueForView(streamable, this.id, index);
             });
-        } else {
+        } else if (!introduced) {
             tree.forEachChild((child) => {
                 this.markVisible(child);
             });
