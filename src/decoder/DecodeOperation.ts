@@ -230,6 +230,21 @@ function skipValue(d: Decoder, reader: Reader | undefined, type: any, bytes: Uin
     consumeRefValue(d, readUvarint(bytes, it), type, bytes, it, allChanges);
 }
 
+/**
+ * Array element read shared by PUSH / INSERT / SET. The ref header (0 for a
+ * primitive) is left in `elementHeader` for the caller's REF_HAS_BODY check,
+ * which must run after the element is placed; it is stored after
+ * `resolveRef` returns, so a nested decode cannot clobber it.
+ */
+let elementHeader = 0;
+function readElement(d: Decoder, reader: Reader | undefined, type: any, previousValue: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): any {
+    if (reader !== undefined) { elementHeader = 0; return reader(bytes, it); }
+    const header = readUvarint(bytes, it);
+    const value = resolveRef(d, header, OPERATION.ADD, previousValue, type, bytes, it, allChanges);
+    elementHeader = header;
+    return value;
+}
+
 /** DELETE-bit prologue shared by the Schema / keyed paths: release the previous ref, clear the slot unless it is being re-set. */
 function releaseSlot(d: Decoder, ref: any, index: number, op: OPERATION, previousValue: any): void {
     const previousRefId = refIdOfValue(previousValue);
@@ -733,9 +748,8 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
                 if (skip < 0) skip = 0; else if (skip > n) skip = n;
                 for (let i = 0; i < n; i++) {
                     if (i < skip) { skipValue(d, reader, type, bytes, it, allChanges); continue; }
-                    let header = 0, value: any;
-                    if (reader !== undefined) value = reader(bytes, it);
-                    else { header = readUvarint(bytes, it); value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it, allChanges); }
+                    const value = readElement(d, reader, type, undefined, bytes, it, allChanges);
+                    const header = elementHeader;
                     if (resync) resyncRecordVisit(d, arr.length);
                     appendValue(arr, value, ref, refId, allChanges);
                     if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
@@ -750,9 +764,8 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
                 if (skip < 0) skip = 0; else if (skip > n) skip = n;
                 for (let i = 0; i < n; i++) {
                     if (i < skip) { skipValue(d, reader, type, bytes, it, allChanges); continue; }
-                    let header = 0, value: any;
-                    if (reader !== undefined) value = reader(bytes, it);
-                    else { header = readUvarint(bytes, it); value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it, allChanges); }
+                    const value = readElement(d, reader, type, undefined, bytes, it, allChanges);
+                    const header = elementHeader;
                     const at = index + i;
                     arrInsertOne(arr, at, value);
                     if (resync) resyncRecordVisit(d, at);
@@ -768,9 +781,8 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
                     skipValue(d, reader, type, bytes, it, allChanges);
                 } else {
                     const previousValue = arr[index];
-                    let header = 0, value: any;
-                    if (reader !== undefined) value = reader(bytes, it);
-                    else { header = readUvarint(bytes, it); value = resolveRef(d, header, OPERATION.ADD, previousValue, type, bytes, it, allChanges); }
+                    const value = readElement(d, reader, type, previousValue, bytes, it, allChanges);
+                    const header = elementHeader;
                     if (resync) resyncRecordVisit(d, index);
                     if (previousValue !== value) {
                         const previousRefId = refIdOfValue(previousValue);
