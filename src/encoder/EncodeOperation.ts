@@ -479,7 +479,7 @@ function keyedOp(f: Frame, index: number, op: OPERATION): void {
  * values instead. Every op is `uvarint(arg * 16 + op)`: the first operand
  * rides in the op's own varint.
  */
-export function encodeArrayLog(f: Frame): void {
+function encodeArrayLog(f: Frame): void {
     if (f.treeIsFiltered !== f.emitFiltered) return;
     const log = f.tree.rec as ArrayLog | undefined;
     if (log === undefined || log.ops.length === 0) return;
@@ -619,7 +619,7 @@ function identityRestate(f: Frame, source: any[], from: number, n: number): void
  * the revision) or identity (the visible refs). Used by full syncs and the
  * `ARRAY_SNAPSHOT` view-drain entry.
  */
-export function emitArraySnapshotChunk(f: Frame): void {
+function emitArraySnapshotChunk(f: Frame): void {
     const arr: any[] = f.elements;
     const log = f.tree.rec as ArrayLog;
     if (f.identityMode) {
@@ -651,7 +651,7 @@ function schemaOpAt(tree: ChangeTree, index: number): number {
 // ── field emission ───────────────────────────────────────────────────────
 
 /** Live-walk callback (`forEachLiveWithCtx`): every populated field as ADD through the gate. Schemas and keyed collections only. */
-export function fullSyncCb(f: Frame, index: number): void {
+function fullSyncCb(f: Frame, index: number): void {
     if (f.kind === KIND_SCHEMA) {
         if (!schemaFieldPasses(f, index)) return;
         if (f.lenPos === -1) openChunk(f);

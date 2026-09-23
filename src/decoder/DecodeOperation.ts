@@ -247,7 +247,7 @@ function fieldAt(info: DecodeInfo, index: number, ref: any): any {
 }
 
 /** Decode an inline body into `value` (kind-dispatched). Restores `currentRefId` afterwards. */
-export function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): void {
+function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): void {
     const saved = d.currentRefId;
     const tree: any = treeOfDecoded(value); // one load serves both the refId and the decode record
     const refId: number = tree.refId;

@@ -13,10 +13,6 @@ import type { CollectionSchema } from "../types/custom/CollectionSchema.js";
 import type { Schema } from "../Schema.js";
 import type { Root, Streamable } from "./Root.js";
 
-export function createView(iterable: boolean = false) {
-    return new StateView(iterable);
-}
-
 /**
  * Clear the bit for `(slot, bit)` on every ChangeTree in `root`. Called
  * from `dispose()` and from the FinalizationRegistry callback so a view's

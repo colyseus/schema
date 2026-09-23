@@ -22,7 +22,7 @@ import {
  * Grow an encoder's output buffer to the next `BUFFER_SIZE` multiple that
  * fits `usedOffset` bytes, warning once with the value to configure.
  */
-export function growSharedBuffer(owner: { sharedBuffer: Uint8Array }, buffer: Uint8Array, usedOffset: number): Uint8Array {
+function growSharedBuffer(owner: { sharedBuffer: Uint8Array }, buffer: Uint8Array, usedOffset: number): Uint8Array {
     const newSize = Math.ceil(usedOffset / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
 
     console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
@@ -42,7 +42,7 @@ export function growSharedBuffer(owner: { sharedBuffer: Uint8Array }, buffer: Ui
 }
 
 /** End the tick for every tree in `list`: reset recorders, release queue nodes. */
-export function discardQueue(root: Root, list: ChangeTreeList): void {
+function discardQueue(root: Root, list: ChangeTreeList): void {
     let current = list.next;
     while (current) {
         const next = current.next;

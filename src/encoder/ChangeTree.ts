@@ -150,7 +150,6 @@ export function decodedRefIdOf(value: any): number | undefined {
 export const setTree = TreeStamp.put;
 /** The instance's tree, or `undefined` on an object without the slot (cold paths; never the public accessor). */
 export const peekTree = TreeStamp.peek;
-export const treeOfAny = TreeStamp.ofAny;
 /** The tree of any VALUE — `undefined` for primitives, null and plain objects. Drop-in for `value?.[$changes]`. */
 export function refTreeOf(value: any): ChangeTree | undefined {
     return (typeof value === "object" && value !== null) ? TreeStamp.ofAny(value) : undefined;
@@ -191,7 +190,7 @@ export function defineRefAccessors(proto: object): void {
 
 // Pure arithmetic, no `this` — V8 inlines into encode-loop forEach.
 // Mirror of `ChangeTree._opAt` for the inline-ops-only branch.
-export function readInlineOpByte(low: number, high: number, index: number): number {
+function readInlineOpByte(low: number, high: number, index: number): number {
     const shift = (index & 3) << 3;
     return (index < 4)
         ? (low >>> shift) & 0xFF

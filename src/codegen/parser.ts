@@ -677,7 +677,7 @@ export function parseFiles(
  * - https://github.com/microsoft/TypeScript/pull/49089
  * - https://devblogs.microsoft.com/typescript/announcing-typescript-4-8/#decorators-are-placed-on-modifiers-on-typescripts-syntax-trees
  */
-export function getDecorators(node: ts.Node | null | undefined,): undefined | ts.Decorator[] {
+function getDecorators(node: ts.Node | null | undefined,): undefined | ts.Decorator[] {
     if (node == undefined) { return undefined; }
 
     // TypeScript 4.7 and below

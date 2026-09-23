@@ -237,27 +237,6 @@ function boolean (bytes: BufferLike, it: Iterator) {
     return uint8(bytes, it) > 0;
 };
 
-function string (bytes: BufferLike, it: Iterator) {
-  const prefix = bytes[it.offset++];
-  let length: number;
-
-  if (prefix < 0xc0) {
-    // fixstr
-    length = prefix & 0x1f;
-
-  } else if (prefix === 0xd9) {
-    length = uint8(bytes, it);
-
-  } else if (prefix === 0xda) {
-    length = uint16(bytes, it);
-
-  } else if (prefix === 0xdb) {
-    length = uint32(bytes, it);
-  }
-
-  return utf8Read(bytes, it, length);
-}
-
 function number (bytes: BufferLike, it: Iterator) {
   const prefix = bytes[it.offset++];
 
@@ -310,20 +289,6 @@ function number (bytes: BufferLike, it: Iterator) {
     return (0xff - prefix + 1) * -1
   }
 };
-
-export function stringCheck(bytes: BufferLike, it: Iterator) {
-  const prefix = bytes[it.offset];
-  return (
-    // fixstr
-    (prefix < 0xc0 && prefix > 0xa0) ||
-    // str 8
-    prefix === 0xd9 ||
-    // str 16
-    prefix === 0xda ||
-    // str 32
-    prefix === 0xdb
-  );
-}
 
 export const decode = {
     utf8Read,
