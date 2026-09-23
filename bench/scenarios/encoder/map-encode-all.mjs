@@ -10,8 +10,8 @@ export default {
     variants: [
         { name: "players-str-1000", key: "string", players: 1000, scores: 0 },
         { name: "players-num-1000", key: "number", players: 1000, scores: 0 },
-        { name: "scores-str-10000", key: "string", players: 0, scores: 10000 },
-        { name: "scores-num-10000", key: "number", players: 0, scores: 10000 },
+        { name: "scores-str-10000", key: "string", players: 0, scores: 10000, layoutSensitive: true },
+        { name: "scores-num-10000", key: "number", players: 0, scores: 10000, layoutSensitive: true },
     ],
     setup(lib, variant) {
         const { encoder } = buildMapState(lib, variant.key, variant.players, variant.scores);

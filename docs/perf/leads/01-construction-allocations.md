@@ -112,7 +112,7 @@ private-slot load and a dependent load to every field READ to save 8 B per
 instance, and `$values` is a public export. `_isSchema` → flag bit (184 → 176 B):
 it is the per-tree branch of every recorder method; left for a later round.
 
-## Open follow-up (2026-09-23)
+## Follow-up (2026-09-23): resolved — heap-layout artefact, not a regression
 
 Re-check at 20 samples, `W2` (bb40a07) vs the landed build: `encoder/map-encode-all/scores-str-10000`
 **+3.6 %** (p < .001, A/A +0.4 %). It is the only row slower than its A/A floor. The broad compare's other two
@@ -125,3 +125,16 @@ layout of 44f64d2): **s2 is not the cause.** With the revert, `map-encode-all/sc
 (p .006, A/A +0.4 %), then −1.2 % (n.s.) at `--iters 3`; `map-replace/num-10pct` / `num-100pct` get slower
 (+4.0 % / +3.5 %, A/A ≤ 0.2 %; num-100pct +2.7 % on the re-run); memory-footprint and tree-build are flat.
 s2 stays.
+
+**Resolution.** At 40 samples × 3 iterations, `W2` (bb40a07) vs `W7` (0d5b31a code)
+read +2.7 % ✗ (A/A +0.1 %), yet `writeMapBody`, `utf8Write`, `writeNumber`,
+`writeString` and `utf8Length` are byte-identical between the two bundles and
+V8 inlines the same callees into `writeMapBody` (`bench/profile-v8.mjs
+--inlining`). The extra time sits in `writeMapBody`'s own frame (+8 %): a
+10 000-entry `Map` iteration plus `indexByKey.get(key)` string-hash lookups,
+which depend on where the Maps and key strings land in the heap. With the
+harness's per-sample heap padding (`--pad`) the same comparison reads
+**−1.3 % (n.s.)**, A/A +0.9 %. The step-by-step readings also flipped sign across
+runs (W3: +3.6 % in one sweep, +0.2 % in another). The two 10 000-entry variants
+of `encoder/map-encode-all` are now marked `layoutSensitive`, so future sweeps
+randomise their layout.
