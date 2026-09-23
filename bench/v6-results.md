@@ -902,7 +902,7 @@ native string-keyed `Map.has` is sensitive to where the setup happened to place
 the table and the key strings; the same row read +8.9 % on identical code in
 "Construction and attach" and −4 % in between. Reported, not chased.
 
-# Harness round (LEADS/10, 2026-09-22)
+# Harness round (docs/perf/leads/10, 2026-09-22)
 
 Numbers in older sections were taken with the scenario warm-up counts only.
 From here on `run.mjs` enforces a 100 ms minimum warm-up per sample
@@ -931,9 +931,9 @@ As integer-keyed plain objects, the `refCount` store / `delete` / decrement cost
 | decoder/bootstrap | +1.6 % (a second table grown by `push`; accepted) |
 | decoder/tick, callbacks/density, callbacks/strategies, realworld decode-10k-callbacks | neutral |
 
-Per-step numbers are in `LEADS/02-decoder-refcount-callbacks-tables.md`.
+Per-step numbers are in `docs/perf/leads/02-decoder-refcount-callbacks-tables.md`.
 
-# Construction allocations (LEADS/01, 2026-09-22)
+# Construction allocations (docs/perf/leads/01, 2026-09-22)
 
 `L01-base` (c8c3bc6) → `L01-s1` → `L01-s2` → `L01-s3`, 10 samples/side, bisect
 (each build vs base). Measured before touching anything: an instrumented bundle
@@ -1006,7 +1006,7 @@ Bisect of the 9 slower rows (20 samples/side, R8-A → `W1b-preL02` (5eae0e8) �
 `callbacks/density/dense` (+7.7 %). The lead-02 run measured `decoder/bootstrap`
 only (+1.6 %). Suspected mechanism: an integer-keyed plain object fills V8 fast
 elements on a fresh bootstrap and only degrades after `delete`, which is where
-`RefTable` wins. A fix is in progress; see LEADS/02.
+`RefTable` wins. A fix is in progress; see docs/perf/leads/02.
 
 Lesson: a change to a shared decoder table must be measured on every bootstrap
 shape (`decoder/bootstrap`, `decoder/map-bootstrap/*`, `callbacks/density/*`),

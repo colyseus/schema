@@ -11,7 +11,7 @@ export default {
     // of processes the entity sites get pretenured and GC time per run jumps
     // ~2.5× (2.4 → 3.2 µs/entity), independent of the warm-up length. That
     // bimodality, not code, moved this row by ±5–20 % in A/A runs, so the
-    // scenario measures the non-pretenured regime (LEADS/10-bench-harness.md).
+    // scenario measures the non-pretenured regime (docs/perf/leads/10-bench-harness.md).
     nodeFlags: ["--no-allocation-site-pretenuring"],
     warmup: 10, // ≥ 100 ms, and enough run() invocations for its own tier-up
     valueScale: 1000 / 5000, // ms per 5000-entity run -> µs/entity

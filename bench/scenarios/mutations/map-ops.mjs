@@ -8,7 +8,7 @@ const SIZE = 1000;
 const OPS = ["get", "has", "forEach", "for-of", "keys", "set-replace", "add-delete"];
 // The read ops time a native Map walk / lookup of a few ns per entry: where
 // setup() happens to place the table and the key strings moves them by
-// ±5–15 % between builds with byte-identical code (LEADS/10-bench-harness.md).
+// ±5–15 % between builds with byte-identical code (docs/perf/leads/10-bench-harness.md).
 // run.mjs randomises the heap layout per sample for them (child --pad).
 const LAYOUT_SENSITIVE = new Set(["get", "has", "forEach", "for-of", "keys"]);
 

@@ -103,7 +103,7 @@ Steps (one small commit each; snapshot builds before 5 and after 6):
 5. Brand fallback in `makeCollectionSetter` + `MapSchema` ctor (case 4) — bench encoder/mutations rows.
 6. `isTracked` + `ensureTracked` fallback (cases 7, 8) — bench tree-build, bulk-add, entity-churn, stateview.
 7. Cold duck checks; version-mismatch warning.
-8. Docs: supported matrix in README; LEADS/09 → resolved.
+8. Docs: supported matrix in README; docs/perf/leads/09 → resolved.
 9. Full sweep, bisect across per-step builds.
 
 Critical files: `src/types/TypeContext.ts`, `src/annotations.ts`, `src/decoder/DecodeOperation.ts`, `src/Metadata.ts`, `src/encoder/changeTree/treeAttachment.ts`.

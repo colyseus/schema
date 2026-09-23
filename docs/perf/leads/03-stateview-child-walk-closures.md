@@ -64,6 +64,6 @@ Converted the four recursive `StateView` walks: `_add` (pooled
 - Bytes identical (5 458 157); 1081 passing, 1 pending.
 
 **Decision:** not landed. The pooled-ctx walk adds code for a gain no bench row
-can resolve and GC time did not move. The implementation is kept in
-`LEADS/patches/03-stateview-pooled-ctx.patch` (applies to `af7686f`); reopen it
+can resolve and GC time did not move. The implementation is kept in git history:
+`git show 83ad7ee:LEADS/patches/03-stateview-pooled-ctx.patch` (applies to `af7686f`); reopen it
 only with a view-heavy workload whose profile shows the child walk above ~5 %.

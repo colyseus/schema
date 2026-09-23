@@ -48,7 +48,7 @@ Everything here came out of the profiling rounds recorded in
   packed template instead).
 - First page grows with the content, later pages are fixed; never drop the
   frontier page; `undefined >>> n` is `0`, so reject missing keys explicitly.
-- Don't append with `push` at a site shared by values of different elements kinds (Smi and object). One deopt of the inlined `push` turns speculation off for that site for good, so every append after it calls the builtin (LEADS/02, map-bootstrap +11 %). Use a keyed store at `length`.
+- Don't append with `push` at a site shared by values of different elements kinds (Smi and object). One deopt of the inlined `push` turns speculation off for that site for good, so every append after it calls the builtin (docs/perf/leads/02, map-bootstrap +11 %). Use a keyed store at `length`.
 - A structure cleared every tick should not be a `Map` (the table is dropped
   and re-grown); a scratch array should not be reset with `length = 0`.
 - Hand a value down instead of re-deriving it (parent tree, refId from the

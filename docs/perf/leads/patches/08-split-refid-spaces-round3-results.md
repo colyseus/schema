@@ -16,7 +16,7 @@ through its own accessors (`decodedRefIdOf`, `addRef`, `decodeBody`, callbacks, 
 - `ensureTracked` (moved to `ChangeTree.ts`, exported) no longer copies the decoder id; `Root.add` allocates. The stub
   object becomes the tree's decoder record so the decoder keeps addressing the instance. Stub detection is positive
   (`isTracked === false`, prototype getter on `UntrackedChangeTree`); anything else — including a tracked tree from
-  another library copy — is treated as tracked (the mechanism LEADS/09 planned, cross-copy safe).
+  another library copy — is treated as tracked (the mechanism docs/perf/leads/09 planned, cross-copy safe).
 - `UntrackedChangeTree.setParent` / `setRoot` upgrade the stub and attach the real tree — but ONLY when the adopting
   parent is attached to a Root (`setParent(parent, root)` with a root, or `setRoot`). A parent without a Root leaves the
   stub alone: that is the normally-constructed root of `new Decoder(state)`, whose fields the decoder itself assigns
@@ -125,7 +125,7 @@ reproduced it (300 ops: gc 6.5 ms → 80 ms with one `WeakMap.set` per op). Henc
 (`ReferenceTracker.trackedRecords`, dies with the decoder) with the tracker threaded into the decoder-side readers; the stub
 carries a `tracker` back-reference (one slot on decoder-side stubs, none on `ChangeTree`) so `ensureTracked` can hand the
 stub to its decoder as the tracked tree's record. A declared `ChangeTree` slot was not measured: it costs +8 B on every
-server-side tree by construction (LEADS/01: +1.1 % memory per slot) for a decoder-only need.
+server-side tree by construction (docs/perf/leads/01: +1.1 % memory per slot) for a decoder-only need.
 
 `node bench_encode.js` (final build): **5458157 bytes** (unchanged).
 
@@ -142,6 +142,6 @@ decoder's records instead. No test depended on it.
    current state, `it.skip` names the case; (b) a decoder "decode into live state" mode that routes writes on TRACKED
    instances through the collection APIs and keeps a decoder-side `keyByIndex` per map (a project of its own, decoder
    hot-path cost to measure). Recommendation: (a) now; open a lead for (b) if a relay product needs it.
-2. **`Schema.initialize` semantics.** Now idempotent (documented in code + LEADS/07). If "re-initialize resets" must stay
+2. **`Schema.initialize` semantics.** Now idempotent (documented in code + docs/perf/leads/07). If "re-initialize resets" must stay
    available, add an explicit `Schema.initialize(instance, { reset: true })` rather than inferring it; nothing in the
    repo or tests used the old rebuild.

@@ -57,7 +57,7 @@ Four rounds, each reviewed with `/code-review high`:
    a process-wide `WeakMap` cost +38 % on `decoder/bootstrap`, all GC). Fixes
    every collision variant and the decoder-built root; 9 behaviour tests; bench
    neutral except `decoder/resync` +2…4 %. Patch + results:
-   `patches/08-split-refid-spaces-round3.patch` (applies to `16ff6be`, 3-way on
+   `git show c8c3bc6:LEADS/patches/08-split-refid-spaces-round3.patch` (applies to `16ff6be`, 3-way on
    `af7686f`), `patches/08-split-refid-spaces-round3-results.md`.
 4. **Review of round 3** found what stopped it:
    - `trackedRecords` never shrinks (`removeRef` / GC do not delete) → a relay's

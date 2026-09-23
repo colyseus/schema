@@ -2,16 +2,22 @@
 // 6.0 chunk stream, and project the byte effect of format proposals BEFORE
 // implementing any of them.
 //
-//   node bench/lib/wire-whatif.mjs <scenario>[/<variant>] [--build dir] [--ticks 30] [--warm 3]
+//   node bench/lib/wire-whatif.mjs <scenario>[/<variant>] [--build dir] [--ticks 30] [--warm 3] [--delta]
 //
 // `lib.Encoder.prototype.{encode,encodeView,encodeAll,encodeAllView}` are
 // wrapped before the scenario's setup(), so every frame the tick produces is
-// copied out. Parsing follows SPEC.md:
-//   message   := chunk*
-//   chunk     := uvarint(refId) uvarint(len) ops(len bytes)
+// copied out. Parsing follows SPEC.md. Current builds emit the delta chunk
+// format and need `--delta` (the W2a / W2b projections are then already
+// applied):
+//   message     := (chunk | run)*
+//   chunk       := chunkHeader uvarint(byteLen * 2) ops(byteLen bytes)
+//   run         := chunkHeader uvarint(byteLen * 2 + 1) runBody(byteLen bytes)
+//   chunkHeader := uvarint(refId * 2 + 1) (first chunk of a slice) | uvarint(zigzag(refId - prevRefId) * 2)
 //   schemaOp  := uvarint(index << 2 | code) value?      code: 0 REPLACE, 1 DELETE, 2 ADD, 3 DELETE_AND_ADD
 //   keyedOp   := uvarint(index * 4 + code) [key] value?  code: 0 REPLACE, 1 DELETE, 2 ADD, 3 CLEAR
 //   refValue  := uvarint(refId * 4 + hasBody*2 + hasType) [uvarint typeId] [body]
+// Without `--delta` it parses the original 6.0 chunk format,
+// `chunk := uvarint(refId) uvarint(len) ops(len bytes)`, for older frozen builds.
 // Chunks whose ops carry an inline body (ADD of a fresh instance) or that
 // belong to an ArraySchema are counted but not parsed op-by-op; the
 // projections that need op detail (W2b, W1, W3) only use the parsed chunks.
