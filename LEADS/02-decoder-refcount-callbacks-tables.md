@@ -95,3 +95,48 @@ Seen in the same profiles but out of scope: `for (const index in metadata)` in
 is a `for…in` over the metadata object for every collected Schema. A per-class
 list of the ref-typed field names would skip it, and skip the primitive fields
 too.
+
+## Regression found after landing, and fix (2026-09-23, on `b887cf2`)
+
+A bisect (20 samples/side) showed rows the lead never measured: vs `5eae0e8`
+(pre-lead), `bb40a07` made `decoder/map-bootstrap/players-num-1000` **+10.5…+12.9 %**,
+`players-str-1000` **+7.6…+9.5 %**, `callbacks/density/dense` +3…+7.7 % (A/A ≤ 1.5 %).
+
+**Cause** (not elements growth): `RefTable.set` appended with `page0.push(value)`.
+TurboFan inlines `push` speculatively. With the decoder's `refCount` (small
+integers) and `refs` (objects) both appending through that one site, inlined
+twice into `addRef`, the inlined push deopted once ("not a Smi", `--trace-deopt`,
+only in the lead-02 build). After that deopt V8 stops speculating on that call
+site, so every later append, from every `RefTable`, went through the `push`
+builtin. `set` went from 2 samples to 5.5 % self time, all on the `push` line.
+`addRef` with its `refCount` store removed was 5 % faster than the pre-lead
+build, so the second table itself was never the cost. Separately, `triggerChanges`
+reads `callbacks.get(refId)` once per change through the shared `RefTable.get`,
+whose load also sees the integer pages of both `refCount` tables: 2.2 % of the
+dense frame on the `get` lines, where the plain object's load was one monomorphic
+element load.
+
+**Fix:** (1) `set` appends with a keyed store at `length` (`page0[key] = value`,
+also in the pad loop) instead of `push`. (2) `RefTable.increment(key)` for the
+decoder's `refCount`: its own function literal with the frontier append inlined.
+(3) `callbacks` is a `CallbacksTable`, a `RefTable` subclass whose `get` is
+its own literal, so its feedback only sees that table's pages.
+
+| row (vs `5eae0e8`) | HEAD | store (1) | + increment (2) | lead 02 + (1)(2) on `bb40a07` | + callbacks get (3), final |
+| --- | --- | --- | --- | --- | --- |
+| map-bootstrap/players-num-1000 | +8.4…+12.9 % | +3.9…+4.4 % | +1.4…+5.9 % | +0.4 % | +4.1 % (n.s.) |
+| map-bootstrap/players-str-1000 | +7.6…+8.4 % | +4.1…+4.4 % | −0.7…−1.1 % | −2.2 % | −1.3 % (n.s.) |
+| callbacks/density/dense | +2.2…+6.2 % | +0.3…+5.7 % | +1.4…+4.8 % (30 samples: +3.7 %, A/A +1.5 %) | +4.3 % | +3.8 % (n.s., A/A +1.0 %) |
+| decoder/bootstrap | +1.0…+1.3 % | −3.2…−3.4 % | −2.3…−3.1 % | −3.1 % | **−3.1 %** |
+| decoder/churn | −34.5…−36.8 % | −35.4 % | −35.5 % | | **−37.4 %** |
+| decoder/map-churn/str, num | −22…−23 % | −22 % | −22 % | | **−22.0 %, −21.4 %** |
+| decoder/bulk-add/turnover | −25.5 % | −25.4 % | −25.9 % | | **−25.6 %** |
+| callbacks/add-remove-churn | −29…−30 % | −27.4 % | −28.6 % | | **−30.7 %** |
+| callbacks/map-churn/str, num | −36…−38 % | −34…−39 % | −33…−34 % | | **−43.8 %, −38.8 %** |
+
+The churn wins are kept. The bootstrap rows are back within noise, and
+`decoder/bootstrap` is now faster than before the lead. `players-num-1000` swings
++0.4…+5.9 % from run to run at 20 samples, and none of those runs is significant
+except one. `callbacks/density/dense` has two modes, so it needs more samples.
+Encoder rows (`entity-churn`, `map-churn/*`, `bulk-add/*`) are within ±1.3 % of
+HEAD. Bytes unchanged (5 458 157). Tests 1085 passing, 1 pending.

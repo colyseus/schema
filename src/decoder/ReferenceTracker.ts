@@ -3,7 +3,7 @@ import { refTreeOf, installUntrackedChangeTree, decodedRefIdOf } from "../encode
 import { $childType } from "../types/symbols.js";
 import type { IRef } from "../encoder/ChangeTree.js";
 import { spliceOne } from "../types/utils.js";
-import { RefTable } from "../RefTable.js";
+import { RefTable, CallbacksTable } from "../RefTable.js";
 import { OPERATION } from "../encoding/spec.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
@@ -48,8 +48,11 @@ export class ReferenceTracker {
     public refCount = new RefTable<number>();
     public deletedRefs = new Set<number>();
 
-    /** refId → registered callbacks; a `RefTable` for the same reason as `refCount`. */
-    public callbacks = new RefTable<SchemaCallbacks>();
+    /**
+     * refId → registered callbacks; a `RefTable` for the same reason as
+     * `refCount` (a `CallbacksTable`: its own `get`, see there).
+     */
+    public callbacks: RefTable<SchemaCallbacks> = new CallbacksTable<SchemaCallbacks>();
     protected nextUniqueId: number = 0;
 
     getNextUniqueId() {
@@ -73,8 +76,7 @@ export class ReferenceTracker {
         tree.refId = refId;
 
         if (incrementCount) {
-            const count = this.refCount.get(refId);
-            this.refCount.set(refId, (count === undefined) ? 1 : count + 1);
+            this.refCount.increment(refId);
         }
 
         if (this.deletedRefs.has(refId)) {

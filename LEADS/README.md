@@ -10,7 +10,7 @@ Everything here came out of the profiling rounds recorded in
 | # | lead | kind | expected size | risk |
 | --- | --- | --- | --- | --- |
 | [01](01-construction-allocations.md) | Per-instance allocations / GC in construction — **closed**: ChangeTree 28 → 20 slots (248 → 184 B), lazy `KeyedRecorder` directory, dead `$items` reads | perf + memory | memory-footprint −8.3 %, tree-build −2.5…−6.6 % | landed (pending broad sweep + tests, see lead) |
-| [02](02-decoder-refcount-callbacks-tables.md) | Decoder `refCount` / `callbacks` are integer-keyed plain objects | perf + memory | decoder churn −21…−37 %, callbacks churn −30…−35 %, bootstrap +1.6 % | closed (landed: both on `RefTable`) |
+| [02](02-decoder-refcount-callbacks-tables.md) | Decoder `refCount` / `callbacks` are integer-keyed plain objects | perf + memory | decoder churn −21…−37 %, callbacks churn −30…−44 %; map-bootstrap regression (+8…13 %, a deopted `push`) fixed, bootstrap −3 % | closed (landed: both on `RefTable`; regression fix 2026-09-23) |
 | [03](03-stateview-child-walk-closures.md) | Closure per node in StateView / ChangeTree child walks | perf (GC) | add+remove micro −3.8 %, bench rows neutral | closed, not landed (below resolution) |
 | [04](04-arrayschema-vs-v5-reads.md) | `ArraySchema` `indexOf` +80 %, `for…of` +18 % against 5.x | perf | medium, only with a storage-model change | parked (doc note added) |
 | [05](05-mapschema-set-hashes.md) | `MapSchema.set`: three string hashes per REPLACE | perf | large on writes, **negative on reads** | declined — reference only |
@@ -47,6 +47,7 @@ Everything here came out of the profiling rounds recorded in
   packed template instead).
 - First page grows with the content, later pages are fixed; never drop the
   frontier page; `undefined >>> n` is `0`, so reject missing keys explicitly.
+- Don't append with `push` at a site shared by values of different elements kinds (Smi and object). One deopt of the inlined `push` turns speculation off for that site for good, so every append after it calls the builtin (LEADS/02, map-bootstrap +11 %). Use a keyed store at `length`.
 - A structure cleared every tick should not be a `Map` (the table is dropped
   and re-grown); a scratch array should not be reset with `length = 0`.
 - Hand a value down instead of re-deriving it (parent tree, refId from the

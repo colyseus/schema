@@ -38,11 +38,11 @@ const PAGE_MASK = PAGE_SIZE - 1;
 
 export class RefTable<V> {
     /** Keys `0 … PAGE_SIZE-1`; growable (its length is the highest key seen in it, plus one). */
-    private page0: (V | undefined)[] = [];
+    protected page0: (V | undefined)[] = [];
     /** Live entries in `page0`. */
     private live0 = 0;
     /** Page directory for keys ≥ PAGE_SIZE, created on first use. Slot 0 is unused (`page0` serves it). */
-    private pages: ((V | undefined)[] | undefined)[] | undefined = undefined;
+    protected pages: ((V | undefined)[] | undefined)[] | undefined = undefined;
     /** Live entries per directory page (slot 0 unused). */
     private live: number[] | undefined = undefined;
     private count = 0;
@@ -68,13 +68,17 @@ export class RefTable<V> {
         if (key < PAGE_SIZE) {
             const page0 = this.page0;
             if (key === page0.length) {
-                // the common case — keys are handed out in order, so a new one appends
-                page0.push(value);
+                // the common case — keys are handed out in order, so a new one appends.
+                // A keyed store at `length`, not `push`: `push` is a call site that TurboFan
+                // inlines speculatively, and one elements-kind miss there (a table of numbers
+                // and a table of objects share this site) deopts it for good — every later
+                // append then calls the builtin (decoder map-bootstrap +11 %, see LEADS/02).
+                page0[key] = value;
                 this.live0++;
                 this.count++;
                 return this;
             }
-            while (page0.length <= key) { page0.push(undefined); } // stays packed: no holes, no sparse store
+            while (page0.length <= key) { page0[page0.length] = undefined; } // stays packed: no holes, no sparse store
             if (page0[key] === undefined) { this.live0++; this.count++; }
             page0[key] = value;
             return this;
@@ -85,6 +89,26 @@ export class RefTable<V> {
         if (page[i] === undefined) { this.live![p]++; this.count++; }
         page[i] = value;
         return this;
+    }
+
+    /**
+     * `set(key, (get(key) ?? 0) + 1)` for a table of counts (the decoder's
+     * `refCount`), with the append at the page-0 frontier inlined: on a
+     * bootstrap every new refId lands there. Its own function literal, so the
+     * store's feedback only ever sees small integers.
+     */
+    increment(this: RefTable<number>, key: number): number {
+        const page0 = this.page0;
+        if (key === page0.length && key < PAGE_SIZE) {
+            page0[key] = 1;
+            this.live0++;
+            this.count++;
+            return 1;
+        }
+        const count = this.get(key);
+        const next = (count === undefined) ? 1 : count + 1;
+        this.set(key, next);
+        return next;
     }
 
     delete(key: number): boolean {
@@ -188,5 +212,25 @@ export class RefTable<V> {
             page = pages[p] = new Array<V | undefined>(PAGE_SIZE).fill(undefined);
         }
         return page;
+    }
+}
+
+/**
+ * A `RefTable` with its own copy of `get`, for the decoder's `callbacks`
+ * (`refId → SchemaCallbacks`), read once per change in `triggerChanges`.
+ * Inline-cache feedback belongs to the function literal: through the shared
+ * `RefTable.get` that load also sees the count tables' small-integer pages
+ * (the encoder's and the decoder's `refCount`) and goes polymorphic. As an
+ * own literal it only ever sees this table's pages. Same body as `get`.
+ */
+export class CallbacksTable<V> extends RefTable<V> {
+    get(key: number): V | undefined {
+        const page0 = this.page0;
+        if (key < page0.length) { return page0[key]; }
+        if (!(key >= PAGE_SIZE)) { return undefined; } // see `RefTable.get`
+        const pages = this.pages;
+        if (pages === undefined) { return undefined; }
+        const page = pages[key >>> PAGE_BITS];
+        return (page !== undefined) ? page[key & PAGE_MASK] : undefined;
     }
 }
