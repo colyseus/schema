@@ -69,3 +69,19 @@ Also measured and kept (2026-09-23, 20 samples vs 9b9adee, A/A ≤ 1.2 %):
 - ×8-unrolled `indexOfRef` / `lastIndexOfRef` → plain loop: `decoder/array-read/indexOf-last` +46 %
   (+44 % on the re-run), `mutations/array-iterate/indexOf-last` +27 %. The unroll stays.
 - `KeyedRecorder` page-0 field (lead 01 s2) → directory/pages: see lead 01, Open follow-up.
+
+Also measured and kept (2026-09-23, batch C, 20 samples vs bdf556a):
+
+- `StateCallbackStrategy.triggerChanges`: the seven "listeners backwards in try/catch" loops →
+  two module-level helpers (`fire0(list)` / `fire2(list, a, b)`, would remove ~21 LOC).
+  Helper tests for the list itself: `callbacks/density/sparse1pct` +7.4 % (A/A 0.0 %), +6.3 % on the
+  `--iters 3` re-run. Caller tests first, helper is only the loop: `sparse1pct` +4.5 % (A/A +0.1 %),
+  `callbacks/strategies/state` +8.3 % (A/A +2.8 %). The loops stay inline.
+
+- **Shared Map/Set/Stream members installed on the prototypes** (2026-09-23): cold members
+  (`maxPerTick` / `priority` accessors, `_dropView`, `_unregister`, the tracking-control
+  family) moved to a `sharedMembers.ts` that installs them with `Object.defineProperty` and
+  types them by interface merging. Bench-neutral, net −23 LOC, **not landed**: runtime
+  installation makes the members undiscoverable from the class body and "go to definition"
+  lands on an interface — a worse trade than 23 duplicated lines. Diff kept at
+  `%TEMP%\schema-QC-t4.patch` (not in the tree).
