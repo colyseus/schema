@@ -979,3 +979,35 @@ and the test suite were not run: the bench job was stopped for memory pressure.
 Lesson: check what the *published* build emits before reasoning about a shape
 from the TypeScript config — the source comment said the optional fields were
 absent until assigned; the bundle had defined all of them at construction.
+
+
+# LEADS round sweep (2026-09-23): `R8-A` (44f64d2) → `W3` (2ab22f0 code)
+
+Full sweep, 144 units, 10 samples/side, harness from LEADS 10 (warm-up time floor,
+layout padding, automatic A/A column). **42 rows faster, 9 slower.**
+
+What landed in between: LEADS 11 (dead code), 10 (harness), 07 (`Schema.initialize`
+idempotent), 02 (decoder `refCount` / `callbacks` on `RefTable`), 01 (ChangeTree diet).
+`node bench_encode.js`: 484–497 ms → **438 ms**, bytes unchanged (5 458 157).
+
+Bisect of the 9 slower rows (20 samples/side, R8-A → `W1b-preL02` (5eae0e8) → W2 (bb40a07) → W3):
+
+| row | → pre-L02 | → W2 (L02) | → W3 (L01) | A/A |
+| --- | --- | --- | --- | --- |
+| `decoder/map-bootstrap/players-num-1000` | −1.5 % | **+11.1 % ✗** | +11.9 % ✗ | −0.9 % |
+| `decoder/map-bootstrap/players-str-1000` | +2.3 % | **+7.1 % ✗** | +7.7 % ✗ | −0.4 % |
+| `callbacks/density/dense` | +0.3 % | **+7.7 % ✗** | +3.8 % | −0.4 % |
+| `decoder/map-replace/str-100pct` | +0.3 % | +1.9 % ✗ | +0.6 % | +0.2 % |
+| `encoder/map-encode-all/scores-str-10000` | −0.8 % | +0.3 % | +1.5 % ✗ | −0.0 % |
+| `decoder/array-read/length+at` | +0.2 % | +0.7 % | +1.4 % ✗ | −0.5 % |
+| `e2e/room-tick`, `encoder/map-churn/num-1000`, `stateview/array-reindex/shift-*` | | | noise (≤ ±3.6 %, sign flips) | |
+
+**Real regression: LEADS 02 on decoder bootstrap of maps** (+7…+11 %) and on
+`callbacks/density/dense` (+7.7 %). The lead-02 run measured `decoder/bootstrap`
+only (+1.6 %). Suspected mechanism: an integer-keyed plain object fills V8 fast
+elements on a fresh bootstrap and only degrades after `delete`, which is where
+`RefTable` wins. A fix is in progress; see LEADS/02.
+
+Lesson: a change to a shared decoder table must be measured on every bootstrap
+shape (`decoder/bootstrap`, `decoder/map-bootstrap/*`, `callbacks/density/*`),
+not only the one the lead names.
