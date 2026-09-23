@@ -1,3 +1,5 @@
+// Wall-clock thresholds (flaky on a loaded machine): not part of `npm test`.
+// Run on demand with `npm run test:perf`.
 import * as assert from "assert";
 import { State, Player } from "./Schema";
 import { ArraySchema, Encoder, MapSchema } from "../src";

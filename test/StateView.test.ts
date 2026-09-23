@@ -61,36 +61,6 @@ describe("StateView", () => {
         // assertEncodeAllMultiple(encoder, state, [client1])
     });
 
-    xit("should allow adding detached instances to the view (not immediately attached)", () => {
-        class Item extends Schema {
-            @type("number") amount: number;
-        }
-
-        class State extends Schema {
-            @type("string") prop1 = "Hello world";
-            @view() @type([Item]) items = new ArraySchema<Item>();
-        }
-
-        const state = new State();
-        const encoder = getEncoder(state);
-
-        const client1 = createClientWithView(state);
-        client1.view.add(state.items);
-
-        for (let i = 0; i < 5; i++) {
-            const item = new Item().assign({ amount: i });
-            client1.view.add(item);
-            state.items.push(item);
-        }
-
-        encodeMultiple(encoder, state, [client1]);
-
-        assert.strictEqual(client1.state.prop1, state.prop1);
-        assert.strictEqual(client1.state.items.length, 5);
-
-        assertEncodeAllMultiple(encoder, state, [client1])
-    });
-
     it("shouldn't allow to add detached instance to view", () => {
         class Entity extends Schema {
             @type("string") id: string = nanoid(9);
