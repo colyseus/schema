@@ -58,7 +58,7 @@ export function setParent(
     }
     if (
         parentTree !== undefined &&
-        parentTree.subscribedViews !== undefined &&
+        parentTree.aux?.subscribedViews !== undefined &&
         // Collection check: `$childType` on the ref identifies Array/Map/
         // Set/Collection/Stream. Schema-field parents don't have it.
         (parent as any)[$childType] !== undefined
@@ -118,7 +118,7 @@ export function forEachChildWithCtx<C>(
         if (typeof ref[$childType] !== "string") {
             if (kind === KIND_ARRAY) {
                 // ArraySchema: dense index loop over the element storage.
-                const els = tree.elements;
+                const els = tree.refTarget as any[];
                 for (let i = 0, len = els.length; i < len; i++) {
                     const value = els[i];
                     if (!value) { continue; }
@@ -141,7 +141,7 @@ export function forEachChildWithCtx<C>(
             }
         }
     } else {
-        const metadata = tree.metadata;
+        const metadata = tree.encDescriptor.metadata;
         const indexes = metadata?.[$refTypeFieldIndexes];
         if (!indexes) return;
         const names = tree.encDescriptor.names;

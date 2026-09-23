@@ -114,14 +114,6 @@ export const $reset = "~reset";
 export const $rev: unique symbol = Symbol.for("$rev");
 
 /**
- * Element storage of an ArraySchema when it is not the instance itself.
- * No implementation sets it today (the internal-array experiment was
- * removed; see git history at 16ff6be); encoder and decoder still read
- * `ref[$items] ?? ref` once per structure, which resolves to the instance.
- */
-export const $items: unique symbol = Symbol.for("$items");
-
-/**
  * Per-instance dense array holding field values by index.
  * Replaces per-field _fieldName shadow properties.
  *

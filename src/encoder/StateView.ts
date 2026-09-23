@@ -31,7 +31,7 @@ function _clearViewBitFromAllTrees(root: Root, slot: number, bit: number): void 
     for (const tree of root.changeTrees.values()) {
         const v = tree.visibleViews;
         if (v !== undefined && slot < v.length) v[slot] &= clearMask;
-        const s = tree.subscribedViews;
+        const s = tree.aux?.subscribedViews;
         if (s !== undefined && slot < s.length) s[slot] &= clearMask;
         const t = tree.tagViews;
         if (t !== undefined) {
@@ -529,7 +529,7 @@ export class StateView {
                 // ArraySchema: one sentinel entry — encodeView emits a whole-
                 // array RESTATE from the live array at drain time (one Map
                 // insert, and no slot can go stale).
-                if ((changeTree.elements as any).length > 0) {
+                if ((changeTree.refTarget as any).length > 0) {
                     changes.set(ARRAY_SNAPSHOT, OPERATION.ADD);
                     isChildAdded = true;
                 }
@@ -1071,7 +1071,7 @@ export class StateView {
                 // chain — addParent promotes the LAST container to primary.
                 // Only filtered parents can grant (public ones never share
                 // visibility downward).
-                for (let e = changeTree.extraParents; e !== undefined; e = e.next) {
+                for (let e = changeTree.aux?.extraParents; e !== undefined; e = e.next) {
                     const parentTree = viewTreeOf(e.ref);
                     if (parentTree.isFiltered && this.isVisible(parentTree)) {
                         this.markVisible(changeTree);

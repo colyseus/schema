@@ -932,3 +932,50 @@ As integer-keyed plain objects, the `refCount` store / `delete` / decrement cost
 | decoder/tick, callbacks/density, callbacks/strategies, realworld decode-10k-callbacks | neutral |
 
 Per-step numbers are in `LEADS/02-decoder-refcount-callbacks-tables.md`.
+
+# Construction allocations (LEADS/01, 2026-09-22)
+
+`L01-base` (c8c3bc6) → `L01-s1` → `L01-s2` → `L01-s3`, 10 samples/side, bisect
+(each build vs base). Measured before touching anything: an instrumented bundle
+found **100 %** of created recorders record on every fixture and in
+`bench_encode.js` (50 000 / 50 000 array logs, 5 001 / 5 001 keyed), so the
+lead's cheapest candidates (lazy recorder, lazy `keyByIndex`) were dropped
+without a build. The published ESM bundle emits native class fields, so every
+one of ChangeTree's 28 slots existed from construction: 248 B per tree, 70 % of
+a 2-field Schema's 354 retained bytes — the diet is where the memory was.
+
+| step | change |
+| --- | --- |
+| s1 | `ChangeTree.elements` slot and the dead `ref[$items] ?? ref` reads removed (always the raw target) |
+| s2 | `KeyedRecorder`: page 0 a direct field; page directory + epoch array only past 4 096 wire indexes |
+| s3 | `ChangeTree`: 6 rare fields (`extraParents`, unreliable recorder + node, `tagBits`, `tagViews`, `subscribedViews`) behind one lazy side object; `metadata` a getter; `paused` a flag bit → 20 slots, 184 B |
+
+| row | unit | base | s1 | s2 | s3 |
+| --- | --- | --- | --- | --- | --- |
+| encoder/memory-footprint | KB | 2 319 | −1.1 % ✓ | −1.0 % ✓ | **−8.3 % ✓** |
+| mutations/tree-build/construct | ms/op | 1.132 | −5.3 % ✓ | −6.6 % ✓ | −4.6 % ✓ |
+| mutations/tree-build/attach-fresh | ms/op | 2.548 | −1.6 % | −2.3 % ✓ | −3.9 % ✓ |
+| mutations/tree-build/attach-steady | ms/op | 2.822 | −0.6 % | −0.4 % | −2.5 % ✓ |
+| encoder/construct | µs/entity | 2.172 | −0.8 % | −1.7 % | +0.6 % ² |
+| decoder/bootstrap | ms/op | 1.911 | +0.6 % ² | −1.7 % | +1.7 % ✗ (A/A −0.7 %, p .12) |
+| realworld/big-state/encode-10k | ms/op | 3.140 | +0.3 % | −1.0 % | +1.3 % |
+| realworld/big-state/encode-20k | ms/op | 6.350 | +0.7 % ✗ | −0.1 % | −0.4 % |
+| realworld/big-state/decode-10k | ms/op | 8.670 | −0.7 % | +0.6 % | −0.0 % |
+| realworld/big-state/decode-20k | ms/op | 21.43 | +0.8 % | +0.1 % | +0.2 % |
+
+Retained bytes per instance (20 000 kept, `--expose-gc`): Schema with 2 fields
+354 → 290, `MapSchema` + 1 entry 1 827 → 1 403, `ArraySchema` + 5 pushes
+1 018 → 954, Tree `Player` 1 692 → 1 444. `%DebugPrint`: one map shared by
+Schema / Map / Array trees before and after, 0 unused fields, fast properties.
+`bench_encode.js` 446 ms (was 484–497), 5 458 157 bytes.
+
+Still open when this was written: the `decoder/bootstrap` flag (at the row's
+noise floor; decoder-built instances use `UntrackedChangeTree`, which did not
+change) wants the `--iters ×3` re-read; `big-state/decode-10k-callbacks` and
+`handshake` could not launch on any side (status 0xC0000142 — the machine ran
+out of memory) and the broad `encoder/,decoder/,mutations/,stateview/` compare
+and the test suite were not run: the bench job was stopped for memory pressure.
+
+Lesson: check what the *published* build emits before reasoning about a shape
+from the TypeScript config — the source comment said the optional fields were
+absent until assigned; the bundle had defined all of them at construction.

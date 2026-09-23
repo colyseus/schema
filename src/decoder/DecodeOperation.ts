@@ -29,7 +29,6 @@ export class ChunkMismatch extends Error {}
 type Reader = (bytes: Uint8Array, it: Iterator) => any;
 
 import { arrCopy, arrIndexOf, arrInsertOne, arrRemove, arrReverse } from "../types/custom/arrayOps.js";
-import { $items } from "../types/symbols.js";
 
 /** Reader for a collection's child type: pre-resolved once per chunk / body, `undefined` for ref children. */
 function childReaderOf(type: any): Reader | undefined {
@@ -713,7 +712,7 @@ function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref
  */
 export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, allChanges: DataChange[] | null, ri?: RefInfo): void {
     if (ri === undefined) ri = refInfoOf(ref);
-    const arr: any[] = ref[$items] ?? ref; // element storage (the instance itself for the Array subclass)
+    const arr: any[] = ref; // element storage is the instance itself (Array subclass)
     const type = ri.childType;
     const reader = ri.reader;
     const $root = d.root;
@@ -877,6 +876,6 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
 }
 
 function decodeArrayBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, allChanges: DataChange[] | null, ri: RefInfo): void {
-    const arr: any[] = ref[$items] ?? ref;
+    const arr: any[] = ref;
     applyRestate(d, bytes, it, arr, ref, refId, allChanges, readUvarint(bytes, it), ri);
 }

@@ -66,7 +66,7 @@ export interface Frame {
     tree: ChangeTree;
     ref: any;
     refTarget: any;
-    /** Element storage for arrays (`tree.elements`). */
+    /** Element storage for arrays (the raw array: `tree.refTarget`). */
     elements: any;
     /** `ref[$values]` — read once per tree, not per field (undefined on collections). */
     values: any[];
@@ -182,7 +182,7 @@ export function enterFrame(f: Frame, tree: ChangeTree): void {
     f.tree = tree;
     f.ref = tree.ref;
     f.refTarget = refTarget;
-    f.elements = tree.elements;
+    f.elements = tree.refTarget;
     f.values = tree.values!; // the tree's cached `$values` (monomorphic load); undefined on collections
     f.desc = desc;
     f.kind = desc.kind;

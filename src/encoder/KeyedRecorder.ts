@@ -14,17 +14,23 @@ import { OPERATION } from "../encoding/spec.js";
  * collection's storage.
  *
  * Storage: `order[0 … count)` lists the dirty indexes in first-record order;
- * the pending op of index `i` is a byte in a lazily allocated page
- * (`pages[i >>> 12][i & 4095]`, `0` = none, else `op + 1` — `REPLACE` is 0).
- * It replaced a `Map<index, op>` that was cleared every tick: a cleared Map
- * drops its table and re-grows it with rehashing, which made `ops.set` the
- * hottest line of a REPLACE-heavy tick (22.9 %; 31 → 7 ns per recorded op at
- * 1000 dirty entries, 67 → 28 ns at 10). A reset zeroes the touched bytes and
- * keeps the pages; a page costs 4 KB, and since wire indexes are never
- * recycled, pages that went idle are dropped whenever a new one is needed.
- * The FIRST page grows with the collection (32 bytes, doubling): a state made
- * of many small maps would otherwise pay 4 KB per map on its first recorded op
- * (`tree-build/attach-steady` +4.4 %, `encoder/deep-nested` +5.4 %).
+ * the pending op of index `i` is a byte in a page (`0` = none, else `op + 1` —
+ * `REPLACE` is 0). It replaced a `Map<index, op>` that was cleared every tick:
+ * a cleared Map drops its table and re-grows it with rehashing, which made
+ * `ops.set` the hottest line of a REPLACE-heavy tick (22.9 %; 31 → 7 ns per
+ * recorded op at 1000 dirty entries, 67 → 28 ns at 10). A reset zeroes the
+ * touched bytes and keeps the pages.
+ *
+ * Page 0 (indexes `0 … 4095`) is a direct field, created on the first recorded
+ * op and growing with the collection (32 bytes, doubling): a state made of many
+ * small maps would otherwise pay 4 KB per map on its first recorded op
+ * (`tree-build/attach-steady` +4.4 %, `encoder/deep-nested` +5.4 %). Further
+ * pages are fixed 4 KB and live in a directory that exists only once a
+ * collection has passed 4096 wire indexes — the directory and its epoch array
+ * were two array allocations per recorder (four counting their first growth)
+ * that all but the largest collections never used. Since wire indexes are never
+ * recycled, a directory page that went idle is dropped whenever a new one is
+ * needed (page 0 is kept: at most 4 KB, and only on a collection that large).
  */
 const PAGE_BITS = 12;
 const PAGE_SIZE = 1 << PAGE_BITS;
@@ -38,9 +44,12 @@ export class KeyedRecorder<V = any> {
     cleared = false;
     deleted?: Map<number, V>;
 
-    private pages: (Uint8Array | undefined)[] = [];
-    /** `epoch` at which each page was last written: a page not written this epoch holds only zeros. */
-    private pageEpoch: number[] = [];
+    /** Ops of wire indexes `0 … PAGE_SIZE-1`; `undefined` until the first recorded op, then grows with the collection. */
+    private page0: Uint8Array | undefined = undefined;
+    /** Pages for indexes ≥ PAGE_SIZE (slot 0 unused), created on first use. */
+    private pages: (Uint8Array | undefined)[] | undefined = undefined;
+    /** `epoch` at which each directory page was last written: a page not written this epoch holds only zeros. */
+    private pageEpoch: number[] | undefined = undefined;
     private epoch = 1;
 
     /**
@@ -94,7 +103,7 @@ export class KeyedRecorder<V = any> {
     }
 
     opAt(index: number): OPERATION | undefined {
-        const page = this.pages[index >>> PAGE_BITS];
+        const page = this.pageOf(index);
         if (page === undefined) return undefined;
         const stored = page[index & PAGE_MASK]; // beyond a short first page: `undefined`
         return (stored === 0 || stored === undefined) ? undefined : stored - 1;
@@ -110,10 +119,10 @@ export class KeyedRecorder<V = any> {
 
     isPureAdd(): boolean {
         if (this.cleared) return false;
-        const order = this.order, pages = this.pages;
+        const order = this.order;
         for (let k = 0, n = this.count; k < n; k++) {
             const index = order[k];
-            if (pages[index >>> PAGE_BITS]![index & PAGE_MASK] !== OPERATION.ADD + 1) return false;
+            if (this.pageOf(index)![index & PAGE_MASK] !== OPERATION.ADD + 1) return false;
         }
         return true;
     }
@@ -125,10 +134,10 @@ export class KeyedRecorder<V = any> {
 
     forEach(cb: (index: number, op: OPERATION) => void): void {
         if (this.cleared) cb(-OPERATION.CLEAR, OPERATION.CLEAR);
-        const order = this.order, pages = this.pages;
+        const order = this.order;
         for (let k = 0, n = this.count; k < n; k++) {
             const index = order[k];
-            cb(index, pages[index >>> PAGE_BITS]![index & PAGE_MASK] - 1);
+            cb(index, this.pageOf(index)![index & PAGE_MASK] - 1);
         }
     }
 
@@ -140,17 +149,17 @@ export class KeyedRecorder<V = any> {
 
     recycle(): void {
         this.reset();
-        // a pooled instance starts over at index 0: give the pages back
-        this.pages = [];
-        this.pageEpoch = [];
+        // a pooled instance starts over at index 0: give the directory back (page 0 is zeroed and small — kept)
+        this.pages = undefined;
+        this.pageEpoch = undefined;
     }
 
     /** Zero the bytes this epoch touched (O(dirty), pages kept) and start a new epoch. */
     private dropOps(): void {
-        const order = this.order, pages = this.pages;
+        const order = this.order;
         for (let k = 0, n = this.count; k < n; k++) {
             const index = order[k];
-            pages[index >>> PAGE_BITS]![index & PAGE_MASK] = 0;
+            this.pageOf(index)![index & PAGE_MASK] = 0;
         }
         this.count = 0;
         this.epoch++;
@@ -163,34 +172,52 @@ export class KeyedRecorder<V = any> {
         else order.push(index);
     }
 
+    /** The page holding `index`, if it exists (a recorded index always has one). */
+    private pageOf(index: number): Uint8Array | undefined {
+        if (index < PAGE_SIZE) return this.page0;
+        const pages = this.pages;
+        return (pages !== undefined) ? pages[index >>> PAGE_BITS] : undefined;
+    }
+
     private pageFor(index: number): Uint8Array {
-        const p = index >>> PAGE_BITS;
-        const page = this.pages[p];
-        if (page !== undefined && (p !== 0 || index < page.length)) {
-            this.pageEpoch[p] = this.epoch;
-            return page;
+        if (index < PAGE_SIZE) {
+            const page = this.page0;
+            return (page !== undefined && index < page.length) ? page : this.growFirstPage(index);
         }
-        return (p === 0) ? this.growFirstPage(index) : this.newPage(p);
+        const p = index >>> PAGE_BITS;
+        const pages = this.pages;
+        if (pages !== undefined) {
+            const page = pages[p];
+            if (page !== undefined) {
+                this.pageEpoch![p] = this.epoch;
+                return page;
+            }
+        }
+        return this.newPage(p);
     }
 
     /** Page 0 starts at 32 bytes and doubles up to PAGE_SIZE (pending bytes are carried over). */
     private growFirstPage(index: number): Uint8Array {
-        const old = this.pages[0];
+        const old = this.page0;
         let size = (old !== undefined) ? old.length : FIRST_PAGE_MIN;
         while (size <= index) size <<= 1;
         const page = new Uint8Array(size);
         if (old !== undefined) page.set(old);
-        if (this.pages.length === 0) { this.pages.push(page); this.pageEpoch.push(this.epoch); }
-        else { this.pages[0] = page; this.pageEpoch[0] = this.epoch; }
+        this.page0 = page;
         return page;
     }
 
     /** Out of line: a collection needs a new page once per 4096 wire indexes. */
     private newPage(p: number): Uint8Array {
-        const pages = this.pages, pageEpoch = this.pageEpoch, epoch = this.epoch;
+        let pages = this.pages, pageEpoch = this.pageEpoch;
+        if (pages === undefined || pageEpoch === undefined) {
+            pages = this.pages = [undefined];
+            pageEpoch = this.pageEpoch = [0];
+        }
+        const epoch = this.epoch;
         // Wire indexes only grow, so old pages go idle for good. One not written
         // this epoch holds only zeros (every reset zeroes what it touched): drop it.
-        for (let q = 0; q < pages.length; q++) {
+        for (let q = 1; q < pages.length; q++) {
             if (pages[q] !== undefined && pageEpoch[q] !== epoch) pages[q] = undefined;
         }
         while (pages.length <= p) { pages.push(undefined); pageEpoch.push(0); } // dense directory: no holes

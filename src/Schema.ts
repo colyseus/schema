@@ -104,7 +104,7 @@ export class Schema<C = any> implements IRef {
 
         // Instances reachable through more than one parent are unsafe to pool:
         // another owner may still hold this instance.
-        if (changeTree.extraParents !== undefined) {
+        if (changeTree.aux?.extraParents !== undefined) {
             throw new Error(`@colyseus/schema: cannot reset a shared instance (${instance.constructor.name}) with multiple parents.`);
         }
 

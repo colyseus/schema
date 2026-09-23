@@ -721,7 +721,7 @@ export class Encoder<T extends Schema = any> {
                         elChanges = new Map();
                         view.changes.set(elRefId, elChanges);
                     }
-                    const elMetadata = elTree.metadata;
+                    const elMetadata = elTree.encDescriptor.metadata;
                     elTree.forEachLive((index: number) => {
                         if (Metadata.hasUnreliableAtIndex(elMetadata, index)) return;
                         elChanges!.set(index, OPERATION.ADD);

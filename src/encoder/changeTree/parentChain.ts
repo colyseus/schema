@@ -42,7 +42,7 @@ export function addParent(tree: ChangeTree, parent: Ref, index: number, parentTr
         }
 
         // Check extra parents for duplicate (walked in place: no closure per re-parent)
-        for (let entry = tree.extraParents; entry !== undefined; entry = entry.next) {
+        for (let entry = tree.aux?.extraParents; entry !== undefined; entry = entry.next) {
             if (sameRef(entry.ref, parent)) {
                 // Match old behavior: update primary parent's index
                 tree._parentIndex = index;
@@ -75,7 +75,7 @@ export function removeParent(tree: ChangeTree, parent: Ref): boolean {
     const primary = tree.parentTree;
     if (primary !== undefined && isPrimaryParent(primary, parent, undefined)) {
         // Removing inline parent — promote first extra parent if exists
-        const promoted = tree.extraParents;
+        const promoted = tree.aux?.extraParents;
         if (promoted !== undefined) {
             tree.parentTree = refTreeOf(promoted.ref);
             tree._parentIndex = promoted.index;
@@ -88,7 +88,7 @@ export function removeParent(tree: ChangeTree, parent: Ref): boolean {
     }
 
     // Search extra parents
-    let current = tree.extraParents;
+    let current = tree.aux?.extraParents;
     let previous = null;
     while (current) {
         if (sameRef(current.ref, parent)) {
@@ -118,7 +118,7 @@ export function findParent(
     if (tree.parentRef !== undefined && predicate(tree.parentRef, tree._parentIndex)) {
         return { ref: tree.parentRef, index: tree._parentIndex };
     }
-    for (let entry = tree.extraParents; entry !== undefined; entry = entry.next) {
+    for (let entry = tree.aux?.extraParents; entry !== undefined; entry = entry.next) {
         if (predicate(entry.ref, entry.index)) {
             return { ref: entry.ref, index: entry.index };
         }
@@ -134,7 +134,7 @@ export function hasParent(
     if (tree.parentRef !== undefined && predicate(tree.parentRef, tree._parentIndex)) {
         return true;
     }
-    for (let entry = tree.extraParents; entry !== undefined; entry = entry.next) {
+    for (let entry = tree.aux?.extraParents; entry !== undefined; entry = entry.next) {
         if (predicate(entry.ref, entry.index)) { return true; }
     }
     return false;
@@ -148,7 +148,7 @@ export function getAllParents(tree: ChangeTree): ParentEntry[] {
     if (tree.parentRef) {
         parents.push({ ref: tree.parentRef, index: tree._parentIndex });
     }
-    let current = tree.extraParents;
+    let current = tree.aux?.extraParents;
     while (current) {
         parents.push({ ref: current.ref, index: current.index });
         current = current.next;
@@ -164,7 +164,7 @@ export function getAllParents(tree: ChangeTree): ParentEntry[] {
  * informational only and goes stale after reorders.
  */
 export function isEdgeLive(tree: ChangeTree, parentTree: ChangeTree, index: number): boolean {
-    const target = parentTree.elements as any;
+    const target = parentTree.refTarget as any;
     if (parentTree.isArray) {
         const at = target[index];
         if (at !== undefined && refTreeOf(at) === tree) return true;

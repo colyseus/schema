@@ -290,8 +290,8 @@ export class Root {
         if (changeTree.changesNode) {
             this._moveNextToParentInList(this.changes, changeTree, changeTree.changesNode, "changesNode");
         }
-        if (changeTree.unreliableChangesNode) {
-            this._moveNextToParentInList(this.unreliableChanges, changeTree, changeTree.unreliableChangesNode, "unreliableChangesNode");
+        if (changeTree.aux?.unreliableChangesNode) {
+            this._moveNextToParentInList(this.unreliableChanges, changeTree, changeTree.aux!.unreliableChangesNode!, "unreliableChangesNode");
         }
     }
 
@@ -396,7 +396,7 @@ export class Root {
     }
 
     public removeFromUnreliableQueue(changeTree: ChangeTree): boolean {
-        return this._removeNode(this.unreliableChanges, changeTree, changeTree.unreliableChangesNode, "unreliableChangesNode");
+        return this._removeNode(this.unreliableChanges, changeTree, changeTree.aux?.unreliableChangesNode, "unreliableChangesNode");
     }
 
     private _removeNode(

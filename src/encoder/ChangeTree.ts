@@ -35,7 +35,6 @@ import { type ChangeRecorder, SchemaChangeRecorder, popcount32 } from "./ChangeR
 import { type EncodeDescriptor, getEncodeDescriptor } from "./EncodeDescriptor.js";
 import type { ArrayLog } from "./ArrayLog.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
-import { $items } from "../types/symbols.js";
 import { arrCopy } from "../types/custom/arrayOps.js";
 
 import {
@@ -289,6 +288,8 @@ export const NEEDS_RESTAGE = 128;
 // `isVisibilitySharedWithParent` must be re-derived from the LIVE edges
 // before the next encode. See inheritedFlags.refreshFilterState.
 export const PENDING_FILTER_REFRESH = 256;
+// Mutations on the ref are NOT tracked while set. See pause/resume/untracked.
+export const IS_PAUSED = 512;
 /**
  * Flags a child inherits from its parent's own transitive state via
  * `checkInheritedFlags`. Read as a bitwise mask so the inheritance step
@@ -318,6 +319,25 @@ const _restageKeyedCb = (rec: KeyedRecorder, index: number): void => {
     rec.add(index, OPERATION.ADD);
 };
 
+/**
+ * Per-tree state that only some trees ever use, behind ONE slot of the
+ * ChangeTree (`aux`), allocated on the first write: instance sharing
+ * (`extraParents`), the `@unreliable` channel and view subscriptions
+ * (`subscribedViews`, only on subscribed collections). Each was an in-object
+ * slot on every tree (8 bytes × 4 on ~365 000 trees per `bench_encode.js`
+ * run). Accessors on ChangeTree keep the field names for cold readers and
+ * all writers; hot readers (attach / detach / discard / enqueue) read
+ * `tree.aux?.x` directly, so no getter is inlined into `setParent` & co.
+ * `visibleViews`, `tagBits` and `tagViews` stay in-object: a view encode reads
+ * them per tree (`stateview/tags` +3 % when the tag pair sat here).
+ */
+class ChangeTreeAux {
+    extraParents: ParentChain | undefined = undefined;
+    unreliableRecorder: ChangeRecorder | undefined = undefined;
+    unreliableChangesNode: ChangeTreeNode | undefined = undefined;
+    subscribedViews: number[] | undefined = undefined;
+}
+
 export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     ref: T;
 
@@ -333,16 +353,10 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * `ArraySchema`, `ref` is the Proxy users interact with (its `set` trap
      * tracks index writes); `refTarget` is the raw array underneath. For every
      * other type `refTarget === ref`. Consumers that need the user-facing
-     * identity (debug output, callback parents) keep using `ref`.
+     * identity (debug output, callback parents) keep using `ref`. For an
+     * array it is also the element storage the encoder indexes.
      */
     refTarget: T;
-
-    /**
-     * Indexable element storage of an ArraySchema (`refTarget` itself for
-     * the Array subclass, its plain `items` array for the internal-array
-     * experiment); `refTarget` for every other type.
-     */
-    elements: any;
 
     /**
      * The Schema instance's `$values` backing array (`undefined` for
@@ -374,7 +388,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     /** True when `ref` is an ArraySchema. */
     get isArray(): boolean { return this.encDescriptor.kind === KIND_ARRAY; }
 
-    metadata: Metadata;
+    /** The class's `Symbol.metadata`. Cold paths only: hot readers (`checkInheritedFlags`, `forEachChild*`, the view walk) read `encDescriptor.metadata` directly (an extra load and an inlining decision per call). */
+    get metadata(): Metadata { return this.encDescriptor.metadata; }
 
     /**
      * Per-class cache of filter fn / isSchema / metadata / per-field arrays,
@@ -395,7 +410,14 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      */
     parentTree?: ChangeTree;
     _parentIndex?: number;
-    extraParents?: ParentChain; // linked list for 2nd+ parents (rare: instance sharing)
+
+    /** Rarely-used state (see `ChangeTreeAux`); `undefined` on most trees. */
+    aux: ChangeTreeAux | undefined;
+    private ensureAux(): ChangeTreeAux { return this.aux ??= new ChangeTreeAux(); }
+
+    /** Linked list for 2nd+ parents (rare: instance sharing). */
+    get extraParents(): ParentChain | undefined { const aux = this.aux; return (aux !== undefined) ? aux.extraParents : undefined; }
+    set extraParents(v: ParentChain | undefined) { const aux = this.aux; if (aux !== undefined) aux.extraParents = v; else if (v !== undefined) this.ensureAux().extraParents = v; }
 
     // Packed boolean flags. See IS_* constants above for bit layout.
     flags: number = IS_NEW;
@@ -432,19 +454,26 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      */
     rec?: ArrayLog | KeyedRecorder;
 
-    // Lazy-allocated unreliable-channel recorder (rare — opt-in via @unreliable).
-    unreliableRecorder?: ChangeRecorder;
+    /** Lazy-allocated unreliable-channel recorder (rare — opt-in via @unreliable). Lives on `aux`. */
+    get unreliableRecorder(): ChangeRecorder | undefined { const aux = this.aux; return (aux !== undefined) ? aux.unreliableRecorder : undefined; }
+    set unreliableRecorder(v: ChangeRecorder | undefined) { const aux = this.aux; if (aux !== undefined) aux.unreliableRecorder = v; else if (v !== undefined) this.ensureAux().unreliableRecorder = v; }
 
-    // When true, mutations on the ref are NOT tracked. See pause/resume/untracked.
-    paused: boolean = false;
+    /** When true, mutations on the ref are NOT tracked (`IS_PAUSED` flag bit). See pause/resume/untracked. */
+    get paused(): boolean { return (this.flags & IS_PAUSED) !== 0; }
+    set paused(v: boolean) { this.flags = v ? (this.flags | IS_PAUSED) : (this.flags & ~IS_PAUSED); }
 
     changesNode?: ChangeTreeNode;            // Root.changes linked-list node
-    unreliableChangesNode?: ChangeTreeNode;  // Root.unreliableChanges linked-list node
+
+    /** Root.unreliableChanges linked-list node. Lives on `aux`. */
+    get unreliableChangesNode(): ChangeTreeNode | undefined { const aux = this.aux; return (aux !== undefined) ? aux.unreliableChangesNode : undefined; }
+    set unreliableChangesNode(v: ChangeTreeNode | undefined) { const aux = this.aux; if (aux !== undefined) aux.unreliableChangesNode = v; else if (v !== undefined) this.ensureAux().unreliableChangesNode = v; }
 
     // Per-StateView visibility bitmaps. Bit `(viewId & 31)` in slot
     // `(viewId >> 5)` is set iff the view can see this tree. Replaces
     // per-view WeakSet lookups with direct bitwise ops.
-    // Lazy: undefined until the tree participates in any view.
+    // Lazy: undefined until the tree participates in any view. In-object
+    // slot (not on `aux`): every tree under a view carries one, and the
+    // per-tree visibility check is the hottest read of a view encode.
     visibleViews?: number[];
 
     // Per-(view, tag) bitmaps. Custom tags only — DEFAULT_VIEW_TAG
@@ -453,6 +482,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     // bitmap of the views holding it on this tree. A tree carries one to a
     // few bits, so the hot readers (`StateView.hasTagOnTree`, `tagsOnTree`)
     // scan them linearly — a `Map.get` per bit cost more than the scan.
+    // In-object slots: `hasTagOnTree` runs per field of a tagged tree on
+    // every view encode (`stateview/tags` +3 % when they sat on `aux`).
     tagBits?: number[];
     tagViews?: number[][];
 
@@ -463,9 +494,12 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * attached to a subscribed collection (setParent hook), it's
      * auto-propagated to every subscribed view (force-shipped for
      * Array/Map/Set/Collection; enqueued into per-view pending for
-     * streams). Undefined until the first subscribe.
+     * streams). Undefined until the first subscribe. Lives on `aux`: only
+     * subscribed collections have one; the attach path reads the parent's
+     * as `parentTree.aux?.subscribedViews`.
      */
-    subscribedViews?: number[];
+    get subscribedViews(): number[] | undefined { const aux = this.aux; return (aux !== undefined) ? aux.subscribedViews : undefined; }
+    set subscribedViews(v: number[] | undefined) { const aux = this.aux; if (aux !== undefined) aux.subscribedViews = v; else if (v !== undefined) this.ensureAux().subscribedViews = v; }
 
     // Accessor properties for flags
     get isFiltered() { return (this.flags & IS_FILTERED) !== 0; }
@@ -500,7 +534,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * short-circuit recording entirely).
      */
     get tracking(): boolean {
-        return !this.paused && (this.flags & IS_FULL_STATE_ONLY) === 0;
+        return (this.flags & (IS_PAUSED | IS_FULL_STATE_ONLY)) === 0;
     }
 
     ensureUnreliableRecorder(): ChangeRecorder {
@@ -559,12 +593,13 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // +12.5 %, memory +1.1 % when `parentTree` was introduced that way).
         this.parentTree = undefined;
         this._parentIndex = undefined;
+        this.aux = undefined;
         // Raw (non-Proxy) target, passed explicitly by ArraySchema's ctor —
         // the only proxied type. Defaulting to `ref` for everything else
         // skips a guaranteed-miss megamorphic `$proxyTarget` probe per
         // construction.
         this.refTarget = refTarget;
-        this.elements = (refTarget as any)[$items] ?? refTarget;
+
         this.values = undefined; // filled below, once the class descriptor is known (slot kept here: one field order for every tree)
 
         // Single per-class lookup that subsumes Symbol.metadata,
@@ -580,19 +615,24 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
             if (values === undefined) { values = (refTarget as any)[$values] = desc.valuesTemplate.slice(); }
             this.values = values;
         }
-        this.metadata = desc.metadata;
 
         const isSchema = desc.isSchema;
         this._isSchema = isSchema;
 
         // Assign every optional slot so Schema and Collection trees share
-        // one hidden-class transition path (tsconfig useDefineForClassFields=false
-        // otherwise leaves uninitialized class fields absent from the shape).
+        // one hidden-class transition path. The published build emits native
+        // class fields (all slots defined, in declaration order, before this
+        // body runs); the test build uses useDefineForClassFields=false, where
+        // an uninitialized field is absent until assigned — these stores keep
+        // both on one shape. Every tree: 22 in-object slots, 200 bytes.
         this.ops = undefined;
         this.rec = undefined;
+        this.visibleViews = undefined;
+        this.tagBits = undefined;
+        this.tagViews = undefined;
 
         if (isSchema) {
-            const numFields = (this.metadata?.[$numFields] ?? 0) as number;
+            const numFields = (desc.metadata?.[$numFields] ?? 0) as number;
             if (numFields > 7) this.ops = new Uint8Array(numFields + 1);
         } else {
             this.rec = desc.newRecorder?.();
@@ -762,12 +802,10 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // dirty/ops buckets (Schema: dirtyLow/High + ops; Collection: rec)
         if (this._isSchema) this.reset();
         else this.rec?.recycle();
-        // keep the recorder object allocated (re-alloc is the cost we avoid), clear contents
-        this.unreliableRecorder?.reset();
 
         // back to a freshly-constructed tree: IS_NEW, no inherited flags
-        // (FILTERED/PATCH_ONLY/STATIC/STREAM are re-derived on the next setParent).
-        // NEEDS_RESTAGE makes the next Root.add re-stage retained field values.
+        // (FILTERED/PATCH_ONLY/STATIC/STREAM are re-derived on the next setParent),
+        // not paused. NEEDS_RESTAGE makes the next Root.add re-stage retained field values.
         this.flags = IS_NEW | NEEDS_RESTAGE;
         this._fullSyncGen = 0;
         // drop the wire identity: a reused instance re-enters under a fresh refId
@@ -777,20 +815,25 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // parent links, but leaves this tree's own parentRef dangling.
         this.parentTree = undefined;
         this._parentIndex = undefined;
-        this.extraParents = undefined;
 
-        // queue nodes (already nulled by Root.remove's queue removal; defensive)
+        // queue node (already nulled by Root.remove's queue removal; defensive)
         this.changesNode = undefined;
-        this.unreliableChangesNode = undefined;
-
-        this.paused = false;
 
         // per-view visibility lives on the tree (NOT keyed by refId), so a
         // recycled tree must not inherit its previous life's view membership.
         this.visibleViews = undefined;
         this.tagBits = undefined;
         this.tagViews = undefined;
-        this.subscribedViews = undefined;
+
+        // the rare state: parent chain, unreliable recorder + queue node, subscriptions.
+        // The side object and its recorder stay allocated (re-alloc is the cost we avoid).
+        const aux = this.aux;
+        if (aux !== undefined) {
+            aux.extraParents = undefined;
+            aux.unreliableRecorder?.reset();
+            aux.unreliableChangesNode = undefined;
+            aux.subscribedViews = undefined;
+        }
     }
 
     /**
@@ -811,7 +854,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         const rec = this.rec;
         if (rec === undefined) return;
         if (this.encDescriptor.kind === KIND_ARRAY) {
-            const arr = this.elements as any[];
+            const arr = this.refTarget as any[];
             if (arr.length > 0) (rec as ArrayLog).restate(arrCopy(arr));
         } else {
             _forEachLiveWithCtx(this, rec as KeyedRecorder, _restageKeyedCb);
@@ -858,7 +901,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * `hasAnyUnreliable`, so schemas without the modifier never read `flags`.
      */
     change(index: number, operation: OPERATION = OPERATION.ADD) {
-        if (this.paused || this.isFieldFullStateOnly(index)) return;
+        if ((this.flags & IS_PAUSED) !== 0 || this.isFieldFullStateOnly(index)) return;
         if (this.isFieldUnreliable(index) && !this.isNew) {
             this.ensureUnreliableRecorder().record(index, operation);
             this.root?.enqueueUnreliable(this);
@@ -912,7 +955,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
             return;
         }
 
-        if (this.paused || this.isFieldFullStateOnly(index)) return this.getValue(index);
+        if ((this.flags & IS_PAUSED) !== 0 || this.isFieldFullStateOnly(index)) return this.getValue(index);
 
         // Same pre-ADD hold as `change` — a DELETE naming a ref the decoder
         // hasn't seen is dropped just like a field write.
@@ -947,14 +990,14 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     // Clear the unreliable dirty bucket after an unreliable encode pass.
     endEncodeUnreliable() {
-        this.unreliableRecorder?.reset();
+        this.aux?.unreliableRecorder?.reset();
         this.unreliableChangesNode = undefined;
     }
 
     discard() {
         if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.();
         this.reset();
-        this.unreliableRecorder?.reset();
+        this.aux?.unreliableRecorder?.reset();
     }
 
     // Recursively discard all changes on this + child structures. Tests only.
@@ -964,7 +1007,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     get changed() {
-        return this.has() || (this.unreliableRecorder?.has() ?? false);
+        return this.has() || (this.aux?.unreliableRecorder?.has() ?? false);
     }
 
     // ────────────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ Everything here came out of the profiling rounds recorded in
 
 | # | lead | kind | expected size | risk |
 | --- | --- | --- | --- | --- |
-| [01](01-construction-allocations.md) | Per-instance allocations / GC in construction | perf + memory | medium (GC ≈ 12 % of construction) | medium |
+| [01](01-construction-allocations.md) | Per-instance allocations / GC in construction — **closed**: ChangeTree 28 → 20 slots (248 → 184 B), lazy `KeyedRecorder` directory, dead `$items` reads | perf + memory | memory-footprint −8.3 %, tree-build −2.5…−6.6 % | landed (pending broad sweep + tests, see lead) |
 | [02](02-decoder-refcount-callbacks-tables.md) | Decoder `refCount` / `callbacks` are integer-keyed plain objects | perf + memory | decoder churn −21…−37 %, callbacks churn −30…−35 %, bootstrap +1.6 % | closed (landed: both on `RefTable`) |
 | [03](03-stateview-child-walk-closures.md) | Closure per node in StateView / ChangeTree child walks | perf (GC) | add+remove micro −3.8 %, bench rows neutral | closed, not landed (below resolution) |
 | [04](04-arrayschema-vs-v5-reads.md) | `ArraySchema` `indexOf` +80 %, `for…of` +18 % against 5.x | perf | medium, only with a storage-model change | parked (doc note added) |

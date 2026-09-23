@@ -46,7 +46,7 @@ export function checkIsFiltered(
     if (tree.has()) {
         tree.root?.enqueueChangeTree(tree);
     }
-    if (tree.unreliableRecorder?.has()) {
+    if (tree.aux?.unreliableRecorder?.has()) {
         tree.root?.enqueueUnreliable(tree);
     }
     // Fresh tree with nothing recorded: still enqueue into its primary
@@ -55,7 +55,7 @@ export function checkIsFiltered(
     // Tree-level unreliable is disabled (see INHERITABLE_FLAGS) so the
     // unreliable branch is unreachable today. Kept as a comment for
     // re-enablement.
-    if (!tree.has() && !(tree.unreliableRecorder?.has())) {
+    if (!tree.has() && !(tree.aux?.unreliableRecorder?.has())) {
         // if (tree.isUnreliable) {
         //     tree.root?.enqueueUnreliable(tree);
         // } else {
@@ -91,9 +91,9 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
     if (parentIsCollection) {
         parent = parentChangeTree.parent;
         parentIndex = parentChangeTree.parentIndex;
-        parentMetadata = parentChangeTree.parentTree?.metadata;
+        parentMetadata = parentChangeTree.parentTree?.encDescriptor.metadata;
     } else {
-        parentMetadata = parentChangeTree.metadata;
+        parentMetadata = parentChangeTree.encDescriptor.metadata;
     }
 
     // Flag inheritance — pack the patchOnly/static annotation checks into
@@ -117,7 +117,7 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
     // walk only; per-tick dirty entries would leak post-first-sync.
     if (gainedBits & IS_FULL_STATE_ONLY) {
         tree.reset();
-        tree.unreliableRecorder?.reset();
+        tree.aux?.unreliableRecorder?.reset();
     }
     // Tree-level unreliable promotion is disabled — no tree can gain
     // IS_UNRELIABLE via inheritance under the current decoration-time
@@ -279,7 +279,7 @@ function refreshFilterState(tree: ChangeTree): void {
 
     let bits = _edgeBits(tree, primary, tree._parentIndex, sharesEligible);
     // Saturated means no further edge can change the outcome.
-    for (let e = tree.extraParents; e !== undefined && bits !== EDGE_SATURATED; e = e.next) {
+    for (let e = tree.aux?.extraParents; e !== undefined && bits !== EDGE_SATURATED; e = e.next) {
         bits |= _edgeBits(tree, refTreeOf(e.ref)!, e.index, sharesEligible);
     }
 
@@ -298,7 +298,7 @@ function refreshFilterState(tree: ChangeTree): void {
     if (!newFiltered && !tree.isFullStateOnly) {
         tree.restage();
         if (tree.has()) root.enqueueChangeTree(tree);
-        if (tree.unreliableRecorder?.has()) root.enqueueUnreliable(tree);
+        if (tree.aux?.unreliableRecorder?.has()) root.enqueueUnreliable(tree);
     }
 
     tree.forEachChildWithCtx(tree, _cascadeRefreshCb);

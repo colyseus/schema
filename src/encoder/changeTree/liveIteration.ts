@@ -55,7 +55,7 @@ export function forEachLiveWithCtx<C>(
     if (tree.isPatchOnly) return;
 
     if (desc.kind === KIND_ARRAY) {
-        const els = tree.elements;
+        const els = tree.refTarget as any[];
         for (let i = 0, len = els.length; i < len; i++) cb(ctx, i);
 
     } else if (desc.kind === KIND_MAP) {

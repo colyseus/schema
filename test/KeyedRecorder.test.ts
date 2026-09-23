@@ -110,13 +110,20 @@ describe("KeyedRecorder", () => {
 
     it("handles indexes far apart and drops pages that went idle", () => {
         const rec = new KeyedRecorder();
-        const pagesOf = () => (rec as any).pages as (Uint8Array | undefined)[];
+        const pagesOf = () => (rec as any).pages as (Uint8Array | undefined)[] | undefined;
         rec.add(5, ADD);
+        assert.strictEqual(pagesOf(), undefined, "no page directory while the collection stays below 4096 wire indexes");
         rec.reset();
-        rec.add(1_000_000, ADD);                 // a new page is needed: the idle first page goes
+        rec.add(1_000_000, ADD);                 // a new page is needed: the directory is created
         assert.strictEqual(rec.opAt(1_000_000), ADD);
-        assert.strictEqual(pagesOf()[0], undefined, "idle page dropped");
-        assert.strictEqual(pagesOf().filter((page) => page !== undefined).length, 1);
+        assert.strictEqual(pagesOf()!.filter((page) => page !== undefined).length, 1);
+        rec.reset();
+        rec.add(2_000_000, ADD);                 // another page: the idle one goes
+        assert.strictEqual(pagesOf()![1_000_000 >>> 12], undefined, "idle page dropped");
+        assert.strictEqual(pagesOf()!.filter((page) => page !== undefined).length, 1);
+        assert.strictEqual(rec.opAt(1_000_000), undefined);
+        rec.reset();
+        rec.add(1_000_000, ADD);                 // the dropped page comes back when needed
 
         rec.add(3, REPLACE);                     // same tick, back in the first page: both stay
         rec.add(2_000_000, DELETE_AND_ADD);      // growth again, in the SAME tick: nothing pending is lost

@@ -31,7 +31,7 @@ export function propagateNewChildToSubscribers(
     childRef: Ref,
     root: Root,
 ): void {
-    const subs = parentTree.subscribedViews;
+    const subs = parentTree.aux?.subscribedViews;
     if (subs === undefined) return;
 
     const isStream = parentTree.isStreamCollection;
