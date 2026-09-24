@@ -90,9 +90,8 @@ Indexes that fail (d) go into a small `quarantine` array, re-checked at M's next
 
 **Checking (d) cheaply.**
 - `Encoder.discardChanges` bumps `root.encodeEpoch` before `discardQueue` (`Encoder.ts:738`).
-- `root.viewsWithPendingChanges()` returns the views with `changes.size > 0`. It computes that list lazily, at most once per epoch, by collecting through `forEachActiveView`, which also prunes dead WeakRefs (`Root.ts:161-171`).
-- The usual case is that every view drained this tick, so the list is empty and there is no per-index work.
-- The cost is O(active views) once per tick, and only on ticks where some map freed an index.
+- `root.pendingViewChanges()` returns the `changes` of the views with `changes.size > 0`, at most once per epoch. It walks only `root.viewsWithChanges`: a view lists its id there when it creates its first `changes` entry (`StateView.entriesOf`, the only way to create one), and the walk unlists the views it finds drained. Releasing a view id unlists it.
+- The cost is O(views written since the last walk) once per tick, and only on ticks where some map freed an index. An earlier version walked every active view (`forEachActiveView`), which cost realworld/mmo-shards/enc-c500 6 % of its tick.
 
 **Closing H2 when entries are written.** In `addParentOf` and `remove`, for a numeric key under a Map parent, only write the entry if `parent[$getByIndex](parentIndex) === child.ref`, or if `rec.deleted?.get(parentIndex) === child.ref`.
 - The second case keeps today's same-tick `view.remove` DELETE, which is needed because visibility has already been cleared by then.
