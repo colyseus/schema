@@ -306,6 +306,19 @@ up-to-date version of the schema definitions.
   - Both encoder (server) and decoder (client) must have same schema definition.
   - The order of the fields must be the same.
 
+### Two copies of the library in one process
+
+Some bundlers ship the server and the client builds side by side (e.g. Cocos Creator), so one process can load `@colyseus/schema` twice. Identical builds interoperate:
+
+| Scenario | Supported |
+| --- | --- |
+| `Encoder` / `Decoder` / `StateView` / `Reflection` of copy B over `Schema` classes and instances of copy A | yes (same bytes as copy A) |
+| A `MapSchema` / `ArraySchema` of copy B assigned to a field declared with copy A | yes, adopted as-is |
+| `Callbacks.get(decoder)` / `Callbacks.getLegacy(decoder)` with a `Decoder` of the other copy | yes |
+| Custom types (`defineCustomTypes`) | only when registered in **every** copy |
+| Two **different** builds or versions | no: a one-time `console.warn` at load |
+| `Schema` classes of copy A used as the base / field type of classes of copy B | no: define each class with one copy |
+
 ## Generating client-side schema files (for strictly typed languages)
 
 > If you're using JavaScript or LUA, there's no need to bother about this.

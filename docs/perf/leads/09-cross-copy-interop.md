@@ -1,7 +1,28 @@
 # 09 — Two bundled library copies do not round-trip
 
-**Status:** open, pre-existing · **Kind:** correctness / product decision ·
-**Risk:** unknown
+**Status:** resolved (2026-09-24) — owner decision: supported for identical
+builds; implemented per `09-cross-copy-interop-design.md` §6 ·
+**Kind:** correctness / product decision
+
+## Resolution
+
+- `$schemaBase` brand (own static on `Schema`, `Symbol.for`) replaces the four
+  `!== Schema` checks: a foreign base is never a type nor given metadata.
+- `TypeContext.inheritedTypes` lives on
+  `globalThis[Symbol.for("@colyseus/schema:inheritedTypes")]`.
+- Normalized collection types carry `$collectionCtor`; the decoder builds the
+  declaring copy's collection class.
+- `makeCollectionSetter` / `MapSchema` ctor: `instanceof` first, then the
+  `COLLECTION_KIND` brand on the miss branch adopts a foreign collection.
+- `ensureTracked`: `instanceof` first, then `isTracked !== false` keeps a
+  foreign tracked tree (only `UntrackedChangeTree` has the getter).
+- `Callbacks.get/getLegacy` duck-type the Decoder; a copy of a different
+  version warns once at load.
+- Custom types stay per copy: call `defineCustomTypes` in every copy.
+- `test/CrossCopy.test.ts` loads `build/index.mjs` twice; `npm test` builds it.
+  Support matrix: README, "Two copies of the library in one process".
+- Mutating a decoded state after re-encoding it still collides refIds —
+  lead 08, unrelated to copies.
 
 ## Context
 

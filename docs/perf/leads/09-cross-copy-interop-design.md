@@ -1,6 +1,6 @@
 # 09 — Design: cross-copy runtime interop
 
-**Status:** design, awaiting owner review (2026-09-22) · base commit `16ff6be` ·
+**Status:** implemented (2026-09-24, see `09-cross-copy-interop.md` → Resolution) — design approved · base commit `16ff6be` ·
 owner decision: cross-copy runtime interop **is** supported.
 
 Everything under "Measured" was reproduced by importing `build/index.mjs` twice in
