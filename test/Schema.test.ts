@@ -8,7 +8,7 @@
 
 import * as assert from "assert";
 import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
-import { Schema, ArraySchema, MapSchema, type, Metadata, $changes, Encoder, Decoder, SetSchema, schema, t, ToJSON, $refId } from "../src";
+import { Schema, ArraySchema, MapSchema, type, view, Metadata, $changes, Encoder, Decoder, SetSchema, StateView, schema, t, ToJSON, $refId } from "../src";
 import { getNormalizedType } from "../src/Metadata";
 
 describe("Type: Schema", () => {
@@ -1270,12 +1270,7 @@ describe("Type: Schema", () => {
             state.mapOfPlayers.delete('jake');
         });
 
-        //
-        // Re-encoding a decoded structure works for primitive-only trees
-        // (encodeAll only). Schema children still get an UntrackedChangeTree,
-        // and incremental encode() from a decoded state emits corrupt indexes —
-        // both blockers for the peer-to-peer scenario.
-        //
+        // Incremental encode() and Schema children after a hand-off: see "hand-off: re-encoding a decoded state".
         it('should encode map with primitive values from decoded state', () => {
             class TestMapSchema extends Schema {
                 @type({ map: 'number' }) value = new MapSchema<number>();
@@ -1326,6 +1321,233 @@ describe("Type: Schema", () => {
 
     });
 
+
+    describe("hand-off: re-encoding a decoded state", () => {
+        class HItem extends Schema {
+            @type("string") name: string;
+        }
+        class HPlayer extends Schema {
+            @type("string") name: string;
+            @type("number") x: number;
+            @type(HItem) item: HItem;
+            @type([HItem]) items = new ArraySchema<HItem>();
+        }
+        class HState extends Schema {
+            @type({ map: HPlayer }) players = new MapSchema<HPlayer>();
+            @type(HItem) best: HItem;
+            @type(["number"]) numbers = new ArraySchema<number>();
+            @type("string") title: string;
+        }
+        class VPlayer extends Schema {
+            @type("string") name: string;
+            @view() @type(HItem) secret: HItem;
+        }
+        class VState extends Schema {
+            @type(VPlayer) player: VPlayer;
+        }
+
+        const player = (name: string, x: number) => new HPlayer().assign({
+            name, x, item: new HItem().assign({ name: name + "-item" }),
+            items: new ArraySchema(new HItem().assign({ name: name + "-0" })),
+        });
+
+        /** Upstream server, and a decoded copy of it (the state being handed off). */
+        function upstream() {
+            const up = new HState();
+            up.players.set("a", player("A", 1));
+            up.players.set("b", player("B", 2));
+            up.best = new HItem().assign({ name: "sword" });
+            up.numbers.push(1, 2, 3);
+            up.title = "t";
+            const upEncoder = new Encoder(up);
+            const decoder = new Decoder(new HState());
+            decoder.decode(upEncoder.encodeAll());
+            upEncoder.discardChanges();
+            return { up, upEncoder, decoder, decoded: decoder.state };
+        }
+
+        function decodeFresh<T extends Schema>(state: T, bytes: Uint8Array | Uint8Array[]) {
+            const decoder = new Decoder(state);
+            decoder.decode(bytes);
+            return decoder;
+        }
+
+        function tick(encoder: Encoder, decoder: Decoder) {
+            decoder.decode(encoder.encode());
+            encoder.discardChanges();
+        }
+
+        /** Every reachable tree has an id of this Root, registered to itself. */
+        function assertOwnIds(encoder: Encoder) {
+            const seen = new Set<any>();
+            const walk = (tree: any) => {
+                if (seen.has(tree)) { return; }
+                seen.add(tree);
+                assert.notStrictEqual(tree.refId, undefined);
+                assert.strictEqual(encoder.root.changeTrees.get(tree.refId), tree, `refId ${tree.refId} collides`);
+                tree.forEachChild((child: any) => walk(child));
+            };
+            walk((encoder.state as any)[$changes]);
+            assert.strictEqual(new Set([...seen].map((t) => t.refId)).size, seen.size);
+        }
+
+        it("encodeAll after hand-off, with new Schema children", () => {
+            const { decoded } = upstream();
+            const encoder = new Encoder(decoded);
+            decoded.players.set("c", player("C", 3));
+            decoded.best = new HItem().assign({ name: "axe" });
+            assertOwnIds(encoder);
+
+            const third = decodeFresh(new HState(), encoder.encodeAll());
+            assert.deepStrictEqual(third.state.toJSON(), decoded.toJSON());
+        });
+
+        it("incremental encode() after hand-off", () => {
+            const { decoded } = upstream();
+            const encoder = new Encoder(decoded);
+            const third = decodeFresh(new HState(), encoder.encodeAll());
+            encoder.discardChanges();
+
+            decoded.players.get("a").x = 99;
+            decoded.players.set("c", player("C", 3));
+            decoded.players.delete("b");
+            decoded.players.get("a").items.push(new HItem().assign({ name: "A-1" }));
+            decoded.numbers.push(4);
+            tick(encoder, third);
+            assert.deepStrictEqual(third.state.toJSON(), decoded.toJSON());
+            assertOwnIds(encoder);
+
+            decoded.players.get("c").item.name = "renamed";
+            decoded.title = "t2";
+            tick(encoder, third);
+            assert.deepStrictEqual(third.state.toJSON(), decoded.toJSON());
+        });
+
+        it("first encode() after hand-off carries the full decoded state", () => {
+            const { decoded } = upstream();
+            const encoder = new Encoder(decoded);
+            const third = decodeFresh(new HState(), encoder.encode());
+            assert.deepStrictEqual(third.state.toJSON(), decoded.toJSON());
+        });
+
+        it("a new map key goes after every decoded wire index", () => {
+            const { decoded } = upstream();
+            const encoder = new Encoder(decoded);
+            const third = decodeFresh(new HState(), encoder.encodeAll());
+            encoder.discardChanges();
+
+            decoded.players.set("c", player("C", 3));
+            assert.strictEqual((decoded.players as any).indexByKey.get("c"), 2);
+            tick(encoder, third);
+            assert.deepStrictEqual(third.state.toJSON(), decoded.toJSON());
+        });
+
+        it("decoded subtree under a fresh root: parent edges and @view filtering", () => {
+            const up = new VState().assign({
+                player: new VPlayer().assign({ name: "p", secret: new HItem().assign({ name: "s" }) }),
+            });
+            const upEncoder = new Encoder(up);
+            const upView = new StateView();
+            upView.add(up.player);
+            const it = { offset: 0 };
+            upEncoder.encodeAll(it);
+            const decoded = decodeFresh(new VState(), upEncoder.encodeAllView(upView, it.offset, it)).state;
+            assert.strictEqual(decoded.player.secret.name, "s");
+
+            const fresh = new VState();
+            fresh.player = decoded.player;
+            const encoder = new Encoder(fresh);
+            const playerTree = (fresh.player as any)[$changes];
+            const secretTree = (fresh.player.secret as any)[$changes];
+            assert.strictEqual(playerTree.parentTree, (fresh as any)[$changes]);
+            assert.strictEqual(secretTree.parentTree, playerTree);
+            assert.strictEqual(secretTree.isFiltered, true);
+            assertOwnIds(encoder);
+
+            const noView = decodeFresh(new VState(), encoder.encodeAll());
+            assert.deepStrictEqual(noView.state.toJSON(), { player: { name: "p" } });
+
+            const view = new StateView();
+            view.add(fresh.player);
+            const it2 = { offset: 0 };
+            encoder.encodeAll(it2);
+            const withView = decodeFresh(new VState(), encoder.encodeAllView(view, it2.offset, it2));
+            assert.deepStrictEqual(withView.state.toJSON(), fresh.toJSON());
+        });
+
+        it("decoder-built root", () => {
+            const { upEncoder } = upstream();
+            const root = HState.initializeForDecoder();
+            const decoded = decodeFresh(root, upEncoder.encodeAll()).state;
+            const encoder = new Encoder(decoded);
+            decoded.players.set("c", player("C", 3));
+            assertOwnIds(encoder);
+            assert.deepStrictEqual(decodeFresh(new HState(), encoder.encodeAll()).state.toJSON(), decoded.toJSON());
+        });
+
+        it("graft a decoded instance into a running encoder", () => {
+            const { decoded } = upstream();
+            const server = new HState();
+            server.players.set("s", player("S", 0));
+            const encoder = new Encoder(server);
+            const client = decodeFresh(new HState(), encoder.encodeAll());
+            encoder.discardChanges();
+
+            server.players.set("x", decoded.players.get("a"));
+            assertOwnIds(encoder);
+            tick(encoder, client);
+            assert.deepStrictEqual(client.state.toJSON(), server.toJSON());
+
+            server.players.get("x").items.push(new HItem().assign({ name: "x-1" }));
+            tick(encoder, client);
+            assert.deepStrictEqual(client.state.toJSON(), server.toJSON());
+        });
+
+        it("refIds: decoder ids before takeover, root is 0 after", () => {
+            const { up, decoded } = upstream();
+            assert.strictEqual(decoded.players[$refId], up.players[$refId]);
+            assert.strictEqual(decoded.players.get("a")[$refId], up.players.get("a")[$refId]);
+            new Encoder(decoded);
+            assert.strictEqual(decoded[$refId], 0);
+        });
+
+        it("a decoded instance shared by two parents", () => {
+            const up = new HState();
+            const shared = new HItem().assign({ name: "shared" });
+            up.best = shared;
+            up.players.set("a", new HPlayer().assign({ name: "A", item: shared }));
+            const decoded = decodeFresh(new HState(), new Encoder(up).encodeAll()).state;
+            assert.strictEqual(decoded.best, decoded.players.get("a").item);
+
+            const encoder = new Encoder(decoded);
+            const tree = (decoded.best as any)[$changes];
+            assert.strictEqual(encoder.root.refCount.get(tree.refId), 2);
+            // limitation: the takeover records one parent edge (only @view filtering of the shared instance reads the 2nd)
+            assert.strictEqual(tree.getAllParents().length, 1);
+
+            const third = decodeFresh(new HState(), encoder.encodeAll()).state;
+            assert.deepStrictEqual(third.toJSON(), decoded.toJSON());
+            assert.strictEqual(third.best, third.players.get("a").item);
+        });
+
+        describe("relay (unsupported)", () => {
+            const RELAY_ERROR = /cannot decode into an instance attached to an Encoder/;
+
+            it("decoding a child patch after hand-off throws", () => {
+                const { up, upEncoder, decoder, decoded } = upstream();
+                new Encoder(decoded);
+                up.players.get("a").x = 5;
+                assert.throws(() => decoder.decode(upEncoder.encode()), RELAY_ERROR);
+            });
+
+            it("decoding a root-only patch after hand-off throws", () => {
+                const { up, upEncoder, decoder, decoded } = upstream();
+                new Encoder(decoded);
+                up.title = "z";
+                assert.throws(() => decoder.decode(upEncoder.encode()), RELAY_ERROR);
+            });
+        });
+    });
 
     describe("deep structures / re-assignents", () => {
         it("should allow re-assigning child schema type", () => {
