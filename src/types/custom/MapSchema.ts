@@ -103,9 +103,10 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
         if (initialValues) {
             if (
                 initialValues instanceof Map ||
-                initialValues instanceof MapSchema
+                initialValues instanceof MapSchema ||
+                (initialValues.constructor as any)?.COLLECTION_KIND === CollectionKind.Map // another library copy
             ) {
-                initialValues.forEach((v, k) => this.set(k, v));
+                (initialValues as Map<K, V>).forEach((v, k) => this.set(k, v));
 
             } else {
                 for (const k in initialValues) {

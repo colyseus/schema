@@ -7,7 +7,7 @@ import { getNormalizedType, Metadata, resolveFieldType } from "./Metadata.js";
 import { $applyKeyType, $childType, $descriptors, $encoders, $keyType, $numFields, $values } from "./types/symbols.js";
 import { encode } from "./encoding/encode.js";
 import { TypeDefinition } from "./types/registry.js";
-import { OPERATION } from "./encoding/spec.js";
+import { CollectionKind, OPERATION } from "./encoding/spec.js";
 import { TypeContext } from "./types/TypeContext.js";
 import { assertInstanceType, EncodeSchemaError } from "./encoding/assert.js";
 import type { InferValueType, InferSchemaInstanceType, BuilderInitProps } from "./types/HelperTypes.js";
@@ -506,14 +506,15 @@ function makeCollectionSetter(
         if (value !== undefined && value !== null) {
             // automatic Array → ArraySchema / Map → MapSchema conversion.
             // `$childType` goes on before populating — push()/set() gate
-            // their `assertInstanceType` on it.
-            if (isArrayKlass && !(value instanceof ArraySchema)) {
+            // their `assertInstanceType` on it. A collection of another
+            // library copy (`COLLECTION_KIND` brand) is adopted as-is.
+            if (isArrayKlass && !(value instanceof ArraySchema) && value.constructor?.COLLECTION_KIND !== CollectionKind.Array) {
                 const array: any = new ArraySchema();
                 array[$childType] = type;
                 array.push(...value);
                 value = array;
 
-            } else if (isMapKlass && !(value instanceof MapSchema)) {
+            } else if (isMapKlass && !(value instanceof MapSchema) && value.constructor?.COLLECTION_KIND !== CollectionKind.Map) {
                 const map: any = new MapSchema();
                 map[$childType] = type;
                 map[$keyType] = mapKeyType; // before populating: set() coerces keys per key type
