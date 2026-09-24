@@ -208,6 +208,25 @@ describe("MapSchema wire-index recycling", () => {
             assert.deepStrictEqual(root.pendingViewChanges(), []);
         });
 
+        it("relists a view written after it was found drained; dispose unlists it", () => {
+            const state = new FilteredState();
+            const encoder = getEncoder(state);
+            state.items.set("a", new Item());
+            state.items.set("b", new Item());
+            const client = createClientWithView(state);
+            client.view.add(state.items.get("a")!);
+            encodeMultiple(encoder, state, [client]);
+            const root = encoder.root;
+            assert.deepStrictEqual(root.pendingViewChanges(), []);
+            assert.deepStrictEqual(root.viewsWithChanges, []);
+
+            client.view.add(state.items.get("b")!);
+            encoder.discardChanges();
+            assert.deepStrictEqual(root.pendingViewChanges(), [client.view.changes]);
+            client.view.dispose();
+            assert.deepStrictEqual(root.viewsWithChanges, []);
+        });
+
         it("view.remove binds an unbound view", () => {
             const state = new FilteredState();
             getEncoder(state);

@@ -719,11 +719,7 @@ export class Encoder<T extends Schema = any> {
                 const elTree = refTreeOf(element);
                 if (elTree !== undefined) {
                     const elRefId = elTree.refId;
-                    let elChanges = view.changes.get(elRefId);
-                    if (elChanges === undefined) {
-                        elChanges = new Map();
-                        view.changes.set(elRefId, elChanges);
-                    }
+                    const elChanges = view.entriesOf(elRefId);
                     const elMetadata = elTree.encDescriptor.metadata;
                     elTree.forEachLive((index: number) => {
                         if (Metadata.hasUnreliableAtIndex(elMetadata, index)) return;

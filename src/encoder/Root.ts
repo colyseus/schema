@@ -2,6 +2,7 @@ import { TypeContext } from "../types/TypeContext.js";
 import { ChangeTree, ChangeTreeList, createChangeTreeList, PENDING_FILTER_REFRESH, type ChangeTreeNode } from "./ChangeTree.js";
 import { $changes, $refId } from "../types/symbols.js";
 import { RefTable } from "../RefTable.js";
+import { spliceOne } from "../types/utils.js";
 import type { StateView } from "./StateView.js";
 import type { StreamableState } from "./streaming.js";
 
@@ -117,6 +118,7 @@ export class Root {
     /** Return a view ID to the freelist for reuse. */
     public releaseViewId(id: number): void {
         this._freeViewIds.push(id);
+        spliceOne(this.viewsWithChanges, this.viewsWithChanges.indexOf(id));
     }
 
     /**
@@ -170,18 +172,29 @@ export class Root {
 
     /** Bumped by `Encoder.discardChanges` before the end-of-tick hooks run. */
     public encodeEpoch = 0;
+    /** Ids of the views that may hold `changes` entries: listed by `StateView.entriesOf`, unlisted once drained. */
+    public viewsWithChanges: number[] = [];
     private _pendingViewChanges: StateView["changes"][] = [];
     private _pendingViewChangesEpoch = -1;
 
     /**
-     * `changes` of the active views still holding entries (not drained by an
+     * `changes` of the views still holding entries (not drained by an
      * `encodeView` this tick). Collected once per `encodeEpoch`, on demand.
      */
     public pendingViewChanges(): StateView["changes"][] {
         if (this._pendingViewChangesEpoch !== this.encodeEpoch) {
             this._pendingViewChangesEpoch = this.encodeEpoch;
             const list: StateView["changes"][] = this._pendingViewChanges = [];
-            this.forEachActiveView((view) => { if (view.changes.size > 0) list.push(view.changes); });
+            const ids = this.viewsWithChanges;
+            let kept = 0;
+            for (let i = 0; i < ids.length; i++) {
+                const view = this.activeViews.get(ids[i])?.deref();
+                if (view === undefined) continue;
+                if (view.changes.size === 0) { view.listed = false; continue; }
+                ids[kept++] = ids[i];
+                list.push(view.changes);
+            }
+            ids.length = kept;
         }
         return this._pendingViewChanges;
     }

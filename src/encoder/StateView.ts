@@ -134,6 +134,22 @@ export class StateView {
      * `encodeView` resolve the CURRENT slot at drain time instead.
      */
     changes = new Map<number, Map<number | ChangeTree, OPERATION>>();
+    /** In `Root.viewsWithChanges`. */
+    listed = false;
+
+    /** `changes` entry of `refId`, created on demand; the first one lists this view in `Root.viewsWithChanges`. */
+    entriesOf(refId: number): Map<number | ChangeTree, OPERATION> {
+        let changes = this.changes.get(refId);
+        if (changes === undefined) {
+            changes = new Map();
+            this.changes.set(refId, changes);
+            if (!this.listed && this._root !== undefined) {
+                this.listed = true;
+                this._root.viewsWithChanges.push(this.id);
+            }
+        }
+        return changes;
+    }
 
     constructor(public iterable: boolean = false) {
         if (iterable) {
@@ -178,6 +194,7 @@ export class StateView {
         _disposeRegistry.unregister(this);
         this._root = undefined;
         this.id = -1;
+        this.listed = false;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -471,11 +488,7 @@ export class StateView {
         // deferred this insert past that point, children would be emitted
         // first and the decoder would see "refId not found".
         const refId = changeTree.refId!;
-        let changes = this.changes.get(refId);
-        if (changes === undefined) {
-            changes = new Map<number, OPERATION>();
-            this.changes.set(refId, changes);
-        }
+        const changes = this.entriesOf(refId);
 
         let isChildAdded = false;
 
@@ -646,11 +659,7 @@ export class StateView {
             ? isEdgeLive(childChangeTree, changeTree, parentIndex ?? -1)
             : changeTree.getChange(parentIndex) !== OPERATION.DELETE && holdsMapIndex(changeTree, parentIndex, childChangeTree);
         if (bound) {
-            let changes = this.changes.get(changeTree.refId);
-            if (changes === undefined) {
-                changes = new Map<number | ChangeTree, OPERATION>();
-                this.changes.set(changeTree.refId, changes);
-            }
+            const changes = this.entriesOf(changeTree.refId);
 
             this.addTag(changeTree, tag);
 
@@ -701,7 +710,7 @@ export class StateView {
 
         // Insert root-first so Map order is topological.
         for (let i = stack.length - 1; i >= 0; i--) {
-            this.changes.set(stack[i].refId, new Map());
+            this.entriesOf(stack[i].refId);
         }
     }
 
@@ -760,11 +769,7 @@ export class StateView {
                 const sent = st.sentByView.get(this.id);
                 if (sent !== undefined && sent.size > 0) {
                     const streamRefId = refIdOf(streamRef);
-                    let changes = this.changes.get(streamRefId);
-                    if (changes === undefined) {
-                        changes = new Map();
-                        this.changes.set(streamRefId, changes);
-                    }
+                    const changes = this.entriesOf(streamRefId);
                     for (const pos of sent) changes.set(pos, OPERATION.DELETE);
                     sent.clear();
                 }
@@ -793,11 +798,7 @@ export class StateView {
         // must come AFTER every ancestor in the chain on the wire.
         this._touchAncestorsOf(changeTree);
 
-        let changes = this.changes.get(refId);
-        if (changes === undefined) {
-            changes = new Map<number, OPERATION>();
-            this.changes.set(refId, changes);
-        }
+        const changes = this.entriesOf(refId);
 
         if (tag === DEFAULT_VIEW_TAG) {
             // parent is collection (Map/Array)
@@ -815,13 +816,8 @@ export class StateView {
                     holdsMapIndex(parentTree!, key as number, changeTree) ||
                     parentTree!.getChange(key as number) === OPERATION.DELETE_AND_ADD
                 ) {
-                    const parentRefId = parentTree!.refId!;
-                    let changes = this.changes.get(parentRefId);
-                    if (changes === undefined) {
-                        changes = new Map<number | ChangeTree, OPERATION>();
-                        this.changes.set(parentRefId, changes);
-
-                    } else if (changes.get(key) === OPERATION.ADD) {
+                    const changes = this.entriesOf(parentTree!.refId!);
+                    if (changes.get(key) === OPERATION.ADD) {
                         //
                         // SAME PATCH ADD + REMOVE:
                         // cancel the structure's pending ops and its descendants' —
@@ -1024,11 +1020,7 @@ export class StateView {
                 st.pendingByView.get(this.id)?.clear();
                 const sent: Set<number> | undefined = st.sentByView.get(this.id);
                 if (sent !== undefined && sent.size > 0) {
-                    let changes = this.changes.get(collectionRefId);
-                    if (changes === undefined) {
-                        changes = new Map();
-                        this.changes.set(collectionRefId, changes);
-                    }
+                    const changes = this.entriesOf(collectionRefId);
                     for (const pos of sent) changes.set(pos, OPERATION.DELETE);
                     sent.clear();
                 }
@@ -1039,13 +1031,8 @@ export class StateView {
             // reaching this view. ArraySchema children are keyed by identity
             // (see `changes` field docs); others by their stable index.
             const isArray = tree.isArray;
-            let changes = this.changes.get(collectionRefId);
             tree.forEachChild((childTree, index) => {
-                if (changes === undefined) {
-                    changes = new Map();
-                    this.changes.set(collectionRefId, changes);
-                }
-                changes.set(isArray ? childTree : index, OPERATION.DELETE);
+                this.entriesOf(collectionRefId).set(isArray ? childTree : index, OPERATION.DELETE);
                 this.unmarkVisible(childTree);
             });
         }
