@@ -24,7 +24,7 @@
     "typecheck:build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json --noEmit",
     "test": "npm run test:types && tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.test.ts\" \"test/**/*.test.ts\"",
     "test:perf": "tsx --tsconfig tsconfig.test.json ./node_modules/mocha/bin/mocha.js \"test/*.perf.ts\"",
-    "test:types": "node node_modules/typescript/bin/tsc -p tsconfig.build.json && node test/types/run.mjs typescript typescript-7",
+    "test:types": "npm run build && node test/types/run.mjs typescript typescript-7",
     "test:exports": "node test/verify-exports.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.test.json",
     "coverage": "c8 npm run test",
