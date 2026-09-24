@@ -36,14 +36,15 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
     protected $items: Map<K, V> = new Map<K, V>();
 
     /**
-     * Wire identity. A key gets a monotonic wire index the first time it is
-     * set; ops after the ADD address the entry by that index. Both sides
+     * Wire identity. A key gets a wire index the first time it is set (one
+     * freed in an earlier tick, else `nextIndex++`); ops after the ADD
+     * address the entry by that index. Both sides
      * keep both directions: the encoder needs key → index to record, and
      * index → key to emit the key on ADD; the decoder needs index → key to
      * resolve ops. Mappings of removed keys are purged at the end of the
      * tick they were removed in (`$onEncodeEnd`).
      */
-    /** Wire index → key. Indexes are handed out in order and never recycled: an array-backed table, not a hash map (see `RefTable`). */
+    /** Wire index → key. Indexes stay dense (freed ones are reused): an array-backed table, not a hash map (see `RefTable`). */
     keyByIndex: RefTable<K> = new RefTable<K>();
     indexByKey: Map<K, number> = new Map();
     nextIndex: number = 0;

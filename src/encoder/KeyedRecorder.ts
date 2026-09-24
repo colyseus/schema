@@ -23,9 +23,9 @@ import { OPERATION } from "../encoding/spec.js";
  * op and growing with the collection (32 bytes, doubling), so many small maps
  * do not pay 4 KB each. Further pages are fixed 4 KB and live in a directory
  * that exists only once a collection has passed 4096 wire indexes (most
- * recorders never allocate it). Since wire indexes are never
- * recycled, a directory page that went idle is dropped whenever a new one is
- * needed (page 0 is kept: at most 4 KB, and only on a collection that large).
+ * recorders never allocate it). A directory page that went idle is dropped
+ * whenever a new one is needed (page 0 is kept: at most 4 KB, and only on a
+ * collection that large); a reused wire index re-creates its page.
  */
 const PAGE_BITS = 12;
 const PAGE_SIZE = 1 << PAGE_BITS;
@@ -216,8 +216,8 @@ export class KeyedRecorder<V = any> {
             pageEpoch = this.pageEpoch = [0];
         }
         const epoch = this.epoch;
-        // Wire indexes only grow, so old pages go idle for good. One not written
-        // this epoch holds only zeros (every reset zeroes what it touched): drop it.
+        // A page not written this epoch holds only zeros (every reset zeroes
+        // what it touched): drop it.
         for (let q = 1; q < pages.length; q++) {
             if (pages[q] !== undefined && pageEpoch[q] !== epoch) pages[q] = undefined;
         }

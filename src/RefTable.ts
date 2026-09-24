@@ -5,8 +5,9 @@
  * encoder's `Root.changeTrees` / `Root.refCount`, and `MapSchema.keyByIndex`
  * (wire index → key); each replaced a `Map` or an integer-keyed plain object
  * (a hash probe per read; plain objects fall into dictionary mode under churn).
- * All three key spaces are handed out in order and never recycled, so a lookup
- * is an array load and a "delete" is a store of `undefined`.
+ * All three key spaces are small dense integers handed out in order (refIds are
+ * never recycled; a MapSchema reuses freed wire indexes), so a lookup is an
+ * array load and a "delete" is a store of `undefined`.
  *
  * Layout, from measurements (bench/v6-results.md, "Reference tables"):
  *
@@ -16,11 +17,11 @@
  *   fixed first page, or one served through the directory, cost every small
  *   table an allocation or a load).
  * - **Further pages are fixed-size**, `pages[key >>> PAGE_BITS][key & MASK]`.
- *   Keys are never recycled — a long-lived room keeps allocating them — so a
+ *   RefIds are never recycled — a long-lived room keeps allocating them — so a
  *   page is dropped once its last entry is deleted: memory follows the LIVE
  *   entries, not the highest key (the directory costs one slot per PAGE_SIZE
- *   keys ever allocated).
- * - **The frontier (highest) page is kept while empty**: keys only grow, so it is
+ *   keys ever allocated). A reused key re-creates its page.
+ * - **The frontier (highest) page is kept while empty**: keys mostly grow, so it is
  *   the one page that will receive more entries (dropping it re-allocates a
  *   page every tick under push / pop churn). It is released when the table
  *   grows past it.
