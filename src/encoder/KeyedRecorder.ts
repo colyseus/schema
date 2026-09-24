@@ -96,12 +96,10 @@ export class KeyedRecorder<V = any> {
         this.deleted?.delete(index);
     }
 
-    /** CLEAR restarts the collection at index 0: the free indexes go too. */
     clear(): void {
         this.dropOps();
         this.deleted?.clear();
         this.cleared = true;
-        this.free = this.quarantine = undefined;
     }
 
     opAt(index: number): OPERATION | undefined {

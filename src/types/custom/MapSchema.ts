@@ -218,7 +218,8 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
             (tree.rec as KeyedRecorder | undefined)?.forget(index);
 
         } else {
-            index = this.nextIndex++;
+            const free = (tree.rec as KeyedRecorder | undefined)?.free;
+            index = (free !== undefined && free.length !== 0) ? free.pop()! : this.nextIndex++;
             this.indexByKey.set(key, index);
             this.keyByIndex.set(index, key);
             operation = OPERATION.ADD;
@@ -334,11 +335,13 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
             tree.root?.remove(childChangeTree);
         });
 
-        // reset wire identity + storage
+        // reset wire identity + storage (numbering restarts at 0: free indexes go too)
         this.keyByIndex.clear();
         this.indexByKey.clear();
         this.nextIndex = 0;
         this.$items.clear();
+        const rec = tree.rec as KeyedRecorder | undefined;
+        if (rec !== undefined) rec.free = rec.quarantine = undefined;
 
         // CLEAR is absorbing: pending ops are dropped, CLEAR is emitted first
         if (tree.tracking) {
@@ -442,19 +445,31 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
     }
 
     /**
-     * End of tick: purge the wire identity of entries removed this tick
-     * (their DELETE has shipped). Runs BEFORE the recorder reset, so
-     * `rec.deleted` still lists them. A key re-set after its removal keeps
-     * its index (`set` forgets the snapshot and the entry is live again).
+     * End of tick: purge the wire identity of entries removed this tick.
+     * Runs BEFORE the recorder reset, so `rec.deleted` still lists them. A
+     * key re-set after its removal keeps its index (`set` forgets the
+     * snapshot and the entry is live again). An index whose DELETE shipped
+     * is reused from the next tick on, never in the same one (a DELETE + ADD
+     * would merge). `discard` frees nothing: the client may still hold the
+     * index. Streamed maps never recycle. See
+     * docs/perf/leads/06-wire-index-recycling-design.md.
      */
     protected [$onEncodeEnd](shipped: boolean) {
-        const deleted = (treeOf(this).rec as KeyedRecorder | undefined)?.deleted;
-        if (deleted === undefined) return;
-        for (const index of deleted.keys()) {
+        const tree = treeOf(this);
+        const rec = tree.rec as KeyedRecorder | undefined;
+        if (rec === undefined || rec.deleted === undefined) return;
+        const recycle = shipped && tree.root !== undefined && !tree.isStreamCollection;
+        const held = rec.quarantine;
+        if (recycle && held !== undefined) {
+            rec.quarantine = undefined;
+            for (let k = 0; k < held.length; k++) freeIndex(tree, rec, held[k]);
+        }
+        for (const index of rec.deleted.keys()) {
             const key = this.keyByIndex.get(index);
             if (key !== undefined && this.indexByKey.get(key) === index && !this.$items.has(key)) {
                 this.indexByKey.delete(key);
                 this.keyByIndex.delete(index);
+                if (recycle) freeIndex(tree, rec, index);
             }
         }
     }
@@ -491,6 +506,19 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
         return cloned;
     }
 
+}
+
+/** Free `index`, unless a view still holds a `view.changes` entry for it: quarantined until that view drains. */
+function freeIndex(tree: ChangeTree, rec: KeyedRecorder, index: number): void {
+    const pending = tree.root!.pendingViewChanges();
+    const refId = tree.refId!;
+    for (let v = 0; v < pending.length; v++) {
+        if (pending[v].get(refId)?.has(index)) {
+            (rec.quarantine ??= []).push(index);
+            return;
+        }
+    }
+    (rec.free ??= []).push(index);
 }
 
 /** Coerce a user-supplied key to the declared key type (string when undeclared). */

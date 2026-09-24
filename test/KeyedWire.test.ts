@@ -130,8 +130,8 @@ describe("Keyed collections wire format (Map / Set)", () => {
             getEncoder(state).discardChanges();
             assert.deepStrictEqual(client.scores.toJSON(), { a: 1, b: 2, d: 7 });
 
-            state.scores.set("e", 5); // index 4, string key "e"
-            assert.deepStrictEqual(patch(state), [3, 8, 4 * 4 + 2, 1, 0x65, 5]);
+            state.scores.set("e", 5); // reuses index 2 (freed last tick), string key "e"
+            assert.deepStrictEqual(patch(state), [3, 8, 2 * 4 + 2, 1, 0x65, 5]);
             client.decode(getEncoder(state).encode());
             getEncoder(state).discardChanges();
             assert.deepStrictEqual(client.scores.toJSON(), { a: 1, b: 2, d: 7, e: 5 });
