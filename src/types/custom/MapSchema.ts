@@ -447,7 +447,7 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
      * `rec.deleted` still lists them. A key re-set after its removal keeps
      * its index (`set` forgets the snapshot and the entry is live again).
      */
-    protected [$onEncodeEnd]() {
+    protected [$onEncodeEnd](shipped: boolean) {
         const deleted = (treeOf(this).rec as KeyedRecorder | undefined)?.deleted;
         if (deleted === undefined) return;
         for (const index of deleted.keys()) {

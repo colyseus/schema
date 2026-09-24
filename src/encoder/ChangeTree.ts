@@ -975,9 +975,10 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     // Clear the reliable dirty bucket after a reliable encode pass. The
     // collection hook runs BEFORE the recorder reset: `MapSchema` purges
-    // the index mappings of entries removed this tick from `rec.deleted`.
+    // the index mappings of entries removed this tick from `rec.deleted`;
+    // `shipped` says whether their DELETEs were encoded (false for `discard`).
     endEncode() {
-        if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.();
+        if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.(true);
         this.reset();
         this.changesNode = undefined;
         this.isNew = false;
@@ -990,7 +991,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     }
 
     discard() {
-        if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.();
+        if (!this._isSchema) (this.refTarget as any)[$onEncodeEnd]?.(false);
         this.reset();
         this.aux?.unreliableRecorder?.reset();
     }
