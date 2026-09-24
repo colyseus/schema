@@ -1011,3 +1011,22 @@ elements on a fresh bootstrap and only degrades after `delete`, which is where
 Lesson: a change to a shared decoder table must be measured on every bootstrap
 shape (`decoder/bootstrap`, `decoder/map-bootstrap/*`, `callbacks/density/*`),
 not only the one the lead names.
+
+## Sweep: leads 09, 06, 08 (W7 → R9 = a305e12, 10 samples; flagged rows re-run at 20)
+
+Landed in between: LEADS 09 (cross-copy interop), 06 (MapSchema wire-index
+recycling), 08 (hand-off re-encode of a decoded state). Bytes of `bench_encode.js`
+unchanged (5 458 157). `encoder/map-churn` bytes −4.5…−8.6 %, time −5…−6 %.
+
+| row | W7 → R9 | W7 → L09 | W7 → L06 | L09 → L08 |
+| --- | --- | --- | --- | --- |
+| `realworld/mmo-shards/enc-c100` | +4.8 % ✗ | +2.7 % | **+8.4 % ✗** | +3.9 % |
+| `realworld/mmo-shards/enc-c500` | +12.8 % ✗ | +2.9 % | **+6.0 % ✗** | −3.6 % |
+| `realworld/large-patch/enc-5k` | −0.4 % | −0.3 % | +0.4 % | +1.9 % (A/A −0.6 %) |
+| `callbacks/density/none` | +1.4 % | −1.6 % | +1.3 % | −1.4 % |
+
+**The real one: LEADS 06 on many-view ticks.** `Root.pendingViewChanges()` walked
+every active view once per tick in which a map freed an index (6.2 % self time at
+500 views). The fix (`e2750cb`) walks only the views listed when they created their
+first `changes` entry (`StateView.entriesOf`). After it, against W7: enc-c100
++1.7 % (p .16), enc-c500 +2.7 % (p .54); against R9: −3.1 % / −7.5 %.
