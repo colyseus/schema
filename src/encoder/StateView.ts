@@ -716,6 +716,11 @@ export class StateView {
             return this;
         }
 
+        // the entries written below must be visible to `Root.pendingViewChanges`
+        if (this._root === undefined && changeTree.root !== undefined) {
+            this._bindRoot(changeTree.root);
+        }
+
         // ── Streamable-element unsubscribe ─────────────────────────────
         // Symmetric to the `add(streamElement)` routing: pull the element
         // out of the stream's per-view state. If it never made it to the

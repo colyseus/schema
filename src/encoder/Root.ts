@@ -168,6 +168,24 @@ export class Root {
         }
     }
 
+    /** Bumped by `Encoder.discardChanges` before the end-of-tick hooks run. */
+    public encodeEpoch = 0;
+    private _pendingViewChanges: StateView["changes"][] = [];
+    private _pendingViewChangesEpoch = -1;
+
+    /**
+     * `changes` of the active views still holding entries (not drained by an
+     * `encodeView` this tick). Collected once per `encodeEpoch`, on demand.
+     */
+    public pendingViewChanges(): StateView["changes"][] {
+        if (this._pendingViewChangesEpoch !== this.encodeEpoch) {
+            this._pendingViewChangesEpoch = this.encodeEpoch;
+            const list: StateView["changes"][] = this._pendingViewChanges = [];
+            this.forEachActiveView((view) => { if (view.changes.size > 0) list.push(view.changes); });
+        }
+        return this._pendingViewChanges;
+    }
+
     public registerStream(stream: Streamable): void {
         this.streamTrees.add(stream);
     }

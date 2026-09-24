@@ -38,6 +38,38 @@ describe("MapSchema wire-index recycling", () => {
         });
     });
 
+    describe("Root.pendingViewChanges", () => {
+        it("lists the views not drained this tick, once per encodeEpoch", () => {
+            const state = new FilteredState();
+            const encoder = getEncoder(state);
+            state.items.set("a", new Item());
+            const drained = createClientWithView(state);
+            const skipped = createClientWithView(state);
+            drained.view.add(state.items.get("a")!);
+            skipped.view.add(state.items.get("a")!);
+
+            encodeMultiple(encoder, state, [drained]);
+            const root = encoder.root;
+            const pending = root.pendingViewChanges();
+            assert.deepStrictEqual(pending, [skipped.view.changes]);
+
+            skipped.view.changes.clear();
+            assert.strictEqual(root.pendingViewChanges(), pending, "cached within the epoch");
+            assert.strictEqual(pending.length, 1);
+            encoder.discardChanges();
+            assert.deepStrictEqual(root.pendingViewChanges(), []);
+        });
+
+        it("view.remove binds an unbound view", () => {
+            const state = new FilteredState();
+            getEncoder(state);
+            state.items.set("a", new Item());
+            const view = new StateView();
+            view.remove(state.items.get("a")!);
+            assert.notStrictEqual(view.id, -1);
+        });
+    });
+
     describe("StateView entries are written only by the index's holder", () => {
         it("view.add / view.remove of a child removed in an earlier tick write nothing on the map", () => {
             const state = new FilteredState();

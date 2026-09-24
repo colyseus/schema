@@ -732,6 +732,7 @@ export class Encoder<T extends Schema = any> {
     // ── lifecycle ───────────────────────────────────────────────────────
 
     discardChanges(): void {
+        this.root.encodeEpoch++;
         discardQueue(this.root, this.root.changes);
         this._tickPrepared = false;
         releaseFrames(); // here, not per pass: a call in `encode()` costs inlining budget on the hot chain
