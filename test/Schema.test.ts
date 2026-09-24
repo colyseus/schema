@@ -1529,11 +1529,11 @@ describe("Type: Schema", () => {
             assert.deepStrictEqual(third.state.toJSON(), decoded.toJSON());
             assert.strictEqual(third.state.best, third.state.players.get("a").item);
 
-            // dropping one parent keeps the other edge
+            // dropping one parent: the other still reaches the instance
             decoded.best = undefined;
             decoded.players.get("a").item.name = "still shared";
             tick(encoder, third);
-            assert.strictEqual(tree.getAllParents().length, 1);
+            assert.strictEqual(encoder.root.refCount.get(tree.refId), 1);
             assert.deepStrictEqual(third.state.toJSON(), decoded.toJSON());
         });
 
