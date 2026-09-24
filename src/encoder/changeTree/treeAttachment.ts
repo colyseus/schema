@@ -167,7 +167,8 @@ export function forEachChildWithCtx<C>(
  * Index writes on a decoder-built ArraySchema stay untracked (no Proxy).
  */
 function ensureTracked(child: ChangeTree): ChangeTree {
-    if (child instanceof ChangeTree) return child;
+    // a tracked tree of another library copy misses `instanceof`: only the stub reads `isTracked === false`
+    if (child instanceof ChangeTree || (child as any).isTracked !== false) return child;
     const ref: any = (child as any).ref;
     const target = ref[$proxyTarget] ?? ref;
     const real = new ChangeTree(ref, target);

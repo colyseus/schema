@@ -150,7 +150,7 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         assert.deepStrictEqual(added.sort(), ["Aone", "Bone"]);
     });
 
-    it.skip("a foreign collection assigned by the user keeps its tree", () => {
+    it("a foreign collection assigned by the user keeps its tree", () => {
         const state = new State();
         const encoder = new A.Encoder(state);
         const decoded = new State();
@@ -209,10 +209,11 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
     });
 
     it("re-encodes a state decoded by the other copy", () => {
+        // decoder B builds A's classes with A's untracked stubs; encoder B upgrades them
         const { decoded } = roundTrip(A, B, 100);
-        const encoder = new A.Encoder(decoded);
+        const encoder = new B.Encoder(decoded);
         const again = new State();
-        new B.Decoder(again).decode(copy(encoder.encodeAll()));
+        new A.Decoder(again).decode(copy(encoder.encodeAll()));
         assert.deepStrictEqual(json(again), json(decoded));
     });
 });
