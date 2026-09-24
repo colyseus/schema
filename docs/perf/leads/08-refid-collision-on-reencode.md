@@ -31,8 +31,12 @@ The encoder never inherits a decoder id:
 | --- | --- |
 | hand-off: `new Encoder(decoded)`, mutations, new children, `encodeAll` / incremental `encode` into a third decoder | supported |
 | decoded subtree under a fresh root, or grafted into a running encoder | supported |
-| **live relay**: the same instances keep being decoded from upstream after an Encoder took them | unsupported — throws `cannot decode into an instance attached to an Encoder` |
-| a decoded instance shared by two parents | round-trips; the takeover records one parent edge (only `@view` filtering of that instance reads the second) |
+| a decoded instance shared by two parents | supported (the takeover walk records both edges) |
+| **live relay**: the same instances keep being decoded from upstream after an Encoder took them | unsupported — throws `cannot decode into an instance attached to an Encoder` (also once the encoder detached it again) |
+| an Encoder built over a state only to reflect it (`Reflection.encode(new Encoder(state))`), then decoding into that state | unsupported (same guard): build the Encoder over a spare instance of the class |
+| after grafting a decoded subtree, the source decoder keeps decoding the untaken parent (e.g. upstream deletes the grafted entry) | unsupported, NOT detected: the release reads the encoder's refId. Stop the source decoder |
+| grafting a Decoder's root instance as a child | unsupported: it keeps the decoder's id 0 (only `new Encoder(root)` resets it) |
+| index writes (`arr[i] = v`) on a decoded ArraySchema after hand-off | not recorded (a decoder-built array has no Proxy); use `splice` / `push` |
 
 Relay would need a "decode into live state" mode: the decoder writes past
 tracking on purpose (`values[i]` / `$items` stores), so upstream changes would
