@@ -39,6 +39,11 @@ export class KeyedRecorder<V = any> {
     cleared = false;
     deleted?: Map<number, V>;
 
+    /** MapSchema: wire indexes free for reuse (a LIFO stack); `undefined` until the first one is freed. */
+    free?: number[];
+    /** MapSchema: freed indexes a `StateView` still holds an entry for, re-checked at the next end of tick. */
+    quarantine?: number[];
+
     /** Ops of wire indexes `0 … PAGE_SIZE-1`; `undefined` until the first recorded op, then grows with the collection. */
     private page0: Uint8Array | undefined = undefined;
     /** Pages for indexes ≥ PAGE_SIZE (slot 0 unused), created on first use. */
@@ -91,10 +96,12 @@ export class KeyedRecorder<V = any> {
         this.deleted?.delete(index);
     }
 
+    /** CLEAR restarts the collection at index 0: the free indexes go too. */
     clear(): void {
         this.dropOps();
         this.deleted?.clear();
         this.cleared = true;
+        this.free = this.quarantine = undefined;
     }
 
     opAt(index: number): OPERATION | undefined {
@@ -147,6 +154,7 @@ export class KeyedRecorder<V = any> {
         // a pooled instance starts over at index 0: give the directory back (page 0 is zeroed and small — kept)
         this.pages = undefined;
         this.pageEpoch = undefined;
+        this.free = this.quarantine = undefined;
     }
 
     /** Zero the bytes this epoch touched (O(dirty), pages kept) and start a new epoch. */

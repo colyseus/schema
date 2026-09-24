@@ -145,4 +145,17 @@ describe("KeyedRecorder", () => {
         rec.forEach((index) => seen.push(index));
         assert.deepStrictEqual(seen, [-OPERATION.CLEAR, 0], "CLEAR is reported first");
     });
+
+    it("clear() and recycle() drop the free and quarantined indexes; reset() keeps them", () => {
+        const rec = new KeyedRecorder<string>();
+        const fill = () => { rec.free = [3, 1]; rec.quarantine = [2]; };
+        fill();
+        rec.reset();
+        assert.deepStrictEqual([rec.free, rec.quarantine], [[3, 1], [2]]);
+        rec.clear();
+        assert.deepStrictEqual([rec.free, rec.quarantine], [undefined, undefined]);
+        fill();
+        rec.recycle();
+        assert.deepStrictEqual([rec.free, rec.quarantine], [undefined, undefined]);
+    });
 });
