@@ -3,7 +3,7 @@ import { MAP_KEY_TYPES } from "./encoding/spec.js";
 import { Schema, isSchemaBase } from "./Schema.js";
 import { defineRefAccessors } from "./encoder/ChangeTree.js";
 import { getType, registeredTypes, TypeDefinition } from "./types/registry.js";
-import { $changes, $descriptors, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { $changes, $collectionCtor, $descriptors, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
@@ -103,9 +103,11 @@ export function getNormalizedType(type: any): DefinitionType  {
                 for (const k in type) {
                     if (k !== "map" && k !== "key") rebuilt[k] = type[k];
                 }
-                return rebuilt;
+                type = rebuilt;
+            } else {
+                type[collectionType] = getNormalizedType(type[collectionType]);
             }
-            type[collectionType] = getNormalizedType(type[collectionType]);
+            Object.defineProperty(type, $collectionCtor, { value: registeredTypes[collectionType].constructor });
             return type;
         }
     }

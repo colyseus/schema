@@ -62,6 +62,9 @@ export const $resyncPrune = "~resyncPrune";
 /** Own static brand of the `Schema` base class, the same in every copy of this library. */
 export const $schemaBase: unique symbol = Symbol.for("@colyseus/schema:SchemaBase");
 
+/** Non-enumerable tag on a normalized collection type (`{ map: X }`): the declaring copy's collection class, which the decoder builds. */
+export const $collectionCtor: unique symbol = Symbol.for("@colyseus/schema:collectionCtor");
+
 /**
  * Used to hold ChangeTree instances whitin the structures.
  *

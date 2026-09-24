@@ -5,7 +5,7 @@ import { decode } from "../encoding/decode.js";
 import { readString, readUvarint } from "../encoding/varint.js";
 import { Schema } from "../Schema.js";
 import type { IRef } from "../encoder/ChangeTree.js";
-import { $childType, $deleteByIndex, $keyType, $rev, $values } from "../types/symbols.js";
+import { $childType, $collectionCtor, $deleteByIndex, $keyType, $rev, $values } from "../types/symbols.js";
 import { getType } from "../types/registry.js";
 import { decodeQuantized, isQuantizedType } from "../types/quantize.js";
 import { resyncMarkPresent, resyncRecordVisit, resyncTouchEntry } from "./Resync.js";
@@ -170,7 +170,7 @@ function resolveRef(
 
     let value: any = $root.getRef(refId);
     if (value === undefined) {
-        value = (getType(kind).constructor as any).initializeForDecoder();
+        value = (type[$collectionCtor] ?? getType(kind).constructor).initializeForDecoder();
         setCollectionTypes(value, kind, type, childType);
     }
 
@@ -216,7 +216,7 @@ function consumeRefValue(d: Decoder, header: number, type: any, bytes: Uint8Arra
         } else {
             let kind = "", childType: any;
             for (const k in type) { kind = k; childType = type[k]; break; }
-            value = (getType(kind).constructor as any).initializeForDecoder();
+            value = (type[$collectionCtor] ?? getType(kind).constructor).initializeForDecoder();
             setCollectionTypes(value, kind, type, childType);
         }
         $root.addRef(refId, value, false);
