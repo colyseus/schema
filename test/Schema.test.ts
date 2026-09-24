@@ -1522,12 +1522,19 @@ describe("Type: Schema", () => {
             const encoder = new Encoder(decoded);
             const tree = (decoded.best as any)[$changes];
             assert.strictEqual(encoder.root.refCount.get(tree.refId), 2);
-            // limitation: the takeover records one parent edge (only @view filtering of the shared instance reads the 2nd)
-            assert.strictEqual(tree.getAllParents().length, 1);
+            assert.strictEqual(tree.getAllParents().length, 2);
 
-            const third = decodeFresh(new HState(), encoder.encodeAll()).state;
-            assert.deepStrictEqual(third.toJSON(), decoded.toJSON());
-            assert.strictEqual(third.best, third.players.get("a").item);
+            const third = decodeFresh(new HState(), encoder.encodeAll());
+            encoder.discardChanges();
+            assert.deepStrictEqual(third.state.toJSON(), decoded.toJSON());
+            assert.strictEqual(third.state.best, third.state.players.get("a").item);
+
+            // dropping one parent keeps the other edge
+            decoded.best = undefined;
+            decoded.players.get("a").item.name = "still shared";
+            tick(encoder, third);
+            assert.strictEqual(tree.getAllParents().length, 1);
+            assert.deepStrictEqual(third.state.toJSON(), decoded.toJSON());
         });
 
         describe("relay (unsupported)", () => {
@@ -1537,6 +1544,14 @@ describe("Type: Schema", () => {
                 const { up, upEncoder, decoder, decoded } = upstream();
                 new Encoder(decoded);
                 up.players.get("a").x = 5;
+                assert.throws(() => decoder.decode(upEncoder.encode()), RELAY_ERROR);
+            });
+
+            it("decoding into a taken-over instance the encoder has since detached throws", () => {
+                const { up, upEncoder, decoder, decoded } = upstream();
+                new Encoder(decoded);
+                decoded.players.delete("b");
+                up.players.get("b").x = 5;
                 assert.throws(() => decoder.decode(upEncoder.encode()), RELAY_ERROR);
             });
 

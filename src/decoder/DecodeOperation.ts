@@ -89,8 +89,8 @@ export function refInfoOf(ref: any): RefInfo {
 
 function refInfoSlow(ref: any): RefInfo {
     const tree: any = treeOfDecoded(ref);
-    // an Encoder took this instance over (it cleared any record): its fields no longer belong to this decoder
-    if (tree.root !== undefined) throw new Error("@colyseus/schema: cannot decode into an instance attached to an Encoder (relaying a decoded state is unsupported: decode into a separate state and copy)");
+    // an Encoder took this instance over (it cleared any record; `needsRestage`: detached since): its fields no longer belong to this decoder
+    if (tree.root !== undefined || tree.needsRestage) throw new Error("@colyseus/schema: cannot decode into an instance attached to an Encoder (relaying a decoded state is unsupported: decode into a separate state and copy)");
     const ri = buildRefInfo(ref);
     // Decoder-built instances carry an `UntrackedChangeTree`, which declares
     // the slot. A tracked `ChangeTree` does not (it is server-side state and

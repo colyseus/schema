@@ -174,10 +174,17 @@ export function ensureTracked(child: ChangeTree): ChangeTree {
     const target = ref[$proxyTarget] ?? ref;
     const real = new ChangeTree(ref, target);
     real.needsRestage = true;
-    // the decoder keeps no `nextIndex` for maps: new keys go after every decoded wire index
-    if (real.encDescriptor.kind === KIND_MAP) for (const i of ref.indexByKey.values()) if (i >= ref.nextIndex) ref.nextIndex = i + 1;
+    if (real.encDescriptor.kind === KIND_MAP) {
+        // the decoder keeps no `nextIndex` for maps: new keys go after every decoded wire index
+        for (const i of ref.indexByKey.values()) { if (i >= ref.nextIndex) ref.nextIndex = i + 1; }
+    }
     setTree(target, real);
     return real;
+}
+
+/** A shared instance reached again by an attach walk: an upgraded stub recorded no edge at decode time. */
+function addMissingEdge(child: ChangeTree, parentTree: ChangeTree, index: any): void {
+    if (!child.hasParent((p) => refTreeOf(p) === parentTree)) child.addParent(parentTree.ref, index, parentTree);
 }
 
 function _setRootChildCb(parentTree: ChangeTree, child: ChangeTree, index: any): void {
@@ -188,6 +195,7 @@ function _setRootChildCb(parentTree: ChangeTree, child: ChangeTree, index: any):
     } else if (child.root !== root) {
         child.setRoot(root);
     } else {
+        addMissingEdge(child, parentTree, index);
         root.add(child); // increment refCount
     }
 }
@@ -201,6 +209,7 @@ let _setParentDepth = 0;
 function _setParentChildCb(ctx: SetParentCtx, child: ChangeTree, index: any): void {
     child = ensureTracked(child);
     if (child.root === ctx.root) {
+        addMissingEdge(child, ctx.parentTree, index);
         ctx.root.add(child);
         ctx.root.moveNextToParent(child);
         return;
