@@ -1547,14 +1547,6 @@ describe("Type: Schema", () => {
                 assert.throws(() => decoder.decode(upEncoder.encode()), RELAY_ERROR);
             });
 
-            it("decoding into a taken-over instance the encoder has since detached throws", () => {
-                const { up, upEncoder, decoder, decoded } = upstream();
-                new Encoder(decoded);
-                decoded.players.delete("b");
-                up.players.get("b").x = 5;
-                assert.throws(() => decoder.decode(upEncoder.encode()), RELAY_ERROR);
-            });
-
             it("decoding a root-only patch after hand-off throws", () => {
                 const { up, upEncoder, decoder, decoded } = upstream();
                 new Encoder(decoded);

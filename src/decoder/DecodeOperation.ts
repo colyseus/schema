@@ -1,5 +1,5 @@
 import { ARRAY_OP, KEYED_OP, OPERATION, REF_HAS_BODY, REF_HAS_TYPE, CollectionKind } from "../encoding/spec.js";
-import { NEEDS_RESTAGE, treeOfDecoded, decodedRefIdOf as refIdOfValue } from "../encoder/ChangeTree.js";
+import { treeOfDecoded, decodedRefIdOf as refIdOfValue } from "../encoder/ChangeTree.js";
 import type { Iterator } from "../encoding/decode.js";
 import { decode } from "../encoding/decode.js";
 import { readString, readUvarint } from "../encoding/varint.js";
@@ -89,8 +89,8 @@ export function refInfoOf(ref: any): RefInfo {
 
 function refInfoSlow(ref: any): RefInfo {
     const tree: any = treeOfDecoded(ref);
-    // an Encoder took this instance over (it cleared any record; NEEDS_RESTAGE: detached since): its fields no longer belong to this decoder
-    if (tree.root !== undefined || (tree.flags & NEEDS_RESTAGE) !== 0) relayUnsupported();
+    // an Encoder took this instance over (it cleared any record): its fields no longer belong to this decoder
+    if (tree.root !== undefined) throw new Error("@colyseus/schema: cannot decode into an instance attached to an Encoder (relaying a decoded state is unsupported: decode into a separate state and copy)");
     const ri = buildRefInfo(ref);
     // Decoder-built instances carry an `UntrackedChangeTree`, which declares
     // the slot. A tracked `ChangeTree` does not (it is server-side state and
@@ -99,10 +99,6 @@ function refInfoSlow(ref: any): RefInfo {
     // lazily added property: one map transition on that tree only.
     tree.decodeInfo = ri;
     return ri;
-}
-
-function relayUnsupported(): never {
-    throw new Error("@colyseus/schema: cannot decode into an instance attached to an Encoder (relaying a decoded state is unsupported: decode into a separate state and copy)");
 }
 
 /** Collection type object (`{ map: X, key?: … }`): the kind is always its first own key. */

@@ -32,7 +32,7 @@ The encoder never inherits a decoder id:
 | hand-off: `new Encoder(decoded)`, mutations, new children, `encodeAll` / incremental `encode` into a third decoder | supported |
 | decoded subtree under a fresh root, or grafted into a running encoder | supported |
 | a decoded instance shared by two parents | supported (the takeover walk records both edges) |
-| **live relay**: the same instances keep being decoded from upstream after an Encoder took them | unsupported — throws `cannot decode into an instance attached to an Encoder` (also once the encoder detached it again) |
+| **live relay**: the same instances keep being decoded from upstream after an Encoder took them | unsupported — throws `cannot decode into an instance attached to an Encoder` (NOT detected once the encoder detached it again: checking the detached flag in `refInfoSlow` moved `decoder/tick` +7 %, reproduced 3×) |
 | an Encoder built over a state only to reflect it (`Reflection.encode(new Encoder(state))`), then decoding into that state | unsupported (same guard): build the Encoder over a spare instance of the class |
 | after grafting a decoded subtree, the source decoder keeps decoding the untaken parent (e.g. upstream deletes the grafted entry) | unsupported, NOT detected: the release reads the encoder's refId. Stop the source decoder |
 | grafting a Decoder's root instance as a child | unsupported: it keeps the decoder's id 0 (only `new Encoder(root)` resets it) |
