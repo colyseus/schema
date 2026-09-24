@@ -81,7 +81,7 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         assert.notStrictEqual(A.Schema, B.Schema);
     });
 
-    it.skip("encoders of both copies produce identical bytes and type tables", () => {
+    it("encoders of both copies produce identical bytes and type tables", () => {
         const sA = new State(), sB = new State();
         const encA = new A.Encoder(sA), encB = new B.Encoder(sB);
         assert.deepStrictEqual(
@@ -127,7 +127,7 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         }
     }
 
-    it.skip("Encoder B over instances of A round-trips (2000 ticks)", () => {
+    it("Encoder B over instances of A round-trips (2000 ticks)", () => {
         roundTrip(B, A, 2000);
     });
 
@@ -174,7 +174,7 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         assert.strictEqual(new A.MapSchema(foreign).size, 1);
     });
 
-    it.skip("Reflection round-trips in both directions, then streams patches", () => {
+    it("Reflection round-trips in both directions, then streams patches", () => {
         for (const [Enc, Dec] of [[A, B], [B, A]]) {
             const state = new State();
             mutate(state, 1);
@@ -190,7 +190,7 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         }
     });
 
-    it.skip("StateView across copies", () => {
+    it("StateView across copies", () => {
         const state = new State();
         const encoder = new B.Encoder(state);
         const view = new B.StateView();

@@ -12,8 +12,10 @@ export class TypeContext {
     /**
      * For inheritance support
      * Keeps track of which classes extends which. (parent -> children)
+     * Shared by every library copy in the process (first loader wins).
      */
-    static inheritedTypes = new Map<typeof Schema, Set<typeof Schema>>();
+    static inheritedTypes: Map<typeof Schema, Set<typeof Schema>> =
+        ((globalThis as any)[Symbol.for("@colyseus/schema:inheritedTypes")] ??= new Map());
     static cachedContexts = new Map<typeof Schema, TypeContext>();
 
     static register(target: typeof Schema) {
