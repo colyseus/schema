@@ -96,13 +96,13 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         assert.deepStrictEqual(copy(encB.encodeAll()), copy(encA.encodeAll()));
     });
 
-    it.skip("a foreign Encoder leaves this copy's metadata alone", () => {
+    it("a foreign Encoder leaves this copy's metadata alone", () => {
         new B.Encoder(new State());
         class Later extends A.Schema {}
         A.type("string")(Later.prototype, "only");
         assert.deepStrictEqual(Later[Symbol.metadata][0].name, "only");
         assert.strictEqual(Later[Symbol.metadata][1], undefined);
-        assert.strictEqual(Object.prototype.hasOwnProperty.call(A.Schema, Symbol.metadata), false);
+        assert.strictEqual(A.Schema[Symbol.metadata], undefined);
     });
 
     function roundTrip(Enc: any, Dec: any, ticks: number) {

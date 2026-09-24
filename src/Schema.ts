@@ -5,7 +5,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
 import { ChangeTree, createUntrackedChangeTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, peekTree, refTreeOf, refIdOf } from './encoder/ChangeTree.js';
-import { $changes, $deleteByIndex, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $track, $values } from './types/symbols.js';
+import { $changes, $deleteByIndex, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $schemaBase, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
 import type { Decoder } from './decoder/Decoder.js';
@@ -550,3 +550,7 @@ export class Schema<C = any> implements IRef {
 }
 
 defineRefAccessors(Schema.prototype);
+Object.defineProperty(Schema, $schemaBase, { value: true });
+
+/** The `Schema` base of any copy of this library loaded in the process (subclasses only inherit the brand). */
+export const isSchemaBase = (klass: any): boolean => Object.prototype.hasOwnProperty.call(klass, $schemaBase);

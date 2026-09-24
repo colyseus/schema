@@ -1,6 +1,6 @@
 import { DefinitionType, getPropertyDescriptor, type MapKeyType } from "./annotations.js";
 import { MAP_KEY_TYPES } from "./encoding/spec.js";
-import { Schema } from "./Schema.js";
+import { Schema, isSchemaBase } from "./Schema.js";
 import { defineRefAccessors } from "./encoder/ChangeTree.js";
 import { getType, registeredTypes, TypeDefinition } from "./types/registry.js";
 import { $changes, $descriptors, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
@@ -527,7 +527,7 @@ export const Metadata = {
         let metadata: Metadata = constructor[Symbol.metadata] ?? Object.create(null);
 
         // make sure inherited classes have their own metadata object.
-        if (parentClass !== Schema && metadata === parentMetadata) {
+        if (!isSchemaBase(parentClass) && metadata === parentMetadata) {
             metadata = Object.create(null);
 
             if (parentMetadata) {

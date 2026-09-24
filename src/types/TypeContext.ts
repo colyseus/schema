@@ -1,5 +1,5 @@
 import { Metadata } from "../Metadata.js";
-import { Schema } from "../Schema.js";
+import { type Schema, isSchemaBase } from "../Schema.js";
 import { $streamFieldIndexes, $viewFieldIndexes } from "./symbols.js";
 import { isQuantizedType } from "./quantize.js";
 
@@ -18,7 +18,7 @@ export class TypeContext {
 
     static register(target: typeof Schema) {
         const parent = Object.getPrototypeOf(target);
-        if (parent !== Schema) {
+        if (!isSchemaBase(parent)) {
             let inherits = TypeContext.inheritedTypes.get(parent);
             if (!inherits) {
                 inherits = new Set<typeof Schema>();
@@ -52,8 +52,8 @@ export class TypeContext {
     }
 
     add(schema: typeof Schema, typeid = this.schemas.size) {
-        // skip if already registered
-        if (this.schemas.has(schema)) {
+        // skip if already registered; a Schema base (of any copy) is never a type
+        if (this.schemas.has(schema) || isSchemaBase(schema)) {
             return false;
         }
 
@@ -87,8 +87,7 @@ export class TypeContext {
         let parent: any = klass;
         while (
             (parent = Object.getPrototypeOf(parent)) &&
-            parent !== Schema && // stop at root (Schema)
-            parent !== Function.prototype // stop at root (non-Schema)
+            parent !== Function.prototype // stop at root (a Schema base is skipped by `add`)
         ) {
             this.discoverTypes(parent);
         }

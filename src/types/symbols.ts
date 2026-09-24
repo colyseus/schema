@@ -59,6 +59,9 @@ export const $deleteByIndex = "~deleteByIndex";
  */
 export const $resyncPrune = "~resyncPrune";
 
+/** Own static brand of the `Schema` base class, the same in every copy of this library. */
+export const $schemaBase: unique symbol = Symbol.for("@colyseus/schema:SchemaBase");
+
 /**
  * Used to hold ChangeTree instances whitin the structures.
  *

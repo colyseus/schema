@@ -4,7 +4,7 @@ import { Metadata } from "./Metadata.js";
 import { Iterator } from "./encoding/decode.js";
 import { Encoder } from "./encoder/Encoder.js";
 import { Decoder } from "./decoder/Decoder.js";
-import { Schema } from "./Schema.js";
+import { Schema, isSchemaBase } from "./Schema.js";
 import { t, FieldBuilder } from "./types/builder.js";
 import { ArraySchema } from "./types/custom/ArraySchema.js";
 import { $encodeDescriptor, $numFields } from "./types/symbols.js";
@@ -143,7 +143,7 @@ export function populateReflection(reflection: Reflection, context: TypeContext,
 
         // support inheritance
         const inheritFrom = Object.getPrototypeOf(klass);
-        if (inheritFrom !== Schema) {
+        if (!isSchemaBase(inheritFrom)) {
             type.extendsId = context.schemas.get(inheritFrom);
         }
 
