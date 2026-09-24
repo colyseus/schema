@@ -1,6 +1,41 @@
 # 06 — Recycle map / set wire indexes
 
-**Status:** open · **Kind:** bytes + memory · **Risk:** medium
+**Status:** v1 landed (MapSchema only, 2026-09-24) · **Kind:** bytes + memory · **Risk:** medium
+
+## Outcome (v1)
+
+Owner decisions: MapSchema-only v1 with no wire or decoder change; SetSchema,
+CollectionSchema and StreamSchema (and `.stream()` maps) never recycle;
+`forEachLive` walks maps in `$items` order as its own commit. Design:
+`06-wire-index-recycling-design.md`.
+
+- **Rule.** An index whose DELETE was encoded (`endEncode`, never `discard`)
+  goes on the recorder's free stack (`KeyedRecorder.free`, a LIFO `number[]`)
+  and is reused by a new key from the next tick on. An index some view still
+  holds a `view.changes` entry for is quarantined until that view drains
+  (`Root.pendingViewChanges()`, once per `encodeEpoch`). StateView writes a
+  Map child's entry only while the child holds its index (a child replaced
+  this tick still gets its DELETE). `clear()` and pooled `$reset` drop the
+  free set. `MapSchema.set` on a new key pays one `rec.free` load and
+  compare.
+- **Stack, not bitset.** Push/pop micro-bench: 4.8 ns/op (stack) vs 5.8–6.4
+  (lowest-first bitset). The churn benches free exactly the indexes deleted
+  the tick before, so bytes are the same either way.
+- **Bytes** (W7 → L06, bytes per op as the bench prints them):
+  `encoder/map-churn` −4.5…−8.6 % (str-16 464 → 424), `encoder/entity-churn`
+  −2.8 %, `decoder/map-churn` −4.6 / −5.5 %; everything else identical,
+  `bench_encode.js` still 5 458 157 bytes. Over 20 000 cycles `nextIndex`
+  stays at the live size (100 / 1000 / 16; same-tick 110) instead of 200 100+,
+  and bytes per cycle in the last window drop 475 → 449 (str-100), 395 → 369
+  (num-100), 475 → 435 (str-16).
+- **Time.** No reproducible regression; `encoder/map-churn` −2…−6 %.
+- **Follow-up (not in v1).** The decoder's `storeKeyValue` ignores an ADD onto
+  an occupied Set / Collection / Stream index after the previous ref was
+  already released (design §0, §4). Recycling those needs the overwrite fix
+  first, shipped to clients before any server recycles.
+  `test/MapIndexRecycling.test.ts` pins today's behaviour as an
+  expected failure.
+
 
 ## Evidence
 

@@ -1,6 +1,6 @@
 # 06 — Design: recycling MapSchema wire indexes
 
-**Status:** design, **awaiting owner review** (2026-09-23) · written read-only at `2ab22f0` · all paths are relative to the repo root.
+**Status:** v1 (MapSchema only) landed 2026-09-24 — outcome in `06-wire-index-recycling.md`; design · written read-only at `2ab22f0` · all paths are relative to the repo root.
 
 ## 0. Summary and corrections to the lead
 
