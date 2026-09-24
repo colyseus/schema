@@ -88,14 +88,16 @@ export function refInfoOf(ref: any): RefInfo {
 }
 
 function refInfoSlow(ref: any): RefInfo {
+    const tree: any = treeOfDecoded(ref);
+    // an Encoder took this instance over (it cleared any record): its fields no longer belong to this decoder
+    if (tree.root !== undefined) throw new Error("@colyseus/schema: cannot decode into an instance attached to an Encoder (relaying a decoded state is unsupported: decode into a separate state and copy)");
     const ri = buildRefInfo(ref);
     // Decoder-built instances carry an `UntrackedChangeTree`, which declares
     // the slot. A tracked `ChangeTree` does not (it is server-side state and
     // pays for no decoder field); the rare tracked instance a Decoder decodes
-    // into — the root handed to `new Decoder(state)`, a test decoding into a
-    // live server instance — gets the record as a lazily added property: one
-    // map transition on that tree only, no side table to keep alive.
-    (treeOfDecoded(ref) as any).decodeInfo = ri;
+    // into — the root handed to `new Decoder(state)` — gets the record as a
+    // lazily added property: one map transition on that tree only.
+    tree.decodeInfo = ri;
     return ri;
 }
 
