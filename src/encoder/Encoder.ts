@@ -9,7 +9,7 @@ import type { StateView } from "./StateView.js";
 import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode, refTreeOf } from "./ChangeTree.js";
 import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
-import { forEachChildWithCtx } from "./changeTree/treeAttachment.js";
+import { ensureTracked, forEachChildWithCtx } from "./changeTree/treeAttachment.js";
 import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
 import {
     MODE_DRAIN, MODE_PATCH, MODE_SNAPSHOT, MODE_STREAM,
@@ -148,7 +148,14 @@ export class Encoder<T extends Schema = any> {
 
     protected setState(state: T) {
         this.state = state;
-        refTreeOf(this.state).setRoot(this.root);
+        const tree: any = ensureTracked(refTreeOf(state));
+        if (tree.root === undefined && tree.refId !== undefined) {
+            // an id this Root did not hand out (a decoded state's root): allocate our own
+            tree.refId = undefined;
+            tree.needsRestage = true;
+            if (tree.decodeInfo !== undefined) tree.decodeInfo = undefined; // a later decode into it hits the relay guard
+        }
+        tree.setRoot(this.root);
     }
 
     private _beginPass(buffer: Uint8Array, it: Iterator, view: StateView | undefined, emitFiltered: boolean, mode: number): Frame {

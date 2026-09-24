@@ -20,7 +20,7 @@ export function setRoot(tree: ChangeTree, root: Root): void {
 
     // Recursively set root on child structures (closure-free hot path).
     if (isNewChangeTree) {
-        forEachChildWithCtx(tree, root, _setRootChildCb);
+        forEachChildWithCtx(tree, tree, _setRootChildCb);
     }
 }
 
@@ -162,24 +162,30 @@ export function forEachChildWithCtx<C>(
 
 /**
  * A decoder-built instance carries an `UntrackedChangeTree` stub. Attaching
- * it to an encoder (re-encoding a decoded state) upgrades the stub to a real
- * tree on the spot; the live walk then covers it like any other instance.
+ * it to an encoder (hand-off of a decoded state) upgrades the stub to a real
+ * tree on the spot. The decoder id is not inherited: `Root.add` allocates
+ * this encoder's own, and re-stages the never-recorded contents.
  * Index writes on a decoder-built ArraySchema stay untracked (no Proxy).
  */
-function ensureTracked(child: ChangeTree): ChangeTree {
+export function ensureTracked(child: ChangeTree): ChangeTree {
     // a tracked tree of another library copy misses `instanceof`: only the stub reads `isTracked === false`
     if (child instanceof ChangeTree || (child as any).isTracked !== false) return child;
     const ref: any = (child as any).ref;
     const target = ref[$proxyTarget] ?? ref;
     const real = new ChangeTree(ref, target);
-    real.refId = (child as any).refId; // keep the decoder-assigned identity
+    real.needsRestage = true;
+    // the decoder keeps no `nextIndex` for maps: new keys go after every decoded wire index
+    if (real.encDescriptor.kind === KIND_MAP) for (const i of ref.indexByKey.values()) if (i >= ref.nextIndex) ref.nextIndex = i + 1;
     setTree(target, real);
     return real;
 }
 
-function _setRootChildCb(root: Root, child: ChangeTree, _index: any): void {
-    child = ensureTracked(child);
-    if (child.root !== root) {
+function _setRootChildCb(parentTree: ChangeTree, child: ChangeTree, index: any): void {
+    const root = parentTree.root!;
+    const tracked = ensureTracked(child);
+    if (tracked !== child) {
+        tracked.setParent(parentTree.ref, root, index, parentTree); // a stub has no parent edge yet
+    } else if (child.root !== root) {
         child.setRoot(root);
     } else {
         root.add(child); // increment refCount
