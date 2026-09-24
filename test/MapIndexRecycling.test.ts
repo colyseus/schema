@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type, view, MapSchema, StateView } from "../src";
+import { Schema, type, view, MapSchema, StateView, $refId } from "../src";
 import { createClientWithView, encodeAllForView, encodeMultiple, getEncoder } from "./Schema";
 
 class Item extends Schema {
@@ -35,6 +35,48 @@ describe("MapSchema wire-index recycling", () => {
             const late = createClientWithView(state, client.view);
             encodeAllForView(encoder, late);
             assert.deepStrictEqual(keysOf(late.state.items), ["b", "c", "a"]);
+        });
+    });
+
+    describe("StateView entries are written only by the index's holder", () => {
+        it("view.add / view.remove of a child removed in an earlier tick write nothing on the map", () => {
+            const state = new FilteredState();
+            const encoder = getEncoder(state);
+            state.items.set("a", new Item().assign({ v: 1 }));
+            state.items.set("b", new Item().assign({ v: 2 }));
+            const client = createClientWithView(state);
+            const a = state.items.get("a")!;
+            client.view.add(a);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual(keysOf(client.state.items), ["a"]);
+
+            state.items.delete("a");
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual(keysOf(client.state.items), []);
+
+            const refId = state.items[$refId];
+            client.view.remove(a);
+            assert.strictEqual(client.view.changes.get(refId)?.has(0) ?? false, false);
+            client.view.add(a);
+            assert.strictEqual(client.view.changes.get(refId)?.has(0) ?? false, false);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual(keysOf(client.state.items), []);
+        });
+
+        it("view.remove of a child replaced this tick still deletes it", () => {
+            const state = new FilteredState();
+            const encoder = getEncoder(state);
+            state.items.set("a", new Item().assign({ v: 1 }));
+            const client = createClientWithView(state);
+            const a1 = state.items.get("a")!;
+            client.view.add(a1);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual(keysOf(client.state.items), ["a"]);
+
+            state.items.set("a", new Item().assign({ v: 2 })); // not visible to the view
+            client.view.remove(a1);
+            encodeMultiple(encoder, state, [client]);
+            assert.deepStrictEqual(keysOf(client.state.items), []);
         });
     });
 

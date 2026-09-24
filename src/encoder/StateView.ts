@@ -1,8 +1,9 @@
 import { ChangeTree, Ref, viewTreeOf, refIdOf } from "./ChangeTree.js";
 import { isEdgeLive } from "./changeTree/parentChain.js";
-import { $fieldIndexesByViewTag, $viewFieldIndexes } from "../types/symbols.js";
+import { $fieldIndexesByViewTag, $getByIndex, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
-import { OPERATION } from "../encoding/spec.js";
+import { KIND_MAP, OPERATION } from "../encoding/spec.js";
+import type { KeyedRecorder } from "./KeyedRecorder.js";
 import { Metadata } from "../Metadata.js";
 import { spliceOne } from "../types/utils.js";
 import { ensureStreamState, streamDequeueForView, streamEnqueueForView } from "./streaming.js";
@@ -50,6 +51,18 @@ const _disposeRegistry = new FinalizationRegistry<{ root: Root; id: number; slot
         root.releaseViewId(id);
     },
 );
+
+/**
+ * A child's entry may address its MapSchema parent by `index` only while it
+ * holds that index (live there, or removed from it this tick): map indexes
+ * are recycled, so a removed child's stale index can name another entry.
+ */
+function holdsMapIndex(parent: ChangeTree, index: number, child: ChangeTree): boolean {
+    if (parent.encDescriptor.kind !== KIND_MAP) return true;
+    const ref = child.ref;
+    return (parent.refTarget as any)[$getByIndex](index) === ref
+        || (parent.rec as KeyedRecorder | undefined)?.deleted?.get(index) === ref;
+}
 
 /**
  * Compact description of a rejected argument, for warning messages.
@@ -631,7 +644,7 @@ export class StateView {
         // add parent's tag properties (arrays: only while the child is still an element)
         const bound = changeTree.isArray
             ? isEdgeLive(childChangeTree, changeTree, parentIndex ?? -1)
-            : changeTree.getChange(parentIndex) !== OPERATION.DELETE;
+            : changeTree.getChange(parentIndex) !== OPERATION.DELETE && holdsMapIndex(changeTree, parentIndex, childChangeTree);
         if (bound) {
             let changes = this.changes.get(changeTree.refId);
             if (changes === undefined) {
@@ -790,23 +803,31 @@ export class StateView {
                 const key = parentTree!.isArray
                     ? changeTree
                     : changeTree.parentIndex;
-                const parentRefId = parentTree!.refId!;
-                let changes = this.changes.get(parentRefId);
-                if (changes === undefined) {
-                    changes = new Map<number | ChangeTree, OPERATION>();
-                    this.changes.set(parentRefId, changes);
+                // skip a Map child removed in an earlier tick (its DELETE shipped);
+                // one replaced this tick still addresses its index
+                if (
+                    parentTree!.isArray ||
+                    holdsMapIndex(parentTree!, key as number, changeTree) ||
+                    parentTree!.getChange(key as number) === OPERATION.DELETE_AND_ADD
+                ) {
+                    const parentRefId = parentTree!.refId!;
+                    let changes = this.changes.get(parentRefId);
+                    if (changes === undefined) {
+                        changes = new Map<number | ChangeTree, OPERATION>();
+                        this.changes.set(parentRefId, changes);
 
-                } else if (changes.get(key) === OPERATION.ADD) {
-                    //
-                    // SAME PATCH ADD + REMOVE:
-                    // cancel the structure's pending ops and its descendants' —
-                    // their introduction never reaches this client.
-                    //
-                    this._dropPendingEntries(changeTree);
+                    } else if (changes.get(key) === OPERATION.ADD) {
+                        //
+                        // SAME PATCH ADD + REMOVE:
+                        // cancel the structure's pending ops and its descendants' —
+                        // their introduction never reaches this client.
+                        //
+                        this._dropPendingEntries(changeTree);
+                    }
+
+                    // DELETE / DELETE BY REF ID
+                    changes.set(key, OPERATION.DELETE);
                 }
-
-                // DELETE / DELETE BY REF ID
-                changes.set(key, OPERATION.DELETE);
 
                 // Remove child schema from visible set
                 this._recursiveDeleteVisibleChangeTree(changeTree);
