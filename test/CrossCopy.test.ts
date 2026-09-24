@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 
 // Two physical copies of the bundle in one process (Node keys ESM instances by
 // full URL). Classes are always defined with copy A. Runs on `npm test`, which
@@ -81,6 +81,24 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         assert.notStrictEqual(A.Schema, B.Schema);
     });
 
+    it("records its version once per process; a differing copy warns", async () => {
+        const VERSION = Symbol.for("@colyseus/schema:version");
+        const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+        assert.strictEqual((globalThis as any)[VERSION], pkg.version);
+
+        const warn = console.warn; const warnings: any[] = [];
+        console.warn = (...args: any[]) => warnings.push(args.join(" "));
+        (globalThis as any)[VERSION] = "0.0.0";
+        try {
+            await import(BUNDLE.href + "?copy=c");
+        } finally {
+            (globalThis as any)[VERSION] = pkg.version;
+            console.warn = warn;
+        }
+        assert.strictEqual(warnings.length, 1);
+        assert.match(warnings[0], /versions 0\.0\.0 and /);
+    });
+
     it("encoders of both copies produce identical bytes and type tables", () => {
         const sA = new State(), sB = new State();
         const encA = new A.Encoder(sA), encB = new B.Encoder(sB);
@@ -138,7 +156,7 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         assert.ok(decoded.tags instanceof A.SetSchema);
     });
 
-    it.skip("callbacks fire through either copy's Callbacks.get", () => {
+    it("callbacks fire through either copy's Callbacks.get", () => {
         const state = new State();
         const encoder = new A.Encoder(state);
         const decoder = new B.Decoder(new State());

@@ -484,6 +484,9 @@ export class StateCallbackStrategy<TState extends IRef> {
     }
 }
 
+/** A Decoder of any library copy. */
+const isDecoder = (x: any): x is Decoder<any> => x instanceof Decoder || (typeof x.decode === "function" && x.root !== undefined);
+
 /**
  * Factory class for retrieving the callbacks API.
  */
@@ -520,7 +523,7 @@ export const Callbacks = {
     get<T extends IRef>(
         roomOrDecoder: Decoder<T> | { serializer: { decoder: Decoder<T> } } | { state: T; serializer: object }
     ): StateCallbackStrategy<T> {
-        if (roomOrDecoder instanceof Decoder) {
+        if (isDecoder(roomOrDecoder)) {
             return new StateCallbackStrategy<T>(roomOrDecoder);
 
         } else if ('decoder' in roomOrDecoder.serializer) {
@@ -542,7 +545,7 @@ export const Callbacks = {
     getLegacy<T extends Schema>(
         roomOrDecoder: Decoder<T> | { serializer: { decoder: Decoder<T> } } | { state: T; serializer: object }
     ): SchemaCallbackProxy<T> {
-        if (roomOrDecoder instanceof Decoder) {
+        if (isDecoder(roomOrDecoder)) {
             return getDecoderStateCallbacks(roomOrDecoder);
 
         } else if ('decoder' in roomOrDecoder.serializer) {

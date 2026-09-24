@@ -133,6 +133,12 @@ class LocalTreeStamp extends TreeStampTarget {
 // private name per process, the same guarantee `Symbol.for("$changes")` gave.
 const SHARED_STAMP = Symbol.for("@colyseus/schema:TreeStamp");
 const TreeStamp: typeof LocalTreeStamp = ((globalThis as any)[SHARED_STAMP] ??= LocalTreeStamp);
+// Only identical builds may share the stamper and the per-constructor caches: warn once per differing copy.
+const VERSION = "6.0.0-alpha.0"; // = package.json "version" (test/CrossCopy.test.ts)
+const loadedVersion = ((globalThis as any)[Symbol.for("@colyseus/schema:version")] ??= VERSION);
+if (loadedVersion !== VERSION) {
+    console.warn(`@colyseus/schema: versions ${loadedVersion} and ${VERSION} are loaded in one process; cross-copy interop needs identical builds.`);
+}
 
 /** Install `tree` on a freshly-built instance (throws if it already has one — see `setTree`). */
 export function stampTree(target: object, tree: any): void { new TreeStamp(target, tree); }
