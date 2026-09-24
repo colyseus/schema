@@ -44,7 +44,7 @@ import {
 } from "./changeTree/parentChain.js";
 import { forEachLive as _forEachLive, forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import {
-    setRoot as _setRoot, setParent as _setParent,
+    setRoot as _setRoot, setParent as _setParent, ensureTracked,
     forEachChild as _forEachChild, forEachChildWithCtx as _forEachChildWithCtx,
 } from "./changeTree/treeAttachment.js";
 
@@ -1044,7 +1044,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
 /**
  * Lightweight per-instance no-op ChangeTree used for instances the decoder
- * builds. Those instances never feed back into an Encoder, so the full
+ * builds. Those instances only reach an Encoder through a hand-off, which
+ * replaces the stub (`treeAttachment.ensureTracked`), so the full
  * `ChangeTree` machinery (EncodeDescriptor lookup, recorder state, Maps /
  * Uint8Arrays for change slots) is pure overhead — this stub carries only a
  * `ref` back-pointer and no-op methods, so tree walkers and debug tooling
@@ -1102,7 +1103,10 @@ export class UntrackedChangeTree {
     delete(): void {}
     touch(): void {}
     restage(): void {}
-    setParent(): void {}
+    /** Attached to an encoder's tree (a graft of a decoded instance): upgrade and attach. The decoder passes no `root`. */
+    setParent(parent: Ref, root?: Root, parentIndex?: number, parentTree?: ChangeTree): void {
+        if (root !== undefined) ensureTracked(this as any).setParent(parent, root, parentIndex, parentTree);
+    }
     addParent(): void {}
     removeParent(): boolean { return false; }
     getChange(): number { return 0; }
