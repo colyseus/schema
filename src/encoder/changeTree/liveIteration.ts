@@ -14,7 +14,6 @@
  */
 import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
 import type { ChangeTree } from "../ChangeTree.js";
-import type { RefTable } from "../../RefTable.js";
 
 // Adapter that lets `forEachLive(cb)` delegate to `forEachLiveWithCtx(cb, _invokeNoCtx)` —
 // keeps the no-ctx path closure-free and shares one walker implementation.
@@ -59,11 +58,11 @@ export function forEachLiveWithCtx<C>(
         for (let i = 0, len = els.length; i < len; i++) cb(ctx, i);
 
     } else if (desc.kind === KIND_MAP) {
-        const $items: Map<any, any> = ref.$items;
-        // one closure per map walked (not per entry); `RefTable.forEach` is a plain loop
-        (ref.keyByIndex as RefTable<any>).forEach((key, index) => {
-            if ($items.has(key)) cb(ctx, index);
-        });
+        // `$items` (insertion) order, not wire-index order: the client rebuilds its map in walk order
+        const indexByKey: Map<any, number> = ref.indexByKey;
+        for (const key of (ref.$items as Map<any, any>).keys()) {
+            cb(ctx, indexByKey.get(key)!);
+        }
 
     } else {
         // SetSchema / CollectionSchema / StreamSchema (key === wire index)
