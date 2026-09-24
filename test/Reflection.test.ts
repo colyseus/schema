@@ -296,10 +296,13 @@ describe("Reflection", () => {
         state.mapOfPlayers.set("one", new Player().assign({ name: "p2", x: 3, y: 4 }));
         const encoded = state.encodeAll();
 
+        // reflect each class through an Encoder over a spare instance: an Encoder takes over its
+        // state, and decoding into a taken-over instance is unsupported (relay)
+        const reflectClassOf = (s: Schema) => createInstanceFromReflection(s, new Encoder(new (s.constructor as any)()));
         const reflected1 = createInstanceFromReflection(state);
-        const reflected2 = createInstanceFromReflection(reflected1);
-        const reflected3 = createInstanceFromReflection(reflected2);
-        const reflected4 = createInstanceFromReflection(reflected3);
+        const reflected2 = reflectClassOf(reflected1);
+        const reflected3 = reflectClassOf(reflected2);
+        const reflected4 = reflectClassOf(reflected3);
 
         reflected1.decode(encoded);
         reflected2.decode(encoded);
