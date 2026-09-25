@@ -211,6 +211,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the collection (`ChangeTree.rec`). Custom primitive types registered after
   import now work as collection children.
 
+## [5.0.25]
+
+### Fixed
+
+- Rename Symbol and Go to Definition also work on the keys of `assign({ … })`
+  and of a `schema()` constructor call, completing the 5.0.24 fix
+  ([#958](https://github.com/colyseus/colyseus/issues/958)).
+
+
 ## [5.0.24]
 
 ### Fixed
