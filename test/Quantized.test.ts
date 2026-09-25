@@ -51,6 +51,43 @@ describe("t.quantized", () => {
         assert.ok(Math.abs(dstMid.pitch - 0.3) <= step, `mid: ${dstMid.pitch}`);
     });
 
+    it("a range symmetric about zero carries an exact zero (and exact endpoints)", () => {
+        // 2^bits − 1 intervals is odd, so on [−m, m] zero sits on a step boundary
+        // and half-up rounding lifts it to +1 quantum: a released input axis or a
+        // resting velocity never read back as 0 (a `=== 0` gate never fires, an
+        // integrator drifts). An even span puts min, 0 and max all on steps.
+        for (const [min, max, bits] of [[-1, 1, 8], [-150, 150, 16], [-1.55, 1.55, 16], [-1, 1, 32]] as const) {
+            const d = resolveQuantize({ min, max, bits });
+            const label = `${bits}-bit over ±${max}`;
+            assert.strictEqual(d.span, 2 ** bits - 2, `${label}: even span`);
+            assert.strictEqual(dequantize(d, quantize(d, 0)), 0, `${label}: zero`);
+            assert.strictEqual(dequantize(d, quantize(d, min)), min, `${label}: min`);
+            assert.strictEqual(dequantize(d, quantize(d, max)), max, `${label}: max`);
+            assert.ok(quantize(d, max) < 2 ** bits, `${label}: q fits the wire width`);
+        }
+
+        // Only symmetric clamped ranges give up a code: zero is `min` on an
+        // asymmetric one, and a wrapping range's 2^bits steps already hit it.
+        assert.strictEqual(resolveQuantize({ min: 0, max: 1, bits: 8 }).span, 255);
+        const wrap = resolveQuantize({ min: -1, max: 1, bits: 8, mode: "wrap" });
+        assert.strictEqual(wrap.span, 256);
+        assert.strictEqual(dequantize(wrap, quantize(wrap, 0)), 0);
+
+        // Through the setter and the wire: the zero written is the zero both peers read.
+        const Body = schema({
+            vx: t.quantized({ min: -150, max: 150 }),
+            axis: t.quantized({ min: -1, max: 1, bits: 8 }),
+        });
+        const dst = roundTrip(Body, (s) => {
+            s.vx = 42; s.axis = 0.5;
+            s.vx = 0; s.axis = 0;
+            assert.strictEqual(s.vx, 0);
+            assert.strictEqual(s.axis, 0);
+        });
+        assert.strictEqual(dst.vx, 0);
+        assert.strictEqual(dst.axis, 0);
+    });
+
     it("mode selects clamp vs wrap (default clamp; rejects unknown)", () => {
         const clampDefault = resolveQuantize({ min: 0, max: 10 });            // omitted → clamp
         const clamp = resolveQuantize({ min: 0, max: 10, mode: "clamp" });
@@ -126,10 +163,12 @@ describe("t.quantized", () => {
 
     it("setter snapping is idempotent (decode → setter does not re-quantize)", () => {
         const desc = resolveQuantize({ min: -PITCH_LIMIT, max: PITCH_LIMIT });
-        for (let q = 0; q <= 65535; q += 257) {
+        // symmetric range: span is 2^16 − 2, so 65535 is the unused code
+        for (let q = 0; q <= desc.span; q += 257) {
             const x = dequantize(desc, q);
             assert.strictEqual(quantize(desc, x), q, `q=${q} not stable through dequant→quant`);
         }
+        assert.strictEqual(quantize(desc, dequantize(desc, desc.span)), desc.span, "top code is stable");
         // wrapping endpoints
         const w = resolveQuantize({ min: 0, max: TWO_PI, mode: "wrap" });
         for (let q = 0; q < 65536; q += 251) {

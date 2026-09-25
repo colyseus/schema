@@ -39,8 +39,9 @@ export interface QuantizeOptions {
      *
      * `"clamp"` (default) — for a BOUNDED value with hard ends (pitch, a health bar,
      * a 0–1 throttle). A UNORM over `[min, max]` INCLUSIVE: both endpoints are exact
-     * + distinct, and out-of-range inputs CLAMP to the nearest end (`0` / `2^bits − 1`).
-     * Pitch past the limit stops AT the limit.
+     * + distinct, and out-of-range inputs CLAMP to the nearest end. Pitch past the
+     * limit stops AT the limit. A range symmetric about zero (`min === -max`: an
+     * input axis, a velocity) also carries an EXACT zero — see `span`.
      *
      * `"wrap"` — for a CYCLIC value where `min` and `max` are the SAME point (an
      * angle/heading, compass bearing, hue, phase). `[min, max)` over `2^bits` steps
@@ -78,7 +79,11 @@ export interface QuantizeDescriptor {
     /**
      * The integer span used for the scale:
      *  - wrapping: `2^bits` (the number of steps; the top step folds onto 0).
-     *  - clamped:  `2^bits − 1` (endpoints inclusive, so the max maps to it).
+     *  - clamped:  `2^bits − 1` (endpoints inclusive, so the max maps to it), or
+     *    `2^bits − 2` when `min === -max`: an odd interval count puts zero on a step
+     *    BOUNDARY, so half-up rounding always lifts it to `+1` quantum and a released
+     *    axis / resting velocity never reads back as `0` (`q = span/2` is exact with
+     *    an even span). One wire code goes unused.
      */
     span: number;
 }
@@ -117,8 +122,9 @@ export function resolveQuantize(opts: QuantizeOptions): QuantizeDescriptor {
         wire: WIRE_BY_BITS[bits],
         range: max - min,
         // wrapping spreads `2^bits` steps across [min,max) (top ≡ bottom); clamped
-        // maps the endpoints onto `0` and `2^bits − 1` inclusive.
-        span: wrap ? steps : steps - 1,
+        // maps the endpoints onto `0` and `2^bits − 1` inclusive — one fewer on a
+        // symmetric range so zero lands on a step too. Ports must match this rule.
+        span: wrap ? steps : min === -max ? steps - 2 : steps - 1,
     };
 }
 
