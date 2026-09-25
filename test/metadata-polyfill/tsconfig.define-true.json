@@ -1,0 +1,5 @@
+{
+  // The metadata slot must not depend on how class fields are emitted.
+  "extends": "../../tsconfig.test.json",
+  "compilerOptions": { "useDefineForClassFields": true }
+}

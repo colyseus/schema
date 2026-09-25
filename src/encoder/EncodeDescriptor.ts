@@ -150,7 +150,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     let hasRefFieldAbove32 = false;
     let hasTagAbove32 = false;
     let customTagMask = 0;
-    const numFields: number = (isSchema && metadata !== undefined) ? (metadata[$numFields] ?? -1) : -1;
+    const numFields: number = (isSchema && metadata != null) ? (metadata[$numFields] ?? -1) : -1;
     const srcEncoders = metadata?.[$encoders];
     const skip: number[] | undefined = metadata?.[$fullSyncSkipIndexes];
 

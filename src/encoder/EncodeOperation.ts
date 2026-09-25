@@ -744,7 +744,7 @@ function writeRef(f: Frame, baseType: any, value: any, allowBody: boolean): void
 
     let header = refId * 4;
     let typeId: number | undefined;
-    if (value.constructor !== baseType && typeof baseType === "function" && baseType[Symbol.metadata] !== undefined) {
+    if (value.constructor !== baseType && typeof baseType === "function" && baseType[Symbol.metadata] != null) {
         const context = f.context;
         const targetTypeId = context.getTypeId(value.constructor);
         if (targetTypeId === undefined) {

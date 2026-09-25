@@ -132,7 +132,7 @@ export class ReferenceTracker {
             // Ensure child schema instances have their references removed as well.
             //
             const metadata = (ref.constructor as any)[Symbol.metadata];
-            if (metadata !== undefined) {
+            if (metadata != null) {
                 // Only the ref-typed fields (the per-class list the encoder
                 // side keeps), not a `for...in` over the whole metadata object.
                 const refIndexes: number[] | undefined = metadata[$refTypeFieldIndexes];

@@ -211,6 +211,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the collection (`ChangeTree.rec`). Custom primitive types registered after
   import now work as collection children.
 
+## [5.0.26]
+
+### Fixed
+
+- Every room join failed with `TypeError: Cannot read properties of null` whenever a `Symbol.metadata` polyfill was loaded: classes without their own metadata slot inherited the `null` that the decorator-metadata proposal defines on `Function.prototype`. Thanks @elx3020 ([#233](https://github.com/colyseus/schema/issues/233)).
+
+
 ## [5.0.25]
 
 ### Fixed

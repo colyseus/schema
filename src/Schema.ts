@@ -11,12 +11,13 @@ import { StateView } from './encoder/StateView.js';
 import type { Decoder } from './decoder/Decoder.js';
 import type { Metadata, MetadataField } from './Metadata.js';
 import { getIndent } from './utils.js';
+import { shadowMetadata } from './symbol.shim.js';
 
 /**
  * Schema encoder / decoder
  */
 export class Schema<C = any> implements IRef {
-    static [Symbol.metadata]: Metadata;
+    declare static [Symbol.metadata]: Metadata;
 
     /** Prototype accessors over the private tree slot — see `defineRefAccessors`. */
     declare [$changes]: ChangeTree;
@@ -148,7 +149,8 @@ export class Schema<C = any> implements IRef {
      * see {@link Schema.isSchema}.
      */
     static is(type: DefinitionType) {
-        return typeof((type as typeof Schema)[Symbol.metadata]) === "object";
+        const m = (type as typeof Schema)[Symbol.metadata];
+        return typeof m === "object" && m !== null;
     }
 
     /**
@@ -550,6 +552,10 @@ export class Schema<C = any> implements IRef {
 }
 
 defineRefAccessors(Schema.prototype);
+// `declare static` above types the slot without emitting one, under either
+// `useDefineForClassFields` setting — this is its only runtime source.
+// Subclasses inherit it from here; collections get theirs via `registerType`.
+shadowMetadata(Schema);
 Object.defineProperty(Schema, $schemaBase, { value: true });
 
 /** The `Schema` base of any copy of this library loaded in the process (subclasses only inherit the brand). */
