@@ -532,22 +532,42 @@ export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, e
 
 /**
  * Map entries are keyed by their string key; Set / Collection / Stream by
- * the wire index (idempotent — a repeated ADD for a known index is a no-op,
- * and the client-side counter stays ahead of every index seen).
+ * the wire index. A repeated ADD of the value an index already holds is a
+ * no-op; an ADD of a different value replaces it (spec: an ADD onto an
+ * occupied index is the replacement — the caller has already released the
+ * previous value), dropping the old value's reverse-index entry. The
+ * client-side counter stays ahead of every index seen.
  */
 function storeKeyValue(ref: any, isMap: boolean, index: number, dynamicIndex: number | string, value: any): void {
     if (isMap) {
         ref.$items.set(dynamicIndex, value);
-    } else if (!ref.$items.has(index)) {
-        ref.$items.set(index, value);
-        if (ref.indexByValue !== undefined) {
-            ref.indexByValue.set(value, index);
-            if (index >= ref.nextIndex) ref.nextIndex = index + 1;
-        } else if (ref._itemIndex !== undefined) {
-            ref._itemIndex.set(value, index);
-            if (index >= ref.$nextPosition) ref.$nextPosition = index + 1;
-        }
+    } else {
+        storeIndexedValue(ref, index, value);
     }
+}
+
+/** Set / Collection / Stream half of {@link storeKeyValue}, kept out of line so the map path stays small. */
+function storeIndexedValue(ref: any, index: number, value: any): void {
+    const items: Map<number, any> = ref.$items;
+    const previous = items.get(index);
+    if (previous === value) return;
+    items.set(index, value);
+    const byValue: Map<any, number> | undefined = ref.indexByValue ?? ref._itemIndex;
+    if (byValue === undefined) return;
+    if (previous !== undefined && byValue.get(previous) === index) byValue.delete(previous);
+    byValue.set(value, index);
+    if (ref.indexByValue !== undefined) {
+        if (index >= ref.nextIndex) ref.nextIndex = index + 1;
+    } else if (index >= ref.$nextPosition) {
+        ref.$nextPosition = index + 1;
+    }
+}
+
+/** An ADD replaced an occupied keyed slot: release the previous Schema child (cold path of the body loop). */
+function replaceKeyedSlot(d: Decoder, previousValue: any, type: any): OPERATION {
+    const previousRefId = refIdOfValue(previousValue);
+    if (previousRefId !== undefined && Schema.is(type)) d.root.removeRef(previousRefId);
+    return OPERATION.DELETE_AND_ADD;
 }
 
 function decodeKeyValueBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, allChanges: DataChange[] | null, isMap: boolean, ri: RefInfo): void {
@@ -566,12 +586,15 @@ function decodeKeyValueBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: an
         const previousValue = ref.$items.get(dynamicIndex);
         const value = readSlotValue(d, reader, OPERATION.ADD, previousValue, type, bytes, it, allChanges);
         const header = lastHeader;
+        const operation = (previousValue !== undefined && previousValue !== value)
+            ? replaceKeyedSlot(d, previousValue, type) // occupied slot replaced, as in decodeKeyValueOps
+            : OPERATION.ADD;
         if (d.resyncVisited !== null) {
-            resyncTouchEntry(d, ref, OPERATION.ADD, dynamicIndex, previousValue, value, allChanges);
+            resyncTouchEntry(d, ref, operation, dynamicIndex, previousValue, value, allChanges);
         }
         if (value !== null && value !== undefined) storeKeyValue(ref, isMap, index, dynamicIndex, value);
         if (previousValue !== value) {
-            allChanges?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex, value, previousValue });
+            allChanges?.push({ ref, refId, op: operation, dynamicIndex, value, previousValue });
         }
         if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
     }

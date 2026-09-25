@@ -29,12 +29,15 @@ CollectionSchema and StreamSchema (and `.stream()` maps) never recycle;
   and bytes per cycle in the last window drop 475 → 449 (str-100), 395 → 369
   (num-100), 475 → 435 (str-16).
 - **Time.** No reproducible regression; `encoder/map-churn` −2…−6 %.
-- **Follow-up (not in v1).** The decoder's `storeKeyValue` ignores an ADD onto
-  an occupied Set / Collection / Stream index after the previous ref was
-  already released (design §0, §4). Recycling those needs the overwrite fix
-  first, shipped to clients before any server recycles.
-  `test/MapIndexRecycling.test.ts` pins today's behaviour as an
-  expected failure.
+- **Follow-up: decoder overwrite landed (2026-09-25).** An ADD onto an occupied
+  Set / Collection / Stream index now replaces the entry (`storeKeyValue`),
+  and the collection-body path releases the previous Schema child like the op
+  path does (`decodeKeyValueBody`, which also covered Map bodies). Both were
+  pinned by `test/MapIndexRecycling.test.ts`, now real assertions. Set /
+  Collection recycling itself is still off: 5.x clients are rejected at the
+  handshake, so every 6.x client carries the fix, but each non-JS SDK port must
+  implement the same overwrite rule (SPEC: an ADD onto an occupied index is the
+  replacement) before servers recycle.
 
 
 ## Evidence

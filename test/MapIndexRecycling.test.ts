@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import {
-    Schema, type, view, schema, t, MapSchema, SetSchema, CollectionSchema, StreamSchema, StateView,
+    Schema, type, view, schema, t, ArraySchema, MapSchema, SetSchema, CollectionSchema, StreamSchema, StateView,
     createPool, $changes, $refId,
 } from "../src";
 import type { KeyedRecorder } from "../src/encoder/KeyedRecorder";
@@ -595,8 +595,10 @@ describe("MapSchema wire-index recycling", () => {
             assert.deepStrictEqual(client.toJSON(), state.toJSON());
         });
 
-        // Design §4: recycling Set / Collection / Stream indexes needs this decoder fix first.
-        it("[expected to fail until the storeKeyValue overwrite lands] a SetSchema ADD onto an occupied index replaces the entry", () => {
+        // Design §4: the decoder fix that Set / Collection / Stream index recycling needs.
+        // Each case replays a fresh encoder whose refIds collide with the first one,
+        // so its ADD@0 lands on the client's occupied index 0.
+        it("a SetSchema ADD onto an occupied index replaces the entry", () => {
             class State extends Schema {
                 @type({ set: "string" }) set = new SetSchema<string>();
             }
@@ -605,15 +607,58 @@ describe("MapSchema wire-index recycling", () => {
             const client = createInstanceFromReflection(server1);
             client.decode(server1.encode());
 
-            // a fresh encoder with the same refIds emits ADD@0 "b" onto the client's occupied index 0
             const server2 = new State();
             server2.set.add("b");
             client.decode(getEncoder(server2).encode());
 
-            assert.throws(
-                () => assert.deepStrictEqual(Array.from(client.set.values()), ["b"]),
-                "the decoder now overwrites occupied Set indexes: drop this expected-failure wrapper",
-            );
+            assert.deepStrictEqual(Array.from(client.set.values()), ["b"]);
+            assert.strictEqual(client.set.has("a"), false, "the replaced value left the reverse index");
+            assert.strictEqual(client.set.has("b"), true);
         });
+
+        for (const [kind, make, add] of [
+            ["SetSchema", () => new SetSchema<Item>(), (c: any, v: Item) => c.add(v)],
+            ["CollectionSchema", () => new CollectionSchema<Item>(), (c: any, v: Item) => c.add(v)],
+            ["StreamSchema", () => new StreamSchema<Item>(), (c: any, v: Item) => c.add(v)],
+        ] as const) {
+            it(`a ${kind} ADD of a Schema child onto an occupied index replaces it and releases the old one`, () => {
+                const decl = kind === "SetSchema" ? { set: Item } : kind === "CollectionSchema" ? { collection: Item } : { stream: Item };
+                class State extends Schema {
+                    @type(decl as any) items = make();
+                    @type([Item]) burn = new ArraySchema<Item>();
+                }
+                // attach first: a stream routes an element only once it has a Root
+                const server1 = new State();
+                const client = createInstanceFromReflection(server1);
+                // use up refIds (pushed and cleared in one tick, so the client never
+                // sees them): `first` gets a higher id than the replacement below
+                for (let i = 0; i < 5; i++) server1.burn.push(new Item());
+                server1.burn.clear();
+                const first = new Item().assign({ v: 1 });
+                add(server1.items, first);
+                client.decode(server1.encode());
+                const decoder = getDecoder(client);
+                const firstRefId = first[$refId];
+                assert.strictEqual(decoder.root.refCount.get(firstRefId), 1);
+
+                // same class and field order: the fresh encoder hands out the same refIds
+                // for the root and the collections, and an id the client does not know
+                // for the replacement child, which lands on `first`'s index 0
+                const server2 = new State();
+                const encoder2 = getEncoder(server2);
+                const second = new Item().assign({ v: 2 });
+                add(server2.items, second);
+                client.decode(encoder2.encode());
+
+                const values = Array.from((client.items as any).values()) as Item[];
+                assert.deepStrictEqual(values.map((v) => v.v), [2]);
+                const byValue = (client.items as any).indexByValue ?? (client.items as any)._itemIndex;
+                assert.strictEqual(byValue.has(values[0]), true);
+                assert.strictEqual(byValue.size, 1, "the replaced child left the reverse index");
+                assert.notStrictEqual(second[$refId], firstRefId);
+                assert.strictEqual(values[0][$refId], second[$refId], "the client holds the replacement");
+                assert.strictEqual(decoder.root.refCount.get(firstRefId) ?? 0, 0, "the replaced child was released");
+            });
+        }
     });
 });
