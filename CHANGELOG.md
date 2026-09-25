@@ -198,6 +198,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   destructuring, `Array.from` and `yield*` are unaffected; code that keeps a
   result across `next()` calls (`const a = it.next(); const b = it.next();`)
   sees `a.value` change. `keys()` / `entries()` still return fresh results.
+- **Decoder-only bundles leave out `Encoder` / `Root` / `EncodeOperation`**
+  (`npm run size`): `Reflection.encode` goes through the encoder instance
+  instead of a module-level reference, so a client that imports the decoder
+  side (the SDK's names) and tree-shakes with rollup / Vite ships 31.5 KB gzip
+  instead of 41.2 KB (5.0: 28.8 KB). esbuild / bun keep every class with a
+  static field, so they drop little.
 
 ### Added
 

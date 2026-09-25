@@ -1,8 +1,9 @@
 import type { Schema } from "../Schema.js";
 import { TypeContext } from "../types/TypeContext.js";
-import { $childType, $getByIndex } from "../types/symbols.js";
+import { $childType, $encodeReflection, $getByIndex } from "../types/symbols.js";
 import type { Iterator } from "../encoding/decode.js";
-import { KIND_ARRAY, OPERATION } from "../encoding/spec.js";
+import { KIND_ARRAY, OPERATION, PROTOCOL_VERSION } from "../encoding/spec.js";
+import { Reflection, populateReflection } from "../Reflection.js";
 import { Metadata } from "../Metadata.js";
 import { Root } from "./Root.js";
 import type { StateView } from "./StateView.js";
@@ -68,6 +69,12 @@ function discardQueue(root: Root, list: ChangeTreeList): void {
  *   single-buffer transports.
  */
 const EMPTY_SLICE = new Uint8Array(0);
+
+// One buffer for every reflection handshake in the process (the payload is
+// copied out): a room with a large `Encoder.BUFFER_SIZE` must not allocate
+// that much per client join. `encodeAll` grows it if a schema's reflection is
+// larger, and the grown buffer is kept.
+let reflectionBuffer: Uint8Array | undefined;
 
 export class Encoder<T extends Schema = any> {
     /**
@@ -156,6 +163,24 @@ export class Encoder<T extends Schema = any> {
             if (tree.decodeInfo !== undefined) tree.decodeInfo = undefined; // a later decode into it hits the relay guard
         }
         tree.setRoot(this.root);
+    }
+
+    /**
+     * `Reflection.encode(encoder)`: `uvarint(PROTOCOL_VERSION)` followed by the
+     * `Reflection` schema encoded with the codec itself (nested Schema + array
+     * + optional field — a self-hosting fixture).
+     */
+    [$encodeReflection](): Uint8Array {
+        const reflection = new Reflection();
+        const reflectionEncoder = new Encoder(reflection, undefined, 0);
+        reflectionEncoder.sharedBuffer = (reflectionBuffer ??= new Uint8Array(64 * 1024));
+        populateReflection(reflection, this.context, this.state.constructor as typeof Schema);
+        const encoded = reflectionEncoder.encodeAll();
+        reflectionBuffer = reflectionEncoder.sharedBuffer;
+        const out = new Uint8Array(1 + encoded.byteLength);
+        out[0] = PROTOCOL_VERSION;
+        out.set(encoded, 1);
+        return out;
     }
 
     private _beginPass(buffer: Uint8Array, it: Iterator, view: StateView | undefined, emitFiltered: boolean, mode: number): Frame {

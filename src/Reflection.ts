@@ -2,12 +2,12 @@ import { PrimitiveType, schema, SchemaType } from "./annotations.js";
 import { TypeContext } from "./types/TypeContext.js";
 import { Metadata } from "./Metadata.js";
 import { Iterator } from "./encoding/decode.js";
-import { Encoder } from "./encoder/Encoder.js";
+import type { Encoder } from "./encoder/Encoder.js";
 import { Decoder } from "./decoder/Decoder.js";
 import { Schema, isSchemaBase } from "./Schema.js";
 import { t, FieldBuilder } from "./types/builder.js";
 import { ArraySchema } from "./types/custom/ArraySchema.js";
-import { $encodeDescriptor, $numFields } from "./types/symbols.js";
+import { $encodeDescriptor, $encodeReflection, $numFields } from "./types/symbols.js";
 import { isQuantizedType, resolveQuantize } from "./types/quantize.js";
 import { PROTOCOL_VERSION } from "./encoding/spec.js";
 import { readUvarint } from "./encoding/varint.js";
@@ -238,26 +238,12 @@ export function populateReflection(reflection: Reflection, context: TypeContext,
 
 /**
  * Handshake: `uvarint(PROTOCOL_VERSION)` followed by the `Reflection` schema
- * encoded with the codec itself (nested Schema + array + optional field — a
- * self-hosting fixture).
+ * encoded with the codec itself — see `Encoder[$encodeReflection]`. Reached
+ * through the instance instead of a static import, so a decoder-only bundle
+ * keeps `Reflection` (the client handshake) without the whole encoder.
  */
-// One buffer for every handshake in the process (the payload is copied out
-// below): a room with a large `Encoder.BUFFER_SIZE` must not allocate that
-// much per client join. `encodeAll` grows it if a schema's reflection is
-// larger, and the grown buffer is kept.
-let reflectionBuffer: Uint8Array | undefined;
-
 Reflection.encode = function (encoder: Encoder, _it?: Iterator) {
-    const reflection = new Reflection();
-    const reflectionEncoder = new Encoder(reflection, undefined, 0);
-    reflectionEncoder.sharedBuffer = (reflectionBuffer ??= new Uint8Array(64 * 1024));
-    populateReflection(reflection, encoder.context, encoder.state.constructor as typeof Schema);
-    const encoded = reflectionEncoder.encodeAll();
-    reflectionBuffer = reflectionEncoder.sharedBuffer;
-    const out = new Uint8Array(1 + encoded.byteLength);
-    out[0] = PROTOCOL_VERSION;
-    out.set(encoded, 1);
-    return out;
+    return encoder[$encodeReflection]();
 };
 
 Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it: Iterator = { offset: 0 }): Decoder<T> {

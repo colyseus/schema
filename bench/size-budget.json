@@ -1,0 +1,5 @@
+{
+  "//": "npm run size:gate — bytes after rollup tree-shaking + esbuild minify (bench/size.mjs). Measured 2026-09-24 (KiB, as size.mjs prints): full 147.1 min / 44.5 gzip, client 104.9 min / 31.5 gzip (5.0.31: client 28.8 KB gzip; before this round: 41.2 KB). Constructors always create a tracking ChangeTree, so it ships to clients.",
+  "full": { "min": 155000, "gzip": 47000 },
+  "client": { "min": 111000, "gzip": 33500 }
+}

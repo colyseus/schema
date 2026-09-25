@@ -45,7 +45,7 @@ function _clearViewBitFromAllTrees(root: Root, slot: number, bit: number): void 
  * clears the view's leftover bits from every ChangeTree. Backstop for
  * forgotten `view.dispose()` calls; timing is non-deterministic but bounded.
  */
-const _disposeRegistry = new FinalizationRegistry<{ root: Root; id: number; slot: number; bit: number }>(
+const _disposeRegistry = /*#__PURE__*/ new FinalizationRegistry<{ root: Root; id: number; slot: number; bit: number }>(
     ({ root, id, slot, bit }) => {
         _clearViewBitFromAllTrees(root, slot, bit);
         root.releaseViewId(id);

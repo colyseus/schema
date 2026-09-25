@@ -147,6 +147,25 @@ Rules:
 4. Snapshot both sides; targeted compare at N≥20; full-matrix regression sweep.
 5. Accept/revert per the criteria above; record the verdict with numbers.
 
+## Bundle size (`size.mjs`)
+
+```bash
+npm run size                                   # build/index.mjs
+node bench/size.mjs bench/.builds/v5-release build   # side by side
+node bench/size.mjs --attribute client         # minified bytes per src file
+npm run size:gate                              # assert size-budget.json
+```
+
+Two targets: `full` (`export *`, the server) and `client` (the names the
+colyseus SDK imports). The pipeline is Vite's production build — rollup
+tree-shaking, esbuild minify — then gzip -9 / brotli; the SDK's dist bundle is
+built with rollup too. `--esbuild` bundles with esbuild instead, which keeps
+every class carrying a static field or a computed member key and so drops
+almost nothing from this library. `Reflection.encode` goes through the
+encoder instance so the client bundle leaves out `Encoder` / `Root` /
+`EncodeOperation`; constructors still create a tracking `ChangeTree`, so it
+and its recorders ship to clients (the report flags them as "encoder leaks").
+
 ## Directory map
 
 - `run.mjs` — runner CLI (single / `--compare` / `--bisect` / `--assert`)

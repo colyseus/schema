@@ -19,6 +19,8 @@
     "profile:inlining": "node bench/profile-v8.mjs --inlining",
     "profile:shapes": "node bench/profile-v8.mjs --shapes",
     "bench:realworld": "node bench/run.mjs --filter realworld/*",
+    "size": "node bench/size.mjs",
+    "size:gate": "node bench/size.mjs --gate",
     "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json && rollup -c rollup.config.mjs",
     "watch": "node node_modules/typescript/bin/tsc -p tsconfig.build.json -w",
     "typecheck:build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json --noEmit",

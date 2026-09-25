@@ -9,33 +9,8 @@
 //
 // `Symbol.for(key)` resolves to the engine's process-wide Symbol Registry,
 // so every copy gets the same symbol regardless of which one created it.
+// (`Symbol.for` is ES2015; the ES2022 output cannot load where it is missing.)
 //
-// Fallback: runtimes that lack `Symbol.for` get a polyfill anchored on
-// globalThis (also shared across module copies).
-//
-declare const self: any;
-declare const window: any;
-
-const _g: any = (function () {
-    if (typeof globalThis !== "undefined") return globalThis;
-    if (typeof global !== "undefined") return global;
-    if (typeof self !== "undefined") return self;
-    if (typeof window !== "undefined") return window;
-    return {};
-})();
-
-if (typeof Symbol === "function" && typeof (Symbol as any).for !== "function") {
-    const REGISTRY_KEY = "colyseus.symbolRegistry";
-    const registry: { [k: string]: symbol } =
-        _g[REGISTRY_KEY] || (_g[REGISTRY_KEY] = Object.create(null));
-    (Symbol as any).for = function (key: string): symbol {
-        return registry[key] || (registry[key] = Symbol(key));
-    };
-    (Symbol as any).keyFor = function (sym: symbol): string | undefined {
-        for (const k in registry) if (registry[k] === sym) return k;
-        return undefined;
-    };
-}
 
 export const $refId: unique symbol = Symbol.for("$refId");
 export const $track = "~track";
@@ -48,6 +23,9 @@ export const $track = "~track";
 export const $recorder = "~recorder";
 
 export const $filter = "~filter";
+
+/** `Encoder` method behind `Reflection.encode` (keeps the encoder out of decoder-only bundles). */
+export const $encodeReflection = "~encodeReflection";
 
 export const $getByIndex = "~getByIndex";
 export const $deleteByIndex = "~deleteByIndex";
