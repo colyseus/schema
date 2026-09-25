@@ -1,5 +1,4 @@
-import { $numFields, $values } from "../types/symbols.js";
-import { refTreeOf } from "../encoder/ChangeTree.js";
+import { $changes, $numFields, $values } from "../types/symbols.js";
 import { encode } from "../encoding/encode.js";
 import { Encoder } from "../encoder/Encoder.js";
 import { getEncodeDescriptor, type EncodeDescriptor } from "../encoder/EncodeDescriptor.js";
@@ -158,7 +157,9 @@ export class InputEncoder<T extends Schema = any> {
         this._slotHead = 0;
         this._slotCount = 0;
         this._encoder.discardChanges();
-        const tree = refTreeOf(this.instance);
+        // the public `[$changes]` accessor, not `refTreeOf`: this subpath resolves
+        // its imports from the package entry, which does not export internals
+        const tree = this.instance[$changes];
         const values = this.instance[$values];
         for (let i = 0; i <= this._numFields; i++) {
             if (values[i] === undefined || values[i] === null) continue;

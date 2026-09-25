@@ -41,6 +41,24 @@ for (const spec of specifiers) {
   }
 }
 
+// Subpath bundles resolve their dependencies from the package entry (see
+// rollup.config.mjs). A name the entry does not export fails the ESM import
+// above, but under `require` it is silently `undefined` until first use — so
+// check every such name against the entry's exports explicitly.
+const main = require(pkg.name);
+for (const file of ["../build/input/index.mjs"]) {
+  const code = new TextDecoder().decode(readFileSync(new URL(file, import.meta.url)));
+  for (const m of code.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']@colyseus\/schema["']/g)) {
+    for (const spec of m[1].split(",")) {
+      const name = spec.trim().split(/\s+as\s+/)[0];
+      if (name && !(name in main)) {
+        failed++;
+        console.error(`  ${file} imports "${name}" — not exported by ${pkg.name}`);
+      }
+    }
+  }
+}
+
 if (failed > 0) {
   console.error(`\nverify-exports: ${failed} check(s) failed across ${specifiers.length} subpath(s).`);
   process.exit(1);
