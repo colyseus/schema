@@ -94,6 +94,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   an occupied index is the replacement, and the decoder releases the
   previous value and still reports `onRemove` + `onAdd`. Full-sync map
   bodies stream straight from the map (no scratch copy).
+- **Keyed wire indexes are reused.** `MapSchema`, `SetSchema` and
+  `CollectionSchema` hand a removed entry's index to a later entry once its
+  DELETE has shipped (from the next tick on, and never while a `StateView`
+  still holds an entry for it), so indexes stay near the live size instead of
+  growing with every add: on a churned collection every op stays one or two
+  bytes (map-churn −4.5…−8.6 % bytes). Stream positions still only grow.
+  `nextIndex` is no longer a count of every entry ever added. Decoders treat
+  an ADD onto an occupied index as the replacement (see `SPEC.md`).
 - **Typed map keys.** `@type({ map: X, key: "number" })` and
   `t.map(X, { key: "number" })` declare a `MapSchema<X, number>`: keys are
   JS numbers on both sides, ride the wire as a dynamic number (or the

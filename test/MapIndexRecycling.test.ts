@@ -547,7 +547,7 @@ describe("MapSchema wire-index recycling", () => {
         });
     });
 
-    describe("collections that never recycle (v1)", () => {
+    describe("collections that never recycle", () => {
         it("a streamed map keeps monotonic indexes", () => {
             const Entity = schema({ id: t.number() }, "Entity");
             const State = schema({ entities: t.map(Entity).stream() }, "State");
@@ -568,7 +568,7 @@ describe("MapSchema wire-index recycling", () => {
             void encoder;
         });
 
-        it("SetSchema, CollectionSchema and StreamSchema indexes stay monotonic", () => {
+        it("StreamSchema positions stay monotonic; Set / Collection reuse (test/SetIndexRecycling)", () => {
             class State extends Schema {
                 @type({ set: "string" }) set = new SetSchema<string>();
                 @type({ collection: "string" }) collection = new CollectionSchema<string>();
@@ -589,8 +589,8 @@ describe("MapSchema wire-index recycling", () => {
             state.collection.add("b");
             state.stream.add(new Item());
             client.decode(state.encode());
-            assert.strictEqual((state.set as any).nextIndex, 2);
-            assert.strictEqual((state.collection as any).nextIndex, 2);
+            assert.strictEqual((state.set as any).nextIndex, 1);
+            assert.strictEqual((state.collection as any).nextIndex, 1);
             assert.strictEqual((state.stream as any).$nextPosition, 2);
             assert.deepStrictEqual(client.toJSON(), state.toJSON());
         });

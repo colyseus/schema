@@ -86,8 +86,11 @@ key          := <key type encoding>            -- MapSchema, ADD only
 value        := <child type encoding> | refValue -- absent for DELETE / CLEAR
 ```
 
-Entries are addressed by a stable wire index (a monotonic counter per
-collection). An op on an index below 32 costs one byte, below 8192 two.
+Entries are addressed by a wire index, stable for as long as the entry lives.
+Map / Set / Collection reuse an index whose DELETE shipped in an earlier tick
+(never in the same tick), so indexes stay near the live size; Stream
+positions only grow. Decoders must not assume indexes grow. An op on an index
+below 32 costs one byte, below 8192 two.
 `MapSchema` sends the key with every ADD and addresses the entry by index
 afterwards; Set / Collection / Stream entries carry no key. There is no
 `DELETE_AND_ADD` on the keyed wire: an `ADD` onto an index that already
@@ -106,7 +109,9 @@ Number keys are JS numbers on both sides (callbacks receive them as
 numbers); JSON output stringifies them like any object key.
 
 Entry order on the decoder is the order of first arrival: a key deleted and
-re-set in the same tick keeps its wire index and its client-side position.
+re-set in the same tick keeps its wire index and its client-side position. A
+Set / Collection / Stream entry replaced through an ADD onto its occupied index
+moves to the end, as a removed-then-added entry does.
 
 Worked example — `scores: Map<string, number>` patch after `scores.set("d", 7)`
 (index 3) and `scores.delete("c")` (index 2) in one tick:

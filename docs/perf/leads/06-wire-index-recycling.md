@@ -34,10 +34,13 @@ CollectionSchema and StreamSchema (and `.stream()` maps) never recycle;
   and the collection-body path releases the previous Schema child like the op
   path does (`decodeKeyValueBody`, which also covered Map bodies). Both were
   pinned by `test/MapIndexRecycling.test.ts`, now real assertions. Set /
-  Collection recycling itself is still off: 5.x clients are rejected at the
-  handshake, so every 6.x client carries the fix, but each non-JS SDK port must
-  implement the same overwrite rule (SPEC: an ADD onto an occupied index is the
-  replacement) before servers recycle.
+  - **Set / Collection recycling landed (2026-09-25).** Same rule as MapSchema
+  (`freeIndex` / `releaseQuarantine`, now shared in `KeyedRecorder.ts`), the
+  StateView identity guard (`holdsKeyedIndex`) covers them, `clear()` drops the
+  free indexes but keeps numbering (unlike Map). 5.x clients are rejected at the
+  handshake, so every 6.x client carries the overwrite fix; each non-JS SDK port
+  must implement it (SPEC: an ADD onto an occupied index is the replacement).
+  Tests: `test/SetIndexRecycling.test.ts`. Streams stay monotonic (H7).
 
 
 ## Evidence

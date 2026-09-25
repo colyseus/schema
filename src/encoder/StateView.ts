@@ -2,7 +2,7 @@ import { ChangeTree, Ref, viewTreeOf, refIdOf } from "./ChangeTree.js";
 import { isEdgeLive } from "./changeTree/parentChain.js";
 import { $fieldIndexesByViewTag, $getByIndex, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
-import { KIND_MAP, OPERATION } from "../encoding/spec.js";
+import { KIND_INDEXED, KIND_MAP, OPERATION } from "../encoding/spec.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
 import { Metadata } from "../Metadata.js";
 import { spliceOne } from "../types/utils.js";
@@ -53,12 +53,14 @@ const _disposeRegistry = /*#__PURE__*/ new FinalizationRegistry<{ root: Root; id
 );
 
 /**
- * A child's entry may address its MapSchema parent by `index` only while it
- * holds that index (live there, or removed from it this tick): map indexes
- * are recycled, so a removed child's stale index can name another entry.
+ * A child's entry may address its keyed parent by `index` only while it
+ * holds that index (live there, or removed from it this tick): Map / Set /
+ * Collection indexes are recycled, so a removed child's stale index can name
+ * another entry. Streams never recycle.
  */
-function holdsMapIndex(parent: ChangeTree, index: number, child: ChangeTree): boolean {
-    if (parent.encDescriptor.kind !== KIND_MAP) return true;
+function holdsKeyedIndex(parent: ChangeTree, index: number, child: ChangeTree): boolean {
+    const kind = parent.encDescriptor.kind;
+    if (kind !== KIND_MAP && (kind !== KIND_INDEXED || parent.isStreamCollection || (parent.ref.constructor as any).$isStream === true)) return true;
     const ref = child.ref;
     return (parent.refTarget as any)[$getByIndex](index) === ref
         || (parent.rec as KeyedRecorder | undefined)?.deleted?.get(index) === ref;
@@ -657,7 +659,7 @@ export class StateView {
         // add parent's tag properties (arrays: only while the child is still an element)
         const bound = changeTree.isArray
             ? isEdgeLive(childChangeTree, changeTree, parentIndex ?? -1)
-            : changeTree.getChange(parentIndex) !== OPERATION.DELETE && holdsMapIndex(changeTree, parentIndex, childChangeTree);
+            : changeTree.getChange(parentIndex) !== OPERATION.DELETE && holdsKeyedIndex(changeTree, parentIndex, childChangeTree);
         if (bound) {
             const changes = this.entriesOf(changeTree.refId);
 
@@ -824,7 +826,7 @@ export class StateView {
                 // one replaced this tick still addresses its index
                 if (
                     parentTree!.isArray ||
-                    holdsMapIndex(parentTree!, key as number, changeTree) ||
+                    holdsKeyedIndex(parentTree!, key as number, changeTree) ||
                     parentTree!.getChange(key as number) === OPERATION.DELETE_AND_ADD
                 ) {
                     const changes = this.entriesOf(parentTree!.refId!);

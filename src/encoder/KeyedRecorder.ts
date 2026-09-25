@@ -1,4 +1,5 @@
 import { OPERATION } from "../encoding/spec.js";
+import type { Root } from "./Root.js";
 
 /**
  * KeyedRecorder — the change recorder of the wire-index-keyed collections
@@ -39,9 +40,9 @@ export class KeyedRecorder<V = any> {
     cleared = false;
     deleted?: Map<number, V>;
 
-    /** MapSchema: wire indexes free for reuse (a LIFO stack); `undefined` until the first one is freed. */
+    /** MapSchema / SetSchema / CollectionSchema: wire indexes free for reuse (a LIFO stack); `undefined` until the first one is freed. */
     free?: number[];
-    /** MapSchema: freed indexes a `StateView` still holds an entry for, re-checked at the next end of tick. */
+    /** Freed indexes a `StateView` still holds an entry for, re-checked at the next end of tick (`freeIndex`). */
     quarantine?: number[];
 
     /** Ops of wire indexes `0 … PAGE_SIZE-1`; `undefined` until the first recorded op, then grows with the collection. */
@@ -225,4 +226,32 @@ export class KeyedRecorder<V = any> {
         pageEpoch[p] = epoch;
         return pages[p] = new Uint8Array(PAGE_SIZE);
     }
+}
+
+/**
+ * Wire-index recycling of the keyed collections that reuse indexes (Map, Set,
+ * Collection; never a stream). Called at the end of a tick that shipped, for an
+ * index whose entry was removed and not re-set: it goes on the free stack,
+ * reused from the next tick on (never in the same one — a DELETE + ADD would
+ * merge). An index a `StateView` still holds a `view.changes` entry for is
+ * quarantined instead, until that view drains. See
+ * docs/perf/leads/06-wire-index-recycling-design.md.
+ */
+export function freeIndex(rec: KeyedRecorder, root: Root, refId: number, index: number): void {
+    const pending = root.pendingViewChanges();
+    for (let v = 0; v < pending.length; v++) {
+        if (pending[v].get(refId)?.has(index)) {
+            (rec.quarantine ??= []).push(index);
+            return;
+        }
+    }
+    (rec.free ??= []).push(index);
+}
+
+/** Re-check the indexes `freeIndex` quarantined at an earlier end of tick. */
+export function releaseQuarantine(rec: KeyedRecorder, root: Root, refId: number): void {
+    const held = rec.quarantine;
+    if (held === undefined) return;
+    rec.quarantine = undefined;
+    for (let k = 0; k < held.length; k++) freeIndex(rec, root, refId, held[k]);
 }

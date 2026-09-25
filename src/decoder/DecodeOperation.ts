@@ -551,6 +551,8 @@ function storeIndexedValue(ref: any, index: number, value: any): void {
     const items: Map<number, any> = ref.$items;
     const previous = items.get(index);
     if (previous === value) return;
+    // a replacement moves to the end, as a removed-then-added value does on the server
+    if (previous !== undefined) items.delete(index);
     items.set(index, value);
     const byValue: Map<any, number> | undefined = ref.indexByValue ?? ref._itemIndex;
     if (byValue === undefined) return;

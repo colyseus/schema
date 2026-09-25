@@ -2,7 +2,7 @@ import { $applyKeyType, $changes, $childType, $deleteByIndex, $onEncodeEnd, $fil
 import { RefTable } from "../../RefTable.js";
 import type { MapKeyType } from "../../annotations.js";
 import { ChangeTree, installUntrackedChangeTree, IRef, stampTree, treeOf, refTreeOf, defineRefAccessors } from "../../encoder/ChangeTree.js";
-import { KeyedRecorder } from "../../encoder/KeyedRecorder.js";
+import { KeyedRecorder, freeIndex, releaseQuarantine } from "../../encoder/KeyedRecorder.js";
 import { CollectionKind, OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
@@ -460,17 +460,13 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
         const rec = tree.rec as KeyedRecorder | undefined;
         if (rec === undefined || rec.deleted === undefined) return;
         const recycle = shipped && tree.root !== undefined && !tree.isStreamCollection;
-        const held = rec.quarantine;
-        if (recycle && held !== undefined) {
-            rec.quarantine = undefined;
-            for (let k = 0; k < held.length; k++) freeIndex(tree, rec, held[k]);
-        }
+        if (recycle) releaseQuarantine(rec, tree.root!, tree.refId!);
         for (const index of rec.deleted.keys()) {
             const key = this.keyByIndex.get(index);
             if (key !== undefined && this.indexByKey.get(key) === index && !this.$items.has(key)) {
                 this.indexByKey.delete(key);
                 this.keyByIndex.delete(index);
-                if (recycle) freeIndex(tree, rec, index);
+                if (recycle) freeIndex(rec, tree.root!, tree.refId!, index);
             }
         }
     }
@@ -507,19 +503,6 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
         return cloned;
     }
 
-}
-
-/** Free `index`, unless a view still holds a `view.changes` entry for it: quarantined until that view drains. */
-function freeIndex(tree: ChangeTree, rec: KeyedRecorder, index: number): void {
-    const pending = tree.root!.pendingViewChanges();
-    const refId = tree.refId!;
-    for (let v = 0; v < pending.length; v++) {
-        if (pending[v].get(refId)?.has(index)) {
-            (rec.quarantine ??= []).push(index);
-            return;
-        }
-    }
-    (rec.free ??= []).push(index);
 }
 
 /** Coerce a user-supplied key to the declared key type (string when undeclared). */

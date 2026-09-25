@@ -1,9 +1,9 @@
 import { CollectionKind, OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
-import { $changes, $childType, $deleteByIndex, $filter, $getByIndex, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
+import { $changes, $childType, $deleteByIndex, $filter, $getByIndex, $onEncodeEnd, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
 import { Collection } from "../HelperTypes.js";
 import { ChangeTree, installUntrackedChangeTree, type IRef, stampTree, treeOf, refTreeOf, defineRefAccessors } from "../../encoder/ChangeTree.js";
-import { KeyedRecorder } from "../../encoder/KeyedRecorder.js";
+import { KeyedRecorder, freeIndex, releaseQuarantine } from "../../encoder/KeyedRecorder.js";
 import {
     createStreamableState,
     streamDropView,
@@ -15,8 +15,9 @@ import type { StateView } from "../../encoder/StateView.js";
 import type { Schema } from "../../Schema.js";
 
 /**
- * SetSchema — unordered collection of unique values, keyed on the wire by a
- * monotonic index. `indexByValue` gives O(1) `has` / `delete`.
+ * SetSchema — unordered collection of unique values, keyed on the wire by an
+ * index (one freed in an earlier tick, else `nextIndex++`; see
+ * `$onEncodeEnd`). `indexByValue` gives O(1) `has` / `delete`.
  */
 export class SetSchema<V=any> implements Collection<number, V>, IRef {
     /** Prototype accessors over the private tree slot — see `defineRefAccessors`. */
@@ -31,7 +32,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     /** Reverse lookup (value → wire index) for O(1) `has` / `delete`. */
     protected indexByValue: Map<V, number> = new Map<V, number>();
 
-    /** Monotonic counter for assigning indexes to newly-added items. */
+    /** Next never-used wire index (freed indexes are reused first). */
     protected nextIndex: number = 0;
 
     /**
@@ -104,8 +105,9 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
 
     /** Shared by `add` and the duplicate-allowing `CollectionSchema.add`. */
     protected $add(value: V): number {
-        const index = this.nextIndex++;
         const tree = treeOf(this);
+        const free = (tree.rec as KeyedRecorder | undefined)?.free;
+        const index = (free !== undefined && free.length !== 0) ? free.pop()! : this.nextIndex++;
 
         this.$items.set(index, value);
         this.indexByValue.set(value, index);
@@ -183,10 +185,31 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
 
         this.$items.clear();
         this.indexByValue.clear();
+        // numbering continues from `nextIndex` (a view may still hold entries
+        // for the old indexes), so the free indexes go
+        const rec = tree.rec as KeyedRecorder | undefined;
+        if (rec !== undefined) rec.free = rec.quarantine = undefined;
 
         if (tree.tracking) {
             (tree.rec as KeyedRecorder).clear();
             tree.touch();
+        }
+    }
+
+    /**
+     * End of tick: an index whose entry was removed this tick (and not re-added)
+     * and whose DELETE shipped is reused from the next tick on — see
+     * `freeIndex`. `discard` (`shipped` false) frees nothing: the client may
+     * still hold the index. Streamed sets never recycle.
+     */
+    protected [$onEncodeEnd](shipped: boolean) {
+        const tree = treeOf(this);
+        const rec = tree.rec as KeyedRecorder | undefined;
+        if (rec === undefined || !shipped || tree.root === undefined || tree.isStreamCollection) return;
+        releaseQuarantine(rec, tree.root, tree.refId!);
+        if (rec.deleted === undefined) return;
+        for (const index of rec.deleted.keys()) {
+            if (!this.$items.has(index)) freeIndex(rec, tree.root, tree.refId!, index);
         }
     }
 
