@@ -371,6 +371,41 @@ describe("schema-codegen", () => {
         });
     });
 
+    describe("haxe", () => {
+        const generated = () => {
+            generate("haxe", { files: [path.resolve(INPUT_DIR, "HaxeFields.ts")], output: OUTPUT_DIR });
+            return fs.readFileSync(path.resolve(OUTPUT_DIR, "HxState.hx"), "utf8");
+        };
+
+        it("should type fields as the Haxe SDK decodes them", () => {
+            const out = generated();
+            assert.match(out, /public var num: Float = 0;/);
+            assert.match(out, /public var f32: Float = 0;/);
+            assert.match(out, /public var small: Int = 0;/);
+            assert.match(out, /public var tick: Int = 0;/);
+            assert.match(out, /public var big: haxe\.Int64 = 0;/);
+            assert.match(out, /public var floats: ArraySchema<Float> = new ArraySchema<Float>\(\);/);
+            assert.match(out, /public var counts: MapSchema<Int> = new MapSchema<Int>\(\);/);
+            assert.doesNotMatch(out, /Dynamic|UInt/);
+        });
+
+        it("should carry `.default()` values over", () => {
+            const out = generated();
+            assert.match(out, /public var alive: Bool = true;/);
+            assert.match(out, /public var campId: Int = -1;/);
+            assert.match(out, /public var radius: Float = 0\.5;/);
+            assert.match(out, /public var mode: Int = 2;/);
+            assert.ok(out.includes(`public var label: String = "say \\"hi\\"\\n";`), out);
+        });
+
+        it("should rename a field that is a Haxe keyword", () => {
+            const out = generated();
+            assert.match(out, /\/\/ "cast" on the wire \(a Haxe keyword\)\n\t@:type\("uint8"\)\n\tpublic var cast_: Int = 0;/);
+            assert.match(out, /public var class_: String = "";/);
+            assert.doesNotMatch(out, /public var (cast|class):/);
+        });
+    });
+
     describe("dart", () => {
         const read = (name: string) =>
             fs.readFileSync(path.resolve(OUTPUT_DIR, name), "utf8");
@@ -512,8 +547,8 @@ describe("schema-codegen", () => {
                 /@SchemaField\("2\/map\/number\/int32"\)\s+public MapSchema<Float, Integer> scores = new MapSchema<>\(\);/,
             ],
             haxe: [
-                /@:type\("map", Item, "number"\)\s+public var byId: MapSchema<Item, Dynamic> = new MapSchema<Item, Dynamic>\(\);/,
-                /@:type\("map", "number", "int32"\)\s+public var scores: MapSchema<Dynamic, Int> = new MapSchema<Dynamic, Int>\(\);/,
+                /@:type\("map", Item, "number"\)\s+public var byId: MapSchema<Item, Float> = new MapSchema<Item, Float>\(\);/,
+                /@:type\("map", "number", "int32"\)\s+public var scores: MapSchema<Float, Int> = new MapSchema<Float, Int>\(\);/,
             ],
             lua: [
                 /\["byId"\] = \{ map = Item, key = "number" \}/,
@@ -734,14 +769,14 @@ export class KeyFirst extends Schema {
             assert.strictEqual(field(cs, "child"), "public CsItem child = null;");
         });
 
-        it("emits literal .default() values, else the type's default", () => {
+        it("emits .default() values — literals and consts — else the type's default", () => {
             const cs = gen("CsState");
             assert.strictEqual(field(cs, "alive"), "public bool alive = true;");
             assert.strictEqual(field(cs, "campId"), "public sbyte campId = -1;");
             assert.strictEqual(field(cs, "radius"), "public double radius = 0.5;");
             assert.strictEqual(field(cs, "speed"), "public double speed = 1.25;");
             assert.strictEqual(field(cs, "label"), 'public string label = "say \\"hi\\"\\n";');
-            assert.strictEqual(field(cs, "mode"), "public byte mode = default(byte);");
+            assert.strictEqual(field(cs, "mode"), "public byte mode = 2;");
         });
 
         it("emits a decorator field's literal initializer as its default", () => {

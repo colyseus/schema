@@ -80,15 +80,15 @@ function parseMapKeyType(node: ts.Expression | undefined, propertyName: string):
 
 /**
  * Statically evaluate a default value: a string/boolean literal or a constant
- * numeric expression. Returns undefined for anything else (a `const`
- * reference, a factory function, an object).
+ * numeric expression, `const`s included (local or imported). Returns
+ * undefined for anything else (a factory function, an object).
  */
 function evalDefaultLiteral(node: ts.Expression | undefined): string | number | boolean | undefined {
     if (!node) { return undefined; }
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) { return node.text; }
     if (node.kind === ts.SyntaxKind.TrueKeyword) { return true; }
     if (node.kind === ts.SyntaxKind.FalseKeyword) { return false; }
-    return evalNumericExpression(node);
+    return evalNumericExpression(node, resolveConstIdentifier);
 }
 
 /**
