@@ -44,7 +44,8 @@
     "generate-test-10": "bin/schema-codegen test-external/Callbacks.ts --csharp --namespace SchemaTest.Callbacks --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/Callbacks",
     "generate-test-11": "bin/schema-codegen test-external/MapSchemaMoveNullifyType.ts --csharp --namespace SchemaTest.MapSchemaMoveNullifyType --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/MapSchemaMoveNullifyType",
     "generate-test-12": "bin/schema-codegen test-external/ArraySchemaClear --csharp --namespace SchemaTest.ArraySchemaClear --output ../colyseus-unity-sdk/Assets/Colyseus/Tests/Editor/ColyseusTests/Schema/ArraySchemaClear",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "version": "node scripts/sync-version.mjs && git add src/encoder/ChangeTree.ts"
   },
   "files": [
     "src",

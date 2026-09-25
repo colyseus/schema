@@ -1,7 +1,11 @@
 # 04 — `ArraySchema` reads that are still slower than 5.x
 
-**Status:** parked (doc note added) · **Kind:** perf · **Risk:** high (API +
+**Status:** closed — accepted (2026-09-25) · **Kind:** perf · **Risk:** high (API +
 the collections rewrite)
+
+Accepted trade-off, not an open item: the `Array` subclass stays, so
+`for…of` (+18 %) and `indexOf` (+80 %) remain slower than 5.x while `arr[i]`
+and `length` are 96–99 % faster. Reopen only with a storage-model change.
 
 The owner keeps the `Array` subclass. `README.md` ("Limitations and best
 practices") now tells users to prefer an index loop or `forEach` in hot
