@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.35]
+
+### Fixed
+
+- `Encoder.BUFFER_SIZE` set from a CommonJS server now takes effect. On Node 22.12+, `require("@colyseus/schema")` loaded a second copy of the package next to the one `@colyseus/core` encodes with, so the "buffer overflow" warning kept appearing.
+
 ## [5.0.34]
 
 ### Fixed

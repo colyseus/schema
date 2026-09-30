@@ -1,6 +1,6 @@
 {
   "name": "@colyseus/schema",
-  "version": "5.0.34",
+  "version": "5.0.35",
   "description": "Automatic state replication for multiplayer games. Mutate plain objects, and every client gets a live, typed mirror through delta encoding.",
   "type": "module",
   "bin": {
@@ -50,12 +50,14 @@
   "exports": {
     ".": {
       "browser": "./build/index.mjs",
+      "module-sync": "./build/index.mjs",
       "import": "./build/index.mjs",
       "require": "./build/index.cjs",
       "types": "./build/index.d.ts"
     },
     "./input": {
       "browser": "./build/input/index.mjs",
+      "module-sync": "./build/input/index.mjs",
       "import": "./build/input/index.mjs",
       "require": "./build/input/index.cjs",
       "types": "./build/input/index.d.ts"
