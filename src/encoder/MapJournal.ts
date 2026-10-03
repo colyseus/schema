@@ -24,9 +24,11 @@ export class MapJournal<K = any> {
      * key → index (was MapSchema._collectionIndexes — forward direction).
      * Server-only. Plain object so MapSchema can expose it via a getter
      * for backwards-compatible `_collectionIndexes?.[key]` access from
-     * ChangeTree.forEachChild and similar polymorphic call sites.
+     * ChangeTree.forEachChild and similar polymorphic call sites. Null
+     * prototype, so keys like `"constructor"` or `"__proto__"` never resolve
+     * to an inherited `Object.prototype` member.
      */
-    indexByKey: { [key: string]: number } = {};
+    indexByKey: { [key: string]: number } = Object.create(null);
 
     /** Monotonic counter for assigning new indexes. Server-only. */
     private nextIndex: number = 0;
@@ -116,7 +118,7 @@ export class MapJournal<K = any> {
 
     /** Reset everything (called on .clear()). */
     reset(): void {
-        this.indexByKey = {};
+        this.indexByKey = Object.create(null);
         this.keyByIndex.clear();
         this.snapshots?.clear();
         this.nextIndex = 0;
