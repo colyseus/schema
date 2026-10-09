@@ -1475,4 +1475,106 @@ describe("Instance sharing", () => {
         });
     });
 
+    describe("an instance occupying more than one slot of the same array", () => {
+        /**
+         * A DELETE for a Schema child travels as DELETE_BY_REFID, and the decoder
+         * resolves it with `findIndex`, i.e. the first slot holding that instance.
+         * Removing a later occurrence therefore removed the earlier one instead, and
+         * the two arrays ended up in different orders.
+         *
+         * The client builds the array from deltas (one encode per mutation), which is
+         * the sequence that exposes it.
+         */
+        class Item extends Schema {
+            @type("string") name: string;
+        }
+
+        class Slots extends Schema {
+            @type([Item]) items = new ArraySchema<Item>();
+        }
+
+        const join = () => {
+            const state = new Slots();
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            return { state, client };
+        };
+
+        const step = (state: Slots, client: Slots, mutate: () => void) => {
+            mutate();
+            client.decode(state.encode());
+        };
+
+        const threeWithTheFirstRepeated = (state: Slots, item: Item) => {
+            state.items.push(item);
+            state.items.push(new Item().assign({ name: "other" }));
+            state.items.push(item);
+        };
+
+        it("keeps the order when the last occurrence is popped", () => {
+            const { state, client } = join();
+            const item = new Item().assign({ name: "shared" });
+
+            step(state, client, () => state.items.push(item));
+            step(state, client, () => state.items.push(new Item().assign({ name: "other" })));
+            step(state, client, () => state.items.push(item));
+            step(state, client, () => state.items.pop());
+
+            assert.deepStrictEqual(client.toJSON(), state.toJSON());
+            assertRefIdCounts(state, client);
+        });
+
+        it("keeps the order when the last occurrence is spliced out", () => {
+            const { state, client } = join();
+            const item = new Item().assign({ name: "shared" });
+
+            step(state, client, () => state.items.push(item));
+            step(state, client, () => state.items.push(new Item().assign({ name: "other" })));
+            step(state, client, () => state.items.push(item));
+            step(state, client, () => state.items.splice(2, 1));
+
+            assert.deepStrictEqual(client.toJSON(), state.toJSON());
+            assertRefIdCounts(state, client);
+        });
+
+        it("keeps the order when the middle occurrence is spliced out", () => {
+            const { state, client } = join();
+            const item = new Item().assign({ name: "shared" });
+
+            step(state, client, () => state.items.push(item));
+            step(state, client, () => state.items.push(new Item().assign({ name: "other" })));
+            step(state, client, () => state.items.push(item));
+            step(state, client, () => state.items.splice(1, 1));
+
+            assert.deepStrictEqual(client.toJSON(), state.toJSON());
+            assertRefIdCounts(state, client);
+        });
+
+        it("keeps the order with three occurrences and two of them removed", () => {
+            const { state, client } = join();
+            const item = new Item().assign({ name: "shared" });
+
+            step(state, client, () => state.items.push(item));
+            step(state, client, () => state.items.push(new Item().assign({ name: "other" })));
+            step(state, client, () => state.items.push(item));
+            step(state, client, () => state.items.push(new Item().assign({ name: "second" })));
+            step(state, client, () => state.items.push(item));
+            step(state, client, () => state.items.pop());
+
+            assert.deepStrictEqual(client.toJSON(), state.toJSON());
+            assertRefIdCounts(state, client);
+        });
+
+        it("keeps the by-identity delete when the instance occupies a single slot", () => {
+            const { state, client } = join();
+            const item = new Item().assign({ name: "shared" });
+
+            step(state, client, () => state.items.push(item));
+            step(state, client, () => state.items.push(new Item().assign({ name: "other" })));
+            step(state, client, () => state.items.pop());
+
+            assert.deepStrictEqual(client.toJSON(), state.toJSON());
+            assertRefIdCounts(state, client);
+        });
+    });
 });
