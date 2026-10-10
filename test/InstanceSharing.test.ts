@@ -1505,12 +1505,6 @@ describe("Instance sharing", () => {
             client.decode(state.encode());
         };
 
-        const threeWithTheFirstRepeated = (state: Slots, item: Item) => {
-            state.items.push(item);
-            state.items.push(new Item().assign({ name: "other" }));
-            state.items.push(item);
-        };
-
         it("keeps the order when the last occurrence is popped", () => {
             const { state, client } = join();
             const item = new Item().assign({ name: "shared" });

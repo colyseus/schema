@@ -206,11 +206,6 @@ export const encodeKeyValueOperation: EncodeOperation = function (
 }
 
 /**
- * Used for collections (MapSchema, ArraySchema, etc.)
- * @private
- */
-
-/**
  * How many live slots of an ArraySchema hold the instance with this refId.
  * Used to decide whether a DELETE can be sent by identity: the decoder
  * resolves one to the first matching slot, which is only the intended slot
@@ -228,6 +223,11 @@ function countSlotsWithRefId(ref: any, refId: number): number {
     }
     return count;
 }
+
+/**
+ * Used for collections (MapSchema, ArraySchema, etc.)
+ * @private
+ */
 export const encodeArray: EncodeOperation = function (
     encoder: Encoder,
     bytes: Uint8Array,
