@@ -3276,6 +3276,32 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([1, 2, 3, 8, 5], arr.with(-2, 8).toJSON());
         });
 
+        it("#toSpliced()", () => {
+            const arr = new ArraySchema<number>(1, 2, 3);
+            assert.deepStrictEqual([1, 9, 3], arr.toSpliced(1, 1, 9));
+            assert.deepStrictEqual([1, 2, 3], arr.toJSON());
+
+            // omitted deleteCount removes to the end; explicit undefined removes nothing
+            assert.deepStrictEqual([1], arr.toSpliced(1));
+            assert.deepStrictEqual([1, 2, 3], arr.toSpliced(1, undefined));
+            assert.deepStrictEqual([1, 2, 3], arr.toSpliced());
+            assert.deepStrictEqual([1, 2, 4, 3], arr.toSpliced(-1, 0, 4));
+        });
+
+        it("#toSpliced() does not record changes on the source array", () => {
+            const state = new State();
+            state.arrayOfPlayers = new ArraySchema(new Player("A"), new Player("B"));
+
+            const encoder = getEncoder(state);
+            encoder.discardChanges();
+
+            const spliced = state.arrayOfPlayers.toSpliced(0, 1);
+            assert.strictEqual(1, spliced.length);
+            assert.strictEqual("B", spliced[0].name);
+            assert.strictEqual(2, state.arrayOfPlayers.length);
+            assert.strictEqual(false, encoder.hasChanges);
+        });
+
         it(".from()", () => {
             const numbers = [1,2,3,4,5];
             assert.deepStrictEqual(numbers, ArraySchema.from(numbers).toJSON());

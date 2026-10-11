@@ -1027,8 +1027,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     toSpliced(start: number, deleteCount?: number): V[];
     // @ts-ignore
     toSpliced(start: unknown, deleteCount?: unknown, ...items?: unknown[]): V[] {
+        const copy = this.items.slice();
+        // forward `arguments` so an omitted deleteCount differs from an explicit undefined
         // @ts-ignore
-        return this.items.toSpliced.apply(copy, arguments);
+        copy.splice.apply(copy, arguments);
+        return copy;
     }
 
     shuffle() {

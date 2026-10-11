@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.37]
+
+### Fixed
+
+- `ArraySchema.toSpliced()` now returns the modified copy instead of throwing `ReferenceError: copy is not defined`. Thanks @snowyukitty! [#240](https://github.com/colyseus/schema/issues/240)
+
 ## [5.0.36]
 
 ### Fixed
