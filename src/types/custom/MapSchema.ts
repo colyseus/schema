@@ -430,7 +430,7 @@ export class MapSchema<V=any, K extends string = string> implements Map<K, V>, C
         // no-op — `Root.unregisterStream` handles the Set removal.
     }
 
-    toJSON() {
+    toJSON(): Record<string, V extends { toJSON(...args: any[]): infer R } ? R : V> {
         // fromEntries defines own properties, so a "__proto__" key stays an entry
         const map: any = Object.fromEntries(Array.from(this, ([key, value]: [K, any]) => [
             key,
