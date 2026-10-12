@@ -1139,7 +1139,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         return this.items.slice(0);
     }
 
-    toJSON() {
+    toJSON(): (V extends { toJSON(...args: any[]): infer R } ? R : V)[] {
         return this.toArray().map((value: any) => {
             return (typeof (value['toJSON']) === "function")
                 ? value['toJSON']()
