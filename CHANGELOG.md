@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.39]
+
+### Fixed
+
+- `ArraySchema.toJSON()` and `MapSchema.toJSON()` now return the serialized element type instead of `any`, so assigning the result to a mismatched type is caught at compile time. Thanks @snowyukitty! [#242](https://github.com/colyseus/schema/pull/242)
+
 ## [5.0.38]
 
 ### Fixed
