@@ -851,7 +851,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * @param initialValue If initialValue is specified, it is used as the initial value to start the accumulation. The first call to the callbackfn function provides this value as an argument instead of an array value.
      */
     reduce<U=V>(callbackfn: (previousValue: U, currentValue: V, currentIndex: number, array: V[]) => U, initialValue?: U): U {
-        return this.items.reduce(callbackfn, initialValue);
+        // forward `arguments`: an omitted initialValue seeds from the array, an explicit undefined doesn't
+        // @ts-ignore
+        return this.items.reduce.apply(this.items, arguments);
     }
 
     /**
@@ -860,7 +862,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * @param initialValue If initialValue is specified, it is used as the initial value to start the accumulation. The first call to the callbackfn function provides this value as an argument instead of an array value.
      */
     reduceRight<U=V>(callbackfn: (previousValue: U, currentValue: V, currentIndex: number, array: V[]) => U, initialValue?: U): U {
-        return this.items.reduceRight(callbackfn, initialValue);
+        // @ts-ignore
+        return this.items.reduceRight.apply(this.items, arguments);
     }
 
     /**

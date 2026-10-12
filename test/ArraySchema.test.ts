@@ -3288,6 +3288,32 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([1, 2, 4, 3], arr.toSpliced(-1, 0, 4));
         });
 
+        it("#reduce()", () => {
+            const arr = new ArraySchema<string>("a", "b", "c");
+            assert.strictEqual("abc", arr.reduce((acc, v) => acc + v));
+            assert.strictEqual("_abc", arr.reduce((acc, v) => acc + v, "_"));
+            assert.strictEqual("undefinedabc", arr.reduce((acc: any, v) => acc + v, undefined));
+
+            let calls = 0;
+            assert.strictEqual("x", new ArraySchema<string>("x").reduce((acc, v) => { calls++; return acc + v; }));
+            assert.strictEqual(0, calls);
+
+            assert.throws(() => new ArraySchema<string>().reduce((acc, v) => acc + v), TypeError);
+        });
+
+        it("#reduceRight()", () => {
+            const arr = new ArraySchema<string>("a", "b", "c");
+            assert.strictEqual("cba", arr.reduceRight((acc, v) => acc + v));
+            assert.strictEqual("_cba", arr.reduceRight((acc, v) => acc + v, "_"));
+            assert.strictEqual("undefinedcba", arr.reduceRight((acc: any, v) => acc + v, undefined));
+
+            let calls = 0;
+            assert.strictEqual("x", new ArraySchema<string>("x").reduceRight((acc, v) => { calls++; return acc + v; }));
+            assert.strictEqual(0, calls);
+
+            assert.throws(() => new ArraySchema<string>().reduceRight((acc, v) => acc + v), TypeError);
+        });
+
         it("#toSpliced() does not record changes on the source array", () => {
             const state = new State();
             state.arrayOfPlayers = new ArraySchema(new Player("A"), new Player("B"));
