@@ -12,9 +12,13 @@ export class TypeContext {
     /**
      * For inheritance support
      * Keeps track of which classes extends which. (parent -> children)
+     *
+     * Both are weak: `Reflection.decode()` makes new classes on every
+     * handshake (an SDK's state and `room.input()` class per join), and they
+     * must go away with their decoder instead of living here forever.
      */
-    static inheritedTypes = new Map<typeof Schema, Set<typeof Schema>>();
-    static cachedContexts = new Map<typeof Schema, TypeContext>();
+    static inheritedTypes = new WeakMap<typeof Schema, Set<typeof Schema>>();
+    static cachedContexts = new WeakMap<typeof Schema, TypeContext>();
 
     static register(target: typeof Schema) {
         const parent = Object.getPrototypeOf(target);

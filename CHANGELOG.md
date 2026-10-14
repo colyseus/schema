@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.40]
+
+### Fixed
+
+- A client no longer keeps the classes of every room it has joined. The classes `Reflection.decode()` builds from each handshake stayed in `TypeContext`'s static maps for good: the `room.input()` class once an `InputEncoder` encoded it, and every class that extends another. `TypeContext.cachedContexts` and `TypeContext.inheritedTypes` are `WeakMap`s now, so those classes go with their room.
+
 ## [5.0.39]
 
 ### Fixed
