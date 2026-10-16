@@ -206,6 +206,25 @@ export const encodeKeyValueOperation: EncodeOperation = function (
 }
 
 /**
+ * How many live slots of an ArraySchema hold the instance with this refId.
+ * Used to decide whether a DELETE can be sent by identity: the decoder
+ * resolves one to the first matching slot, which is only the intended slot
+ * while the instance appears exactly once in the array.
+ */
+function countSlotsWithRefId(ref: any, refId: number): number {
+    // Slots staged as deleted this tick still sit in `tmpItems` and MUST be
+    // counted: the question is whether the instance occupied more than one
+    // slot before the removal, and `pop()`/`splice()` shrink `items` first.
+    const tmpItems = ref.tmpItems;
+    let count = 0;
+    for (let i = 0; i < tmpItems.length; i++) {
+        const item = tmpItems[i];
+        if (item && item[$refId] === refId && ++count > 1) { return count; }
+    }
+    return count;
+}
+
+/**
  * Used for collections (MapSchema, ArraySchema, etc.)
  * @private
  */
@@ -264,8 +283,21 @@ export const encodeArray: EncodeOperation = function (
         //
         const item = ref.tmpItems[field];
         if (!item) { return; }
-        refOrIndex = item[$refId];
-        operation = OPERATION.DELETE_BY_REFID;
+
+        // A refId names an instance, not a slot. When the same instance occupies
+        // more than one live slot of this array the decoder resolves a
+        // DELETE_BY_REFID with `findIndex`, i.e. the first of them, so popping or
+        // splicing a later occurrence removes the wrong element and the two
+        // arrays diverge. Send the positional form in that case only, which keeps
+        // the idempotence above everywhere else.
+        const refId = item[$refId];
+        if (refId !== undefined && countSlotsWithRefId(ref, refId) > 1) {
+            refOrIndex = field;
+
+        } else {
+            refOrIndex = refId;
+            operation = OPERATION.DELETE_BY_REFID;
+        }
 
     } else {
         refOrIndex = field;
