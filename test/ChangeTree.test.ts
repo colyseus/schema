@@ -232,7 +232,7 @@ describe("ChangeTree", () => {
             decodedState.decode(state.encode());
 
             assert.strictEqual(1, encoder.root.refCount[entity2[$refId]]);
-            assert.strictEqual(0, encoder.root.refCount[entity1[$refId]]);
+            assert.strictEqual(undefined, encoder.root.refCount[entity1[$refId]]);
 
             assert.strictEqual(1, decoder.root.refCount[entity2[$refId]]);
             assert.strictEqual(undefined, decoder.root.refCount[entity1[$refId]]);
@@ -263,7 +263,7 @@ describe("ChangeTree", () => {
             decodedState.decode(state.encode());
 
             assert.strictEqual(1, encoder.root.refCount[entity2[$refId]]);
-            assert.strictEqual(0, encoder.root.refCount[entity1[$refId]]);
+            assert.strictEqual(undefined, encoder.root.refCount[entity1[$refId]]);
 
             assert.strictEqual(1, decoder.root.refCount[entity2[$refId]]);
             assert.strictEqual(undefined, decoder.root.refCount[entity1[$refId]]);
@@ -296,7 +296,7 @@ describe("ChangeTree", () => {
             assertRefIdCounts(state, decodedState);
 
             assert.strictEqual(1, encoder.root.refCount[entity2[$refId]]);
-            assert.strictEqual(0, encoder.root.refCount[entity1[$refId]]);
+            assert.strictEqual(undefined, encoder.root.refCount[entity1[$refId]]);
 
             assert.strictEqual(1, decoder.root.refCount[entity2[$refId]]);
             assert.strictEqual(undefined, decoder.root.refCount[entity1[$refId]]);

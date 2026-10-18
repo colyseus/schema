@@ -24,15 +24,16 @@ function encodeAllAndAssertRefCounts<T extends Schema>(state: T, encoder: Encode
     decoder.decode(encoder.encodeAll());
     assert.deepStrictEqual(decoder.state.toJSON(), state.toJSON());
 
-    for (const refId in encoder.root.refCount) {
+    const changeTrees = encoder.root.changeTrees;
+    for (const refId in changeTrees) {
         assert.strictEqual(
-            encoder.root.refCount[refId],
+            changeTrees[refId].refCount,
             decoder.root.refCount[refId] ?? 0,
             `refCount mismatch for refId ${refId}`,
         );
     }
     for (const refId of decoder.root.refs.keys()) {
-        assert.ok(encoder.root.refCount[refId] > 0, `decoder holds orphan refId ${refId}`);
+        assert.ok(changeTrees[refId]?.refCount > 0, `decoder holds orphan refId ${refId}`);
     }
 }
 

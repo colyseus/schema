@@ -441,12 +441,9 @@ export class Schema<C = any> implements IRef {
         const changeTree: ChangeTree = ref[$changes];
 
         const refId = (ref as IRef)[$refId];
-        const root = (decoder) ? decoder.root : changeTree.root;
-
          // log reference count if > 1
-        const refCount = (root?.refCount?.[refId] > 1)
-            ? ` [×${root.refCount[refId]}]`
-            : '';
+        const count = (decoder) ? decoder.root.refCount[refId] : changeTree.refCount;
+        const refCount = (count > 1) ? ` [×${count}]` : '';
 
         let output = `${getIndent(level)}${keyPrefix}${ref.constructor.name} (refId: ${refId})${refCount}${contents}\n`;
 

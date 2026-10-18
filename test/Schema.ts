@@ -63,9 +63,9 @@ export function assertRefIdCounts<T extends Schema>(source: T, target: T) {
     const encoder = getEncoder(source);
     const decoder = getDecoder(target);
 
-    for (const refId in encoder.root.refCount) {
-        const ref = encoder.root.changeTrees[refId]?.ref;
-        const encoderRefCount = encoder.root.refCount[refId];
+    const changeTrees = encoder.root.changeTrees;
+    for (const refId in changeTrees) {
+        const { ref, refCount: encoderRefCount } = changeTrees[refId];
         const decoderRefCount = decoder.root.refCount[refId] ?? 0;
         assert.strictEqual(encoderRefCount, decoderRefCount, `refCount mismatch for '${ref?.constructor.name}' (refId: ${refId}) => (Encoder count: ${encoderRefCount}, Decoder count: ${decoderRefCount})
 \n${Schema.debugRefIds(source)}`);
@@ -88,9 +88,10 @@ export function assertNoOrphanRefs<T extends Schema>(source: T, target: T) {
     const decoder = getDecoder(target);
 
     for (const refId of decoder.root.refs.keys()) {
+        const encoderRefCount = encoder.root.changeTrees[refId]?.refCount;
         assert.ok(
-            encoder.root.refCount[refId] > 0,
-            `decoder holds orphan refId ${refId} (${decoder.root.refs.get(refId)?.constructor.name}) — encoder refCount=${encoder.root.refCount[refId] ?? "absent"}
+            encoderRefCount > 0,
+            `decoder holds orphan refId ${refId} (${decoder.root.refs.get(refId)?.constructor.name}) — encoder refCount=${encoderRefCount ?? "absent"}
 \n${Schema.debugRefIds(source)}`,
         );
     }

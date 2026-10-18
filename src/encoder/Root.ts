@@ -36,8 +36,20 @@ export class Root {
      */
     protected nextUniqueId: number = 0;
 
-    refCount: {[id: number]: number} = {};
     changeTrees: {[refId: number]: ChangeTree} = {};
+
+    /**
+     * Reference count of every live tree, keyed by refId. Debug/test aid:
+     * materialized from `ChangeTree.refCount` on each access (O(trees)) —
+     * read `ref[$changes].refCount` for a single instance.
+     */
+    get refCount(): {[refId: number]: number} {
+        const counts: {[refId: number]: number} = {};
+        for (const refId in this.changeTrees) {
+            counts[refId] = this.changeTrees[refId].refCount;
+        }
+        return counts;
+    }
 
     /**
      * Queue of all ChangeTrees with reliable dirty state. Per-tick encode()
@@ -176,23 +188,15 @@ export class Root {
         const isNewChangeTree = (this.changeTrees[refId] === undefined);
         if (isNewChangeTree) { this.changeTrees[refId] = changeTree; }
 
-        const previousRefCount = this.refCount[refId];
-        if (previousRefCount === 0 || changeTree.needsRestage) {
-            //
-            // Re-stage every currently-populated non-patchOnly index as a
-            // fresh ADD in the matching dirty bucket so the next encode
-            // re-emits it on the correct channel. Two triggers:
-            // - refCount 0: a previously-removed tree re-added under the
-            //   same refId (its ops were consumed by an earlier encode).
-            // - NEEDS_RESTAGE: a `Schema.reset` instance re-entering under
-            //   a fresh refId (reset cleared the buckets; its retained
-            //   values would otherwise never be encoded).
-            //
+        if (changeTree.needsRestage) {
+            // re-emit every live field as ADD on its channel (see NEEDS_RESTAGE)
             changeTree.needsRestage = false;
             changeTree.forEachLiveWithCtx(changeTree, restageLiveCb);
         }
 
-        this.refCount[refId] = (previousRefCount || 0) + 1;
+        // new to this root: discard a count carried over from a previous Encoder
+        const previousRefCount = isNewChangeTree ? 0 : changeTree.refCount;
+        changeTree.refCount = previousRefCount + 1;
 
         // Gained a 2nd+ parent edge (instance sharing / re-assignment) —
         // re-derive filter state before the next encode. Chokepoint for
@@ -203,15 +207,14 @@ export class Root {
     }
 
     remove(changeTree: ChangeTree) {
-        const refId = changeTree.ref[$refId];
-        const refCount = (this.refCount[refId]) - 1;
+        const refCount = changeTree.refCount - 1;
 
         if (refCount <= 0) {
             //
             // Only remove "root" reference if it's the last reference
             //
             changeTree.root = undefined;
-            delete this.changeTrees[refId];
+            delete this.changeTrees[changeTree.ref[$refId]];
 
             // Streamable-collection detach (StreamSchema + any `.stream()`
             // collection). Tree flag is cheaper than the class-level
@@ -225,17 +228,16 @@ export class Root {
             this.removeFromQueue(changeTree);
             this.removeFromUnreliableQueue(changeTree);
 
-            this.refCount[refId] = 0;
+            changeTree.refCount = 0;
+            changeTree.needsRestage = true;
 
             changeTree.forEachChild((child, _) => {
                 if (child.removeParent(changeTree.ref)) {
-                    if ((
-                        child.parentRef === undefined || // no parent, remove it
-                        (child.parentRef && this.refCount[child.ref[$refId]] > 0) // parent is still in use, but has more than one reference, remove it
-                    )) {
+                    // orphaned, or still counted under this root: release this edge
+                    if (child.parentRef === undefined || child.refCount > 0) {
                         this.remove(child);
 
-                    } else if (child.parentRef) {
+                    } else {
                         // re-assigning a child of the same root, move it next to parent
                         this.moveNextToParent(child);
                     }
@@ -243,7 +245,7 @@ export class Root {
             });
 
         } else {
-            this.refCount[refId] = refCount;
+            changeTree.refCount = refCount;
 
             // Lost one of several parent edges — the surviving edge set may
             // no longer include a public path (or may have gained one).

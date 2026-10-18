@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.41]
+
+### Fixed
+
+- Rooms that keep replacing child instances no longer grow in memory without bound: the encoder kept a reference-count entry for every instance ever attached. Thanks @wachiiiiii! [#244](https://github.com/colyseus/schema/issues/244)
+
+### Changed
+
+- `encoder.root.refCount` is now a read-only snapshot built on each access; read `instance[$changes].refCount` for a single instance.
+
 ## [5.0.40]
 
 ### Fixed

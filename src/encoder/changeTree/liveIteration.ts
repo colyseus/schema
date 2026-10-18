@@ -18,7 +18,7 @@ import type { ChangeTree } from "../ChangeTree.js";
 
 /**
  * Re-stage one live index as a fresh ADD on its channel. Shared by
- * `Root.add` (refCount-0 / NEEDS_RESTAGE re-adds) and
+ * `Root.add` (NEEDS_RESTAGE re-adds) and
  * `inheritedFlags.refreshFilterState` (filtered→public flip) via
  * `forEachLiveWithCtx(tree, restageLiveCb)` — one home for the
  * unreliable-routing rule.

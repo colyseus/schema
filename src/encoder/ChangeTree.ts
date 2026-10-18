@@ -145,11 +145,11 @@ export const IS_UNRELIABLE = 8, IS_PATCH_ONLY = 16, IS_FULL_STATE_ONLY = 32;
 // `t.map(X).stream()` / `t.set(X).stream()` route through the same
 // emission machinery.
 export const IS_STREAM_COLLECTION = 64;
-// Set by `recycle()` (Schema.reset / pooling): the tree's values are live
-// but its dirty buckets were cleared, so `Root.add` must re-stage every
-// populated field as ADD when the instance re-enters a tree. Without this,
-// only fields assigned after `pool.acquire()` would reach the wire — the
-// retained ones (constructor-initialized children) would never be encoded.
+// Set by `recycle()` (Schema.reset / pooling) and by `Root.remove()` on the
+// last reference: the tree's values are live but its pending ops are gone
+// (cleared, or consumed by an earlier encode), so `Root.add` must re-stage
+// every populated field as ADD when the instance re-enters a tree. Without
+// this, only fields assigned after re-entry would reach the wire.
 export const NEEDS_RESTAGE = 128;
 // Queued in `Root.pendingFilterRefresh` — the tree's parent-edge set changed
 // (instance sharing gained/lost an edge) and `isFiltered` /
@@ -225,6 +225,10 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
     // Packed boolean flags. See IS_* constants above for bit layout.
     flags: number = IS_NEW;
+
+    // Parent edges under `root`. Lives on the tree, not in a Root map keyed by
+    // refId: refIds are never reused, so a map would grow forever (#244).
+    refCount: number = 0;
 
     /**
      * Per-walk visit stamp written by `Encoder.encodeFullSync`'s DFS. A

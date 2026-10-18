@@ -18,6 +18,19 @@ describe("Encoder Root", () => {
         @type({ map: Leaf }) noise = new MapSchema<Leaf>();
     }
 
+    // Encode/decode one tick and assert the decoder agrees on state and refCounts.
+    function connect(encoder: Encoder<State>) {
+        const decoder = Reflection.decode<State>(Reflection.encode(encoder));
+        decoder.decode(encoder.encodeAll());
+        encoder.discardChanges();
+        return () => {
+            decoder.decode(encoder.encode());
+            encoder.discardChanges();
+            assert.deepStrictEqual(encoder.root.refCount, decoder.root.refCount);
+            assert.deepStrictEqual(decoder.state.toJSON(), encoder.state.toJSON());
+        };
+    }
+
     it("repositions a ChangeTree after its parent without scanning the queue", () => {
         const state = new State();
         const encoder = new Encoder(state);
@@ -228,7 +241,62 @@ describe("Encoder Root", () => {
                 encoder.discardChanges();
                 decoder.decode(bytes);
                 assert.deepStrictEqual(decoder.state.toJSON(), state.toJSON(), `seed=${seed} tick=${t}`);
+                assert.deepStrictEqual(encoder.root.refCount, decoder.root.refCount, `refCount seed=${seed} tick=${t}`);
             }
         }
+    });
+
+    it("releases the refCount entry of a removed tree (#244)", () => {
+        const state = new State();
+        const tick = connect(new Encoder(state));
+
+        // refIds are never reused: each rebuild attaches fresh refIds
+        for (let t = 0; t < 20; t++) {
+            state.noise.clear();
+            for (let i = 0; i < 10; i++) {
+                state.noise.set(`n-${i}`, new Leaf().assign({ value: t }));
+            }
+            tick();
+        }
+    });
+
+    // `room.state = state` builds a new Encoder over trees that already
+    // carry a count from the previous one.
+    it("counts references per Encoder when the same state is re-assigned (#244)", () => {
+        const state = new State();
+        const leaf = new Leaf().assign({ value: 1 });
+        state.noise.set("l", leaf);
+        const previous = new Encoder(state);
+        previous.encode();
+        previous.discardChanges();
+
+        const tick = connect(new Encoder(state));
+
+        state.noise.delete("l");
+        tick();
+
+        leaf.value = 10;
+        state.noise.set("l", leaf);
+        tick();
+    });
+
+    it("counts references per Encoder when a new state adopts an old state's collection (#244)", () => {
+        const previousState = new State();
+        const leaf = new Leaf().assign({ value: 1 });
+        previousState.noise.set("l", leaf);
+        const previous = new Encoder(previousState);
+        previous.encode();
+        previous.discardChanges();
+
+        const state = new State();
+        state.noise = previousState.noise;
+        const tick = connect(new Encoder(state));
+
+        state.noise.delete("l");
+        tick();
+
+        leaf.value = 10;
+        state.noise.set("l", leaf);
+        tick();
     });
 });
