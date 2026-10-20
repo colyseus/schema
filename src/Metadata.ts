@@ -63,23 +63,32 @@ export function resolveFieldType(type: any): { complexTypeKlass: TypeDefinition 
 }
 
 /**
- * Collections can only hold primitives or Schema classes. A collection of
- * collections used to fail much later with an unrelated TypeError, so reject
- * it while the field is being defined.
+ * Normalize a field type (enum, `[T]`, `{ map: T }`, quantized, …).
+ *
+ * Collections hold primitives or Schema classes only — Reflection can't
+ * describe a deeper child — so a collection of collections throws here,
+ * prefixed with `field` when given.
  */
-function assertNotNestedCollection(collection: string, child: any) {
-    if (typeof child !== "object" || child === null) { return; }
-    const inner = Object.keys(child).find(k => registeredTypes[k] !== undefined);
-    if (inner !== undefined) {
-        throw new Error(`@colyseus/schema: nested collections are not supported ("${collection}" of "${inner}"). Collections can only hold primitive types or Schema classes, wrap the inner ${inner} in a Schema class.`);
+export function getNormalizedType(type: any, field?: string): DefinitionType {
+    const normalized = normalizeType(type);
+    const collection = getCollectionKey(normalized);
+    const inner = collection && getCollectionKey((normalized as any)[collection]);
+    if (inner) {
+        throw new Error(`${field ? `${field}: ` : ""}@colyseus/schema: nested collections are not supported ("${collection}" of "${inner}"). Collections can only hold primitive types or Schema classes, wrap the inner ${inner} in a Schema class.`);
     }
+    return normalized;
 }
 
-export function getNormalizedType(type: any): DefinitionType  {
+/** The registered collection key of a `{ map: … }`-style descriptor, if any. */
+function getCollectionKey(type: any): string | undefined {
+    return (typeof type === "object" && type !== null)
+        ? Object.keys(type).find(k => registeredTypes[k] !== undefined)
+        : undefined;
+}
+
+function normalizeType(type: any): DefinitionType {
     if (Array.isArray(type)) {
-        const child = getNormalizedType(type[0]);
-        assertNotNestedCollection("array", child);
-        return { array: child };
+        return { array: normalizeType(type[0]) };
 
     } else if (isQuantizedType(type)) {
         // `{ quantized: ... }` — a scalar wire type, NOT a collection/ref. Resolve
@@ -100,10 +109,9 @@ export function getNormalizedType(type: any): DefinitionType  {
 
     } else if (typeof type === "object" && type !== null) {
         // Handle collection types
-        const collectionType = Object.keys(type).find(k => registeredTypes[k] !== undefined);
+        const collectionType = getCollectionKey(type);
         if (collectionType) {
-            type[collectionType] = getNormalizedType(type[collectionType]);
-            assertNotNestedCollection(collectionType, type[collectionType]);
+            type[collectionType] = normalizeType(type[collectionType]);
             return type;
         }
     }
@@ -437,7 +445,7 @@ export const Metadata = {
         fieldName: string,
         type: DefinitionType,
     ) {
-        const normalized = getNormalizedType(type);
+        const normalized = getNormalizedType(type, `${target.name}.${fieldName}`);
         const { complexTypeKlass, childType } = resolveFieldType(normalized);
 
         Metadata.addField(

@@ -291,11 +291,7 @@ export function type (
         }
 
         // Normalize type (enum/collection/etc)
-        try {
-            type = getNormalizedType(type);
-        } catch (e) {
-            throw new Error(`${constructor.name}.${field}: ${e.message}`);
-        }
+        type = getNormalizedType(type, `${constructor.name}.${field}`);
 
         // for inheritance support
         TypeContext.register(constructor);
@@ -816,6 +812,7 @@ export function schema<
 
     for (const fieldName in fieldsAndMethods) {
         const value: any = (fieldsAndMethods as any)[fieldName];
+        const where = `schema(${name ? `'${name}'` : ""}): field '${fieldName}'`;
 
         if (isBuilder(value)) {
             const def = value['toDefinition'](); // private; element access bypasses visibility
@@ -827,7 +824,7 @@ export function schema<
                 if (def.view !== undefined || def.unreliable ||
                     def.patchOnly || def.fullStateOnly || def.stream) {
                     throw new Error(
-                        `schema(${name ? `'${name}'` : ""}): field '${fieldName}' uses .noSync() ` +
+                        `${where} uses .noSync() ` +
                         `together with a sync-only modifier (.view/.unreliable/.patchOnly/.fullStateOnly/.stream). ` +
                         `A local-only field cannot be synchronized.`
                     );
@@ -840,17 +837,17 @@ export function schema<
             // both leaves it with nowhere to go — a silent .noSync().
             if (def.patchOnly && def.fullStateOnly) {
                 throw new Error(
-                    `schema(${name ? `'${name}'` : ""}): field '${fieldName}' uses .patchOnly() ` +
+                    `${where} uses .patchOnly() ` +
                     `together with .fullStateOnly(). Those are the only two delivery channels, ` +
                     `so the field would never reach a client — use .noSync() if that is intended.`
                 );
             }
 
-            const normalizedType = getNormalizedType(def.type);
+            const normalizedType = getNormalizedType(def.type, where);
             // A synced ref must be encodable (a Schema, or Metadata.setFields()'d) — reject a bare class.
             if (typeof normalizedType === "function" && !Schema.is(normalizedType)) {
                 throw new Error(
-                    `schema(${name ? `'${name}'` : ""}): field '${fieldName}' is a synced ref to non-Schema ` +
+                    `${where} is a synced ref to non-Schema ` +
                     `class '${normalizedType.name || "(anonymous)"}' — use .noSync(), or Metadata.setFields().`
                 );
             }
@@ -880,7 +877,7 @@ export function schema<
 
         } else {
             throw new Error(
-                `schema(${name ? `'${name}'` : ""}): field '${fieldName}' must be a t.* builder, ` +
+                `${where} must be a t.* builder, ` +
                 `Schema subclass, or method (got ${typeof value}).`
             );
         }

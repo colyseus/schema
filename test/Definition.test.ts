@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { Schema, type, defineTypes, MapSchema, ArraySchema, t } from "../src";
+import { Schema, type, defineTypes, MapSchema, ArraySchema, Metadata, t } from "../src";
 import { schema, SchemaType } from "../src/annotations";
 import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
 import { $numFields } from "../src/types/symbols";
@@ -30,8 +30,6 @@ describe("Definition Tests", () => {
     });
 
     describe("nested collections", () => {
-        const NESTED = /nested collections are not supported/;
-
         it("should reject a map of maps with a clear error", () => {
             assert.throws(() => {
                 class State extends Schema {
@@ -45,7 +43,7 @@ describe("Definition Tests", () => {
                 class State extends Schema {
                     @type({ map: { array: "string" } }) tags = new MapSchema<ArraySchema<string>>();
                 }
-            }, NESTED);
+            }, /"map" of "array"/);
             assert.throws(() => {
                 class State extends Schema {
                     @type([["string"]]) grid = new ArraySchema<ArraySchema<string>>();
@@ -53,17 +51,14 @@ describe("Definition Tests", () => {
             }, /"array" of "array"/);
         });
 
-        it("should still allow collections of Schema classes", () => {
-            class Row extends Schema {
-                @type(["number"]) cells = new ArraySchema<number>();
-            }
-            class Grid extends Schema {
-                @type([Row]) rows = new ArraySchema<Row>();
-                @type({ map: Row }) named = new MapSchema<Row>();
-            }
-            const grid = new Grid();
-            grid.rows.push(new Row());
-            assert.strictEqual(grid.rows.length, 1);
+        it("should name the field when defined via Metadata.setFields() or schema()", () => {
+            assert.throws(() => {
+                class State extends Schema {}
+                Metadata.setFields(State, { scores: { map: { map: "number" } } } as any);
+            }, /^Error: State\.scores: @colyseus\/schema: nested collections/);
+            assert.throws(() => {
+                schema({ grid: t.array(["string"] as any) }, "Grid");
+            }, /^Error: schema\('Grid'\): field 'grid': @colyseus\/schema: nested collections/);
         });
     });
 
