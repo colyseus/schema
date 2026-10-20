@@ -2,6 +2,7 @@ import * as assert from "assert";
 
 import { Schema, type, defineTypes, MapSchema, ArraySchema, Metadata, t } from "../src";
 import { schema, SchemaType } from "../src/annotations";
+import { getNormalizedType } from "../src/Metadata";
 import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
 import { $numFields } from "../src/types/symbols";
 
@@ -60,6 +61,16 @@ describe("Definition Tests", () => {
                 schema({ grid: t.array(["string"] as any) }, "Grid");
             }, /^Error: schema\('Grid'\): field 'grid': @colyseus\/schema: nested collections/);
         });
+    });
+
+    it("should normalize types that carry a `type` key", () => {
+        class Item extends Schema { static type = "item"; @type("number") x = 1; }
+        enum Kind { type, other }
+        enum Tag { type = "type" }
+        assert.strictEqual(getNormalizedType(Item), Item);
+        assert.strictEqual(getNormalizedType(Kind), "number");
+        assert.strictEqual(getNormalizedType(Tag), "string");
+        assert.deepStrictEqual(getNormalizedType({ type: ["string"] }), { array: "string" });
     });
 
     describe("no fields", () => {

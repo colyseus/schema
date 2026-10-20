@@ -5,7 +5,7 @@ import { MapSchema } from './types/custom/MapSchema.js';
 import { getNormalizedType, Metadata, resolveFieldType } from "./Metadata.js";
 import { $changes, $childType, $descriptors, $encoders, $numFields, $track, $values } from "./types/symbols.js";
 import { encode } from "./encoding/encode.js";
-import { TypeDefinition, getType } from "./types/registry.js";
+import { TypeDefinition } from "./types/registry.js";
 import { OPERATION } from "./encoding/spec.js";
 import { TypeContext } from "./types/TypeContext.js";
 import { assertInstanceType, assertType, EncodeSchemaError } from "./encoding/assert.js";
@@ -290,7 +290,6 @@ export function type (
             throw new Error(`${constructor.name}: @type() reference provided for "${field}" is undefined. Make sure you don't have any circular dependencies.`);
         }
 
-        // Normalize type (enum/collection/etc)
         type = getNormalizedType(type, `${constructor.name}.${field}`);
 
         // for inheritance support
@@ -313,13 +312,9 @@ export function type (
             } else if (metadata[fieldIndex].type !== undefined) {
                 // trying to define same property multiple times across inheritance.
                 // https://github.com/colyseus/colyseus-unity3d/issues/131#issuecomment-814308572
-                try {
-                    throw new Error(`@colyseus/schema: Duplicate '${field}' definition on '${constructor.name}'.\nCheck @type() annotation`);
-
-                } catch (e) {
-                    const definitionAtLine = e.stack.split("\n")[4].trim();
-                    throw new Error(`${e.message} ${definitionAtLine}`);
-                }
+                const e = new Error(`@colyseus/schema: Duplicate '${field}' definition on '${constructor.name}'.\nCheck @type() annotation`);
+                // [4]: past the 2-line message, this frame and the __decorate helper → the user's class
+                throw new Error(`${e.message} ${e.stack.split("\n")[4].trim()}`);
             }
 
         } else {
@@ -867,7 +862,7 @@ export function schema<
         } else if (typeof value === "function") {
             if (Schema.is(value)) {
                 // Convenience: allow a bare Schema subclass (equivalent to `t.ref(Class)`).
-                fields[fieldName] = getNormalizedType(value);
+                fields[fieldName] = value;
                 if (!value.prototype.initialize || value.prototype.initialize.length === 0) {
                     defaultFactories[fieldName] = () => new (value as any)();
                 }

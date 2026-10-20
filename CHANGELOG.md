@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.42]
+
+### Fixed
+
+- Declaring a collection of collections (`{ map: { map: "number" } }`, `[["string"]]`, …) now throws when the class is defined, naming the field, instead of failing later with an unrelated `TypeError`. Wrap the inner collection in a Schema class. Thanks @vtxe02023274! [#212](https://github.com/colyseus/schema/issues/212), [#245](https://github.com/colyseus/schema/pull/245)
+- A Schema class with a `static type` property, or an enum with a member named `type` or `quantized`, can be used as a field type. Both were misread as type descriptors.
+
 ## [5.0.41]
 
 ### Fixed

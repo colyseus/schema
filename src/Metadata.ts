@@ -1,6 +1,6 @@
 import { DefinitionType, getPropertyDescriptor } from "./annotations.js";
 import { Schema } from "./Schema.js";
-import { getType, registeredTypes, TypeDefinition } from "./types/registry.js";
+import { registeredTypes, TypeDefinition } from "./types/registry.js";
 import { $decoder, $descriptors, $encoder, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
@@ -55,11 +55,10 @@ export type Metadata =
  * property accessor that knows whether the slot holds a collection.
  */
 export function resolveFieldType(type: any): { complexTypeKlass: TypeDefinition | false, childType: any } {
-    const complexTypeKlass = typeof (Object.keys(type)[0]) === "string" && getType(Object.keys(type)[0]);
-    return {
-        complexTypeKlass,
-        childType: complexTypeKlass ? Object.values(type)[0] : type,
-    };
+    const key = getCollectionKey(type);
+    return key
+        ? { complexTypeKlass: registeredTypes[key], childType: type[key] }
+        : { complexTypeKlass: false, childType: type };
 }
 
 /**
@@ -87,56 +86,48 @@ function getCollectionKey(type: any): string | undefined {
 }
 
 function normalizeType(type: any): DefinitionType {
+    if (typeof type !== "object" || type === null) {
+        return type; // a class's static `type` is not an alias
+    }
     if (Array.isArray(type)) {
         return { array: normalizeType(type[0]) };
+    }
 
-    } else if (isQuantizedType(type)) {
+    // before the key probes below: an enum may have a `type` or `quantized` member
+    const enumType = getEnumType(type);
+    if (enumType) {
+        return enumType;
+    }
+
+    if (isQuantizedType(type)) {
         // `{ quantized: ... }` — a scalar wire type, NOT a collection/ref. Resolve
         // raw options (the `@type({quantized:{min,max}})` path) once; an already-
         // resolved descriptor (the `t.quantized()` builder path) passes through.
         return (typeof (type.quantized as any).wire === "string")
             ? type
             : { quantized: resolveQuantize(type.quantized as any) } as any;
+    }
+    if (type.type !== undefined) {
+        return normalizeType(type.type);
+    }
 
-    } else if (typeof (type['type']) !== "undefined") {
-        return type['type'];
-
-    } else if (isTSEnum(type)) {
-        // Detect TS Enum type (either string or number)
-        return Object.keys(type).every(key => typeof type[key] === "string")
-            ? "string"
-            : "number";
-
-    } else if (typeof type === "object" && type !== null) {
-        // Handle collection types
-        const collectionType = getCollectionKey(type);
-        if (collectionType) {
-            type[collectionType] = normalizeType(type[collectionType]);
-            return type;
-        }
+    const collectionType = getCollectionKey(type);
+    if (collectionType) {
+        type[collectionType] = normalizeType(type[collectionType]);
     }
     return type;
 }
 
-function isTSEnum(_enum: any) {
-    if (typeof _enum === 'function' && _enum[Symbol.metadata]) {
-        return false;
+/** Wire type of a TS enum object, or `undefined` if it isn't one. */
+function getEnumType(e: any): "string" | "number" | undefined {
+    const keys = Object.keys(e);
+    const numericKeys = keys.filter(k => /\d+/.test(k));
+    if (numericKeys.length > 0 && numericKeys.length === keys.length / 2 && e[e[numericKeys[0]]] == numericKeys[0]) {
+        return "number"; // numeric keys with a reverse mapping
     }
-
-    const keys = Object.keys(_enum);
-    const numericFields = keys.filter(k => /\d+/.test(k));
-
-    // Check for number enum (has numeric keys and reverse mapping)
-    if (numericFields.length > 0 && numericFields.length === (keys.length / 2) && _enum[_enum[numericFields[0]]] == numericFields[0]) {
-        return true;
+    if (keys.length > 0 && keys.every(k => e[k] === k)) {
+        return "string";
     }
-
-    // Check for string enum (all values are strings and keys match values)
-    if (keys.length > 0 && keys.every(key => typeof _enum[key] === 'string' && _enum[key] === key)) {
-        return true;
-    }
-
-    return false;
 }
 
 // Copied parent → subclass on Metadata.initialize, so each class owns its list.
@@ -175,7 +166,7 @@ export const Metadata = {
         metadata[index] = Object.assign(
             metadata[index] || {}, // avoid overwriting previous field metadata (@deprecated / @unreliable)
             {
-                type: getNormalizedType(type),
+                type, // callers pass it normalized
                 index,
                 name,
             }
