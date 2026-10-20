@@ -291,7 +291,11 @@ export function type (
         }
 
         // Normalize type (enum/collection/etc)
-        type = getNormalizedType(type);
+        try {
+            type = getNormalizedType(type);
+        } catch (e) {
+            throw new Error(`${constructor.name}.${field}: ${e.message}`);
+        }
 
         // for inheritance support
         TypeContext.register(constructor);

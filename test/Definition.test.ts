@@ -29,6 +29,44 @@ describe("Definition Tests", () => {
         assert.deepStrictEqual(Object.keys(obj.players.get('one')), ['somethingPrivate']);
     });
 
+    describe("nested collections", () => {
+        const NESTED = /nested collections are not supported/;
+
+        it("should reject a map of maps with a clear error", () => {
+            assert.throws(() => {
+                class State extends Schema {
+                    @type({ map: { map: "number" } }) scores = new MapSchema<MapSchema<number>>();
+                }
+            }, /State\.scores: @colyseus\/schema: nested collections are not supported \("map" of "map"\)/);
+        });
+
+        it("should reject a map of arrays and an array of arrays", () => {
+            assert.throws(() => {
+                class State extends Schema {
+                    @type({ map: { array: "string" } }) tags = new MapSchema<ArraySchema<string>>();
+                }
+            }, NESTED);
+            assert.throws(() => {
+                class State extends Schema {
+                    @type([["string"]]) grid = new ArraySchema<ArraySchema<string>>();
+                }
+            }, /"array" of "array"/);
+        });
+
+        it("should still allow collections of Schema classes", () => {
+            class Row extends Schema {
+                @type(["number"]) cells = new ArraySchema<number>();
+            }
+            class Grid extends Schema {
+                @type([Row]) rows = new ArraySchema<Row>();
+                @type({ map: Row }) named = new MapSchema<Row>();
+            }
+            const grid = new Grid();
+            grid.rows.push(new Row());
+            assert.strictEqual(grid.rows.length, 1);
+        });
+    });
+
     describe("no fields", () => {
         it("should allow a Schema instance with no fields", () => {
             class IDontExist extends Schema { }

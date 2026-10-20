@@ -62,9 +62,24 @@ export function resolveFieldType(type: any): { complexTypeKlass: TypeDefinition 
     };
 }
 
+/**
+ * Collections can only hold primitives or Schema classes. A collection of
+ * collections used to fail much later with an unrelated TypeError, so reject
+ * it while the field is being defined.
+ */
+function assertNotNestedCollection(collection: string, child: any) {
+    if (typeof child !== "object" || child === null) { return; }
+    const inner = Object.keys(child).find(k => registeredTypes[k] !== undefined);
+    if (inner !== undefined) {
+        throw new Error(`@colyseus/schema: nested collections are not supported ("${collection}" of "${inner}"). Collections can only hold primitive types or Schema classes, wrap the inner ${inner} in a Schema class.`);
+    }
+}
+
 export function getNormalizedType(type: any): DefinitionType  {
     if (Array.isArray(type)) {
-        return { array: getNormalizedType(type[0]) };
+        const child = getNormalizedType(type[0]);
+        assertNotNestedCollection("array", child);
+        return { array: child };
 
     } else if (isQuantizedType(type)) {
         // `{ quantized: ... }` — a scalar wire type, NOT a collection/ref. Resolve
@@ -88,6 +103,7 @@ export function getNormalizedType(type: any): DefinitionType  {
         const collectionType = Object.keys(type).find(k => registeredTypes[k] !== undefined);
         if (collectionType) {
             type[collectionType] = getNormalizedType(type[collectionType]);
+            assertNotNestedCollection(collectionType, type[collectionType]);
             return type;
         }
     }
