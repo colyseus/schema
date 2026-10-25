@@ -3705,7 +3705,7 @@ describe("ArraySchema Tests", () => {
                 assertInSync(state, decodedState);
             });
 
-            it("primitive arrays are not cancelled (positional DELETE is already safe)", () => {
+            it("primitive arrays are cancelled too", () => {
                 class Prim extends Schema {
                     @type(["string"]) list = new ArraySchema<string>();
                 }
@@ -3717,8 +3717,14 @@ describe("ArraySchema Tests", () => {
                 state.list.push("X");
                 state.list.pop();
                 const patch = state.encode();
-                assert.ok(patch.byteLength > 0, "the positional DELETE must still go out");
+                assert.strictEqual(patch.byteLength, 0, "nothing changed — the patch must be empty");
                 decodedState.decode(patch);
+                assert.deepStrictEqual(Array.from(decodedState.list), ["a", "b"]);
+
+                // a positional DELETE here would hit the client's "a"
+                state.list.unshift("X");
+                state.list.shift();
+                decodedState.decode(state.encode());
                 assert.deepStrictEqual(Array.from(decodedState.list), ["a", "b"]);
             });
 
@@ -3955,6 +3961,109 @@ describe("ArraySchema Tests", () => {
                     });
                 }
             }
+        });
+    });
+
+    describe("remove then insert in the same patch", () => {
+        class Item extends Schema {
+            @type("number") id: number;
+        }
+        class State extends Schema {
+            @type(["number"]) numbers = new ArraySchema<number>();
+            @type([Item]) items = new ArraySchema<Item>();
+        }
+
+        const item = (id: number) => new Item().assign({ id });
+        const ids = (arr: ArraySchema<Item>) => arr.map((i) => i.id);
+
+        /** Client bootstrapped via encodeAll(); `mutate` then runs as a single patch. */
+        function sync(initial: (state: State) => void, mutate: (state: State) => void) {
+            const state = new State();
+            initial(state);
+            const encoder = getEncoder(state);
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(encoder.encodeAll());
+            encoder.discardChanges();
+
+            mutate(state);
+            decodedState.decode(encoder.encode());
+
+            assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+            assertRefIdCounts(state, decodedState);
+            assertNoOrphanRefs(state, decodedState);
+            return decodedState;
+        }
+
+        it("splice() append after a staged delete lands after the survivors", () => {
+            const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
+                s.numbers.splice(0, 1);
+                s.numbers.splice(1, 0, 3);
+            });
+            assert.deepStrictEqual(Array.from(decoded.numbers), [2, 3]);
+        });
+
+        it("unshift(shift()) keeps the instance", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                s.items.unshift(s.items.shift());
+            });
+            assert.deepStrictEqual(ids(decoded.items), [1, 2]);
+        });
+
+        it("unshift(pop()) moves the instance to the front", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2), item(3)), (s) => {
+                s.items.unshift(s.items.pop());
+            });
+            assert.deepStrictEqual(ids(decoded.items), [3, 1, 2]);
+        });
+
+        it("splice() re-insert of a removed instance ahead of its old slot", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2), item(3)), (s) => {
+                const [removed] = s.items.splice(2, 1);
+                s.items.splice(0, 0, removed);
+            });
+            assert.deepStrictEqual(ids(decoded.items), [3, 1, 2]);
+        });
+
+        it("unshift() + shift() on primitives keeps the client's first element", () => {
+            const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
+                s.numbers.unshift(3);
+                s.numbers.unshift(4);
+                s.numbers.shift();
+            });
+            assert.deepStrictEqual(Array.from(decoded.numbers), [3, 1, 2]);
+        });
+
+        it("splice-replace then pop() deletes the element the client holds", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                s.items.splice(1, 1, item(3));
+                s.items.pop();
+            });
+            assert.deepStrictEqual(ids(decoded.items), [1]);
+        });
+
+        it("index write then pop() deletes the element the client holds", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                s.items[1] = item(3);
+                s.items.pop();
+            });
+            assert.deepStrictEqual(ids(decoded.items), [1]);
+        });
+
+        it("splice-replace, then an insert ahead of it, then delete it", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2), item(3)), (s) => {
+                s.items.splice(1, 1, item(4));
+                s.items.unshift(item(5));
+                s.items.splice(2, 1);
+            });
+            assert.deepStrictEqual(ids(decoded.items), [5, 1, 3]);
+        });
+
+        it("unshift() then an index write over the unshifted slot", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                s.items.unshift(item(3));
+                s.items[0] = item(4);
+            });
+            assert.deepStrictEqual(ids(decoded.items), [4, 1, 2]);
         });
     });
 
