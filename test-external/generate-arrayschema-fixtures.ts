@@ -287,6 +287,73 @@ scenario("move_shuffle", (f) => {
 });
 
 // -----------------------------------------------------------------------------
+// 9+. remove + insert in the same patch (schema#246, #247)
+// -----------------------------------------------------------------------------
+function removeInsert(
+    name: string,
+    initial: (state: ArraySchemaInsertOps) => void,
+    mutate: (state: ArraySchemaInsertOps) => void,
+) {
+    scenario(name, (f) => {
+        const state = new ArraySchemaInsertOps();
+        const encoder = new Encoder(state);
+        initial(state);
+
+        const client = new Decoder(new ArraySchemaInsertOps());
+        client.decode(f.capture("snapshot", encoder.encode()));
+        encoder.discardChanges();
+
+        mutate(state);
+        client.decode(f.capture("patch1", encoder.encode()));
+        encoder.discardChanges();
+
+        assert.deepStrictEqual(client.state.toJSON(), state.toJSON());
+        f.note(`expected numbers: ${JSON.stringify(client.state.numbers.toJSON())}`);
+        f.note(`expected items.value: ${JSON.stringify(client.state.items.map((i) => i.value))}`);
+        f.note(`expected decoder refs count after patch1: ${client.root.refs.size}`);
+    });
+}
+
+removeInsert("remove_insert_unshift_shift",
+    (s) => s.items.push(mkItem(1), mkItem(2)),
+    (s) => s.items.unshift(s.items.shift()));
+
+removeInsert("remove_insert_unshift_pop",
+    (s) => s.items.push(mkItem(1), mkItem(2), mkItem(3)),
+    (s) => s.items.unshift(s.items.pop()));
+
+removeInsert("remove_insert_splice_reinsert",
+    (s) => s.items.push(mkItem(1), mkItem(2), mkItem(3)),
+    (s) => { const [removed] = s.items.splice(2, 1); s.items.splice(0, 0, removed); });
+
+removeInsert("remove_insert_numbers_unshift_shift",
+    (s) => s.numbers.push(1, 2),
+    (s) => { s.numbers.unshift(3); s.numbers.unshift(4); s.numbers.shift(); });
+
+removeInsert("remove_insert_numbers_splice_append",
+    (s) => s.numbers.push(1, 2),
+    (s) => { s.numbers.splice(0, 1); s.numbers.splice(1, 0, 3); });
+
+removeInsert("remove_insert_replace_then_pop",
+    (s) => s.items.push(mkItem(1), mkItem(2)),
+    (s) => { s.items.splice(1, 1, mkItem(3)); s.items.pop(); });
+
+removeInsert("remove_insert_replace_insert_delete",
+    (s) => s.items.push(mkItem(1), mkItem(2), mkItem(3)),
+    (s) => { s.items.splice(1, 1, mkItem(4)); s.items.unshift(mkItem(5)); s.items.splice(2, 1); });
+
+{
+    const shared = mkItem(1);
+    removeInsert("remove_insert_duplicate_pop",
+        (s) => s.items.push(shared, mkItem(2), shared),
+        (s) => { s.items.pop(); s.items.unshift(mkItem(3)); });
+}
+
+removeInsert("remove_insert_shift_unshift_more",
+    (s) => s.items.push(mkItem(1), mkItem(2)),
+    (s) => { s.items.shift(); s.items.unshift(mkItem(3), mkItem(4)); });
+
+// -----------------------------------------------------------------------------
 // output
 // -----------------------------------------------------------------------------
 for (const f of fixtures) {
