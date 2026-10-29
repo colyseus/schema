@@ -23,16 +23,17 @@ export function setRoot(tree: ChangeTree, root: Root): void {
     }
 }
 
+/** @returns true when `parent` was already linked (see `addParent`). */
 export function setParent(
     tree: ChangeTree,
     parent: Ref,
     root?: Root,
     parentIndex?: number,
-): void {
-    tree.addParent(parent, parentIndex);
+): boolean {
+    const wasLinked = tree.addParent(parent, parentIndex);
 
     // avoid setting parents with empty `root`
-    if (!root) { return; }
+    if (!root) { return wasLinked; }
 
     const isNewChangeTree = root.add(tree);
 
@@ -74,6 +75,8 @@ export function setParent(
         forEachChildWithCtx(tree, ctx, _setParentChildCb);
         _setParentDepth--;
     }
+
+    return wasLinked;
 }
 
 export function forEachChild(

@@ -3,7 +3,7 @@ import { $changes, $childType, $encoders, $getByIndex, $refId, $values } from ".
 
 import { encode } from "../encoding/encode.js";
 
-import type { ChangeTree, Ref } from "./ChangeTree.js";
+import { REATTACHED_CHILD, type ChangeTree, type Ref } from "./ChangeTree.js";
 import type { Encoder } from "./Encoder.js";
 import type { Schema } from "../Schema.js";
 
@@ -212,7 +212,18 @@ export const encodeKeyValueOperation: EncodeOperation = function (
  * `ref` is the raw ArraySchema target.
  */
 function deletedArrayItem(ref: any, field: number) {
-    return ref.replacedItems?.get(field) ?? ref.tmpItems[field];
+    return ref.replacedItems?.[field] ?? ref.tmpItems[field];
+}
+
+/**
+ * True when `item` also sits at a wire slot below `field`: staged there, or
+ * still held by the client under a same-tick replacement.
+ */
+function hasEarlierCopy(ref: any, item: any, field: number): boolean {
+    const staged = ref.tmpItems.indexOf(item);
+    if (staged !== -1 && staged < field) { return true; }
+    const held = ref.replacedItems?.indexOf(item) ?? -1;
+    return held !== -1 && held < field;
 }
 
 /**
@@ -277,12 +288,14 @@ export const encodeArray: EncodeOperation = function (
         const item = deletedArrayItem(ref, field);
         if (!item) { return; }
 
-        if (item[$changes].root !== undefined && ref.items.includes(item)) {
-            // The same instance went straight back into this array this tick
-            // (e.g. `unshift(shift())`). Its ADD can reach the decoder first,
-            // leaving two copies there — and a by-identity DELETE removes
-            // whichever is found first. Stay positional: the wire layout pins
-            // down exactly which copy goes (issue #246).
+        // An earlier copy in the staged layout (`unshift(pop())`, a duplicate)
+        // can reach the client first, and a by-identity DELETE would remove
+        // that one. Stay positional: the slot names the copy (issue #246).
+        if (
+            (changeTree.flags & REATTACHED_CHILD) !== 0 &&
+            item[$changes].root !== undefined &&
+            hasEarlierCopy(ref, item, field)
+        ) {
             refOrIndex = field;
         } else {
             refOrIndex = item[$refId];

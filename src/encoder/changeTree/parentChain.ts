@@ -11,21 +11,23 @@ import type { ChangeTree, ParentEntry, Ref } from "../ChangeTree.js";
  * Add a parent to the chain. If `parent` already exists anywhere in the
  * chain, update the primary parent's index instead (matches legacy
  * behavior).
+ *
+ * @returns true when `parent` was already in the chain.
  */
-export function addParent(tree: ChangeTree, parent: Ref, index: number): void {
+export function addParent(tree: ChangeTree, parent: Ref, index: number): boolean {
     // Check if this parent already exists anywhere in the chain
     if (tree.parentRef) {
         if (tree.parentRef[$changes] === parent[$changes]) {
             // Primary parent matches — update index
             tree._parentIndex = index;
-            return;
+            return true;
         }
 
         // Check extra parents for duplicate
         if (hasParent(tree, (p, _) => p[$changes] === parent[$changes])) {
             // Match old behavior: update primary parent's index
             tree._parentIndex = index;
-            return;
+            return true;
         }
     }
 
@@ -43,6 +45,7 @@ export function addParent(tree: ChangeTree, parent: Ref, index: number): void {
         tree.parentRef = parent;
         tree._parentIndex = index;
     }
+    return false;
 }
 
 /**

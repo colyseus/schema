@@ -4065,6 +4065,99 @@ describe("ArraySchema Tests", () => {
             });
             assert.deepStrictEqual(ids(decoded.items), [4, 1, 2]);
         });
+
+        it("pop() of an instance duplicated in an earlier patch deletes the last copy", () => {
+            const one = item(1);
+            const decoded = sync((s) => s.items.push(one, item(2), one), (s) => {
+                s.items.pop();
+                s.items.unshift(item(3));
+            });
+            assert.deepStrictEqual(ids(decoded.items), [3, 1, 2]);
+        });
+
+        it("unshift() of more items than were shifted off", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                s.items.shift();
+                s.items.unshift(item(3), item(4));
+            });
+            assert.deepStrictEqual(ids(decoded.items), [3, 4, 2]);
+        });
+
+        // `decodeArray` skips an ADD equal to the client's value at that index;
+        // undrained mid-tick joins rely on it. Enable with the decoder fix.
+        describe("inserting the value the client holds at that index", () => {
+            xit("unshift() of the value already first", () => {
+                const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
+                    s.numbers.unshift(1);
+                });
+                assert.deepStrictEqual(Array.from(decoded.numbers), [1, 1, 2]);
+            });
+
+            xit("splice() insert of the value already at that index", () => {
+                const decoded = sync((s) => s.numbers.push(1, 2, 3), (s) => {
+                    s.numbers.splice(1, 0, 2);
+                });
+                assert.deepStrictEqual(Array.from(decoded.numbers), [1, 2, 2, 3]);
+            });
+
+            xit("unshift() of the instance already first", () => {
+                const one = item(1);
+                const decoded = sync((s) => s.items.push(one, item(2)), (s) => {
+                    s.items.unshift(one);
+                });
+                assert.deepStrictEqual(ids(decoded.items), [1, 1, 2]);
+            });
+
+            // unshift() inserts after staged deletes: the ADD lands on the next survivor
+            xit("shift() then unshift() of the next survivor", () => {
+                const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
+                    s.numbers.shift();
+                    s.numbers.unshift(2);
+                });
+                assert.deepStrictEqual(Array.from(decoded.numbers), [2, 2]);
+            });
+
+            xit("shift() then unshift() of the next surviving instance", () => {
+                const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                    s.items.shift();
+                    s.items.unshift(s.items[0]);
+                });
+                assert.deepStrictEqual(ids(decoded.items), [2, 2]);
+            });
+
+            xit("unshift(shift()) ahead of an equal value", () => {
+                const decoded = sync((s) => s.numbers.push(1, 1, 2), (s) => {
+                    s.numbers.unshift(s.numbers.shift());
+                });
+                assert.deepStrictEqual(Array.from(decoded.numbers), [1, 1, 2]);
+            });
+
+            xit("index write, then unshift() of the overwritten value", () => {
+                const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
+                    s.numbers[0] = 3;
+                    s.numbers.unshift(1);
+                });
+                assert.deepStrictEqual(Array.from(decoded.numbers), [1, 3, 2]);
+            });
+
+            xit("index write, then unshift() of the overwritten instance", () => {
+                const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                    const first = s.items[0];
+                    s.items[0] = item(3);
+                    s.items.unshift(first);
+                });
+                assert.deepStrictEqual(ids(decoded.items), [1, 3, 2]);
+            });
+
+            xit("moving an instance back past its old slot leaves no extra copy", () => {
+                const decoded = sync((s) => s.items.push(item(1), item(2), item(3)), (s) => {
+                    s.items.unshift(s.items.pop());
+                    s.items.pop();
+                    s.items.unshift(s.items.pop());
+                });
+                assert.deepStrictEqual(ids(decoded.items), [1, 3]);
+            });
+        });
     });
 
 });

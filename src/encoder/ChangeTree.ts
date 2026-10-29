@@ -164,6 +164,11 @@ export const PENDING_FILTER_REFRESH = 256;
 // `Encoder._fullSyncWalk`, cleared by `reset()`. Fail-safe: a stale bit costs
 // one tick of the optimization, never a wrong byte.
 export const PENDING_SHIPPED_BY_FULL_SYNC = 512;
+// ArraySchema only: an insert attached a child already linked here — a
+// duplicate slot, or a re-insert after a removal. Only then can a child
+// deleted from one slot still sit in another, so `encodeArray` skips that
+// search otherwise. Sticky: a duplicate outlives the tick.
+export const REATTACHED_CHILD = 1024;
 /**
  * Flags a child inherits from its parent's own transitive state via
  * `checkInheritedFlags`. Read as a bitwise mask so the inheritance step
@@ -701,14 +706,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         this.collDirty = dst;
     }
 
-    /** ArraySchema#unshift(): insert `count` items at the head. */
-    unshift(count: number): void {
-        this.insertAt(0, count);
-    }
-
     // Tree attachment + child iteration — see ./changeTree/treeAttachment.ts.
     setRoot(root: Root): void { _setRoot(this, root); }
-    setParent(parent: Ref, root?: Root, parentIndex?: number): void { _setParent(this, parent, root, parentIndex); }
+    setParent(parent: Ref, root?: Root, parentIndex?: number): boolean { return _setParent(this, parent, root, parentIndex); }
     forEachChild(cb: (change: ChangeTree, at: any) => void): void { _forEachChild(this, cb); }
     forEachChildWithCtx<C>(ctx: C, cb: (ctx: C, change: ChangeTree, at: any) => void): void {
         _forEachChildWithCtx(this, ctx, cb);
@@ -900,7 +900,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     get parent(): Ref | undefined { return this.parentRef; }
     get parentIndex(): number | undefined { return this._parentIndex; }
 
-    addParent(parent: Ref, index: number): void { _addParent(this, parent, index); }
+    addParent(parent: Ref, index: number): boolean { return _addParent(this, parent, index); }
 
     /** Re-point an existing parent's cached index after the parent reindexed. */
     setParentIndex(parent: Ref, index: number): void { _setParentIndex(this, parent, index); }
@@ -958,8 +958,8 @@ export class UntrackedChangeTree {
     delete(): void {}
     indexedOperation(): void {}
     operation(): void {}
-    setParent(): void {}
-    addParent(): void {}
+    setParent(): boolean { return false; }
+    addParent(): boolean { return false; }
     setParentIndex(): void {}
     removeParent(): boolean { return false; }
     getChange(): number { return 0; }

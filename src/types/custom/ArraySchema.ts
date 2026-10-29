@@ -1,6 +1,6 @@
 import { $changes, $childType, $decoder, $deleteByIndex, $onEncodeEnd, $encoder, $filter, $getByIndex, $onDecodeEnd, $proxyTarget, $refId, $reset, $resyncPrune } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
-import { type IRef, ChangeTree, installUntrackedChangeTree, IS_STREAM_COLLECTION, PENDING_SHIPPED_BY_FULL_SYNC } from "../../encoder/ChangeTree.js";
+import { type IRef, ChangeTree, installUntrackedChangeTree, IS_STREAM_COLLECTION, PENDING_SHIPPED_BY_FULL_SYNC, REATTACHED_CHILD } from "../../encoder/ChangeTree.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
@@ -129,14 +129,14 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     protected tmpItems: V[] = [];
     protected deletedIndexes: boolean[] = [];
     /**
-     * Encoder-only, Schema children only: wire slot → the element the client
-     * holds there, for slots whose `tmpItems` value was overwritten this tick
-     * (splice-replace, index write). A later delete of the slot must name the
-     * client's element — `tmpItems` would name the replacement, which the
-     * client never received (issue #246). Lazily allocated; dropped at
+     * Encoder-only, Schema children only. Aligned with `tmpItems`: the element
+     * the client holds at each wire slot whose `tmpItems` value was overwritten
+     * this tick (splice-replace, index write). A later delete of the slot must
+     * name the client's element — `tmpItems` would name the replacement, which
+     * the client never received (issue #246). Lazily allocated; dropped at
      * `$onEncodeEnd`.
      */
-    protected replacedItems: Map<number, V> | undefined = undefined;
+    protected replacedItems: V[] | undefined = undefined;
     protected isMovingItems = false;
     /** Decode-side: `items` has holes (delete or gap-write) — `$onDecodeEnd` must compact. */
     protected _needsCompaction = false;
@@ -278,7 +278,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             // Pass `this` (the Proxy) as parent — the Proxy is the public
             // identity of the array; ChangeTree.parentRef compares by identity.
             //
-            value[$changes]?.setParent(this, changeTree.root, length);
+            if (value[$changes]?.setParent(this, changeTree.root, length)) {
+                changeTree.flags |= REATTACHED_CHILD;
+            }
         }
 
         return length;
@@ -382,7 +384,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         this.tmpItems.splice(at, 1);
         if (this.deletedIndexes.length > 0) { this.deletedIndexes.splice(at, 1); }
         changeTree.removeAt(at, 1);
-        this.$shiftReplaced(at + 1, -1);
+        this.replacedItems?.splice(at, 1);
 
         // `Root.remove` leaves a detached child's own parent edge in place on
         // purpose (encodeView resolves same-tick detached children through
@@ -405,19 +407,38 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      */
     protected $stashReplaced(at: number): void {
         if (typeof this[$childType] === "string") { return; } // positional DELETE needs no identity
-        const replaced = (this.replacedItems ??= new Map());
-        if (!replaced.has(at)) { replaced.set(at, this.tmpItems[at]); }
+        const changeTree = this[$changes];
+        if (changeTree.paused || changeTree.isFullStateOnly) { return; } // nothing recorded — and no encode would drop it
+        const replaced = (this.replacedItems ??= []);
+        if (replaced[at] === undefined) { replaced[at] = this.tmpItems[at]; }
     }
 
-    /** Re-key `replacedItems` entries at or above wire slot `from` by `delta`. */
-    protected $shiftReplaced(from: number, delta: number): void {
-        const replaced = this.replacedItems;
-        if (replaced === undefined) { return; }
-        const shifted = new Map<number, V>();
-        for (const [slot, value] of replaced) {
-            shifted.set((slot >= from) ? slot + delta : slot, value);
+    /**
+     * Open wire slots at `at` for `values` — the inverse of `$cancelAdd`.
+     * Records their ADDs, attaches them, and keeps every per-slot structure
+     * aligned. `parent` is the Proxy: the array's public identity.
+     */
+    protected $insertSlots(parent: ArraySchema<V>, at: number, values: V[]): void {
+        const changeTree = this[$changes];
+        const count = values.length;
+
+        // single recorder op: shifts pending indexes up and records the new
+        // ADDs lowest-first (the decoder splice-inserts in ascending order).
+        changeTree.insertAt(at, count);
+
+        // parent set AFTER recording, as in $changeAt
+        for (let i = 0; i < count; i++) {
+            if (values[i]?.[$changes]?.setParent(parent, changeTree.root, at + i)) {
+                changeTree.flags |= REATTACHED_CHILD;
+            }
         }
-        this.replacedItems = shifted;
+
+        if (at === 0) { this.tmpItems.unshift(...values); } // ~2× faster than splice(0, 0, …) in V8
+        else { this.tmpItems.splice(at, 0, ...values); }
+        if (this.deletedIndexes.length > 0) { this.deletedIndexes.splice(at, 0, ...new Array(count).fill(false)); }
+        this.replacedItems?.splice(at, 0, ...new Array(count));
+
+        this.$reindexChildren(at + count); // survivors only — the loop above placed the new items
     }
 
     /**
@@ -464,31 +485,27 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
 
         const wireIndex = this.$wireIndex(index);
         const changeTree = this[$changes];
+        const replacing = this.items[index] !== undefined;
 
-        if (this.items[index] !== undefined && typeof (value) === "object") {
-            // schema child replacing another
-            if (changeTree.operationAt(wireIndex) === OPERATION.ADD) {
-                // ...one the client never received: still a plain ADD. A
-                // DELETE half would make the decoder overwrite (not insert at)
-                // the slot — dropping the client's element there when the ADD
-                // was an unshift / splice-insert.
-                changeTree.indexedOperation(wireIndex, OPERATION.ADD);
-            } else {
-                this.$stashReplaced(wireIndex);
-                changeTree.change(wireIndex, OPERATION.DELETE_AND_ADD);
-            }
+        let operation = OPERATION.ADD;
+        if (replacing && typeof (value) !== "object") {
+            operation = OPERATION.REPLACE; // primitive
 
-        } else {
-            changeTree.change(wireIndex, (this.items[index] !== undefined)
-                ? OPERATION.REPLACE // primitive
-                : OPERATION.ADD);
+        } else if (replacing && changeTree.operationAt(wireIndex) !== OPERATION.ADD) {
+            // schema child replacing one the client holds — over an unsent
+            // ADD it stays ADD, or the decoder would overwrite, not insert
+            this.$stashReplaced(wireIndex);
+            operation = OPERATION.DELETE_AND_ADD;
         }
+        changeTree.change(wireIndex, operation);
 
         //
         // set value's parent after the value is set
         // (to avoid encoding "refId" operations before parent's "ADD" operation)
         //
-        value[$changes]?.setParent(this, changeTree.root, wireIndex);
+        if (value[$changes]?.setParent(this, changeTree.root, wireIndex)) {
+            changeTree.flags |= REATTACHED_CHILD;
+        }
 
         return wireIndex;
     }
@@ -743,11 +760,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
                 // it must not carry the DELETE half: the decoder resolves that
                 // positionally and would removeRef whatever the client holds
                 // there — which is not the element being replaced.
-                let op: OPERATION;
                 const u = (unsent !== undefined) ? unsent.indexOf(addIndex) : -1;
-                if (u !== -1) { unsent!.splice(u, 1); op = OPERATION.ADD; }
-                else if (deletedIndexes[addIndex]) { self.$stashReplaced(addIndex); op = OPERATION.DELETE_AND_ADD; }
-                else { op = OPERATION.ADD; }
+                if (u !== -1) { unsent!.splice(u, 1); } // never flagged deleted: stays ADD below
+                let op = OPERATION.ADD;
+                if (deletedIndexes[addIndex]) { self.$stashReplaced(addIndex); op = OPERATION.DELETE_AND_ADD; }
                 changeTree.indexedOperation(addIndex, op);
 
                 // the slot is live again — the staged snapshot must carry the
@@ -757,36 +773,21 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
                 deletedIndexes[addIndex] = false;
 
                 // set value's parent/root — use `this` (Proxy) as parent.
-                insertItems[i][$changes]?.setParent(this, changeTree.root, addIndex);
+                if (insertItems[i][$changes]?.setParent(this, changeTree.root, addIndex)) {
+                    changeTree.flags |= REATTACHED_CHILD;
+                }
             }
 
-            // ...the rest have no slot to take: widen the wire layout, same as
-            // unshift() but at `at` instead of 0.
-            const extra = insertCount - reuse;
-            if (extra > 0) {
-                const at = base + reuse;
-
-                changeTree.insertAt(at, extra);
-
-                for (let i = 0; i < extra; i++) {
-                    insertItems[reuse + i][$changes]?.setParent(this, changeTree.root, at + i);
-                }
-
-                // keep staged-delete flags aligned with the inserted tmp slots
-                if (deletedIndexes.length > 0) {
-                    deletedIndexes.splice(at, 0, ...new Array(extra).fill(false));
-                }
-
-                tmpItems.splice(at, 0, ...insertItems.slice(reuse));
-                self.$shiftReplaced(at, extra);
-                self.$reindexChildren(at + extra); // survivors only — the loop above placed the new items
+            // ...the rest have no slot to take: widen the wire layout
+            if (insertCount > reuse) {
+                self.$insertSlots(this, base + reuse, insertItems.slice(reuse));
             }
         }
 
-        // Unsent slots nothing took over. `extra > 0` implies every deleted
-        // slot was reused, so this never coexists with the insertAt above and
-        // `base` never needs recomputing. Descending: each erase shifts the
-        // slots above it. One reindex from the lowest covers all of them.
+        // Unsent slots nothing took over. Inserting past `reuse` implies every
+        // deleted slot was reused, so this never coexists with `$insertSlots`
+        // above and `base` never needs recomputing. Descending: each erase
+        // shifts the slots above it. One reindex from the lowest covers all.
         if (unsent !== undefined && unsent.length > 0) {
             for (let i = unsent.length - 1; i >= 0; i--) { self.$cancelAdd(unsent[i], false); }
             self.$reindexChildren(unsent[0]);
@@ -803,36 +804,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      */
     unshift(...items: V[]): number {
         const self = this[$proxyTarget];
-        const changeTree = self[$changes];
-
-        // Insert before the first LIVE wire slot, not at 0: slots staged for
-        // deletion this tick sit in front of it, and their DELETEs must keep
-        // their indexes and go out before the inserts. Inserting ahead of them
-        // would re-key each DELETE behind the new ADDs — an ADD landing on a
-        // client slot that is about to be deleted, which with the same instance
-        // put straight back (`unshift(shift())`) drops it (issue #246).
-        const deletedIndexes = self.deletedIndexes;
-        let at = 0;
-        while (deletedIndexes[at] === true) { at++; }
-
-        // single recorder op: shifts pending indexes up and records the new
-        // ADDs lowest-first (the decoder splice-inserts in ascending order).
-        changeTree.insertAt(at, items.length);
-
-        // attach ref-type items — parent set AFTER recording, as in $changeAt
-        for (let i = 0; i < items.length; i++) {
-            items[i]?.[$changes]?.setParent(this, changeTree.root, at + i);
-        }
-
-        // keep staged-delete flags aligned with the inserted tmp slots
-        if (deletedIndexes.length > 0) {
-            deletedIndexes.splice(at, 0, ...new Array(items.length).fill(false));
-        }
-
-        self.tmpItems.splice(at, 0, ...items);
-        self.$shiftReplaced(at, items.length);
-        self.$reindexChildren(at + items.length); // survivors only — the loop above placed the new items
-
+        // at the first live slot: DELETEs staged ahead of it keep their
+        // indexes and ship before these ADDs (`unshift(shift())`, issue #246)
+        self.$insertSlots(this, self.$wireIndex(0), items);
         return self.items.unshift(...items);
     }
 
