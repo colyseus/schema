@@ -206,6 +206,16 @@ export const encodeKeyValueOperation: EncodeOperation = function (
 }
 
 /**
+ * The element a DELETE at wire slot `field` removes: the one the client holds
+ * there. `tmpItems` names the slot's latest staged value, which differs when
+ * the slot was replaced earlier in the tick (`ArraySchema.replacedItems`).
+ * `ref` is the raw ArraySchema target.
+ */
+function deletedArrayItem(ref: any, field: number) {
+    return ref.replacedItems?.get(field) ?? ref.tmpItems[field];
+}
+
+/**
  * Used for collections (MapSchema, ArraySchema, etc.)
  * @private
  */
@@ -232,7 +242,9 @@ export const encodeArray: EncodeOperation = function (
     let refOrIndex: number;
 
     if (useOperationByRefId) {
-        const item = ref.tmpItems[field];
+        const item = (operation === OPERATION.DELETE)
+            ? deletedArrayItem(ref, field)
+            : ref.tmpItems[field];
 
         // Skip encoding if item is undefined (e.g. when clear() is called)
         if (!item) { return; }
@@ -262,10 +274,20 @@ export const encodeArray: EncodeOperation = function (
         // encodeAll) can't corrupt that client — its snapshot no longer
         // holds the item, the refId is unknown, and the decoder skips.
         //
-        const item = ref.tmpItems[field];
+        const item = deletedArrayItem(ref, field);
         if (!item) { return; }
-        refOrIndex = item[$refId];
-        operation = OPERATION.DELETE_BY_REFID;
+
+        if (item[$changes].root !== undefined && ref.items.includes(item)) {
+            // The same instance went straight back into this array this tick
+            // (e.g. `unshift(shift())`). Its ADD can reach the decoder first,
+            // leaving two copies there — and a by-identity DELETE removes
+            // whichever is found first. Stay positional: the wire layout pins
+            // down exactly which copy goes (issue #246).
+            refOrIndex = field;
+        } else {
+            refOrIndex = item[$refId];
+            operation = OPERATION.DELETE_BY_REFID;
+        }
 
     } else {
         refOrIndex = field;
