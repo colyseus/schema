@@ -4160,4 +4160,36 @@ describe("ArraySchema Tests", () => {
         });
     });
 
+    it("clear() then re-adding a shared instance keeps its fields", () => {
+        class Item extends Schema {
+            @type("number") v: number;
+        }
+        class State extends Schema {
+            @type({ map: Item }) a = new MapSchema<Item>();
+            @type([Item]) arr = new ArraySchema<Item>();
+        }
+
+        const state = new State();
+        const encoder = getEncoder(state);
+        const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(encoder.encodeAll());
+        encoder.discardChanges();
+
+        const x = new Item().assign({ v: 1 });
+        state.arr.push(x);
+        state.arr.clear();
+        decodedState.decode(encoder.encode());
+        encoder.discardChanges();
+
+        // a stale link to `arr` made the re-add dedup against it, so `x`'s
+        // fields reached the decoder before `x` did
+        state.a.set("k", x);
+        state.arr.push(x);
+        state.a.set("k", new Item().assign({ v: 2 }));
+        decodedState.decode(encoder.encode());
+
+        assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+        assertRefIdCounts(state, decodedState);
+    });
+
 });

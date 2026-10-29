@@ -547,10 +547,13 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         // discard previous operations.
         const changeTree = self[$changes];
 
-        // remove children references
+        // remove children references — and their edge here: every slot is
+        // gone, so a refill must link fresh instead of looking re-attached
         changeTree.forEachChild((childChangeTree, _) => {
             changeTree.root?.remove(childChangeTree);
+            childChangeTree.removeParent(self);
         });
+        changeTree.flags &= ~REATTACHED_CHILD;
 
         changeTree.discard();
         changeTree.operation(OPERATION.CLEAR);

@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.43]
+
+### Fixed
+
+- Removing and inserting `ArraySchema` items in the same patch no longer desyncs clients. `arr.unshift(arr.shift())`, for example, dropped the item on the client. Thanks @FTWinston! [#246](https://github.com/colyseus/schema/issues/246), [#247](https://github.com/colyseus/schema/pull/247)
+- An instance that left an `ArraySchema` through `clear()` and was added back later, while also referenced from another field, no longer reaches clients with empty fields.
+
 ## [5.0.42]
 
 ### Fixed
