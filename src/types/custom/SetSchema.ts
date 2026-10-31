@@ -190,6 +190,11 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         // discard previous operations.
         changeTree.discard();
 
+        // remove children references
+        changeTree.forEachChild((childChangeTree, _) => {
+            changeTree.root?.remove(childChangeTree);
+        });
+
         // clear items
         this.$items.clear();
 
