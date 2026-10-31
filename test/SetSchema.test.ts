@@ -345,6 +345,29 @@ describe("Type: SetSchema", () => {
         });
     });
 
+    it("clear() tolerates a member that has no ChangeTree", () => {
+        class Player extends Schema {
+            @type("number") level: number;
+        }
+
+        class State extends Schema {
+            @type({ set: Player })
+            players = new SetSchema<Player>();
+        }
+
+        const state = new State();
+        const encoder = new Encoder(state);
+        encoder.encodeAll();
+        encoder.discardChanges();
+
+        // add() accepts anything, so a plain object can be a member and carry
+        // no ChangeTree for clear() to unlink.
+        (state.players as any).add({ level: 1 });
+        state.players.clear();
+
+        assert.strictEqual(state.players.size, 0);
+    });
+
     it("SetSchema.toJSON", () => {
         const set = new SetSchema();
         set.add("one");

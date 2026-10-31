@@ -192,7 +192,11 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
 
         // remove children references
         changeTree.forEachChild((childChangeTree, _) => {
-            changeTree.root?.remove(childChangeTree);
+            // NOTE: add() does not validate its argument, so a plain object can
+            // be a member and have no ChangeTree to unlink.
+            if (childChangeTree !== undefined) {
+                changeTree.root?.remove(childChangeTree);
+            }
         });
 
         // clear items
