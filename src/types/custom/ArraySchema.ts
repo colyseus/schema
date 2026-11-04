@@ -137,6 +137,19 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * `$onEncodeEnd`.
      */
     protected replacedItems: V[] | undefined = undefined;
+    /**
+     * Encoder-only, Schema children only. A clean-tick `sort()` shipped as
+     * REPLACEs, which the decoder applies without touching refCounts. A
+     * later same-tick op that removes or replaces a child can't share a
+     * slot with one, so it re-states the array first (`$restateIfSorted`).
+     * Dropped at `$onEncodeEnd`.
+     */
+    protected sortedThisTick = false;
+    /**
+     * Encoder-only. Set by an in-place `sort()`; see `$onlySortPending`.
+     * Dropped at `$onEncodeEnd`.
+     */
+    protected sortOnlyPending = false;
     protected isMovingItems = false;
     /** Decode-side: `items` has holes (delete or gap-write) — `$onDecodeEnd` must compact. */
     protected _needsCompaction = false;
@@ -292,6 +305,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     pop(): V | undefined {
         // Unwrap Proxy once — see push() for rationale.
         const self = this[$proxyTarget];
+        self.$restateIfSorted();
         const tmpItems = self.tmpItems;
         const deletedIndexes = self.deletedIndexes;
         let index: number = -1;
@@ -470,6 +484,43 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         }
     }
 
+    /**
+     * True when the only ops pending this tick are an earlier in-place
+     * `sort()`'s REPLACEs (one per slot), so sorting again in place is safe
+     * and a leaderboard re-sorted several times per patch stays cheap.
+     */
+    protected $onlySortPending(): boolean {
+        const changeTree = this[$changes];
+        const length = this.items.length;
+        if (!this.sortOnlyPending || this.deletedIndexes.length > 0 || this.tmpItems.length !== length || changeTree.size() !== length) {
+            return false;
+        }
+        for (let i = 0; i < length; i++) {
+            if (changeTree.operationAt(i) !== OPERATION.REPLACE) { return false; }
+        }
+        return true;
+    }
+
+    /**
+     * Called before an op that removes or replaces a Schema child. After a
+     * clean-tick `sort()` each slot carries a REPLACE: the decoder swaps the
+     * element in without touching refCounts, which only balances as a pure
+     * permutation. A DELETE in the same tick has to overwrite one of those
+     * REPLACEs, and whichever element it names, one refCount ends up off and
+     * the client keeps a stale or duplicate element. Re-state the array
+     * (CLEAR + re-ADD, as `reverse()` does on a dirty tick); the caller's op
+     * then lands on a plain unsent ADD.
+     */
+    protected $restateIfSorted(): void {
+        // a paused op isn't sent, so the sort's REPLACEs must stay as they are
+        if (!this.sortedThisTick || this[$changes].paused) { return; }
+        this.sortedThisTick = false;
+        const proxy = this[$changes].ref as ArraySchema<V>;
+        const items = this.items.slice();
+        proxy.clear();
+        proxy.push(...items);
+    }
+
     // encoding only. Returns the wire index the change was recorded at
     // (undefined when nothing was recorded).
     protected $changeAt(index: number, value: V): number | undefined {
@@ -482,6 +533,9 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         if (this.items[index] === value) {
             return undefined;
         }
+
+        // an append doesn't overwrite one of the sort's REPLACEs
+        if (this.items[index] !== undefined) { this.$restateIfSorted(); }
 
         const wireIndex = this.$wireIndex(index);
         const changeTree = this[$changes];
@@ -561,6 +615,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         self.items.length = 0;
         self.tmpItems.length = 0;
         self.replacedItems = undefined;
+        self.sortedThisTick = false;
+        self.sortOnlyPending = false;
     }
 
     /**
@@ -581,6 +637,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         self.tmpItems.length = 0;
         self.deletedIndexes.length = 0;
         self.replacedItems = undefined;
+        self.sortedThisTick = false;
+        self.sortOnlyPending = false;
         changeTree.recycle();
         self[$refId] = undefined; // assign (not delete) to avoid V8 dictionary-mode deopt
     }
@@ -637,6 +695,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         const self = this[$proxyTarget];
         const items = self.items;
         if (items.length === 0) { return undefined; }
+        self.$restateIfSorted();
 
         const changeTree = self[$changes];
         // items[0] ≡ first live (non-deleted) tmpItems slot. Value-based
@@ -675,15 +734,40 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      */
     sort(compareFn: (a: V, b: V) => number = DEFAULT_SORT): this {
         const self = this[$proxyTarget];
+        const changeTree = self[$changes];
+
+        // (a paused sort isn't sent, so it must not discard the tick's recorded ops)
+        if (!changeTree.paused && (changeTree.has() || self.deletedIndexes.length > 0) && !self.$onlySortPending()) {
+            //
+            // Same as reverse(): ops recorded earlier this tick address the
+            // staged (pre-sort) layout and resolve their values at encode
+            // time, so sorting that layout under them ships the wrong
+            // elements. Degrade to a full re-state: CLEAR + re-ADD sorted.
+            //
+            const sorted = self.items.slice().sort(compareFn);
+            this.clear(); // also drops staged holes (discard → $onEncodeEnd)
+            this.push(...sorted);
+            return this;
+        }
+
         self.isMovingItems = true;
 
-        const changeTree = self[$changes];
         const sortedItems = self.items.sort(compareFn);
 
         // wouldn't OPERATION.MOVE make more sense here?
         sortedItems.forEach((_, i) => changeTree.change(i, OPERATION.REPLACE));
 
-        self.tmpItems.sort(compareFn);
+        // Copy rather than sort again: a comparator that isn't consistent
+        // (`() => Math.random() - 0.5`) would order the two differently.
+        // (paused: nothing is recorded, so keep sorting the staged layout in place as before)
+        if (changeTree.paused) { self.tmpItems.sort(compareFn); }
+        else { self.tmpItems = sortedItems.slice(); }
+
+        if (!changeTree.paused && typeof self[$childType] !== "string" && changeTree.has()) {
+            self.sortedThisTick = true;
+        }
+        self.sortOnlyPending = !changeTree.paused;
+
         self.$reindexChildren(0);
 
         self.isMovingItems = false;
@@ -702,6 +786,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         ...insertItems: V[]
     ): V[] {
         const self = this[$proxyTarget];
+        // skip no-op and insert-only splices
+        if (self.sortedThisTick && self.items.length > start && (deleteCount === undefined || deleteCount > 0)) { self.$restateIfSorted(); }
         const changeTree = self[$changes];
         const items = self.items;
         const tmpItems = self.tmpItems;
@@ -1137,6 +1223,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         const staged = this.tmpItems;
         this.tmpItems = this.items.slice();
         this.replacedItems = undefined;
+        this.sortedThisTick = false;
+        this.sortOnlyPending = false;
 
         if (this.deletedIndexes.length > 0) {
             // compaction just closed the staged holes — everything above the

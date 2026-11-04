@@ -5632,6 +5632,20 @@ describe("StateView", () => {
             assert.deepStrictEqual(tick(), ["b"], "item removed from the view stayed visible");
         });
 
+        it("sort() then shift() / shift() then sort() on viewed rows", () => {
+            for (const sortFirst of [true, false]) {
+                const { state, view, push, tick } = setup();
+                const rows = [push("c"), push("a"), push("b")];
+                rows.forEach((row) => view.add(row));
+                assert.deepStrictEqual(tick(), ["a", "b", "c"]);
+
+                const byText = (x: Row, y: Row) => x.text.localeCompare(y.text);
+                if (sortFirst) { state.rows.sort(byText); state.rows.shift(); }
+                else { state.rows.shift(); state.rows.sort(byText); }
+                assert.deepStrictEqual(tick(), sortFirst ? ["b", "c"] : ["a", "b"]);
+            }
+        });
+
         it("view.add() then a staged-hole op (shift) stays correct", () => {
             const { state, view, push, tick } = setup();
             push("a"); const b = push("b"), c = push("c");

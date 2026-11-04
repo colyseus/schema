@@ -3219,6 +3219,249 @@ describe("ArraySchema Tests", () => {
             });
         });
 
+        describe("#sort() in the same tick as another operation", () => {
+            class Item extends Schema {
+                @type("string") name: string;
+            }
+            class SortState extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+                @type(["string"]) strings = new ArraySchema<string>();
+            }
+            const item = (name: string) => new Item().assign({ name });
+            const byName = (a: any, b: any) => {
+                const x = a.name ?? a, y = b.name ?? b;
+                return (x < y) ? -1 : (x > y) ? 1 : 0;
+            };
+
+            // Sync `initial` into both arrays (ref-typed + primitive), run
+            // `mutate` against each in the same tick, and assert one patch
+            // brings the decoder to `expected`, refCounts included.
+            function assertSameTick(
+                initial: string[],
+                mutate: (arr: ArraySchema<any>, wrap: (name: string) => any) => void,
+                expected: string[],
+            ) {
+                const state = new SortState();
+                const decodedState = createInstanceFromReflection(state);
+                if (initial.length > 0) {
+                    state.items.push(...initial.map(item));
+                    state.strings.push(...initial);
+                }
+                decodedState.decode(state.encode());
+
+                mutate(state.items, item);
+                mutate(state.strings, (name) => name);
+
+                assert.deepStrictEqual(state.items.map((i) => i.name), expected, "server items");
+                assert.deepStrictEqual([...state.strings], expected, "server strings");
+
+                decodedState.decode(state.encode());
+                assert.deepStrictEqual(decodedState.items.map((i) => i?.name), expected, "decoded items");
+                assert.deepStrictEqual([...decodedState.strings], expected, "decoded strings");
+
+                assertRefIdCounts(state, decodedState);
+                assertDeepStrictEqualEncodeAll(state);
+            }
+
+            it("pop() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.pop();
+                    arr.sort(byName);
+                }, ["b", "c", "d"]);
+            });
+
+            it("shift() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.shift();
+                    arr.sort(byName);
+                }, ["a", "b", "c"]);
+            });
+
+            it("splice() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.splice(1, 1);
+                    arr.sort(byName);
+                }, ["a", "c", "d"]);
+            });
+
+            it("unshift() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.unshift(wrap("e"));
+                    arr.sort(byName);
+                }, ["a", "b", "c", "d", "e"]);
+            });
+
+            it("index write then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr[0] = wrap("z");
+                    arr.sort(byName);
+                }, ["a", "b", "c", "z"]);
+            });
+
+            it("sort() then shift()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.sort(byName);
+                    arr.shift();
+                }, ["b", "c", "d"]);
+            });
+
+            it("sort() then pop()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.sort(byName);
+                    arr.pop();
+                }, ["a", "b", "c"]);
+            });
+
+            it("sort() then splice()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.sort(byName);
+                    arr.splice(1, 2, wrap("x"));
+                }, ["a", "x", "d"]);
+            });
+
+            it("sort() then index write", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.sort(byName);
+                    arr[3] = wrap("z");
+                }, ["a", "b", "c", "z"]);
+            });
+
+            it("sort() then unshift()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.sort(byName);
+                    arr.unshift(wrap("0"));
+                }, ["0", "a", "b", "c", "d"]);
+            });
+
+            it("push() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.push(wrap("0"));
+                    arr.sort(byName);
+                }, ["0", "a", "b", "c", "d"]);
+            });
+
+            // Already-working orderings — guard the fix against regressions.
+            it("sort() alone", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.sort(byName);
+                }, ["a", "b", "c", "d"]);
+            });
+
+            it("push() then sort() on a fresh array", () => {
+                assertSameTick([], (arr, wrap) => {
+                    arr.push(wrap("c"), wrap("a"), wrap("b"));
+                    arr.sort(byName);
+                }, ["a", "b", "c"]);
+            });
+
+            it("sort() then push()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.sort(byName);
+                    arr.push(wrap("0"));
+                }, ["a", "b", "c", "d", "0"]);
+            });
+
+            it("sort() twice", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.sort(byName);
+                    arr.sort((a, b) => byName(b, a));
+                }, ["d", "c", "b", "a"]);
+            });
+
+            it("sort() several times in one tick stays an in-place reorder", () => {
+                const state = new SortState();
+                const decodedState = createInstanceFromReflection(state);
+                state.items.push(item("c"), item("a"), item("b"));
+                state.strings.push("c", "a", "b");
+                decodedState.decode(state.encode());
+
+                const $ = getCallbacks(decodedState);
+                const removed: string[] = [];
+                $(decodedState).items.onRemove((it) => removed.push(it.name));
+
+                for (const cmp of [byName, (a: any, b: any) => byName(b, a), byName]) {
+                    state.items.sort(cmp);
+                    state.strings.sort(cmp);
+                }
+                decodedState.decode(state.encode());
+
+                assert.deepStrictEqual(decodedState.items.map((i) => i.name), ["a", "b", "c"]);
+                assert.deepStrictEqual([...decodedState.strings], ["a", "b", "c"]);
+                assert.deepStrictEqual(removed, []);
+                assertRefIdCounts(state, decodedState);
+            });
+
+            it("sort() then an op that removes nothing: no remove/add on the client", () => {
+                for (const splice of [
+                    (arr: ArraySchema<Item>) => arr.splice(arr.length),
+                    (arr: ArraySchema<Item>) => arr.splice(0, 0, item("x")),
+                    (arr: ArraySchema<Item>) => { arr[arr.length] = item("z"); },
+                ]) {
+                    const state = new SortState();
+                    const decodedState = createInstanceFromReflection(state);
+                    state.items.push(item("c"), item("a"), item("b"));
+                    decodedState.decode(state.encode());
+
+                    const $ = getCallbacks(decodedState);
+                    const removed: string[] = [];
+                    $(decodedState).items.onRemove((it) => removed.push(it.name));
+
+                    state.items.sort(byName);
+                    splice(state.items);
+                    decodedState.decode(state.encode());
+
+                    assert.deepStrictEqual(decodedState.items.map((i) => i.name), state.items.map((i) => i.name));
+                    assert.deepStrictEqual(removed, []);
+                    assertRefIdCounts(state, decodedState);
+                }
+            });
+
+            it("sort() on a clean tick reorders in place: no remove/add on the client", () => {
+                const state = new SortState();
+                const decodedState = createInstanceFromReflection(state);
+                state.items.push(item("c"), item("a"), item("b"));
+                decodedState.decode(state.encode());
+
+                const $ = getCallbacks(decodedState);
+                const removed: string[] = [];
+                $(decodedState).items.onRemove((it) => removed.push(it.name));
+
+                state.items.sort(byName);
+                decodedState.decode(state.encode());
+
+                assert.deepStrictEqual(decodedState.items.map((i) => i.name), ["a", "b", "c"]);
+                assert.deepStrictEqual(removed, []);
+            });
+
+            it("sort() with an inconsistent comparator", () => {
+                // `sort(() => Math.random() - 0.5)` is a common shuffle idiom.
+                // Each element's position must ship as the server ordered it.
+                const initial = ["a", "b", "c", "d", "e", "f", "g", "h"];
+                const originalRandom = Math.random;
+                let seed = 42;
+                Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+                try {
+                    for (let run = 0; run < 20; run++) {
+                        const state = new SortState();
+                        const decodedState = createInstanceFromReflection(state);
+                        state.items.push(...initial.map(item));
+                        state.strings.push(...initial);
+                        decodedState.decode(state.encode());
+
+                        state.items.sort(() => Math.random() - 0.5);
+                        state.strings.sort(() => Math.random() - 0.5);
+                        decodedState.decode(state.encode());
+
+                        assert.deepStrictEqual(decodedState.items.map((i) => i.name), state.items.map((i) => i.name));
+                        assert.deepStrictEqual([...decodedState.strings], [...state.strings]);
+                        assertDeepStrictEqualEncodeAll(state);
+                    }
+                } finally {
+                    Math.random = originalRandom;
+                }
+            });
+        });
+
         it("#flat", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
             assert.throws(() => { arr.flat(); }, /not supported/i);
