@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.44]
+
+### Fixed
+
+- `ArraySchema.sort()` no longer desyncs clients when the same patch also adds, removes or replaces items, when the comparator isn't consistent (`() => Math.random() - 0.5`), or when the array is behind `@view()`. Some of those patches now resend the whole array, firing `onRemove`/`onAdd` for every element, as `reverse()` already did. Thanks @JROtto5! [#249](https://github.com/colyseus/schema/issues/249), [#250](https://github.com/colyseus/schema/pull/250)
+- Calling `sort()` or `reverse()` while tracking is paused (`untracked()`, `pauseTracking()`) no longer breaks the patch's other changes to the same array.
+
+### Changed
+
+- `sort()` sends only the entries that moved: re-sorting a 50-entry leaderboard after one score change now encodes 13 bytes instead of 157.
+
 ## [5.0.43]
 
 ### Fixed

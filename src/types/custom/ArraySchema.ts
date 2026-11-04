@@ -367,13 +367,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      * moving an instance in, and the slot holds a single op: a delete or
      * write merged into it would name the instance the client holds there,
      * which `sort()` moved elsewhere. Re-state the array first so the op
-     * lands on an unsent ADD instead.
+     * lands on an unsent ADD instead. Never while paused: the re-state would
+     * discard the tick's recorded ops without recording anything back.
      *
      * Returns true when it did — wire indexes computed before are stale.
      */
     protected $settleReorder(at: number): boolean {
         if (typeof this[$childType] === "string") { return false; } // positional ops compose
-        if (this[$changes].operationAt(at) !== OPERATION.REPLACE) { return false; }
+        const changeTree = this[$changes];
+        if (changeTree.paused || changeTree.operationAt(at) !== OPERATION.REPLACE) { return false; }
         this.$restate(this.items.slice());
         return true;
     }
@@ -658,6 +660,11 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         const self = this[$proxyTarget];
         const changeTree = self[$changes];
 
+        if (changeTree.paused) {
+            self.items.reverse(); // untracked: recorded ops keep reading the staged layout
+            return this;
+        }
+
         if (changeTree.has() || self.deletedIndexes.length > 0) {
             //
             // Ops recorded earlier this tick address the staged (pre-reverse)
@@ -722,13 +729,18 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
     sort(compareFn: (a: V, b: V) => number = DEFAULT_SORT): this {
         const self = this[$proxyTarget];
         const items = self.items;
+        const changeTree = self[$changes];
+
+        if (changeTree.paused) {
+            items.sort(compareFn); // untracked: recorded ops keep reading the staged layout
+            return this;
+        }
 
         if (!self.$canReorderInPlace()) {
             self.$restate(items.slice().sort(compareFn));
             return this;
         }
 
-        const changeTree = self[$changes];
         const tmpItems = self.tmpItems;
         // a pending primitive insert may hit the decoder's equal-value ADD skip — only re-stating every slot repairs it
         const everySlot = typeof self[$childType] === "string" && changeTree.has();

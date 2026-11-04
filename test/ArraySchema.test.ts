@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, assertNoOrphanRefs, createClientWithView, encodeMultiple } from "./Schema";
-import { ArraySchema, Schema, type, view, $changes, $refId, MapSchema, ChangeTree, schema, t } from "../src";
+import { ArraySchema, Schema, type, view, $changes, $refId, MapSchema, ChangeTree, OPERATION, schema, t } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -3338,6 +3338,79 @@ describe("ArraySchema Tests", () => {
                 state.strings.sort();
                 assert.strictEqual(state.items[$changes].changed, false);
                 assert.strictEqual(state.strings[$changes].changed, false);
+            });
+
+            describe("while tracking is paused", () => {
+                // An untracked reorder stays on the server: clients get the
+                // tick's tracked ops as if it never ran.
+                function assertUntracked(
+                    mutate: (arr: ArraySchema<any>, wrap: (name: string) => any) => void,
+                    expectedServer: string[],
+                    expectedClient: string[],
+                ) {
+                    const { state, decodedState } = synced(["d", "b", "c", "a"]);
+                    mutate(state.items, item);
+                    mutate(state.strings, (name) => name);
+
+                    assert.deepStrictEqual(state.items.map(nameOf), expectedServer, "server items");
+                    assert.deepStrictEqual([...state.strings], expectedServer, "server strings");
+
+                    decodedState.decode(state.encode());
+                    assert.deepStrictEqual(decodedState.items.map(nameOf), expectedClient, "decoded items");
+                    assert.deepStrictEqual([...decodedState.strings], expectedClient, "decoded strings");
+                    assertRefIdCounts(state, decodedState);
+                }
+
+                it("push() then untracked sort()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr.push(wrap("e"));
+                        arr.untracked(() => arr.sort(byName));
+                    }, ["a", "b", "c", "d", "e"], ["d", "b", "c", "a", "e"]);
+                });
+
+                it("pop() then untracked sort()", () => {
+                    assertUntracked((arr) => {
+                        arr.pop();
+                        arr.untracked(() => arr.sort(byName));
+                    }, ["b", "c", "d"], ["d", "b", "c"]);
+                });
+
+                it("index write then untracked sort()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr[0] = wrap("z");
+                        arr.untracked(() => arr.sort(byName));
+                    }, ["a", "b", "c", "z"], ["z", "b", "c", "a"]);
+                });
+
+                it("sort() then untracked sort()", () => {
+                    assertUntracked((arr) => {
+                        arr.sort(byName);
+                        arr.untracked(() => arr.sort((a, b) => byName(b, a)));
+                    }, ["d", "c", "b", "a"], ["a", "b", "c", "d"]);
+                });
+
+                it("untracked sort() then push()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr.untracked(() => arr.sort(byName));
+                        arr.push(wrap("e"));
+                    }, ["a", "b", "c", "d", "e"], ["d", "b", "c", "a", "e"]);
+                });
+
+                it("push() then untracked reverse()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr.push(wrap("e"));
+                        arr.untracked(() => arr.reverse());
+                    }, ["e", "a", "c", "b", "d"], ["d", "b", "c", "a", "e"]);
+                });
+
+                it("an untracked removal after sort() keeps the sort's recorded ops", () => {
+                    // not encoded: an untracked delete over a pending op can't
+                    // ship cleanly yet, with or without sort()
+                    const { state } = synced(["d", "b", "c", "a"]);
+                    state.items.sort(byName);
+                    state.items.untracked(() => state.items.shift());
+                    assert.strictEqual(state.items[$changes].operationAt(3), OPERATION.REPLACE);
+                });
             });
         });
 
