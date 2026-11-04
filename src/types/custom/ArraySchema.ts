@@ -307,6 +307,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         if (index < 0) {
             return undefined;
         }
+        if (self.$settleReorder(index)) { return this.pop(); }
 
         const cancel = self.$isUnsentAdd(index);
         self[$changes].delete(index);
@@ -342,6 +343,52 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         }
         // beyond the live range: appends land after the staged tmpItems tail
         return tmpItems.length + (index - live);
+    }
+
+    /**
+     * True when `sort()` can re-state the order as one REPLACE per moved slot
+     * on top of this tick's pending ops. A staged delete can't take it: its
+     * slot would be re-pointed at whichever element sorted into it. Nor can a
+     * Schema child's ADD or DELETE: REPLACE moves an instance without
+     * touching its refCount, so a merged slot would ship a known instance as
+     * new, or never create the new one.
+     */
+    protected $canReorderInPlace(): boolean {
+        if (this.deletedIndexes.length > 0) { return false; }
+        if (typeof this[$childType] === "string") { return true; }
+        for (const op of this[$changes].collDirty!.values()) {
+            if ((op & (OPERATION.ADD | OPERATION.DELETE)) !== 0) { return false; }
+        }
+        return true;
+    }
+
+    /**
+     * Schema children only. A pending REPLACE at wire slot `at` is `sort()`
+     * moving an instance in, and the slot holds a single op: a delete or
+     * write merged into it would name the instance the client holds there,
+     * which `sort()` moved elsewhere. Re-state the array first so the op
+     * lands on an unsent ADD instead.
+     *
+     * Returns true when it did — wire indexes computed before are stale.
+     */
+    protected $settleReorder(at: number): boolean {
+        if (typeof this[$childType] === "string") { return false; } // positional ops compose
+        if (this[$changes].operationAt(at) !== OPERATION.REPLACE) { return false; }
+        this.$restate(this.items.slice());
+        return true;
+    }
+
+    /**
+     * Full re-state: CLEAR, then re-ADD `values` in order — for when this
+     * tick's ops can't be carried across a reorder. Only ops every SDK
+     * decoder already speaks; Schema children's refCounts re-balance through
+     * `Root.add`'s refCount-0 restage. `clear()` also drops staged holes
+     * (discard → `$onEncodeEnd`).
+     */
+    protected $restate(values: V[]): void {
+        const proxy = this[$changes].ref as ArraySchema<V>; // parent identity for push()
+        proxy.clear();
+        proxy.push(...values);
     }
 
     /**
@@ -484,6 +531,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         }
 
         const wireIndex = this.$wireIndex(index);
+        if (this.$settleReorder(wireIndex)) { return this.$changeAt(index, value); }
         const changeTree = this[$changes];
         const replacing = this.items[index] !== undefined;
 
@@ -615,11 +663,8 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             // Ops recorded earlier this tick address the staged (pre-reverse)
             // layout, and the encoder only resolves their values at encode
             // time — a pure REVERSE would move that layout under them.
-            // Degrade to a full re-state: CLEAR + re-ADD in reversed order.
             //
-            const reversed = self.items.slice().reverse();
-            this.clear(); // also drops staged holes (discard → $onEncodeEnd)
-            this.push(...reversed);
+            self.$restate(self.items.slice().reverse());
             return this;
         }
 
@@ -645,6 +690,7 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         const deletedIndexes = self.deletedIndexes;
         let index = 0;
         while (deletedIndexes[index] === true) { index++; }
+        if (self.$settleReorder(index)) { return this.shift(); }
         const cancel = self.$isUnsentAdd(index);
         changeTree.delete(index, OPERATION.DELETE);
         if (cancel) { self.$cancelAdd(index); }
@@ -675,18 +721,29 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
      */
     sort(compareFn: (a: V, b: V) => number = DEFAULT_SORT): this {
         const self = this[$proxyTarget];
-        self.isMovingItems = true;
+        const items = self.items;
+
+        if (!self.$canReorderInPlace()) {
+            self.$restate(items.slice().sort(compareFn));
+            return this;
+        }
 
         const changeTree = self[$changes];
-        const sortedItems = self.items.sort(compareFn);
+        const tmpItems = self.tmpItems;
+        // a pending primitive insert may hit the decoder's equal-value ADD skip — only re-stating every slot repairs it
+        const everySlot = typeof self[$childType] === "string" && changeTree.has();
+        items.sort(compareFn);
 
-        // wouldn't OPERATION.MOVE make more sense here?
-        sortedItems.forEach((_, i) => changeTree.change(i, OPERATION.REPLACE));
+        let firstMoved = -1;
+        for (let i = 0, l = items.length; i < l; i++) {
+            const moved = tmpItems[i] !== items[i];
+            if (!moved && !everySlot) { continue; }
+            if (moved && firstMoved < 0) { firstMoved = i; }
+            changeTree.change(i, OPERATION.REPLACE);
+            tmpItems[i] = items[i]; // copy, not re-sort: a flaky comparator would diverge
+        }
 
-        self.tmpItems.sort(compareFn);
-        self.$reindexChildren(0);
-
-        self.isMovingItems = false;
+        if (firstMoved >= 0) { self.$reindexChildren(firstMoved); }
         return this;
     }
 
@@ -728,6 +785,10 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
             // if deleteCount is not provided, delete all items from start to end
             if (deleteCount === undefined) {
                 deleteCount = itemsLength - start;
+            }
+
+            for (let i = start, end = Math.min(start + deleteCount, itemsLength); i < end; i++) {
+                if (self.$settleReorder(indexes[i])) { return this.splice(start, deleteCount, ...insertItems); }
             }
 
             //
