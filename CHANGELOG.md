@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.45]
+
+### Fixed
+
+- `ArraySchema.splice()` with a negative, fractional or out-of-range `start` or `deleteCount` (`splice(-1, 1)`, `splice(1, 10)`, …) no longer desyncs clients, and `splice(i, Infinity)` no longer hangs the server. Thanks @JROtto5! [#252](https://github.com/colyseus/schema/issues/252)
+
+### Changed
+
+- `splice(start, undefined)` removes nothing, as on a plain array. It used to remove everything from `start` on.
+
 ## [5.0.44]
 
 ### Fixed

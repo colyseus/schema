@@ -780,6 +780,15 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         const tmpItemsLength = tmpItems.length;
         const insertCount = insertItems.length;
 
+        // Array#splice semantics — indexes[] below is read with these as-is
+        const relativeStart = Math.trunc(start) || 0; // NaN → 0
+        start = (relativeStart < 0)
+            ? Math.max(itemsLength + relativeStart, 0)
+            : Math.min(relativeStart, itemsLength);
+        deleteCount = (arguments.length === 1) // omitted ≠ explicit undefined (→ 0)
+            ? itemsLength - start
+            : Math.min(Math.max(Math.trunc(deleteCount!) || 0, 0), itemsLength - start);
+
         // build up-to-date list of indexes, excluding removed values.
         const indexes: number[] = [];
         for (let i = 0; i < tmpItemsLength; i++) {
@@ -793,30 +802,18 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         // every later `indexes[]` entry and `base`.
         let unsent: number[] | undefined;
 
-        if (itemsLength > start) {
-            // if deleteCount is not provided, delete all items from start to end
-            if (deleteCount === undefined) {
-                deleteCount = itemsLength - start;
-            }
+        const deleteEnd = start + deleteCount;
 
-            for (let i = start, end = Math.min(start + deleteCount, itemsLength); i < end; i++) {
-                if (self.$settleReorder(indexes[i])) { return this.splice(start, deleteCount, ...insertItems); }
-            }
+        for (let i = start; i < deleteEnd; i++) {
+            if (self.$settleReorder(indexes[i])) { return this.splice(start, deleteCount, ...insertItems); }
+        }
 
-            //
-            // delete operations at correct index
-            //
-            for (let i = start; i < start + deleteCount; i++) {
-                const index = indexes[i];
-                const isUnsent = self.$isUnsentAdd(index);
-                changeTree.delete(index, OPERATION.DELETE);
-                if (isUnsent) { (unsent ??= []).push(index); }
-                else { deletedIndexes[index] = true; }
-            }
-
-        } else {
-            // not enough items to delete
-            deleteCount = 0;
+        for (let i = start; i < deleteEnd; i++) {
+            const index = indexes[i];
+            const isUnsent = self.$isUnsentAdd(index);
+            changeTree.delete(index, OPERATION.DELETE);
+            if (isUnsent) { (unsent ??= []).push(index); }
+            else { deletedIndexes[index] = true; }
         }
 
         // insert operations

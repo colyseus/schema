@@ -1398,6 +1398,82 @@ describe("ArraySchema Tests", () => {
             });
         });
 
+        describe("arguments are normalized like Array#splice (#252)", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+            class PrimitiveState extends Schema {
+                @type(["number"]) items = new ArraySchema<number>();
+            }
+
+            // args[2..] are inserted
+            const cases: any[][] = [
+                [-1, 1],
+                [-1],
+                [-2, 1, 9],
+                [-1, 0, 9],
+                [-10, 1],
+                [-Infinity, 1],
+                [1, -1, 9],
+                [1.5, 1],
+                [-0.5, 1],
+                [NaN, 1],
+                [1, 1.7, 9],
+                [1, 10],
+                [1, Infinity],
+                [10, 1, 9],
+                [0, undefined],
+                [],
+            ];
+
+            /** `before` runs on both the native and the tracked array, in the splice's tick. */
+            function run(isRef: boolean, args: any[], before?: (items: any) => void) {
+                const wrap = (i: number) => isRef ? new Item().assign({ i }) : i;
+                const unwrap = (v: any) => isRef ? v.i : v;
+                const state: any = isRef ? new State() : new PrimitiveState();
+                for (let i = 0; i < 4; i++) { state.items.push(wrap(i)); }
+
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                const expected = [0, 1, 2, 3];
+                before?.(expected);
+                before?.(state.items);
+                const expectedRemoved = expected.splice(...(args as [number, number]));
+
+                const warn = console.warn;
+                let warnings = 0;
+                console.warn = () => { warnings++; };
+                try {
+                    const removed = state.items.splice(...args.map((v, i) => (i >= 2) ? wrap(v) : v));
+                    assert.deepStrictEqual(removed.map(unwrap), expectedRemoved);
+                    decodedState.decode(state.encode());
+                } finally {
+                    console.warn = warn;
+                }
+
+                assert.strictEqual(warnings, 0);
+                assert.deepStrictEqual(state.items.map(unwrap), expected);
+                assert.deepStrictEqual(decodedState.items.toJSON(), state.items.toJSON());
+                if (isRef) { assertRefIdCounts(state, decodedState); }
+                assertDeepStrictEqualEncodeAll(state);
+            }
+
+            for (const args of cases) {
+                const label = `splice(${args.map(String).join(", ")})`;
+                it(`primitives: ${label}`, () => run(false, args));
+                it(`Schema children: ${label}`, () => run(true, args));
+            }
+
+            it("negative start after a same-tick shift()", () => {
+                run(false, [-2, 1, 9], (items) => items.shift());
+                run(true, [-2, 1, 9], (items) => items.shift());
+            });
+        });
+
         it("should allow consecutive splices (same place, 3 items)", () => {
             class Item extends Schema {
                 @type("number") i: number;
