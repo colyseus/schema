@@ -12,6 +12,7 @@ import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { ensureTracked, forEachChildWithCtx } from "./changeTree/treeAttachment.js";
 import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
+import { streamHasBroadcastBacklog, streamHasViewBacklog } from "./streaming.js";
 import {
     MODE_DRAIN, MODE_PATCH, MODE_SNAPSHOT, MODE_STREAM,
     closeChunk, emitKeyedOp, emitLiveChunk, emitViewEntry, encodeKeyedOps, encodeSchemaBits, encodeSchemaOps, encodeTreeOps,
@@ -250,7 +251,7 @@ export class Encoder<T extends Schema = any> {
         // Broadcast-mode stream emission runs after the main loop (state /
         // parent refs are already on the wire). Skipped when any StateView
         // is registered (the priority pass in `encodeView` owns emission).
-        if (this.root.activeViews.size === 0 && this.root.streamTrees.size > 0) {
+        if (this._isStreamBroadcastMode) {
             this._emitStreamBroadcast(f);
         }
 
@@ -780,8 +781,30 @@ export class Encoder<T extends Schema = any> {
         list.tail = undefined;
     }
 
+    /**
+     * True when the next `encode()` / `encodeView()` has something to send,
+     * including a stream backlog still draining under `maxPerTick` while
+     * the rest of the state is idle.
+     */
     get hasChanges(): boolean {
-        return this.root.changes.next !== undefined;
+        return this.root.changes.next !== undefined || this._hasStreamBacklog();
+    }
+
+    // No StateView registered: streams drain through the shared encode().
+    private get _isStreamBroadcastMode(): boolean {
+        return this.root.activeViews.size === 0 && this.root.streamTrees.size > 0;
+    }
+
+    private _hasStreamBacklog(): boolean {
+        const root = this.root;
+        if (root.streamTrees.size === 0) return false;
+        const broadcast = root.activeViews.size === 0;
+        for (const stream of root.streamTrees) {
+            if (broadcast
+                ? streamHasBroadcastBacklog(stream)
+                : streamHasViewBacklog(stream, root)) return true;
+        }
+        return false;
     }
 
     get hasUnreliableChanges(): boolean {

@@ -236,6 +236,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Rooms that keep replacing child instances no longer grow in memory without bound: the encoder kept a reference-count entry for every instance ever attached. Thanks @wachiiiiii! [#244](https://github.com/colyseus/schema/issues/244)
 
+## [5.0.34]
+
+### Fixed
+
+- `view.subscribe(collection)` now works on its own for a `.view()` collection; it no longer needs a prior `view.add()` of the collection or its parent, which logged `"refId" not found` and never delivered the items.
+- A stream backlog (`t.stream()`, `.stream()` maps and sets) now keeps draining `maxPerTick` per tick while the rest of the state is idle; it used to stall until something else changed.
+
 ## [5.0.31]
 
 ### Changed
