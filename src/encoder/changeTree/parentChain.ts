@@ -63,6 +63,13 @@ export function addParent(tree: ChangeTree, parent: Ref, index: number, parentTr
     tree._parentIndex = index;
 }
 
+/** Forget every parent edge. */
+export function clearParents(tree: ChangeTree): void {
+    tree.parentTree = undefined;
+    tree._parentIndex = undefined;
+    tree.extraParents = undefined;
+}
+
 /**
  * Remove a parent from the chain.
  * @returns true if parent was found and removed (Root.remove relies on this).

@@ -1185,6 +1185,87 @@ describe("Instance sharing", () => {
         });
     });
 
+    // A detached instance keeps edges to the containers that dropped it. Re-added
+    // through a slot replaced in the same tick, it used to reach the client with
+    // empty fields.
+    describe("re-adding a detached instance", () => {
+        class Item extends Schema {
+            @type("number") v: number;
+        }
+        class State extends Schema {
+            @type({ map: Item }) other = new MapSchema<Item>();
+            @type([Item]) arr = new ArraySchema<Item>();
+            @type({ map: Item }) map = new MapSchema<Item>();
+            @type({ set: Item }) set = new SetSchema<Item>();
+            @type(Item) field: Item;
+        }
+
+        const containers: Record<string, { put: (state: State, item: Item) => void, removals: Record<string, (state: State, item: Item) => void> }> = {
+            ArraySchema: {
+                put: (state, item) => { state.arr.push(item); },
+                removals: {
+                    "clear()": (state) => state.arr.clear(),
+                    "pop()": (state) => { state.arr.pop(); },
+                    "shift()": (state) => { state.arr.shift(); },
+                    "splice()": (state) => { state.arr.splice(0, 1); },
+                    "length = 0": (state) => { state.arr.length = 0; },
+                },
+            },
+            MapSchema: {
+                put: (state, item) => { state.map.set("x", item); },
+                removals: {
+                    "delete()": (state) => { state.map.delete("x"); },
+                    "clear()": (state) => state.map.clear(),
+                },
+            },
+            SetSchema: {
+                put: (state, item) => { state.set.add(item); },
+                removals: {
+                    "delete()": (state, item) => { state.set.delete(item); },
+                    "clear()": (state) => state.set.clear(),
+                },
+            },
+            "Schema field": {
+                put: (state, item) => { state.field = item; },
+                removals: {
+                    "= undefined": (state) => { state.field = undefined; },
+                },
+            },
+        };
+
+        for (const [container, { put, removals }] of Object.entries(containers)) {
+            for (const [removal, remove] of Object.entries(removals)) {
+                for (const sameTick of [true, false]) {
+                    it(`${container} ${removal} (${sameTick ? "same tick as the add" : "after the add was sent"})`, () => {
+                        const state = new State();
+                        const encoder = getEncoder(state);
+                        const decoded = createInstanceFromReflection(state);
+                        decoded.decode(encoder.encodeAll());
+                        encoder.discardChanges();
+
+                        const item = new Item().assign({ v: 1 });
+                        put(state, item);
+                        if (!sameTick) {
+                            decoded.decode(encoder.encode());
+                            encoder.discardChanges();
+                        }
+                        remove(state, item);
+                        decoded.decode(encoder.encode());
+                        encoder.discardChanges();
+
+                        state.other.set("k", item);
+                        put(state, item);
+                        state.other.set("k", new Item().assign({ v: 2 }));
+                        decoded.decode(encoder.encode());
+
+                        assert.deepStrictEqual(decoded.toJSON(), state.toJSON());
+                        assertRefIdCounts(state, decoded);
+                    });
+                }
+            }
+        }
+    });
+
     describe("StateView: instance shared across a filter boundary", () => {
         //
         // A Schema instance held by BOTH a @view-gated container and a public

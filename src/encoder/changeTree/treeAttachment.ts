@@ -9,6 +9,7 @@ import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
 import { Root, type Streamable } from "../Root.js";
 import { ChangeTree, type Ref, refTreeOf, setTree } from "../ChangeTree.js";
 import { checkIsFiltered } from "./inheritedFlags.js";
+import { clearParents } from "./parentChain.js";
 import { propagateNewChildToSubscribers } from "../subscriptions.js";
 
 export function setRoot(tree: ChangeTree, root: Root): void {
@@ -63,6 +64,10 @@ export function setParent(
     parentIndex?: number,
     parentTree?: ChangeTree,
 ): void {
+    // a detached tree keeps the edges of the parents that dropped it (StateView
+    // reads them); coming back, a stale one would order its ops after a parent
+    // that no longer holds it
+    if (root !== undefined && tree.root === undefined && tree.needsRestage) clearParents(tree);
     tree.addParent(parent, parentIndex, parentTree);
 
     // avoid setting parents with empty `root`
