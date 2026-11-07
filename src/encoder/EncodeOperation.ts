@@ -150,6 +150,11 @@ export function releaseFrames(): void {
         f.elements = undefined;
         f.values = undefined!;
         f.entryForBody = undefined;
+        // class-bound: a pooled frame must not keep a reflected class (and its TypeContext) alive
+        f.context = undefined!;
+        f.desc = undefined!;
+        f.childType = undefined;
+        f.filter = undefined;
         if (f.valsLen !== 0) releaseScratch(f); // strs are only ever filled alongside vals
     }
 }

@@ -246,6 +246,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Rooms that keep replacing child instances no longer grow in memory without bound: the encoder kept a reference-count entry for every instance ever attached. Thanks @wachiiiiii! [#244](https://github.com/colyseus/schema/issues/244)
 
+## [5.0.40]
+
+### Fixed
+
+- A client no longer keeps the classes of every room it has joined. The classes `Reflection.decode()` builds from each handshake stayed in `TypeContext`'s static maps for good: the `room.input()` class once an `InputEncoder` encoded it, and every class that extends another. `TypeContext.cachedContexts` and `TypeContext.inheritedTypes` are `WeakMap`s now, so those classes go with their room.
+
 ## [5.0.38]
 
 ### Fixed

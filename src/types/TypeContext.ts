@@ -13,10 +13,14 @@ export class TypeContext {
      * For inheritance support
      * Keeps track of which classes extends which. (parent -> children)
      * Shared by every library copy in the process (first loader wins).
+     *
+     * Both are weak: `Reflection.decode()` makes new classes on every
+     * handshake (an SDK's state and `room.input()` class per join), and they
+     * must go away with their decoder instead of living here forever.
      */
-    static inheritedTypes: Map<typeof Schema, Set<typeof Schema>> =
-        ((globalThis as any)[Symbol.for("@colyseus/schema:inheritedTypes")] ??= new Map());
-    static cachedContexts = new Map<typeof Schema, TypeContext>();
+    static inheritedTypes: WeakMap<typeof Schema, Set<typeof Schema>> =
+        ((globalThis as any)[Symbol.for("@colyseus/schema:inheritedTypes")] ??= new WeakMap());
+    static cachedContexts = new WeakMap<typeof Schema, TypeContext>();
 
     static register(target: typeof Schema) {
         const parent = Object.getPrototypeOf(target);
