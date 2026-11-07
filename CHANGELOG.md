@@ -267,6 +267,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - A client no longer keeps the classes of every room it has joined. The classes `Reflection.decode()` builds from each handshake stayed in `TypeContext`'s static maps for good: the `room.input()` class once an `InputEncoder` encoded it, and every class that extends another. `TypeContext.cachedContexts` and `TypeContext.inheritedTypes` are `WeakMap`s now, so those classes go with their room.
 
+## [5.0.39]
+
+### Fixed
+
+- `ArraySchema.toJSON()` and `MapSchema.toJSON()` now return the serialized element type instead of `any`, so assigning the result to a mismatched type is caught at compile time. Thanks @snowyukitty! [#242](https://github.com/colyseus/schema/pull/242)
+
 ## [5.0.38]
 
 ### Fixed

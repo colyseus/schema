@@ -1019,7 +1019,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         return arrCopy(this[$proxyTarget]);
     }
 
-    toJSON(): any[] {
+    toJSON(): (V extends { toJSON(...args: any[]): infer R } ? R : V)[] {
         const self = this[$proxyTarget];
         const length = self.length;
         const out = new Array(length);
