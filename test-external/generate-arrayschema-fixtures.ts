@@ -353,6 +353,21 @@ removeInsert("remove_insert_shift_unshift_more",
     (s) => s.items.push(mkItem(1), mkItem(2)),
     (s) => { s.items.shift(); s.items.unshift(mkItem(3), mkItem(4)); });
 
+// sort() in the same patch as another operation: CLEAR + re-ADD of the same refIds
+const byValue = (a: Item, b: Item) => a.value - b.value;
+
+removeInsert("sort_then_pop",
+    (s) => s.items.push(mkItem(4), mkItem(2), mkItem(3), mkItem(1)),
+    (s) => { s.items.sort(byValue); s.items.pop(); });
+
+removeInsert("push_then_sort",
+    (s) => s.items.push(mkItem(4), mkItem(2), mkItem(3), mkItem(1)),
+    (s) => { s.items.push(mkItem(0)); s.items.sort(byValue); });
+
+removeInsert("shift_then_sort",
+    (s) => s.items.push(mkItem(4), mkItem(2), mkItem(3), mkItem(1)),
+    (s) => { s.items.shift(); s.items.sort(byValue); });
+
 // -----------------------------------------------------------------------------
 // output
 // -----------------------------------------------------------------------------

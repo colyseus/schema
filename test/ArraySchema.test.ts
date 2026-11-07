@@ -1,7 +1,7 @@
 import * as assert from "assert";
 
 import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, assertNoOrphanRefs, createClientWithView, encodeMultiple } from "./Schema";
-import { ArraySchema, Schema, type, view, $changes, $refId, MapSchema, ChangeTree, schema, t } from "../src";
+import { ArraySchema, Schema, type, view, $changes, $refId, MapSchema, ChangeTree, OPERATION, schema, t } from "../src";
 
 describe("ArraySchema Tests", () => {
 
@@ -1395,6 +1395,82 @@ describe("ArraySchema Tests", () => {
                 decodedState.decode(state.encode());
 
                 assertInSync(state, decodedState, [10, 11, 2, 3, 4, 5, 6, 7, 8, 9]);
+            });
+        });
+
+        describe("arguments are normalized like Array#splice (#252)", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+            class PrimitiveState extends Schema {
+                @type(["number"]) items = new ArraySchema<number>();
+            }
+
+            // args[2..] are inserted
+            const cases: any[][] = [
+                [-1, 1],
+                [-1],
+                [-2, 1, 9],
+                [-1, 0, 9],
+                [-10, 1],
+                [-Infinity, 1],
+                [1, -1, 9],
+                [1.5, 1],
+                [-0.5, 1],
+                [NaN, 1],
+                [1, 1.7, 9],
+                [1, 10],
+                [1, Infinity],
+                [10, 1, 9],
+                [0, undefined],
+                [],
+            ];
+
+            /** `before` runs on both the native and the tracked array, in the splice's tick. */
+            function run(isRef: boolean, args: any[], before?: (items: any) => void) {
+                const wrap = (i: number) => isRef ? new Item().assign({ i }) : i;
+                const unwrap = (v: any) => isRef ? v.i : v;
+                const state: any = isRef ? new State() : new PrimitiveState();
+                for (let i = 0; i < 4; i++) { state.items.push(wrap(i)); }
+
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                const expected = [0, 1, 2, 3];
+                before?.(expected);
+                before?.(state.items);
+                const expectedRemoved = expected.splice(...(args as [number, number]));
+
+                const warn = console.warn;
+                let warnings = 0;
+                console.warn = () => { warnings++; };
+                try {
+                    const removed = state.items.splice(...args.map((v, i) => (i >= 2) ? wrap(v) : v));
+                    assert.deepStrictEqual(removed.map(unwrap), expectedRemoved);
+                    decodedState.decode(state.encode());
+                } finally {
+                    console.warn = warn;
+                }
+
+                assert.strictEqual(warnings, 0);
+                assert.deepStrictEqual(state.items.map(unwrap), expected);
+                assert.deepStrictEqual(decodedState.items.toJSON(), state.items.toJSON());
+                if (isRef) { assertRefIdCounts(state, decodedState); }
+                assertDeepStrictEqualEncodeAll(state);
+            }
+
+            for (const args of cases) {
+                const label = `splice(${args.map(String).join(", ")})`;
+                it(`primitives: ${label}`, () => run(false, args));
+                it(`Schema children: ${label}`, () => run(true, args));
+            }
+
+            it("negative start after a same-tick shift()", () => {
+                run(false, [-2, 1, 9], (items) => items.shift());
+                run(true, [-2, 1, 9], (items) => items.shift());
             });
         });
 
@@ -3083,46 +3159,52 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([5, 4, 3, 2, 1], decodedState.numbers.toJSON());
         });
 
+        // Shared by the reverse() and sort() blocks: a ref-typed and a
+        // primitive array, synced to `initial`.
+        class SameTickItem extends Schema {
+            @type("string") name: string;
+        }
+        class SameTickState extends Schema {
+            @type([SameTickItem]) items = new ArraySchema<SameTickItem>();
+            @type(["string"]) strings = new ArraySchema<string>();
+        }
+        const item = (name: string) => new SameTickItem().assign({ name });
+        const nameOf = (v: any) => (typeof v === "string") ? v : v.name;
+
+        function synced(initial: string[]) {
+            const state = new SameTickState();
+            const decodedState = createInstanceFromReflection(state);
+            state.items.push(...initial.map(item));
+            state.strings.push(...initial);
+            decodedState.decode(state.encode());
+            return { state, decodedState };
+        }
+
+        // Run `mutate` against both arrays in one tick; one patch must bring
+        // the decoder to `expected` with matching refCounts (a REPLACE merged
+        // into a ref slot desyncs them even when the order comes out right),
+        // and a fresh encodeAll must agree.
+        function assertSameTick(
+            initial: string[],
+            mutate: (arr: ArraySchema<any>, wrap: (name: string) => any) => void,
+            expected: string[],
+        ) {
+            const { state, decodedState } = synced(initial);
+            mutate(state.items, item);
+            mutate(state.strings, (name) => name);
+
+            assert.deepStrictEqual(state.items.map(nameOf), expected, "server items");
+            assert.deepStrictEqual([...state.strings], expected, "server strings");
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(decodedState.items.map(nameOf), expected, "decoded items");
+            assert.deepStrictEqual([...decodedState.strings], expected, "decoded strings");
+            assertRefIdCounts(state, decodedState);
+
+            assertDeepStrictEqualEncodeAll(state);
+        }
+
         describe("#reverse() following another same-tick operation", () => {
-            class Item extends Schema {
-                @type("string") name: string;
-            }
-            class ReverseState extends Schema {
-                @type([Item]) items = new ArraySchema<Item>();
-                @type(["string"]) strings = new ArraySchema<string>();
-            }
-            const item = (name: string) => new Item().assign({ name });
-
-            // Sync `initial` into both arrays (ref-typed + primitive), then run
-            // `mutate` against each in the same tick and assert one patch
-            // brings the decoder to `expected` — and that a fresh encodeAll
-            // still matches (catches refId leaks the patch path can hide).
-            function assertSameTick(
-                initial: string[],
-                mutate: (arr: ArraySchema<any>, wrap: (name: string) => any) => void,
-                expected: string[],
-            ) {
-                const state = new ReverseState();
-                const decodedState = createInstanceFromReflection(state);
-                if (initial.length > 0) {
-                    state.items.push(...initial.map(item));
-                    state.strings.push(...initial);
-                }
-                decodedState.decode(state.encode());
-
-                mutate(state.items, item);
-                mutate(state.strings, (name) => name);
-
-                assert.deepStrictEqual(state.items.map((i) => i.name), expected, "server items");
-                assert.deepStrictEqual([...state.strings], expected, "server strings");
-
-                decodedState.decode(state.encode());
-                assert.deepStrictEqual(decodedState.items.map((i) => i.name), expected, "decoded items");
-                assert.deepStrictEqual([...decodedState.strings], expected, "decoded strings");
-
-                assertDeepStrictEqualEncodeAll(state);
-            }
-
             it("ADDs then reverse() on a fresh array", () => {
                 assertSameTick([], (arr, wrap) => {
                     arr.push(wrap("a"), wrap("b"), wrap("c"));
@@ -3203,10 +3285,7 @@ describe("ArraySchema Tests", () => {
             });
 
             it("pop() then reverse() across separate ticks", () => {
-                const state = new ReverseState();
-                const decodedState = createInstanceFromReflection(state);
-                state.items.push(item("a"), item("b"), item("c"));
-                decodedState.decode(state.encode());
+                const { state, decodedState } = synced(["a", "b", "c"]);
 
                 state.items.pop();
                 decodedState.decode(state.encode());
@@ -3216,6 +3295,198 @@ describe("ArraySchema Tests", () => {
 
                 assert.deepStrictEqual(decodedState.items.map((i) => i.name), ["b", "a"]);
                 assertDeepStrictEqualEncodeAll(state);
+            });
+        });
+
+        describe("#sort() in the same patch as another operation (#249)", () => {
+            const byName = (a: any, b: any) => nameOf(a).localeCompare(nameOf(b));
+
+            it("shift() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.shift();
+                    arr.sort(byName);
+                }, ["a", "b", "c"]);
+            });
+
+            it("pop() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.pop();
+                    arr.sort(byName);
+                }, ["b", "c", "d"]);
+            });
+
+            it("push() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.push(wrap("0"));
+                    arr.sort(byName);
+                }, ["0", "a", "b", "c", "d"]);
+            });
+
+            it("unshift() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.unshift(wrap("e"));
+                    arr.sort(byName);
+                }, ["a", "b", "c", "d", "e"]);
+            });
+
+            it("splice() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.splice(1, 1);
+                    arr.sort(byName);
+                }, ["a", "c", "d"]);
+            });
+
+            it("index write then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr[0] = wrap("z");
+                    arr.sort(byName);
+                }, ["a", "b", "c", "z"]);
+            });
+
+            it("sort() then shift()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.sort(byName);
+                    arr.shift();
+                }, ["b", "c", "d"]);
+            });
+
+            it("sort() then pop()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.sort(byName);
+                    arr.pop();
+                }, ["a", "b", "c"]);
+            });
+
+            it("sort() then splice()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.sort(byName);
+                    arr.splice(0, 2, wrap("x"));
+                }, ["x", "c", "d"]);
+            });
+
+            it("sort() then index write", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.sort(byName);
+                    arr[3] = wrap("z");
+                }, ["a", "b", "c", "z"]);
+            });
+
+            it("sort() then unshift() and push()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.sort(byName);
+                    arr.unshift(wrap("0"));
+                    arr.push(wrap("e"));
+                }, ["0", "a", "b", "c", "d", "e"]);
+            });
+
+            it("unshift(), sort(), unshift() on an array the client already holds", () => {
+                assertSameTick(["b", "c", "a"], (arr, wrap) => {
+                    arr.unshift(wrap("x"));
+                    arr.sort(byName);
+                    arr.unshift(wrap("y"));
+                }, ["y", "a", "b", "c", "x"]);
+            });
+
+            it("sort() twice", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.sort(byName);
+                    arr.sort((a, b) => byName(b, a));
+                }, ["d", "c", "b", "a"]);
+            });
+
+            it("sort() with an inconsistent comparator", () => {
+                // seeded PRNG: sorting a second copy would not reproduce the order
+                let seed = 1;
+                const flaky = () => (seed = (seed * 16807) % 2147483647) % 3 - 1;
+                const { state, decodedState } = synced(["a", "b", "c", "d", "e", "f"]);
+
+                state.items.sort(flaky);
+                decodedState.decode(state.encode());
+
+                assert.deepStrictEqual(decodedState.items.map(nameOf), state.items.map(nameOf));
+                assertRefIdCounts(state, decodedState);
+            });
+
+            it("sort() of an already-sorted array records nothing", () => {
+                const { state } = synced(["a", "b", "c"]);
+
+                state.items.sort(byName);
+                state.strings.sort();
+                assert.strictEqual(state.items[$changes].changed, false);
+                assert.strictEqual(state.strings[$changes].changed, false);
+            });
+
+            describe("while tracking is paused", () => {
+                // An untracked reorder stays on the server: clients get the
+                // tick's tracked ops as if it never ran.
+                function assertUntracked(
+                    mutate: (arr: ArraySchema<any>, wrap: (name: string) => any) => void,
+                    expectedServer: string[],
+                    expectedClient: string[],
+                ) {
+                    const { state, decodedState } = synced(["d", "b", "c", "a"]);
+                    mutate(state.items, item);
+                    mutate(state.strings, (name) => name);
+
+                    assert.deepStrictEqual(state.items.map(nameOf), expectedServer, "server items");
+                    assert.deepStrictEqual([...state.strings], expectedServer, "server strings");
+
+                    decodedState.decode(state.encode());
+                    assert.deepStrictEqual(decodedState.items.map(nameOf), expectedClient, "decoded items");
+                    assert.deepStrictEqual([...decodedState.strings], expectedClient, "decoded strings");
+                    assertRefIdCounts(state, decodedState);
+                }
+
+                it("push() then untracked sort()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr.push(wrap("e"));
+                        arr.untracked(() => arr.sort(byName));
+                    }, ["a", "b", "c", "d", "e"], ["d", "b", "c", "a", "e"]);
+                });
+
+                it("pop() then untracked sort()", () => {
+                    assertUntracked((arr) => {
+                        arr.pop();
+                        arr.untracked(() => arr.sort(byName));
+                    }, ["b", "c", "d"], ["d", "b", "c"]);
+                });
+
+                it("index write then untracked sort()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr[0] = wrap("z");
+                        arr.untracked(() => arr.sort(byName));
+                    }, ["a", "b", "c", "z"], ["z", "b", "c", "a"]);
+                });
+
+                it("sort() then untracked sort()", () => {
+                    assertUntracked((arr) => {
+                        arr.sort(byName);
+                        arr.untracked(() => arr.sort((a, b) => byName(b, a)));
+                    }, ["d", "c", "b", "a"], ["a", "b", "c", "d"]);
+                });
+
+                it("untracked sort() then push()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr.untracked(() => arr.sort(byName));
+                        arr.push(wrap("e"));
+                    }, ["a", "b", "c", "d", "e"], ["d", "b", "c", "a", "e"]);
+                });
+
+                it("push() then untracked reverse()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr.push(wrap("e"));
+                        arr.untracked(() => arr.reverse());
+                    }, ["e", "a", "c", "b", "d"], ["d", "b", "c", "a", "e"]);
+                });
+
+                it("an untracked removal after sort() keeps the sort's recorded ops", () => {
+                    // not encoded: an untracked delete over a pending op can't
+                    // ship cleanly yet, with or without sort()
+                    const { state } = synced(["d", "b", "c", "a"]);
+                    state.items.sort(byName);
+                    state.items.untracked(() => state.items.shift());
+                    assert.strictEqual(state.items[$changes].operationAt(3), OPERATION.REPLACE);
+                });
             });
         });
 

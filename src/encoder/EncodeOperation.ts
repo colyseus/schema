@@ -271,11 +271,8 @@ export const encodeArray: EncodeOperation = function (
             // slot, so everything must degrade to a BY_REFID op here.
             operation = OPERATION.ADD_BY_REFID;
 
-        } else if ((operation & OPERATION.MOVE) === OPERATION.MOVE) {
-            // Pure reorder (MOVE / DELETE_AND_MOVE). Filtered clients hold
-            // per-view subsets, so element order is not synchronized for
-            // them (ADD_BY_REFID appends) — there is nothing to emit.
-            return;
+        } else {
+            return; // pure reorder (REPLACE / MOVE): order isn't synced for per-view subsets
         }
 
     } else if (operation === OPERATION.DELETE && isSchemaChild) {

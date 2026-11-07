@@ -5769,6 +5769,148 @@ describe("StateView", () => {
         });
     });
 
+    describe("sort() in the same tick as other operations (#249)", () => {
+        // sort() ships either in place (REPLACE per moved slot) or, when
+        // another op shares the tick, as CLEAR + re-ADD with every child
+        // restaged. Both must leave each view client with exactly its own
+        // subset, keep refs bound for later field writes, and agree with a
+        // fresh join.
+        type Ctx = {
+            arr: ArraySchema<any>;
+            make: (name: string) => any;
+            find: (name: string) => any;
+            show: (client: 0 | 1, item: any) => void;
+            hide: (client: 0 | 1, item: any) => void;
+        };
+        const byName = (a: any, b: any) => a.name.localeCompare(b.name);
+
+        const cases: Array<[string, (ctx: Ctx) => void]> = [
+            ["sort() alone", ({ arr }) => arr.sort(byName)],
+            ["sort() then pop()", ({ arr }) => { arr.sort(byName); arr.pop(); }],
+            ["sort() then shift()", ({ arr }) => { arr.sort(byName); arr.shift(); }],
+            ["sort() then splice()", ({ arr }) => { arr.sort(byName); arr.splice(1, 1); }],
+            ["pop() then sort()", ({ arr }) => { arr.pop(); arr.sort(byName); }],
+            ["shift() then sort()", ({ arr }) => { arr.shift(); arr.sort(byName); }],
+            ["push() + view.add() then sort()", ({ arr, make, show }) => {
+                const item = make("0"); arr.push(item); show(0, item); arr.sort(byName);
+            }],
+            ["sort() then push() + view.add()", ({ arr, make, show }) => {
+                arr.sort(byName); const item = make("0"); arr.push(item); show(1, item);
+            }],
+            ["view.add() then sort()", ({ arr, find, show }) => { show(0, find("b")); arr.sort(byName); }],
+            ["sort() then view.add()", ({ arr, find, show }) => { arr.sort(byName); show(0, find("b")); }],
+            ["view.remove() then sort()", ({ arr, find, hide }) => { hide(0, find("a")); arr.sort(byName); }],
+            ["sort() then view.remove()", ({ arr, find, hide }) => { arr.sort(byName); hide(0, find("a")); }],
+            ["pop(), sort(), view.remove()", ({ arr, find, hide }) => { arr.pop(); arr.sort(byName); hide(1, find("d")); }],
+            ["sort() twice then pop()", ({ arr }) => { arr.sort(byName); arr.sort((a, b) => byName(b, a)); arr.pop(); }],
+        ];
+
+        // Two views over [d, b, c, a]: client 0 sees a/c/d, client 1 sees b/d.
+        // Runs the mutation tick, then a tick that rewrites every element.
+        function run(
+            state: Schema,
+            arr: ArraySchema<any>,
+            make: (name: string) => any,
+            mutate: (ctx: Ctx) => void,
+            touch: (item: any) => void,
+        ) {
+            const encoder = getEncoder(state);
+            arr.push(...["d", "b", "c", "a"].map(make));
+
+            const clients = [createClientWithView(state), createClientWithView(state)];
+            const shown = [new Set<any>(), new Set<any>()];
+            const show = (c: 0 | 1, item: any) => { clients[c].view.add(item); shown[c].add(item); };
+            const hide = (c: 0 | 1, item: any) => { clients[c].view.remove(item); shown[c].delete(item); };
+            const find = (name: string) => arr.find((item) => item.name === name);
+            ["a", "c", "d"].forEach((name) => show(0, find(name)));
+            ["b", "d"].forEach((name) => show(1, find(name)));
+            encodeMultiple(encoder, state, clients);
+
+            const warnings: any[] = [];
+            const { warn, error } = console;
+            console.warn = console.error = (...args: any[]) => { warnings.push(args[0]); };
+            try {
+                mutate({ arr, make, find, show, hide });
+                encodeMultiple(encoder, state, clients);
+                arr.forEach(touch);
+                encodeMultiple(encoder, state, clients);
+            } finally {
+                console.warn = warn;
+                console.error = error;
+            }
+            assert.deepStrictEqual(warnings, [], "decoder warnings");
+            return { encoder, clients, shown };
+        }
+
+        describe("@view() array of Schema children", () => {
+            class Item extends Schema {
+                @type("string") name: string;
+            }
+            class State extends Schema {
+                @view() @type([Item]) items = new ArraySchema<Item>();
+            }
+            const make = (name: string) => new Item().assign({ name });
+            const names = (items: Item[]) => items.map((item) => item.name).sort();
+
+            for (const [label, mutate] of cases) {
+                it(label, () => {
+                    const state = new State();
+                    const { encoder, clients, shown } = run(state, state.items, make, mutate, (item) => { item.name += "'"; });
+
+                    // order is not synchronized for filtered clients — membership only
+                    clients.forEach((client, i) => {
+                        const expected = names(state.items.filter((item) => shown[i].has(item)));
+                        assert.deepStrictEqual(names(client.state.items), expected, `client ${i}`);
+                    });
+                    const late = createClientWithView(state, clients[0].view);
+                    encodeAllForView(encoder, late);
+                    assert.deepStrictEqual(names(late.state.items), names(clients[0].state.items), "late joiner");
+                });
+            }
+        });
+
+        describe("shared array of Schema children with @view() fields", () => {
+            class Player extends Schema {
+                @type("string") name: string;
+                @view() @type("number") secret: number;
+            }
+            class State extends Schema {
+                @type([Player]) players = new ArraySchema<Player>();
+            }
+            let secret = 0;
+            const make = (name: string) => new Player().assign({ name, secret: ++secret });
+            const describePlayers = (players: Player[], visible?: Set<any>) => players.map((p) =>
+                (visible ? visible.has(p) : p.secret !== undefined) ? `${p.name}=${p.secret}` : p.name);
+
+            // index writes only here: on a @view() array they leave the
+            // replaced element behind regardless of sort()
+            const sharedCases: typeof cases = [
+                ...cases,
+                ["sort() then index write + view.add()", ({ arr, make, show }) => {
+                    arr.sort(byName); const item = make("z"); arr[1] = item; show(0, item);
+                }],
+                ["index write then sort()", ({ arr, make }) => { arr[0] = make("z"); arr.sort(byName); }],
+            ];
+
+            for (const [label, mutate] of sharedCases) {
+                it(label, () => {
+                    const state = new State();
+                    const { encoder, clients, shown } = run(state, state.players, make, mutate, (p) => { p.name += "'"; p.secret += 1000; });
+
+                    // order is shared; `secret` reaches only the views holding the player
+                    clients.forEach((client, i) => {
+                        assert.deepStrictEqual(
+                            describePlayers(client.state.players),
+                            describePlayers(state.players, shown[i]),
+                            `client ${i}`,
+                        );
+                    });
+                    assertEncodeAllMultiple(encoder, state, clients); // late joiners, every view
+                });
+            }
+        });
+    });
+
 
     describe("#204: a @view tag must not filter other uses of the same type", () => {
 
