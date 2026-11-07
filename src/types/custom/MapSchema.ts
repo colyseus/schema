@@ -482,14 +482,11 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
     }
 
     toJSON() {
-        const map: any = {};
-
-        this.forEach((value: any, key) => {
-            map[key] = (typeof (value['toJSON']) === "function")
-                ? value['toJSON']()
-                : value;
-        });
-
+        // fromEntries defines own properties, so a "__proto__" key stays an entry
+        const map: any = Object.fromEntries(Array.from(this, ([key, value]: [K, any]) => [
+            key,
+            (typeof (value['toJSON']) === "function") ? value['toJSON']() : value,
+        ]));
         return map;
     }
 

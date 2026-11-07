@@ -236,6 +236,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Rooms that keep replacing child instances no longer grow in memory without bound: the encoder kept a reference-count entry for every instance ever attached. Thanks @wachiiiiii! [#244](https://github.com/colyseus/schema/issues/244)
 
+## [5.0.36]
+
+### Fixed
+
+- `MapSchema` keys named like `Object.prototype` members (`"constructor"`, `"toString"`, `"__proto__"`, …) no longer crash `encode()` when set, replaced or deleted. `toJSON()` also keeps a `"__proto__"` key instead of dropping it.
+
 ## [5.0.34]
 
 ### Fixed

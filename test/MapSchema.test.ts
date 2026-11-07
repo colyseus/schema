@@ -11,6 +11,42 @@ describe("Type: MapSchema", () => {
         });
     });
 
+    describe("keys named like Object.prototype members", () => {
+        for (const key of ["constructor", "toString", "hasOwnProperty", "valueOf", "__proto__"]) {
+            it(`add / replace / delete "${key}"`, () => {
+                const state = new State();
+                state.mapOfPlayers = new MapSchema<Player>();
+                state.mapOfPlayers.set("alice", new Player("Alice"));
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                state.mapOfPlayers.set(key, new Player("Jake"));
+                decodedState.decode(state.encode());
+                assert.strictEqual(decodedState.mapOfPlayers.get(key)?.name, "Jake");
+                assert.strictEqual(decodedState.mapOfPlayers.size, 2);
+
+                state.mapOfPlayers.set(key, new Player("Snake"));
+                decodedState.decode(state.encode());
+                assert.strictEqual(decodedState.mapOfPlayers.get(key)?.name, "Snake");
+
+                state.mapOfPlayers.delete(key);
+                decodedState.decode(state.encode());
+                assert.strictEqual(decodedState.mapOfPlayers.has(key), false);
+                assert.strictEqual(decodedState.mapOfPlayers.size, 1);
+
+                assertDeepStrictEqualEncodeAll(state);
+            });
+
+            it(`toJSON() keeps "${key}" as an entry`, () => {
+                const map = new MapSchema<Player>();
+                map.set(key, new Player("Jake"));
+                const json = map.toJSON();
+                assert.ok(Object.prototype.hasOwnProperty.call(json, key));
+                assert.strictEqual(Object.getPrototypeOf(json), Object.prototype);
+            });
+        }
+    });
+
     describe("getOrInsert / getOrInsertComputed", () => {
         it("getOrInsert: should insert and sync when key is missing", () => {
             const state = new State();
