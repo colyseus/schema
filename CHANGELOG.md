@@ -284,6 +284,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `view.subscribe(collection)` now works on its own for a `.view()` collection; it no longer needs a prior `view.add()` of the collection or its parent, which logged `"refId" not found` and never delivered the items.
 - A stream backlog (`t.stream()`, `.stream()` maps and sets) now keeps draining `maxPerTick` per tick while the rest of the state is idle; it used to stall until something else changed.
 
+## [5.0.33]
+
+### Fixed
+
+- `schema-codegen` now emits arrays and maps in `*Message` interfaces as plain collections that compile in every target: C# gets `string[]` instead of `ArraySchema<string>`, and `Array<T>`, `Record<K, V>`, `Map<K, V>` and `{ [key: string]: V }` no longer come out as `undefined` or raw TypeScript. Thanks @konistehrad! [#235](https://github.com/colyseus/schema/issues/235)
+
 ## [5.0.31]
 
 ### Changed
