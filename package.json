@@ -59,12 +59,14 @@
   "exports": {
     ".": {
       "browser": "./build/index.mjs",
+      "module-sync": "./build/index.mjs",
       "import": "./build/index.mjs",
       "require": "./build/index.cjs",
       "types": "./build/index.d.ts"
     },
     "./input": {
       "browser": "./build/input/index.mjs",
+      "module-sync": "./build/input/index.mjs",
       "import": "./build/input/index.mjs",
       "require": "./build/input/index.cjs",
       "types": "./build/input/index.d.ts"
