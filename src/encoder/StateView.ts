@@ -824,8 +824,12 @@ export class StateView {
             }
         }
 
-        // remove tag bits for this view
-        if (tag === undefined) {
+        // remove tag bits for this view. A default-tag remove means "this view
+        // no longer sees the object", so it revokes every tag it was granted
+        // on the tree — otherwise a later add() inherits them, and fields
+        // tagged with a custom @view(TAG) keep reaching a client that no
+        // longer qualified for them.
+        if (tag === DEFAULT_VIEW_TAG) {
             this.removeAllTagsOnTree(changeTree);
         } else {
             this.removeTag(changeTree, tag);
