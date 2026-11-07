@@ -251,7 +251,7 @@ export class Encoder<T extends Schema = any> {
         // Broadcast-mode stream emission runs after the main loop (state /
         // parent refs are already on the wire). Skipped when any StateView
         // is registered (the priority pass in `encodeView` owns emission).
-        if (this._isStreamBroadcastMode) {
+        if (this.root.activeViews.size === 0 && this.root.streamTrees.size > 0) {
             this._emitStreamBroadcast(f);
         }
 
@@ -787,17 +787,12 @@ export class Encoder<T extends Schema = any> {
      * the rest of the state is idle.
      */
     get hasChanges(): boolean {
-        return this.root.changes.next !== undefined || this._hasStreamBacklog();
-    }
-
-    // No StateView registered: streams drain through the shared encode().
-    private get _isStreamBroadcastMode(): boolean {
-        return this.root.activeViews.size === 0 && this.root.streamTrees.size > 0;
+        const root = this.root;
+        return root.changes.next !== undefined || (root.streamTrees.size !== 0 && this._hasStreamBacklog());
     }
 
     private _hasStreamBacklog(): boolean {
         const root = this.root;
-        if (root.streamTrees.size === 0) return false;
         const broadcast = root.activeViews.size === 0;
         for (const stream of root.streamTrees) {
             if (broadcast
