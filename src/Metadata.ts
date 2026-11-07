@@ -61,78 +61,94 @@ export function resolveFieldType(type: any): { complexTypeKlass: TypeDefinition 
     };
 }
 
-export function getNormalizedType(type: any): DefinitionType  {
-    if (Array.isArray(type)) {
-        return { array: getNormalizedType(type[0]) };
+/**
+ * Normalize a field type (enum, `[T]`, `{ map: T }`, quantized, …).
+ *
+ * Collections hold primitives or Schema classes only — Reflection can't
+ * describe a deeper child — so a collection of collections throws here,
+ * prefixed with `field` when given.
+ */
+export function getNormalizedType(type: any, field?: string): DefinitionType {
+    const normalized = normalizeType(type);
+    const collection = getCollectionKey(normalized);
+    const inner = collection && getCollectionKey((normalized as any)[collection]);
+    if (inner) {
+        throw new Error(`${field ? `${field}: ` : ""}@colyseus/schema: nested collections are not supported ("${collection}" of "${inner}"). Collections can only hold primitive types or Schema classes, wrap the inner ${inner} in a Schema class.`);
+    }
+    return normalized;
+}
 
-    } else if (isQuantizedType(type)) {
+/** The registered collection key of a `{ map: … }`-style descriptor, if any. */
+function getCollectionKey(type: any): string | undefined {
+    return (typeof type === "object" && type !== null)
+        ? Object.keys(type).find(k => registeredTypes[k] !== undefined)
+        : undefined;
+}
+
+function normalizeType(type: any): DefinitionType {
+    if (typeof type !== "object" || type === null) {
+        return type; // a class's static `type` is not an alias
+    }
+    if (Array.isArray(type)) {
+        return { array: normalizeType(type[0]) };
+    }
+
+    // before the key probes below: an enum may have a `type` or `quantized` member
+    const enumType = getEnumType(type);
+    if (enumType) {
+        return enumType;
+    }
+
+    if (isQuantizedType(type)) {
         // `{ quantized: ... }` — a scalar wire type, NOT a collection/ref. Resolve
         // raw options (the `@type({quantized:{min,max}})` path) once; an already-
         // resolved descriptor (the `t.quantized()` builder path) passes through.
         return (typeof (type.quantized as any).wire === "string")
             ? type
             : { quantized: resolveQuantize(type.quantized as any) } as any;
+    }
+    if (type.type !== undefined) {
+        return normalizeType(type.type);
+    }
 
-    } else if (typeof (type['type']) !== "undefined") {
-        return type['type'];
-
-    } else if (isTSEnum(type)) {
-        // Detect TS Enum type (either string or number)
-        return Object.keys(type).every(key => typeof type[key] === "string")
-            ? "string"
-            : "number";
-
-    } else if (typeof type === "object" && type !== null) {
-        // Handle collection types
-        const collectionType = Object.keys(type).find(k => registeredTypes[k] !== undefined);
-        if (collectionType) {
-            const keyType = type.key;
-            if (keyType !== undefined) {
-                // `{ map: X, key: "number" }` — validate, and rebuild with the
-                // collection kind as the FIRST own key: resolveFieldType,
-                // TypeContext, Reflection, Schema.restore and the decoder all
-                // read the kind as `Object.keys(type)[0]`. A fresh object also
-                // keeps a literal the user reuses across fields untouched.
-                if (collectionType !== "map") {
-                    throw new Error(`@colyseus/schema: 'key' is only valid on map fields (got { ${collectionType}: ..., key: "${keyType}" })`);
-                }
-                if (!MAP_KEY_TYPES.has(keyType)) {
-                    throw new Error(`@colyseus/schema: invalid map key type "${keyType}" — expected one of ${Array.from(MAP_KEY_TYPES).join(", ")}`);
-                }
-                const rebuilt: any = { map: getNormalizedType(type.map), key: keyType };
-                for (const k in type) {
-                    if (k !== "map" && k !== "key") rebuilt[k] = type[k];
-                }
-                type = rebuilt;
-            } else {
-                type[collectionType] = getNormalizedType(type[collectionType]);
+    const collectionType = getCollectionKey(type);
+    if (collectionType) {
+        const keyType = type.key;
+        if (keyType !== undefined) {
+            // `{ map: X, key: "number" }` — validate, and rebuild with the
+            // collection kind as the FIRST own key: resolveFieldType,
+            // TypeContext, Reflection, Schema.restore and the decoder all
+            // read the kind as `Object.keys(type)[0]`. A fresh object also
+            // keeps a literal the user reuses across fields untouched.
+            if (collectionType !== "map") {
+                throw new Error(`@colyseus/schema: 'key' is only valid on map fields (got { ${collectionType}: ..., key: "${keyType}" })`);
             }
-            Object.defineProperty(type, $collectionCtor, { value: registeredTypes[collectionType].constructor });
-            return type;
+            if (!MAP_KEY_TYPES.has(keyType)) {
+                throw new Error(`@colyseus/schema: invalid map key type "${keyType}" — expected one of ${Array.from(MAP_KEY_TYPES).join(", ")}`);
+            }
+            const rebuilt: any = { map: normalizeType(type.map), key: keyType };
+            for (const k in type) {
+                if (k !== "map" && k !== "key") rebuilt[k] = type[k];
+            }
+            type = rebuilt;
+        } else {
+            type[collectionType] = normalizeType(type[collectionType]);
         }
+        Object.defineProperty(type, $collectionCtor, { value: registeredTypes[collectionType].constructor });
     }
     return type;
 }
 
-function isTSEnum(_enum: any) {
-    if (typeof _enum === 'function' && _enum[Symbol.metadata]) {
-        return false;
+/** Wire type of a TS enum object, or `undefined` if it isn't one. */
+function getEnumType(e: any): "string" | "number" | undefined {
+    const keys = Object.keys(e);
+    const numericKeys = keys.filter(k => /\d+/.test(k));
+    if (numericKeys.length > 0 && numericKeys.length === keys.length / 2 && e[e[numericKeys[0]]] == numericKeys[0]) {
+        return "number"; // numeric keys with a reverse mapping
     }
-
-    const keys = Object.keys(_enum);
-    const numericFields = keys.filter(k => /\d+/.test(k));
-
-    // Check for number enum (has numeric keys and reverse mapping)
-    if (numericFields.length > 0 && numericFields.length === (keys.length / 2) && _enum[_enum[numericFields[0]]] == numericFields[0]) {
-        return true;
+    if (keys.length > 0 && keys.every(k => e[k] === k)) {
+        return "string";
     }
-
-    // Check for string enum (all values are strings and keys match values)
-    if (keys.length > 0 && keys.every(key => typeof _enum[key] === 'string' && _enum[key] === key)) {
-        return true;
-    }
-
-    return false;
 }
 
 // Copied parent → subclass on Metadata.initialize, so each class owns its list.
@@ -439,7 +455,7 @@ export const Metadata = {
         fieldName: string,
         type: DefinitionType,
     ) {
-        const normalized = getNormalizedType(type);
+        const normalized = getNormalizedType(type, `${target.name}.${fieldName}`);
         const { complexTypeKlass, childType, keyType } = resolveFieldType(normalized);
 
         Metadata.addField(

@@ -1,7 +1,8 @@
 import * as assert from "assert";
 
-import { Schema, type, defineTypes, MapSchema, ArraySchema, t } from "../src";
+import { Schema, type, defineTypes, MapSchema, ArraySchema, Metadata, t } from "../src";
 import { schema, SchemaType } from "../src/annotations";
+import { getNormalizedType } from "../src/Metadata";
 import { assertDeepStrictEqualEncodeAll, createClientWithView, createInstanceFromReflection, encodeMultiple, getDecoder, getEncoder } from "./Schema";
 import { $numFields } from "../src/types/symbols";
 
@@ -27,6 +28,49 @@ describe("Definition Tests", () => {
         assert.deepStrictEqual(Object.keys(obj), ['notSynched']);
         assert.deepStrictEqual(Array.from(obj.players.keys()), ['one']);
         assert.deepStrictEqual(Object.keys(obj.players.get('one')), ['somethingPrivate']);
+    });
+
+    describe("nested collections", () => {
+        it("should reject a map of maps with a clear error", () => {
+            assert.throws(() => {
+                class State extends Schema {
+                    @type({ map: { map: "number" } }) scores = new MapSchema<MapSchema<number>>();
+                }
+            }, /State\.scores: @colyseus\/schema: nested collections are not supported \("map" of "map"\)/);
+        });
+
+        it("should reject a map of arrays and an array of arrays", () => {
+            assert.throws(() => {
+                class State extends Schema {
+                    @type({ map: { array: "string" } }) tags = new MapSchema<ArraySchema<string>>();
+                }
+            }, /"map" of "array"/);
+            assert.throws(() => {
+                class State extends Schema {
+                    @type([["string"]]) grid = new ArraySchema<ArraySchema<string>>();
+                }
+            }, /"array" of "array"/);
+        });
+
+        it("should name the field when defined via Metadata.setFields() or schema()", () => {
+            assert.throws(() => {
+                class State extends Schema {}
+                Metadata.setFields(State, { scores: { map: { map: "number" } } } as any);
+            }, /^Error: State\.scores: @colyseus\/schema: nested collections/);
+            assert.throws(() => {
+                schema({ grid: t.array(["string"] as any) }, "Grid");
+            }, /^Error: schema\('Grid'\): field 'grid': @colyseus\/schema: nested collections/);
+        });
+    });
+
+    it("should normalize types that carry a `type` key", () => {
+        class Item extends Schema { static type = "item"; @type("number") x = 1; }
+        enum Kind { type, other }
+        enum Tag { type = "type" }
+        assert.strictEqual(getNormalizedType(Item), Item);
+        assert.strictEqual(getNormalizedType(Kind), "number");
+        assert.strictEqual(getNormalizedType(Tag), "string");
+        assert.deepStrictEqual(getNormalizedType({ type: ["string"] }), { array: "string" });
     });
 
     describe("no fields", () => {
