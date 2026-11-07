@@ -1095,6 +1095,94 @@ describe("Instance sharing", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
+
+        it("re-sends a shared instance re-added after losing every reference", () => {
+            class State extends Schema {
+                @type({ map: Point }) a = new MapSchema<Point>();
+                @type({ map: Point }) b = new MapSchema<Point>();
+                @type([Point]) arr = new ArraySchema<Point>();
+            }
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            const shared = new Point(1, 1);
+            state.arr.push(shared, shared);
+            state.a.set("x", shared);
+            state.b.set("x", shared);
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            // drop the 4 references one patch at a time
+            const drops = [
+                () => state.arr.splice(0, 1),
+                () => state.arr.clear(),
+                () => state.a.delete("x"),
+                () => state.b.delete("x"),
+            ];
+            for (const drop of drops) {
+                drop();
+                decoded.decode(state.encode());
+                assertNoLeak(state, decoded);
+            }
+
+            // only `x` is dirty: `y` reaches the new client-side instance via re-stage
+            shared.x = 42;
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            state.arr.push(shared);
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.deepStrictEqual(decoded.arr[0].toJSON(), { x: 42, y: 1 });
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
+
+        it("removing a parent keeps a nested child shared elsewhere, and re-adding it re-sends the subtree", () => {
+            class Holder extends Schema {
+                @type({ map: Point }) points = new MapSchema<Point>();
+            }
+            class State extends Schema {
+                @type({ map: Holder }) holders = new MapSchema<Holder>();
+                @type({ map: Point }) loose = new MapSchema<Point>();
+            }
+            const state = new State();
+            const decoded = createInstanceFromReflection(state);
+
+            const holder = new Holder();
+            const kept = new Point(1, 1), dropped = new Point(2, 2);
+            holder.points.set("kept", kept);
+            holder.points.set("dropped", dropped);
+            state.holders.set("h", holder);
+            state.loose.set("kept", kept);
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            // `kept` survives through `loose`; `dropped` goes with the holder
+            state.holders.delete("h");
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.strictEqual(decoded.loose.get("kept").x, 1);
+
+            kept.x = 11;
+            dropped.x = 22;
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.strictEqual(decoded.loose.get("kept").x, 11);
+
+            state.loose.delete("kept");
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+
+            state.holders.set("h2", holder);
+            decoded.decode(state.encode());
+            assertNoLeak(state, decoded);
+            assert.deepStrictEqual(decoded.holders.get("h2").toJSON(), {
+                points: { kept: { x: 11, y: 1 }, dropped: { x: 22, y: 2 } },
+            });
+
+            assertDeepStrictEqualEncodeAll(state);
+        });
     });
 
     describe("StateView: instance shared across a filter boundary", () => {

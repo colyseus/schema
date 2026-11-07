@@ -219,6 +219,8 @@ export class Root {
         let refId = changeTree.refId;
         if (refId === undefined) {
             refId = changeTree.refId = this.nextUniqueId++;
+        } else if (refId >= this.nextUniqueId) {
+            this.nextUniqueId = refId + 1; // handed out by a previous Encoder's Root
         }
 
         const isNewChangeTree = (this.changeTrees.get(refId) === undefined);

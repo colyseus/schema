@@ -219,6 +219,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the collection (`ChangeTree.rec`). Custom primitive types registered after
   import now work as collection children.
 
+### Fixed
+
+- A new `Encoder` over instances another `Encoder` already encoded (`room.state = state`) now syncs them: instances added afterwards no longer reuse existing refIds (`"refId" not found`), and its `StateView`s no longer see what the previous encoder's views were granted, nor receive their stream backlogs.
+
+## [5.0.41]
+
+### Fixed
+
+- Rooms that keep replacing child instances no longer grow in memory without bound: the encoder kept a reference-count entry for every instance ever attached. Thanks @wachiiiiii! [#244](https://github.com/colyseus/schema/issues/244)
+
 ## [5.0.31]
 
 ### Changed

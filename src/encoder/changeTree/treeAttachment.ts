@@ -6,12 +6,13 @@
  */
 import { $childType, $proxyTarget, $refTypeFieldIndexes } from "../../types/symbols.js";
 import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
-import { Root } from "../Root.js";
+import { Root, type Streamable } from "../Root.js";
 import { ChangeTree, type Ref, refTreeOf, setTree } from "../ChangeTree.js";
 import { checkIsFiltered } from "./inheritedFlags.js";
 import { propagateNewChildToSubscribers } from "../subscriptions.js";
 
 export function setRoot(tree: ChangeTree, root: Root): void {
+    if (tree.root !== undefined && tree.root !== root) adoptTree(tree, root);
     tree.root = root;
 
     const isNewChangeTree = root.add(tree);
@@ -21,6 +22,37 @@ export function setRoot(tree: ChangeTree, root: Root): void {
     // Recursively set root on child structures (closure-free hot path).
     if (isNewChangeTree) {
         forEachChildWithCtx(tree, tree, _setRootChildCb);
+    }
+}
+
+/**
+ * A tree moving to another Encoder's Root (`room.state = state` builds a new
+ * Encoder over the same instances) sheds what was scoped to the previous
+ * one: its pass stamp reads as "inlined already" to the new Root's passes,
+ * its queue node makes `enqueueChangeTree` skip it, and its view slots and
+ * stream backlogs name the previous Root's StateViews, whose ids the new
+ * Root hands out again.
+ */
+function adoptTree(tree: ChangeTree, root: Root): void {
+    tree._fullSyncGen = 0;
+    tree.changesNode = undefined;
+    tree.visibleViews = undefined;
+    tree.tagBits = undefined;
+    tree.tagViews = undefined;
+    const aux = tree.aux;
+    if (aux !== undefined) {
+        aux.unreliableChangesNode = undefined;
+        aux.subscribedViews = undefined;
+    }
+    if (tree.isStreamCollection) {
+        const stream = tree.ref as unknown as Streamable;
+        const st = stream._stream;
+        if (st !== undefined) {
+            st.pendingByView.clear();
+            st.sentByView.clear();
+            st.priorityByView?.clear();
+        }
+        root.registerStream(stream);
     }
 }
 
@@ -36,6 +68,7 @@ export function setParent(
     // avoid setting parents with empty `root`
     if (!root) { return; }
 
+    if (tree.root !== undefined && tree.root !== root) adoptTree(tree, root);
     const isNewChangeTree = root.add(tree);
 
     // skip if parent is already set
