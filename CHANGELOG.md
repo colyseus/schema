@@ -224,6 +224,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A new `Encoder` over instances another `Encoder` already encoded (`room.state = state`) now syncs them: instances added afterwards no longer reuse existing refIds (`"refId" not found`), and its `StateView`s no longer see what the previous encoder's views were granted, nor receive their stream backlogs.
 - An instance removed from a collection or field and added back later, while also referenced elsewhere, no longer reaches clients with empty fields. 5.0.43 fixed this for `ArraySchema.clear()` only.
 
+## [5.0.45]
+
+### Fixed
+
+- `ArraySchema.splice()` with a negative, fractional or out-of-range `start` or `deleteCount` (`splice(-1, 1)`, `splice(1, 10)`, …) no longer desyncs clients, and `splice(i, Infinity)` no longer hangs the server. Thanks @JROtto5! [#252](https://github.com/colyseus/schema/issues/252)
+
+### Changed
+
+- `splice(start, undefined)` removes nothing, as on a plain array. It used to remove everything from `start` on.
+
 ## [5.0.43]
 
 ### Fixed
@@ -235,6 +245,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Rooms that keep replacing child instances no longer grow in memory without bound: the encoder kept a reference-count entry for every instance ever attached. Thanks @wachiiiiii! [#244](https://github.com/colyseus/schema/issues/244)
+
+## [5.0.38]
+
+### Fixed
+
+- `ArraySchema.reduce()` and `reduceRight()` called without an initial value now start from the first (or last) element, as native arrays do, instead of from `undefined`. Thanks @snowyukitty! [#241](https://github.com/colyseus/schema/issues/241)
+
+## [5.0.37]
+
+### Fixed
+
+- `ArraySchema.toSpliced()` now returns the modified copy instead of throwing `ReferenceError: copy is not defined`. Thanks @snowyukitty! [#240](https://github.com/colyseus/schema/issues/240)
 
 ## [5.0.36]
 

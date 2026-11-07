@@ -1399,6 +1399,82 @@ describe("ArraySchema Tests", () => {
             });
         });
 
+        describe("arguments are normalized like Array#splice (#252)", () => {
+            class Item extends Schema {
+                @type("number") i: number;
+            }
+            class State extends Schema {
+                @type([Item]) items = new ArraySchema<Item>();
+            }
+            class PrimitiveState extends Schema {
+                @type(["number"]) items = new ArraySchema<number>();
+            }
+
+            // args[2..] are inserted
+            const cases: any[][] = [
+                [-1, 1],
+                [-1],
+                [-2, 1, 9],
+                [-1, 0, 9],
+                [-10, 1],
+                [-Infinity, 1],
+                [1, -1, 9],
+                [1.5, 1],
+                [-0.5, 1],
+                [NaN, 1],
+                [1, 1.7, 9],
+                [1, 10],
+                [1, Infinity],
+                [10, 1, 9],
+                [0, undefined],
+                [],
+            ];
+
+            /** `before` runs on both the native and the tracked array, in the splice's tick. */
+            function run(isRef: boolean, args: any[], before?: (items: any) => void) {
+                const wrap = (i: number) => isRef ? new Item().assign({ i }) : i;
+                const unwrap = (v: any) => isRef ? v.i : v;
+                const state: any = isRef ? new State() : new PrimitiveState();
+                for (let i = 0; i < 4; i++) { state.items.push(wrap(i)); }
+
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                const expected = [0, 1, 2, 3];
+                before?.(expected);
+                before?.(state.items);
+                const expectedRemoved = expected.splice(...(args as [number, number]));
+
+                const warn = console.warn;
+                let warnings = 0;
+                console.warn = () => { warnings++; };
+                try {
+                    const removed = state.items.splice(...args.map((v, i) => (i >= 2) ? wrap(v) : v));
+                    assert.deepStrictEqual(removed.map(unwrap), expectedRemoved);
+                    decodedState.decode(state.encode());
+                } finally {
+                    console.warn = warn;
+                }
+
+                assert.strictEqual(warnings, 0);
+                assert.deepStrictEqual(state.items.map(unwrap), expected);
+                assert.deepStrictEqual(decodedState.items.toJSON(), state.items.toJSON());
+                if (isRef) { assertRefIdCounts(state, decodedState); }
+                assertDeepStrictEqualEncodeAll(state);
+            }
+
+            for (const args of cases) {
+                const label = `splice(${args.map(String).join(", ")})`;
+                it(`primitives: ${label}`, () => run(false, args));
+                it(`Schema children: ${label}`, () => run(true, args));
+            }
+
+            it("negative start after a same-tick shift()", () => {
+                run(false, [-2, 1, 9], (items) => items.shift());
+                run(true, [-2, 1, 9], (items) => items.shift());
+            });
+        });
+
         it("should allow consecutive splices (same place, 3 items)", () => {
             class Item extends Schema {
                 @type("number") i: number;
@@ -3447,6 +3523,58 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([1, 6, 3, 4, 5], arr.with(1, 6));
             assert.deepStrictEqual([1, 2, 3, 4, 7], arr.with(-1, 7));
             assert.deepStrictEqual([1, 2, 3, 8, 5], arr.with(-2, 8));
+        });
+
+        it("#toSpliced()", () => {
+            const arr = new ArraySchema<number>(1, 2, 3);
+            assert.deepStrictEqual([1, 9, 3], arr.toSpliced(1, 1, 9));
+            assert.deepStrictEqual([1, 2, 3], arr.toJSON());
+
+            // omitted deleteCount removes to the end; explicit undefined removes nothing
+            assert.deepStrictEqual([1], arr.toSpliced(1));
+            assert.deepStrictEqual([1, 2, 3], arr.toSpliced(1, undefined));
+            assert.deepStrictEqual([1, 2, 3], arr.toSpliced());
+            assert.deepStrictEqual([1, 2, 4, 3], arr.toSpliced(-1, 0, 4));
+        });
+
+        it("#reduce()", () => {
+            const arr = new ArraySchema<string>("a", "b", "c");
+            assert.strictEqual("abc", arr.reduce((acc, v) => acc + v));
+            assert.strictEqual("_abc", arr.reduce((acc, v) => acc + v, "_"));
+            assert.strictEqual("undefinedabc", arr.reduce((acc: any, v) => acc + v, undefined));
+
+            let calls = 0;
+            assert.strictEqual("x", new ArraySchema<string>("x").reduce((acc, v) => { calls++; return acc + v; }));
+            assert.strictEqual(0, calls);
+
+            assert.throws(() => new ArraySchema<string>().reduce((acc, v) => acc + v), TypeError);
+        });
+
+        it("#reduceRight()", () => {
+            const arr = new ArraySchema<string>("a", "b", "c");
+            assert.strictEqual("cba", arr.reduceRight((acc, v) => acc + v));
+            assert.strictEqual("_cba", arr.reduceRight((acc, v) => acc + v, "_"));
+            assert.strictEqual("undefinedcba", arr.reduceRight((acc: any, v) => acc + v, undefined));
+
+            let calls = 0;
+            assert.strictEqual("x", new ArraySchema<string>("x").reduceRight((acc, v) => { calls++; return acc + v; }));
+            assert.strictEqual(0, calls);
+
+            assert.throws(() => new ArraySchema<string>().reduceRight((acc, v) => acc + v), TypeError);
+        });
+
+        it("#toSpliced() does not record changes on the source array", () => {
+            const state = new State();
+            state.arrayOfPlayers = new ArraySchema(new Player("A"), new Player("B"));
+
+            const encoder = getEncoder(state);
+            encoder.discardChanges();
+
+            const spliced = state.arrayOfPlayers.toSpliced(0, 1);
+            assert.strictEqual(1, spliced.length);
+            assert.strictEqual("B", spliced[0].name);
+            assert.strictEqual(2, state.arrayOfPlayers.length);
+            assert.strictEqual(false, encoder.hasChanges);
         });
 
         it(".from()", () => {

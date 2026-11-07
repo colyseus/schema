@@ -480,8 +480,9 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         start = Math.trunc(start) || 0;
         if (start < 0) start = Math.max(length + start, 0);
         else if (start > length) start = length;
-        if (deleteCount === undefined) deleteCount = length - start;
-        else deleteCount = Math.min(Math.max(Math.trunc(deleteCount) || 0, 0), length - start);
+        deleteCount = (arguments.length === 1) // omitted ≠ explicit undefined (→ 0)
+            ? length - start
+            : Math.min(Math.max(Math.trunc(deleteCount!) || 0, 0), length - start);
 
         const tree = treeOf(self);
         const childType = self[$childType];
@@ -687,8 +688,8 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
 
     toSpliced(start: number, deleteCount?: number, ...items: V[]): V[] {
         const copy: V[] = arrCopy(this[$proxyTarget]);
-        if (deleteCount === undefined) copy.splice(start);
-        else copy.splice(start, deleteCount, ...items);
+        // forward `arguments` so an omitted deleteCount differs from an explicit undefined
+        copy.splice.apply(copy, arguments as any);
         return copy;
     }
 
