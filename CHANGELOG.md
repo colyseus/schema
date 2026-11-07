@@ -234,10 +234,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - `splice(start, undefined)` removes nothing, as on a plain array. It used to remove everything from `start` on.
 
+## [5.0.44]
+
+### Fixed
+
+- `ArraySchema.sort()` no longer desyncs clients when the same patch also adds, removes or replaces items, when the comparator isn't consistent (`() => Math.random() - 0.5`), or when the array is behind `@view()`. Thanks @JROtto5! [#249](https://github.com/colyseus/schema/issues/249), [#250](https://github.com/colyseus/schema/pull/250)
+- Calling `sort()` or `reverse()` while tracking is paused (`untracked()`, `pauseTracking()`) no longer breaks the patch's other changes to the same array.
+
 ## [5.0.43]
 
 ### Fixed
 
+- Removing and inserting `ArraySchema` items in the same patch no longer desyncs clients. `arr.unshift(arr.shift())`, for example, dropped the item on the client. Thanks @FTWinston! [#246](https://github.com/colyseus/schema/issues/246), [#247](https://github.com/colyseus/schema/pull/247)
 - An instance that left an `ArraySchema` through `clear()` and was added back later, while also referenced from another field, no longer reaches clients with empty fields.
 
 ## [5.0.42]
@@ -289,6 +297,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - `schema-codegen` now emits arrays and maps in `*Message` interfaces as plain collections that compile in every target: C# gets `string[]` instead of `ArraySchema<string>`, and `Array<T>`, `Record<K, V>`, `Map<K, V>` and `{ [key: string]: V }` no longer come out as `undefined` or raw TypeScript. Thanks @konistehrad! [#235](https://github.com/colyseus/schema/issues/235)
+
+## [5.0.32]
+
+### Fixed
+
+- Adding a Schema instance whose fields are already set to a `SetSchema` or `CollectionSchema` after the first patch no longer desyncs clients, which logged `"refId" not found` and got the item with `undefined` fields. Thanks @vmaark! [#234](https://github.com/colyseus/schema/issues/234)
 
 ## [5.0.31]
 

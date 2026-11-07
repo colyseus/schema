@@ -223,7 +223,7 @@ describe("ArraySchema", () => {
                 assertInSync(state, decodedState);
             });
 
-            it("primitive arrays: push + pop in one tick leaves the client unchanged", () => {
+            it("primitive arrays: an add removed in the same tick leaves the client unchanged", () => {
                 class Prim extends Schema {
                     @type(["string"]) list = new ArraySchema<string>();
                 }
@@ -234,6 +234,12 @@ describe("ArraySchema", () => {
 
                 state.list.push("X");
                 state.list.pop();
+                decodedState.decode(state.encode());
+                assert.deepStrictEqual(Array.from(decodedState.list), ["a", "b"]);
+
+                // a positional DELETE here would hit the client's "a"
+                state.list.unshift("X");
+                state.list.shift();
                 decodedState.decode(state.encode());
                 assert.deepStrictEqual(Array.from(decodedState.list), ["a", "b"]);
             });

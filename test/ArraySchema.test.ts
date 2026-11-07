@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, createClientWithView, encodeMultiple } from "./Schema";
+import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, assertNoOrphanRefs, createClientWithView, encodeMultiple } from "./Schema";
 import { ArraySchema, Schema, type, view, $changes, $refId, MapSchema, ChangeTree, schema, t } from "../src";
 
 describe("ArraySchema Tests", () => {
@@ -3332,46 +3332,52 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([5, 4, 3, 2, 1], decodedState.numbers.toJSON());
         });
 
+        // Shared by the reverse() and sort() blocks: a ref-typed and a
+        // primitive array, synced to `initial`.
+        class SameTickItem extends Schema {
+            @type("string") name: string;
+        }
+        class SameTickState extends Schema {
+            @type([SameTickItem]) items = new ArraySchema<SameTickItem>();
+            @type(["string"]) strings = new ArraySchema<string>();
+        }
+        const item = (name: string) => new SameTickItem().assign({ name });
+        const nameOf = (v: any) => (typeof v === "string") ? v : v.name;
+
+        function synced(initial: string[]) {
+            const state = new SameTickState();
+            const decodedState = createInstanceFromReflection(state);
+            state.items.push(...initial.map(item));
+            state.strings.push(...initial);
+            decodedState.decode(state.encode());
+            return { state, decodedState };
+        }
+
+        // Run `mutate` against both arrays in one tick; one patch must bring
+        // the decoder to `expected` with matching refCounts (a REPLACE merged
+        // into a ref slot desyncs them even when the order comes out right),
+        // and a fresh encodeAll must agree.
+        function assertSameTick(
+            initial: string[],
+            mutate: (arr: ArraySchema<any>, wrap: (name: string) => any) => void,
+            expected: string[],
+        ) {
+            const { state, decodedState } = synced(initial);
+            mutate(state.items, item);
+            mutate(state.strings, (name) => name);
+
+            assert.deepStrictEqual(state.items.map(nameOf), expected, "server items");
+            assert.deepStrictEqual([...state.strings], expected, "server strings");
+
+            decodedState.decode(state.encode());
+            assert.deepStrictEqual(decodedState.items.map(nameOf), expected, "decoded items");
+            assert.deepStrictEqual([...decodedState.strings], expected, "decoded strings");
+            assertRefIdCounts(state, decodedState);
+
+            assertDeepStrictEqualEncodeAll(state);
+        }
+
         describe("#reverse() following another same-tick operation", () => {
-            class Item extends Schema {
-                @type("string") name: string;
-            }
-            class ReverseState extends Schema {
-                @type([Item]) items = new ArraySchema<Item>();
-                @type(["string"]) strings = new ArraySchema<string>();
-            }
-            const item = (name: string) => new Item().assign({ name });
-
-            // Sync `initial` into both arrays (ref-typed + primitive), then run
-            // `mutate` against each in the same tick and assert one patch
-            // brings the decoder to `expected` — and that a fresh encodeAll
-            // still matches (catches refId leaks the patch path can hide).
-            function assertSameTick(
-                initial: string[],
-                mutate: (arr: ArraySchema<any>, wrap: (name: string) => any) => void,
-                expected: string[],
-            ) {
-                const state = new ReverseState();
-                const decodedState = createInstanceFromReflection(state);
-                if (initial.length > 0) {
-                    state.items.push(...initial.map(item));
-                    state.strings.push(...initial);
-                }
-                decodedState.decode(state.encode());
-
-                mutate(state.items, item);
-                mutate(state.strings, (name) => name);
-
-                assert.deepStrictEqual(state.items.map((i) => i.name), expected, "server items");
-                assert.deepStrictEqual([...state.strings], expected, "server strings");
-
-                decodedState.decode(state.encode());
-                assert.deepStrictEqual(decodedState.items.map((i) => i.name), expected, "decoded items");
-                assert.deepStrictEqual([...decodedState.strings], expected, "decoded strings");
-
-                assertDeepStrictEqualEncodeAll(state);
-            }
-
             it("ADDs then reverse() on a fresh array", () => {
                 assertSameTick([], (arr, wrap) => {
                     arr.push(wrap("a"), wrap("b"), wrap("c"));
@@ -3452,10 +3458,7 @@ describe("ArraySchema Tests", () => {
             });
 
             it("pop() then reverse() across separate ticks", () => {
-                const state = new ReverseState();
-                const decodedState = createInstanceFromReflection(state);
-                state.items.push(item("a"), item("b"), item("c"));
-                decodedState.decode(state.encode());
+                const { state, decodedState } = synced(["a", "b", "c"]);
 
                 state.items.pop();
                 decodedState.decode(state.encode());
@@ -3465,6 +3468,189 @@ describe("ArraySchema Tests", () => {
 
                 assert.deepStrictEqual(decodedState.items.map((i) => i.name), ["b", "a"]);
                 assertDeepStrictEqualEncodeAll(state);
+            });
+        });
+
+        describe("#sort() in the same patch as another operation (#249)", () => {
+            const byName = (a: any, b: any) => nameOf(a).localeCompare(nameOf(b));
+
+            it("shift() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.shift();
+                    arr.sort(byName);
+                }, ["a", "b", "c"]);
+            });
+
+            it("pop() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.pop();
+                    arr.sort(byName);
+                }, ["b", "c", "d"]);
+            });
+
+            it("push() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.push(wrap("0"));
+                    arr.sort(byName);
+                }, ["0", "a", "b", "c", "d"]);
+            });
+
+            it("unshift() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.unshift(wrap("e"));
+                    arr.sort(byName);
+                }, ["a", "b", "c", "d", "e"]);
+            });
+
+            it("splice() then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.splice(1, 1);
+                    arr.sort(byName);
+                }, ["a", "c", "d"]);
+            });
+
+            it("index write then sort()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr[0] = wrap("z");
+                    arr.sort(byName);
+                }, ["a", "b", "c", "z"]);
+            });
+
+            it("sort() then shift()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.sort(byName);
+                    arr.shift();
+                }, ["b", "c", "d"]);
+            });
+
+            it("sort() then pop()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.sort(byName);
+                    arr.pop();
+                }, ["a", "b", "c"]);
+            });
+
+            it("sort() then splice()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.sort(byName);
+                    arr.splice(0, 2, wrap("x"));
+                }, ["x", "c", "d"]);
+            });
+
+            it("sort() then index write", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.sort(byName);
+                    arr[3] = wrap("z");
+                }, ["a", "b", "c", "z"]);
+            });
+
+            it("sort() then unshift() and push()", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
+                    arr.sort(byName);
+                    arr.unshift(wrap("0"));
+                    arr.push(wrap("e"));
+                }, ["0", "a", "b", "c", "d", "e"]);
+            });
+
+            it("unshift(), sort(), unshift() on an array the client already holds", () => {
+                assertSameTick(["b", "c", "a"], (arr, wrap) => {
+                    arr.unshift(wrap("x"));
+                    arr.sort(byName);
+                    arr.unshift(wrap("y"));
+                }, ["y", "a", "b", "c", "x"]);
+            });
+
+            it("sort() twice", () => {
+                assertSameTick(["d", "b", "c", "a"], (arr) => {
+                    arr.sort(byName);
+                    arr.sort((a, b) => byName(b, a));
+                }, ["d", "c", "b", "a"]);
+            });
+
+            it("sort() with an inconsistent comparator", () => {
+                // seeded PRNG: sorting a second copy would not reproduce the order
+                let seed = 1;
+                const flaky = () => (seed = (seed * 16807) % 2147483647) % 3 - 1;
+                const { state, decodedState } = synced(["a", "b", "c", "d", "e", "f"]);
+
+                state.items.sort(flaky);
+                decodedState.decode(state.encode());
+
+                assert.deepStrictEqual(decodedState.items.map(nameOf), state.items.map(nameOf));
+                assertRefIdCounts(state, decodedState);
+            });
+
+            it("sort() of an already-sorted array records nothing", () => {
+                const { state } = synced(["a", "b", "c"]);
+
+                state.items.sort(byName);
+                state.strings.sort();
+                assert.strictEqual(state.items[$changes].changed, false);
+                assert.strictEqual(state.strings[$changes].changed, false);
+            });
+
+            describe("while tracking is paused", () => {
+                // An untracked reorder stays on the server: clients get the
+                // tick's tracked ops as if it never ran.
+                function assertUntracked(
+                    mutate: (arr: ArraySchema<any>, wrap: (name: string) => any) => void,
+                    expectedServer: string[],
+                    expectedClient: string[],
+                ) {
+                    const { state, decodedState } = synced(["d", "b", "c", "a"]);
+                    mutate(state.items, item);
+                    mutate(state.strings, (name) => name);
+
+                    assert.deepStrictEqual(state.items.map(nameOf), expectedServer, "server items");
+                    assert.deepStrictEqual([...state.strings], expectedServer, "server strings");
+
+                    decodedState.decode(state.encode());
+                    assert.deepStrictEqual(decodedState.items.map(nameOf), expectedClient, "decoded items");
+                    assert.deepStrictEqual([...decodedState.strings], expectedClient, "decoded strings");
+                    assertRefIdCounts(state, decodedState);
+                }
+
+                it("push() then untracked sort()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr.push(wrap("e"));
+                        arr.untracked(() => arr.sort(byName));
+                    }, ["a", "b", "c", "d", "e"], ["d", "b", "c", "a", "e"]);
+                });
+
+                it("pop() then untracked sort()", () => {
+                    assertUntracked((arr) => {
+                        arr.pop();
+                        arr.untracked(() => arr.sort(byName));
+                    }, ["b", "c", "d"], ["d", "b", "c"]);
+                });
+
+                it("index write then untracked sort()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr[0] = wrap("z");
+                        arr.untracked(() => arr.sort(byName));
+                    }, ["a", "b", "c", "z"], ["z", "b", "c", "a"]);
+                });
+
+                it("sort() then untracked sort()", () => {
+                    assertUntracked((arr) => {
+                        arr.sort(byName);
+                        arr.untracked(() => arr.sort((a, b) => byName(b, a)));
+                    }, ["d", "c", "b", "a"], ["a", "b", "c", "d"]);
+                });
+
+                it("untracked sort() then push()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr.untracked(() => arr.sort(byName));
+                        arr.push(wrap("e"));
+                    }, ["a", "b", "c", "d", "e"], ["d", "b", "c", "a", "e"]);
+                });
+
+                it("push() then untracked reverse()", () => {
+                    assertUntracked((arr, wrap) => {
+                        arr.push(wrap("e"));
+                        arr.untracked(() => arr.reverse());
+                    }, ["e", "a", "c", "b", "d"], ["d", "b", "c", "a", "e"]);
+                });
             });
         });
 
@@ -3718,6 +3904,200 @@ describe("ArraySchema Tests", () => {
 
             assert.deepStrictEqual(state.toJSON(), decodedState.toJSON());
             assertDeepStrictEqualEncodeAll(state);
+        });
+    });
+
+    describe("remove then insert in the same patch", () => {
+        class Item extends Schema {
+            @type("number") id: number;
+        }
+        class State extends Schema {
+            @type(["number"]) numbers = new ArraySchema<number>();
+            @type([Item]) items = new ArraySchema<Item>();
+        }
+
+        const item = (id: number) => new Item().assign({ id });
+        const ids = (arr: ArraySchema<Item>) => arr.map((i) => i.id);
+
+        /** Client bootstrapped via encodeAll(); `mutate` then runs as a single patch. */
+        function sync(initial: (state: State) => void, mutate: (state: State) => void) {
+            const state = new State();
+            initial(state);
+            const encoder = getEncoder(state);
+            const decodedState = createInstanceFromReflection(state);
+            decodedState.decode(encoder.encodeAll());
+            encoder.discardChanges();
+
+            mutate(state);
+            decodedState.decode(encoder.encode());
+
+            assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+            assertRefIdCounts(state, decodedState);
+            assertNoOrphanRefs(state, decodedState);
+            return decodedState;
+        }
+
+        it("splice() append after a staged delete lands after the survivors", () => {
+            const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
+                s.numbers.splice(0, 1);
+                s.numbers.splice(1, 0, 3);
+            });
+            assert.deepStrictEqual(Array.from(decoded.numbers), [2, 3]);
+        });
+
+        it("unshift(shift()) keeps the instance", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                s.items.unshift(s.items.shift());
+            });
+            assert.deepStrictEqual(ids(decoded.items), [1, 2]);
+        });
+
+        it("unshift(pop()) moves the instance to the front", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2), item(3)), (s) => {
+                s.items.unshift(s.items.pop());
+            });
+            assert.deepStrictEqual(ids(decoded.items), [3, 1, 2]);
+        });
+
+        it("splice() re-insert of a removed instance ahead of its old slot", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2), item(3)), (s) => {
+                const [removed] = s.items.splice(2, 1);
+                s.items.splice(0, 0, removed);
+            });
+            assert.deepStrictEqual(ids(decoded.items), [3, 1, 2]);
+        });
+
+        it("unshift() + shift() on primitives keeps the client's first element", () => {
+            const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
+                s.numbers.unshift(3);
+                s.numbers.unshift(4);
+                s.numbers.shift();
+            });
+            assert.deepStrictEqual(Array.from(decoded.numbers), [3, 1, 2]);
+        });
+
+        it("splice-replace then pop() deletes the element the client holds", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                s.items.splice(1, 1, item(3));
+                s.items.pop();
+            });
+            assert.deepStrictEqual(ids(decoded.items), [1]);
+        });
+
+        it("index write then pop() deletes the element the client holds", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                s.items[1] = item(3);
+                s.items.pop();
+            });
+            assert.deepStrictEqual(ids(decoded.items), [1]);
+        });
+
+        it("splice-replace, then an insert ahead of it, then delete it", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2), item(3)), (s) => {
+                s.items.splice(1, 1, item(4));
+                s.items.unshift(item(5));
+                s.items.splice(2, 1);
+            });
+            assert.deepStrictEqual(ids(decoded.items), [5, 1, 3]);
+        });
+
+        it("unshift() then an index write over the unshifted slot", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                s.items.unshift(item(3));
+                s.items[0] = item(4);
+            });
+            assert.deepStrictEqual(ids(decoded.items), [4, 1, 2]);
+        });
+
+        it("pop() of an instance duplicated in an earlier patch deletes the last copy", () => {
+            const one = item(1);
+            const decoded = sync((s) => s.items.push(one, item(2), one), (s) => {
+                s.items.pop();
+                s.items.unshift(item(3));
+            });
+            assert.deepStrictEqual(ids(decoded.items), [3, 1, 2]);
+        });
+
+        it("unshift() of more items than were shifted off", () => {
+            const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                s.items.shift();
+                s.items.unshift(item(3), item(4));
+            });
+            assert.deepStrictEqual(ids(decoded.items), [3, 4, 2]);
+        });
+
+        describe("inserting the value the client holds at that index", () => {
+            it("unshift() of the value already first", () => {
+                const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
+                    s.numbers.unshift(1);
+                });
+                assert.deepStrictEqual(Array.from(decoded.numbers), [1, 1, 2]);
+            });
+
+            it("splice() insert of the value already at that index", () => {
+                const decoded = sync((s) => s.numbers.push(1, 2, 3), (s) => {
+                    s.numbers.splice(1, 0, 2);
+                });
+                assert.deepStrictEqual(Array.from(decoded.numbers), [1, 2, 2, 3]);
+            });
+
+            it("unshift() of the instance already first", () => {
+                const one = item(1);
+                const decoded = sync((s) => s.items.push(one, item(2)), (s) => {
+                    s.items.unshift(one);
+                });
+                assert.deepStrictEqual(ids(decoded.items), [1, 1, 2]);
+            });
+
+            // unshift() inserts after staged deletes: the ADD lands on the next survivor
+            it("shift() then unshift() of the next survivor", () => {
+                const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
+                    s.numbers.shift();
+                    s.numbers.unshift(2);
+                });
+                assert.deepStrictEqual(Array.from(decoded.numbers), [2, 2]);
+            });
+
+            it("shift() then unshift() of the next surviving instance", () => {
+                const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                    s.items.shift();
+                    s.items.unshift(s.items[0]);
+                });
+                assert.deepStrictEqual(ids(decoded.items), [2, 2]);
+            });
+
+            it("unshift(shift()) ahead of an equal value", () => {
+                const decoded = sync((s) => s.numbers.push(1, 1, 2), (s) => {
+                    s.numbers.unshift(s.numbers.shift());
+                });
+                assert.deepStrictEqual(Array.from(decoded.numbers), [1, 1, 2]);
+            });
+
+            it("index write, then unshift() of the overwritten value", () => {
+                const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
+                    s.numbers[0] = 3;
+                    s.numbers.unshift(1);
+                });
+                assert.deepStrictEqual(Array.from(decoded.numbers), [1, 3, 2]);
+            });
+
+            it("index write, then unshift() of the overwritten instance", () => {
+                const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
+                    const first = s.items[0];
+                    s.items[0] = item(3);
+                    s.items.unshift(first);
+                });
+                assert.deepStrictEqual(ids(decoded.items), [1, 3, 2]);
+            });
+
+            it("moving an instance back past its old slot leaves no extra copy", () => {
+                const decoded = sync((s) => s.items.push(item(1), item(2), item(3)), (s) => {
+                    s.items.unshift(s.items.pop());
+                    s.items.pop();
+                    s.items.unshift(s.items.pop());
+                });
+                assert.deepStrictEqual(ids(decoded.items), [1, 3]);
+            });
         });
     });
 
