@@ -12,8 +12,8 @@
  */
 import { Metadata } from "../Metadata.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
-import { KIND_INDEXED, KIND_SCHEMA } from "../encoding/spec.js";
-import { $encodeDescriptor, $encoders, $filter, $fullSyncSkipIndexes, $numFields, $fullStateOnlyFieldIndexes, $recorder, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
+import { KIND_INDEXED, KIND_MAP, KIND_SCHEMA } from "../encoding/spec.js";
+import { $encodeDescriptor, $encoders, $filter, $filterByChild, $fullSyncSkipIndexes, $numFields, $fullStateOnlyFieldIndexes, $recorder, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { ArrayLog } from "./ArrayLog.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
@@ -96,6 +96,13 @@ export interface EncodeDescriptor {
      * checked per tick by `runEligible`.
      */
     runnable: boolean;
+    /**
+     * Class-level half of keyed-op routing: a Map / Set / Collection whose
+     * `[$filter]` is child visibility (`$filterByChild`). The per-tree half
+     * (Schema children, not a stream, children not sharing visibility) is
+     * checked per tick in `Encoder._prepareTick`.
+     */
+    routable: boolean;
     /** Field indexes a full sync walks: declared and not `@patchOnly` / `@deprecated`. */
     liveIndexes: number[];
     /** Bit i set iff field i (< 32) is ref-typed. */
@@ -207,6 +214,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         hasAnyStream,
         hasAnyView,
         runnable: isSchema && stockFilter && !hasAnyStream,
+        routable: (kind === KIND_MAP || kind === KIND_INDEXED) && (filter as any)?.[$filterByChild] === true,
         fullStateOnlyBitmask: indexesToBitmask(metadata?.[$fullStateOnlyFieldIndexes]),
         unreliableBitmask: indexesToBitmask(metadata?.[$unreliableFieldIndexes]),
         streamBitmask: indexesToBitmask(metadata?.[$streamFieldIndexes]),

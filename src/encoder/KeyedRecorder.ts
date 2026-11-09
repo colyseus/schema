@@ -1,5 +1,11 @@
 import { OPERATION } from "../encoding/spec.js";
+import { $getByIndex } from "../types/symbols.js";
 import type { Root } from "./Root.js";
+
+/** The entry of keyed collection `ref` at wire `index`, or the one removed from it this tick. */
+export function keyedValueAt(ref: any, rec: KeyedRecorder | undefined, index: number): any {
+    return ref[$getByIndex](index) ?? rec?.deleted?.get(index);
+}
 
 /**
  * KeyedRecorder — the change recorder of the wire-index-keyed collections

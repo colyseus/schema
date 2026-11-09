@@ -1,8 +1,8 @@
-import { $applyKeyType, $changes, $childType, $deleteByIndex, $onEncodeEnd, $filter, $getByIndex, $keyType, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
+import { $applyKeyType, $changes, $childType, $deleteByIndex, $onEncodeEnd, $filter, $filterByChild, $getByIndex, $keyType, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
 import { RefTable } from "../../RefTable.js";
 import type { MapKeyType } from "../../annotations.js";
 import { ChangeTree, installUntrackedChangeTree, IRef, stampTree, treeOf, refTreeOf, defineRefAccessors } from "../../encoder/ChangeTree.js";
-import { KeyedRecorder, freeIndex, releaseQuarantine } from "../../encoder/KeyedRecorder.js";
+import { KeyedRecorder, freeIndex, keyedValueAt, releaseQuarantine } from "../../encoder/KeyedRecorder.js";
 import { CollectionKind, OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
@@ -88,7 +88,7 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
      */
     static [$filter] (ref: MapSchema, index: number, view: StateView) {
         if (!view || typeof (ref[$childType]) === "string") return true;
-        const value = ref[$getByIndex](index) ?? (refTreeOf(ref).rec as KeyedRecorder | undefined)?.deleted?.get(index);
+        const value = keyedValueAt(ref, refTreeOf(ref).rec as KeyedRecorder | undefined, index);
         return value !== undefined && view.isChangeTreeVisible(refTreeOf(value));
     }
 
@@ -513,6 +513,8 @@ function coerceKey<K>(keyType: MapKeyType | undefined, key: any): K {
     }
     return n as K;
 }
+
+(MapSchema[$filter] as any)[$filterByChild] = true;
 
 registerType("map", { constructor: MapSchema });
 

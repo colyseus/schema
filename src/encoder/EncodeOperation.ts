@@ -455,16 +455,41 @@ export function encodeKeyedOps(f: Frame): void {
     if (f.treeIsFiltered !== f.emitFiltered) return;
     const rec = f.tree.rec as KeyedRecorder | undefined;
     if (rec === undefined) return;
-    if (rec.cleared) {
-        if (f.lenPos === -1) openChunk(f);
-        f.buffer[f.it.offset++] = KEYED_OP.CLEAR;
-    }
+    keyedClear(f, rec);
     // first-record order = wire order
     const order = rec.order;
     for (let k = 0, n = rec.count; k < n; k++) {
         const index = order[k];
         keyedOp(f, index, rec.opAt(index)!);
     }
+}
+
+/**
+ * `encodeKeyedOps` for a view pass over the ops routed to this view
+ * (`Encoder._routeKeyedOps`): `pairs[start…end)` holds `(tree index, entry)`
+ * pairs in record order. An entry `index` still goes through the filter (its
+ * route is a superset); `~index` is an exact route and skips it.
+ */
+export function encodeKeyedOpsAt(f: Frame, pairs: number[], start: number, end: number): void {
+    if (f.treeIsFiltered !== f.emitFiltered) return;
+    const rec = f.tree.rec as KeyedRecorder;
+    keyedClear(f, rec);
+    for (let p = start; p < end; p += 2) {
+        const entry = pairs[p + 1];
+        if (entry >= 0) {
+            keyedOp(f, entry, rec.opAt(entry)!);
+        } else {
+            const index = ~entry;
+            if (f.lenPos === -1) openChunk(f);
+            emitKeyedOp(f, index, rec.opAt(index)!);
+        }
+    }
+}
+
+function keyedClear(f: Frame, rec: KeyedRecorder): void {
+    if (!rec.cleared) return;
+    if (f.lenPos === -1) openChunk(f);
+    f.buffer[f.it.offset++] = KEYED_OP.CLEAR;
 }
 
 function keyedOp(f: Frame, index: number, op: OPERATION): void {

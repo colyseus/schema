@@ -1,9 +1,9 @@
 import { CollectionKind, OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
-import { $changes, $childType, $deleteByIndex, $filter, $getByIndex, $onEncodeEnd, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
+import { $changes, $childType, $deleteByIndex, $filter, $filterByChild, $getByIndex, $onEncodeEnd, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
 import { Collection } from "../HelperTypes.js";
 import { ChangeTree, installUntrackedChangeTree, type IRef, stampTree, treeOf, refTreeOf, defineRefAccessors } from "../../encoder/ChangeTree.js";
-import { KeyedRecorder, freeIndex, releaseQuarantine } from "../../encoder/KeyedRecorder.js";
+import { KeyedRecorder, freeIndex, keyedValueAt, releaseQuarantine } from "../../encoder/KeyedRecorder.js";
 import {
     createStreamableState,
     streamDropView,
@@ -64,7 +64,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     /** Per-entry visibility for `StateView` encodes (removed values resolve through the recorder). */
     static [$filter] (ref: SetSchema, index: number, view: StateView) {
         if (!view || typeof (ref[$childType]) === "string") return true;
-        const value: any = ref.$items.get(index) ?? (refTreeOf(ref).rec as KeyedRecorder | undefined)?.deleted?.get(index);
+        const value: any = keyedValueAt(ref, refTreeOf(ref).rec as KeyedRecorder | undefined, index);
         return value !== undefined && view.isVisible(refTreeOf(value));
     }
 
@@ -321,6 +321,8 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     }
 
 }
+
+(SetSchema[$filter] as any)[$filterByChild] = true;
 
 registerType("set", { constructor: SetSchema });
 

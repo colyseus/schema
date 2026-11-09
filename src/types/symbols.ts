@@ -28,6 +28,13 @@ export const $filter = "~filter";
 export const $encodeReflection = "~encodeReflection";
 
 export const $getByIndex = "~getByIndex";
+/**
+ * Marker on a collection's `[$filter]` function: an entry is visible to a
+ * view exactly when its child is, so the encoder may route each op to the
+ * views holding the child's bit instead of asking every view. A subclass
+ * that overrides `[$filter]` defines a new, unmarked function.
+ */
+export const $filterByChild = "~filterByChild";
 export const $deleteByIndex = "~deleteByIndex";
 /**
  * Resync-sweep hook (see decoder/Resync.ts): prune every entry the rejoin

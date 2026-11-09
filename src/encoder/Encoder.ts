@@ -9,13 +9,14 @@ import { Root } from "./Root.js";
 import type { StateView } from "./StateView.js";
 import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode, refTreeOf, viewTreeOf } from "./ChangeTree.js";
 import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
+import { type KeyedRecorder, keyedValueAt } from "./KeyedRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { ensureTracked, forEachChildWithCtx } from "./changeTree/treeAttachment.js";
 import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
 import { streamHasBroadcastBacklog, streamHasViewBacklog } from "./streaming.js";
 import {
     MODE_DRAIN, MODE_PATCH, MODE_SNAPSHOT, MODE_STREAM,
-    closeChunk, emitKeyedOp, emitLiveChunk, emitViewEntry, encodeKeyedOps, encodeSchemaBits, encodeSchemaOps, encodeTreeOps,
+    closeChunk, emitKeyedOp, emitLiveChunk, emitViewEntry, encodeKeyedOps, encodeKeyedOpsAt, encodeSchemaBits, encodeSchemaOps, encodeTreeOps,
     enterFrame, openChunk, passFrame, releaseFrames, writeChunkHeader, type Frame,
     runEligible, runContinues, openRun, addRunMember, endRun,
 } from "./EncodeOperation.js";
@@ -82,6 +83,19 @@ function grantableViews(tree: ChangeTree, out: number[], visited: ChangeTree[]):
     orGrantableViews(tree, out, visited);
     while (visited.length !== 0) visited.pop();
     return out;
+}
+
+/**
+ * The first entry `tree` touched this tick shares the collection's
+ * visibility (an untagged or `@view(N)` collection): every viewer then sees
+ * every op, and routing them would only duplicate the fan-out.
+ */
+function entriesShareVisibility(tree: ChangeTree, rec: KeyedRecorder): boolean {
+    for (let k = 0, n = rec.count; k < n; k++) {
+        const child = refTreeOf(keyedValueAt(tree.ref, rec, rec.order[k]));
+        if (child !== undefined) return child.isVisibilitySharedWithParent;
+    }
+    return false;
 }
 
 /** End the tick for every tree in `list`: reset recorders, release queue nodes. */
@@ -167,6 +181,14 @@ export class Encoder<T extends Schema = any> {
      * reach the client through `view.changes`, never through these lists.
      */
     private _viewDirty: number[][] = [];
+    /**
+     * Per-view routed keyed ops, keyed by `view.id`: `(tree index, entry)`
+     * pairs in tree then record order, for the filtered keyed collections
+     * marked in `_routedOps`. Each op goes only to the views that can see its
+     * child (`_routeKeyedOps`), so a view walks its own ops, not the room's.
+     */
+    private _viewOps: number[][] = [];
+    private _routedOps: boolean[] = [];
     /** Scratch for `_prepareTick`: one shared-visibility tree's grantable view bits, and its walk's visited set. */
     private _grantableViews: number[] = [];
     private _grantVisited: ChangeTree[] = [];
@@ -179,6 +201,7 @@ export class Encoder<T extends Schema = any> {
      */
     private _filteredDirtyLen = 0;
     private _viewDirtyLen: number[] = [];
+    private _viewOpsLen: number[] = [];
 
     /**
      * @param bufferSize size of this encoder's shared output buffer
@@ -387,6 +410,9 @@ export class Encoder<T extends Schema = any> {
             const tree = trees[i];
             if (tree._fullSyncGen !== f.genB && view.isChangeTreeVisible(tree)) seq[seqLen++] = i;
         }
+        const ops = this._viewOps[view.id];
+        const opsLen = this._viewOpsLen[view.id] | 0;
+        let opPos = 0;
 
         for (let s = 0; s < seqLen; s++) {
             const i = seq[s];
@@ -442,7 +468,16 @@ export class Encoder<T extends Schema = any> {
 
             if (tree.isNew) tree._fullSyncGen = f.genB;
             enterFrame(f, tree);
-            encodeTreeOps(f);
+            if (this._routedOps[i]) {
+                // this view's routed ops of tree i: skip pairs of trees it didn't emit
+                while (opPos < opsLen && ops[opPos] < i) opPos += 2;
+                let end = opPos;
+                while (end < opsLen && ops[end] === i) end += 2;
+                encodeKeyedOpsAt(f, ops, opPos, end);
+                opPos = end;
+            } else {
+                encodeTreeOps(f);
+            }
             const lenPos = f.lenPos; // -1 when nothing passed the gate (no chunk opened)
             closeChunk(f);
 
@@ -474,6 +509,9 @@ export class Encoder<T extends Schema = any> {
         const viewDirty = this._viewDirty;
         const viewDirtyLen = this._viewDirtyLen;
         for (let k = 0; k < viewDirtyLen.length; k++) viewDirtyLen[k] = 0;
+        const viewOpsLen = this._viewOpsLen;
+        for (let k = 0; k < viewOpsLen.length; k++) viewOpsLen[k] = 0;
+        const routedOps = this._routedOps;
         const grantable = this._grantableViews;
         const visited = this._grantVisited;
 
@@ -489,17 +527,28 @@ export class Encoder<T extends Schema = any> {
                     || (tree.dirtyHigh !== 0 && desc.hasTagAbove32);
             }
             if (!include) continue;
+            let routed = false;
             if (tree._isSchema) {
                 // pure-primitive chunk → a function of (tree, view's custom tags); safe to memcpy
                 canCache = (tree.dirtyLow & desc.refTypeBitmask) === 0 && (tree.dirtyHigh === 0 || !desc.hasRefFieldAbove32);
             } else {
                 // primitive-child collections carry no per-element visibility
                 canCache = typeof (tree.refTarget as any)[$childType] === "string";
+                // not streams: `_emitStreamPriority` grants element visibility per view, after this snapshot
+                routed = !canCache && desc.routable && !tree.isStreamCollection
+                    && !entriesShareVisibility(tree, tree.rec as KeyedRecorder);
             }
             const i = n++;
             trees[i] = tree;
             cacheable[i] = canCache;
             cacheHead[i] = -1;
+            routedOps[i] = routed;
+            if (routed) {
+                // only views with a routed op visit the tree — unless all must: a new tree's pass stamp, a CLEAR
+                const onlyRouted = !tree.isNew && !(tree.rec as KeyedRecorder).cleared;
+                this._routeKeyedOps(tree, i, onlyRouted);
+                if (onlyRouted) continue;
+            }
 
             // fan out to the views that hold this tree's visibility bit (or could be granted it; each view re-checks)
             const vv = tree.isVisibilitySharedWithParent ? grantableViews(tree, grantable, visited) : tree.visibleViews;
@@ -521,6 +570,51 @@ export class Encoder<T extends Schema = any> {
         for (let k = n; k < prevLen; k++) trees[k] = undefined!;
         this._filteredDirtyLen = n;
         this._tickPrepared = true;
+    }
+
+    /**
+     * Route each op of keyed collection `i` to the views that can see its
+     * child, as `(i, entry)` pairs on `_viewOps`: `~index` when the child's
+     * own bit decides (all the stock filter would re-read), `index` when a
+     * shared child may be granted visibility mid-pass and must be filtered.
+     * `addTree`: also list `i` for each view that gets an op.
+     */
+    private _routeKeyedOps(tree: ChangeTree, i: number, addTree: boolean): void {
+        const rec = tree.rec as KeyedRecorder;
+        const ref = tree.ref;
+        const order = rec.order;
+        const viewOps = this._viewOps;
+        const viewOpsLen = this._viewOpsLen;
+        const viewDirty = this._viewDirty;
+        const viewDirtyLen = this._viewDirtyLen;
+        for (let k = 0, count = rec.count; k < count; k++) {
+            const index = order[k];
+            const child = refTreeOf(keyedValueAt(ref, rec, index));
+            if (child === undefined) continue; // no view's filter passes it
+            const shared = child.isVisibilitySharedWithParent;
+            const vv = shared ? grantableViews(child, this._grantableViews, this._grantVisited) : child.visibleViews;
+            if (vv === undefined) continue;
+            const entry = shared ? index : ~index;
+            for (let s = 0; s < vv.length; s++) {
+                let w = vv[s] | 0; // a hole reads as undefined
+                while (w !== 0) {
+                    const bit = w & -w;
+                    w ^= bit;
+                    const id = (s << 5) + (31 - Math.clz32(bit));
+                    let list = viewOps[id];
+                    if (list === undefined) { list = viewOps[id] = []; viewOpsLen[id] = 0; }
+                    const at = viewOpsLen[id];
+                    if (addTree && (at === 0 || list[at - 2] !== i)) {
+                        let trees = viewDirty[id];
+                        if (trees === undefined) { trees = viewDirty[id] = []; viewDirtyLen[id] = 0; }
+                        trees[viewDirtyLen[id]++] = i;
+                    }
+                    list[at] = i;
+                    list[at + 1] = entry;
+                    viewOpsLen[id] = at + 2;
+                }
+            }
+        }
     }
 
     private _cacheChunk(i: number, key: number, buffer: Uint8Array, start: number, end: number): void {
