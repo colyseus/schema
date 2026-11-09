@@ -1,5 +1,5 @@
 import { OPERATION } from './encoding/spec.js';
-import { getEncodeDescriptor } from './encoder/EncodeDescriptor.js';
+import { descriptorOf } from './encoder/EncodeDescriptor.js';
 import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
@@ -75,7 +75,7 @@ export class Schema<C = any> implements IRef {
      */
     static initializeForDecoder<T extends Schema = Schema>(this: { prototype: T } & typeof Schema): T {
         const inst: any = Object.create(this.prototype);
-        inst[$values] = getEncodeDescriptor(inst).valuesTemplate.slice(); // exact size, packed — see EncodeDescriptor.valuesTemplate
+        inst[$values] = descriptorOf(this).valuesTemplate.slice(); // exact size, packed — see EncodeDescriptor.valuesTemplate
         stampTree(inst, createUntrackedChangeTree(inst));
         return inst;
     }
@@ -237,7 +237,7 @@ export class Schema<C = any> implements IRef {
      * then copies the remaining own properties (non-tracked fields).
      */
     protected static assignProps(target: any, source: any) {
-        const desc = treeOf(target).encDescriptor ?? getEncodeDescriptor(target); // decoder stubs carry no descriptor
+        const desc = treeOf(target).encDescriptor ?? descriptorOf(target.constructor); // decoder stubs carry no descriptor
         const names = desc.names;
         const setters = desc.setters;
         for (let i = 0; i < names.length; i++) {

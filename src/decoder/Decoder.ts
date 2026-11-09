@@ -1,12 +1,12 @@
 import { TypeContext } from "../types/TypeContext.js";
 import { $childType, $listenedOnly } from "../types/symbols.js";
 import { Schema } from "../Schema.js";
-import { OPERATION } from "../encoding/spec.js";
+import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA, OPERATION } from "../encoding/spec.js";
 import { type IRef, type Ref, decodedRefIdOf, treeOfDecoded } from "../encoder/ChangeTree.js";
 import type { Iterator } from "../encoding/decode.js";
 import { readUvarint } from "../encoding/varint.js";
 import { ReferenceTracker } from "./ReferenceTracker.js";
-import { ChunkMismatch, decodeArrayOps, decodeKeyValueOps, decodeSchemaOps, decodeRun, refInfoOf, REF_SCHEMA, REF_ARRAY, REF_MAP, type DataChange, type RefInfo } from "./DecodeOperation.js";
+import { ChunkMismatch, decodeArrayOps, decodeKeyValueOps, decodeSchemaOps, decodeRun, refInfoOf, type DataChange, type RefInfo } from "./DecodeOperation.js";
 import { resyncSweep } from "./Resync.js";
 import { Collection } from "../types/HelperTypes.js";
 
@@ -190,9 +190,9 @@ export class Decoder<T extends IRef = any> {
                 const ri: RefInfo = (tree.decodeInfo !== undefined) ? tree.decodeInfo : refInfoOf(ref);
                 const kind = ri.kind;
                 const changes = gated ? this.changesFor(refId, tree.decodeGen) : batch;
-                if (kind === REF_SCHEMA) decodeSchemaOps(this, bytes, it, end, ref, refId, changes, ri.info!, tree.values);
-                else if (kind === REF_ARRAY) decodeArrayOps(this, bytes, it, end, ref, refId, changes, ri);
-                else decodeKeyValueOps(this, bytes, it, end, ref, refId, changes, kind === REF_MAP, ri);
+                if (kind === KIND_SCHEMA) decodeSchemaOps(this, bytes, it, end, ref, refId, changes, ri.info!, tree.values);
+                else if (kind === KIND_ARRAY) decodeArrayOps(this, bytes, it, end, ref, refId, changes, ri);
+                else decodeKeyValueOps(this, bytes, it, end, ref, refId, changes, kind === KIND_MAP, ri);
             } catch (e) {
                 if (!(e instanceof ChunkMismatch)) throw e;
                 this.damaged("definition mismatch");

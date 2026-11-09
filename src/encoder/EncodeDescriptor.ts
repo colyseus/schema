@@ -1,9 +1,9 @@
 /**
  * EncodeDescriptor — per-class snapshot of a Ref constructor's fields: what
- * the encode loop needs, plus the field setters construction / `assign()`
- * use. Lazily computed once per class (the first time a tree of that class
- * is constructed) and stashed on the constructor via
- * `$encodeDescriptor`. Each ChangeTree caches a reference to its class's
+ * the encode loop needs, the field setters construction / `assign()` use, and
+ * the decoder's readers and access policy. Lazily computed once per class
+ * (the first time an instance of that class is constructed or decoded) and
+ * stashed on the constructor via `$encodeDescriptor`. Each ChangeTree caches a reference to its class's
  * descriptor at construction time, so the encode loop reads a single
  * property from the tree instead of chasing several per-tree lookups.
  *
@@ -11,7 +11,6 @@
  * cycle (ChangeTree caches descriptors at construction; Encoder reads them
  * during encode).
  */
-import { Metadata } from "../Metadata.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { KIND_INDEXED, KIND_MAP, KIND_SCHEMA } from "../encoding/spec.js";
 import { $descriptors, $encodeDescriptor, $encoders, $filter, $filterByChild, $fullSyncSkipIndexes, $numFields, $fullStateOnlyFieldIndexes, $recorder, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
@@ -19,8 +18,16 @@ import type { StateView } from "./StateView.js";
 import type { ArrayLog } from "./ArrayLog.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
 import { resolvesTo, setterOf } from "../types/utils.js";
+import { Metadata } from "../Metadata.js";
+import { readerOf } from "../types/quantize.js";
+import type { RefInfo } from "../decoder/DecodeOperation.js";
+
+/** How the decoder reaches a field — see `EncodeDescriptor.access`. */
+export const ACCESS_NAMED = 0, ACCESS_DIRECT = 1, ACCESS_VALUES = 2, ACCESS_DEPRECATED = 3;
 
 export interface EncodeDescriptor {
+    /** The class this describes (`descriptorOf`'s own-descriptor check). */
+    ctor: Function;
     filter: ((ref: any, index: number, view?: StateView) => boolean) | undefined;
     metadata: any;
     isSchema: boolean;
@@ -97,6 +104,27 @@ export interface EncodeDescriptor {
     types: any[];
     tags: (number | undefined)[];
     encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
+    /**
+     * Decoder: a pre-resolved reader per primitive / quantized field
+     * (`undefined` for refs), so the per-slot path is one array load instead
+     * of a string-keyed dispatch. Taken from the live `decode` table when the
+     * descriptor is built, so custom primitive types registered after import
+     * (before the class is first used) are honoured.
+     */
+    readers: (((bytes: Uint8Array, it: any) => any) | undefined)[];
+    /**
+     * Decoder: per field, whether it may bypass the accessor. Behind the one
+     * the library installed (`metadata[$descriptors]`) the value lives in
+     * `values[index]` and the setter adds only validation and change
+     * tracking, which decoding has no use for: a primitive takes
+     * `decodeDirectSlot` (`ACCESS_DIRECT`), a ref is read and written in
+     * `values` by `decodeSlot` (`ACCESS_VALUES`). `ACCESS_NAMED` otherwise —
+     * `ref[name]` for `{ manual: true }` fields, and to call a user's accessor
+     * override; `ACCESS_DEPRECATED` fields are read off the wire and dropped.
+     */
+    access: number[];
+    /** Decoder: the class's shared decode record (`DecodeOperation.schemaRefInfo`), built on first use. */
+    refInfo: RefInfo | undefined;
 
     /**
      * Class-level half of same-shape-run eligibility: a Schema whose
@@ -140,19 +168,26 @@ function indexesToBitmask(indexes: number[] | undefined): number {
     return bm;
 }
 
+/** `ref`'s class descriptor (public alias of {@link descriptorOf}, for the `/input` bundle). */
 export function getEncodeDescriptor(ref: any): EncodeDescriptor {
-    const ctor = ref.constructor;
+    return descriptorOf(ref.constructor);
+}
 
-    // Use hasOwn — Object.defineProperty on a parent class would otherwise
-    // be inherited by every subclass via the prototype chain, and a
-    // subclass's instance would read the parent's metadata/encoder. See
-    // "should encode the correct class inside an array" for the regression.
-    if (Object.prototype.hasOwnProperty.call(ctor, $encodeDescriptor)) {
-        return ctor[$encodeDescriptor];
-    }
+/**
+ * The class's descriptor, built on first use. Own descriptor only: a subclass
+ * must not read its parent's, inherited through the constructor's prototype
+ * chain (see "should encode the correct class inside an array"). Checked by
+ * identity rather than `hasOwnProperty` (a builtin call), and tiny so it
+ * inlines into construction and `createRef`.
+ */
+export function descriptorOf(ctor: any): EncodeDescriptor {
+    const cached: EncodeDescriptor | undefined = ctor[$encodeDescriptor];
+    return (cached !== undefined && cached.ctor === ctor) ? cached : buildDescriptor(ctor);
+}
 
+function buildDescriptor(ctor: any): EncodeDescriptor {
     const metadata = ctor[Symbol.metadata];
-    const isSchema = Metadata.isValidInstance(ref);
+    const isSchema = !!Metadata.isValidInstance(ctor.prototype);
     const hasAnyView = (metadata?.[$viewFieldIndexes]?.length ?? 0) > 0;
 
     const collectionKind = ctor.COLLECTION_KIND;
@@ -164,6 +199,8 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     const types: any[] = [];
     const tags: (number | undefined)[] = [];
     const encoders: EncodeDescriptor["encoders"] = [];
+    const readers: EncodeDescriptor["readers"] = [];
+    const access: number[] = [];
     const liveIndexes: number[] = [];
     let liveInValues = true;
     const descriptors = metadata?.[$descriptors];
@@ -171,7 +208,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     let hasRefFieldAbove32 = false;
     let hasTagAbove32 = false;
     let customTagMask = 0;
-    const numFields: number = (isSchema && metadata != null) ? (metadata[$numFields] ?? -1) : -1;
+    const numFields: number = isSchema ? metadata[$numFields] : -1;
     const srcEncoders = metadata?.[$encoders];
     const skip: number[] | undefined = metadata?.[$fullSyncSkipIndexes];
 
@@ -184,6 +221,8 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
             types[i] = undefined;
             tags[i] = undefined;
             encoders[i] = undefined;
+            readers[i] = undefined;
+            access[i] = ACCESS_NAMED;
             continue;
         }
         names[i] = field.name;
@@ -191,9 +230,14 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         types[i] = field.type;
         tags[i] = field.tag;
         encoders[i] = srcEncoders?.[i];
+        readers[i] = readerOf(field.type);
+        const inValues = resolvesTo(ctor.prototype, field.name, descriptors?.[field.name]);
+        access[i] = (field.deprecated === true) ? ACCESS_DEPRECATED
+            : !inValues ? ACCESS_NAMED
+            : (readers[i] !== undefined) ? ACCESS_DIRECT : ACCESS_VALUES;
         if (skip === undefined || !skip.includes(i)) {
             liveIndexes.push(i);
-            if (liveInValues && !resolvesTo(ctor.prototype, field.name, descriptors?.[field.name])) liveInValues = false;
+            if (!inValues) liveInValues = false;
         }
 
         const isRef = typeof field.type !== "string" && field.type.quantized === undefined;
@@ -220,6 +264,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     const stockFilter = filterOwner === null || filterOwner === undefined || Object.getPrototypeOf(filterOwner) === Function.prototype;
     const hasAnyStream = (metadata?.[$streamFieldIndexes]?.length ?? 0) > 0;
     const desc: EncodeDescriptor = {
+        ctor,
         filter,
         metadata,
         isSchema,
@@ -242,6 +287,9 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         types,
         tags,
         encoders,
+        readers,
+        access,
+        refInfo: undefined,
         liveIndexes,
         liveInValues,
         refTypeBitmask,

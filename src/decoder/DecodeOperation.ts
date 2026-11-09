@@ -1,16 +1,15 @@
-import { ARRAY_OP, KEYED_OP, OPERATION, REF_HAS_BODY, REF_HAS_TYPE, CollectionKind } from "../encoding/spec.js";
+import { ARRAY_OP, KEYED_OP, OPERATION, REF_HAS_BODY, REF_HAS_TYPE, KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../encoding/spec.js";
 import { treeOfDecoded, decodedRefIdOf as refIdOfValue } from "../encoder/ChangeTree.js";
 import type { Iterator } from "../encoding/decode.js";
-import { decode } from "../encoding/decode.js";
 import { readString, readUvarint } from "../encoding/varint.js";
 import { Schema } from "../Schema.js";
 import type { IRef } from "../encoder/ChangeTree.js";
 import { $childType, $collectionCtor, $deleteByIndex, $keyType, $rev } from "../types/symbols.js";
 import { getType } from "../types/registry.js";
-import { decodeQuantized, isQuantizedType } from "../types/quantize.js";
+import { readerOf } from "../types/quantize.js";
 import { resyncMarkPresent, resyncRecordVisit, resyncTouchEntry } from "./Resync.js";
 import type { Decoder } from "./Decoder.js";
-import { ACCESS_DIRECT, ACCESS_VALUES, getDecodeInfo, type DecodeInfo } from "./DecodeInfo.js";
+import { ACCESS_DEPRECATED, ACCESS_DIRECT, ACCESS_VALUES, descriptorOf, type EncodeDescriptor } from "../encoder/EncodeDescriptor.js";
 
 export interface DataChange<T = any, F = string> {
     ref: IRef,
@@ -30,62 +29,51 @@ type Reader = (bytes: Uint8Array, it: Iterator) => any;
 
 import { arrCopy, arrIndexOf, arrInsertOne, arrRemove, arrReverse } from "../types/custom/arrayOps.js";
 
-/** Reader for a collection's child type: pre-resolved once per chunk / body, `undefined` for ref children. */
-function childReaderOf(type: any): Reader | undefined {
-    if (typeof type === "string") return (decode as any)[type];
-    if (isQuantizedType(type)) return (bytes, it) => decodeQuantized(type.quantized, bytes, it);
-    return undefined;
-}
-
 /**
  * Reader for a MapSchema's declared numeric key type; `undefined` for string
  * (or undeclared) keys, which the callers read with a direct `readString`
  * call so the common path keeps its inlined string read.
  */
 function keyReaderOf(keyType: string | undefined): Reader | undefined {
-    return (keyType === undefined || keyType === "string") ? undefined : (decode as any)[keyType];
+    return (keyType === "string") ? undefined : readerOf(keyType);
 }
-
-export const REF_SCHEMA = 0, REF_ARRAY = 1, REF_MAP = 2, REF_KEYED = 3;
 
 /**
  * Decode record of a ref's TYPE, referenced from its `$changes` tree
  * (`UntrackedChangeTree.decodeInfo`). One shape for every kind so the loads that
  * follow are monomorphic; a chunk then costs one megamorphic load
  * (`ref[$changes]`) instead of `ref.constructor` + `COLLECTION_KIND` +
- * `ctor[$decodeInfo]` + `ref[$childType]`, and quantized child readers are
- * resolved once per type instead of once per chunk.
+ * `ctor[$encodeDescriptor]` + `ref[$childType]`, and quantized child readers
+ * are resolved once per type instead of once per chunk.
  *
- * Shared, never per instance: one per Schema class (`DecodeInfo.refInfo`) and
- * one per collection field type (`type[$refInfo]`); the per-instance part
+ * Shared, never per instance: one per Schema class (`EncodeDescriptor.refInfo`)
+ * and one per collection field type (`type[$refInfo]`); the per-instance part
  * (`decodeGen`) lives on the tree. Only a collection no decode built gets a
  * record of its own (`attachRefInfo`).
  */
 export interface RefInfo {
-    kind: number;
-    info: DecodeInfo | undefined;      // Schema
-    ctor: any;                         // collections: the class `createRef` builds
-    childType: any;                    // collections
-    keyType: string | undefined;       // `map` fields: the declared key type
-    reader: Reader | undefined;        // collections: child reader (`undefined` for ref children)
-    keyReader: Reader | undefined;     // MapSchema numeric key reader (`undefined` = string keys)
+    kind: number;                       // `KIND_*`, as `EncodeDescriptor.kind`
+    info: EncodeDescriptor | undefined; // Schema: its class's descriptor
+    ctor: any;                          // collections: the class `createRef` builds
+    childType: any;                     // collections
+    keyType: string | undefined;        // `map` fields: the declared key type
+    reader: Reader | undefined;         // collections: child reader (`undefined` for ref children)
+    keyReader: Reader | undefined;      // MapSchema numeric key reader (`undefined` = string keys)
 }
 
 const $refInfo = Symbol.for("@colyseus/schema:refInfo");
 
 function schemaRefInfo(ctor: any): RefInfo {
-    const info = getDecodeInfo(ctor);
-    return info.refInfo ??= { kind: REF_SCHEMA, info, ctor: undefined, childType: undefined, keyType: undefined, reader: undefined, keyReader: undefined };
+    const info = descriptorOf(ctor);
+    return info.refInfo ??= { kind: KIND_SCHEMA, info, ctor: undefined, childType: undefined, keyType: undefined, reader: undefined, keyReader: undefined };
 }
 
 function newCollectionRefInfo(ctor: any, childType: any, keyType: string | undefined): RefInfo {
-    const collectionKind = ctor.COLLECTION_KIND;
-    const kind = (collectionKind === CollectionKind.Array) ? REF_ARRAY
-        : (collectionKind === CollectionKind.Map) ? REF_MAP : REF_KEYED;
+    const kind = descriptorOf(ctor).kind;
     return {
         kind, info: undefined, ctor, childType, keyType,
-        reader: childReaderOf(childType),
-        keyReader: (kind === REF_MAP) ? keyReaderOf(keyType) : undefined,
+        reader: readerOf(childType),
+        keyReader: (kind === KIND_MAP) ? keyReaderOf(keyType) : undefined,
     };
 }
 
@@ -268,13 +256,13 @@ function releaseSlot(d: Decoder, ref: any, index: number, op: OPERATION, previou
     if (op !== OPERATION.DELETE_AND_ADD) ref[$deleteByIndex](index);
 }
 
-function fieldAt(info: DecodeInfo, index: number, ref: any): any {
-    const field = info.fields[index];
-    if (field === undefined) {
+function nameAt(info: EncodeDescriptor, index: number, ref: any): string {
+    const name = info.names[index];
+    if (name === undefined) {
         console.warn("@colyseus/schema: field not defined at", { index, ref: ref.constructor.name });
         throw new ChunkMismatch();
     }
-    return field;
+    return name;
 }
 
 /** Decode an inline body into `value` (kind-dispatched). Restores `currentRefId` afterwards. */
@@ -286,9 +274,9 @@ function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator): vo
     const ri: RefInfo = (tree.decodeInfo !== undefined) ? tree.decodeInfo : refInfoOf(value);
     const kind = ri.kind;
     const changes = d.gated ? d.changesFor(refId, tree.decodeGen) : d.batch;
-    if (kind === REF_SCHEMA) decodeSchemaBody(d, bytes, it, value, refId, changes, ri.info!, tree.values);
-    else if (kind === REF_ARRAY) decodeArrayBody(d, bytes, it, value, refId, changes, ri);
-    else decodeKeyValueBody(d, bytes, it, value, refId, changes, kind === REF_MAP, ri);
+    if (kind === KIND_SCHEMA) decodeSchemaBody(d, bytes, it, value, refId, changes, ri.info!, tree.values);
+    else if (kind === KIND_ARRAY) decodeArrayBody(d, bytes, it, value, refId, changes, ri);
+    else decodeKeyValueBody(d, bytes, it, value, refId, changes, kind === KIND_MAP, ri);
     d.currentRefId = saved;
 }
 
@@ -303,7 +291,7 @@ function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator): vo
  */
 function decodeDirectSlot(
     bytes: Uint8Array, it: Iterator, ref: any, refId: number,
-    info: DecodeInfo, values: any[], index: number, field: any, op: OPERATION, changes: DataChange[] | null,
+    info: EncodeDescriptor, values: any[], index: number, op: OPERATION, changes: DataChange[] | null,
 ): void {
     const previousValue = values[index];
     let value: any;
@@ -315,18 +303,23 @@ function decodeDirectSlot(
         if (value !== null && value !== undefined) values[index] = value;
     }
     if (previousValue !== value) {
-        changes?.push({ ref, refId, op, field: field.name, value, previousValue });
+        changes?.push({ ref, refId, op, field: info.names[index], value, previousValue });
     }
 }
 
-/** Any slot but {@link decodeDirectSlot}'s: refs (in `values` under `ACCESS_VALUES`) and `ACCESS_NAMED` fields (`ref[name]`). */
+/**
+ * Any slot but {@link decodeDirectSlot}'s: refs (in `values` under
+ * `ACCESS_VALUES`), `ACCESS_NAMED` fields (`ref[name]`) and
+ * `ACCESS_DEPRECATED` ones (read and dropped).
+ */
 function decodeSlot(
     d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number,
-    info: DecodeInfo, values: any[], index: number, field: any, op: OPERATION, changes: DataChange[] | null,
+    info: EncodeDescriptor, values: any[], index: number, name: string, op: OPERATION, changes: DataChange[] | null,
 ): void {
-    const isDeprecated = field.deprecated === true;
-    const inValues = info.access[index] === ACCESS_VALUES;
-    const previousValue = isDeprecated ? undefined : inValues ? values[index] : ref[field.name];
+    const access = info.access[index];
+    const isDeprecated = access === ACCESS_DEPRECATED;
+    const inValues = access === ACCESS_VALUES;
+    const previousValue = isDeprecated ? undefined : inValues ? values[index] : ref[name];
     let value: any;
 
     if ((op & OPERATION.DELETE) === OPERATION.DELETE) {
@@ -336,7 +329,7 @@ function decodeSlot(
 
     let header = 0;
     if (op !== OPERATION.DELETE) {
-        value = readSlotValue(d, info.readers[index], op, previousValue, field.type, bytes, it);
+        value = readSlotValue(d, info.readers[index], op, previousValue, info.types[index], bytes, it);
         header = lastHeader;
     }
 
@@ -348,11 +341,11 @@ function decodeSlot(
 
     if (value !== null && value !== undefined) {
         if (inValues) values[index] = value;
-        else ref[field.name] = value;
+        else ref[name] = value;
     }
 
     if (previousValue !== value) {
-        changes?.push({ ref, refId, op, field: field.name, value, previousValue });
+        changes?.push({ ref, refId, op, field: name, value, previousValue });
     }
 
     // body AFTER the slot's change: `listen()` registered inside onAdd relies on preorder
@@ -396,7 +389,7 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
         it.offset = end;
         return refId;
     }
-    const info = getDecodeInfo(ctor);
+    const info = descriptorOf(ctor);
     const mask = readMask64(bytes, it);
     if (lastMaskHigh !== 0) throw new ChunkMismatch(); // runs only carry fields 0–31
     const extra = readUvarint(bytes, it);
@@ -434,26 +427,24 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
             const index = 31 - Math.clz32(bit);
             m ^= bit;
             if (info.readers[index] === undefined) throw new ChunkMismatch();
-            const field = fieldAt(info, index, ref);
-            if (info.access[index] === ACCESS_DIRECT) decodeDirectSlot(bytes, it, ref, id, info, values, index, field, OPERATION.ADD, changes);
-            else decodeSlot(d, bytes, it, ref, id, info, values, index, field, OPERATION.ADD, changes);
+            if (info.access[index] === ACCESS_DIRECT) decodeDirectSlot(bytes, it, ref, id, info, values, index, OPERATION.ADD, changes);
+            else decodeSlot(d, bytes, it, ref, id, info, values, index, nameAt(info, index, ref), OPERATION.ADD, changes);
         }
     }
     return id;
 }
 
-export function decodeSchemaOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, info: DecodeInfo, values: any[]): void {
+export function decodeSchemaOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, info: EncodeDescriptor, values: any[]): void {
     while (it.offset < end) {
         const h = readUvarint(bytes, it);
         const index = h >>> 2;
-        const field = fieldAt(info, index, ref);
         const op = ((h & 3) << 6) as OPERATION;
-        if (info.access[index] === ACCESS_DIRECT) decodeDirectSlot(bytes, it, ref, refId, info, values, index, field, op, changes);
-        else decodeSlot(d, bytes, it, ref, refId, info, values, index, field, op, changes);
+        if (info.access[index] === ACCESS_DIRECT) decodeDirectSlot(bytes, it, ref, refId, info, values, index, op, changes);
+        else decodeSlot(d, bytes, it, ref, refId, info, values, index, nameAt(info, index, ref), op, changes);
     }
 }
 
-function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, changes: DataChange[] | null, info: DecodeInfo, values: any[]): void {
+function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, changes: DataChange[] | null, info: EncodeDescriptor, values: any[]): void {
     // whole mask first (values follow it), 7 bits per group, ≤ 64 fields
     let low = 0, high = 0, group = 0;
     for (;;) {
@@ -473,14 +464,13 @@ function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any,
     decodeMaskedFields(d, bytes, it, ref, refId, info, values, high, 32, changes);
 }
 
-function decodeMaskedFields(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, info: DecodeInfo, values: any[], mask: number, base: number, changes: DataChange[] | null): void {
+function decodeMaskedFields(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, info: EncodeDescriptor, values: any[], mask: number, base: number, changes: DataChange[] | null): void {
     while (mask !== 0) {
         const bit = mask & -mask;
         const index = base + 31 - Math.clz32(bit);
         mask ^= bit;
-        const field = fieldAt(info, index, ref);
-        if (info.access[index] === ACCESS_DIRECT) decodeDirectSlot(bytes, it, ref, refId, info, values, index, field, OPERATION.ADD, changes);
-        else decodeSlot(d, bytes, it, ref, refId, info, values, index, field, OPERATION.ADD, changes);
+        if (info.access[index] === ACCESS_DIRECT) decodeDirectSlot(bytes, it, ref, refId, info, values, index, OPERATION.ADD, changes);
+        else decodeSlot(d, bytes, it, ref, refId, info, values, index, nameAt(info, index, ref), OPERATION.ADD, changes);
     }
 }
 

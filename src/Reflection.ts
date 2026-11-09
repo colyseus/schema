@@ -269,7 +269,7 @@ const slotAccessors: PropertyDescriptor[] = [];
 /**
  * A reflected field's accessor, shared by every reflected class (per field
  * index): the generated getter over `this[$values][index]` with an untracked
- * setter. The decoder writes such slots directly (`DecodeInfo.access`);
+ * setter. The decoder writes such slots directly (`EncodeDescriptor.access`);
  * `makeEncodable` swaps in the tracked accessors.
  */
 function slotAccessor(index: number): PropertyDescriptor {
@@ -378,13 +378,10 @@ Reflection.makeEncodable = function (ctor: typeof Schema): typeof Schema {
         Metadata.defineField(ctor, metadata, i, field.name, field.type);
     }
 
-    // Invalidate any cached encode descriptor — `getEncodeDescriptor`
-    // memoizes on the constructor. If something already constructed it
-    // (e.g. a prior `InputEncoder(...)` call that threw), drop the stale
-    // entry so the next read sees the upgraded metadata.
-    if (Object.prototype.hasOwnProperty.call(ctor, $encodeDescriptor)) {
-        delete (ctor as any)[$encodeDescriptor];
-    }
+    // Drop the class's cached descriptor (built by any earlier construction
+    // or decode) so the next read sees the upgraded accessors; refs decoded
+    // before keep their record, whose access policy this does not change.
+    delete (ctor as any)[$encodeDescriptor];
 
     return ctor;
 };

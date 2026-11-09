@@ -172,8 +172,19 @@ export function makeQuantizedEncoder(desc: QuantizeDescriptor) {
     return (bytes: any, value: number, it: any) => writeWire(bytes, quantize(desc, value), it);
 }
 
-/** Decode a quantized field: read the unsigned-int wire value, then dequantize. */
-export function decodeQuantized(desc: QuantizeDescriptor, bytes: any, it: any): number {
+/** Pre-baked decoder for a quantized field: read the unsigned-int wire value, then dequantize. */
+export function makeQuantizedDecoder(desc: QuantizeDescriptor) {
     const readWire = (decode as any)[desc.wire] as (bytes: any, it: any) => number;
-    return dequantize(desc, readWire(bytes, it));
+    return (bytes: any, it: any) => dequantize(desc, readWire(bytes, it));
+}
+
+/**
+ * Reader for a primitive or quantized field / child type, from the live
+ * `decode` table (custom primitives registered after import are honoured);
+ * `undefined` for ref types.
+ */
+export function readerOf(type: any): ((bytes: any, it: any) => any) | undefined {
+    if (typeof type === "string") return (decode as any)[type];
+    if (isQuantizedType(type)) return makeQuantizedDecoder(type.quantized);
+    return undefined;
 }

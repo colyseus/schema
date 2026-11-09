@@ -32,7 +32,7 @@ import type { StreamSchema } from "../types/custom/StreamSchema.js";
 import { Root } from "./Root.js";
 import { Metadata } from "../Metadata.js";
 import { type ChangeRecorder, SchemaChangeRecorder, popcount32 } from "./ChangeRecorder.js";
-import { type EncodeDescriptor, getEncodeDescriptor } from "./EncodeDescriptor.js";
+import { type EncodeDescriptor, descriptorOf } from "./EncodeDescriptor.js";
 import type { ArrayLog } from "./ArrayLog.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
 import { arrCopy } from "../types/custom/arrayOps.js";
@@ -606,7 +606,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         // Single per-class lookup that subsumes Symbol.metadata,
         // isValidInstance, $filter, the recorder factory and the bitmasks.
         // After this, the encode loop never touches `ref.constructor`.
-        const desc = getEncodeDescriptor(ref);
+        const desc = descriptorOf(ref.constructor);
         this.encDescriptor = desc;
         if (desc.isSchema) {
             // The instance's `$values` array, created HERE: exact size and packed
@@ -633,7 +633,7 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         this.tagViews = undefined;
 
         if (isSchema) {
-            const numFields = (desc.metadata?.[$numFields] ?? 0) as number;
+            const numFields = desc.numFields;
             if (numFields > 7) this.ops = new Uint8Array(numFields + 1);
         } else {
             this.rec = desc.newRecorder?.();
@@ -1081,7 +1081,7 @@ export class UntrackedChangeTree {
     readonly isArray = false;
     /**
      * Decoder-side record of the ref's type (`DecodeOperation.refInfoOf`):
-     * kind, the class's DecodeInfo, the child / key readers for collections.
+     * kind, the class's descriptor, the child / key readers for collections.
      * Lives here so one `ref[$changes]` load replaces four megamorphic loads
      * per decoded chunk. Only decoder-built instances carry the slot: a
      * tracked `ChangeTree` has no decoder business, so the rare Decoder that

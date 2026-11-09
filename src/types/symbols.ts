@@ -18,7 +18,7 @@ export const $track = "~track";
 /**
  * Static factory on every collection class returning its change recorder
  * (`ArrayLog` for ArraySchema, `KeyedRecorder` for the keyed collections).
- * Read once per class by `getEncodeDescriptor`.
+ * Read once per class by `EncodeDescriptor`'s builder.
  */
 export const $recorder = "~recorder";
 
