@@ -1,5 +1,18 @@
 import { ARRAY_OP } from "../encoding/spec.js";
 
+const TRUNCATE_KEEP_MAX = 256;
+
+/**
+ * Empty `a` keeping its backing store: `length = 0` drops it, and a log
+ * touched every tick would regrow it on the next push. Past `TRUNCATE_KEEP_MAX`
+ * entries the store is dropped anyway, so one bulk fill doesn't pin it for
+ * the array's lifetime (optimized `pop` never shrinks it).
+ */
+function truncate(a: unknown[]): void {
+    if (a.length > TRUNCATE_KEEP_MAX) a.length = 0;
+    else while (a.length !== 0) a.pop();
+}
+
 /**
  * ArrayLog — the change recorder of an encoder-side `ArraySchema`.
  *
@@ -197,8 +210,8 @@ export class ArrayLog<V = any> {
 
     /** Absorbing: every pending entry is dropped (`baseSeq` moves to their end). */
     clear(): void {
-        this.ops.length = 0;
-        this.vals.length = 0;
+        truncate(this.ops);
+        truncate(this.vals);
         this.baseSeq = this.rev;
         this.lastSeq = this.rev;
         this.ops.push(ARRAY_OP.CLEAR, 0, 0);
@@ -214,8 +227,8 @@ export class ArrayLog<V = any> {
      * consume it without effect.
      */
     restate(values: V[]): void {
-        this.ops.length = 0;
-        this.vals.length = 0;
+        truncate(this.ops);
+        truncate(this.vals);
         this.baseSeq = this.rev;
         this.lastSeq = this.rev;
         this.rev += 1;
@@ -286,8 +299,8 @@ export class ArrayLog<V = any> {
 
     /** End of tick: drop the entries; the next tick starts at the current revision. */
     reset(): void {
-        this.ops.length = 0;
-        this.vals.length = 0;
+        truncate(this.ops);
+        truncate(this.vals);
         this.baseSeq = this.rev;
         this.snapRev = this.rev;
         this.lastSeq = this.rev;
