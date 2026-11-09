@@ -6,11 +6,12 @@ import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { Schema } from "../../Schema.js";
-import { $listenedOnly } from "../../types/symbols.js";
+import { $dispatchedGen, $listenedOnly, $onChange, $onRemove } from "../../types/symbols.js";
 import { MapSchema } from "../../types/custom/MapSchema.js";
 import { ArraySchema } from "../../types/custom/ArraySchema.js";
 import { getDecoderStateCallbacks, type SchemaCallbackProxy } from "./getDecoderStateCallbacks.js";
 import { getRawChangesCallback } from "./RawChanges.js";
+import type { CollectionCallbacks, SchemaCallbacks } from "../ReferenceTracker.js";
 
 //
 // C#-style Callbacks API (https://docs.colyseus.io/state/callbacks)
@@ -383,7 +384,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 Schema.isSchema(change.previousValue)
             ) {
                 const childRefId = decodedRefIdOf(change.previousValue)!;
-                const deleteCallbacks = callbacks.get(childRefId)?.onRemove;
+                const deleteCallbacks = (callbacks.get(childRefId) as SchemaCallbacks)?.[$onRemove];
                 if (deleteCallbacks) {
                     for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
                         try { deleteCallbacks[j](); } catch (e) { console.error(e); }
@@ -396,19 +397,18 @@ export class StateCallbackStrategy<TState extends IRef> {
                 // Handle Schema instance
                 //
 
-                if ($callbacks.dispatchedGen !== gen) {
-                    $callbacks.dispatchedGen = gen;
-                    // trigger onChange
-                    const replaceCallbacks = $callbacks.onChange;
-                    if (replaceCallbacks) {
-                        for (let j = replaceCallbacks.length - 1; j >= 0; j--) {
-                            try { replaceCallbacks[j](); } catch (e) { console.error(e); }
-                        }
+                // trigger onChange, once per batch (only tables with an onChange list carry the stamp)
+                const schemaCallbacks = $callbacks as SchemaCallbacks;
+                const replaceCallbacks = schemaCallbacks[$onChange];
+                if (replaceCallbacks !== undefined && schemaCallbacks[$dispatchedGen] !== gen) {
+                    schemaCallbacks[$dispatchedGen] = gen;
+                    for (let j = replaceCallbacks.length - 1; j >= 0; j--) {
+                        try { replaceCallbacks[j](); } catch (e) { console.error(e); }
                     }
                 }
 
                 // trigger field callbacks
-                const fieldCallbacks = $callbacks.fields?.[change.field];
+                const fieldCallbacks = schemaCallbacks[change.field];
                 if (fieldCallbacks) {
                     for (let j = fieldCallbacks.length - 1; j >= 0; j--) {
                         try { fieldCallbacks[j](change.value, change.previousValue); } catch (e) { console.error(e); }
@@ -420,6 +420,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 // Handle collection of items
                 //
                 const dynamicIndex = change.dynamicIndex ?? change.field;
+                const collectionCallbacks = $callbacks as CollectionCallbacks;
 
                 if ((change.op & OPERATION.DELETE) === OPERATION.DELETE) {
                     // DELETE can arrive with `previousValue === undefined` in two
@@ -437,7 +438,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                     // The guard prevents `onRemove(undefined, key)` from firing.
                     if (change.previousValue !== undefined) {
                         // trigger onRemove (value, key)
-                        const deleteCallbacks = $callbacks.onRemove;
+                        const deleteCallbacks = collectionCallbacks.onRemove;
                         if (deleteCallbacks) {
                             for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
                                 try { deleteCallbacks[j](change.previousValue, dynamicIndex); } catch (e) { console.error(e); }
@@ -447,7 +448,7 @@ export class StateCallbackStrategy<TState extends IRef> {
 
                     // Handle DELETE_AND_ADD operation
                     if ((change.op & OPERATION.ADD) === OPERATION.ADD) {
-                        const addCallbacks = $callbacks.onAdd;
+                        const addCallbacks = collectionCallbacks.onAdd;
                         if (addCallbacks) {
                             for (let j = addCallbacks.length - 1; j >= 0; j--) {
                                 try { addCallbacks[j](change.value, dynamicIndex); } catch (e) { console.error(e); }
@@ -460,7 +461,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                     change.previousValue !== change.value
                 ) {
                     // trigger onAdd (value, key)
-                    const addCallbacks = $callbacks.onAdd;
+                    const addCallbacks = collectionCallbacks.onAdd;
                     if (addCallbacks) {
                         for (let j = addCallbacks.length - 1; j >= 0; j--) {
                             try { addCallbacks[j](change.value, dynamicIndex); } catch (e) { console.error(e); }
@@ -470,7 +471,7 @@ export class StateCallbackStrategy<TState extends IRef> {
 
                 // trigger onChange (key, value)
                 if (change.value !== change.previousValue) {
-                    const replaceCallbacks = $callbacks.onChange;
+                    const replaceCallbacks = collectionCallbacks.onChange;
                     if (replaceCallbacks) {
                         for (let j = replaceCallbacks.length - 1; j >= 0; j--) {
                             try { replaceCallbacks[j](dynamicIndex, change.value); } catch (e) { console.error(e); }

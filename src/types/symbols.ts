@@ -42,6 +42,10 @@ export const $filterByChild = "~filterByChild";
  * On the function itself, so a wrapper (unmarked) gets every change.
  */
 export const $listenedOnly = "~listenedOnly";
+// a Schema instance's own lists and dispatch stamp in its decoder callback table (`SchemaCallbacks`)
+export const $onChange = "~onChange";
+export const $onRemove = "~onRemove";
+export const $dispatchedGen = "~dispatchedGen";
 export const $deleteByIndex = "~deleteByIndex";
 /**
  * Resync-sweep hook (see decoder/Resync.ts): prune every entry the rejoin

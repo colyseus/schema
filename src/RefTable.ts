@@ -213,7 +213,7 @@ export class RefTable<V> {
 
 /**
  * A `RefTable` with its own copy of `get`, for the decoder's `callbacks`
- * (`refId → SchemaCallbacks`), read once per change in `triggerChanges`.
+ * (`refId → RefCallbacks`), read once per change in `triggerChanges`.
  * Inline-cache feedback belongs to the function literal: through the shared
  * `RefTable.get` that load also sees the count tables' small-integer pages
  * (the encoder's and the decoder's `refCount`) and goes polymorphic. As an

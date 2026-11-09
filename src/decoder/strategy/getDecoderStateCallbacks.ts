@@ -5,7 +5,8 @@ import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { Schema } from "../../Schema.js";
-import { $listenedOnly } from "../../types/symbols.js";
+import { $dispatchedGen, $listenedOnly, $onChange, $onRemove } from "../../types/symbols.js";
+import type { CollectionCallbacks, SchemaCallbacks } from "../ReferenceTracker.js";
 import type { DefinitionType } from "../../annotations.js";
 import type { CollectionSchema } from "../../types/custom/CollectionSchema.js";
 
@@ -159,7 +160,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 (change.op & OPERATION.DELETE) === OPERATION.DELETE &&
                 Schema.isSchema(change.previousValue)
             ) {
-                const deleteCallbacks = callbacks.get(decodedRefIdOf(change.previousValue)!)?.onRemove;
+                const deleteCallbacks = (callbacks.get(decodedRefIdOf(change.previousValue)!) as SchemaCallbacks)?.[$onRemove];
                 for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
                     deleteCallbacks[i]();
                 }
@@ -170,18 +171,18 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 // Handle schema instance
                 //
 
-                if ($callbacks.dispatchedGen !== gen) {
-                    $callbacks.dispatchedGen = gen;
-                    // trigger onChange
-                    const replaceCallbacks = $callbacks.onChange;
-                    for (let i = replaceCallbacks?.length - 1; i >= 0; i--) {
+                // trigger onChange, once per batch (only tables with an onChange list carry the stamp)
+                const schemaCallbacks = $callbacks as SchemaCallbacks;
+                const replaceCallbacks = schemaCallbacks[$onChange];
+                if (replaceCallbacks !== undefined && schemaCallbacks[$dispatchedGen] !== gen) {
+                    schemaCallbacks[$dispatchedGen] = gen;
+                    for (let i = replaceCallbacks.length - 1; i >= 0; i--) {
                         replaceCallbacks[i]();
                     }
                 }
 
-                const fields = $callbacks.fields;
-                if (fields !== undefined && fields.hasOwnProperty(change.field)) {
-                    const fieldCallbacks = fields[change.field];
+                if (schemaCallbacks.hasOwnProperty(change.field)) {
+                    const fieldCallbacks = schemaCallbacks[change.field];
                     for (let i = fieldCallbacks?.length - 1; i >= 0; i--) {
                         fieldCallbacks[i](change.value, change.previousValue);
                     }
@@ -192,6 +193,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 //
                 // Handle collection of items
                 //
+                const collectionCallbacks = $callbacks as CollectionCallbacks;
 
                 if ((change.op & OPERATION.DELETE) === OPERATION.DELETE) {
                     // DELETE can arrive with `previousValue === undefined` in
@@ -206,7 +208,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     // The guard prevents `onRemove(undefined, key)` from firing.
                     if (change.previousValue !== undefined) {
                         // triger onRemove
-                        const deleteCallbacks = $callbacks.onRemove;
+                        const deleteCallbacks = collectionCallbacks.onRemove;
                         for (let i = deleteCallbacks?.length - 1; i >= 0; i--) {
                             deleteCallbacks[i](change.previousValue, change.dynamicIndex ?? change.field);
                         }
@@ -214,7 +216,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
 
                     // Handle DELETE_AND_ADD operations
                     if ((change.op & OPERATION.ADD) === OPERATION.ADD) {
-                        const addCallbacks = $callbacks.onAdd;
+                        const addCallbacks = collectionCallbacks.onAdd;
                         for (let i = addCallbacks?.length - 1; i >= 0; i--) {
                             addCallbacks[i](change.value, change.dynamicIndex ?? change.field);
                         }
@@ -225,7 +227,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     change.previousValue !== change.value
                 ) {
                     // triger onAdd
-                    const addCallbacks = $callbacks.onAdd;
+                    const addCallbacks = collectionCallbacks.onAdd;
                     for (let i = addCallbacks?.length - 1; i >= 0; i--) {
                         addCallbacks[i](change.value, change.dynamicIndex ?? change.field);
                     }
@@ -242,7 +244,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     change.value !== change.previousValue &&
                     (change.value !== undefined || change.previousValue !== undefined)
                 ) {
-                    const replaceCallbacks = $callbacks.onChange;
+                    const replaceCallbacks = collectionCallbacks.onChange;
                     for (let i = replaceCallbacks?.length - 1; i >= 0; i--) {
                         replaceCallbacks[i](change.value, change.dynamicIndex ?? change.field);
                     }

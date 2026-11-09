@@ -1,9 +1,10 @@
 import { refTreeOf, installUntrackedChangeTree, decodedRefIdOf } from "../encoder/ChangeTree.js";
-import { $childType, $refTypeFieldIndexes } from "../types/symbols.js";
+import { $childType, $refTypeFieldIndexes, $onChange, $onRemove } from "../types/symbols.js";
 import type { IRef } from "../encoder/ChangeTree.js";
 import { spliceOne } from "../types/utils.js";
 import { RefTable, CallbacksTable } from "../RefTable.js";
 import { OPERATION } from "../encoding/spec.js";
+import { Schema } from "../Schema.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 
@@ -19,35 +20,43 @@ class DecodingWarning extends Error {
  */
 
 /**
- * A ref's registered callbacks. Every table has this one shape, so the
- * dispatchers' per-change slot reads stay monomorphic. The operation lists
- * are not stored under their OPERATION values: an integer key like ADD = 128
- * makes V8 size the object's elements store past it, ~1.8 KB per table.
+ * A Schema instance's callbacks, one plain object: field name → listeners,
+ * plus the instance's own `onChange` / `onRemove` lists and dispatch stamp
+ * under "~" keys, which no field name can take.
  */
-export class SchemaCallbacks {
+export type SchemaCallbacks = { [key: string]: any };
+
+/**
+ * A collection's callbacks: one fixed shape, so the dispatchers' per-change
+ * slot reads stay monomorphic. The lists are not stored under their OPERATION
+ * values: an integer key like ADD = 128 makes V8 size an object's elements
+ * store past it, ~1.8 KB per table.
+ */
+export class CollectionCallbacks {
     /** OPERATION.ADD */
     onAdd: Function[] | undefined = undefined;
     /** OPERATION.DELETE */
     onRemove: Function[] | undefined = undefined;
     /** OPERATION.REPLACE */
     onChange: Function[] | undefined = undefined;
-    /** Field name → listeners; created with the first one. */
-    fields: { [field: string]: Function[] } | undefined = undefined;
-    /** `ReferenceTracker.dispatchGen` of the last dispatch that delivered a change of this ref: a Schema's `onChange` fires once per batch. */
-    dispatchedGen: number = 0;
 }
 
+export type RefCallbacks = SchemaCallbacks | CollectionCallbacks;
+
 /** `$callbacks`'s list for a field name or an OPERATION, created when missing. */
-function listOf($callbacks: SchemaCallbacks, fieldOrOperation: string | number): Function[] {
-    switch (fieldOrOperation) {
-        case OPERATION.ADD: return $callbacks.onAdd ??= [];
-        case OPERATION.DELETE: return $callbacks.onRemove ??= [];
-        case OPERATION.REPLACE: return $callbacks.onChange ??= [];
+function listOf($callbacks: RefCallbacks, fieldOrOperation: string | number): Function[] {
+    if ($callbacks instanceof CollectionCallbacks) {
+        switch (fieldOrOperation) {
+            case OPERATION.ADD: return $callbacks.onAdd ??= [];
+            case OPERATION.DELETE: return $callbacks.onRemove ??= [];
+            case OPERATION.REPLACE: return $callbacks.onChange ??= [];
+        }
+    } else {
+        if (typeof fieldOrOperation === "string") return $callbacks[fieldOrOperation] ??= [];
+        if (fieldOrOperation === OPERATION.DELETE) return $callbacks[$onRemove] ??= [];
+        if (fieldOrOperation === OPERATION.REPLACE) return $callbacks[$onChange] ??= [];
     }
-    if (typeof fieldOrOperation === "number") {
-        throw new Error(`no callbacks for operation ${OPERATION[fieldOrOperation] ?? fieldOrOperation}`);
-    }
-    return ($callbacks.fields ??= {})[fieldOrOperation] ??= [];
+    throw new Error(`no '${OPERATION[fieldOrOperation as number] ?? fieldOrOperation}' callbacks on this ref`);
 }
 
 
@@ -79,8 +88,8 @@ export class ReferenceTracker {
      * refId → registered callbacks; a `RefTable` for the same reason as
      * `refCount` (a `CallbacksTable`: its own `get`, see there).
      */
-    public callbacks: RefTable<SchemaCallbacks> = new CallbacksTable<SchemaCallbacks>();
-    /** @internal Bumped by the callbacks strategies at the start of each dispatch (`SchemaCallbacks.dispatchedGen`). */
+    public callbacks: RefTable<RefCallbacks> = new CallbacksTable<RefCallbacks>();
+    /** @internal Bumped once per dispatch; the `$dispatchedGen` stamp of a Schema table with an `onChange` list makes it fire once per batch. */
     dispatchGen: number = 0;
     protected nextUniqueId: number = 0;
 
@@ -211,7 +220,8 @@ export class ReferenceTracker {
         }
         let $callbacks = this.callbacks.get(refId);
         if ($callbacks === undefined) {
-            $callbacks = new SchemaCallbacks();
+            const ref: any = this.refs.get(refId);
+            $callbacks = (ref !== undefined && !Schema.isSchema(ref)) ? new CollectionCallbacks() : {}; // the dispatchers' test
             this.callbacks.set(refId, $callbacks);
         }
         listOf($callbacks, fieldOrOperation).push(callback);
