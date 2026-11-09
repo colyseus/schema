@@ -510,7 +510,7 @@ function makeCollectionSetter(
             if (isArrayKlass && !(value instanceof ArraySchema) && value.constructor?.COLLECTION_KIND !== CollectionKind.Array) {
                 const array: any = new ArraySchema();
                 array[$childType] = type;
-                array.push(...value);
+                array.$pushAll(Array.isArray(value) ? value : Array.from(value)); // no spread: a large array overflows the stack
                 value = array;
 
             } else if (isMapKlass && !(value instanceof MapSchema) && value.constructor?.COLLECTION_KIND !== CollectionKind.Map) {

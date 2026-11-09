@@ -48,6 +48,16 @@ describe("ArraySchema Tests", () => {
 
             assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
         })
+
+        it("should allow to assign a large regular array", () => {
+            class State extends Schema {
+                @type(['number']) values: number[];
+            }
+
+            const state = new State();
+            state.values = new Array(500_000).fill(1);
+            assert.strictEqual(state.values.length, 500_000);
+        })
     });
 
     describe("ArraySchema#shift()", () => {

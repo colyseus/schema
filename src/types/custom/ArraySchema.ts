@@ -366,7 +366,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         return this.$pushAll(values);
     }
 
-    /** `push` without spreading (large `from()` / constructor inputs). */
+    /** `push` without spreading (large inputs). */
     protected $pushAll(values: V[]): number {
         const self = this[$proxyTarget];
         const tree = treeOf(self);
