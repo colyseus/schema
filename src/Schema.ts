@@ -29,33 +29,34 @@ export class Schema<C = any> implements IRef {
      * Field accessor descriptors (getter/setter) live on the prototype,
      * installed once at class-definition time. Per-instance work is limited
      * to allocating a ChangeTree and a values array.
+     *
+     * Public entry point for classes that do NOT extend Schema
+     * (`Metadata.setFields` on an external class), possibly called once per
+     * level of their own inheritance chain. Schema's constructor and
+     * `clone()` take `initializeOwn` instead.
+     *
+     * The tree lives in a private slot (see `stampTree`), invisible to
+     * `assert.deepStrictEqual` / `util.inspect` — it has circular refs.
      */
     static initialize(instance: any) {
-        // The tree must stay invisible to `assert.deepStrictEqual` / `util.inspect`
-        // (ChangeTree has circular refs: root → changeTrees → other trees), so it
-        // lives in a private slot rather than an own property — see `stampTree`.
-        // The ChangeTree creates `$values` (pre-sized to the class) and caches it
-        // as `tree.values` for the generated setters.
-        //
-        // Public entry point: also serves classes that do NOT extend Schema
-        // (`Metadata.setFields` on an external class), possibly once per
-        // level of their own inheritance chain. The Schema constructor takes
-        // `initializeOwn` (unconditional stamp) instead.
-        // (`Metadata.setFields` installs the accessors at class-definition time;
-        // this covers an external class that reaches here without it.)
+        // `Metadata.setFields` installs the accessors at class-definition time; this covers a class that skipped it
         if (!($changes in instance)) { defineRefAccessors(Object.getPrototypeOf(instance)); }
-        // Idempotent on an own TRACKED tree, so per-level calls keep fields
-        // assigned between them; a decoder stub (`isTracked === false`), a
-        // foreign tree or none gets a fresh tree. Contract: `ChangeTree.values`.
         const existing: any = peekTree(instance);
-        if (existing !== undefined && existing.ref === instance && existing.isTracked !== false) { return; }
-        // A decoder stub of this instance keeps its decoded `$values` (the new
-        // tree adopts them); anything else starts from a fresh, pre-sized array.
-        if (existing === undefined || existing.ref !== instance) { instance[$values] = undefined; }
+        if (existing === undefined) {
+            instance[$values] = undefined;
+            stampTree(instance, new ChangeTree(instance)); // no slot yet: skips `setTree`'s second brand check
+            return;
+        }
+        // Idempotent on an own TRACKED tree, so per-level calls keep fields
+        // assigned between them; a decoder stub (`isTracked === false`) or a
+        // foreign tree gets a fresh tree. Contract: `ChangeTree.values`.
+        if (existing.ref === instance && existing.isTracked !== false) { return; }
+        // a decoder stub of this instance keeps its decoded `$values` (the new tree adopts them)
+        if (existing.ref !== instance) { instance[$values] = undefined; }
         setTree(instance, new ChangeTree(instance));
     }
 
-    /** Constructor fast path of {@link Schema.initialize}: a fresh `this` that extends Schema. */
+    /** Fast path of {@link Schema.initialize} for a Schema instance with no tree slot yet (the constructor's `this`, `clone()`'s `Object.create`) — `stampTree` throws otherwise. */
     private static initializeOwn(instance: any) {
         stampTree(instance, new ChangeTree(instance)); // the tree creates `$values`, sized to the class
     }
@@ -380,7 +381,7 @@ export class Schema<C = any> implements IRef {
     clone (): this {
         // Create instance without calling custom constructor
         const cloned = Object.create(this.constructor.prototype);
-        Schema.initialize(cloned);
+        Schema.initializeOwn(cloned);
 
         const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
 

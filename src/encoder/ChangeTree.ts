@@ -73,6 +73,10 @@ declare global {
 // meet an array branches on `Array.isArray` (sees through the Proxy, a cheap
 // intrinsic) and hops through
 // `$proxyTarget` — an own data property, reachable through the Proxy.
+//
+// Readers that almost always hit load the slot directly and let a miss throw:
+// a brand check would be a second lookup per hit. Readers where a miss is part
+// of the contract (`put`, `peek`) brand-check first: a caught miss costs ~2 µs.
 class TreeStampTarget { constructor(target: object) { return target; } }
 class LocalTreeStamp extends TreeStampTarget {
     #tree: any;
@@ -104,16 +108,16 @@ class LocalTreeStamp extends TreeStampTarget {
         if (#tree in target) { target.#tree = tree; }
         else { new LocalTreeStamp(target, tree); }
     }
-    /** `undefined` on an object without the slot (a prototype, a plain object) — never falls back to the accessor, so the accessor can use it. */
+    /** `undefined` on an object without the slot (a fresh instance, a prototype, a plain object) — never falls back to the accessor, so the accessor can use it. */
     static peek(target: any): ChangeTree | undefined {
         if (Array.isArray(target)) { target = (target as any)[$proxyTarget] ?? target; }
-        try { return target.#tree; } catch { return undefined; }
+        return (#tree in target) ? target.#tree : undefined;
     }
     /**
-     * Any OBJECT a user can hand us. No `#tree in target` brand check (too
-     * slow for the encode loop). The private load throws on an object without the slot — a plain object,
-     * or an instance of a library build that predates the shared stamper (its
-     * tree is then on the `[$changes]` symbol) — so only that rare path pays.
+     * Any OBJECT a user can hand us. The private load throws on an object
+     * without the slot — a plain object, or an instance of a library build
+     * that predates the shared stamper (its tree is then on the `[$changes]`
+     * symbol) — so only that rare path pays.
      */
     static ofAny(target: any): ChangeTree | undefined {
         if (Array.isArray(target)) { return LocalTreeStamp.ofArray(target); }
