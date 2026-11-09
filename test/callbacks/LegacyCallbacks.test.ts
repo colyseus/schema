@@ -87,6 +87,36 @@ describe("StateCallbacks", () => {
         assert.strictEqual(30, bound.y);
     });
 
+    it("fires an instance's onChange once per decode, however many of its fields change", () => {
+        class Player extends Schema {
+            @type("number") x: number;
+            @type("number") y: number;
+        }
+        class State extends Schema {
+            @type(Player) player: Player;
+        }
+
+        const state = new State();
+        state.player = new Player().assign({ x: 1, y: 1 });
+
+        const decodedState = createInstanceFromReflection(state);
+        const $ = getCallbacks(decodedState);
+        decodedState.decode(state.encode());
+
+        let onChangeCount = 0;
+        $(decodedState.player).onChange(() => { onChangeCount++; });
+
+        state.player.x = 2;
+        state.player.y = 2;
+        decodedState.decode(state.encode());
+        assert.strictEqual(onChangeCount, 1);
+
+        state.player.x = 3;
+        state.player.y = 3;
+        decodedState.decode(state.encode());
+        assert.strictEqual(onChangeCount, 2);
+    });
+
     it("should support nested onAdd, attached BEFORE data is available", () => {
         class Prop extends Schema {
             @type("number") lvl: number;

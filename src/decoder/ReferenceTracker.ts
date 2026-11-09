@@ -33,6 +33,8 @@ export class SchemaCallbacks {
     onChange: Function[] | undefined = undefined;
     /** Field name → listeners; created with the first one. */
     fields: { [field: string]: Function[] } | undefined = undefined;
+    /** `ReferenceTracker.dispatchGen` of the last dispatch that delivered a change of this ref: a Schema's `onChange` fires once per batch. */
+    dispatchedGen: number = 0;
 }
 
 /** `$callbacks`'s list for a field name or an OPERATION, created when missing. */
@@ -78,6 +80,8 @@ export class ReferenceTracker {
      * `refCount` (a `CallbacksTable`: its own `get`, see there).
      */
     public callbacks: RefTable<SchemaCallbacks> = new CallbacksTable<SchemaCallbacks>();
+    /** @internal Bumped by the callbacks strategies at the start of each dispatch (`SchemaCallbacks.dispatchedGen`). */
+    dispatchGen: number = 0;
     protected nextUniqueId: number = 0;
 
     getNextUniqueId() {

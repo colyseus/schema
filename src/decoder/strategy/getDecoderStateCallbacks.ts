@@ -140,7 +140,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
     };
 
     const dispatch: any = function (allChanges: DataChange[]) {
-        const uniqueRefIds = new Set<number>();
+        const gen = ++$root.dispatchGen;
         currentBatch = allChanges;
 
         for (let i = 0, l = allChanges.length; i < l; i++) {
@@ -170,9 +170,10 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                 // Handle schema instance
                 //
 
-                if (!uniqueRefIds.has(refId)) {
+                if ($callbacks.dispatchedGen !== gen) {
+                    $callbacks.dispatchedGen = gen;
                     // trigger onChange
-                    const replaceCallbacks = $callbacks?.onChange;
+                    const replaceCallbacks = $callbacks.onChange;
                     for (let i = replaceCallbacks?.length - 1; i >= 0; i--) {
                         replaceCallbacks[i]();
                     }
@@ -247,8 +248,6 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
                     }
                 }
             }
-
-            uniqueRefIds.add(refId);
         }
         currentBatch = null;
     };

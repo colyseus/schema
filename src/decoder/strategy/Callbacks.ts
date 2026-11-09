@@ -47,7 +47,6 @@ type CollectionKeyType<T, K extends keyof T> =
 
 export class StateCallbackStrategy<TState extends IRef> {
     protected decoder: Decoder<TState>;
-    protected uniqueRefIds: Set<number> = new Set();
     protected isTriggering: boolean = false;
     /** The batch being dispatched and the change currently dispatched (see `hasPendingChange`). */
     protected batch: DataChange[] | null = null;
@@ -354,7 +353,8 @@ export class StateCallbackStrategy<TState extends IRef> {
     }
 
     protected triggerChanges(allChanges: DataChange[]): void {
-        this.uniqueRefIds.clear();
+        const callbacks = this.callbacks;
+        const gen = ++this.decoder.root.dispatchGen;
         this.batch = allChanges;
 
         // Flag stays set for the whole dispatch pass — any `listen()` /
@@ -370,7 +370,7 @@ export class StateCallbackStrategy<TState extends IRef> {
             const ref = change.ref;
             this.batchIndex = i;
 
-            const $callbacks = this.callbacks.get(refId);
+            const $callbacks = callbacks.get(refId);
             if (!$callbacks) {
                 continue;
             }
@@ -383,7 +383,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 Schema.isSchema(change.previousValue)
             ) {
                 const childRefId = decodedRefIdOf(change.previousValue)!;
-                const deleteCallbacks = this.callbacks.get(childRefId)?.onRemove;
+                const deleteCallbacks = callbacks.get(childRefId)?.onRemove;
                 if (deleteCallbacks) {
                     for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
                         try { deleteCallbacks[j](); } catch (e) { console.error(e); }
@@ -396,7 +396,8 @@ export class StateCallbackStrategy<TState extends IRef> {
                 // Handle Schema instance
                 //
 
-                if (!this.uniqueRefIds.has(refId)) {
+                if ($callbacks.dispatchedGen !== gen) {
+                    $callbacks.dispatchedGen = gen;
                     // trigger onChange
                     const replaceCallbacks = $callbacks.onChange;
                     if (replaceCallbacks) {
@@ -477,8 +478,6 @@ export class StateCallbackStrategy<TState extends IRef> {
                     }
                 }
             }
-
-            this.uniqueRefIds.add(refId);
         }
 
         this.isTriggering = false;

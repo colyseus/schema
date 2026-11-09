@@ -390,6 +390,13 @@ describe("Callbacks (new API)", () => {
             decodedState.decode(state.encode());
 
             assert.strictEqual(onChangeCount, 2);
+
+            // once per decode, however many fields change
+            state.player.x = 20;
+            state.player.y = 30;
+            decodedState.decode(state.encode());
+
+            assert.strictEqual(onChangeCount, 3);
         });
 
         it("should trigger onChange on collection with (key, value)", () => {
