@@ -1,8 +1,8 @@
 import { OPERATION } from "../encoding/spec.js";
 import { decodedRefIdOf } from "../encoder/ChangeTree.js";
+import { descriptorOf, fieldOf } from "../encoder/EncodeDescriptor.js";
 import { Schema } from "../Schema.js";
-import { $proxyTarget, $refTypeFieldIndexes, $resyncPrune, $patchOnlyFieldIndexes } from "../types/symbols.js";
-import type { Metadata } from "../Metadata.js";
+import { $proxyTarget, $resyncPrune, $patchOnlyFieldIndexes, $values } from "../types/symbols.js";
 import type { Decoder } from "./Decoder.js";
 import type { DataChange } from "./DecodeOperation.js";
 
@@ -125,21 +125,21 @@ function sweepSchema(decoder: Decoder, ref: Schema, seen: Set<number>, changes: 
     if (refId === undefined || seen.has(refId)) { return; }
     seen.add(refId);
 
-    const metadata: Metadata = (ref.constructor as typeof Schema)[Symbol.metadata];
-    const refIndexes = metadata?.[$refTypeFieldIndexes] as number[] | undefined;
-    if (refIndexes === undefined) { return; }
-    const patchOnly = metadata[$patchOnlyFieldIndexes] as number[] | undefined;
+    const desc = descriptorOf(ref.constructor);
+    const refIndexes = desc.refIndexes;
+    if (refIndexes.length === 0) { return; }
+    const patchOnly = desc.metadata?.[$patchOnlyFieldIndexes] as number[] | undefined;
+    const values = (ref as any)[$values];
 
     for (let i = 0; i < refIndexes.length; i++) {
         const fieldIndex = refIndexes[i];
         // @patchOnly fields are never in a snapshot — leave them alone.
-        if (patchOnly !== undefined && patchOnly.includes(fieldIndex)) { continue; }
+        if (patchOnly?.includes(fieldIndex)) { continue; }
 
-        const field = metadata[fieldIndex];
-        const value = (ref as any)[field.name];
+        const value = fieldOf(desc, ref, values, fieldIndex);
         if (!value) { continue; }
 
-        if (Schema.is(field.type)) {
+        if (Schema.is(desc.types[fieldIndex])) {
             sweepSchema(decoder, value, seen, changes);
         } else {
             sweepCollection(decoder, value, seen, changes);

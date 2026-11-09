@@ -1,5 +1,6 @@
-import { refTreeOf, installUntrackedChangeTree, decodedRefIdOf } from "../encoder/ChangeTree.js";
-import { $childType, $refTypeFieldIndexes, $onChange, $onRemove } from "../types/symbols.js";
+import { refTreeOf, installUntrackedChangeTree, decodedRefIdOf, treeOfDecoded } from "../encoder/ChangeTree.js";
+import { $childType, $onChange, $onRemove } from "../types/symbols.js";
+import { descriptorOf, fieldOf } from "../encoder/EncodeDescriptor.js";
 import type { IRef } from "../encoder/ChangeTree.js";
 import { spliceOne } from "../types/utils.js";
 import { RefTable, CallbacksTable } from "../RefTable.js";
@@ -7,6 +8,7 @@ import { OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
+import type { RefInfo } from "./DecodeOperation.js";
 
 class DecodingWarning extends Error {
     constructor(message: string) {
@@ -172,18 +174,17 @@ export class ReferenceTracker {
             //
             // Ensure child schema instances have their references removed as well.
             //
-            const metadata = (ref.constructor as any)[Symbol.metadata];
-            if (metadata != null) {
-                // Only the ref-typed fields (the per-class list the encoder
-                // side keeps), not a `for...in` over the whole metadata object.
-                const refIndexes: number[] | undefined = metadata[$refTypeFieldIndexes];
-                if (refIndexes !== undefined) for (let i = 0, len = refIndexes.length; i < len; i++) {
-                    const child = ref[metadata[refIndexes[i]].name as keyof IRef];
-                    if (typeof(child) === "object" && child) {
-                        const childRefId = decodedRefIdOf(child);
-                        if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
-                            this.removeRef(childRefId);
-                        }
+            const tree: any = treeOfDecoded(ref);
+            const ri: RefInfo | undefined = tree.decodeInfo; // the root may have none yet
+            const desc = (ri !== undefined) ? ri.info
+                : ((ref.constructor as any)[Symbol.metadata] != null) ? descriptorOf(ref.constructor) : undefined;
+            if (desc !== undefined) {
+                const refIndexes = desc.refIndexes;
+                const values = tree.values;
+                for (let i = 0, len = refIndexes.length; i < len; i++) {
+                    const childRefId = decodedRefIdOf(fieldOf(desc, ref, values, refIndexes[i]));
+                    if (childRefId !== undefined && !this.deletedRefs.has(childRefId)) {
+                        this.removeRef(childRefId);
                     }
                 }
 

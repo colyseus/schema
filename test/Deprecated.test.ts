@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { Schema, type, patchOnly, MapSchema, schema, t } from "../src";
+import { Schema, type, patchOnly, MapSchema, StateView, schema, t } from "../src";
 import { deprecated } from "../src/annotations";
 import { Decoder } from "../src/decoder/Decoder";
 import { DataChange } from "../src/decoder/DecodeOperation";
@@ -236,6 +236,103 @@ describe("@deprecated()", () => {
             new Decoder(target).decode(getEncoder(state).encode());
 
             assert.strictEqual("AAA", target.a);
+        });
+    });
+
+    // Walks over a class's ref fields must skip a deprecated one: its getter throws.
+    describe("ref fields", () => {
+        class Item extends Schema {
+            @type("number") x: number;
+        }
+
+        class LivePlayer extends Schema {
+            @type("number") hp: number;
+            @type(Item) old: Item;
+        }
+        class LivePlayers extends Schema {
+            @type({ map: LivePlayer }) players = new MapSchema<LivePlayer>();
+        }
+
+        class DeprecatedPlayer extends Schema {
+            @type("number") hp: number;
+            @deprecated() @type(Item) old: Item;
+        }
+        class DeprecatedPlayers extends Schema {
+            @type({ map: DeprecatedPlayer }) players = new MapSchema<DeprecatedPlayer>();
+        }
+
+        it("should attach an instance with a deprecated ref field", () => {
+            const state = new DeprecatedPlayers();
+            const encoder = getEncoder(state);
+
+            assert.doesNotThrow(() => state.players.set("a", new DeprecatedPlayer().assign({ hp: 1 })));
+            assert.doesNotThrow(() => encoder.encodeAll());
+        });
+
+        it("should release a decoded instance with a deprecated ref field", () => {
+            const state = new LivePlayers();
+            state.players.set("a", new LivePlayer().assign({ hp: 1 }));
+            const encoder = getEncoder(state);
+
+            const target = new DeprecatedPlayers();
+            const decoder = new Decoder(target);
+            decoder.decode(encoder.encodeAll());
+            encoder.discardChanges();
+
+            state.players.delete("a");
+            assert.doesNotThrow(() => decoder.decode(encoder.encode()));
+            assert.strictEqual(0, target.players.size);
+        });
+
+        it("should resync over an instance with a deprecated ref field", () => {
+            const state = new LivePlayers();
+            state.players.set("a", new LivePlayer().assign({ hp: 1 }));
+            const encoder = getEncoder(state);
+
+            const target = new DeprecatedPlayers();
+            const decoder = new Decoder(target);
+            decoder.decode(encoder.encodeAll());
+
+            assert.doesNotThrow(() => decoder.decodeResync(encoder.encodeAll()));
+            assert.strictEqual(1, target.players.size);
+        });
+
+        it("should attach the child of a deprecated(false) ref field", () => {
+            class SoftPlayer extends Schema {
+                @type("number") hp: number;
+                @deprecated(false) @type(Item) old: Item;
+            }
+            class SoftPlayers extends Schema {
+                @type({ map: SoftPlayer }) players = new MapSchema<SoftPlayer>();
+            }
+
+            const state = new SoftPlayers();
+            const encoder = getEncoder(state);
+            state.players.set("a", new SoftPlayer().assign({ hp: 1, old: new Item().assign({ x: 1 }) }));
+
+            assert.doesNotThrow(() => encoder.encode());
+        });
+
+        it("should clone an instance with a deprecated ref field", () => {
+            const player = new DeprecatedPlayer().assign({ hp: 1 });
+            assert.strictEqual(1, player.clone().hp);
+        });
+
+        it("should remove from a view an instance with a deprecated @view ref field", () => {
+            const ViewItem = schema({ x: t.number() }, "DeprecatedViewItem");
+            const ViewPlayer = schema({ hp: t.number(), old: t.ref(ViewItem).view().deprecated() }, "DeprecatedViewPlayer");
+            const ViewState = schema({ players: t.map(ViewPlayer) }, "DeprecatedViewState");
+
+            const state: any = new ViewState();
+            const player: any = new ViewPlayer({ hp: 1 } as any);
+            state.players.set("a", player);
+            const encoder = getEncoder(state);
+            const view = new StateView();
+            view.add(player);
+            const shared = encoder.encodeAll();
+            encoder.encodeAllView(view, shared.byteLength, shared);
+
+            assert.doesNotThrow(() => view.remove(player));
         });
     });
 

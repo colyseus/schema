@@ -3,7 +3,7 @@ import { MAP_KEY_TYPES } from "./encoding/spec.js";
 import { Schema, isSchemaBase } from "./Schema.js";
 import { defineRefAccessors } from "./encoder/ChangeTree.js";
 import { getType, registeredTypes, TypeDefinition } from "./types/registry.js";
-import { $changes, $collectionCtor, $descriptors, $encoders, $fieldIndexesByViewTag, $numFields, $refTypeFieldIndexes, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
+import { $changes, $collectionCtor, $descriptors, $encoders, $fieldIndexesByViewTag, $numFields, $fullStateOnlyFieldIndexes, $fullSyncSkipIndexes, $streamFieldIndexes, $streamPriorities, $track, $patchOnlyFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "./types/symbols.js";
 import { ARRAY_STREAM_NOT_SUPPORTED } from "./encoder/streaming.js";
 import { encode } from "./encoding/encode.js";
 import { TypeContext } from "./types/TypeContext.js";
@@ -32,7 +32,6 @@ export type Metadata =
     { [$numFields]: number; } & // number of fields
     { [$viewFieldIndexes]: number[]; } & // all field indexes with "view" tag
     { [$fieldIndexesByViewTag]: {[tag: number]: number[]}; } & // field indexes by "view" tag
-    { [$refTypeFieldIndexes]: number[]; } & // all field indexes containing Ref types (Schema, ArraySchema, MapSchema, etc)
     { [$unreliableFieldIndexes]: number[]; } & // all field indexes tagged with @unreliable
     { [$patchOnlyFieldIndexes]: number[]; } & // all field indexes tagged with @patchOnly (not persisted to snapshots)
     { [$fullSyncSkipIndexes]: number[]; } & // @patchOnly ∪ @deprecated() — never read during full sync
@@ -153,7 +152,6 @@ function getEnumType(e: any): "string" | "number" | undefined {
 
 // Copied parent → subclass on Metadata.initialize, so each class owns its list.
 const INHERITED_ARRAY_KEYS = [
-    $refTypeFieldIndexes,
     $unreliableFieldIndexes,
     $patchOnlyFieldIndexes,
     $fullSyncSkipIndexes,
@@ -214,19 +212,6 @@ export const Metadata = {
             enumerable: false,
             configurable: true,
         });
-
-        // if child Ref/complex type, add to -4. Quantized fields are scalar (their
-        // `type` is an object only to carry the descriptor) — not refs, so skip them.
-        if (typeof (metadata[index].type) !== "string" && !isQuantizedType(metadata[index].type)) {
-            if (metadata[$refTypeFieldIndexes] === undefined) {
-                Object.defineProperty(metadata, $refTypeFieldIndexes, {
-                    value: [],
-                    enumerable: false,
-                    configurable: true,
-                });
-            }
-            metadata[$refTypeFieldIndexes].push(index);
-        }
 
         // `{ stream: ... }` collections are always view-scoped (priority-
         // batched emit). Auto-flag here so both `@type({stream: ...})` and

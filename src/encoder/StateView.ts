@@ -6,6 +6,7 @@ import { KIND_INDEXED, KIND_MAP, OPERATION } from "../encoding/spec.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
 import { Metadata } from "../Metadata.js";
 import { spliceOne } from "../types/utils.js";
+import { fieldOf } from "./EncodeDescriptor.js";
 import { ensureStreamState, streamDequeueForView, streamEnqueueForView } from "./streaming.js";
 import type { StreamSchema } from "../types/custom/StreamSchema.js";
 import type { MapSchema } from "../types/custom/MapSchema.js";
@@ -1146,7 +1147,7 @@ export class StateView {
         const wasPendingAdd = changes.get(index) === OPERATION.ADD;
         changes.set(index, OPERATION.DELETE);
 
-        const value = changeTree.ref[changeTree.encDescriptor.names[index] as keyof Ref];
+        const value = fieldOf(changeTree.encDescriptor, changeTree.ref, changeTree.values, index);
         const valueTree: ChangeTree = viewTreeOf(value);
         if (valueTree) {
             this.unmarkVisible(valueTree);

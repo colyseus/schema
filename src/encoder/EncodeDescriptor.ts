@@ -113,14 +113,15 @@ export interface EncodeDescriptor {
      */
     readers: (((bytes: Uint8Array, it: any) => any) | undefined)[];
     /**
-     * Decoder: per field, whether it may bypass the accessor. Behind the one
-     * the library installed (`metadata[$descriptors]`) the value lives in
-     * `values[index]` and the setter adds only validation and change
-     * tracking, which decoding has no use for: a primitive takes
-     * `decodeDirectSlot` (`ACCESS_DIRECT`), a ref is read and written in
-     * `values` by `decodeSlot` (`ACCESS_VALUES`). `ACCESS_NAMED` otherwise —
-     * `ref[name]` for `{ manual: true }` fields, and to call a user's accessor
-     * override; `ACCESS_DEPRECATED` fields are read off the wire and dropped.
+     * Per field, whether a reader may bypass the accessor ({@link fieldOf},
+     * the decoder). Behind the one the library installed
+     * (`metadata[$descriptors]`) the value lives in `values[index]` and the
+     * setter adds only validation and change tracking, which decoding has no
+     * use for: a primitive takes `decodeDirectSlot` (`ACCESS_DIRECT`), a ref
+     * is read and written in `values` by `decodeSlot` (`ACCESS_VALUES`).
+     * `ACCESS_NAMED` otherwise — `ref[name]` for `{ manual: true }` fields,
+     * and to call a user's accessor override. `ACCESS_DEPRECATED` fields are
+     * read off the wire and dropped.
      */
     access: number[];
     /** Decoder: the class's shared decode record (`DecodeOperation.schemaRefInfo`), built on first use. */
@@ -144,7 +145,9 @@ export interface EncodeDescriptor {
     liveIndexes: number[];
     /** Every live field resolves to the accessor the library installed, so an empty `$values` slot means unset (no `ref[name]` read needed). */
     liveInValues: boolean;
-    /** Bit i set iff field i (< 32) is ref-typed. */
+    /** Ref-typed field indexes (Schema / collection children), ascending; read them with {@link fieldOf}. */
+    refIndexes: number[];
+    /** `refIndexes` below 32 as a bitmask. */
     refTypeBitmask: number;
     hasRefFieldAbove32: boolean;
     /** Any `@view` tag on a field index ≥ 32 (past `filterBitmask`). */
@@ -166,6 +169,19 @@ function indexesToBitmask(indexes: number[] | undefined): number {
         if (idx < 32) bm |= (1 << idx);
     }
     return bm;
+}
+
+/**
+ * Field `index` of Schema `ref` (`values`: its `$values`) where its class
+ * keeps it: in `values` behind the library's accessor, `ref[name]` otherwise
+ * (`{ manual: true }`, an accessor override). A deprecated field is never
+ * read through its getter, which may throw: `@deprecated(false)` still
+ * stores in `values`, `@deprecated()` stores nothing.
+ */
+export function fieldOf(desc: EncodeDescriptor, ref: any, values: any[] | undefined, index: number): any {
+    const access = desc.access[index];
+    if (access !== ACCESS_NAMED && values !== undefined) return values[index];
+    return (access === ACCESS_DEPRECATED) ? undefined : ref[desc.names[index]];
 }
 
 /** `ref`'s class descriptor (public alias of {@link descriptorOf}, for the `/input` bundle). */
@@ -204,8 +220,7 @@ function buildDescriptor(ctor: any): EncodeDescriptor {
     const liveIndexes: number[] = [];
     let liveInValues = true;
     const descriptors = metadata?.[$descriptors];
-    let refTypeBitmask = 0;
-    let hasRefFieldAbove32 = false;
+    const refIndexes: number[] = [];
     let hasTagAbove32 = false;
     let customTagMask = 0;
     const numFields: number = isSchema ? metadata[$numFields] : -1;
@@ -242,8 +257,7 @@ function buildDescriptor(ctor: any): EncodeDescriptor {
 
         const isRef = typeof field.type !== "string" && field.type.quantized === undefined;
         if (isRef) {
-            if (i < 32) refTypeBitmask |= (1 << i);
-            else hasRefFieldAbove32 = true;
+            refIndexes.push(i);
         }
         const tag = field.tag;
         if (tag !== undefined && i >= 32) hasTagAbove32 = true;
@@ -292,8 +306,9 @@ function buildDescriptor(ctor: any): EncodeDescriptor {
         refInfo: undefined,
         liveIndexes,
         liveInValues,
-        refTypeBitmask,
-        hasRefFieldAbove32,
+        refIndexes,
+        refTypeBitmask: indexesToBitmask(refIndexes),
+        hasRefFieldAbove32: refIndexes.length > 0 && refIndexes[refIndexes.length - 1] >= 32,
         hasTagAbove32,
         customTagMask,
     };

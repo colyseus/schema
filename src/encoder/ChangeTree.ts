@@ -21,7 +21,7 @@
  */
 import { ARRAY_OP, KIND_ARRAY, KIND_MAP, OPERATION } from "../encoding/spec.js";
 import { Schema } from "../Schema.js";
-import { $changes, $childType, $onEncodeEnd, $getByIndex, $proxyTarget, $refId, $refTypeFieldIndexes, $numFields, $values, type $deleteByIndex } from "../types/symbols.js";
+import { $changes, $childType, $onEncodeEnd, $getByIndex, $proxyTarget, $refId, $numFields, $values, type $deleteByIndex } from "../types/symbols.js";
 
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
@@ -32,7 +32,7 @@ import type { StreamSchema } from "../types/custom/StreamSchema.js";
 import { Root } from "./Root.js";
 import { Metadata } from "../Metadata.js";
 import { type ChangeRecorder, SchemaChangeRecorder, popcount32 } from "./ChangeRecorder.js";
-import { type EncodeDescriptor, descriptorOf } from "./EncodeDescriptor.js";
+import { type EncodeDescriptor, descriptorOf, fieldOf } from "./EncodeDescriptor.js";
 import type { ArrayLog } from "./ArrayLog.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
 import { arrCopy } from "../types/custom/arrayOps.js";
@@ -386,9 +386,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      *   replaces anything else (no tree, a decoder stub, a foreign tree).
      * - Readers: the encoder (`enterFrame`, the encode loop) and the live
      *   walk (`forEachLiveWithCtx`) read `values` unguarded — only Schema
-     *   trees reach them; the attach walk
-     *   (`forEachChildWithCtx`) keeps its `values !== undefined` guard (one
-     *   compare) for trees built by another library copy.
+     *   trees reach them; the ref-field walks read through `fieldOf`, whose
+     *   `values !== undefined` guard (one compare) covers trees built by
+     *   another library copy.
      */
     values: any[] | undefined;
 
@@ -1155,12 +1155,12 @@ export class UntrackedChangeTree {
             }
             return;
         }
-        const metadata = ctor?.[Symbol.metadata];
-        if (!metadata) return;
-        const refFieldIndexes: number[] = metadata[$refTypeFieldIndexes] ?? [];
-        for (let i = 0; i < refFieldIndexes.length; i++) {
-            const index = refFieldIndexes[i];
-            const value = ref[metadata[index].name];
+        if (!ctor?.[Symbol.metadata]) return;
+        const desc = descriptorOf(ctor);
+        const refIndexes = desc.refIndexes;
+        for (let i = 0; i < refIndexes.length; i++) {
+            const index = refIndexes[i];
+            const value = fieldOf(desc, ref, this.values, index);
             if (!value) continue;
             callback(refTreeOf(value)!, index);
         }

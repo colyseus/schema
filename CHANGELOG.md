@@ -223,6 +223,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - A new `Encoder` over instances another `Encoder` already encoded (`room.state = state`) now syncs them: instances added afterwards no longer reuse existing refIds (`"refId" not found`), and its `StateView`s no longer see what the previous encoder's views were granted, nor receive their stream backlogs.
 - An instance removed from a collection or field and added back later, while also referenced elsewhere, no longer reaches clients with empty fields. 5.0.43 fixed this for `ArraySchema.clear()` only.
+- Instances of a class with a `@deprecated()` field no longer throw `"<field> is deprecated."` when attached to the state, cloned, removed from a `StateView`, or released or resynced by the decoder.
 
 ## [5.0.45]
 

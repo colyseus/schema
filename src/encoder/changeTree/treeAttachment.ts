@@ -4,7 +4,8 @@
  * goes through here, which is why the recursive walk uses a hoisted
  * callback + ctx-pool instead of per-call closures.
  */
-import { $childType, $proxyTarget, $refTypeFieldIndexes } from "../../types/symbols.js";
+import { $childType, $proxyTarget } from "../../types/symbols.js";
+import { fieldOf } from "../EncodeDescriptor.js";
 import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
 import { Root, type Streamable } from "../Root.js";
 import { ChangeTree, type Ref, refTreeOf, setTree } from "../ChangeTree.js";
@@ -178,17 +179,12 @@ export function forEachChildWithCtx<C>(
             }
         }
     } else {
-        const metadata = tree.encDescriptor.metadata;
-        const indexes = metadata?.[$refTypeFieldIndexes];
-        if (!indexes) return;
-        const names = tree.encDescriptor.names;
+        const desc = tree.encDescriptor;
+        const indexes = desc.refIndexes;
         const values = tree.values;
         for (let i = 0, len = indexes.length; i < len; i++) {
             const index = indexes[i];
-            // The tree's `$values` slot first — `ref[name]` is a megamorphic
-            // keyed load that lands in the field's getter. Named fallback:
-            // manual fields skip `$values` (same rule as `readSchemaValue`).
-            const value = (values !== undefined ? values[index] : undefined) ?? ref[names[index]];
+            const value = fieldOf(desc, ref, values, index);
             if (!value) { continue; }
             callback(ctx, refTreeOf(value), index);
         }

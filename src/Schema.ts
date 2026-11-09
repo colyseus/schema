@@ -1,11 +1,11 @@
 import { OPERATION } from './encoding/spec.js';
-import { descriptorOf } from './encoder/EncodeDescriptor.js';
+import { descriptorOf, fieldOf } from './encoder/EncodeDescriptor.js';
 import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
 import { ChangeTree, createUntrackedChangeTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, peekTree, refTreeOf, refIdOf } from './encoder/ChangeTree.js';
-import { $changes, $deleteByIndex, $filter, $getByIndex, $refId, $refTypeFieldIndexes, $reset, $schemaBase, $track, $values } from './types/symbols.js';
+import { $changes, $deleteByIndex, $filter, $getByIndex, $refId, $reset, $schemaBase, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
 import type { Decoder } from './decoder/Decoder.js';
@@ -122,12 +122,12 @@ export class Schema<C = any> implements IRef {
      * wire-format-identical to `new T()`.
      */
     [$reset](): void {
-        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
-        const refIndexes = (metadata?.[$refTypeFieldIndexes] as number[]) ?? [];
+        const desc = descriptorOf(this.constructor);
+        const refIndexes = desc.refIndexes;
         const values = this[$values];
 
         for (let i = 0; i < refIndexes.length; i++) {
-            const child = values[refIndexes[i]];
+            const child = fieldOf(desc, this, values, refIndexes[i]);
             // ref fields hold a child Schema or collection (both implement
             // [$reset]); skip undefined/null. Optional-chain is a cheap guard.
             child?.[$reset]?.();
@@ -389,7 +389,7 @@ export class Schema<C = any> implements IRef {
         for (let i = 0; i < names.length; i++) {
             const name = names[i];
             if (name === undefined) continue;
-            let value = (this as any)[name];
+            let value = fieldOf(desc, this, (this as any)[$values], i);
             if (value === undefined) continue; // already undefined on a fresh instance
             if (typeof value === "object" && typeof value?.clone === "function") value = value.clone();
             setters[i].call(cloned, value);
@@ -422,8 +422,7 @@ export class Schema<C = any> implements IRef {
     }
 
     [$getByIndex](index: number): any {
-        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
-        return this[metadata[index].name as keyof this];
+        return fieldOf(descriptorOf(this.constructor), this, (this as any)[$values], index);
     }
 
     [$deleteByIndex](index: number): void {

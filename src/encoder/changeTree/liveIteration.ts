@@ -14,6 +14,7 @@
  */
 import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
 import type { ChangeTree } from "../ChangeTree.js";
+import { fieldOf } from "../EncodeDescriptor.js";
 
 // Adapter that lets `forEachLive(cb)` delegate to `forEachLiveWithCtx(cb, _invokeNoCtx)` —
 // keeps the no-ctx path closure-free and shares one walker implementation.
@@ -47,10 +48,9 @@ export function forEachLiveWithCtx<C>(
                 if (value !== undefined && value !== null) cb(ctx, i);
             }
         } else {
-            const names = desc.names;
             for (let k = 0, len = live.length; k < len; k++) {
                 const i = live[k];
-                const value = values[i] ?? ref[names[i]]; // by name: a manual field or an accessor override keeps it outside $values
+                const value = fieldOf(desc, ref, values, i);
                 if (value !== undefined && value !== null) cb(ctx, i);
             }
         }

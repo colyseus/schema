@@ -145,7 +145,6 @@ export const $descriptors = "~descriptors";
 export const $encodeDescriptor = "~__encodeDescriptor";
 export const $encoders = "~encoders";
 export const $numFields = "~__numFields";
-export const $refTypeFieldIndexes = "~__refTypeFieldIndexes";
 export const $viewFieldIndexes = "~__viewFieldIndexes";
 export const $fieldIndexesByViewTag = "$__fieldIndexesByViewTag";
 export const $unreliableFieldIndexes = "~__unreliableFieldIndexes";
