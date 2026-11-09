@@ -8,8 +8,8 @@
  * field is @patchOnly inherit the skip (`tree.isPatchOnly`).
  *
  * `@deprecated()` fields are skipped too: the decorator swaps the field's
- * prototype accessor for a throwing getter, so `ref[name]` below would blow
- * up full sync for the whole state. Both skips ride one decoration-time
+ * prototype accessor for a throwing getter, so the by-name fallback below
+ * would blow up full sync for the whole state. Both skips ride one decoration-time
  * list (`liveIndexes` on the descriptor).
  */
 import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
@@ -39,11 +39,20 @@ export function forEachLiveWithCtx<C>(
         // (@patchOnly skips matter to the resync sweep — see
         // decoder/Resync.ts: absent-from-payload means never pruned.)
         const live = desc.liveIndexes;
-        const names = desc.names;
-        for (let k = 0, len = live.length; k < len; k++) {
-            const i = live[k];
-            const value = ref[names[i]];
-            if (value !== undefined && value !== null) cb(ctx, i);
+        const values = tree.values!;
+        if (desc.liveInValues) {
+            for (let k = 0, len = live.length; k < len; k++) {
+                const i = live[k];
+                const value = values[i];
+                if (value !== undefined && value !== null) cb(ctx, i);
+            }
+        } else {
+            const names = desc.names;
+            for (let k = 0, len = live.length; k < len; k++) {
+                const i = live[k];
+                const value = values[i] ?? ref[names[i]]; // by name: a manual field or an accessor override keeps it outside $values
+                if (value !== undefined && value !== null) cb(ctx, i);
+            }
         }
         return;
     }

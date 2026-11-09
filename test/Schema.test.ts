@@ -386,6 +386,11 @@ describe("Type: Schema", () => {
             decodedState.decode(state.encode());
 
             assert.deepStrictEqual(decodedState.toJSON(), state.toJSON());
+
+            const fullSync = new MyState();
+            fullSync.decode(state.encodeAll());
+
+            assert.deepStrictEqual(fullSync.toJSON(), state.toJSON());
         });
 
         it("should throw an error when defining same property name multiple times", () => {

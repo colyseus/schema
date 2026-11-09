@@ -16,6 +16,21 @@ export function spliceOne(arr: any[], index: number): boolean {
 }
 
 /**
+ * Does `name` resolve on the prototype chain to the accessor `installed` (the
+ * class's `metadata[$descriptors]` entry)? Then the field's value lives in
+ * `$values[index]`; otherwise (a `manual` data slot, a user's accessor
+ * override) only `obj[name]` reaches it.
+ */
+export function resolvesTo(proto: any, name: string, installed: PropertyDescriptor | undefined): boolean {
+    if (installed?.get === undefined) return false; // `manual`: a data slot
+    for (let p = proto; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
+        const d = Object.getOwnPropertyDescriptor(p, name);
+        if (d !== undefined) return d.get === installed.get && d.set === installed.set;
+    }
+    return false;
+}
+
+/**
  * The setter `obj[name] = v` runs on an instance of `proto` — for a data
  * property (or none), a function doing that plain store.
  */

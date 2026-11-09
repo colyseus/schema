@@ -14,11 +14,11 @@
 import { Metadata } from "../Metadata.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { KIND_INDEXED, KIND_MAP, KIND_SCHEMA } from "../encoding/spec.js";
-import { $encodeDescriptor, $encoders, $filter, $filterByChild, $fullSyncSkipIndexes, $numFields, $fullStateOnlyFieldIndexes, $recorder, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
+import { $descriptors, $encodeDescriptor, $encoders, $filter, $filterByChild, $fullSyncSkipIndexes, $numFields, $fullStateOnlyFieldIndexes, $recorder, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { ArrayLog } from "./ArrayLog.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
-import { setterOf } from "../types/utils.js";
+import { resolvesTo, setterOf } from "../types/utils.js";
 
 export interface EncodeDescriptor {
     filter: ((ref: any, index: number, view?: StateView) => boolean) | undefined;
@@ -114,6 +114,8 @@ export interface EncodeDescriptor {
     routable: boolean;
     /** Field indexes a full sync walks: declared and not `@patchOnly` / `@deprecated`. */
     liveIndexes: number[];
+    /** Every live field resolves to the accessor the library installed, so an empty `$values` slot means unset (no `ref[name]` read needed). */
+    liveInValues: boolean;
     /** Bit i set iff field i (< 32) is ref-typed. */
     refTypeBitmask: number;
     hasRefFieldAbove32: boolean;
@@ -163,6 +165,8 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     const tags: (number | undefined)[] = [];
     const encoders: EncodeDescriptor["encoders"] = [];
     const liveIndexes: number[] = [];
+    let liveInValues = true;
+    const descriptors = metadata?.[$descriptors];
     let refTypeBitmask = 0;
     let hasRefFieldAbove32 = false;
     let hasTagAbove32 = false;
@@ -187,7 +191,10 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         types[i] = field.type;
         tags[i] = field.tag;
         encoders[i] = srcEncoders?.[i];
-        if (skip === undefined || !skip.includes(i)) liveIndexes.push(i);
+        if (skip === undefined || !skip.includes(i)) {
+            liveIndexes.push(i);
+            if (liveInValues && !resolvesTo(ctor.prototype, field.name, descriptors?.[field.name])) liveInValues = false;
+        }
 
         const isRef = typeof field.type !== "string" && field.type.quantized === undefined;
         if (isRef) {
@@ -236,6 +243,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         tags,
         encoders,
         liveIndexes,
+        liveInValues,
         refTypeBitmask,
         hasRefFieldAbove32,
         hasTagAbove32,

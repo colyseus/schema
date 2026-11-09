@@ -889,6 +889,19 @@ describe("Definition Tests", () => {
                 assert.strictEqual(decoded.hp, 3);
             });
 
+            it("a full sync reads a field through a subclass's accessor override", () => {
+                const Base = schema({ hp: t.number() }, "SyncedBase");
+                class Override extends (Base as any) {
+                    get hp() { return 42; } // kept outside $values
+                    set hp(_v: number) {}
+                }
+
+                const decoded: any = new Base();
+                decoded.decode((new Override() as any).encodeAll());
+
+                assert.strictEqual(decoded.hp, 42);
+            });
+
             it("should not call initialize automatically when creating an instance of inherited Schema (1)", () => {
                 let childSchemaInitializeCallCount = 0;
 

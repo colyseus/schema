@@ -384,8 +384,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      *   the other instance.
      * - `Schema.initialize` keeps an own tracked tree (idempotent), and
      *   replaces anything else (no tree, a decoder stub, a foreign tree).
-     * - Readers: the encoder (`enterFrame`, the encode loop) reads `values`
-     *   unguarded — only Schema trees reach it; the attach walk
+     * - Readers: the encoder (`enterFrame`, the encode loop) and the live
+     *   walk (`forEachLiveWithCtx`) read `values` unguarded — only Schema
+     *   trees reach them; the attach walk
      *   (`forEachChildWithCtx`) keeps its `values !== undefined` guard (one
      *   compare) for trees built by another library copy.
      */

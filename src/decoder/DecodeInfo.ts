@@ -1,6 +1,7 @@
 import { decode } from "../encoding/decode.js";
 import { decodeQuantized, isQuantizedType } from "../types/quantize.js";
 import { $descriptors, $numFields } from "../types/symbols.js";
+import { resolvesTo } from "../types/utils.js";
 
 /** How the decoder reaches a field — see `DecodeInfo.access`. */
 export const ACCESS_NAMED = 0, ACCESS_DIRECT = 1, ACCESS_VALUES = 2;
@@ -30,16 +31,6 @@ export interface DecodeInfo {
 }
 
 const $decodeInfo = Symbol.for("$decodeInfo");
-
-/** Does `name` resolve on the prototype chain to the accessor `installed` (the class's `metadata[$descriptors]` entry)? */
-function resolvesTo(proto: any, name: string, installed: PropertyDescriptor | undefined): boolean {
-    if (installed?.get === undefined) return false; // `manual`: a data slot
-    for (let p = proto; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
-        const d = Object.getOwnPropertyDescriptor(p, name);
-        if (d !== undefined) return d.get === installed.get && d.set === installed.set;
-    }
-    return false;
-}
 
 export function getDecodeInfo(ctor: any): DecodeInfo {
     let info: DecodeInfo | undefined = ctor[$decodeInfo];
