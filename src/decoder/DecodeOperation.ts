@@ -5,7 +5,7 @@ import { decode } from "../encoding/decode.js";
 import { readString, readUvarint } from "../encoding/varint.js";
 import { Schema } from "../Schema.js";
 import type { IRef } from "../encoder/ChangeTree.js";
-import { $childType, $collectionCtor, $deleteByIndex, $keyType, $rev, $values } from "../types/symbols.js";
+import { $childType, $collectionCtor, $deleteByIndex, $keyType, $rev } from "../types/symbols.js";
 import { getType } from "../types/registry.js";
 import { decodeQuantized, isQuantizedType } from "../types/quantize.js";
 import { resyncMarkPresent, resyncRecordVisit, resyncTouchEntry } from "./Resync.js";
@@ -55,11 +55,17 @@ export const REF_SCHEMA = 0, REF_ARRAY = 1, REF_MAP = 2, REF_KEYED = 3;
  * (`ref[$changes]`) instead of `ref.constructor` + `COLLECTION_KIND` +
  * `ctor[$decodeInfo]` + `ref[$values]` / `ref[$childType]`, and quantized
  * child readers are resolved once per ref instead of once per chunk.
+ *
+ * Holds per-type data and `decodeGen` only, never the instance's own objects
+ * (a Schema's `$values` is read from its tree): V8 may pretenure these
+ * literals (a per-process lottery, see docs/perf/leads/10-bench-harness.md),
+ * and a tenured record outliving its decode keeps whatever young object it
+ * points at alive through every scavenge until the next full GC. A `values`
+ * field here made ~1 in 5 processes decode a 10k-entity snapshot ~1.6× slower.
  */
 export interface RefInfo {
     kind: number;
     info: DecodeInfo | undefined;      // Schema
-    values: any[] | undefined;         // Schema: the instance's `$values` backing array
     childType: any;                    // collections
     reader: Reader | undefined;        // collections: child reader (`undefined` for ref children)
     keyReader: Reader | undefined;     // MapSchema numeric key reader (`undefined` = string keys)
@@ -70,13 +76,13 @@ function buildRefInfo(ref: any): RefInfo {
     const ctor = ref.constructor;
     const collectionKind = ctor.COLLECTION_KIND;
     if (collectionKind === undefined) {
-        return { kind: REF_SCHEMA, info: getDecodeInfo(ctor), values: ref[$values], childType: undefined, reader: undefined, keyReader: undefined, decodeGen: 0 };
+        return { kind: REF_SCHEMA, info: getDecodeInfo(ctor), childType: undefined, reader: undefined, keyReader: undefined, decodeGen: 0 };
     }
     const childType = ref[$childType];
     const kind = (collectionKind === CollectionKind.Array) ? REF_ARRAY
         : (collectionKind === CollectionKind.Map) ? REF_MAP : REF_KEYED;
     return {
-        kind, info: undefined, values: undefined, childType,
+        kind, info: undefined, childType,
         reader: childReaderOf(childType),
         keyReader: (kind === REF_MAP) ? keyReaderOf(ref[$keyType]) : undefined,
         decodeGen: 0,
@@ -277,7 +283,7 @@ function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator): vo
     const ri: RefInfo = (tree.decodeInfo !== undefined) ? tree.decodeInfo : refInfoOf(value);
     const kind = ri.kind;
     const changes = d.gated ? d.changesFor(refId, ri) : d.batch;
-    if (kind === REF_SCHEMA) decodeSchemaBody(d, bytes, it, value, refId, changes, ri);
+    if (kind === REF_SCHEMA) decodeSchemaBody(d, bytes, it, value, refId, changes, ri.info!, tree.values);
     else if (kind === REF_ARRAY) decodeArrayBody(d, bytes, it, value, refId, changes, ri);
     else decodeKeyValueBody(d, bytes, it, value, refId, changes, kind === REF_MAP, ri);
     d.currentRefId = saved;
@@ -416,8 +422,9 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
             continue;
         }
         d.currentRefId = id;
-        const ri = refInfoOf(ref);
-        const values = ri.values!;
+        const tree: any = treeOfDecoded(ref);
+        const ri: RefInfo = (tree.decodeInfo !== undefined) ? tree.decodeInfo : refInfoOf(ref);
+        const values = tree.values;
         const changes = gated ? d.changesFor(id, ri) : batch;
         while (m !== 0) {
             const bit = m & -m;
@@ -432,10 +439,7 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
     return id;
 }
 
-export function decodeSchemaOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, ri?: RefInfo): void {
-    if (ri === undefined) ri = refInfoOf(ref);
-    const info = ri.info!;
-    const values = ri.values!;
+export function decodeSchemaOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, info: DecodeInfo, values: any[]): void {
     while (it.offset < end) {
         const h = readUvarint(bytes, it);
         const index = h >>> 2;
@@ -446,10 +450,7 @@ export function decodeSchemaOps(d: Decoder, bytes: Uint8Array, it: Iterator, end
     }
 }
 
-function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, changes: DataChange[] | null, ri: RefInfo): void {
-    const info = ri.info!;
-    const values = ri.values!;
-
+function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, changes: DataChange[] | null, info: DecodeInfo, values: any[]): void {
     // whole mask first (values follow it), 7 bits per group, ≤ 64 fields
     let low = 0, high = 0, group = 0;
     for (;;) {

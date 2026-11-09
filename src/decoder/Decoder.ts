@@ -2,7 +2,7 @@ import { TypeContext } from "../types/TypeContext.js";
 import { $childType, $listenedOnly } from "../types/symbols.js";
 import { Schema } from "../Schema.js";
 import { OPERATION } from "../encoding/spec.js";
-import { type IRef, type Ref, decodedRefIdOf } from "../encoder/ChangeTree.js";
+import { type IRef, type Ref, decodedRefIdOf, treeOfDecoded } from "../encoder/ChangeTree.js";
 import type { Iterator } from "../encoding/decode.js";
 import { readUvarint } from "../encoding/varint.js";
 import { ReferenceTracker } from "./ReferenceTracker.js";
@@ -186,10 +186,11 @@ export class Decoder<T extends IRef = any> {
 
             this.currentRefId = refId;
             try {
-                const ri = refInfoOf(ref);
+                const tree: any = treeOfDecoded(ref); // one load serves the decode record and a Schema's `values`
+                const ri: RefInfo = (tree.decodeInfo !== undefined) ? tree.decodeInfo : refInfoOf(ref);
                 const kind = ri.kind;
                 const changes = gated ? this.changesFor(refId, ri) : batch;
-                if (kind === REF_SCHEMA) decodeSchemaOps(this, bytes, it, end, ref, refId, changes, ri);
+                if (kind === REF_SCHEMA) decodeSchemaOps(this, bytes, it, end, ref, refId, changes, ri.info!, tree.values);
                 else if (kind === REF_ARRAY) decodeArrayOps(this, bytes, it, end, ref, refId, changes, ri);
                 else decodeKeyValueOps(this, bytes, it, end, ref, refId, changes, kind === REF_MAP, ri);
             } catch (e) {
