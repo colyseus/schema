@@ -18,7 +18,35 @@ class DecodingWarning extends Error {
  * Used for decoding only.
  */
 
-export type SchemaCallbacks = { [field: string | number]: Function[] };
+/**
+ * A ref's registered callbacks. Every table has this one shape, so the
+ * dispatchers' per-change slot reads stay monomorphic. The operation lists
+ * are not stored under their OPERATION values: an integer key like ADD = 128
+ * makes V8 size the object's elements store past it, ~1.8 KB per table.
+ */
+export class SchemaCallbacks {
+    /** OPERATION.ADD */
+    onAdd: Function[] | undefined = undefined;
+    /** OPERATION.DELETE */
+    onRemove: Function[] | undefined = undefined;
+    /** OPERATION.REPLACE */
+    onChange: Function[] | undefined = undefined;
+    /** Field name → listeners; created with the first one. */
+    fields: { [field: string]: Function[] } | undefined = undefined;
+}
+
+/** `$callbacks`'s list for a field name or an OPERATION, created when missing. */
+function listOf($callbacks: SchemaCallbacks, fieldOrOperation: string | number): Function[] {
+    switch (fieldOrOperation) {
+        case OPERATION.ADD: return $callbacks.onAdd ??= [];
+        case OPERATION.DELETE: return $callbacks.onRemove ??= [];
+        case OPERATION.REPLACE: return $callbacks.onChange ??= [];
+    }
+    if (typeof fieldOrOperation === "number") {
+        throw new Error(`no callbacks for operation ${OPERATION[fieldOrOperation] ?? fieldOrOperation}`);
+    }
+    return ($callbacks.fields ??= {})[fieldOrOperation] ??= [];
+}
 
 
 export class ReferenceTracker {
@@ -179,20 +207,17 @@ export class ReferenceTracker {
         }
         let $callbacks = this.callbacks.get(refId);
         if ($callbacks === undefined) {
-            $callbacks = {};
+            $callbacks = new SchemaCallbacks();
             this.callbacks.set(refId, $callbacks);
         }
-        let list = $callbacks[fieldOrOperation];
-        if (list === undefined) {
-            list = $callbacks[fieldOrOperation] = [];
-        }
-        list.push(callback);
+        listOf($callbacks, fieldOrOperation).push(callback);
         return () => this.removeCallback(refId, fieldOrOperation, callback);
     }
 
     removeCallback(refId: number, field: string | number, callback: Function) {
-        const list = this.callbacks.get(refId)?.[field];
-        if (list === undefined) { return; }
+        const $callbacks = this.callbacks.get(refId);
+        if ($callbacks === undefined) { return; }
+        const list = listOf($callbacks, field);
         const index = list.indexOf(callback);
         if (index !== -1) {
             spliceOne(list, index);

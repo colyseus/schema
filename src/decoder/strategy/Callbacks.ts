@@ -383,7 +383,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 Schema.isSchema(change.previousValue)
             ) {
                 const childRefId = decodedRefIdOf(change.previousValue)!;
-                const deleteCallbacks = this.callbacks.get(childRefId)?.[OPERATION.DELETE];
+                const deleteCallbacks = this.callbacks.get(childRefId)?.onRemove;
                 if (deleteCallbacks) {
                     for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
                         try { deleteCallbacks[j](); } catch (e) { console.error(e); }
@@ -398,7 +398,7 @@ export class StateCallbackStrategy<TState extends IRef> {
 
                 if (!this.uniqueRefIds.has(refId)) {
                     // trigger onChange
-                    const replaceCallbacks = $callbacks[OPERATION.REPLACE];
+                    const replaceCallbacks = $callbacks.onChange;
                     if (replaceCallbacks) {
                         for (let j = replaceCallbacks.length - 1; j >= 0; j--) {
                             try { replaceCallbacks[j](); } catch (e) { console.error(e); }
@@ -407,7 +407,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                 }
 
                 // trigger field callbacks
-                const fieldCallbacks = $callbacks[change.field];
+                const fieldCallbacks = $callbacks.fields?.[change.field];
                 if (fieldCallbacks) {
                     for (let j = fieldCallbacks.length - 1; j >= 0; j--) {
                         try { fieldCallbacks[j](change.value, change.previousValue); } catch (e) { console.error(e); }
@@ -436,7 +436,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                     // The guard prevents `onRemove(undefined, key)` from firing.
                     if (change.previousValue !== undefined) {
                         // trigger onRemove (value, key)
-                        const deleteCallbacks = $callbacks[OPERATION.DELETE];
+                        const deleteCallbacks = $callbacks.onRemove;
                         if (deleteCallbacks) {
                             for (let j = deleteCallbacks.length - 1; j >= 0; j--) {
                                 try { deleteCallbacks[j](change.previousValue, dynamicIndex); } catch (e) { console.error(e); }
@@ -446,7 +446,7 @@ export class StateCallbackStrategy<TState extends IRef> {
 
                     // Handle DELETE_AND_ADD operation
                     if ((change.op & OPERATION.ADD) === OPERATION.ADD) {
-                        const addCallbacks = $callbacks[OPERATION.ADD];
+                        const addCallbacks = $callbacks.onAdd;
                         if (addCallbacks) {
                             for (let j = addCallbacks.length - 1; j >= 0; j--) {
                                 try { addCallbacks[j](change.value, dynamicIndex); } catch (e) { console.error(e); }
@@ -459,7 +459,7 @@ export class StateCallbackStrategy<TState extends IRef> {
                     change.previousValue !== change.value
                 ) {
                     // trigger onAdd (value, key)
-                    const addCallbacks = $callbacks[OPERATION.ADD];
+                    const addCallbacks = $callbacks.onAdd;
                     if (addCallbacks) {
                         for (let j = addCallbacks.length - 1; j >= 0; j--) {
                             try { addCallbacks[j](change.value, dynamicIndex); } catch (e) { console.error(e); }
@@ -469,7 +469,7 @@ export class StateCallbackStrategy<TState extends IRef> {
 
                 // trigger onChange (key, value)
                 if (change.value !== change.previousValue) {
-                    const replaceCallbacks = $callbacks[OPERATION.REPLACE];
+                    const replaceCallbacks = $callbacks.onChange;
                     if (replaceCallbacks) {
                         for (let j = replaceCallbacks.length - 1; j >= 0; j--) {
                             try { replaceCallbacks[j](dynamicIndex, change.value); } catch (e) { console.error(e); }
