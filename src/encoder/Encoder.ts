@@ -7,7 +7,7 @@ import { Reflection, populateReflection } from "../Reflection.js";
 import { Metadata } from "../Metadata.js";
 import { Root } from "./Root.js";
 import type { StateView } from "./StateView.js";
-import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode, refTreeOf } from "./ChangeTree.js";
+import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode, refTreeOf, viewTreeOf } from "./ChangeTree.js";
 import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { ensureTracked, forEachChildWithCtx } from "./changeTree/treeAttachment.js";
@@ -52,6 +52,36 @@ function growSharedBuffer(owner: { sharedBuffer: Uint8Array }, buffer: Uint8Arra
     }
 
     return newBuffer;
+}
+
+/**
+ * OR into `out` every view bit `StateView.isChangeTreeVisible` could grant
+ * `tree`: its own, its primary parent's and filtered extra parents' — and,
+ * through ancestors that share visibility too, theirs, since a view pass can
+ * memoize those bits before it reaches `tree`. `visited` guards cyclic
+ * instance graphs.
+ */
+function orGrantableViews(tree: ChangeTree, out: number[], visited: ChangeTree[]): void {
+    const vv = tree.visibleViews;
+    if (vv !== undefined) {
+        for (let s = 0; s < vv.length; s++) out[s] = (out[s] | 0) | (vv[s] | 0); // holes read as undefined
+    }
+    if (!tree.isVisibilitySharedWithParent || visited.indexOf(tree) !== -1) return;
+    visited.push(tree);
+    const parent = tree.parentTree;
+    if (parent !== undefined) orGrantableViews(parent, out, visited);
+    for (let e = tree.aux?.extraParents; e !== undefined; e = e.next) {
+        const extra = viewTreeOf(e.ref);
+        if (extra !== undefined && extra.isFiltered) orGrantableViews(extra, out, visited);
+    }
+}
+
+/** `orGrantableViews` into the zeroed scratch `out`, which it returns. */
+function grantableViews(tree: ChangeTree, out: number[], visited: ChangeTree[]): number[] {
+    for (let s = 0; s < out.length; s++) out[s] = 0;
+    orGrantableViews(tree, out, visited);
+    while (visited.length !== 0) visited.pop();
+    return out;
 }
 
 /** End the tick for every tree in `list`: reset recorders, release queue nodes. */
@@ -128,18 +158,18 @@ export class Encoder<T extends Schema = any> {
     private _scratchOffset = 0;
     /**
      * Per-view work lists, keyed by `view.id`: indexes into `_filteredDirty`
-     * of the trees whose visibility bit that view holds. Built once per tick
-     * in `_prepareTick` by fanning each dirty tree out over its bitmap, so a
-     * view's pass costs O(its visible dirty trees) instead of
-     * O(all filtered dirty trees).
+     * of the trees whose visibility bit that view holds — or, for a tree
+     * sharing its parent's visibility, could be granted it on first check
+     * (`orGrantableViews`). Built once per tick in `_prepareTick` by fanning
+     * each dirty tree out over its bitmap, so a view's pass costs O(its
+     * visible dirty trees) instead of O(all filtered dirty trees). A
+     * snapshot: bits set after it (a `view.add` between `encodeView` calls)
+     * reach the client through `view.changes`, never through these lists.
      */
     private _viewDirty: number[][] = [];
-    /**
-     * Trees that inherit visibility from a parent and have no bit of their
-     * own yet (`isVisibilitySharedWithParent`, memoized by
-     * `isChangeTreeVisible` on first check). Every view checks these.
-     */
-    private _sharedVisDirty: number[] = [];
+    /** Scratch for `_prepareTick`: one shared-visibility tree's grantable view bits, and its walk's visited set. */
+    private _grantableViews: number[] = [];
+    private _grantVisited: ChangeTree[] = [];
     /** Scratch: the current view's filtered work list (indexes into `_filteredDirty`). */
     private _viewSeq: number[] = [];
     /**
@@ -149,7 +179,6 @@ export class Encoder<T extends Schema = any> {
      */
     private _filteredDirtyLen = 0;
     private _viewDirtyLen: number[] = [];
-    private _sharedVisLen = 0;
 
     /**
      * @param bufferSize size of this encoder's shared output buffer
@@ -296,8 +325,7 @@ export class Encoder<T extends Schema = any> {
         // hundreds of clients most views are idle on most ticks.
         if (view.changes.size === 0) {
             if (!this._tickPrepared) this._prepareTick();
-            const ownLen = this._viewDirtyLen[view.id];
-            if ((ownLen === undefined || ownLen === 0) && this._sharedVisLen === 0) {
+            if ((this._viewDirtyLen[view.id] | 0) === 0) {
                 return [this._sharedSlice(buffer, sharedOffset), EMPTY_SLICE];
             }
         }
@@ -347,35 +375,17 @@ export class Encoder<T extends Schema = any> {
         const root = this.root;
         const useCache = root.activeViews.size > 1;
         const trees = this._filteredDirty;
-        // This view's work list: its own list merged with the shared-visibility
-        // list (both ascending; a memoized tree can sit in both — emit once),
-        // filtered down to visible, not-yet-emitted trees. Materialized so the
-        // run detection below can look ahead.
+        // This view's work list (ascending), filtered down to visible,
+        // not-yet-emitted trees. Materialized so the run detection below can
+        // look ahead.
         const seq = this._viewSeq;
         let seqLen = 0;
-        {
-            const own = this._viewDirty[view.id];
-            const shared = this._sharedVisDirty;
-            const ownLen = (own === undefined) ? 0 : this._viewDirtyLen[view.id];
-            const sharedLen = this._sharedVisLen;
-            if (sharedLen === 0) {
-                for (let a = 0; a < ownLen; a++) {
-                    const i = own![a];
-                    const tree = trees[i];
-                    if (tree._fullSyncGen !== f.genB && view.isChangeTreeVisible(tree)) seq[seqLen++] = i;
-                }
-            } else {
-                let a = 0, b = 0;
-                while (a < ownLen || b < sharedLen) {
-                    const ia = (a < ownLen) ? own![a] : 0x7fffffff;
-                    const ib = (b < sharedLen) ? shared[b] : 0x7fffffff;
-                    let i: number;
-                    if (ia <= ib) { i = ia; a++; if (ia === ib) b++; }
-                    else { i = ib; b++; }
-                    const tree = trees[i];
-                    if (tree._fullSyncGen !== f.genB && view.isChangeTreeVisible(tree)) seq[seqLen++] = i;
-                }
-            }
+        const own = this._viewDirty[view.id];
+        const ownLen = this._viewDirtyLen[view.id] | 0; // non-zero only where `own` exists
+        for (let a = 0; a < ownLen; a++) {
+            const i = own[a];
+            const tree = trees[i];
+            if (tree._fullSyncGen !== f.genB && view.isChangeTreeVisible(tree)) seq[seqLen++] = i;
         }
 
         for (let s = 0; s < seqLen; s++) {
@@ -464,8 +474,8 @@ export class Encoder<T extends Schema = any> {
         const viewDirty = this._viewDirty;
         const viewDirtyLen = this._viewDirtyLen;
         for (let k = 0; k < viewDirtyLen.length; k++) viewDirtyLen[k] = 0;
-        const sharedVis = this._sharedVisDirty;
-        let sharedVisLen = 0;
+        const grantable = this._grantableViews;
+        const visited = this._grantVisited;
 
         let current: ChangeTreeList | ChangeTreeNode = this.root.changes;
         while (current = current.next) {
@@ -491,8 +501,8 @@ export class Encoder<T extends Schema = any> {
             cacheable[i] = canCache;
             cacheHead[i] = -1;
 
-            // fan out to the views that hold this tree's visibility bit
-            const vv = tree.visibleViews;
+            // fan out to the views that hold this tree's visibility bit (or could be granted it; each view re-checks)
+            const vv = tree.isVisibilitySharedWithParent ? grantableViews(tree, grantable, visited) : tree.visibleViews;
             if (vv !== undefined) {
                 for (let s = 0; s < vv.length; s++) {
                     let w = vv[s] | 0; // a hole reads as undefined
@@ -506,12 +516,10 @@ export class Encoder<T extends Schema = any> {
                     }
                 }
             }
-            if (tree.isVisibilitySharedWithParent) sharedVis[sharedVisLen++] = i;
         }
         // drop stale tree references past this tick's count (no truncation: keeps the backing store)
         for (let k = n; k < prevLen; k++) trees[k] = undefined!;
         this._filteredDirtyLen = n;
-        this._sharedVisLen = sharedVisLen;
         this._tickPrepared = true;
     }
 

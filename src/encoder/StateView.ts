@@ -1092,6 +1092,7 @@ export class StateView {
         // inheritedFlags.ts — short-circuits for the common case, and
         // `markVisible` memoizes so the branch fires at most once per
         // (tree, view) pair.
+        // grant rules mirrored by `orGrantableViews` (Encoder.ts): a grant added here must be added there
         if (!isVisible && changeTree.isVisibilitySharedWithParent){
             // Primary grant is intentionally unguarded — pre-existing
             // semantics; the extras walk below is stricter on purpose.
