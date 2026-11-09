@@ -113,18 +113,18 @@ const framePool: Frame[] = [];
 
 /** Frame for `depth` (created on first use). Exported for the frame-pool tests only. */
 export function frameAt(depth: number): Frame {
-    let f = framePool[depth];
-    if (f === undefined) {
-        f = framePool[depth] = {
-            context: undefined!, buffer: undefined!, it: undefined!, capacity: 0, view: undefined, hasView: false,
-            emitFiltered: false, mode: MODE_SNAPSHOT, genA: 0, genB: 0, prevRefId: -1,
-            depth, tree: undefined!, ref: undefined, refTarget: undefined, elements: undefined, values: undefined!, desc: undefined!, kind: 0,
-            treeIsFiltered: false, emitMask: 0, filter: undefined, childType: undefined, childEncoder: undefined, keyWriter: undefined,
-            isSchemaChild: false, identityMode: false,
-            lenPos: -1, maskLow: 0, maskHigh: 0, vals: [], keys: [], strs: [], valsLen: 0, strsLen: 0, entryForBody: undefined,
-        };
-    }
-    return f;
+    return framePool[depth] ?? newFrame(depth); // tiny: inlines into every encode entry point
+}
+
+function newFrame(depth: number): Frame {
+    return framePool[depth] = {
+        context: undefined!, buffer: undefined!, it: undefined!, capacity: 0, view: undefined, hasView: false,
+        emitFiltered: false, mode: MODE_SNAPSHOT, genA: 0, genB: 0, prevRefId: -1,
+        depth, tree: undefined!, ref: undefined, refTarget: undefined, elements: undefined, values: undefined!, desc: undefined!, kind: 0,
+        treeIsFiltered: false, emitMask: 0, filter: undefined, childType: undefined, childEncoder: undefined, keyWriter: undefined,
+        isSchemaChild: false, identityMode: false,
+        lenPos: -1, maskLow: 0, maskHigh: 0, vals: [], keys: [], strs: [], valsLen: 0, strsLen: 0, entryForBody: undefined,
+    };
 }
 
 /** The pass frame (depth 0). The entry point fills the pass fields before use. */
