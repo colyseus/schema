@@ -857,6 +857,22 @@ describe("Definition Tests", () => {
         })
 
         describe("extends", () => {
+            it("defaults, props and assign() go through a subclass's accessor override", () => {
+                const Base = schema({ hp: t.number().default(5) }, "Base");
+                const inherited = Object.getOwnPropertyDescriptor(Base.prototype, "hp")!;
+                const writes: number[] = [];
+                class Override extends Base {
+                    get hp() { return inherited.get!.call(this); }
+                    set hp(v: number) { writes.push(v); inherited.set!.call(this, v); }
+                }
+
+                new Override();
+                new Override({ hp: 7 } as any);
+                new Override().assign({ hp: 9 } as any);
+
+                assert.deepStrictEqual(writes, [5, 7, 5, 9]);
+            });
+
             it("should not call initialize automatically when creating an instance of inherited Schema (1)", () => {
                 let childSchemaInitializeCallCount = 0;
 

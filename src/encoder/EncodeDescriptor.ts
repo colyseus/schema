@@ -1,7 +1,8 @@
 /**
- * EncodeDescriptor — per-class snapshot of the values the encode loop needs
- * from a Ref's constructor. Lazily computed once per class (the first time
- * a tree of that class is constructed) and stashed on the constructor via
+ * EncodeDescriptor — per-class snapshot of a Ref constructor's fields: what
+ * the encode loop needs, plus the field setters construction / `assign()`
+ * use. Lazily computed once per class (the first time a tree of that class
+ * is constructed) and stashed on the constructor via
  * `$encodeDescriptor`. Each ChangeTree caches a reference to its class's
  * descriptor at construction time, so the encode loop reads a single
  * property from the tree instead of chasing several per-tree lookups.
@@ -17,6 +18,7 @@ import { $encodeDescriptor, $encoders, $filter, $filterByChild, $fullSyncSkipInd
 import type { StateView } from "./StateView.js";
 import type { ArrayLog } from "./ArrayLog.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
+import { setterOf } from "../types/utils.js";
 
 export interface EncodeDescriptor {
     filter: ((ref: any, index: number, view?: StateView) => boolean) | undefined;
@@ -85,6 +87,13 @@ export interface EncodeDescriptor {
      * encoder fn for primitive-typed fields.
      */
     names: string[];
+    /**
+     * Per field: what a `ref[name] = value` store runs — the prototype
+     * setter, or a plain store for a data field (`manual: true`, a reflected
+     * decoder class). Construction, `assign()` and `clone()` call it
+     * directly: a store under a changing key takes V8's generic path (~3×).
+     */
+    setters: ((this: any, value: any) => void)[];
     types: any[];
     tags: (number | undefined)[];
     encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
@@ -149,6 +158,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
 
     // Per-field parallel arrays (Schemas only; empty for collections).
     const names: string[] = [];
+    const setters: EncodeDescriptor["setters"] = [];
     const types: any[] = [];
     const tags: (number | undefined)[] = [];
     const encoders: EncodeDescriptor["encoders"] = [];
@@ -166,12 +176,14 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         if (field === undefined) {
             // Holes are normal — inheritance can leave gaps.
             names[i] = undefined!;
+            setters[i] = undefined!;
             types[i] = undefined;
             tags[i] = undefined;
             encoders[i] = undefined;
             continue;
         }
         names[i] = field.name;
+        setters[i] = setterOf(ctor.prototype, field.name);
         types[i] = field.type;
         tags[i] = field.tag;
         encoders[i] = srcEncoders?.[i];
@@ -219,6 +231,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         unreliableBitmask: indexesToBitmask(metadata?.[$unreliableFieldIndexes]),
         streamBitmask: indexesToBitmask(metadata?.[$streamFieldIndexes]),
         names,
+        setters,
         types,
         tags,
         encoders,

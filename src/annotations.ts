@@ -918,28 +918,35 @@ export function schema<
         }
     }
 
-    // Write construction defaults onto `target` — either the instance directly
-    // (no-args fast path) or a throwaway object that gets merged with props.
+    // Construction defaults as parallel arrays (static values, then factories): no `for…in` per construction.
+    const firstFactory = Object.keys(defaultValues).length;
+    const defaultNames = [...Object.keys(defaultValues), ...Object.keys(defaultFactories)];
+    const defaults = defaultNames.map((n, k) => (k < firstFactory) ? defaultValues[n] : defaultFactories[n]);
+    let defaultIndexes: (number | undefined)[]; // field index per default (`.noSync()`: none), once `setFields` below runs
+
+    const defaultAt = (k: number) => (k < firstFactory) ? defaults[k] : defaults[k]();
+
     const applyDefaults = (target: any) => {
-        for (const fieldName in defaultValues) {
-            target[fieldName] = defaultValues[fieldName];
-        }
-        for (const fieldName in defaultFactories) {
-            target[fieldName] = defaultFactories[fieldName]();
+        // the instance's own setters: a subclass may override a field's accessor
+        const setters = treeOf(target).encDescriptor.setters;
+        for (let k = 0; k < defaultNames.length; k++) {
+            const index = defaultIndexes[k];
+            if (index !== undefined) setters[index].call(target, defaultAt(k));
+            else target[defaultNames[k]] = defaultAt(k);
         }
     };
 
     const getDefaultValues = () => {
-        const defaults: any = {};
-        applyDefaults(defaults);
-        return defaults;
+        const merged: any = {};
+        for (let k = 0; k < defaultNames.length; k++) merged[defaultNames[k]] = defaultAt(k);
+        return merged;
     };
 
+    const ownFieldNames = new Set(Object.keys(fields));
     const getParentProps = (props: any) => {
-        const fieldNames = Object.keys(fields);
         const parentProps: any = {};
         for (const key in props) {
-            if (!fieldNames.includes(key)) {
+            if (!ownFieldNames.has(key)) {
                 parentProps[key] = props[key];
             }
         }
@@ -951,6 +958,9 @@ export function schema<
     // inherited from a schema() parent. A custom base's initialize() is not
     // picked up — the constructor type only sees the fields map.
     const initialize = methods.initialize ?? (inherits as any)._initialize;
+    // nothing of its own to merge: the schema() parent's Object.assign copies the props anyway
+    const passPropsUp = defaultNames.length === 0 && !hasInitialize
+        && Object.prototype.hasOwnProperty.call(inherits, "_getDefaultValues");
 
     const klass = class extends (inherits as any) {
         constructor(...args: any[]) {
@@ -960,6 +970,8 @@ export function schema<
                 // throwaway defaults object + Object.assign + assignProps walk.
                 super();
                 applyDefaults(this);
+            } else if (passPropsUp) {
+                super(props);
             } else {
                 // With props: merge into the fresh defaults object in place (no
                 // extra `{}` target); the super chain runs assignProps once. An
@@ -979,6 +991,8 @@ export function schema<
     }
     /** @codegen-ignore */
     Metadata.setFields<any>(klass, fields);
+    const fieldIndexes = (klass as any)[Symbol.metadata];
+    defaultIndexes = defaultNames.map((n) => fields[n] !== undefined ? fieldIndexes[n] : undefined);
 
     (klass as any)._getDefaultValues = getDefaultValues;
     (klass as any)._initialize = initialize;

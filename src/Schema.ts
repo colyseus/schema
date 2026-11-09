@@ -5,7 +5,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
 import { ChangeTree, createUntrackedChangeTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, peekTree, refTreeOf, refIdOf } from './encoder/ChangeTree.js';
-import { $changes, $deleteByIndex, $filter, $getByIndex, $numFields, $refId, $refTypeFieldIndexes, $reset, $schemaBase, $track, $values } from './types/symbols.js';
+import { $changes, $deleteByIndex, $filter, $getByIndex, $refId, $refTypeFieldIndexes, $reset, $schemaBase, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
 import type { Decoder } from './decoder/Decoder.js';
@@ -232,23 +232,22 @@ export class Schema<C = any> implements IRef {
     }
 
     /**
-     * Metadata-driven property assignment.
-     * Reads tracked fields via property access (works with prototype accessors),
-     * then copies any remaining own properties for non-tracked fields.
+     * Writes each tracked field present on `source` through its setter, in
+     * field-index order (ref fields attach, and get refIds, in that order),
+     * then copies the remaining own properties (non-tracked fields).
      */
     protected static assignProps(target: any, source: any) {
-        const metadata: Metadata = target.constructor[Symbol.metadata];
-        if (metadata && metadata[$numFields] !== undefined) {
-            for (let i = 0; i <= metadata[$numFields]; i++) {
-                const field = metadata[i];
-                if (!field) { continue; }
-                const value = source[field.name];
-                if (value !== undefined) {
-                    target[field.name] = value;
-                }
-            }
+        const desc = treeOf(target).encDescriptor ?? getEncodeDescriptor(target); // decoder stubs carry no descriptor
+        const names = desc.names;
+        const setters = desc.setters;
+        for (let i = 0; i < names.length; i++) {
+            const name = names[i];
+            if (name === undefined) continue;
+            const value = source[name];
+            if (value !== undefined) setters[i].call(target, value);
         }
         // Copy non-tracked own properties (e.g. `notSynched: true`).
+        const metadata: Metadata = desc.metadata;
         const keys = Object.keys(source);
         for (let i = 0; i < keys.length; i++) {
             const key = keys[i];
@@ -383,26 +382,17 @@ export class Schema<C = any> implements IRef {
         const cloned = Object.create(this.constructor.prototype);
         Schema.initializeOwn(cloned);
 
-        const metadata: Metadata = (this.constructor as typeof Schema)[Symbol.metadata];
-
-        //
         // TODO: clone all properties, not only annotated ones
-        //
-        // for (const field in this) {
-        for (const fieldIndex in metadata) {
-            const field = metadata[fieldIndex as any as number].name as keyof this;
-
-            if (
-                typeof (this[field]) === "object" &&
-                typeof ((this[field] as any)?.clone) === "function"
-            ) {
-                // deep clone
-                cloned[field] = (this[field] as any).clone();
-
-            } else {
-                // primitive values
-                cloned[field] = this[field];
-            }
+        const desc = treeOf(cloned).encDescriptor;
+        const names = desc.names;
+        const setters = desc.setters;
+        for (let i = 0; i < names.length; i++) {
+            const name = names[i];
+            if (name === undefined) continue;
+            let value = (this as any)[name];
+            if (value === undefined) continue; // already undefined on a fresh instance
+            if (typeof value === "object" && typeof value?.clone === "function") value = value.clone();
+            setters[i].call(cloned, value);
         }
 
         return cloned;
