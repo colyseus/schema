@@ -7,7 +7,7 @@ import { Reflection, populateReflection } from "../Reflection.js";
 import { Metadata } from "../Metadata.js";
 import { Root, type Streamable } from "./Root.js";
 import type { StateView } from "./StateView.js";
-import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode, refTreeOf, viewTreeOf } from "./ChangeTree.js";
+import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode, refTreeOf } from "./ChangeTree.js";
 import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
 import { type KeyedRecorder, keyedValueAt } from "./KeyedRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
@@ -72,8 +72,7 @@ function orGrantableViews(tree: ChangeTree, out: number[], visited: ChangeTree[]
     const parent = tree.parentTree;
     if (parent !== undefined) orGrantableViews(parent, out, visited);
     for (let e = tree.aux?.extraParents; e !== undefined; e = e.next) {
-        const extra = viewTreeOf(e.ref);
-        if (extra !== undefined && extra.isFiltered) orGrantableViews(extra, out, visited);
+        if (e.tree.isFiltered) orGrantableViews(e.tree, out, visited);
     }
 }
 

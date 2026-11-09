@@ -257,7 +257,8 @@ export function createChangeTreeList(): ChangeTreeList {
  * `parentChain.ts` should hold these.
  */
 export interface ParentChain {
-    ref: Ref;
+    /** The parent's tree (its ref is `tree.ref`): chain walks compare trees, no ref → tree lookup per entry. */
+    tree: ChangeTree;
     index: number;
     next?: ParentChain;
 }

@@ -1105,7 +1105,7 @@ export class StateView {
                 // Only filtered parents can grant (public ones never share
                 // visibility downward).
                 for (let e = changeTree.aux?.extraParents; e !== undefined; e = e.next) {
-                    const parentTree = viewTreeOf(e.ref);
+                    const parentTree = e.tree;
                     if (parentTree.isFiltered && this.isVisible(parentTree)) {
                         this.markVisible(changeTree);
                         isVisible = true;

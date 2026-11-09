@@ -264,7 +264,7 @@ function refreshFilterState(tree: ChangeTree): void {
     let bits = _edgeBits(tree, primary, tree._parentIndex, sharesEligible);
     // Saturated means no further edge can change the outcome.
     for (let e = tree.aux?.extraParents; e !== undefined && bits !== EDGE_SATURATED; e = e.next) {
-        bits |= _edgeBits(tree, refTreeOf(e.ref)!, e.index, sharesEligible);
+        bits |= _edgeBits(tree, e.tree, e.index, sharesEligible);
     }
 
     // No live edge resolved (mid-detach churn) — keep the current

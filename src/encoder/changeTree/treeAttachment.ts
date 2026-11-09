@@ -9,7 +9,7 @@ import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
 import { Root, type Streamable } from "../Root.js";
 import { ChangeTree, type Ref, refTreeOf, setTree } from "../ChangeTree.js";
 import { checkIsFiltered } from "./inheritedFlags.js";
-import { clearParents } from "./parentChain.js";
+import { clearParents, hasParentTree } from "./parentChain.js";
 import { propagateNewChildToSubscribers } from "../subscriptions.js";
 
 export function setRoot(tree: ChangeTree, root: Root): void {
@@ -222,7 +222,7 @@ export function ensureTracked(child: ChangeTree): ChangeTree {
 
 /** A shared instance reached again by an attach walk: an upgraded stub recorded no edge at decode time. */
 function addMissingEdge(child: ChangeTree, parentTree: ChangeTree, index: any): void {
-    if (!child.hasParent((p) => refTreeOf(p) === parentTree)) child.addParent(parentTree.ref, index, parentTree);
+    if (!hasParentTree(child, parentTree)) child.addParent(parentTree.ref, index, parentTree);
 }
 
 function _setRootChildCb(parentTree: ChangeTree, child: ChangeTree, index: any): void {
