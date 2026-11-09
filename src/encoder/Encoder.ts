@@ -20,18 +20,29 @@ import {
     runEligible, runContinues, openRun, addRunMember, endRun,
 } from "./EncodeOperation.js";
 
+/** Largest size the overflow warning suggested, and the `BUFFER_SIZE` it was for. */
+let warnedSize = 0;
+let warnedFor = 0;
+
 /**
- * Grow an encoder's output buffer to the next `BUFFER_SIZE` multiple that
- * fits `usedOffset` bytes, warning once with the value to configure.
+ * Grow an encoder's output buffer to 1.5× the `usedOffset` bytes the
+ * overflowed pass measured (it keeps counting past the end, so one grow
+ * fits). The headroom matters: every grow re-encodes the pass, and a state
+ * that keeps growing would otherwise pay that at each `BUFFER_SIZE` step.
+ * Warns only when a larger size than already suggested is needed.
  */
 function growSharedBuffer(owner: { sharedBuffer: Uint8Array }, buffer: Uint8Array, usedOffset: number): Uint8Array {
-    const newSize = Math.ceil(usedOffset / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
+    const newSize = Math.ceil(usedOffset * 1.5 / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
 
-    console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
+    if (newSize > warnedSize || warnedFor !== Encoder.BUFFER_SIZE) {
+        warnedSize = newSize;
+        warnedFor = Encoder.BUFFER_SIZE;
+        console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
 
     import { Encoder } from "@colyseus/schema";
     Encoder.BUFFER_SIZE = ${Math.round(newSize / 1024)} * 1024; // ${Math.round(newSize / 1024)} KB
 `);
+    }
 
     const newBuffer = new Uint8Array(newSize);
     newBuffer.set(buffer);
@@ -80,7 +91,8 @@ let reflectionBuffer: Uint8Array | undefined;
 export class Encoder<T extends Schema = any> {
     /**
      * Per-encoder shared output buffer size. The encoder auto-grows on
-     * overflow and logs a one-time warning suggesting a higher value, so
+     * overflow and warns with a higher value to set (again only when a
+     * later overflow needs more), so
      * the default just needs to comfortably cover typical room state.
      * Raise per app via `Encoder.BUFFER_SIZE = N * 1024` before
      * constructing any Encoder.
