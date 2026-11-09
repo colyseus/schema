@@ -5,7 +5,7 @@ import type { Iterator } from "../encoding/decode.js";
 import { KIND_ARRAY, OPERATION, PROTOCOL_VERSION } from "../encoding/spec.js";
 import { Reflection, populateReflection } from "../Reflection.js";
 import { Metadata } from "../Metadata.js";
-import { Root } from "./Root.js";
+import { Root, type Streamable } from "./Root.js";
 import type { StateView } from "./StateView.js";
 import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeTreeNode, refTreeOf, viewTreeOf } from "./ChangeTree.js";
 import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
@@ -13,7 +13,7 @@ import { type KeyedRecorder, keyedValueAt } from "./KeyedRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { ensureTracked, forEachChildWithCtx } from "./changeTree/treeAttachment.js";
 import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
-import { streamHasBroadcastBacklog, streamHasViewBacklog } from "./streaming.js";
+import { recordBroadcastSent, sentByBroadcast, streamHasBroadcastBacklog, streamHasViewBacklog } from "./streaming.js";
 import {
     MODE_DRAIN, MODE_PATCH, MODE_SNAPSHOT, MODE_STREAM,
     closeChunk, emitKeyedOp, emitLiveChunk, emitViewEntry, encodeKeyedOps, encodeKeyedOpsAt, encodeSchemaBits, encodeSchemaOps, encodeTreeOps,
@@ -154,6 +154,8 @@ export class Encoder<T extends Schema = any> {
     // per-tick filtered pass (encodeView): trees with filtered dirty state + chunk cache
     private _tickPrepared = false;
     private _filteredDirty: ChangeTree[] = [];
+    /** Scratch for `encode()` in broadcast-stream mode: the dirty filtered trees `encodeQueue` skipped (its return value is the live length). */
+    private _skippedFiltered: ChangeTree[] = [];
     private _cacheable: boolean[] = [];
     /**
      * Cross-view chunk cache: per tree (index into `_filteredDirty`) a chain
@@ -310,14 +312,12 @@ export class Encoder<T extends Schema = any> {
     encode(it: Iterator = { offset: 0 }, buffer: Uint8Array = this.sharedBuffer): Uint8Array {
         const initialOffset = it.offset;
         const f = this._beginPass(buffer, it, undefined, false, MODE_PATCH);
-        encodeQueue(f, this.root.changes);
-
         // Broadcast-mode stream emission runs after the main loop (state /
         // parent refs are already on the wire). Skipped when any StateView
         // is registered (the priority pass in `encodeView` owns emission).
-        if (this.root.activeViews.size === 0 && this.root.streamTrees.size > 0) {
-            this._emitStreamBroadcast(f);
-        }
+        const broadcast = this.root.activeViews.size === 0 && this.root.streamTrees.size > 0;
+        const skipped = encodeQueue(f, this.root.changes, broadcast ? this._skippedFiltered : undefined);
+        if (broadcast) this._emitStreamBroadcast(f, skipped);
 
         if (it.offset > buffer.byteLength) {
             buffer = this._resizeBuffer(buffer, it.offset);
@@ -700,17 +700,17 @@ export class Encoder<T extends Schema = any> {
      * rides inline as a live body; already-sent elements emit their dirty
      * fields as their own chunk. `@unreliable` fields stay out (MODE_STREAM).
      */
-    private _emitStreamBroadcast(f: Frame): void {
+    private _emitStreamBroadcast(f: Frame, dirtyFiltered: number): void {
         f.emitFiltered = true;
         f.mode = MODE_STREAM;
-        for (const stream of this.root.streamTrees) {
+        const streams = this.root.streamTrees;
+        for (const stream of streams) {
             const s: any = stream;
             const tree: ChangeTree = refTreeOf(s);
             if (tree.refId === undefined) continue; // never attached to the state
             const st = s._stream!;
             const deletes: Set<number> = st.broadcastDeletes;
             const pending: Set<number> = st.broadcastPending;
-            const sent: Set<number> = st.sentBroadcast;
 
             if (deletes.size > 0 || pending.size > 0) {
                 enterFrame(f, tree);
@@ -724,31 +724,30 @@ export class Encoder<T extends Schema = any> {
                 const toDelete: number[] = [];
                 for (const pos of pending) {
                     if (count >= max) break;
-                    if (s[$getByIndex](pos) === undefined) {
+                    const element = s[$getByIndex](pos);
+                    if (element === undefined) {
                         toDelete.push(pos);
                         continue;
                     }
                     emitKeyedOp(f, pos, OPERATION.ADD); // element body inline (MODE_STREAM)
-                    sent.add(pos);
+                    recordBroadcastSent(s, element, pos);
                     toDelete.push(pos);
                     count++;
                 }
                 for (const pos of toDelete) pending.delete(pos);
                 closeChunk(f);
             }
+        }
 
-            // Mutation updates for already-sent elements: their trees are
-            // filtered, so the main loop skipped them.
-            for (const pos of sent) {
-                const element = s[$getByIndex](pos);
-                if (element === undefined) continue;
-                const elTree: ChangeTree | undefined = refTreeOf(element);
-                if (elTree === undefined || !elTree.has() || elTree._fullSyncGen === f.genB) continue;
-                if (elTree.refId === undefined) continue;
-                enterFrame(f, elTree);
-                encodeSchemaOps(f);
-                closeChunk(f);
-            }
+        // Mutation updates for already-sent elements (filtered, so the main loop skipped them).
+        const trees = this._skippedFiltered;
+        for (let i = 0; i < dirtyFiltered; i++) {
+            const elTree = trees[i];
+            trees[i] = undefined!; // a scratch slot must not keep a removed element alive
+            if (elTree._fullSyncGen === f.genB || elTree.refId === undefined || !sentByBroadcast(elTree.ref, streams)) continue;
+            enterFrame(f, elTree);
+            encodeSchemaOps(f);
+            closeChunk(f);
         }
         f.emitFiltered = false;
         f.mode = MODE_PATCH;
@@ -939,15 +938,20 @@ export class Encoder<T extends Schema = any> {
  * Shared patch loop: one chunk per dirty tree, skipping trees inlined earlier
  * in the pass. Reads flag bits and recorder state directly so the whole
  * per-tree + per-field path fits V8's cumulative inlining budget (no call
- * per tree).
+ * per tree). Returns how many dirty filtered trees it skipped into `skipped`
+ * (when given).
  */
-function encodeQueue(f: Frame, queue: ChangeTreeList): void {
+function encodeQueue(f: Frame, queue: ChangeTreeList, skipped: ChangeTree[] | undefined): number {
+    let nSkipped = 0;
     let current: ChangeTreeList | ChangeTreeNode = queue;
     while (current = current.next) {
         const tree = (current as ChangeTreeNode).changeTree;
         if (tree._fullSyncGen === f.genB) continue;
         const flags = tree.flags;
-        if ((flags & IS_FILTERED) !== 0) continue; // every op of a filtered tree belongs to the view pass
+        if ((flags & IS_FILTERED) !== 0) { // every op of a filtered tree belongs to the view pass
+            if (skipped !== undefined && tree.has()) skipped[nSkipped++] = tree;
+            continue;
+        }
         const isSchema = tree._isSchema;
         if (isSchema ? (tree.dirtyLow | tree.dirtyHigh) === 0 : !tree.has()) continue;
         // only a fresh tree can be inlined by a later parent op → only those need the "emitted" stamp
@@ -983,6 +987,7 @@ function encodeQueue(f: Frame, queue: ChangeTreeList): void {
         else encodeKeyedOps(f);
         closeChunk(f);
     }
+    return nSkipped;
 }
 
 /**

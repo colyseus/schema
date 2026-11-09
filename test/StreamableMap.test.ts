@@ -35,6 +35,29 @@ describe("Streamable MapSchema (t.map(X).stream())", () => {
         assert.strictEqual(decoded.entities.size, 5);
     });
 
+    it("broadcast: an element sent under two keys keeps updating after one key is deleted", () => {
+        const Entity = schema({ x: t.number() }, "Entity");
+        const State = schema({ entities: t.map(Entity).stream() }, "State");
+
+        const state: SchemaType<typeof State> = new State();
+        getEncoder(state);
+        const decoded: SchemaType<typeof State> = new State();
+        decoded.decode(state.encodeAll());
+
+        const e: SchemaType<typeof Entity> = new Entity();
+        e.x = 1;
+        state.entities.set("a", e);
+        state.entities.set("b", e);
+        decoded.decode(state.encode());
+
+        state.entities.delete("b"); // the key sent last
+        decoded.decode(state.encode());
+
+        e.x = 2;
+        decoded.decode(state.encode());
+        assert.strictEqual(decoded.entities.get("a")!.x, 2);
+    });
+
     it("priority sort per StateView", () => {
         const Entity = schema({ id: t.number() }, "Entity");
         // Builder form: `.stream().priority((view, el) => ...)`. Prioritizes

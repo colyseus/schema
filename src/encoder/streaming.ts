@@ -14,6 +14,8 @@
  * free functions that operate on ChangeTree instances.
  */
 import { OPERATION } from "../encoding/spec.js";
+import { $getByIndex } from "../types/symbols.js";
+import { refTreeOf } from "./ChangeTree.js";
 import type { Root, Streamable } from "./Root.js";
 
 /**
@@ -42,6 +44,13 @@ export interface StreamableState {
     broadcastPending: Set<number>;
     /** Broadcast-mode SENT set. */
     sentBroadcast: Set<number>;
+    /**
+     * Broadcast-mode reverse of `sentBroadcast`: element → the position(s) it
+     * was sent at, so the shared encode reaches already-sent dirty elements
+     * from the tick's dirty list. Weak, and checked against `sentBroadcast`
+     * and the stream's content on use, so removals need no bookkeeping.
+     */
+    sentBroadcastAt: WeakMap<object, number | number[]>;
     /** Broadcast-mode DELETE queue — flushes next shared tick. */
     broadcastDeletes: Set<number>;
     /** Max ADD ops emitted per tick per view (or per shared tick). */
@@ -68,6 +77,7 @@ export function createStreamableState(): StreamableState {
         sentByView: new Map(),
         broadcastPending: new Set(),
         sentBroadcast: new Set(),
+        sentBroadcastAt: new WeakMap(),
         broadcastDeletes: new Set(),
         maxPerTick: 32,
     };
@@ -96,6 +106,39 @@ export function streamRouteAdd(s: Streamable, root: Root, index: number): void {
     if (root.activeViews.size === 0) {
         ensureStreamState(s).broadcastPending.add(index);
     }
+}
+
+/**
+ * Mark position `pos` of `stream` broadcast-sent, holding `element`. The
+ * reverse entry drops its stale positions first (a map can hold one element
+ * under several keys).
+ */
+export function recordBroadcastSent(stream: Streamable, element: object, pos: number): void {
+    const st = stream._stream!;
+    const at = st.sentBroadcastAt.get(element);
+    if (at === undefined || (typeof at === "number" && !holdsSent(stream, at, element))) {
+        st.sentBroadcastAt.set(element, pos);
+    } else {
+        const live = (typeof at === "number") ? [at] : at.filter((p) => holdsSent(stream, p, element));
+        live.push(pos);
+        st.sentBroadcastAt.set(element, live);
+    }
+    st.sentBroadcast.add(pos); // after the pruning: a re-send at the same position must not count as live
+}
+
+/** Does an attached stream hold `element` at a position its broadcast already sent? */
+export function sentByBroadcast(element: object, streams: Set<Streamable>): boolean {
+    for (const stream of streams) {
+        const at = stream._stream?.sentBroadcastAt.get(element);
+        if (at === undefined || refTreeOf(stream).refId === undefined) continue;
+        if (typeof at === "number" ? holdsSent(stream, at, element) : at.some((pos) => holdsSent(stream, pos, element))) return true;
+    }
+    return false;
+}
+
+/** Position `pos` was sent and still holds `element` (a `sentBroadcastAt` entry may be stale: removals don't touch it). */
+function holdsSent(stream: Streamable, pos: number, element: object): boolean {
+    return stream._stream!.sentBroadcast.has(pos) && (stream as any)[$getByIndex](pos) === element;
 }
 
 /**
