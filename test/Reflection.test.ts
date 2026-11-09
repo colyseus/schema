@@ -2,7 +2,7 @@ import * as util from "util";
 import * as assert from "assert";
 import { Reflection, Schema, type, MapSchema, ArraySchema, $changes, TypeContext, Decoder, entity, schema, t, Encoder } from "../src";
 import { InputEncoder, InputDecoder } from "../src/input";
-import { createInstanceFromReflection, getEncoder } from "./Schema";
+import { createInstanceFromReflection, encodeAndAssertEquals, getEncoder } from "./Schema";
 import { populateReflection } from "../src/Reflection";
 
 // `$values` is shared cross-bundle via Symbol.for. Re-derive locally
@@ -127,6 +127,20 @@ describe("Reflection", () => {
         assert.strictEqual(stateReflected.arrayOfPlayers[0].name, "in array");
         assert.strictEqual(stateReflected.arrayOfPlayers[0].x, 4);
         assert.strictEqual(stateReflected.arrayOfPlayers[0].y, 4);
+    });
+
+    it("reflected fields are prototype accessors, like class-built ones", () => {
+        const state = new State();
+        state.fieldNumber = 10;
+        state.player = new Player("p", 1, 1);
+        const stateReflected = createInstanceFromReflection(state);
+        encodeAndAssertEquals(state, stateReflected);
+
+        assert.strictEqual(Object.prototype.hasOwnProperty.call(stateReflected, "fieldNumber"), false); // the root also holds the test's `_decoder`
+        assert.deepStrictEqual(Object.keys(stateReflected.player), []);
+
+        stateReflected.fieldNumber = 11;
+        assert.strictEqual(stateReflected.fieldNumber, 11);
     });
 
     it("should support inheritance", () => {
@@ -458,8 +472,8 @@ describe("Reflection", () => {
             const bytes = Reflection.encode(new Encoder(new Inp()));
             const Reconstructed = Reflection.decode(bytes).state.constructor as any;
 
-            // Decoder-only Reflection.decode path: no $encoders, no prototype
-            // accessors. InputEncoder's primitive-only guard must throw.
+            // Decode-only Reflection.decode path: no $encoders, so
+            // InputEncoder's primitive-only guard must throw.
             assert.throws(
                 () => new InputEncoder(new Reconstructed()),
                 /non-primitive field/,

@@ -10,7 +10,7 @@ import { getType } from "../types/registry.js";
 import { decodeQuantized, isQuantizedType } from "../types/quantize.js";
 import { resyncMarkPresent, resyncRecordVisit, resyncTouchEntry } from "./Resync.js";
 import type { Decoder } from "./Decoder.js";
-import { getDecodeInfo, type DecodeInfo } from "./DecodeInfo.js";
+import { ACCESS_DIRECT, ACCESS_VALUES, getDecodeInfo, type DecodeInfo } from "./DecodeInfo.js";
 
 export interface DataChange<T = any, F = string> {
     ref: IRef,
@@ -86,10 +86,11 @@ function buildRefInfo(ref: any): RefInfo {
 /** Tiny on purpose (it must inline into the chunk loop): every ref the decoder meets carries a `$changes` tree. */
 export function refInfoOf(ref: any): RefInfo {
     const ri: RefInfo | undefined = (treeOfDecoded(ref) as any).decodeInfo;
-    return (ri !== undefined) ? ri : refInfoSlow(ref);
+    return (ri !== undefined) ? ri : attachRefInfo(ref);
 }
 
-function refInfoSlow(ref: any): RefInfo {
+/** Build `ref`'s decode record and cache it on its tree. */
+function attachRefInfo(ref: any): RefInfo {
     const tree: any = treeOfDecoded(ref);
     // an Encoder took this instance over (it cleared any record): its fields no longer belong to this decoder
     if (tree.root !== undefined) throw new Error("@colyseus/schema: cannot decode into an instance attached to an Encoder (relaying a decoded state is unsupported: decode into a separate state and copy)");
@@ -142,7 +143,7 @@ function createRef(d: Decoder, type: any, typeId: number | undefined): any {
         value = (type[$collectionCtor] ?? getType(kind).constructor).initializeForDecoder();
         setCollectionTypes(value, kind, type, childType);
     }
-    refInfoOf(value).decodeGen = d.decodeGen;
+    attachRefInfo(value).decodeGen = d.decodeGen; // fresh: no record yet
     return value;
 }
 
@@ -284,32 +285,39 @@ function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator): vo
 
 // ── Schema ──────────────────────────────────────────────────────────────
 
-function decodeSchemaSlot(
-    d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number,
-    info: DecodeInfo, values: any[] | undefined, index: number, field: any, op: OPERATION, changes: DataChange[] | null,
+/**
+ * A primitive slot behind the library's accessor (`ACCESS_DIRECT`, tested by
+ * the caller), read and written in `values` without the megamorphic
+ * `ref[name]` access. Every other slot takes {@link decodeSlot}: callers
+ * branch themselves so this stays small enough for V8 to inline into their
+ * loops (a shared dispatcher grows past the inlining budget).
+ */
+function decodeDirectSlot(
+    bytes: Uint8Array, it: Iterator, ref: any, refId: number,
+    info: DecodeInfo, values: any[], index: number, field: any, op: OPERATION, changes: DataChange[] | null,
 ): void {
-    // Primitive slot behind the generated accessor: read/write the backing
-    // array directly. Equivalent to `ref[name]` (getter = `values[index]`;
-    // setter = `values[index] = v` plus change tracking, a no-op on
-    // decoder-built trees) without the megamorphic dynamic-name access.
-    if (values !== undefined && info.direct[index] === true) {
-        const previousValue = values[index];
-        let value: any;
-        if (op === OPERATION.DELETE) {
-            value = undefined;
-            values[index] = undefined;
-        } else {
-            value = info.readers[index]!(bytes, it);
-            if (value !== null && value !== undefined) values[index] = value;
-        }
-        if (previousValue !== value) {
-            changes?.push({ ref, refId, op, field: field.name, value, previousValue });
-        }
-        return;
+    const previousValue = values[index];
+    let value: any;
+    if (op === OPERATION.DELETE) {
+        value = undefined;
+        values[index] = undefined;
+    } else {
+        value = info.readers[index]!(bytes, it);
+        if (value !== null && value !== undefined) values[index] = value;
     }
+    if (previousValue !== value) {
+        changes?.push({ ref, refId, op, field: field.name, value, previousValue });
+    }
+}
 
+/** Any slot but {@link decodeDirectSlot}'s: refs (in `values` under `ACCESS_VALUES`) and `ACCESS_NAMED` fields (`ref[name]`). */
+function decodeSlot(
+    d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number,
+    info: DecodeInfo, values: any[], index: number, field: any, op: OPERATION, changes: DataChange[] | null,
+): void {
     const isDeprecated = field.deprecated === true;
-    const previousValue = isDeprecated ? undefined : ref[field.name];
+    const inValues = info.access[index] === ACCESS_VALUES;
+    const previousValue = isDeprecated ? undefined : inValues ? values[index] : ref[field.name];
     let value: any;
 
     if ((op & OPERATION.DELETE) === OPERATION.DELETE) {
@@ -330,7 +338,8 @@ function decodeSchemaSlot(
     }
 
     if (value !== null && value !== undefined) {
-        ref[field.name] = value;
+        if (inValues) values[index] = value;
+        else ref[field.name] = value;
     }
 
     if (previousValue !== value) {
@@ -408,14 +417,16 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
         }
         d.currentRefId = id;
         const ri = refInfoOf(ref);
-        const values = ri.values;
+        const values = ri.values!;
         const changes = gated ? d.changesFor(id, ri) : batch;
         while (m !== 0) {
             const bit = m & -m;
             const index = 31 - Math.clz32(bit);
             m ^= bit;
             if (info.readers[index] === undefined) throw new ChunkMismatch();
-            decodeSchemaSlot(d, bytes, it, ref, id, info, values, index, fieldAt(info, index, ref), OPERATION.ADD, changes);
+            const field = fieldAt(info, index, ref);
+            if (info.access[index] === ACCESS_DIRECT) decodeDirectSlot(bytes, it, ref, id, info, values, index, field, OPERATION.ADD, changes);
+            else decodeSlot(d, bytes, it, ref, id, info, values, index, field, OPERATION.ADD, changes);
         }
     }
     return id;
@@ -424,17 +435,20 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
 export function decodeSchemaOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, ri?: RefInfo): void {
     if (ri === undefined) ri = refInfoOf(ref);
     const info = ri.info!;
-    const values = ri.values;
+    const values = ri.values!;
     while (it.offset < end) {
         const h = readUvarint(bytes, it);
         const index = h >>> 2;
-        decodeSchemaSlot(d, bytes, it, ref, refId, info, values, index, fieldAt(info, index, ref), ((h & 3) << 6) as OPERATION, changes);
+        const field = fieldAt(info, index, ref);
+        const op = ((h & 3) << 6) as OPERATION;
+        if (info.access[index] === ACCESS_DIRECT) decodeDirectSlot(bytes, it, ref, refId, info, values, index, field, op, changes);
+        else decodeSlot(d, bytes, it, ref, refId, info, values, index, field, op, changes);
     }
 }
 
 function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, changes: DataChange[] | null, ri: RefInfo): void {
     const info = ri.info!;
-    const values = ri.values;
+    const values = ri.values!;
 
     // whole mask first (values follow it), 7 bits per group, ≤ 64 fields
     let low = 0, high = 0, group = 0;
@@ -455,12 +469,14 @@ function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any,
     decodeMaskedFields(d, bytes, it, ref, refId, info, values, high, 32, changes);
 }
 
-function decodeMaskedFields(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, info: DecodeInfo, values: any[] | undefined, mask: number, base: number, changes: DataChange[] | null): void {
+function decodeMaskedFields(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, info: DecodeInfo, values: any[], mask: number, base: number, changes: DataChange[] | null): void {
     while (mask !== 0) {
         const bit = mask & -mask;
         const index = base + 31 - Math.clz32(bit);
         mask ^= bit;
-        decodeSchemaSlot(d, bytes, it, ref, refId, info, values, index, fieldAt(info, index, ref), OPERATION.ADD, changes);
+        const field = fieldAt(info, index, ref);
+        if (info.access[index] === ACCESS_DIRECT) decodeDirectSlot(bytes, it, ref, refId, info, values, index, field, OPERATION.ADD, changes);
+        else decodeSlot(d, bytes, it, ref, refId, info, values, index, field, OPERATION.ADD, changes);
     }
 }
 

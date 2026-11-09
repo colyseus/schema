@@ -857,20 +857,36 @@ describe("Definition Tests", () => {
         })
 
         describe("extends", () => {
-            it("defaults, props and assign() go through a subclass's accessor override", () => {
-                const Base = schema({ hp: t.number().default(5) }, "Base");
+            /** A subclass overriding `Base`'s `hp` accessor, recording every write. */
+            function overrideHp(Base: any) {
                 const inherited = Object.getOwnPropertyDescriptor(Base.prototype, "hp")!;
                 const writes: number[] = [];
                 class Override extends Base {
                     get hp() { return inherited.get!.call(this); }
                     set hp(v: number) { writes.push(v); inherited.set!.call(this, v); }
                 }
+                return { Override: Override as any, writes };
+            }
+
+            it("defaults, props and assign() go through a subclass's accessor override", () => {
+                const { Override, writes } = overrideHp(schema({ hp: t.number().default(5) }, "Base"));
 
                 new Override();
                 new Override({ hp: 7 } as any);
                 new Override().assign({ hp: 9 } as any);
 
                 assert.deepStrictEqual(writes, [5, 7, 5, 9]);
+            });
+
+            it("the decoder goes through a subclass's accessor override", () => {
+                const Base = schema({ hp: t.number() }, "DecodedBase");
+                const { Override, writes } = overrideHp(Base);
+
+                const decoded = new Override();
+                decoded.decode(new Base({ hp: 3 } as any).encodeAll());
+
+                assert.deepStrictEqual(writes, [3]);
+                assert.strictEqual(decoded.hp, 3);
             });
 
             it("should not call initialize automatically when creating an instance of inherited Schema (1)", () => {

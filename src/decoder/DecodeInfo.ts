@@ -1,6 +1,9 @@
 import { decode } from "../encoding/decode.js";
 import { decodeQuantized, isQuantizedType } from "../types/quantize.js";
-import { $numFields } from "../types/symbols.js";
+import { $descriptors, $numFields } from "../types/symbols.js";
+
+/** How the decoder reaches a field — see `DecodeInfo.access`. */
+export const ACCESS_NAMED = 0, ACCESS_DIRECT = 1, ACCESS_VALUES = 2;
 
 /**
  * Per-class values the decoder needs: the field table by wire index and a
@@ -14,22 +17,26 @@ export interface DecodeInfo {
     fields: any[];
     readers: (((bytes: Uint8Array, it: any) => any) | undefined)[];
     /**
-     * `true` when the slot is a primitive whose accessor is the generated
-     * `$values`-backed one, so the decoder may read/write `values[index]`
-     * directly instead of a dynamic `ref[name]` access (a megamorphic keyed
-     * load + store through the tracked setter). Fields
-     * declared `{ manual: true }` have no accessor and keep the named path.
+     * Per field, whether the decoder may bypass the accessor. Behind the one
+     * the library installed (`metadata[$descriptors]`) the value lives in
+     * `values[index]` and the setter adds only validation and change
+     * tracking, which decoding has no use for: a primitive takes
+     * `decodeDirectSlot` (`ACCESS_DIRECT`), a ref is read and written in
+     * `values` by `decodeSlot` (`ACCESS_VALUES`). `ACCESS_NAMED` otherwise —
+     * `ref[name]` for deprecated and `{ manual: true }` fields, and to call a
+     * user's accessor override.
      */
-    direct: boolean[];
+    access: number[];
 }
 
 const $decodeInfo = Symbol.for("$decodeInfo");
 
-/** Does `name` resolve to an accessor (getter) somewhere on the prototype chain? */
-function hasAccessor(proto: any, name: string): boolean {
+/** Does `name` resolve on the prototype chain to the accessor `installed` (the class's `metadata[$descriptors]` entry)? */
+function resolvesTo(proto: any, name: string, installed: PropertyDescriptor | undefined): boolean {
+    if (installed?.get === undefined) return false; // `manual`: a data slot
     for (let p = proto; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
         const d = Object.getOwnPropertyDescriptor(p, name);
-        if (d !== undefined) return d.get !== undefined;
+        if (d !== undefined) return d.get === installed.get && d.set === installed.set;
     }
     return false;
 }
@@ -41,18 +48,19 @@ export function getDecodeInfo(ctor: any): DecodeInfo {
     const numFields: number = metadata?.[$numFields] ?? -1;
     const fields: any[] = [];
     const readers: DecodeInfo["readers"] = [];
-    const direct: boolean[] = [];
+    const access: number[] = [];
     for (let i = 0; i <= numFields; i++) {
         const field = metadata[i];
         fields[i] = field;
-        if (field === undefined) { readers[i] = undefined; direct[i] = false; continue; }
+        if (field === undefined) { readers[i] = undefined; access[i] = ACCESS_NAMED; continue; }
         const type = field.type;
         readers[i] = (typeof type === "string") ? (decode as any)[type]
             : isQuantizedType(type) ? (bytes: Uint8Array, it: any) => decodeQuantized(type.quantized, bytes, it)
             : undefined;
-        direct[i] = readers[i] !== undefined && field.deprecated !== true && hasAccessor(ctor.prototype, field.name);
+        access[i] = (field.deprecated === true || !resolvesTo(ctor.prototype, field.name, metadata[$descriptors]?.[field.name])) ? ACCESS_NAMED
+            : (readers[i] !== undefined) ? ACCESS_DIRECT : ACCESS_VALUES;
     }
-    info = { fields, readers, direct };
+    info = { fields, readers, access };
     Object.defineProperty(ctor, $decodeInfo, { value: info, enumerable: false, writable: true, configurable: true });
     return info;
 }

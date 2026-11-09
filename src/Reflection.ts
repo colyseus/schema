@@ -7,7 +7,7 @@ import { Decoder } from "./decoder/Decoder.js";
 import { Schema, isSchemaBase } from "./Schema.js";
 import { t, FieldBuilder } from "./types/builder.js";
 import { ArraySchema } from "./types/custom/ArraySchema.js";
-import { $encodeDescriptor, $encodeReflection, $numFields } from "./types/symbols.js";
+import { $encodeDescriptor, $encodeReflection, $numFields, $values } from "./types/symbols.js";
 import { isQuantizedType, resolveQuantize } from "./types/quantize.js";
 import { PROTOCOL_VERSION } from "./encoding/spec.js";
 import { readUvarint } from "./encoding/varint.js";
@@ -38,12 +38,12 @@ interface ReflectionStatic {
      * Upgrade a class produced by `Reflection.decode` so its instances
      * can be used as encode sources (for `InputEncoder` or `Encoder`).
      *
-     * `Reflection.decode` reconstructs classes with decoder-only field
-     * slots — `inst.x = 7` lands as a direct own property and bypasses
-     * the change-tracking + `$values` plumbing that encoders rely on.
-     * Calling `makeEncodable(ctor)` installs the same prototype accessor
-     * descriptors and `metadata[$encoders]` lookup table that the
-     * `schema(...)` / `@type` builders install at class-definition time.
+     * `Reflection.decode` reconstructs classes with decode-only field
+     * accessors — `inst.x = 7` stores the value untracked, and there is no
+     * encoder table. Calling `makeEncodable(ctor)` installs the same
+     * prototype accessor descriptors and `metadata[$encoders]` lookup table
+     * that the `schema(...)` / `@type` builders install at class-definition
+     * time.
      *
      * Idempotent. Pay-as-you-go: callers that only decode never invoke
      * this and pay nothing extra. Must be called BEFORE any instance of
@@ -264,6 +264,24 @@ Reflection.decode = function <T extends Schema = Schema>(bytes: Uint8Array, it: 
     return new Decoder<T>(state, typeContext);
 }
 
+const slotAccessors: PropertyDescriptor[] = [];
+
+/**
+ * A reflected field's accessor, shared by every reflected class (per field
+ * index): the generated getter over `this[$values][index]` with an untracked
+ * setter. The decoder writes such slots directly (`DecodeInfo.access`);
+ * `makeEncodable` swaps in the tracked accessors.
+ */
+function slotAccessor(index: number): PropertyDescriptor {
+    let accessor = slotAccessors[index];
+    if (accessor === undefined) {
+        const get = function (this: any) { return this[$values][index]; };
+        const set = function (this: any, value: any) { this[$values][index] = value; };
+        accessor = slotAccessors[index] = { get, set, enumerable: true, configurable: true };
+    }
+    return accessor;
+}
+
 /** Rebuild classes + a `TypeContext` from a decoded `Reflection`; returns the root instance. */
 export function materializeReflection<T extends Schema = Schema>(reflection: Reflection): { typeContext: TypeContext, state: T } {
     const typeContext = new TypeContext();
@@ -280,37 +298,37 @@ export function materializeReflection<T extends Schema = Schema>(reflection: Ref
     }, {});
 
     // define fields
-    const addFields = (metadata: Metadata, reflectionType: ReflectionType, parentFieldIndex: number) => {
+    const addFields = (schema: typeof Schema, metadata: Metadata, reflectionType: ReflectionType, parentFieldIndex: number) => {
         reflectionType.fields.forEach((field, i) => {
             const fieldIndex = parentFieldIndex + i;
+            let type: any;
 
             if (field.quantized !== undefined) {
                 // Schema-typed descriptor → resolved codec (validation stays in
                 // resolveQuantize, same as the builder path).
                 const q = field.quantized;
-                Metadata.addField(metadata, fieldIndex, field.name, {
-                    quantized: resolveQuantize({ min: q.min, max: q.max, bits: q.bits as 8 | 16 | 32, mode: q.mode === 1 ? "wrap" : "clamp" }),
-                } as any);
+                type = { quantized: resolveQuantize({ min: q.min, max: q.max, bits: q.bits as 8 | 16 | 32, mode: q.mode === 1 ? "wrap" : "clamp" }) };
 
             } else if (field.referencedType !== undefined) {
-                const fieldType = field.type;
                 // Schema child by type id; a primitive child (referencedType -1)
                 // rides its own childPrimitive slot.
                 const refType: PrimitiveType = typeContext.get(field.referencedType)
                     ?? field.childPrimitive as PrimitiveType;
 
-                if (fieldType === "ref") {
-                    Metadata.addField(metadata, fieldIndex, field.name, refType);
-
+                if (field.type === "ref") {
+                    type = refType;
                 } else {
-                    const def: any = { [fieldType]: refType };
-                    if (fieldType === "map" && field.keyType) def.key = field.keyType;
-                    Metadata.addField(metadata, fieldIndex, field.name, def);
+                    type = { [field.type]: refType };
+                    if (field.type === "map" && field.keyType) type.key = field.keyType;
                 }
 
             } else {
-                Metadata.addField(metadata, fieldIndex, field.name, field.type as PrimitiveType);
+                type = field.type;
             }
+
+            const accessor = slotAccessor(fieldIndex);
+            Metadata.addField(metadata, fieldIndex, field.name, type, accessor);
+            Object.defineProperty(schema.prototype, field.name, accessor);
         });
     };
 
@@ -334,7 +352,7 @@ export function materializeReflection<T extends Schema = Schema>(reflection: Ref
         inheritedTypes.reverse().forEach((reflectionType) => {
             // add fields from all inherited classes
             // TODO: refactor this to avoid adding fields from parent classes
-            addFields(metadata, reflectionType, parentFieldIndex);
+            addFields(schema, metadata, reflectionType, parentFieldIndex);
             parentFieldIndex += reflectionType.fields.length;
         });
     });

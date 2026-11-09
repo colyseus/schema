@@ -596,9 +596,9 @@ export function getPropertyDescriptor(
     } else {
         setter = makeSchemaRefSetter(fieldName, fieldIndex, type as typeof Schema);
     }
+    // Quantized stores the already-snapped float, so the getter is the plain
+    // $values read — the field yields dequant(q) with no per-read math.
     return {
-        // Quantized stores the already-snapped float, so the getter is the plain
-        // $values read — the field yields dequant(q) with no per-read math.
         get: function (this: Schema) { return this[$values][fieldIndex]; },
         set: setter,
         enumerable: true,

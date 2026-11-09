@@ -198,19 +198,8 @@ export const Metadata = {
             configurable: true,
         });
 
-        if (descriptor) {
-            // Accessor descriptor for the public field name.
-            // Installed on the prototype at class-definition time.
-            metadata[$descriptors][name] = descriptor;
-        } else {
-            // For decoder: simple writable slot, also on prototype.
-            metadata[$descriptors][name] = {
-                value: undefined,
-                writable: true,
-                enumerable: true,
-                configurable: true,
-            };
-        }
+        // installed on the prototype by the caller, at class-definition time
+        if (descriptor) metadata[$descriptors][name] = descriptor;
 
         // map -1 as last field index
         Object.defineProperty(metadata, $numFields, {
