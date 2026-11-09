@@ -41,8 +41,8 @@ are fully separate).
 | 12 | `complexTypeKlass.constructor === ArraySchema/MapSchema` (`annotations.ts:497-498`) | C | Same copy always — argues **against** sharing the registry globally. |
 | 13 | `TreeStamp` global private slot (`ChangeTree.ts:79-139`) | E/D | Already shared. |
 | 14 | `$changes`, `$refId`, … `Symbol.for` symbols; string slots incl. `COLLECTION_KIND` | E/D | Already shared. |
-| 15 | Per-constructor caches `$encodeDescriptor`, `$decodeInfo` | E/D | Shared; safe only for **identical builds**. |
-| 16 | `buildRefInfo`: `ctor.COLLECTION_KIND` (`DecodeOperation.ts:71`) | D | Already brand-based. |
+| 15 | Per-constructor caches `$encodeDescriptor`, `$decodeInfo`; per-collection-type `$refInfo` | E/D | Shared; safe only for **identical builds**. |
+| 16 | `attachRefInfo`: `ctor.COLLECTION_KIND` (`DecodeOperation.ts`) | D | Already brand-based. |
 | 17 | `TypeContext.cachedContexts` | C | Per copy; fine. |
 | 18 | `Callbacks.get/getLegacy` `instanceof Decoder` (`Callbacks.ts:523,545`) | C | Foreign Decoder → TypeError. |
 | 19 | `Schema.debugRefIds` `instanceof RefTable` (`Schema.ts:452`) | C debug | Misreports. |

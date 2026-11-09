@@ -2,6 +2,7 @@ import { decode } from "../encoding/decode.js";
 import { decodeQuantized, isQuantizedType } from "../types/quantize.js";
 import { $descriptors, $numFields } from "../types/symbols.js";
 import { resolvesTo } from "../types/utils.js";
+import type { RefInfo } from "./DecodeOperation.js";
 
 /** How the decoder reaches a field — see `DecodeInfo.access`. */
 export const ACCESS_NAMED = 0, ACCESS_DIRECT = 1, ACCESS_VALUES = 2;
@@ -28,13 +29,19 @@ export interface DecodeInfo {
      * user's accessor override.
      */
     access: number[];
+    /** The class's shared decode record (`DecodeOperation.schemaRefInfo`), built on first use. */
+    refInfo: RefInfo | undefined;
 }
 
 const $decodeInfo = Symbol.for("$decodeInfo");
 
+/** Tiny on purpose (it inlines into `createRef`); the builder stays out of line. */
 export function getDecodeInfo(ctor: any): DecodeInfo {
-    let info: DecodeInfo | undefined = ctor[$decodeInfo];
-    if (info !== undefined && Object.prototype.hasOwnProperty.call(ctor, $decodeInfo)) return info;
+    const info: DecodeInfo | undefined = ctor[$decodeInfo];
+    return (info !== undefined && Object.prototype.hasOwnProperty.call(ctor, $decodeInfo)) ? info : buildDecodeInfo(ctor);
+}
+
+function buildDecodeInfo(ctor: any): DecodeInfo {
     const metadata = ctor[Symbol.metadata];
     const numFields: number = metadata?.[$numFields] ?? -1;
     const fields: any[] = [];
@@ -51,7 +58,7 @@ export function getDecodeInfo(ctor: any): DecodeInfo {
         access[i] = (field.deprecated === true || !resolvesTo(ctor.prototype, field.name, metadata[$descriptors]?.[field.name])) ? ACCESS_NAMED
             : (readers[i] !== undefined) ? ACCESS_DIRECT : ACCESS_VALUES;
     }
-    info = { fields, readers, access };
+    const info: DecodeInfo = { fields, readers, access, refInfo: undefined };
     Object.defineProperty(ctor, $decodeInfo, { value: info, enumerable: false, writable: true, configurable: true });
     return info;
 }

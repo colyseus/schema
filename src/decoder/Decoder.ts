@@ -39,7 +39,7 @@ export class Decoder<T extends IRef = any> {
     /** @internal `batch` skips unlistened refs (`triggerChanges` is marked `$listenedOnly`). */
     gated: boolean = false;
 
-    /** @internal Bumped per `decode()`; stamped on the refs it builds (`RefInfo.decodeGen`). */
+    /** @internal Bumped per `decode()`; stamped on the trees of the refs it builds (`decodeGen`). */
     decodeGen: number = 0;
 
     /**
@@ -97,12 +97,12 @@ export class Decoder<T extends IRef = any> {
 
     /**
      * @internal Where a gated batch records the changes of ref `refId`: built
-     * during this decode (callbacks registered while the batch dispatches can
-     * still pick them up) or has callbacks. Callers test `gated` first, once
-     * per pass.
+     * during this decode (`decodeGen`, its tree's stamp; callbacks registered
+     * while the batch dispatches can still pick them up) or has callbacks.
+     * Callers test `gated` first, once per pass.
      */
-    changesFor(refId: number, ri: RefInfo): DataChange[] | null {
-        return (ri.decodeGen === this.decodeGen || this.root.callbacks.get(refId) !== undefined) ? this.batch : null;
+    changesFor(refId: number, decodeGen: number): DataChange[] | null {
+        return (decodeGen === this.decodeGen || this.root.callbacks.get(refId) !== undefined) ? this.batch : null;
     }
 
     /**
@@ -189,7 +189,7 @@ export class Decoder<T extends IRef = any> {
                 const tree: any = treeOfDecoded(ref); // one load serves the decode record and a Schema's `values`
                 const ri: RefInfo = (tree.decodeInfo !== undefined) ? tree.decodeInfo : refInfoOf(ref);
                 const kind = ri.kind;
-                const changes = gated ? this.changesFor(refId, ri) : batch;
+                const changes = gated ? this.changesFor(refId, tree.decodeGen) : batch;
                 if (kind === REF_SCHEMA) decodeSchemaOps(this, bytes, it, end, ref, refId, changes, ri.info!, tree.values);
                 else if (kind === REF_ARRAY) decodeArrayOps(this, bytes, it, end, ref, refId, changes, ri);
                 else decodeKeyValueOps(this, bytes, it, end, ref, refId, changes, kind === REF_MAP, ri);

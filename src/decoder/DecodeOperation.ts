@@ -49,44 +49,55 @@ function keyReaderOf(keyType: string | undefined): Reader | undefined {
 export const REF_SCHEMA = 0, REF_ARRAY = 1, REF_MAP = 2, REF_KEYED = 3;
 
 /**
- * Per-ref decode record, cached on the ref's `$changes` tree
+ * Decode record of a ref's TYPE, referenced from its `$changes` tree
  * (`UntrackedChangeTree.decodeInfo`). One shape for every kind so the loads that
  * follow are monomorphic; a chunk then costs one megamorphic load
  * (`ref[$changes]`) instead of `ref.constructor` + `COLLECTION_KIND` +
- * `ctor[$decodeInfo]` + `ref[$values]` / `ref[$childType]`, and quantized
- * child readers are resolved once per ref instead of once per chunk.
+ * `ctor[$decodeInfo]` + `ref[$childType]`, and quantized child readers are
+ * resolved once per type instead of once per chunk.
  *
- * Holds per-type data and `decodeGen` only, never the instance's own objects
- * (a Schema's `$values` is read from its tree): V8 may pretenure these
- * literals (a per-process lottery, see docs/perf/leads/10-bench-harness.md),
- * and a tenured record outliving its decode keeps whatever young object it
- * points at alive through every scavenge until the next full GC. A `values`
- * field here made ~1 in 5 processes decode a 10k-entity snapshot ~1.6× slower.
+ * Shared, never per instance: one per Schema class (`DecodeInfo.refInfo`) and
+ * one per collection field type (`type[$refInfo]`); the per-instance part
+ * (`decodeGen`) lives on the tree. Only a collection no decode built gets a
+ * record of its own (`attachRefInfo`).
  */
 export interface RefInfo {
     kind: number;
     info: DecodeInfo | undefined;      // Schema
+    ctor: any;                         // collections: the class `createRef` builds
     childType: any;                    // collections
+    keyType: string | undefined;       // `map` fields: the declared key type
     reader: Reader | undefined;        // collections: child reader (`undefined` for ref children)
     keyReader: Reader | undefined;     // MapSchema numeric key reader (`undefined` = string keys)
-    decodeGen: number;                 // `Decoder.decodeGen` of the decode that built the ref (0: not built by a decode)
 }
 
-function buildRefInfo(ref: any): RefInfo {
-    const ctor = ref.constructor;
+const $refInfo = Symbol.for("@colyseus/schema:refInfo");
+
+function schemaRefInfo(ctor: any): RefInfo {
+    const info = getDecodeInfo(ctor);
+    return info.refInfo ??= { kind: REF_SCHEMA, info, ctor: undefined, childType: undefined, keyType: undefined, reader: undefined, keyReader: undefined };
+}
+
+function newCollectionRefInfo(ctor: any, childType: any, keyType: string | undefined): RefInfo {
     const collectionKind = ctor.COLLECTION_KIND;
-    if (collectionKind === undefined) {
-        return { kind: REF_SCHEMA, info: getDecodeInfo(ctor), childType: undefined, reader: undefined, keyReader: undefined, decodeGen: 0 };
-    }
-    const childType = ref[$childType];
     const kind = (collectionKind === CollectionKind.Array) ? REF_ARRAY
         : (collectionKind === CollectionKind.Map) ? REF_MAP : REF_KEYED;
     return {
-        kind, info: undefined, childType,
+        kind, info: undefined, ctor, childType, keyType,
         reader: childReaderOf(childType),
-        keyReader: (kind === REF_MAP) ? keyReaderOf(ref[$keyType]) : undefined,
-        decodeGen: 0,
+        keyReader: (kind === REF_MAP) ? keyReaderOf(keyType) : undefined,
     };
+}
+
+/** The shared record of collection field type `type` (`{ map: X, key?: … }`), built and cached on first use. */
+function cacheCollectionRefInfo(type: any): RefInfo {
+    // the kind is always the type object's first own key
+    let kind = "", childType: any;
+    for (const k in type) { kind = k; childType = type[k]; break; }
+    const ctor = type[$collectionCtor] ?? getType(kind).constructor;
+    const ri = newCollectionRefInfo(ctor, childType, (kind === "map") ? (type.key ?? "string") : undefined);
+    Object.defineProperty(type, $refInfo, { value: ri, enumerable: false, configurable: true, writable: true });
+    return ri;
 }
 
 /** Tiny on purpose (it must inline into the chunk loop): every ref the decoder meets carries a `$changes` tree. */
@@ -95,25 +106,15 @@ export function refInfoOf(ref: any): RefInfo {
     return (ri !== undefined) ? ri : attachRefInfo(ref);
 }
 
-/** Build `ref`'s decode record and cache it on its tree. */
+/** Stamp the record of a ref no decode built (the root) on its tree. */
 function attachRefInfo(ref: any): RefInfo {
     const tree: any = treeOfDecoded(ref);
     // an Encoder took this instance over (it cleared any record): its fields no longer belong to this decoder
     if (tree.root !== undefined) throw new Error("@colyseus/schema: cannot decode into an instance attached to an Encoder (relaying a decoded state is unsupported: decode into a separate state and copy)");
-    const ri = buildRefInfo(ref);
-    // Decoder-built instances carry an `UntrackedChangeTree`, which declares
-    // the slot. A tracked `ChangeTree` does not (it is server-side state and
-    // pays for no decoder field); the rare tracked instance a Decoder decodes
-    // into — the root handed to `new Decoder(state)` — gets the record as a
-    // lazily added property: one map transition on that tree only.
-    tree.decodeInfo = ri;
+    const ctor = ref.constructor;
+    const ri = (ctor.COLLECTION_KIND === undefined) ? schemaRefInfo(ctor) : newCollectionRefInfo(ctor, ref[$childType], ref[$keyType]);
+    tree.decodeInfo = ri; // a tracked tree (the root given to `new Decoder(state)`) gains the slot lazily
     return ri;
-}
-
-/** Collection type object (`{ map: X, key?: … }`): the kind is always its first own key. */
-function setCollectionTypes(value: any, kind: string, type: any, childType: any): void {
-    value[$childType] = childType;
-    if (kind === "map") value[$keyType] = type.key ?? "string";
 }
 
 /**
@@ -139,17 +140,19 @@ function readSlotValue(d: Decoder, reader: Reader | undefined, op: OPERATION, pr
  * gated batch still records its changes (`Decoder.changesFor`).
  */
 function createRef(d: Decoder, type: any, typeId: number | undefined): any {
-    let value: any;
+    let value: any, ri: RefInfo;
     if (Schema.is(type)) {
         value = d.createInstanceOfType((typeId !== undefined ? d.context.get(typeId) : undefined) ?? type);
+        ri = schemaRefInfo(value.constructor);
     } else {
-        // collection: `{ map: X }` / `{ array: X }` … — one key, read without allocating
-        let kind = "", childType: any;
-        for (const k in type) { kind = k; childType = type[k]; break; }
-        value = (type[$collectionCtor] ?? getType(kind).constructor).initializeForDecoder();
-        setCollectionTypes(value, kind, type, childType);
+        ri = type[$refInfo] ?? cacheCollectionRefInfo(type);
+        value = ri.ctor.initializeForDecoder();
+        value[$childType] = ri.childType;
+        if (ri.keyType !== undefined) value[$keyType] = ri.keyType;
     }
-    attachRefInfo(value).decodeGen = d.decodeGen; // fresh: no record yet
+    const tree: any = treeOfDecoded(value);
+    tree.decodeInfo = ri;
+    tree.decodeGen = d.decodeGen;
     return value;
 }
 
@@ -282,7 +285,7 @@ function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator): vo
     d.currentRefId = refId;
     const ri: RefInfo = (tree.decodeInfo !== undefined) ? tree.decodeInfo : refInfoOf(value);
     const kind = ri.kind;
-    const changes = d.gated ? d.changesFor(refId, ri) : d.batch;
+    const changes = d.gated ? d.changesFor(refId, tree.decodeGen) : d.batch;
     if (kind === REF_SCHEMA) decodeSchemaBody(d, bytes, it, value, refId, changes, ri.info!, tree.values);
     else if (kind === REF_ARRAY) decodeArrayBody(d, bytes, it, value, refId, changes, ri);
     else decodeKeyValueBody(d, bytes, it, value, refId, changes, kind === REF_MAP, ri);
@@ -423,9 +426,9 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
         }
         d.currentRefId = id;
         const tree: any = treeOfDecoded(ref);
-        const ri: RefInfo = (tree.decodeInfo !== undefined) ? tree.decodeInfo : refInfoOf(ref);
+        if (tree.decodeInfo === undefined) refInfoOf(ref); // relay guard (the class's info is `info`)
         const values = tree.values;
-        const changes = gated ? d.changesFor(id, ri) : batch;
+        const changes = gated ? d.changesFor(id, tree.decodeGen) : batch;
         while (m !== 0) {
             const bit = m & -m;
             const index = 31 - Math.clz32(bit);
@@ -490,8 +493,7 @@ function decodeMaskedFields(d: Decoder, bytes: Uint8Array, it: Iterator, ref: an
  * (`DELETE_AND_ADD` for the refcount and the callbacks). The key (MapSchema,
  * ADD ops only) is read per the map's key type.
  */
-export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, isMap: boolean, ri?: RefInfo): void {
-    if (ri === undefined) ri = refInfoOf(ref);
+export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, isMap: boolean, ri: RefInfo): void {
     const type = ri.childType;
     const reader = ri.reader;
     const keyReader = ri.keyReader;
@@ -778,8 +780,7 @@ function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref
  * without effect; an op the revision falls inside is applied from that
  * point on.
  */
-export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, ri?: RefInfo): void {
-    if (ri === undefined) ri = refInfoOf(ref);
+export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, ri: RefInfo): void {
     const arr: any[] = ref; // element storage is the instance itself (Array subclass)
     const type = ri.childType;
     const reader = ri.reader;

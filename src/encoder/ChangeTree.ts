@@ -1074,22 +1074,24 @@ export class UntrackedChangeTree {
     root: undefined = undefined;
     parentRef: undefined = undefined;
     rec: undefined = undefined;
-    /**
-     * Decoder-side per-ref record (`DecodeOperation.refInfoOf`): kind, the
-     * class's DecodeInfo and the `$values` array for Schemas, the child /
-     * key readers for collections. Lives here so one `ref[$changes]` load
-     * replaces four megamorphic loads per decoded chunk. Only decoder-built
-     * instances carry the slot: a tracked `ChangeTree` has no decoder
-     * business, so the rare Decoder that decodes into a normally-constructed
-     * instance (the root passed to `new Decoder(state)`) adds the property
-     * to that one tree lazily instead of costing every server-side tree a field.
-     */
-    decodeInfo: unknown = undefined;
     paused: boolean = false;
     isNew: boolean = false;
     flags: number = 0;
     readonly tracking = false;
     readonly isArray = false;
+    /**
+     * Decoder-side record of the ref's type (`DecodeOperation.refInfoOf`):
+     * kind, the class's DecodeInfo, the child / key readers for collections.
+     * Lives here so one `ref[$changes]` load replaces four megamorphic loads
+     * per decoded chunk. Only decoder-built instances carry the slot: a
+     * tracked `ChangeTree` has no decoder business, so the rare Decoder that
+     * decodes into a normally-constructed instance (the root passed to
+     * `new Decoder(state)`) adds the property to that one tree lazily instead
+     * of costing every server-side tree a field.
+     */
+    decodeInfo: unknown = undefined;
+    /** `Decoder.decodeGen` of the decode that built the ref (0: not built by a decode). */
+    decodeGen: number = 0;
     /**
      * Positive stub test: `false` only here (prototype getter, no instance
      * slot). Any other tree — a `ChangeTree`, or one from another library
