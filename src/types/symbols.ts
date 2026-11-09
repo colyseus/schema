@@ -35,6 +35,13 @@ export const $getByIndex = "~getByIndex";
  * that overrides `[$filter]` defines a new, unmarked function.
  */
 export const $filterByChild = "~filterByChild";
+
+/**
+ * Marks a `Decoder.triggerChanges` consumer that dispatches only to refs with
+ * callbacks: `decode()` then skips recording the changes nobody can receive.
+ * On the function itself, so a wrapper (unmarked) gets every change.
+ */
+export const $listenedOnly = "~listenedOnly";
 export const $deleteByIndex = "~deleteByIndex";
 /**
  * Resync-sweep hook (see decoder/Resync.ts): prune every entry the rejoin

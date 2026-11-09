@@ -611,6 +611,108 @@ describe("Callbacks (new API)", () => {
         });
     });
 
+    describe("change recording", () => {
+        class Player extends Schema {
+            @type("number") hp: number;
+        }
+        class State extends Schema {
+            @type({ map: Player }) players = new MapSchema<Player>();
+        }
+
+        it("records changes only for refs with callbacks", () => {
+            const state = new State();
+            state.players.set("a", new Player().assign({ hp: 1 }));
+            state.players.set("b", new Player().assign({ hp: 1 }));
+
+            const decodedState = createInstanceFromReflection(state);
+            const decoder = getDecoder(decodedState);
+            const callbacks = Callbacks.get(decoder);
+            decoder.decode(state.encode());
+
+            const a = decodedState.players.get("a")!;
+            const hps: number[] = [];
+            callbacks.listen(a, "hp", (hp) => hps.push(hp), false);
+
+            state.players.get("a")!.hp = 2;
+            state.players.get("b")!.hp = 2;
+            const changes = decoder.decode(state.encode())!;
+
+            assert.deepStrictEqual(changes.map((c) => c.ref), [a]);
+            assert.deepStrictEqual(hps, [2]);
+            assert.strictEqual(decodedState.players.get("b")!.hp, 2);
+        });
+
+        it("raw changes still record every change", () => {
+            const state = new State();
+            state.players.set("a", new Player().assign({ hp: 1 }));
+
+            const decodedState = createInstanceFromReflection(state);
+            const decoder = getDecoder(decodedState);
+            Callbacks.get(decoder);
+            let raw: any[] = [];
+            Callbacks.getRawChanges(decoder, (changes) => { raw = changes; });
+            decoder.decode(state.encode());
+
+            state.players.get("a")!.hp = 2;
+            decoder.decode(state.encode());
+            assert.deepStrictEqual(raw.map((c) => [c.field, c.value]), [["hp", 2]]);
+        });
+
+        it("a consumer wrapping the strategy's dispatcher records every change", () => {
+            const state = new State();
+            state.players.set("a", new Player().assign({ hp: 1 }));
+
+            const decodedState = createInstanceFromReflection(state);
+            const decoder = getDecoder(decodedState);
+            const callbacks = Callbacks.get(decoder);
+            decoder.decode(state.encode());
+
+            const dispatch = decoder.triggerChanges!;
+            let seen: any[] = [];
+            decoder.triggerChanges = (changes) => { dispatch(changes); seen = changes; };
+
+            const hps: number[] = [];
+            callbacks.listen(decodedState.players.get("a")!, "hp", (hp) => hps.push(hp), false);
+            state.players.get("a")!.hp = 2;
+            state.players.set("b", new Player().assign({ hp: 1 }));
+            decoder.decode(state.encode());
+
+            assert.strictEqual(seen.length, 3); // players ADD, a.hp, b.hp
+            assert.deepStrictEqual(hps, [2]);
+
+            decoder.triggerChanges = dispatch; // unwrapped: unlistened refs skipped again
+            state.players.get("b")!.hp = 2;
+            assert.deepStrictEqual(decoder.decode(state.encode()), []);
+        });
+
+        it("records a later chunk of a ref built earlier in the same decode", () => {
+            class Entity extends Schema {
+                @view() @type("number") secret: number;
+            }
+            class ViewState extends Schema {
+                @type({ map: Entity }) entities = new MapSchema<Entity>();
+            }
+            const state = new ViewState();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            const callbacks = Callbacks.get(client.decoder);
+            encodeMultiple(encoder, state, [client]);
+
+            let changed = 0;
+            callbacks.onAdd("entities", (entity) => {
+                callbacks.onChange(entity, () => changed++);
+            });
+
+            const entity = new Entity().assign({ secret: 5 });
+            state.entities.set("e", entity);
+            client.view.add(entity);
+            encodeMultiple(encoder, state, [client]); // the tagged field arrives in the view's own chunk
+
+            assert.strictEqual(client.state.entities.get("e")!.secret, 5);
+            assert.strictEqual(changed, 1);
+        });
+    });
+
     describe("TypeScript type inference", () => {
         it("should properly infer types from property names", () => {
             class State extends Schema {

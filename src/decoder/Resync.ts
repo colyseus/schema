@@ -33,7 +33,7 @@ import type { DataChange } from "./DecodeOperation.js";
 /**
  * Record that the current structure's entry at `identity` (map string key /
  * element index) appeared in the payload — even when its value is unchanged
- * (`allChanges` cannot serve as this record: its pushes are guarded by
+ * (the change batch cannot serve as this record: its pushes are guarded by
  * `previousValue !== value`, so unchanged entries would look unvisited).
  *
  * Also releases a replaced occupant: full-sync emits plain ADD (never
@@ -51,7 +51,7 @@ export function resyncTouchEntry(
     identity: number | string,
     previousValue: any,
     value: any,
-    allChanges: DataChange[] | null,
+    changes: DataChange[] | null,
 ) {
     const visited = decoder.resyncVisited!;
     let set = visited.get(decoder.currentRefId);
@@ -62,7 +62,7 @@ export function resyncTouchEntry(
         const previousRefId = decodedRefIdOf(previousValue);
         if (previousRefId !== undefined) {
             decoder.root.removeRef(previousRefId);
-            allChanges?.push({
+            changes?.push({
                 ref,
                 refId: decoder.currentRefId,
                 op: OPERATION.DELETE,
@@ -109,7 +109,7 @@ export function resyncMarkPresent(decoder: Decoder, refId: number) {
  * children); and collections the snapshot never mentions (emptied
  * server-side) are still reachable and get pruned.
  */
-export function resyncSweep(decoder: Decoder, allChanges: DataChange[] | null) {
+export function resyncSweep(decoder: Decoder, changes: DataChange[] | null) {
     if (decoder.resyncDamaged) {
         console.warn(
             "@colyseus/schema: resync sweep skipped — parts of the payload could not be decoded. " +
@@ -117,10 +117,10 @@ export function resyncSweep(decoder: Decoder, allChanges: DataChange[] | null) {
         );
         return;
     }
-    sweepSchema(decoder, decoder.state as unknown as Schema, new Set(), allChanges);
+    sweepSchema(decoder, decoder.state as unknown as Schema, new Set(), changes);
 }
 
-function sweepSchema(decoder: Decoder, ref: Schema, seen: Set<number>, allChanges: DataChange[] | null) {
+function sweepSchema(decoder: Decoder, ref: Schema, seen: Set<number>, changes: DataChange[] | null) {
     const refId = decodedRefIdOf(ref);
     if (refId === undefined || seen.has(refId)) { return; }
     seen.add(refId);
@@ -140,14 +140,14 @@ function sweepSchema(decoder: Decoder, ref: Schema, seen: Set<number>, allChange
         if (!value) { continue; }
 
         if (Schema.is(field.type)) {
-            sweepSchema(decoder, value, seen, allChanges);
+            sweepSchema(decoder, value, seen, changes);
         } else {
-            sweepCollection(decoder, value, seen, allChanges);
+            sweepCollection(decoder, value, seen, changes);
         }
     }
 }
 
-function sweepCollection(decoder: Decoder, coll: any, seen: Set<number>, allChanges: DataChange[] | null) {
+function sweepCollection(decoder: Decoder, coll: any, seen: Set<number>, changes: DataChange[] | null) {
     const tgt: any = coll[$proxyTarget] ?? coll;
     const refId = decodedRefIdOf(tgt);
     if (refId === undefined || seen.has(refId)) { return; }
@@ -164,7 +164,7 @@ function sweepCollection(decoder: Decoder, coll: any, seen: Set<number>, allChan
     tgt[$resyncPrune](
         visited,
         (value: any, identity: number | string) => {
-            allChanges?.push({
+            changes?.push({
                 ref: coll,
                 refId,
                 op: OPERATION.DELETE,
@@ -177,7 +177,7 @@ function sweepCollection(decoder: Decoder, coll: any, seen: Set<number>, allChan
         },
         (value: any) => {
             // recurse so nested collections of retained entries sweep too
-            if (Schema.isSchema(value)) { sweepSchema(decoder, value, seen, allChanges); }
+            if (Schema.isSchema(value)) { sweepSchema(decoder, value, seen, changes); }
         },
     );
 }

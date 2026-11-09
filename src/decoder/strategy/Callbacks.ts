@@ -6,7 +6,7 @@ import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { Schema } from "../../Schema.js";
-import { } from "../../types/symbols.js";
+import { $listenedOnly } from "../../types/symbols.js";
 import { MapSchema } from "../../types/custom/MapSchema.js";
 import { ArraySchema } from "../../types/custom/ArraySchema.js";
 import { getDecoderStateCallbacks, type SchemaCallbackProxy } from "./getDecoderStateCallbacks.js";
@@ -55,7 +55,9 @@ export class StateCallbackStrategy<TState extends IRef> {
 
     constructor(decoder: Decoder<TState>) {
         this.decoder = decoder;
-        this.decoder.triggerChanges = this.triggerChanges.bind(this);
+        const dispatch: any = this.triggerChanges.bind(this);
+        dispatch[$listenedOnly] = true;
+        decoder.triggerChanges = dispatch;
     }
 
     protected get callbacks() {

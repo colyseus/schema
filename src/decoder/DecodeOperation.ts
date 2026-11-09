@@ -63,13 +63,14 @@ export interface RefInfo {
     childType: any;                    // collections
     reader: Reader | undefined;        // collections: child reader (`undefined` for ref children)
     keyReader: Reader | undefined;     // MapSchema numeric key reader (`undefined` = string keys)
+    decodeGen: number;                 // `Decoder.decodeGen` of the decode that built the ref (0: not built by a decode)
 }
 
 function buildRefInfo(ref: any): RefInfo {
     const ctor = ref.constructor;
     const collectionKind = ctor.COLLECTION_KIND;
     if (collectionKind === undefined) {
-        return { kind: REF_SCHEMA, info: getDecodeInfo(ctor), values: ref[$values], childType: undefined, reader: undefined, keyReader: undefined };
+        return { kind: REF_SCHEMA, info: getDecodeInfo(ctor), values: ref[$values], childType: undefined, reader: undefined, keyReader: undefined, decodeGen: 0 };
     }
     const childType = ref[$childType];
     const kind = (collectionKind === CollectionKind.Array) ? REF_ARRAY
@@ -78,6 +79,7 @@ function buildRefInfo(ref: any): RefInfo {
         kind, info: undefined, values: undefined, childType,
         reader: childReaderOf(childType),
         keyReader: (kind === REF_MAP) ? keyReaderOf(ref[$keyType]) : undefined,
+        decodeGen: 0,
     };
 }
 
@@ -114,14 +116,34 @@ function setCollectionTypes(value: any, kind: string, type: any, childType: any)
  */
 let lastHeader = 0;
 
-function readSlotValue(d: Decoder, reader: Reader | undefined, op: OPERATION, previousValue: any, type: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): any {
+function readSlotValue(d: Decoder, reader: Reader | undefined, op: OPERATION, previousValue: any, type: any, bytes: Uint8Array, it: Iterator): any {
     if (reader !== undefined) {
         lastHeader = 0;
         return reader(bytes, it);
     }
     const header = readUvarint(bytes, it);
     lastHeader = header;
-    return resolveRef(d, header, op, previousValue, type, bytes, it, allChanges);
+    return resolveRef(d, header, op, previousValue, type, bytes, it);
+}
+
+/**
+ * A new decoder instance for a ref header of declared `type` (`typeId`: the
+ * header's concrete class, if any), stamped with the current decode so a
+ * gated batch still records its changes (`Decoder.changesFor`).
+ */
+function createRef(d: Decoder, type: any, typeId: number | undefined): any {
+    let value: any;
+    if (Schema.is(type)) {
+        value = d.createInstanceOfType((typeId !== undefined ? d.context.get(typeId) : undefined) ?? type);
+    } else {
+        // collection: `{ map: X }` / `{ array: X }` … — one key, read without allocating
+        let kind = "", childType: any;
+        for (const k in type) { kind = k; childType = type[k]; break; }
+        value = (type[$collectionCtor] ?? getType(kind).constructor).initializeForDecoder();
+        setCollectionTypes(value, kind, type, childType);
+    }
+    refInfoOf(value).decodeGen = d.decodeGen;
+    return value;
 }
 
 /** `refId` from a ref header; refIds stay far below 2^29 so the shift is exact. */
@@ -143,7 +165,6 @@ function resolveRef(
     type: any,
     bytes: Uint8Array,
     it: Iterator,
-    allChanges: DataChange[] | null,
 ): any {
     const $root = d.root;
     const refId = refIdOf(header);
@@ -152,10 +173,7 @@ function resolveRef(
     if (Schema.is(type)) {
         let value = $root.getRef(refId);
         if ((op & OPERATION.ADD) === OPERATION.ADD) {
-            if (value === undefined) {
-                const childType = (typeId !== undefined ? d.context.get(typeId) : undefined) ?? type;
-                value = d.createInstanceOfType(childType);
-            }
+            if (value === undefined) value = createRef(d, type, typeId);
             $root.addRef(refId, value, (
                 value !== previousValue ||
                 (op === OPERATION.DELETE_AND_ADD && value === previousValue)
@@ -164,17 +182,10 @@ function resolveRef(
         return value;
     }
 
-    // collection: `{ map: X }` / `{ array: X }` … — one key, read without allocating
-    let kind: string = "";
-    let childType: any;
-    for (const k in type) { kind = k; childType = type[k]; break; }
     if (d.resyncVisited !== null) resyncMarkPresent(d, refId);
 
     let value: any = $root.getRef(refId);
-    if (value === undefined) {
-        value = (type[$collectionCtor] ?? getType(kind).constructor).initializeForDecoder();
-        setCollectionTypes(value, kind, type, childType);
-    }
+    if (value === undefined) value = createRef(d, type, typeId);
 
     if (previousValue) {
         let previousRefId = refIdOfValue(previousValue);
@@ -190,7 +201,7 @@ function resolveRef(
             while ((iter = entries.next()) && !iter.done) {
                 const [key, v] = iter.value;
                 if (typeof v === "object") previousRefId = refIdOfValue(v);
-                allChanges?.push({ ref: previousValue, refId: previousRefId, op: OPERATION.DELETE, field: key, value: undefined, previousValue: v });
+                d.batch?.push({ ref: previousValue, refId: previousRefId, op: OPERATION.DELETE, field: key, value: undefined, previousValue: v });
             }
         }
     }
@@ -206,30 +217,23 @@ function resolveRef(
  * Consume a ref value the client already holds (an array op its revision
  * covers): no refcount change, but an inline body still merges.
  */
-function consumeRefValue(d: Decoder, header: number, type: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): void {
+function consumeRefValue(d: Decoder, header: number, type: any, bytes: Uint8Array, it: Iterator): void {
     const $root = d.root;
     const refId = refIdOf(header);
     const typeId = (header & REF_HAS_TYPE) ? readUvarint(bytes, it) : undefined;
     let value = $root.getRef(refId);
     if (value === undefined) {
         // not held after all (should not happen): create it without a count
-        if (Schema.is(type)) {
-            value = d.createInstanceOfType((typeId !== undefined ? d.context.get(typeId) : undefined) ?? type);
-        } else {
-            let kind = "", childType: any;
-            for (const k in type) { kind = k; childType = type[k]; break; }
-            value = (type[$collectionCtor] ?? getType(kind).constructor).initializeForDecoder();
-            setCollectionTypes(value, kind, type, childType);
-        }
+        value = createRef(d, type, typeId);
         $root.addRef(refId, value, false);
     }
-    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
 }
 
 /** Read a value the client already holds: primitives are discarded, refs consumed. */
-function skipValue(d: Decoder, reader: Reader | undefined, type: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): void {
+function skipValue(d: Decoder, reader: Reader | undefined, type: any, bytes: Uint8Array, it: Iterator): void {
     if (reader !== undefined) { reader(bytes, it); return; }
-    consumeRefValue(d, readUvarint(bytes, it), type, bytes, it, allChanges);
+    consumeRefValue(d, readUvarint(bytes, it), type, bytes, it);
 }
 
 /**
@@ -239,10 +243,10 @@ function skipValue(d: Decoder, reader: Reader | undefined, type: any, bytes: Uin
  * `resolveRef` returns, so a nested decode cannot clobber it.
  */
 let elementHeader = 0;
-function readElement(d: Decoder, reader: Reader | undefined, type: any, previousValue: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): any {
+function readElement(d: Decoder, reader: Reader | undefined, type: any, previousValue: any, bytes: Uint8Array, it: Iterator): any {
     if (reader !== undefined) { elementHeader = 0; return reader(bytes, it); }
     const header = readUvarint(bytes, it);
-    const value = resolveRef(d, header, OPERATION.ADD, previousValue, type, bytes, it, allChanges);
+    const value = resolveRef(d, header, OPERATION.ADD, previousValue, type, bytes, it);
     elementHeader = header;
     return value;
 }
@@ -264,16 +268,17 @@ function fieldAt(info: DecodeInfo, index: number, ref: any): any {
 }
 
 /** Decode an inline body into `value` (kind-dispatched). Restores `currentRefId` afterwards. */
-function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): void {
+function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator): void {
     const saved = d.currentRefId;
     const tree: any = treeOfDecoded(value); // one load serves both the refId and the decode record
     const refId: number = tree.refId;
     d.currentRefId = refId;
     const ri: RefInfo = (tree.decodeInfo !== undefined) ? tree.decodeInfo : refInfoOf(value);
     const kind = ri.kind;
-    if (kind === REF_SCHEMA) decodeSchemaBody(d, bytes, it, value, refId, allChanges, ri);
-    else if (kind === REF_ARRAY) decodeArrayBody(d, bytes, it, value, refId, allChanges, ri);
-    else decodeKeyValueBody(d, bytes, it, value, refId, allChanges, kind === REF_MAP, ri);
+    const changes = d.gated ? d.changesFor(refId, ri) : d.batch;
+    if (kind === REF_SCHEMA) decodeSchemaBody(d, bytes, it, value, refId, changes, ri);
+    else if (kind === REF_ARRAY) decodeArrayBody(d, bytes, it, value, refId, changes, ri);
+    else decodeKeyValueBody(d, bytes, it, value, refId, changes, kind === REF_MAP, ri);
     d.currentRefId = saved;
 }
 
@@ -281,7 +286,7 @@ function decodeBody(d: Decoder, value: any, bytes: Uint8Array, it: Iterator, all
 
 function decodeSchemaSlot(
     d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number,
-    info: DecodeInfo, values: any[] | undefined, index: number, field: any, op: OPERATION, allChanges: DataChange[] | null,
+    info: DecodeInfo, values: any[] | undefined, index: number, field: any, op: OPERATION, changes: DataChange[] | null,
 ): void {
     // Primitive slot behind the generated accessor: read/write the backing
     // array directly. Equivalent to `ref[name]` (getter = `values[index]`;
@@ -298,7 +303,7 @@ function decodeSchemaSlot(
             if (value !== null && value !== undefined) values[index] = value;
         }
         if (previousValue !== value) {
-            allChanges?.push({ ref, refId, op, field: field.name, value, previousValue });
+            changes?.push({ ref, refId, op, field: field.name, value, previousValue });
         }
         return;
     }
@@ -314,13 +319,13 @@ function decodeSchemaSlot(
 
     let header = 0;
     if (op !== OPERATION.DELETE) {
-        value = readSlotValue(d, info.readers[index], op, previousValue, field.type, bytes, it, allChanges);
+        value = readSlotValue(d, info.readers[index], op, previousValue, field.type, bytes, it);
         header = lastHeader;
     }
 
     if (isDeprecated) {
         // bytes consumed, nothing written or reported
-        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
         return;
     }
 
@@ -329,11 +334,11 @@ function decodeSchemaSlot(
     }
 
     if (previousValue !== value) {
-        allChanges?.push({ ref, refId, op, field: field.name, value, previousValue });
+        changes?.push({ ref, refId, op, field: field.name, value, previousValue });
     }
 
     // body AFTER the slot's change: `listen()` registered inside onAdd relies on preorder
-    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
 }
 
 /** LEB128-shaped 64-bit mask (7 bits per group); returns the low 32 bits, the high 32 land in `lastMaskHigh`. */
@@ -364,7 +369,7 @@ function readMask64(bytes: Uint8Array, it: Iterator): number {
  * not know is consumed (its values are skipped) — the class table tells the
  * sizes. Returns the last member's refId (the running base for the next chunk).
  */
-export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, refId: number, allChanges: DataChange[] | null): number {
+export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, refId: number): number {
     const typeId = readUvarint(bytes, it);
     const ctor: any = d.context.get(typeId);
     if (ctor === undefined) {
@@ -378,6 +383,8 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
     if (lastMaskHigh !== 0) throw new ChunkMismatch(); // runs only carry fields 0–31
     const extra = readUvarint(bytes, it);
     const $root = d.root;
+    const batch = d.batch;
+    const gated = d.gated;
     let id = refId;
     for (let k = 0; k <= extra; k++) {
         if (k > 0) {
@@ -400,30 +407,32 @@ export function decodeRun(d: Decoder, bytes: Uint8Array, it: Iterator, end: numb
             continue;
         }
         d.currentRefId = id;
-        const values = refInfoOf(ref).values;
+        const ri = refInfoOf(ref);
+        const values = ri.values;
+        const changes = gated ? d.changesFor(id, ri) : batch;
         while (m !== 0) {
             const bit = m & -m;
             const index = 31 - Math.clz32(bit);
             m ^= bit;
             if (info.readers[index] === undefined) throw new ChunkMismatch();
-            decodeSchemaSlot(d, bytes, it, ref, id, info, values, index, fieldAt(info, index, ref), OPERATION.ADD, allChanges);
+            decodeSchemaSlot(d, bytes, it, ref, id, info, values, index, fieldAt(info, index, ref), OPERATION.ADD, changes);
         }
     }
     return id;
 }
 
-export function decodeSchemaOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, allChanges: DataChange[] | null, ri?: RefInfo): void {
+export function decodeSchemaOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, ri?: RefInfo): void {
     if (ri === undefined) ri = refInfoOf(ref);
     const info = ri.info!;
     const values = ri.values;
     while (it.offset < end) {
         const h = readUvarint(bytes, it);
         const index = h >>> 2;
-        decodeSchemaSlot(d, bytes, it, ref, refId, info, values, index, fieldAt(info, index, ref), ((h & 3) << 6) as OPERATION, allChanges);
+        decodeSchemaSlot(d, bytes, it, ref, refId, info, values, index, fieldAt(info, index, ref), ((h & 3) << 6) as OPERATION, changes);
     }
 }
 
-function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, allChanges: DataChange[] | null, ri: RefInfo): void {
+function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, changes: DataChange[] | null, ri: RefInfo): void {
     const info = ri.info!;
     const values = ri.values;
 
@@ -442,16 +451,16 @@ function decodeSchemaBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any,
         if ((b & 0x80) === 0 || ++group > 9 || it.offset >= bytes.byteLength) break;
     }
 
-    decodeMaskedFields(d, bytes, it, ref, refId, info, values, low, 0, allChanges);
-    decodeMaskedFields(d, bytes, it, ref, refId, info, values, high, 32, allChanges);
+    decodeMaskedFields(d, bytes, it, ref, refId, info, values, low, 0, changes);
+    decodeMaskedFields(d, bytes, it, ref, refId, info, values, high, 32, changes);
 }
 
-function decodeMaskedFields(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, info: DecodeInfo, values: any[] | undefined, mask: number, base: number, allChanges: DataChange[] | null): void {
+function decodeMaskedFields(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, info: DecodeInfo, values: any[] | undefined, mask: number, base: number, changes: DataChange[] | null): void {
     while (mask !== 0) {
         const bit = mask & -mask;
         const index = base + 31 - Math.clz32(bit);
         mask ^= bit;
-        decodeSchemaSlot(d, bytes, it, ref, refId, info, values, index, fieldAt(info, index, ref), OPERATION.ADD, allChanges);
+        decodeSchemaSlot(d, bytes, it, ref, refId, info, values, index, fieldAt(info, index, ref), OPERATION.ADD, changes);
     }
 }
 
@@ -464,7 +473,7 @@ function decodeMaskedFields(d: Decoder, bytes: Uint8Array, it: Iterator, ref: an
  * (`DELETE_AND_ADD` for the refcount and the callbacks). The key (MapSchema,
  * ADD ops only) is read per the map's key type.
  */
-export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, allChanges: DataChange[] | null, isMap: boolean, ri?: RefInfo): void {
+export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, isMap: boolean, ri?: RefInfo): void {
     if (ri === undefined) ri = refInfoOf(ref);
     const type = ri.childType;
     const reader = ri.reader;
@@ -475,7 +484,7 @@ export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, e
         const code = h & 3;
 
         if (code === KEYED_OP.CLEAR) {
-            d.removeChildRefs(ref, allChanges);
+            d.removeChildRefs(ref, changes);
             ref.clear();
             continue;
         }
@@ -503,7 +512,7 @@ export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, e
             releaseSlot(d, ref, index, operation, previousValue);
             value = undefined;
         } else {
-            value = readSlotValue(d, reader, operation, previousValue, type, bytes, it, allChanges);
+            value = readSlotValue(d, reader, operation, previousValue, type, bytes, it);
             header = lastHeader;
             if (operation === OPERATION.ADD && previousValue !== undefined && previousValue !== value) {
                 // ADD onto an occupied slot: the entry was replaced (or removed
@@ -517,16 +526,16 @@ export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, e
         }
 
         if (d.resyncVisited !== null) {
-            resyncTouchEntry(d, ref, operation, dynamicIndex, previousValue, value, allChanges);
+            resyncTouchEntry(d, ref, operation, dynamicIndex, previousValue, value, changes);
         }
 
         if (value !== null && value !== undefined) storeKeyValue(ref, isMap, index, dynamicIndex, value);
 
         if (previousValue !== value) {
-            allChanges?.push({ ref, refId, op: operation, dynamicIndex, value, previousValue });
+            changes?.push({ ref, refId, op: operation, dynamicIndex, value, previousValue });
         }
 
-        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
     }
 }
 
@@ -572,7 +581,7 @@ function replaceKeyedSlot(d: Decoder, previousValue: any, type: any): OPERATION 
     return OPERATION.DELETE_AND_ADD;
 }
 
-function decodeKeyValueBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, allChanges: DataChange[] | null, isMap: boolean, ri: RefInfo): void {
+function decodeKeyValueBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, changes: DataChange[] | null, isMap: boolean, ri: RefInfo): void {
     const type = ri.childType;
     const reader = ri.reader;
     const keyReader = ri.keyReader;
@@ -586,49 +595,49 @@ function decodeKeyValueBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: an
             ref.indexByKey.set(dynamicIndex, index);
         }
         const previousValue = ref.$items.get(dynamicIndex);
-        const value = readSlotValue(d, reader, OPERATION.ADD, previousValue, type, bytes, it, allChanges);
+        const value = readSlotValue(d, reader, OPERATION.ADD, previousValue, type, bytes, it);
         const header = lastHeader;
         const operation = (previousValue !== undefined && previousValue !== value)
             ? replaceKeyedSlot(d, previousValue, type) // occupied slot replaced, as in decodeKeyValueOps
             : OPERATION.ADD;
         if (d.resyncVisited !== null) {
-            resyncTouchEntry(d, ref, operation, dynamicIndex, previousValue, value, allChanges);
+            resyncTouchEntry(d, ref, operation, dynamicIndex, previousValue, value, changes);
         }
         if (value !== null && value !== undefined) storeKeyValue(ref, isMap, index, dynamicIndex, value);
         if (previousValue !== value) {
-            allChanges?.push({ ref, refId, op: operation, dynamicIndex, value, previousValue });
+            changes?.push({ ref, refId, op: operation, dynamicIndex, value, previousValue });
         }
-        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
     }
 }
 
 // ── Array ───────────────────────────────────────────────────────────────
 
 /** REPLACE per slot whose occupant changed between `before` and the array's current content (reorders). */
-function reportMoved(arr: any[], before: any[], ref: any, refId: number, allChanges: DataChange[]): void {
+function reportMoved(arr: any[], before: any[], ref: any, refId: number, changes: DataChange[]): void {
     for (let k = 0, len = arr.length; k < len; k++) {
         if (arr[k] !== before[k]) {
-            allChanges.push({ ref, refId, op: OPERATION.REPLACE, dynamicIndex: k, value: arr[k], previousValue: before[k] });
+            changes.push({ ref, refId, op: OPERATION.REPLACE, dynamicIndex: k, value: arr[k], previousValue: before[k] });
         }
     }
 }
 
 /** Remove `count` elements at `index`: DELETE per element (pre-removal positions), refs released. */
-function removeRange(d: Decoder, arr: any[], index: number, count: number, ref: any, refId: number, allChanges: DataChange[] | null): void {
+function removeRange(d: Decoder, arr: any[], index: number, count: number, ref: any, refId: number, changes: DataChange[] | null): void {
     for (let j = 0; j < count; j++) {
         const previousValue = arr[index + j];
         const childRefId = refIdOfValue(previousValue);
         if (childRefId !== undefined) d.root.removeRef(childRefId);
-        allChanges?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: index + j, value: undefined, previousValue });
+        changes?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: index + j, value: undefined, previousValue });
     }
     arrRemove(arr, index, count);
 }
 
 /** Append one decoded value (already refcounted) and report ADD. */
-function appendValue(arr: any[], value: any, ref: any, refId: number, allChanges: DataChange[] | null): void {
+function appendValue(arr: any[], value: any, ref: any, refId: number, changes: DataChange[] | null): void {
     const index = arr.length;
     arr[index] = value;
-    allChanges?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex: index, value, previousValue: undefined });
+    changes?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex: index, value, previousValue: undefined });
 }
 
 /**
@@ -641,7 +650,7 @@ function appendValue(arr: any[], value: any, ref: any, refId: number, allChanges
  * is consumed without effect). Identity form (filtered arrays): merge —
  * known refs keep their position, unknown ones append.
  */
-function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref: any, refId: number, allChanges: DataChange[] | null, head: number, ri: RefInfo): void {
+function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref: any, refId: number, changes: DataChange[] | null, head: number, ri: RefInfo): void {
     const type = ri.childType;
     const reader = ri.reader;
     const $root = d.root;
@@ -656,14 +665,14 @@ function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref
             let index = (existing !== undefined) ? arrIndexOf(arr, existing) : -1;
             let value: any;
             if (index === -1) {
-                value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it, allChanges);
+                value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it);
                 index = arr.length;
-                appendValue(arr, value, ref, refId, allChanges);
+                appendValue(arr, value, ref, refId, changes);
             } else {
-                value = resolveRef(d, header, OPERATION.ADD, existing, type, bytes, it, allChanges);
+                value = resolveRef(d, header, OPERATION.ADD, existing, type, bytes, it);
             }
             if (resync) resyncRecordVisit(d, -1 - refIdOf(header));
-            if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+            if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
         }
         return;
     }
@@ -672,7 +681,7 @@ function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref
     const rev: number = ref[$rev] ?? 0;
     if (rev >= restateRev && !(rev === 0 && restateRev === 0)) {
         // already at (or past) this revision: consume without applying
-        for (let i = 0; i < count; i++) skipValue(d, reader, type, bytes, it, allChanges);
+        for (let i = 0; i < count; i++) skipValue(d, reader, type, bytes, it);
         if (resync) for (let i = 0, len = arr.length; i < len; i++) resyncRecordVisit(d, i);
         return;
     }
@@ -687,20 +696,20 @@ function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref
                 value = reader(bytes, it);
             } else {
                 header = readUvarint(bytes, it);
-                value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it, allChanges);
+                value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it);
             }
             if (resync) resyncRecordVisit(d, i);
             if (previousValue !== value) {
                 arr[i] = value;
-                allChanges?.push({
+                changes?.push({
                     ref, refId,
                     op: (previousValue === undefined) ? OPERATION.ADD : OPERATION.REPLACE,
                     dynamicIndex: i, value, previousValue,
                 });
             }
-            if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+            if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
         }
-        if (arr.length > count) removeRange(d, arr, count, arr.length - count, ref, refId, allChanges);
+        if (arr.length > count) removeRange(d, arr, count, arr.length - count, ref, refId, changes);
         ref[$rev] = restateRev;
         return;
     }
@@ -716,29 +725,29 @@ function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref
         const header = readUvarint(bytes, it);
         const existing = $root.getRef(refIdOf(header));
         const survivor = (existing !== undefined && oldSet.has(existing)) ? existing : undefined;
-        const value = resolveRef(d, header, OPERATION.ADD, survivor, type, bytes, it, allChanges);
+        const value = resolveRef(d, header, OPERATION.ADD, survivor, type, bytes, it);
         after[i] = value;
         newSet.add(value);
         if (resync) resyncRecordVisit(d, i);
         if (survivor === undefined) {
-            allChanges?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex: i, value, previousValue: undefined });
+            changes?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex: i, value, previousValue: undefined });
         }
-        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+        if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
     }
     for (let i = 0; i < before.length; i++) {
         const previousValue = before[i];
         if (newSet.has(previousValue)) continue;
         const previousRefId = refIdOfValue(previousValue);
         if (previousRefId !== undefined) $root.removeRef(previousRefId);
-        allChanges?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: i, value: undefined, previousValue });
+        changes?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: i, value: undefined, previousValue });
     }
     arr.length = count;
     for (let i = 0; i < count; i++) {
         const value = after[i];
         const previousValue = before[i];
         arr[i] = value;
-        if (allChanges !== null && previousValue !== undefined && previousValue !== value && oldSet.has(value) && newSet.has(previousValue)) {
-            allChanges.push({ ref, refId, op: OPERATION.REPLACE, dynamicIndex: i, value, previousValue }); // a survivor moved here
+        if (changes !== null && previousValue !== undefined && previousValue !== value && oldSet.has(value) && newSet.has(previousValue)) {
+            changes.push({ ref, refId, op: OPERATION.REPLACE, dynamicIndex: i, value, previousValue }); // a survivor moved here
         }
     }
     ref[$rev] = restateRev;
@@ -752,7 +761,7 @@ function applyRestate(d: Decoder, bytes: Uint8Array, it: Iterator, arr: any, ref
  * without effect; an op the revision falls inside is applied from that
  * point on.
  */
-export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, allChanges: DataChange[] | null, ri?: RefInfo): void {
+export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end: number, ref: any, refId: number, changes: DataChange[] | null, ri?: RefInfo): void {
     if (ri === undefined) ri = refInfoOf(ref);
     const arr: any[] = ref; // element storage is the instance itself (Array subclass)
     const type = ri.childType;
@@ -774,12 +783,12 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
                 let skip = rev - seq;
                 if (skip < 0) skip = 0; else if (skip > n) skip = n;
                 for (let i = 0; i < n; i++) {
-                    if (i < skip) { skipValue(d, reader, type, bytes, it, allChanges); continue; }
-                    const value = readElement(d, reader, type, undefined, bytes, it, allChanges);
+                    if (i < skip) { skipValue(d, reader, type, bytes, it); continue; }
+                    const value = readElement(d, reader, type, undefined, bytes, it);
                     const header = elementHeader;
                     if (resync) resyncRecordVisit(d, arr.length);
-                    appendValue(arr, value, ref, refId, allChanges);
-                    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+                    appendValue(arr, value, ref, refId, changes);
+                    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
                 }
                 seq += n;
                 break;
@@ -790,14 +799,14 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
                 let skip = rev - seq;
                 if (skip < 0) skip = 0; else if (skip > n) skip = n;
                 for (let i = 0; i < n; i++) {
-                    if (i < skip) { skipValue(d, reader, type, bytes, it, allChanges); continue; }
-                    const value = readElement(d, reader, type, undefined, bytes, it, allChanges);
+                    if (i < skip) { skipValue(d, reader, type, bytes, it); continue; }
+                    const value = readElement(d, reader, type, undefined, bytes, it);
                     const header = elementHeader;
                     const at = index + i;
                     arrInsertOne(arr, at, value);
                     if (resync) resyncRecordVisit(d, at);
-                    allChanges?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex: at, value, previousValue: undefined });
-                    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+                    changes?.push({ ref, refId, op: OPERATION.ADD, dynamicIndex: at, value, previousValue: undefined });
+                    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
                 }
                 seq += n;
                 break;
@@ -805,23 +814,23 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
             case ARRAY_OP.SET: {
                 const index = arg;
                 if (rev > seq) {
-                    skipValue(d, reader, type, bytes, it, allChanges);
+                    skipValue(d, reader, type, bytes, it);
                 } else {
                     const previousValue = arr[index];
-                    const value = readElement(d, reader, type, previousValue, bytes, it, allChanges);
+                    const value = readElement(d, reader, type, previousValue, bytes, it);
                     const header = elementHeader;
                     if (resync) resyncRecordVisit(d, index);
                     if (previousValue !== value) {
                         const previousRefId = refIdOfValue(previousValue);
                         if (previousRefId !== undefined) $root.removeRef(previousRefId);
                         arr[index] = value;
-                        allChanges?.push({
+                        changes?.push({
                             ref, refId,
                             op: (previousRefId !== undefined) ? OPERATION.DELETE_AND_ADD : OPERATION.REPLACE,
                             dynamicIndex: index, value, previousValue,
                         });
                     }
-                    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+                    if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
                 }
                 seq += 1;
                 break;
@@ -831,15 +840,15 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
                 const n = readUvarint(bytes, it);
                 let skip = rev - seq;
                 if (skip < 0) skip = 0; else if (skip > n) skip = n;
-                if (n - skip > 0) removeRange(d, arr, index, n - skip, ref, refId, allChanges);
+                if (n - skip > 0) removeRange(d, arr, index, n - skip, ref, refId, changes);
                 seq += n;
                 break;
             }
             case ARRAY_OP.REVERSE: {
                 if (rev <= seq && arr.length > 1) {
-                    const before = (allChanges !== null) ? arrCopy(arr) : undefined;
+                    const before = (changes !== null) ? arrCopy(arr) : undefined;
                     arrReverse(arr);
-                    if (before !== undefined) reportMoved(arr, before, ref, refId, allChanges!);
+                    if (before !== undefined) reportMoved(arr, before, ref, refId, changes!);
                 }
                 seq += 1;
                 break;
@@ -849,7 +858,7 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
                 if (rev <= seq) {
                     const before = arrCopy(arr);
                     for (let k = 0; k < n; k++) arr[k] = before[readUvarint(bytes, it)];
-                    if (allChanges !== null) reportMoved(arr, before, ref, refId, allChanges);
+                    if (changes !== null) reportMoved(arr, before, ref, refId, changes);
                 } else {
                     for (let k = 0; k < n; k++) readUvarint(bytes, it);
                 }
@@ -858,14 +867,14 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
             }
             case ARRAY_OP.CLEAR: {
                 if (rev <= seq) {
-                    d.removeChildRefs(ref, allChanges);
+                    d.removeChildRefs(ref, changes);
                     arr.length = 0;
                 }
                 seq += 1;
                 break;
             }
             case ARRAY_OP.RESTATE: {
-                applyRestate(d, bytes, it, arr, ref, refId, allChanges, arg, ri);
+                applyRestate(d, bytes, it, arr, ref, refId, changes, arg, ri);
                 const restated: number = ref[$rev] ?? 0;
                 if (restated > seq) seq = restated;
                 rev = restated;
@@ -878,13 +887,13 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
                 let index = (existing !== undefined) ? arrIndexOf(arr, existing) : -1;
                 let value: any;
                 if (index === -1) {
-                    value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it, allChanges);
-                    appendValue(arr, value, ref, refId, allChanges);
+                    value = resolveRef(d, header, OPERATION.ADD, undefined, type, bytes, it);
+                    appendValue(arr, value, ref, refId, changes);
                 } else {
-                    value = resolveRef(d, header, OPERATION.ADD, existing, type, bytes, it, allChanges);
+                    value = resolveRef(d, header, OPERATION.ADD, existing, type, bytes, it);
                 }
                 if (resync) resyncRecordVisit(d, -1 - refIdOf(header));
-                if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it, allChanges);
+                if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
                 break;
             }
             case ARRAY_OP.DELETE_REF: {
@@ -897,7 +906,7 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
                 const index = arrIndexOf(arr, previousValue);
                 if (index === -1) break;
                 arrRemove(arr, index, 1);
-                allChanges?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: index, value: undefined, previousValue });
+                changes?.push({ ref, refId, op: OPERATION.DELETE, dynamicIndex: index, value: undefined, previousValue });
                 break;
             }
             case ARRAY_OP.BASE: {
@@ -914,7 +923,7 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
     ref[$rev] = rev;
 }
 
-function decodeArrayBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, allChanges: DataChange[] | null, ri: RefInfo): void {
+function decodeArrayBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: any, refId: number, changes: DataChange[] | null, ri: RefInfo): void {
     const arr: any[] = ref;
-    applyRestate(d, bytes, it, arr, ref, refId, allChanges, readUvarint(bytes, it), ri);
+    applyRestate(d, bytes, it, arr, ref, refId, changes, readUvarint(bytes, it), ri);
 }

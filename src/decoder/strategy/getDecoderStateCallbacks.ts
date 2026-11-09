@@ -5,7 +5,7 @@ import { Decoder } from "../Decoder.js";
 import { DataChange } from "../DecodeOperation.js";
 import { OPERATION } from "../../encoding/spec.js";
 import { Schema } from "../../Schema.js";
-import { } from "../../types/symbols.js";
+import { $listenedOnly } from "../../types/symbols.js";
 import type { DefinitionType } from "../../annotations.js";
 import type { CollectionSchema } from "../../types/custom/CollectionSchema.js";
 
@@ -139,7 +139,7 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
         return false;
     };
 
-    decoder.triggerChanges = function (allChanges: DataChange[]) {
+    const dispatch: any = function (allChanges: DataChange[]) {
         const uniqueRefIds = new Set<number>();
         currentBatch = allChanges;
 
@@ -251,6 +251,8 @@ export function getDecoderStateCallbacks<T extends Schema>(decoder: Decoder<T>):
         }
         currentBatch = null;
     };
+    dispatch[$listenedOnly] = true;
+    decoder.triggerChanges = dispatch;
 
     function getProxy(
         metadataOrType: Metadata | DefinitionType,

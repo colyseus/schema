@@ -1,12 +1,12 @@
 import { TypeContext } from "../types/TypeContext.js";
-import { $childType } from "../types/symbols.js";
+import { $childType, $listenedOnly } from "../types/symbols.js";
 import { Schema } from "../Schema.js";
 import { OPERATION } from "../encoding/spec.js";
 import { type IRef, type Ref, decodedRefIdOf } from "../encoder/ChangeTree.js";
 import type { Iterator } from "../encoding/decode.js";
 import { readUvarint } from "../encoding/varint.js";
 import { ReferenceTracker } from "./ReferenceTracker.js";
-import { ChunkMismatch, decodeArrayOps, decodeKeyValueOps, decodeSchemaOps, decodeRun, refInfoOf, REF_SCHEMA, REF_ARRAY, REF_MAP, type DataChange } from "./DecodeOperation.js";
+import { ChunkMismatch, decodeArrayOps, decodeKeyValueOps, decodeSchemaOps, decodeRun, refInfoOf, REF_SCHEMA, REF_ARRAY, REF_MAP, type DataChange, type RefInfo } from "./DecodeOperation.js";
 import { resyncSweep } from "./Resync.js";
 import { Collection } from "../types/HelperTypes.js";
 
@@ -24,7 +24,23 @@ export class Decoder<T extends IRef = any> {
 
     currentRefId: number = 0;
 
-    triggerChanges?: (allChanges: DataChange[]) => void;
+    /**
+     * Receives each decode's changes. A consumer marked `$listenedOnly` (the
+     * callbacks strategies' dispatchers) gets only the changes of refs that
+     * have callbacks or were built during that decode — see `changesFor`.
+     * Any other function, including a wrapper around a marked one, gets
+     * every change.
+     */
+    triggerChanges?: (changes: DataChange[]) => void;
+
+    /** @internal The changes `decode()` collects (`null`: no `triggerChanges` consumer). */
+    batch: DataChange[] | null = null;
+
+    /** @internal `batch` skips unlistened refs (`triggerChanges` is marked `$listenedOnly`). */
+    gated: boolean = false;
+
+    /** @internal Bumped per `decode()`; stamped on the refs it builds (`RefInfo.decodeGen`). */
+    decodeGen: number = 0;
 
     /**
      * @internal Non-null only while a `decodeResync()` walk is in progress:
@@ -53,27 +69,40 @@ export class Decoder<T extends IRef = any> {
     }
 
     decode(bytes: Uint8Array | Uint8Array[], it: Iterator = { offset: 0 }): DataChange[] | null {
-        // Only allocate a collection array when there's a subscriber. Every
-        // decode-op push site uses `allChanges?.push(...)` — optional
-        // chaining short-circuits the object literal too, so a listener-
-        // free decoder does zero per-field allocation.
-        const allChanges: DataChange[] | null = (this.triggerChanges !== undefined) ? [] : null;
+        // No consumer, no batch: every push site is `changes?.push(...)`, and
+        // optional chaining skips the object literal too.
+        const consumer: any = this.triggerChanges;
+        const batch: DataChange[] | null = (consumer !== undefined) ? [] : null;
+        this.batch = batch;
+        this.gated = batch !== null && consumer[$listenedOnly] === true;
+        this.decodeGen++;
 
         if (Array.isArray(bytes)) {
             for (let i = 0; i < bytes.length; i++) {
-                this.decodeChunks(bytes[i], { offset: 0 }, allChanges);
+                this.decodeChunks(bytes[i], { offset: 0 });
             }
         } else {
-            this.decodeChunks(bytes, it, allChanges);
+            this.decodeChunks(bytes, it);
         }
 
         // resync mode: prune everything the snapshot didn't visit. Runs
         // before triggerChanges (DELETE changes fire onRemove with the real
         // previousValue) and before GC (removeRef feeds deletedRefs).
-        if (this.resyncVisited !== null) resyncSweep(this, allChanges);
-        if (allChanges !== null) this.triggerChanges?.(allChanges);
+        if (this.resyncVisited !== null) resyncSweep(this, batch);
+        this.batch = null;
+        if (batch !== null) this.triggerChanges?.(batch);
         this.root.garbageCollectDeletedRefs();
-        return allChanges;
+        return batch;
+    }
+
+    /**
+     * @internal Where a gated batch records the changes of ref `refId`: built
+     * during this decode (callbacks registered while the batch dispatches can
+     * still pick them up) or has callbacks. Callers test `gated` first, once
+     * per pass.
+     */
+    changesFor(refId: number, ri: RefInfo): DataChange[] | null {
+        return (ri.decodeGen === this.decodeGen || this.root.callbacks.get(refId) !== undefined) ? this.batch : null;
     }
 
     /**
@@ -99,13 +128,15 @@ export class Decoder<T extends IRef = any> {
         }
     }
 
-    private decodeChunks(bytes: Uint8Array, it: Iterator, allChanges: DataChange[] | null): void {
+    private decodeChunks(bytes: Uint8Array, it: Iterator): void {
         const total = bytes.byteLength;
         const $root = this.root;
 
         // chunk header: `refId*2+1` (absolute, first chunk of a slice) or
         // `zigzag(refId - prevRefId)*2` (delta from the previous chunk)
         let prevRefId = -1;
+        const batch = this.batch;
+        const gated = this.gated;
         while (it.offset < total) {
             // (bit ops: refIds stay far below 2^29, so both header forms and the
             // length prefix fit 31 bits; see `refIdOf`)
@@ -132,7 +163,7 @@ export class Decoder<T extends IRef = any> {
 
             if (isRun) {
                 try {
-                    prevRefId = decodeRun(this, bytes, it, end, refId, allChanges);
+                    prevRefId = decodeRun(this, bytes, it, end, refId);
                 } catch (e) {
                     if (!(e instanceof ChunkMismatch)) throw e;
                     this.damaged("definition mismatch");
@@ -157,9 +188,10 @@ export class Decoder<T extends IRef = any> {
             try {
                 const ri = refInfoOf(ref);
                 const kind = ri.kind;
-                if (kind === REF_SCHEMA) decodeSchemaOps(this, bytes, it, end, ref, refId, allChanges, ri);
-                else if (kind === REF_ARRAY) decodeArrayOps(this, bytes, it, end, ref, refId, allChanges, ri);
-                else decodeKeyValueOps(this, bytes, it, end, ref, refId, allChanges, kind === REF_MAP, ri);
+                const changes = gated ? this.changesFor(refId, ri) : batch;
+                if (kind === REF_SCHEMA) decodeSchemaOps(this, bytes, it, end, ref, refId, changes, ri);
+                else if (kind === REF_ARRAY) decodeArrayOps(this, bytes, it, end, ref, refId, changes, ri);
+                else decodeKeyValueOps(this, bytes, it, end, ref, refId, changes, kind === REF_MAP, ri);
             } catch (e) {
                 if (!(e instanceof ChunkMismatch)) throw e;
                 this.damaged("definition mismatch");
@@ -183,12 +215,12 @@ export class Decoder<T extends IRef = any> {
         return type.initializeForDecoder();
     }
 
-    removeChildRefs(ref: Collection, allChanges: DataChange[] | null) {
+    removeChildRefs(ref: Collection, changes: DataChange[] | null) {
         const needRemoveRef = typeof ((ref as any)[$childType]) !== "string";
         const refId = decodedRefIdOf(ref);
 
         ref.forEach((value: any, key: any) => {
-            allChanges?.push({
+            changes?.push({
                 ref: ref as Ref,
                 refId,
                 op: OPERATION.DELETE,
