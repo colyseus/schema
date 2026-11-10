@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type, schema, t, ArraySchema, MapSchema, SetSchema, Encoder, Decoder, $changes } from "../src";
+import { Schema, type, schema, t, ArraySchema, MapSchema, SetSchema, Encoder, Decoder, Reflection, Callbacks, $changes } from "../src";
 import { InputEncoder, InputDecoder } from "../src/input";
 import { createTree, createStubTree, installTracking, upgradeTree } from "../src/encoder/ChangeTree";
 
@@ -94,6 +94,53 @@ describe("Construction without the encoder module (client bundles)", () => {
         assert.strictEqual(received.up, true);
         assert.strictEqual(received.x, 1.5);
         assert.strictEqual(encoder.encode().length, 0);
+    });
+
+    it("decodes into a client-built state (class and Reflection clients)", () => {
+        restoreTracking();
+        const state = new State();
+        const encoder = new Encoder(state);
+        const handshake = Reflection.encode(encoder);
+        untracked();
+
+        const client = new State();
+        const decoder = new Decoder(client);
+        const reflected = Reflection.decode(handshake);
+        let added = 0, removed = 0;
+        Callbacks.get(decoder).onAdd("items", () => { added++; });
+        Callbacks.get(decoder).onRemove("items", () => { removed++; });
+        decoder.decode(encoder.encodeAll());
+        reflected.decode(encoder.encodeAll());
+
+        let seed = 7;
+        const rnd = (n: number) => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n;
+        for (let tick = 0; tick < 200; tick++) {
+            let patch: Uint8Array;
+            restoreTracking();
+            try {
+                for (let k = 0; k < 4; k++) {
+                    switch (rnd(9)) {
+                        case 0: state.items.push(new Item().assign({ x: rnd(100) })); break;
+                        case 1: if (state.items.length) { state.items.splice(rnd(state.items.length), 1); } break;
+                        case 2: state.byId.set("k" + rnd(8), new Item().assign({ x: rnd(50) })); break;
+                        case 3: state.byId.delete("k" + rnd(8)); break;
+                        case 4: state.tags.add("t" + rnd(6)); break;
+                        case 5: state.tags.delete("t" + rnd(6)); break;
+                        case 6: state.nums.push(rnd(1000)); if (state.nums.length > 10) { state.nums.shift(); } break;
+                        case 7: state.score = rnd(1000); state.item = new Item().assign({ x: rnd(9) }); break;
+                        case 8: if (rnd(20) === 0) { state.items.clear(); state.byId.clear(); } else if (state.items.length) { state.items[rnd(state.items.length)].x = rnd(100); } break;
+                    }
+                }
+                patch = encoder.encode();
+                encoder.discardChanges();
+            } finally { untracked(); }
+
+            decoder.decode(patch);
+            reflected.decode(patch);
+            assert.deepStrictEqual(client.toJSON(), state.toJSON(), `class client, tick ${tick}`);
+            assert.deepStrictEqual(reflected.state.toJSON(), state.toJSON(), `Reflection client, tick ${tick}`);
+        }
+        assert.ok(added > 0 && removed > 0);
     });
 
     it("is upgraded to tracked trees when attached to an Encoder", () => {
