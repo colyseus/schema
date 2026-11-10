@@ -31,7 +31,7 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(ArraySchema[Symbol.species], ArraySchema);
         });
 
-        describe("property reads through the Proxy", () => {
+        describe("property access through the Proxy", () => {
             class State extends Schema {
                 @type(["number"]) numbers = new ArraySchema<number>();
             }
@@ -98,6 +98,63 @@ describe("ArraySchema Tests", () => {
                     assert.strictEqual(numbers[Infinity], undefined, side);
                     assert.strictEqual(numbers[NaN], undefined, side);
                 }
+            });
+
+            it("a key that is not an index is a plain property for set, get and `in`", () => {
+                // "Infinity", "\u00A01" and "" pass isNaN(), yet none is an index
+                const keys = ["Infinity", "\u00A01", "\uFEFF1", "", "customProperty"];
+                for (const key of keys) {
+                    for (const { side, numbers } of createArrays()) {
+                        const message = `${side}: ${JSON.stringify(key)}`;
+                        assert.strictEqual(key in numbers, false, message);
+
+                        numbers[key] = 7;
+
+                        assert.strictEqual(numbers[key], 7, message);
+                        assert.strictEqual(key in numbers, true, message);
+                        assert.strictEqual(numbers.length, 3, message);
+                        assert.deepStrictEqual(numbers.toJSON(), [10, 20, 30], message);
+                    }
+                }
+            });
+
+            it("writing a key that is not an index sends nothing to clients", () => {
+                for (const key of ["Infinity", "\u00A01", "\uFEFF1", "", "customProperty"]) {
+                    const state = new State();
+                    state.numbers.push(10, 20, 30);
+                    const encoder = getEncoder(state);
+                    const decodedState = createInstanceFromReflection(state);
+                    decodedState.decode(state.encode());
+
+                    (state.numbers as any)[key] = 7;
+
+                    assert.strictEqual(encoder.hasChanges, false, JSON.stringify(key));
+                    decodedState.decode(state.encode());
+                    assert.deepStrictEqual(decodedState.numbers.toJSON(), [10, 20, 30], JSON.stringify(key));
+                }
+            });
+
+            it("index writes and `in` still address the elements", () => {
+                const state = new State();
+                state.numbers.push(10, 20, 30);
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                state.numbers[1] = 21;
+                (state.numbers as any)["2"] = 31;
+
+                assert.strictEqual(0 in state.numbers, true);
+                assert.strictEqual("2" in state.numbers, true);
+                assert.strictEqual(3 in state.numbers, false);
+                assert.strictEqual("3" in state.numbers, false);
+                assert.strictEqual("length" in state.numbers, true);
+
+                decodedState.decode(state.encode());
+                assert.deepStrictEqual(decodedState.numbers.toJSON(), [10, 21, 31]);
+
+                state.numbers.length = 0;
+                decodedState.decode(state.encode());
+                assert.deepStrictEqual(decodedState.numbers.toJSON(), []);
             });
         });
 
