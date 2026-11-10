@@ -18,6 +18,9 @@ const DEFAULT_SORT = (a: any, b: any) => {
     else return 0
 }
 
+/** Char code of "A". Digits, signs, "." and ASCII whitespace all sort below it. */
+const FIRST_NAME_CHAR_CODE = 65;
+
 /**
  * Module-level Proxy handler shared by every `ArraySchema` instance. Hoisted
  * out of the ctor so per-instance Proxy setup stops allocating ~6 arrow
@@ -30,7 +33,11 @@ const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
     get: (obj, prop) => {
         if (
             typeof (prop) !== "symbol" &&
-            // FIXME: d8 accuses this as low performance
+            // An index starts with a digit. A name ("length", "push", "items")
+            // starts with a letter or "_", all at char code 65 ("A") or above.
+            // The first-char check keeps named reads away from isNaN(), which
+            // parses the whole string to a number and is the slow part here.
+            prop.charCodeAt(0) < FIRST_NAME_CHAR_CODE &&
             !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
         ) {
             return obj.items[prop as unknown as number];

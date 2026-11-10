@@ -31,6 +31,76 @@ describe("ArraySchema Tests", () => {
             assert.strictEqual(ArraySchema[Symbol.species], ArraySchema);
         });
 
+        describe("property reads through the Proxy", () => {
+            class State extends Schema {
+                @type(["number"]) numbers = new ArraySchema<number>();
+            }
+
+            // encoder side (`new ArraySchema()`) and decoder side
+            // (`ArraySchema.initializeForDecoder()`) share one handler
+            function createArrays() {
+                const state = new State();
+                state.numbers.push(10, 20, 30);
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+                return [
+                    { side: "encoder", numbers: state.numbers as any },
+                    { side: "decoder", numbers: decodedState.numbers as any },
+                ];
+            }
+
+            it("reads elements by number and by index string", () => {
+                for (const { side, numbers } of createArrays()) {
+                    assert.strictEqual(numbers[0], 10, side);
+                    assert.strictEqual(numbers[2], 30, side);
+                    assert.strictEqual(numbers["0"], 10, side);
+                    assert.strictEqual(numbers["2"], 30, side);
+                    assert.strictEqual(numbers[3], undefined, side);
+                    assert.strictEqual(numbers["3"], undefined, side);
+                }
+            });
+
+            it("reads properties and methods by name", () => {
+                for (const { side, numbers } of createArrays()) {
+                    assert.strictEqual(numbers.length, 3, side);
+                    assert.strictEqual(numbers["length"], 3, side);
+                    assert.strictEqual(numbers.at(-1), 30, side);
+                    assert.strictEqual(numbers.find((value: number) => value > 10), 20, side);
+                    assert.strictEqual(numbers.includes(20), true, side);
+                    assert.deepStrictEqual(numbers.map((value: number) => value / 10), [1, 2, 3], side);
+                    assert.deepStrictEqual(numbers.toJSON(), [10, 20, 30], side);
+                    assert.deepStrictEqual([...numbers], [10, 20, 30], side);
+                    assert.strictEqual(numbers.constructor, ArraySchema, side);
+                    assert.strictEqual(numbers.unknownProperty, undefined, side);
+                }
+            });
+
+            it("reads names that start below \"A\"", () => {
+                for (const { side, numbers } of createArrays()) {
+                    // "$" is char code 36: the name still goes through isNaN()
+                    assert.strictEqual(typeof numbers["$deleteAt"], "function", side);
+                    assert.strictEqual(numbers["$unknown"], undefined, side);
+                }
+            });
+
+            it("number-like keys that are not an index read as undefined", () => {
+                const keys = [
+                    "Infinity", "+Infinity", "-Infinity", "NaN",
+                    "", " ", " 1", "1 ", " 1", "﻿1",
+                    "-1", "+1", "1.5", ".5", "01", "1e0", "0x1", "0b1",
+                ];
+                for (const { side, numbers } of createArrays()) {
+                    for (const key of keys) {
+                        assert.strictEqual(numbers[key], undefined, `${side}: ${JSON.stringify(key)}`);
+                    }
+                    assert.strictEqual(numbers[-1], undefined, side);
+                    assert.strictEqual(numbers[1.5], undefined, side);
+                    assert.strictEqual(numbers[Infinity], undefined, side);
+                    assert.strictEqual(numbers[NaN], undefined, side);
+                }
+            });
+        });
+
         it("should allow to assign a regular array", () => {
             class State extends Schema {
                 @type(['number']) cardIdsPool: number[];
