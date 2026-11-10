@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.46]
+
+### Fixed
+
+- Writing an `ArraySchema` key that isn't a plain index (`arr[-1]`, `arr["01"]`, `arr["1e0"]`, `arr[""]`) no longer sends clients a change the server never made. It sets an ordinary property, as on a native array. Thanks @JROtto5! [#255](https://github.com/colyseus/schema/pull/255)
+
+### Changed
+
+- Reading `ArraySchema` properties and methods by name (`.length`, `.at()`, `.find()`, `for...of`) is 8–25% faster, which makes decoding and callback-heavy frames about 5% faster. Thanks @vinicius3333! [#255](https://github.com/colyseus/schema/pull/255)
+
 ## [5.0.45]
 
 ### Fixed
