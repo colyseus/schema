@@ -91,6 +91,7 @@
   "license": "MIT",
   "devDependencies": {
     "@msgpack/msgpack": "^1.9.1",
+    "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-typescript": "^11.1.6",
     "@types/benchmark": "^2.1.0",
     "@types/mocha": "^5.2.5",
