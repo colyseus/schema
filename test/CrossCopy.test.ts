@@ -1,11 +1,26 @@
 import * as assert from "assert";
-import { existsSync, readFileSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { fileURLToPath, pathToFileURL } from "url";
 
-// Two physical copies of the bundle in one process (Node keys ESM instances by
-// full URL). Classes are always defined with copy A. Runs on `npm test`, which
-// builds the bundle first; skipped when the bundle is missing.
+// Two physical copies of the bundle in one process. Classes are always defined
+// with copy A. Runs on `npm test`, which builds the bundle first; skipped when
+// the bundle is missing.
 const BUNDLE = new URL("../build/index.mjs", import.meta.url);
 const describeBundle = existsSync(BUNDLE) ? describe : describe.skip;
+
+// the entry imports its chunks by relative path: a copy needs the whole ESM output next to it
+const copies: string[] = [];
+function importCopy(): Promise<any> {
+    const dir = mkdtempSync(join(tmpdir(), "colyseus-schema-copy-"));
+    copies.push(dir);
+    copyFileSync(fileURLToPath(BUNDLE), join(dir, "index.mjs"));
+    const chunks = fileURLToPath(new URL("chunks", BUNDLE));
+    mkdirSync(join(dir, "chunks"));
+    for (const name of readdirSync(chunks)) copyFileSync(join(chunks, name), join(dir, "chunks", name));
+    return import(pathToFileURL(join(dir, "index.mjs")).href);
+}
 
 describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
     let A: any, B: any;
@@ -13,7 +28,7 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
 
     before(async () => {
         A = await import(BUNDLE.href);
-        B = await import(BUNDLE.href + "?copy=b");
+        B = await importCopy();
 
         const { Schema, MapSchema, ArraySchema, SetSchema, type, view } = A;
         class _Item extends Schema {}
@@ -44,6 +59,8 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         view()(_State.prototype, "secret");
         Item = _Item; Sub = _Sub; Secret = _Secret; State = _State;
     });
+
+    after(() => { for (const dir of copies) rmSync(dir, { recursive: true, force: true }); });
 
     function makeItem(i: number, sub = false) {
         const item = sub ? new Sub() : new Item();
@@ -90,7 +107,7 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         console.warn = (...args: any[]) => warnings.push(args.join(" "));
         (globalThis as any)[VERSION] = "0.0.0";
         try {
-            await import(BUNDLE.href + "?copy=c");
+            await importCopy();
         } finally {
             (globalThis as any)[VERSION] = pkg.version;
             console.warn = warn;

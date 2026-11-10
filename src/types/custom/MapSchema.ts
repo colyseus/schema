@@ -1,8 +1,8 @@
 import { $applyKeyType, $changes, $childType, $deleteByIndex, $onEncodeEnd, $filter, $filterByChild, $getByIndex, $keyType, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
 import { RefTable } from "../../RefTable.js";
 import type { MapKeyType } from "../../annotations.js";
-import { ChangeTree, installUntrackedChangeTree, IRef, stampTree, treeOf, refTreeOf, defineRefAccessors } from "../../encoder/ChangeTree.js";
-import { KeyedRecorder, freeIndex, keyedValueAt, releaseQuarantine } from "../../encoder/KeyedRecorder.js";
+import { type ChangeTree, createTree, installUntrackedChangeTree, IRef, stampTree, treeOf, refTreeOf, defineRefAccessors } from "../../encoder/ChangeTree.js";
+import { type KeyedRecorder, freeIndex, keyedValueAt, releaseQuarantine } from "../../encoder/KeyedRecorder.js";
 import { CollectionKind, OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
@@ -79,7 +79,6 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
         (this._stream ??= createStreamableState()).priority = fn;
     }
 
-    static [$recorder] = () => new KeyedRecorder();
     static readonly COLLECTION_KIND = CollectionKind.Map;
 
     /**
@@ -97,7 +96,7 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
     }
 
     constructor (initialValues?: Map<K, V> | Record<K, V>) {
-        stampTree(this, new ChangeTree(this));
+        stampTree(this, createTree(this));
         this[$childType] = undefined as any;
         this[$keyType] = undefined;
 

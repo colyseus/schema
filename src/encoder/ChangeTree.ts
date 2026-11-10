@@ -33,8 +33,8 @@ import { Root } from "./Root.js";
 import { Metadata } from "../Metadata.js";
 import { type ChangeRecorder, SchemaChangeRecorder, popcount32 } from "./ChangeRecorder.js";
 import { type EncodeDescriptor, descriptorOf, fieldOf } from "./EncodeDescriptor.js";
-import type { ArrayLog } from "./ArrayLog.js";
-import type { KeyedRecorder } from "./KeyedRecorder.js";
+import { ArrayLog } from "./ArrayLog.js";
+import { KeyedRecorder } from "./KeyedRecorder.js";
 import { arrCopy } from "../types/custom/arrayOps.js";
 
 import {
@@ -636,7 +636,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
             const numFields = desc.numFields;
             if (numFields > 7) this.ops = new Uint8Array(numFields + 1);
         } else {
-            this.rec = desc.newRecorder?.();
+            // a class's own `static [$recorder]`, else the recorder of its kind
+            this.rec = (desc.newRecorder !== undefined) ? desc.newRecorder()
+                : (desc.kind === KIND_ARRAY) ? new ArrayLog() : new KeyedRecorder();
         }
     }
 
@@ -1049,19 +1051,18 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 }
 
 /**
- * Lightweight per-instance no-op ChangeTree used for instances the decoder
- * builds. Those instances only reach an Encoder through a hand-off, which
- * replaces the stub (`treeAttachment.ensureTracked`), so the full
- * `ChangeTree` machinery (EncodeDescriptor lookup, recorder state, Maps /
- * Uint8Arrays for change slots) is pure overhead — this stub carries only a
- * `ref` back-pointer and no-op methods, so tree walkers and debug tooling
- * continue to work.
+ * Lightweight per-instance no-op ChangeTree, for instances nothing encodes:
+ * every instance the decoder builds, and every constructed one while the
+ * encoder module isn't loaded (see {@link createTree}). Such an instance only
+ * reaches an Encoder by being attached to one, which replaces the stub
+ * (`treeAttachment.ensureTracked`), so the full `ChangeTree` machinery
+ * (EncodeDescriptor lookup, recorder state, Maps / Uint8Arrays for change
+ * slots) is pure overhead — this stub carries only a `ref` back-pointer and
+ * no-op methods, so tree walkers and debug tooling continue to work.
  *
- * Plug-in contract: each collection class and the `Decoder` pick between
- * `new ChangeTree(ref)` and `createUntrackedChangeTree(ref)` explicitly via
- * dedicated factories (`initializeForDecoder` on collections,
- * `createInstanceOfType` on the `Decoder`). There is no global state — every
- * decision is local to the call site.
+ * Decoder-built instances get theirs from dedicated factories
+ * (`initializeForDecoder` on collections, `createInstanceOfType` on the
+ * `Decoder`); constructors go through {@link createTree}.
  */
 export class UntrackedChangeTree {
     ref: Ref;
@@ -1113,7 +1114,7 @@ export class UntrackedChangeTree {
     restage(): void {}
     /** Attached to an encoder's tree (a graft of a decoded instance): upgrade and attach. The decoder passes no `root`. */
     setParent(parent: Ref, root?: Root, parentIndex?: number, parentTree?: ChangeTree): void {
-        if (root !== undefined) ensureTracked(this as any).setParent(parent, root, parentIndex, parentTree);
+        if (root !== undefined) upgradeTree!(this as any).setParent(parent, root, parentIndex, parentTree);
     }
     addParent(): void {}
     removeParent(): boolean { return false; }
@@ -1180,6 +1181,33 @@ export class UntrackedChangeTree {
 // the decoder path reaches.
 export function createUntrackedChangeTree(ref: Ref): ChangeTree {
     return new UntrackedChangeTree(ref) as unknown as ChangeTree;
+}
+
+/** The untracked {@link createTree}: also creates a Schema's `$values`, which a `ChangeTree` does itself. */
+export function createStubTree(ref: Ref, _target?: any): ChangeTree {
+    const r: any = ref;
+    if (r[$values] === undefined) {
+        const desc = descriptorOf(r.constructor);
+        if (desc.isSchema) r[$values] = desc.valuesTemplate.slice();
+    }
+    return new UntrackedChangeTree(ref) as unknown as ChangeTree;
+}
+
+/**
+ * The tree the Schema and collection constructors stamp (`target`: the raw
+ * instance behind an ArraySchema's Proxy). An untracked stub until the encoder
+ * module installs `new ChangeTree` when it loads ({@link installTracking}):
+ * nothing else in the library constructs a `ChangeTree`, so a bundle that
+ * never imports `Encoder` leaves the change tracking out.
+ */
+export let createTree: (ref: Ref, target?: any) => ChangeTree = createStubTree;
+
+/** Turns a stub attached to an encoder into a real tree (`ensureTracked`); installed with {@link createTree}. */
+export let upgradeTree: ((stub: ChangeTree) => ChangeTree) | undefined = undefined;
+
+export function installTracking(create: typeof createTree, upgrade: (stub: ChangeTree) => ChangeTree): void {
+    createTree = create;
+    upgradeTree = upgrade;
 }
 
 /** Stamp a fresh `UntrackedChangeTree` on a decoder-built instance (every `initializeForDecoder`). */

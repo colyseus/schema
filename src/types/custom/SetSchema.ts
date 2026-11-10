@@ -2,8 +2,8 @@ import { CollectionKind, OPERATION } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { $changes, $childType, $deleteByIndex, $filter, $filterByChild, $getByIndex, $onEncodeEnd, $recorder, $refId, $reset, $resyncPrune } from "../symbols.js";
 import { Collection } from "../HelperTypes.js";
-import { ChangeTree, installUntrackedChangeTree, type IRef, stampTree, treeOf, refTreeOf, defineRefAccessors } from "../../encoder/ChangeTree.js";
-import { KeyedRecorder, freeIndex, keyedValueAt, releaseQuarantine } from "../../encoder/KeyedRecorder.js";
+import { type ChangeTree, createTree, installUntrackedChangeTree, type IRef, stampTree, treeOf, refTreeOf, defineRefAccessors } from "../../encoder/ChangeTree.js";
+import { type KeyedRecorder, freeIndex, keyedValueAt, releaseQuarantine } from "../../encoder/KeyedRecorder.js";
 import {
     createStreamableState,
     streamDropView,
@@ -58,7 +58,6 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
         (this._stream ??= createStreamableState()).priority = fn;
     }
 
-    static [$recorder] = () => new KeyedRecorder();
     static readonly COLLECTION_KIND: CollectionKind = CollectionKind.Set;
 
     /** Per-entry visibility for `StateView` encodes (removed values resolve through the recorder). */
@@ -73,7 +72,7 @@ export class SetSchema<V=any> implements Collection<number, V>, IRef {
     }
 
     constructor (initialValues?: Array<V>) {
-        stampTree(this, new ChangeTree(this));
+        stampTree(this, createTree(this));
         this[$childType] = undefined as any;
 
         if (initialValues) {

@@ -10,8 +10,8 @@ import {
     $refId,
     $resyncPrune,
 } from "../symbols.js";
-import { ChangeTree, installUntrackedChangeTree, type IRef, stampTree, treeOf, refTreeOf, defineRefAccessors, refIdOf } from "../../encoder/ChangeTree.js";
-import { KeyedRecorder } from "../../encoder/KeyedRecorder.js";
+import { type ChangeTree, createTree, installUntrackedChangeTree, type IRef, stampTree, treeOf, refTreeOf, defineRefAccessors, refIdOf } from "../../encoder/ChangeTree.js";
+import type { KeyedRecorder } from "../../encoder/KeyedRecorder.js";
 import {
     createStreamableState,
     streamDropView,
@@ -93,7 +93,6 @@ export class StreamSchema<V = any> implements IRef {
      */
     static readonly $isStream: true = true;
 
-    static [$recorder] = () => new KeyedRecorder();
     static readonly COLLECTION_KIND = CollectionKind.Stream;
 
     /**
@@ -113,7 +112,7 @@ export class StreamSchema<V = any> implements IRef {
     }
 
     constructor() {
-        stampTree(this, new ChangeTree(this));
+        stampTree(this, createTree(this));
         this[$childType] = undefined;
         // `isFiltered` / `isStreamCollection` are set via `inheritedFlags`
         // when this stream is attached to a parent field — no constructor-

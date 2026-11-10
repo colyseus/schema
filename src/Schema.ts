@@ -4,7 +4,7 @@ import { DEFAULT_VIEW_TAG, type DefinitionType } from "./annotations.js";
 
 import { AssignableProps, NonFunctionPropNames, ToJSON } from './types/HelperTypes.js';
 
-import { ChangeTree, createUntrackedChangeTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, peekTree, refTreeOf, refIdOf } from './encoder/ChangeTree.js';
+import { ChangeTree, createUntrackedChangeTree, createTree, IRef, Ref, stampTree, treeOf, defineRefAccessors, setTree, peekTree, refTreeOf, refIdOf } from './encoder/ChangeTree.js';
 import { $changes, $deleteByIndex, $filter, $getByIndex, $refId, $reset, $schemaBase, $track, $values } from './types/symbols.js';
 import { StateView } from './encoder/StateView.js';
 
@@ -28,7 +28,7 @@ export class Schema<C = any> implements IRef {
      * Initialize change tracking on this instance.
      * Field accessor descriptors (getter/setter) live on the prototype,
      * installed once at class-definition time. Per-instance work is limited
-     * to allocating a ChangeTree and a values array.
+     * to allocating a tree ({@link createTree}) and a values array.
      *
      * Public entry point for classes that do NOT extend Schema
      * (`Metadata.setFields` on an external class), possibly called once per
@@ -44,7 +44,7 @@ export class Schema<C = any> implements IRef {
         const existing: any = peekTree(instance);
         if (existing === undefined) {
             instance[$values] = undefined;
-            stampTree(instance, new ChangeTree(instance)); // no slot yet: skips `setTree`'s second brand check
+            stampTree(instance, createTree(instance)); // no slot yet: skips `setTree`'s second brand check
             return;
         }
         // Idempotent on an own TRACKED tree, so per-level calls keep fields
@@ -53,12 +53,12 @@ export class Schema<C = any> implements IRef {
         if (existing.ref === instance && existing.isTracked !== false) { return; }
         // a decoder stub of this instance keeps its decoded `$values` (the new tree adopts them)
         if (existing.ref !== instance) { instance[$values] = undefined; }
-        setTree(instance, new ChangeTree(instance));
+        setTree(instance, createTree(instance));
     }
 
     /** Fast path of {@link Schema.initialize} for a Schema instance with no tree slot yet (the constructor's `this`, `clone()`'s `Object.create`) — `stampTree` throws otherwise. */
     private static initializeOwn(instance: any) {
-        stampTree(instance, new ChangeTree(instance)); // the tree creates `$values`, sized to the class
+        stampTree(instance, createTree(instance)); // the tree creates `$values`, sized to the class
     }
 
     /**
@@ -383,7 +383,7 @@ export class Schema<C = any> implements IRef {
         Schema.initializeOwn(cloned);
 
         // TODO: clone all properties, not only annotated ones
-        const desc = treeOf(cloned).encDescriptor;
+        const desc = treeOf(cloned).encDescriptor ?? descriptorOf(cloned.constructor);
         const names = desc.names;
         const setters = desc.setters;
         for (let i = 0; i < names.length; i++) {

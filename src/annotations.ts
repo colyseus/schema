@@ -1,6 +1,7 @@
 import "./symbol.shim.js";
 import { Schema } from './Schema.js';
 import { treeOf, refTreeOf } from './encoder/ChangeTree.js';
+import { descriptorOf } from './encoder/EncodeDescriptor.js';
 import { ArraySchema } from './types/custom/ArraySchema.js';
 import { MapSchema } from './types/custom/MapSchema.js';
 import { getNormalizedType, Metadata, resolveFieldType } from "./Metadata.js";
@@ -928,7 +929,7 @@ export function schema<
 
     const applyDefaults = (target: any) => {
         // the instance's own setters: a subclass may override a field's accessor
-        const setters = treeOf(target).encDescriptor.setters;
+        const setters = (treeOf(target).encDescriptor ?? descriptorOf(target.constructor)).setters;
         for (let k = 0; k < defaultNames.length; k++) {
             const index = defaultIndexes[k];
             if (index !== undefined) setters[index].call(target, defaultAt(k));

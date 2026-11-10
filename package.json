@@ -52,6 +52,10 @@
     "build",
     "bin"
   ],
+  "sideEffects": [
+    "./build/index.*",
+    "./build/chunks/core.*"
+  ],
   "types": "./build/index.d.ts",
   "main": "./build/index.cjs",
   "module": "./build/index.mjs",

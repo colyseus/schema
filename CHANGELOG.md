@@ -210,9 +210,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (`npm run size`): `Reflection.encode` goes through the encoder instance
   instead of a module-level reference, so a client that imports the decoder
   side (the SDK's names) and tree-shakes with rollup / Vite ships 31.5 KB gzip
-  instead of 41.2 KB (5.0: 28.8 KB). esbuild / bun keep every class with a
-  static field, so they drop little.
+  instead of 41.2 KB (5.0: 28.8 KB).
 - **`InputEncoder` no longer pulls the `Encoder` into client bundles**: an SDK client goes from 44.2 KB to 34.3 KB gzip, and `encode()` in unreliable mode is 30 % faster. It compares the input's fields with what it last sent, so a field set and reverted between two `encode()` calls is no longer re-sent, and `{ manual: true }` fields go out when they change, without `setDirty()`. Fields marked `.view()`, `.unreliable()` or `.fullStateOnly()` now throw at construction; they were never sent, or only once.
+- **Client bundles leave out change tracking**: importing `Encoder` is what switches it on, from a file of its own that bundlers drop when the app never imports `Encoder`. An SDK client goes from 34.3 KB to 28.9 KB gzip (decoder only: 33.1 to 27.6 KB), and esbuild / Bun now drop it too (from 44.3 KB). An instance constructed before `Encoder` loads, which takes a dynamic `import()`, is tracked from when it's attached to an encoder, like a decoded state handed to one.
 
 ### Added
 

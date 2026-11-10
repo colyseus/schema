@@ -1,6 +1,6 @@
 import type { Schema } from "../Schema.js";
 import { TypeContext } from "../types/TypeContext.js";
-import { $childType, $encodeReflection, $getByIndex } from "../types/symbols.js";
+import { $childType, $getByIndex } from "../types/symbols.js";
 import type { Iterator } from "../encoding/decode.js";
 import { KIND_ARRAY, OPERATION, PROTOCOL_VERSION } from "../encoding/spec.js";
 import { Reflection, populateReflection } from "../Reflection.js";
@@ -140,7 +140,7 @@ export class Encoder<T extends Schema = any> {
      * Raise per app via `Encoder.BUFFER_SIZE = N * 1024` before
      * constructing any Encoder.
      */
-    static BUFFER_SIZE = 16 * 1024;
+    static BUFFER_SIZE = 16384; // a literal (16 KB): esbuild keeps the class over `16 * 1024`
     sharedBuffer: Uint8Array;
 
     context: TypeContext;
@@ -235,8 +235,11 @@ export class Encoder<T extends Schema = any> {
      * `Reflection.encode(encoder)`: `uvarint(PROTOCOL_VERSION)` followed by the
      * `Reflection` schema encoded with the codec itself (nested Schema + array
      * + optional field — a self-hosting fixture).
+     *
+     * Named by `$encodeReflection`'s value: esbuild keeps an unused class with
+     * a computed key that isn't a literal.
      */
-    [$encodeReflection](): Uint8Array {
+    "~encodeReflection"(): Uint8Array {
         const reflection = new Reflection();
         const reflectionEncoder = new Encoder(reflection, undefined, 0);
         reflectionEncoder.sharedBuffer = (reflectionBuffer ??= new Uint8Array(64 * 1024));

@@ -53,11 +53,24 @@ function inputBundleConfig({ format, outputDir, entryFileExt, tsconfig, sourcema
     };
 }
 
+/**
+ * ESM chunks: `src/encoder/tracked.ts` installs change tracking when it loads
+ * and re-exports `Encoder`, so it gets `chunks/encoder.mjs` to itself, which
+ * `package.json#sideEffects` doesn't list: a bundler drops it when the app
+ * never imports `Encoder`, and `ChangeTree` with it. Everything else, `Encoder`
+ * included, is in `chunks/core.mjs`; `index.mjs` only re-exports the two. The
+ * entry module must stay out of the chunks, or `core.mjs` would import `encoder.mjs`.
+ */
+function esmChunk(id) {
+    if (/[\\/]src[\\/]index\.ts$/.test(id)) { return undefined; }
+    return /[\\/]src[\\/]encoder[\\/]tracked\.ts$/.test(id) ? 'encoder' : 'core';
+}
+
 export default [
     // https://github.com/microsoft/TypeScript/issues/18442#issuecomment-749896695
     {
         input: ['src/index.ts'],
-        output: [{ dir: 'build', format: 'esm', entryFileNames: '[name].mjs', sourcemap: true, preserveModules: false }],
+        output: [{ dir: 'build', format: 'esm', entryFileNames: '[name].mjs', chunkFileNames: 'chunks/[name].mjs', manualChunks: esmChunk, sourcemap: true }],
         plugins: [typescript({ tsconfig: './tsconfig/tsconfig.esm.json' })],
     },
 

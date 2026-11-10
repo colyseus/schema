@@ -11,6 +11,7 @@ dest="bench/.builds/$label"
 mkdir -p "$dest"
 cp build/index.mjs "$dest/"
 cp build/index.mjs.map "$dest/" 2>/dev/null || true
+cp -R build/chunks "$dest/"
 cp -R build/input "$dest/" 2>/dev/null || true # size.mjs `sdk` target
 echo "$(git rev-parse --short HEAD 2>/dev/null || echo unknown) $(date -u +%FT%TZ)" > "$dest/BUILD_INFO"
 echo "snapshot -> $dest ($(cat "$dest/BUILD_INFO"))"

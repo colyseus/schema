@@ -1,7 +1,7 @@
 import { $changes, $childType, $deleteByIndex, $getByIndex, $proxyTarget, $recorder, $refId, $reset, $resyncPrune, $rev } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
-import { type IRef, ChangeTree, installUntrackedChangeTree, refTreeOf, defineRefAccessors, refIdOf, stampTree, treeOf } from "../../encoder/ChangeTree.js";
-import { ArrayLog } from "../../encoder/ArrayLog.js";
+import { type IRef, type ChangeTree, createTree, installUntrackedChangeTree, refTreeOf, defineRefAccessors, refIdOf, stampTree, treeOf } from "../../encoder/ChangeTree.js";
+import type { ArrayLog } from "../../encoder/ArrayLog.js";
 import { CollectionKind } from "../../encoding/spec.js";
 import { registerType } from "../registry.js";
 import { Collection } from "../HelperTypes.js";
@@ -288,7 +288,6 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
 
     protected [$childType]: string | typeof Schema;
 
-    static [$recorder] = () => new ArrayLog();
     static readonly COLLECTION_KIND = CollectionKind.Array;
 
     /** Derived arrays (`map`, `filter`, `slice`, `concat`, `flat`) are plain arrays. */
@@ -332,7 +331,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
 
         const proxy = new Proxy(this, ARRAY_PROXY_HANDLER);
 
-        const tree = new ChangeTree(proxy, this);
+        const tree = createTree(proxy, this);
         stampTree(this, tree); // the raw target only — never the Proxy (see ChangeTree.ts)
 
         if (items.length > 0) this.$pushAll(items);

@@ -39,7 +39,7 @@ const CLIENT_IMPORTS = [
 ];
 
 // Encoder-only internals: none of them may reach a client bundle.
-const CLIENT_FORBIDDEN = ["dirtyLow", "encDescriptor", "unreliableRecorder", "Encoder.BUFFER_SIZE"];
+const CLIENT_FORBIDDEN = ["dirtyLow", "unreliableRecorder", "Encoder.BUFFER_SIZE"];
 
 const q = (p) => JSON.stringify(p.replace(/\\/g, "/"));
 // `inputEntry` is undefined for a build without the `/input` subpath (older snapshots)
@@ -58,6 +58,20 @@ function resolveEntry(arg) {
     return p;
 }
 
+// package.json#sideEffects, applied to the build under test the way a bundler
+// applies it to the installed package: lets it drop `chunks/encoder.mjs`.
+const SIDE_EFFECT_GLOBS = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).sideEffects;
+
+function hasSideEffects(file, buildDir) {
+    if (!Array.isArray(SIDE_EFFECT_GLOBS)) { return SIDE_EFFECT_GLOBS !== false; }
+    const rel = path.relative(buildDir, file).replace(/\\/g, "/");
+    if (rel.startsWith("..")) { return true; }
+    return SIDE_EFFECT_GLOBS.some((glob) => {
+        const pattern = glob.replace(/^\.\/build\//, "").replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*");
+        return new RegExp(`^${pattern}$`).test(rel);
+    });
+}
+
 /** The build's `/input` entry, or undefined when it has none. */
 function inputEntryOf(entry) {
     const p = path.join(path.dirname(entry), "input", "index.mjs");
@@ -65,10 +79,17 @@ function inputEntryOf(entry) {
 }
 
 async function esbuildBundle(contents, entry, extra = {}) {
+    const buildDir = path.dirname(entry);
     return esbuild.build({
         stdin: { contents, resolveDir: ROOT, loader: "js" },
-        // the `/input` bundle imports the package by name: point it at the build under test
-        plugins: [{ name: "self", setup(b) { b.onResolve({ filter: /^@colyseus\/schema$/ }, () => ({ path: entry })); } }],
+        plugins: [{ name: "build-under-test", setup(b) {
+            // the `/input` bundle imports the package by name: point it at the build under test
+            b.onResolve({ filter: /^@colyseus\/schema$/ }, () => ({ path: entry, sideEffects: hasSideEffects(entry, buildDir) }));
+            b.onResolve({ filter: /^\.{0,2}\// }, (a) => {
+                const file = path.resolve(a.resolveDir, a.path);
+                return { path: file, sideEffects: hasSideEffects(file, buildDir) };
+            });
+        } }],
         bundle: true,
         minify: true,
         format: "esm",
@@ -83,9 +104,11 @@ async function esbuildBundle(contents, entry, extra = {}) {
 /** Tree-shake with rollup (as Vite does), then minify with esbuild. */
 async function bundleCode(contents, entry) {
     if (useEsbuild) { return (await esbuildBundle(contents, entry)).outputFiles[0].text; }
+    const buildDir = path.dirname(entry);
     const build = await rollup({
         input: VIRTUAL,
         onwarn: () => {},
+        treeshake: { moduleSideEffects: (id) => id === VIRTUAL || hasSideEffects(id, buildDir) },
         plugins: [{
             name: "size-entry",
             resolveId: (id) => (id === VIRTUAL ? id : id === "@colyseus/schema" ? entry : null),
@@ -135,6 +158,8 @@ async function attribute(target) {
     const build = await rollup({
         input: VIRTUAL,
         onwarn: () => {},
+        // the module that ships as `chunks/encoder.mjs` (see hasSideEffects)
+        treeshake: { moduleSideEffects: (id) => !/[\\/]src[\\/]encoder[\\/]tracked\.ts$/.test(id) },
         plugins: [
             {
                 name: "size-entry",

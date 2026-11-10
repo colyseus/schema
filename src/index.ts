@@ -74,7 +74,6 @@ export { getDecoderStateCallbacks, type CallbackProxy, type SchemaCallback, type
 export { Callbacks, StateCallbackStrategy } from "./decoder/strategy/Callbacks.js";
 export { getRawChangesCallback } from "./decoder/strategy/RawChanges.js";
 
-export { Encoder } from "./encoder/Encoder.js";
 export { Root } from "./encoder/Root.js";
 export { createPool, type SchemaPool, type PoolOptions } from "./encoder/Pool.js";
 export { ArrayLog } from "./encoder/ArrayLog.js";
@@ -97,3 +96,8 @@ export { endChunk } from "./encoding/varint.js";
 // Symbols used by InputEncoder/InputDecoder via the runtime-externalized
 // `@colyseus/schema` import in `build/input/index.mjs`.
 export { $numFields, $values } from "./types/symbols.js";
+
+// Last: through a module that installs change tracking and ships in a file of
+// its own (see encoder/tracked.ts); a module re-exported after it would make the
+// shared chunk import that file, and every bundle would keep it.
+export { Encoder } from "./encoder/tracked.js";

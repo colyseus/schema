@@ -33,7 +33,7 @@ export interface EncodeDescriptor {
     isSchema: boolean;
     /** KIND_SCHEMA / KIND_MAP / KIND_ARRAY / KIND_INDEXED — per class, so frames don't probe the instance. */
     kind: number;
-    /** Recorder factory for collection classes (`static [$recorder]`); undefined for Schemas. */
+    /** A collection class's own recorder factory (`static [$recorder]`), if it declares one; `ChangeTree` otherwise picks one by `kind`. */
     newRecorder: (() => ArrayLog | KeyedRecorder) | undefined;
     /** Highest field index (`metadata[$numFields]`), -1 for collections. */
     numFields: number;
