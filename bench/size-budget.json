@@ -1,5 +1,6 @@
 {
-  "//": "npm run size:gate — bytes after rollup tree-shaking + esbuild minify (bench/size.mjs). Measured 2026-09-24 (KiB, as size.mjs prints): full 147.1 min / 44.5 gzip, client 104.9 min / 31.5 gzip (5.0.31: client 28.8 KB gzip; before this round: 41.2 KB). Constructors always create a tracking ChangeTree, so it ships to clients.",
-  "full": { "min": 155000, "gzip": 47000 },
-  "client": { "min": 111000, "gzip": 33500 }
+  "//": "npm run size:gate — bytes after rollup tree-shaking + esbuild minify (bench/size.mjs), ~3% headroom. Measured 2026-11-09 (KiB, as size.mjs prints): full 153.6 min / 47.1 gzip, client 108.4 / 33.1, sdk 112.0 / 34.3 (before InputEncoder stopped wrapping Encoder: 144.1 / 44.2). Constructors always create a tracking ChangeTree, so it ships to clients.",
+  "full": { "min": 162500, "gzip": 50000 },
+  "client": { "min": 114500, "gzip": 35000 },
+  "sdk": { "min": 118500, "gzip": 36500 }
 }

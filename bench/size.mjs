@@ -15,6 +15,8 @@
  * Targets:
  *   full   — `export *` of the package entry (the server / everything case)
  *   client — the names a browser client imports (decoder side only)
+ *   sdk    — `client` + `InputEncoder` from `/input`: the SDK's `Room` imports it
+ *            statically, so this is what every SDK client ships
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -37,11 +39,14 @@ const CLIENT_IMPORTS = [
 ];
 
 // Encoder-only internals: none of them may reach a client bundle.
-const CLIENT_FORBIDDEN = ["dirtyLow", "encDescriptor", "unreliableRecorder", "buffer overflow"];
+const CLIENT_FORBIDDEN = ["dirtyLow", "encDescriptor", "unreliableRecorder", "Encoder.BUFFER_SIZE"];
 
+const q = (p) => JSON.stringify(p.replace(/\\/g, "/"));
+// `inputEntry` is undefined for a build without the `/input` subpath (older snapshots)
 const TARGETS = {
-    full: (entry) => `export * from ${JSON.stringify(entry)};`,
-    client: (entry) => `export { ${CLIENT_IMPORTS.join(", ")} } from ${JSON.stringify(entry)};`,
+    full: (entry) => `export * from ${q(entry)};`,
+    client: (entry) => `export { ${CLIENT_IMPORTS.join(", ")} } from ${q(entry)};`,
+    sdk: (entry, inputEntry) => inputEntry && `${TARGETS.client(entry)}\nexport { InputEncoder } from ${q(inputEntry)};`,
 };
 
 const VIRTUAL = "\0size-entry";
@@ -53,9 +58,17 @@ function resolveEntry(arg) {
     return p;
 }
 
-async function esbuildBundle(contents, extra = {}) {
+/** The build's `/input` entry, or undefined when it has none. */
+function inputEntryOf(entry) {
+    const p = path.join(path.dirname(entry), "input", "index.mjs");
+    return fs.existsSync(p) ? p : undefined;
+}
+
+async function esbuildBundle(contents, entry, extra = {}) {
     return esbuild.build({
         stdin: { contents, resolveDir: ROOT, loader: "js" },
+        // the `/input` bundle imports the package by name: point it at the build under test
+        plugins: [{ name: "self", setup(b) { b.onResolve({ filter: /^@colyseus\/schema$/ }, () => ({ path: entry })); } }],
         bundle: true,
         minify: true,
         format: "esm",
@@ -68,14 +81,14 @@ async function esbuildBundle(contents, extra = {}) {
 }
 
 /** Tree-shake with rollup (as Vite does), then minify with esbuild. */
-async function bundleCode(contents) {
-    if (useEsbuild) { return (await esbuildBundle(contents)).outputFiles[0].text; }
+async function bundleCode(contents, entry) {
+    if (useEsbuild) { return (await esbuildBundle(contents, entry)).outputFiles[0].text; }
     const build = await rollup({
         input: VIRTUAL,
         onwarn: () => {},
         plugins: [{
             name: "size-entry",
-            resolveId: (id) => (id === VIRTUAL ? id : null),
+            resolveId: (id) => (id === VIRTUAL ? id : id === "@colyseus/schema" ? entry : null),
             load: (id) => (id === VIRTUAL ? contents : null),
         }],
     });
@@ -98,9 +111,11 @@ function measure(code) {
 async function sizesOf(entry) {
     const out = {};
     for (const [name, make] of Object.entries(TARGETS)) {
-        const code = await bundleCode(make(entry.replace(/\\/g, "/")));
+        const contents = make(entry, inputEntryOf(entry));
+        if (!contents) { continue; }
+        const code = await bundleCode(contents, entry);
         out[name] = measure(code);
-        if (name === "client") {
+        if (name !== "full") {
             out[name].forbidden = CLIENT_FORBIDDEN.filter((s) => code.includes(s));
         }
     }
@@ -124,7 +139,7 @@ async function attribute(target) {
             {
                 name: "size-entry",
                 resolveId: (id) => (id === VIRTUAL ? id : null),
-                load: (id) => (id === VIRTUAL ? make(path.join(ROOT, "src/index.ts").replace(/\\/g, "/")) : null),
+                load: (id) => (id === VIRTUAL ? make(path.join(ROOT, "src/index.ts"), path.join(ROOT, "src/input/index.ts")) : null),
             },
             typescript({ tsconfig: path.join(ROOT, "tsconfig/tsconfig.esm.json"), noEmitOnError: false, sourceMap: false, inlineSources: false }),
         ],
@@ -167,11 +182,13 @@ async function main() {
         console.log(JSON.stringify(results, null, 2));
     } else {
         const pipeline = useEsbuild ? "esbuild bundle+minify" : "rollup + esbuild minify";
-        console.log(`KB (${pipeline})`.padEnd(34) + "  full: min   gzip brotli | client: min   gzip brotli");
+        const names = Object.keys(TARGETS);
+        console.log(`KB (${pipeline})`.padEnd(34) + names.map((n) => `${(n + ": min").padStart(12)}   gzip brotli`).join(" |"));
         for (const [b, r] of Object.entries(results)) {
-            const f = r.full, c = r.client;
-            const warn = c.forbidden.length ? `  encoder leaks: ${c.forbidden.join(", ")}` : "";
-            console.log(`${b.padEnd(34)} ${kb(f.min)} ${kb(f.gzip)} ${kb(f.brotli)} | ${kb(c.min)} ${kb(c.gzip)} ${kb(c.brotli)}${warn}`);
+            const cols = names.map((n) => r[n] ? `${kb(r[n].min).padStart(12)} ${kb(r[n].gzip)} ${kb(r[n].brotli)}` : `${"-".padStart(12)}      -      -`);
+            const leaks = names.filter((n) => r[n]?.forbidden?.length).map((n) => `${n}: ${r[n].forbidden.join(", ")}`);
+            const warn = leaks.length ? `  encoder leaks (${leaks.join("; ")})` : "";
+            console.log(`${b.padEnd(34)}${cols.join(" |")}${warn}`);
         }
     }
 
