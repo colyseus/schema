@@ -297,10 +297,20 @@ export class ArrayLog<V = any> {
 
     // ── lifecycle ─────────────────────────────────────────────────────
 
-    /** End of tick: drop the entries; the next tick starts at the current revision. */
+    /**
+     * End of tick: drop the entries; the next tick starts at the current
+     * revision. The first reset also drops the backing store: that tick is
+     * usually the construction fill, which most arrays never repeat, and
+     * keeping it would pin ~300 B per array.
+     */
     reset(): void {
-        truncate(this.ops);
-        truncate(this.vals);
+        if (this.baseSeq === 0) {
+            this.ops.length = 0;
+            this.vals.length = 0;
+        } else {
+            truncate(this.ops);
+            truncate(this.vals);
+        }
         this.baseSeq = this.rev;
         this.snapRev = this.rev;
         this.lastSeq = this.rev;
