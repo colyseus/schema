@@ -1,9 +1,11 @@
 /**
  * Wire format v6.
  *
- * Framing: a message is a sequence of `uvarint(refId) uvarint(byteLen) ops`
- * chunks. There is no reserved byte — a decoder that does not know a refId
- * skips exactly `byteLen` bytes.
+ * Framing: a message is a sequence of `header uvarint(byteLen * 2 + run) ops`
+ * chunks. The header is `uvarint(refId * 2 + 1)` on the first chunk of a
+ * slice and `uvarint(zigzag(refId − prevRefId) * 2)` after it; `run` flags a
+ * same-shape run (SPEC.md, "Message and chunks"). There is no reserved byte —
+ * a decoder that does not know a refId skips exactly `byteLen` bytes.
  */
 export const PROTOCOL_VERSION = 6;
 

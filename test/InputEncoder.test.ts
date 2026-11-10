@@ -1,8 +1,13 @@
 import * as assert from "assert";
-import { Schema, type, Encoder, Decoder } from "../src";
+import { Schema, type, schema, t, Encoder, Decoder } from "../src";
 import { InputEncoder, InputDecoder } from "../src/input";
 
 describe("InputEncoder / InputDecoder", () => {
+
+    // Silence the one-time buffer-growth console.warn (large strings below).
+    let originalWarn: typeof console.warn;
+    before(() => { originalWarn = console.warn; console.warn = () => {}; });
+    after(() => { console.warn = originalWarn; });
 
     it("should emit wire-compatible bytes matching the full Encoder", () => {
         class Input extends Schema {
@@ -349,17 +354,25 @@ describe("InputEncoder / InputDecoder", () => {
 
     });
 
-    it("keeps change-tracking active on the bound instance (delta reads dirty bits)", () => {
+    it("does not depend on change tracking (diffs field values)", () => {
         class Input extends Schema {
             @type("number") x: number;
+            @type("number") y: number;
         }
 
-        // InputEncoder always delta-encodes: it *reads* the setter-populated
-        // dirty bits, so tracking must stay active on the bound instance.
-        const b = new Input();
-        assert.strictEqual(b.isTrackingPaused, false);
-        new InputEncoder(b);
-        assert.strictEqual(b.isTrackingPaused, false);
+        const src = new Input();
+        const enc = new InputEncoder(src);
+        assert.strictEqual(src.isTrackingPaused, false, "leaves the instance's tracking alone");
+
+        src.untracked(() => { src.x = 1; });
+        src.pauseTracking();
+        src.y = 2;
+        src.resumeTracking();
+
+        const dst = new Input();
+        new InputDecoder(dst).decode(enc.encode());
+        assert.strictEqual(dst.x, 1);
+        assert.strictEqual(dst.y, 2);
     });
 
     it("should skip undefined fields", () => {
@@ -449,12 +462,78 @@ describe("InputEncoder / InputDecoder", () => {
         assert.throws(() => new InputEncoder(new Empty()), /no fields/i);
     });
 
-    describe("buffer overflow", () => {
+    it("should throw on fields marked .view(), .unreliable() or .fullStateOnly()", () => {
+        // through Encoder.encode() these were never sent (or sent once): reject instead of dropping them
+        const modifiers = {
+            view: t.number().view(),
+            unreliable: t.number().unreliable(),
+            fullStateOnly: t.number().fullStateOnly(),
+        };
+        for (const [name, field] of Object.entries(modifiers)) {
+            const Input = schema({ seq: t.uint8(), x: field }, `ModifierInput_${name}`);
+            assert.throws(() => new InputEncoder(new Input()), new RegExp(`'x'.*\\.${name}\\(\\)`));
+        }
 
-        // Silence the one-time console.warn that fires on growth.
-        let originalWarn: typeof console.warn;
-        before(() => { originalWarn = console.warn; console.warn = () => {}; });
-        after(() => { console.warn = originalWarn; });
+        // patchOnly / deprecated(false) stay accepted: Encoder.encode() sends them too
+        const Ok = schema({ seq: t.uint8(), a: t.number().patchOnly(), b: t.number().deprecated(false) }, "ModifierInput_ok");
+        new InputEncoder(new Ok());
+    });
+
+    it("round-trips random mutation sequences, including reset() with a surviving receiver", () => {
+        const Input = schema({
+            up: t.boolean(),
+            x: t.float32(),
+            name: t.string(),
+            seq: t.uint16(),
+            n: t.number(),
+            i8: t.int8(),
+            q: t.quantized({ min: -10, max: 10 }),
+            text: t.string(), // long values: multi-byte chunk length + buffer growth
+        }, "FuzzInput");
+        const VALUES: Record<string, any[]> = {
+            up: [true, false, undefined],
+            x: [0, 1.5, -2.25, 0.125, undefined],
+            name: ["", "ab", "héllo", undefined, null],
+            seq: [0, 1, 7, 65535, undefined],
+            n: [0, 1, -1, 0.5, 2 ** 40, undefined],
+            i8: [0, -128, 127, 5, undefined],
+            q: [0, 10, -10, undefined],
+            text: ["x".repeat(100), "y".repeat(300), undefined],
+        };
+        const FIELDS = Object.keys(VALUES);
+
+        let state = 42;
+        const rand = () => ((state = (state * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+        const pick = <V>(a: V[]): V => a[Math.floor(rand() * a.length)];
+        const snapshot = (o: any) => JSON.stringify(FIELDS.map((k) => o[k] ?? null));
+
+        for (const mode of ["reliable", "unreliable"] as const) {
+            for (let trial = 0; trial < 100; trial++) {
+                const src: any = new Input();
+                for (const k of FIELDS) if (rand() < 0.3) src[k] = pick(VALUES[k]);
+                const enc = new InputEncoder(src, { mode, historySize: 3 });
+                const dst: any = new Input();
+                const dec = new InputDecoder(dst);
+
+                for (let tick = 0; tick < 30; tick++) {
+                    for (let n = Math.floor(rand() * 4); n > 0; n--) {
+                        const k = pick(FIELDS);
+                        if (rand() < 0.2) { const before = src[k]; src[k] = pick(VALUES[k]); src[k] = before; }
+                        else { src[k] = pick(VALUES[k]); }
+                    }
+                    if (rand() < 0.05) enc.reset();
+
+                    const bytes = enc.encode();
+                    if (mode === "reliable") { if (bytes.length > 0) dec.decode(bytes); }
+                    else { dec.decodeAll(bytes, () => {}); }
+
+                    assert.strictEqual(snapshot(dst), snapshot(src), `${mode} trial ${trial} tick ${tick}`);
+                }
+            }
+        }
+    });
+
+    describe("buffer overflow", () => {
 
         it("reliable mode auto-grows the buffer when a string exceeds initial size", () => {
             class Msg extends Schema {
@@ -565,14 +644,6 @@ describe("InputEncoder / InputDecoder", () => {
     });
 
     describe("delta encoding (reliable)", () => {
-
-        // One test (`overflow-retry doesn't corrupt the baseline`) pushes
-        // an 8KB string through the wrapped Encoder, which emits a
-        // buffer-overflow warning as it grows. Silence it here so the
-        // suite output stays clean; the behavior is still asserted.
-        let originalWarn: typeof console.warn;
-        before(() => { originalWarn = console.warn; console.warn = () => {}; });
-        after(() => { console.warn = originalWarn; });
 
         class DeltaInput extends Schema {
             @type("number") seq: number;
@@ -728,6 +799,55 @@ describe("InputEncoder / InputDecoder", () => {
             assert.strictEqual(dst.seq, 2);
 
             assert.strictEqual(enc.encode().length, 0);
+        });
+
+        it("a field set and reverted between encodes is not re-sent", () => {
+            const src = new DeltaInput();
+            src.seq = 1; src.vx = 0.5;
+            const enc = new InputEncoder(src);
+            enc.encode();
+
+            src.vx = 2; src.vx = 0.5;
+            src.fire = true; src.fire = undefined;
+            assert.strictEqual(enc.encode().length, 0);
+        });
+
+        it("NaN is sent once, not on every encode", () => {
+            const src = new DeltaInput();
+            const enc = new InputEncoder(src);
+            src.vx = NaN;
+            assert.ok(enc.encode().length > 0);
+            assert.strictEqual(enc.encode().length, 0);
+        });
+
+        it("sends { manual: true } fields when they change, without setDirty()", () => {
+            class ManualInput extends Schema {
+                @type("string", { manual: true }) text: string;
+            }
+            const src = new ManualInput();
+            const enc = new InputEncoder(src);
+            src.text = "hi";
+
+            const dst = new ManualInput();
+            new InputDecoder(dst).decode(enc.encode());
+            assert.strictEqual(dst.text, "hi");
+        });
+
+        it("reset() sends a DELETE for fields cleared before the reset", () => {
+            // the receiver outlives the reset (reconnect reusing the server instance)
+            const src = new DeltaInput();
+            const enc = new InputEncoder(src);
+            const dst = new DeltaInput();
+            const dec = new InputDecoder(dst);
+
+            src.seq = 1; src.fire = true;
+            dec.decode(enc.encode());
+
+            src.fire = undefined;
+            enc.reset();
+            dec.decode(enc.encode());
+            assert.strictEqual(dst.seq, 1);
+            assert.strictEqual(dst.fire, undefined);
         });
 
     });

@@ -89,8 +89,10 @@ export { uvarint, readUvarint, uvarintSize } from "./encoding/varint.js";
 
 // Re-exported for `@colyseus/schema/input` — that subpath bundle is built
 // as a thin wrapper that imports identity-bearing modules from here at
-// runtime, so it needs `getEncodeDescriptor` available on the public surface.
-export { getEncodeDescriptor, type EncodeDescriptor } from "./encoder/EncodeDescriptor.js";
+// runtime, so what it imports must be on the public surface. Internal: these
+// may change in any release.
+export { getEncodeDescriptor, fieldOf, type EncodeDescriptor } from "./encoder/EncodeDescriptor.js";
+export { endChunk } from "./encoding/varint.js";
 
 // Symbols used by InputEncoder/InputDecoder via the runtime-externalized
 // `@colyseus/schema` import in `build/input/index.mjs`.

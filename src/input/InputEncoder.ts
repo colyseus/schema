@@ -1,7 +1,9 @@
-import { $changes, $numFields, $values } from "../types/symbols.js";
+import { $numFields, $values } from "../types/symbols.js";
 import { encode } from "../encoding/encode.js";
-import { Encoder } from "../encoder/Encoder.js";
-import { getEncodeDescriptor, type EncodeDescriptor } from "../encoder/EncodeDescriptor.js";
+import { endChunk, uvarint } from "../encoding/varint.js";
+import { OPERATION } from "../encoding/spec.js";
+import { Metadata } from "../Metadata.js";
+import { fieldOf, getEncodeDescriptor, type EncodeDescriptor } from "../encoder/EncodeDescriptor.js";
 import type { Schema } from "../Schema.js";
 
 /**
@@ -30,15 +32,26 @@ export interface InputEncoderOptions {
 const DEFAULT_SLOT_SIZE = 256;
 const LENGTH_PREFIX_WORST_CASE = 5; // varint max for a uint32 length.
 
+// The bound instance is the receiver's root (refId 0): one chunk, first-chunk header `refId*2+1` (see encoding/spec.ts).
+const ROOT_CHUNK_HEADER = 1;
+// Schema field op: `uvarint(index << 2 | op >>> 6)` (see encoding/spec.ts).
+const FIELD_ADD = OPERATION.ADD >>> 6;
+const FIELD_DELETE = OPERATION.DELETE >>> 6;
+
+const EMPTY = new Uint8Array(0);
+// Receiver state unknown (after `reset()`): present fields ship, absent ones ship a DELETE.
+const UNKNOWN = {};
+
 /**
  * Bound single-struct encoder for client→server input packets. Holds a
  * reference to a Schema instance and produces wire-compatible bytes.
  *
- * Always delta-encodes: each `encode()` emits only the fields that changed
- * since the previous call (via the setter-populated ChangeTree dirty set),
- * wrapping a standard {@link Encoder}. The first call (or first after
- * {@link reset}) emits a full snapshot, since there's no baseline to diff
- * against.
+ * Always delta-encodes: each `encode()` compares the instance's fields with
+ * the values it last encoded and emits only the ones that differ. The first
+ * call (or first after {@link reset}) emits a full snapshot, since there's no
+ * baseline to diff against. Change tracking on the instance is not used, so
+ * it works the same on an untracked or paused instance, and the
+ * `@colyseus/schema/input` bundle doesn't depend on the `Encoder`.
  *
  * **Reliable mode** emits one delta per `encode()` — or an empty
  * `Uint8Array` when nothing changed (the caller decides whether to send a
@@ -52,8 +65,9 @@ const LENGTH_PREFIX_WORST_CASE = 5; // varint max for a uint32 length.
  * {@link InputDecoder.decodeAll} to walk the framed packet. Wire ops use
  * absolute values, so re-applying a redundant slot is per-field idempotent.
  *
- * Flat primitive fields only. Nested Schema / collection fields throw
- * at construction.
+ * Flat primitive fields only. Nested Schema / collection fields, and fields
+ * marked `.view()`, `.unreliable()` or `.fullStateOnly()`, throw at
+ * construction.
  */
 export class InputEncoder<T extends Schema = any> {
     readonly instance: T;
@@ -61,7 +75,16 @@ export class InputEncoder<T extends Schema = any> {
     readonly historySize: number;
 
     private readonly _desc: EncodeDescriptor;
-    private readonly _numFields: number;
+    /** Indexes of the encoded fields, ascending (the wire order). */
+    private readonly _fields: number[];
+
+    // Per-field value the receiver holds after the last encode (`undefined`: absent); `_next` is the pass being written.
+    private _sent: any[];
+    private _next: any[];
+
+    // Delta scratch; reliable mode returns a view of it.
+    private _buffer: Uint8Array = new Uint8Array(DEFAULT_SLOT_SIZE);
+    private readonly _it = { offset: 0 };
 
     // Unreliable-mode ring: `_slots`/`_slotLens` hold each snapshot; `_outBuffer` holds the concatenated packet.
     private _slots?: Uint8Array[];
@@ -77,9 +100,6 @@ export class InputEncoder<T extends Schema = any> {
     // reconnect that reuses the server buffer doesn't replay already-seen seqs.
     private _seq: number = 0;
 
-    // Delta delegate; setters populate its ChangeTree, `encode()` drains dirty fields.
-    private readonly _encoder: Encoder<T>;
-
     constructor(instance: T, options: InputEncoderOptions = {}) {
         this.instance = instance;
         this.mode = options.mode ?? "reliable";
@@ -88,19 +108,35 @@ export class InputEncoder<T extends Schema = any> {
             : 1;
 
         // Resolve + validate schema metadata up front.
-        this._desc = getEncodeDescriptor(instance);
-        const numFields = this._desc.metadata?.[$numFields];
+        const desc = this._desc = getEncodeDescriptor(instance);
+        const metadata = desc.metadata;
+        const numFields = metadata?.[$numFields];
         if (numFields === undefined) {
             throw new Error(`InputEncoder: '${instance.constructor.name}' has no fields`);
         }
-        this._numFields = numFields;
+        this._fields = [];
         for (let i = 0; i <= numFields; i++) {
-            if (this._desc.names[i] !== undefined && this._desc.encoders[i] === undefined) {
+            const name = desc.names[i];
+            if (name === undefined) continue;
+            if (desc.encoders[i] === undefined) {
                 throw new Error(
-                    `InputEncoder: non-primitive field '${this._desc.names[i]}' on '${instance.constructor.name}' is not supported. Use Encoder for state containing refs/collections.`
+                    `InputEncoder: non-primitive field '${name}' on '${instance.constructor.name}' is not supported. Use Encoder for state containing refs/collections.`
                 );
             }
+            // a blocklist: a new channel-routing modifier must be added here
+            const modifier = Metadata.hasViewTagAtIndex(metadata, i) ? "view"
+                : Metadata.hasUnreliableAtIndex(metadata, i) ? "unreliable"
+                : Metadata.hasFullStateOnlyAtIndex(metadata, i) ? "fullStateOnly"
+                : undefined;
+            if (modifier !== undefined) {
+                throw new Error(
+                    `InputEncoder: field '${name}' on '${instance.constructor.name}' is marked .${modifier}(), which inputs don't support. Choose the channel with the \`mode\` option instead.`
+                );
+            }
+            this._fields.push(i);
         }
+        this._sent = desc.valuesTemplate.slice();
+        this._next = desc.valuesTemplate.slice();
 
         if (this.mode === "unreliable") {
             this._slots = new Array(this.historySize);
@@ -112,10 +148,6 @@ export class InputEncoder<T extends Schema = any> {
                 (DEFAULT_SLOT_SIZE + LENGTH_PREFIX_WORST_CASE) * this.historySize,
             );
         }
-
-        // Wrap a standard Encoder; keep tracking on so setters keep populating
-        // the dirty set we drain each encode().
-        this._encoder = new Encoder<T>(instance);
     }
 
     /**
@@ -141,30 +173,24 @@ export class InputEncoder<T extends Schema = any> {
      * emitted the first time it happens.
      */
     encode(): Uint8Array {
-        const blob = this._produceDelta();
-        return this.mode === "reliable" ? blob : this._pushAndEmitRing(blob);
+        const len = this._produceDelta();
+        if (this.mode === "unreliable") return this._pushAndEmitRing(len);
+        return (len === 0) ? EMPTY : this._buffer.subarray(0, len);
     }
 
     /**
      * Reset the encoder's internal state:
      * - Drops the unreliable ring buffer.
-     * - Re-marks every currently populated field as dirty, so the next
-     *   `encode()` emits a fresh full snapshot.
+     * - Forgets what the receiver holds, so the next `encode()` emits every
+     *   populated field, plus a DELETE for each empty one (the receiver may
+     *   still hold a value from before the reset).
      *
      * Useful on disconnect / reconnect / scene transitions.
      */
     reset(): void {
         this._slotHead = 0;
         this._slotCount = 0;
-        this._encoder.discardChanges();
-        // the public `[$changes]` accessor, not `refTreeOf`: this subpath resolves
-        // its imports from the package entry, which does not export internals
-        const tree = this.instance[$changes];
-        const values = this.instance[$values];
-        for (let i = 0; i <= this._numFields; i++) {
-            if (values[i] === undefined || values[i] === null) continue;
-            tree.markDirty(i);
-        }
+        this._sent.fill(UNKNOWN);
     }
 
     /**
@@ -179,37 +205,87 @@ export class InputEncoder<T extends Schema = any> {
     copyInto(target: T): void {
         const src = (this.instance as any)[$values];
         const dst = (target as any)[$values];
-        for (let i = 0; i <= this._numFields; i++) dst[i] = src[i];
+        for (let i = 0, n = this._desc.numFields; i <= n; i++) dst[i] = src[i];
     }
 
     // ────────────────────────────────────────────────────────────────────
     // Delta producer — one diff of the instance; caller routes by mode.
     // ────────────────────────────────────────────────────────────────────
 
-    /** Delegate to the wrapped Encoder, then clear its dirty set. */
-    private _produceDelta(): Uint8Array {
-        const bytes = this._encoder.encode();
-        this._encoder.discardChanges();
-        return bytes;
+    /** Writes the delta into `_buffer`, growing it as needed; returns its byte length (0: nothing changed). */
+    private _produceDelta(): number {
+        let len = this._writeDelta(this._buffer);
+        while (len < 0) {
+            // `_it.offset` ran past the end by the bytes that didn't fit; nothing was committed
+            this._buffer = InputEncoder._grow(this._buffer, this._it.offset, "delta buffer");
+            len = this._writeDelta(this._buffer);
+        }
+        return len;
+    }
+
+    /**
+     * One chunk with an op per field that differs from `_sent`, in index
+     * order; returns its byte length (0: nothing changed). `-1` when `buffer`
+     * is too small; the baseline only moves once the chunk fits.
+     */
+    private _writeDelta(buffer: Uint8Array): number {
+        const desc = this._desc;
+        const ref: any = this.instance;
+        const values = ref[$values];
+        const fields = this._fields;
+        const encoders = desc.encoders;
+        const sent = this._sent;
+        const next = this._next;
+        const it = this._it;
+
+        it.offset = 0;
+        buffer[it.offset++] = ROOT_CHUNK_HEADER;
+        const lenPos = it.offset++;
+
+        for (let k = 0; k < fields.length; k++) {
+            const index = fields[k];
+            let value = fieldOf(desc, ref, values, index);
+            if (value === null) value = undefined; // null clears the field, like the setter
+            next[index] = value;
+
+            const previous = sent[index];
+            if (value === previous || (value !== value && previous !== previous)) continue; // NaN → NaN: unchanged
+            if (value === undefined) {
+                uvarint(buffer, (index << 2) | FIELD_DELETE, it);
+            } else {
+                uvarint(buffer, (index << 2) | FIELD_ADD, it);
+                encoders[index]!(buffer, value, it);
+            }
+        }
+
+        if (it.offset === lenPos + 1) return 0;
+        endChunk(buffer, lenPos, it, buffer.byteLength);
+        if (it.offset > buffer.byteLength) return -1;
+
+        this._sent = next;
+        this._next = sent;
+        return it.offset;
     }
 
     // ────────────────────────────────────────────────────────────────────
     // Ring — push blob to current slot, concat oldest→newest, return framed packet.
     // ────────────────────────────────────────────────────────────────────
 
-    private _pushAndEmitRing(blob: Uint8Array): Uint8Array {
+    /** Push the `len`-byte delta in `_buffer` as the newest slot. */
+    private _pushAndEmitRing(len: number): Uint8Array {
         // Push a slot EVERY tick (even an empty delta) so ring seqs stay
         // consecutive: the packet carries ONE base seq and the decoder derives
         // each slot's seq by position. An empty slot decodes as carry-forward.
         this._seq++;
         let slot = this._slots![this._slotHead];
-        if (blob.length > slot.byteLength) {
+        if (len > slot.byteLength) {
             slot = this._slots![this._slotHead] = InputEncoder._grow(
-                slot, blob.length, "unreliable ring slot",
+                slot, len, "unreliable ring slot",
             );
         }
-        slot.set(blob);
-        this._slotLens![this._slotHead] = blob.length;
+        const delta = this._buffer;
+        for (let b = 0; b < len; b++) slot[b] = delta[b]; // a few bytes: a loop beats subarray() + set()
+        this._slotLens![this._slotHead] = len;
         this._slotHead = (this._slotHead + 1) % this.historySize;
         if (this._slotCount < this.historySize) this._slotCount++;
 
@@ -239,8 +315,10 @@ export class InputEncoder<T extends Schema = any> {
             const idx = (oldest + i) % this.historySize;
             const len = this._slotLens![idx];
             encode.number(out, len, outIt);
-            out.set(this._slots![idx].subarray(0, len), outIt.offset);
-            outIt.offset += len;
+            const slot = this._slots![idx];
+            let o = outIt.offset;
+            for (let b = 0; b < len; b++) out[o++] = slot[b];
+            outIt.offset = o;
         }
         return out.subarray(0, outIt.offset);
     }

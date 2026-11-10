@@ -2,8 +2,8 @@ import typescript from '@rollup/plugin-typescript';
 
 /**
  * Build config for the `@colyseus/schema/input` subpath. The input source
- * imports `Encoder`, `Decoder`, symbols, encoding helpers, etc. via relative
- * paths (`../encoder/Encoder.js`, ...) — we externalize those at bundle time
+ * imports `Decoder`, `Metadata`, symbols, encoding helpers, etc. via relative
+ * paths (`../decoder/Decoder.js`, ...) — we externalize those at bundle time
  * and rewrite them to `@colyseus/schema` so the resulting bundle is a thin
  * wrapper. At runtime, both `import "@colyseus/schema"` and
  * `import "@colyseus/schema/input"` resolve those classes to the SAME module

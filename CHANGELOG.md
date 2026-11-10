@@ -212,6 +212,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   side (the SDK's names) and tree-shakes with rollup / Vite ships 31.5 KB gzip
   instead of 41.2 KB (5.0: 28.8 KB). esbuild / bun keep every class with a
   static field, so they drop little.
+- **`InputEncoder` no longer pulls the `Encoder` into client bundles**: an SDK client goes from 44.2 KB to 34.3 KB gzip, and `encode()` in unreliable mode is 30 % faster. It compares the input's fields with what it last sent, so a field set and reverted between two `encode()` calls is no longer re-sent, and `{ manual: true }` fields go out when they change, without `setDirty()`. Fields marked `.view()`, `.unreliable()` or `.fullStateOnly()` now throw at construction; they were never sent, or only once.
 
 ### Added
 
@@ -224,6 +225,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A new `Encoder` over instances another `Encoder` already encoded (`room.state = state`) now syncs them: instances added afterwards no longer reuse existing refIds (`"refId" not found`), and its `StateView`s no longer see what the previous encoder's views were granted, nor receive their stream backlogs.
 - An instance removed from a collection or field and added back later, while also referenced elsewhere, no longer reaches clients with empty fields. 5.0.43 fixed this for `ArraySchema.clear()` only.
 - Instances of a class with a `@deprecated()` field no longer throw `"<field> is deprecated."` when attached to the state, cloned, removed from a `StateView`, or released or resynced by the decoder.
+- `InputEncoder.reset()` now also clears the fields emptied before the reset, so a server-side input kept across a reconnect no longer holds stale values.
 
 ## [5.0.45]
 
