@@ -1,4 +1,16 @@
 import typescript from '@rollup/plugin-typescript';
+import { transform } from 'esbuild';
+
+// Source maps point at `src/`, which ships in the package: embedding it again doubles them.
+const sourcemapExcludeSources = true;
+
+/** Minifies the UMD build (`<script>` / CDN use); class names stay, for error messages. */
+const minify = {
+    name: 'minify',
+    async renderChunk(code) {
+        return { code: (await transform(code, { minify: true, keepNames: true, target: 'es2022' })).code, map: null };
+    },
+};
 
 /**
  * Build config for the `@colyseus/schema/input` subpath. The input source
@@ -17,6 +29,7 @@ function inputBundleConfig({ format, outputDir, entryFileExt, tsconfig, sourcema
             format,
             entryFileNames: `[name].${entryFileExt}`,
             sourcemap,
+            sourcemapExcludeSources,
             preserveModules: false,
         }],
         // Treat the relative `../...` imports as externals so rollup emits
@@ -70,19 +83,19 @@ export default [
     // https://github.com/microsoft/TypeScript/issues/18442#issuecomment-749896695
     {
         input: ['src/index.ts'],
-        output: [{ dir: 'build', format: 'esm', entryFileNames: '[name].mjs', chunkFileNames: 'chunks/[name].mjs', manualChunks: esmChunk, sourcemap: true }],
+        output: [{ dir: 'build', format: 'esm', entryFileNames: '[name].mjs', chunkFileNames: 'chunks/[name].mjs', manualChunks: esmChunk, sourcemap: true, sourcemapExcludeSources }],
         plugins: [typescript({ tsconfig: './tsconfig/tsconfig.esm.json' })],
     },
 
     {
         input: ['src/index.ts'],
-        output: [{ dir: 'build', format: 'cjs', entryFileNames: '[name].cjs', sourcemap: true, preserveModules: false}],
+        output: [{ dir: 'build', format: 'cjs', entryFileNames: '[name].cjs', sourcemap: true, sourcemapExcludeSources, preserveModules: false}],
         plugins: [typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],
     },
 
     {
         input: ['src/index.ts'],
-        output: [{ dir: 'build', name: "schema", format: 'umd', entryFileNames: '[name].js', preserveModules: false }],
+        output: [{ dir: 'build', name: "schema", format: 'umd', entryFileNames: '[name].js', preserveModules: false, plugins: [minify] }],
         plugins: [typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],
     },
 
@@ -126,6 +139,7 @@ export default [
             format: 'cjs',
             entryFileNames: '[name].cjs',
             sourcemap: true,
+            sourcemapExcludeSources,
             banner: '#!/usr/bin/env node'
         }],
         plugins: [typescript({ tsconfig: './tsconfig/tsconfig.cjs.json' })],

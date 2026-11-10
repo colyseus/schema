@@ -9,7 +9,7 @@
         "experimentalDecorators": true,
         "noImplicitAny": true,
         "noImplicitThis": true,
-        "inlineSources": true,
+        "inlineSources": false,
         "sourceMap": true
     },
     "include": [
