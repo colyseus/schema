@@ -75,9 +75,8 @@ describe("ArraySchema Tests", () => {
                 }
             });
 
-            it("reads names that start below \"A\"", () => {
+            it("reads names that start with a symbol character", () => {
                 for (const { side, numbers } of createArrays()) {
-                    // "$" is char code 36: the name still goes through isNaN()
                     assert.strictEqual(typeof numbers["$deleteAt"], "function", side);
                     assert.strictEqual(numbers["$unknown"], undefined, side);
                 }
@@ -100,10 +99,14 @@ describe("ArraySchema Tests", () => {
                 }
             });
 
+            // all but the last pass isNaN(), yet none is a canonical index
+            const NON_INDEX_KEYS = [
+                "Infinity", "\u00A01", "\uFEFF1", "", " 1", "+1", "-1", "01", "1e0", "1.5",
+                "customProperty",
+            ];
+
             it("a key that is not an index is a plain property for set, get and `in`", () => {
-                // "Infinity", "\u00A01" and "" pass isNaN(), yet none is an index
-                const keys = ["Infinity", "\u00A01", "\uFEFF1", "", "customProperty"];
-                for (const key of keys) {
+                for (const key of NON_INDEX_KEYS) {
                     for (const { side, numbers } of createArrays()) {
                         const message = `${side}: ${JSON.stringify(key)}`;
                         assert.strictEqual(key in numbers, false, message);
@@ -119,7 +122,7 @@ describe("ArraySchema Tests", () => {
             });
 
             it("writing a key that is not an index sends nothing to clients", () => {
-                for (const key of ["Infinity", "\u00A01", "\uFEFF1", "", "customProperty"]) {
+                for (const key of NON_INDEX_KEYS) {
                     const state = new State();
                     state.numbers.push(10, 20, 30);
                     const encoder = getEncoder(state);
@@ -132,6 +135,20 @@ describe("ArraySchema Tests", () => {
                     decodedState.decode(state.encode());
                     assert.deepStrictEqual(decodedState.numbers.toJSON(), [10, 20, 30], JSON.stringify(key));
                 }
+            });
+
+            it("arr[-1] after shift() in the same patch stays in sync", () => {
+                const state = new State();
+                state.numbers.push(1, 2, 3);
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                state.numbers.shift();
+                (state.numbers as any)[-1] = 9;
+
+                decodedState.decode(state.encode());
+                assert.deepStrictEqual(decodedState.numbers.toJSON(), [2, 3]);
+                assertDeepStrictEqualEncodeAll(state);
             });
 
             it("index writes and `in` still address the elements", () => {

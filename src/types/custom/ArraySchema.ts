@@ -18,24 +18,30 @@ const DEFAULT_SORT = (a: any, b: any) => {
     else return 0
 }
 
-/** Char code of "A". Digits, signs, "." and ASCII whitespace all sort below it. */
-const FIRST_NAME_CHAR_CODE = 65;
-
 /**
  * Whether a Proxy trap key addresses `items` rather than the instance. The
  * `get`, `set` and `has` traps all ask here, so they agree on every key.
  *
- * An index starts with a digit. A name ("length", "push", "items") starts
- * with a letter or "_", all at char code 65 ("A") or above. The first-char
- * check keeps names away from isNaN(), which parses the whole string to a
- * number and is the slow part of a named read.
+ * Only a canonical array index ("0", "17") does, as on a native Array.
+ * Anything else ("length", "$changeAt", "-1", "1.5", "01", "1e0", "") is a
+ * plain property of the instance: letting a number-like key through would
+ * record a change at `Number(key)` while storing the value under the string
+ * key, so clients would get a write the server never made.
+ *
+ * Names fail on their first char, so a named read never parses a number.
  */
-function isNumericKey(key: string | symbol): key is string {
-    return (
-        typeof (key) !== "symbol" &&
-        key.charCodeAt(0) < FIRST_NAME_CHAR_CODE &&
-        !isNaN(key as any) // https://stackoverflow.com/a/175787/892698
-    );
+function isIndexKey(key: string | symbol): key is string {
+    if (typeof (key) === "symbol") { return false; }
+
+    let c = key.charCodeAt(0);
+    if (!(c >= 48 && c <= 57)) { return false; } // not a digit; NaN for ""
+    if (c === 48) { return key.length === 1; } // "0", never "01"
+
+    for (let i = 1, len = key.length; i < len; i++) {
+        c = key.charCodeAt(i);
+        if (c < 48 || c > 57) { return false; }
+    }
+    return true;
 }
 
 /**
@@ -48,14 +54,14 @@ function isNumericKey(key: string | symbol): key is string {
  */
 const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
     get: (obj, prop) => {
-        if (isNumericKey(prop)) {
+        if (isIndexKey(prop)) {
             return obj.items[prop as unknown as number];
         }
         return Reflect.get(obj, prop);
     },
 
     set: (obj, key, setValue) => {
-        if (isNumericKey(key)) {
+        if (isIndexKey(key)) {
             if (setValue === undefined || setValue === null) {
                 obj.$deleteAt(key as unknown as number);
 
@@ -126,7 +132,7 @@ const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
     },
 
     has: (obj, key) => {
-        if (isNumericKey(key)) {
+        if (isIndexKey(key)) {
             return Reflect.has(obj.items, key);
         }
         return Reflect.has(obj, key);
