@@ -221,6 +221,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the collection (`ChangeTree.rec`). Custom primitive types registered after
   import now work as collection children.
 
+### Changed
+
+- Decoding a full state is 14–19 % faster and allocates about 40 % less (20,000 entities: 10.7 ms to 8.7 ms, 16.3 MB to 9.9 MB), and maps decode 18–32 % faster. Short strings and map keys were the bulk of it.
+
 ### Fixed
 
 - A new `Encoder` over instances another `Encoder` already encoded (`room.state = state`) now syncs them: instances added afterwards no longer reuse existing refIds (`"refId" not found`), and its `StateView`s no longer see what the previous encoder's views were granted, nor receive their stream backlogs.

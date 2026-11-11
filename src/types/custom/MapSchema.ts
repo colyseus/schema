@@ -46,8 +46,24 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
      */
     /** Wire index → key. Indexes stay dense (freed ones are reused): an array-backed table, not a hash map (see `RefTable`). */
     keyByIndex: RefTable<K> = new RefTable<K>();
-    indexByKey: Map<K, number> = new Map();
+    /**
+     * Key → wire index. A decoder-built map leaves it unbuilt (`undefined`)
+     * while index → key is one-to-one: the decoder resolves ops by index, so
+     * a full-state decode skips one hash insert per entry. Read it through
+     * {@link indexByKey}.
+     */
+    $indexByKey: Map<K, number> | undefined = new Map();
     nextIndex: number = 0;
+
+    get indexByKey(): Map<K, number> {
+        let map = this.$indexByKey;
+        if (map === undefined) {
+            map = this.$indexByKey = new Map<K, number>();
+            this.keyByIndex.forEach((key, index) => { map!.set(key, index); });
+        }
+        return map;
+    }
+    set indexByKey(map: Map<K, number>) { this.$indexByKey = map; }
 
     /**
      * Streamable state — lazily allocated by `inheritedFlags` (or the
@@ -126,7 +142,7 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
         const self: any = Object.create(MapSchema.prototype);
         self.$items = new Map<K, V>();
         self.keyByIndex = new RefTable();
-        self.indexByKey = new Map();
+        self.$indexByKey = undefined;
         self.nextIndex = 0;
         self[$childType] = undefined;
         self[$keyType] = undefined;
@@ -337,7 +353,7 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
 
         // reset wire identity + storage (numbering restarts at 0: free indexes go too)
         this.keyByIndex.clear();
-        this.indexByKey.clear();
+        this.$indexByKey?.clear();
         this.nextIndex = 0;
         this.$items.clear();
         const rec = tree.rec as KeyedRecorder | undefined;
@@ -365,7 +381,7 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
         this.$items.forEach((value: any) => value?.[$reset]?.());
         this.$items.clear();
         this.keyByIndex.clear();
-        this.indexByKey.clear();
+        this.$indexByKey?.clear();
         this.nextIndex = 0;
         tree.recycle();
     }
@@ -410,7 +426,8 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
         if (key !== undefined) {
             this.$items.delete(key);
             this.keyByIndex.delete(index);
-            if (this.indexByKey.get(key) === index) this.indexByKey.delete(key);
+            const indexByKey = this.$indexByKey;
+            if (indexByKey !== undefined && indexByKey.get(key) === index) indexByKey.delete(key);
         }
     }
 
@@ -430,7 +447,7 @@ export class MapSchema<V=any, K extends string | number = string> implements Map
         if (deletedKeys !== null) {
             deletedKeys.forEach((key) => {
                 this.$items.delete(key);
-                this.indexByKey.delete(key);
+                this.$indexByKey?.delete(key);
             });
             // drop index→key mappings of swept keys — including stale ones
             // left behind by re-indexing.

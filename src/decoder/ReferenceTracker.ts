@@ -45,20 +45,36 @@ export class CollectionCallbacks {
 
 export type RefCallbacks = SchemaCallbacks | CollectionCallbacks;
 
-/** `$callbacks`'s list for a field name or an OPERATION, created when missing. */
-function listOf($callbacks: RefCallbacks, fieldOrOperation: string | number): Function[] {
+/** `$callbacks`'s list for a field name or an OPERATION; undefined until a callback is added. */
+function listOf($callbacks: RefCallbacks, fieldOrOperation: string | number): Function[] | undefined {
     if ($callbacks instanceof CollectionCallbacks) {
         switch (fieldOrOperation) {
-            case OPERATION.ADD: return $callbacks.onAdd ??= [];
-            case OPERATION.DELETE: return $callbacks.onRemove ??= [];
-            case OPERATION.REPLACE: return $callbacks.onChange ??= [];
+            case OPERATION.ADD: return $callbacks.onAdd;
+            case OPERATION.DELETE: return $callbacks.onRemove;
+            case OPERATION.REPLACE: return $callbacks.onChange;
         }
     } else {
-        if (typeof fieldOrOperation === "string") return $callbacks[fieldOrOperation] ??= [];
-        if (fieldOrOperation === OPERATION.DELETE) return $callbacks[$onRemove] ??= [];
-        if (fieldOrOperation === OPERATION.REPLACE) return $callbacks[$onChange] ??= [];
+        if (typeof fieldOrOperation === "string") return $callbacks[fieldOrOperation];
+        if (fieldOrOperation === OPERATION.DELETE) return $callbacks[$onRemove];
+        if (fieldOrOperation === OPERATION.REPLACE) return $callbacks[$onChange];
     }
     throw new Error(`no '${OPERATION[fieldOrOperation as number] ?? fieldOrOperation}' callbacks on this ref`);
+}
+
+/**
+ * Creates the list `listOf` found missing, holding `callback`. A literal
+ * sizes it to one slot; `[]` + `push` reserves 16 (~120 B per listener).
+ */
+function startList($callbacks: RefCallbacks, fieldOrOperation: string | number, callback: Function): void {
+    if ($callbacks instanceof CollectionCallbacks) {
+        if (fieldOrOperation === OPERATION.ADD) $callbacks.onAdd = [callback];
+        else if (fieldOrOperation === OPERATION.DELETE) $callbacks.onRemove = [callback];
+        else $callbacks.onChange = [callback];
+    } else if (typeof fieldOrOperation === "string") {
+        $callbacks[fieldOrOperation] = [callback];
+    } else {
+        $callbacks[fieldOrOperation === OPERATION.DELETE ? $onRemove : $onChange] = [callback];
+    }
 }
 
 
@@ -225,7 +241,9 @@ export class ReferenceTracker {
             $callbacks = (ref !== undefined && !Schema.isSchema(ref)) ? new CollectionCallbacks() : {}; // the dispatchers' test
             this.callbacks.set(refId, $callbacks);
         }
-        listOf($callbacks, fieldOrOperation).push(callback);
+        const list = listOf($callbacks, fieldOrOperation);
+        if (list !== undefined) list.push(callback);
+        else startList($callbacks, fieldOrOperation, callback);
         return () => this.removeCallback(refId, fieldOrOperation, callback);
     }
 
@@ -233,6 +251,7 @@ export class ReferenceTracker {
         const $callbacks = this.callbacks.get(refId);
         if ($callbacks === undefined) { return; }
         const list = listOf($callbacks, field);
+        if (list === undefined) { return; }
         const index = list.indexOf(callback);
         if (index !== -1) {
             spliceOne(list, index);

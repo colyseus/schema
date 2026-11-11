@@ -504,8 +504,7 @@ export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, e
         if (operation === OPERATION.ADD) {
             if (isMap) {
                 dynamicIndex = (keyReader === undefined) ? readString(bytes, it) : keyReader(bytes, it);
-                ref.keyByIndex.set(index, dynamicIndex);
-                ref.indexByKey.set(dynamicIndex, index);
+                setKeyIndex(ref, index, dynamicIndex);
             } else {
                 dynamicIndex = index;
             }
@@ -539,6 +538,7 @@ export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, e
         }
 
         if (value !== null && value !== undefined) storeKeyValue(ref, isMap, index, dynamicIndex, value);
+        else if (isMap && operation !== OPERATION.DELETE) ref.indexByKey; // a key outside `$items`: setKeyIndex can no longer tell it is known
 
         if (previousValue !== value) {
             changes?.push({ ref, refId, op: operation, dynamicIndex, value, previousValue });
@@ -546,6 +546,18 @@ export function decodeKeyValueOps(d: Decoder, bytes: Uint8Array, it: Iterator, e
 
         if (header & REF_HAS_BODY) decodeBody(d, value, bytes, it);
     }
+}
+
+/**
+ * Record a map ADD's index ↔ key. `$indexByKey` stays unbuilt while every key
+ * is new: a key seen again builds it first, while index → key is still
+ * one-to-one (see `MapSchema.indexByKey`).
+ */
+function setKeyIndex(ref: any, index: number, key: number | string): void {
+    let indexByKey: Map<any, number> | undefined = ref.$indexByKey;
+    if (indexByKey === undefined && ref.$items.has(key)) indexByKey = ref.indexByKey;
+    ref.keyByIndex.set(index, key);
+    if (indexByKey !== undefined) indexByKey.set(key, index);
 }
 
 /**
@@ -600,8 +612,7 @@ function decodeKeyValueBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: an
         let dynamicIndex: number | string = index;
         if (isMap) {
             dynamicIndex = (keyReader === undefined) ? readString(bytes, it) : keyReader(bytes, it);
-            ref.keyByIndex.set(index, dynamicIndex);
-            ref.indexByKey.set(dynamicIndex, index);
+            setKeyIndex(ref, index, dynamicIndex);
         }
         const previousValue = ref.$items.get(dynamicIndex);
         const value = readSlotValue(d, reader, OPERATION.ADD, previousValue, type, bytes, it);
@@ -613,6 +624,7 @@ function decodeKeyValueBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: an
             resyncTouchEntry(d, ref, operation, dynamicIndex, previousValue, value, changes);
         }
         if (value !== null && value !== undefined) storeKeyValue(ref, isMap, index, dynamicIndex, value);
+        else if (isMap) ref.indexByKey; // as in decodeKeyValueOps
         if (previousValue !== value) {
             changes?.push({ ref, refId, op: operation, dynamicIndex, value, previousValue });
         }
