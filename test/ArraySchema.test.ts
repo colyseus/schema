@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, assertNoOrphanRefs, createClientWithView, encodeMultiple } from "./Schema";
+import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, assertNoOrphanRefs, createClientWithView, encodeMultiple, encodeAndAssertEquals } from "./Schema";
 import { ArraySchema, Schema, type, view, $changes, $refId, MapSchema, ChangeTree, OPERATION, schema, t } from "../src";
 
 describe("ArraySchema Tests", () => {
@@ -77,7 +77,7 @@ describe("ArraySchema Tests", () => {
 
             it("reads names that start with a symbol character", () => {
                 for (const { side, numbers } of createArrays()) {
-                    assert.strictEqual(typeof numbers["$deleteAt"], "function", side);
+                    assert.strictEqual(typeof numbers["$changeAt"], "function", side);
                     assert.strictEqual(numbers["$unknown"], undefined, side);
                 }
             });
@@ -135,6 +135,20 @@ describe("ArraySchema Tests", () => {
                     decodedState.decode(state.encode());
                     assert.deepStrictEqual(decodedState.numbers.toJSON(), [10, 20, 30], JSON.stringify(key));
                 }
+            });
+
+            it("nulling an index past the end sends nothing to clients", () => {
+                const state = new State();
+                state.numbers.push(10, 20, 30);
+                const encoder = getEncoder(state);
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                (state.numbers as any)[3] = null;
+                (state.numbers as any)[10] = undefined;
+
+                assert.strictEqual(encoder.hasChanges, false);
+                assert.deepStrictEqual(state.numbers.toJSON(), [10, 20, 30]);
             });
 
             it("arr[-1] after shift() in the same patch stays in sync", () => {
@@ -3634,6 +3648,45 @@ describe("ArraySchema Tests", () => {
             });
         });
 
+        describe("`arr[i] = null | undefined` removes the element on both sides (#254)", () => {
+            const nextTick: Record<string, (arr: ArraySchema<any>, wrap: (name: string) => any) => void> = {
+                "arr[1] = x": (arr, wrap) => { arr[1] = wrap("x"); },
+                "push()": (arr, wrap) => { arr.push(wrap("x")); },
+                "pop()": (arr) => { arr.pop(); },
+                "shift()": (arr) => { arr.shift(); },
+                "unshift()": (arr, wrap) => { arr.unshift(wrap("x")); },
+            };
+
+            for (const [label, op] of Object.entries(nextTick)) {
+                it(`then ${label} next tick`, () => {
+                    for (const nullish of [null, undefined]) {
+                        const { state, decodedState } = synced(["a", "b", "c"]);
+                        (state.items as any)[1] = nullish;
+                        (state.strings as any)[1] = nullish;
+                        assert.deepStrictEqual(state.items.map(nameOf), ["a", "c"]);
+                        assert.deepStrictEqual([...state.strings], ["a", "c"]);
+                        encodeAndAssertEquals(state, decodedState);
+
+                        op(state.items, item);
+                        op(state.strings, (name) => name);
+                        encodeAndAssertEquals(state, decodedState);
+                        assertRefIdCounts(state, decodedState);
+                        assertDeepStrictEqualEncodeAll(state);
+                    }
+                });
+            }
+
+            it("child mutation after removal reaches the right element", () => {
+                const { state, decodedState } = synced(["a", "b", "c"]);
+                (state.items as any)[1] = null;
+                decodedState.decode(state.encode());
+
+                state.items[1].name = "C";
+                encodeAndAssertEquals(state, decodedState);
+                assert.deepStrictEqual(decodedState.items.map(nameOf), ["a", "C"]);
+            });
+        });
+
         it("#flat", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
             assert.throws(() => { arr.flat(); }, /not supported/i);
@@ -3818,6 +3871,7 @@ describe("ArraySchema Tests", () => {
             }, "Setting array item to undefined should not throw during encoding");
 
             // Verify the item was removed
+            assert.strictEqual(2, state.items.length);
             assert.strictEqual(2, decodedState.items.length);
             assert.strictEqual("Item 1", decodedState.items[0].name);
             assert.strictEqual("Item 3", decodedState.items[1].name);
@@ -4158,11 +4212,7 @@ describe("ArraySchema Tests", () => {
                 assertInSync(state, decodedState);
             });
 
-            it("proxy `arr[i] = undefined` keeps today's path", () => {
-                // $deleteAt records a DELETE and releases the refCount but never
-                // touches `items`, so the cancel is deliberately not wired there —
-                // `$onEncodeEnd` would resurrect the element with its ADD erased.
-                // TODO: `$deleteAt` leaves encoder `items` holding X (pre-existing).
+            it("proxy `arr[i] = undefined` cancels a same-tick push", () => {
                 const { state, decodedState } = bootstrapped("a", "b", "c");
                 const warnings: string[] = [];
                 const originalWarn = console.warn;
@@ -4175,8 +4225,8 @@ describe("ArraySchema Tests", () => {
                     console.warn = originalWarn;
                 }
                 assert.deepStrictEqual(warnings, []);
-                assert.deepStrictEqual(names(decodedState.list), ["a", "b", "c"]);
-                assertRefIdCounts(state, decodedState);
+                assert.deepStrictEqual(names(state.list), ["a", "b", "c"]);
+                assertInSync(state, decodedState);
             });
 
             describe("StateView", () => {

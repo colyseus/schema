@@ -63,7 +63,9 @@ const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
     set: (obj, key, setValue) => {
         if (isIndexKey(key)) {
             if (setValue === undefined || setValue === null) {
-                obj.$deleteAt(key as unknown as number);
+                // no null holes: remove, so both sides shift alike
+                const index = Number(key);
+                if (index < obj.items.length) { obj.splice(index, 1); }
 
             } else {
                 // wire slot the write was recorded at; undefined = nothing
@@ -123,11 +125,7 @@ const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
     },
 
     deleteProperty: (obj, prop) => {
-        if (typeof (prop) === "number") {
-            obj.$deleteAt(prop);
-        } else {
-            delete obj[prop as unknown as number];
-        }
+        delete obj[prop as unknown as number];
         return true;
     },
 
@@ -580,11 +578,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         }
 
         return wireIndex;
-    }
-
-    // encoding only
-    protected $deleteAt(index: number, operation?: OPERATION) {
-        this[$changes].delete(this.$wireIndex(index), operation);
     }
 
     // decoding only
