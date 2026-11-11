@@ -1,0 +1,8 @@
+// `ArraySchemaOptions { legacyCompat: true }`: the augmentation applies to
+// the whole program, so it cannot share a config with the default typing.
+{
+  "extends": "./tsconfig.types.json",
+  "files": [
+    "test/types/ArrayLegacyCompat.ts"
+  ]
+}

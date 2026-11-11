@@ -62,7 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `arr.length = n` and `delete arr[i]` change the local array without
   reaching clients — use `arr.set(i, v)`, `arr.splice(n)` and `arr.clear()`.
   TypeScript reports them (the index signature and `length` are read-only);
-  plain JavaScript gets no warning. In exchange there is no Proxy: `arr[i]`
+  plain JavaScript gets no warning; `enableLegacyCompat()` brings the
+  5.x behaviour back while migrating. In exchange there is no Proxy: `arr[i]`
   on the server costs what it does on a plain array (5.x: ~100 ns), and
   constructing an array field is a third cheaper. `set()` past the end
   appends (no holes); `set(i, undefined)` removes. `move()` hands its
@@ -220,6 +221,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - `QueueSchema` / `t.queue(Item)`: a first-in, first-out array whose `shift()` stays O(1) however long it is (`ArraySchema#shift()` on 2000 Schema children: 7.4 µs, a queue: 0.5 µs). It goes in an array field and travels as one, so clients — every SDK — keep receiving a regular `ArraySchema`. Read with `at(i)`, `peek()`, `forEach` or `for…of`; there is no index syntax and no insertion in the middle.
+- `enableLegacyCompat()`: a migration aid for 5.x code that writes arrays by index. Call it once before creating any state and `arr[i] = v`, `arr[i] = null` and `arr.length = n` reach clients again, as in 5.0.47, and `slice()` / `concat()` / `with()` return an `ArraySchema` again. Arrays created while it is on read by index at 5.x speed (~85 ns instead of ~1 ns); `for…of`, the array methods and encoding keep their 6.0 speed. For TypeScript, add `declare module "@colyseus/schema" { interface ArraySchemaOptions { legacyCompat: true } }`.
 - Array wire format: an `EXT` op that decoders skip when they don't know the extension, so array ops added after 6.0 don't break older clients.
 - `ArrayLog` / `KeyedRecorder`: one change recorder per collection, owned by
   the collection (`ChangeTree.rec`). Custom primitive types registered after

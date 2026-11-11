@@ -1,5 +1,5 @@
 // Default typing: writing an ArraySchema by index or through `length` does
-// not compile — those writes are untracked.
+// not compile — those writes are untracked without `enableLegacyCompat()`.
 import { ArraySchema } from "../../build/index.js";
 
 const numbers = new ArraySchema<number>(1, 2, 3);

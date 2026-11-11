@@ -36,6 +36,12 @@ import { arrAppend, arrCopy, arrInsert, arrRemove, arrReverse, arrSplice } from 
  * builtins call `new ArraySchema(n)`).
  */
 
+/** Wraps each constructed array when set (see ArrayLegacyCompat.ts). */
+let wrapConstructed: ((array: ArraySchema) => any) | undefined;
+export function setArrayWrapper(wrap: ((array: ArraySchema) => any) | undefined): void {
+    wrapConstructed = wrap;
+}
+
 /** The array `move()` is running its callback on: its `set()` writes go straight to the array. */
 let moving: ArraySchema | undefined;
 
@@ -275,11 +281,37 @@ function forwardFrom(fromIndex: any, length: number): number {
     return from;
 }
 
-export class ArraySchema<V = any> extends Array<V> implements Collection<number, V>, IRef {
-    /** Index and `length` writes are not tracked: `set(index, value)`, `splice(n)`, `clear()`. */
-    readonly [index: number]: V;
-    declare readonly length: number;
+/**
+ * Type-level options, set by declaration merging.
+ *
+ * `legacyCompat: true` types `arr[i] = v` and `arr.length = n` as allowed,
+ * for a project that calls `enableLegacyCompat()`:
+ *
+ * ```ts
+ * declare module "@colyseus/schema" {
+ *     interface ArraySchemaOptions { legacyCompat: true }
+ * }
+ * ```
+ *
+ * `concat()` and `with()` are then typed as returning an `ArraySchema`.
+ */
+export interface ArraySchemaOptions {}
 
+/** Index and `length` writes are not tracked: `set(index, value)`, `splice(n)`, `clear()`. */
+interface ReadonlyIndexed<V> extends Array<V> {
+    readonly [index: number]: V;
+    readonly length: number;
+}
+
+type ArrayBaseOf<V> = ArraySchemaOptions extends { legacyCompat: true } ? Array<V> : ReadonlyIndexed<V>;
+
+/** What `concat()` and `with()` return: an `ArraySchema` under `enableLegacyCompat()`, as in 5.x. */
+type ArrayCopyOf<V> = ArraySchemaOptions extends { legacyCompat: true } ? ArraySchema<V> : V[];
+
+/** `Array`, typed read-only by index unless `ArraySchemaOptions` opts in. */
+const ArrayBase = Array as unknown as (new <V>() => ArrayBaseOf<V>) & Omit<ArrayConstructor, never>;
+
+export class ArraySchema<V = any> extends ArrayBase<V> implements Collection<number, V>, IRef {
     /** Prototype accessor; the tree itself is stamped on the instance (see ChangeTree.ts). */
     declare [$changes]: ChangeTree;
     declare [$refId]?: number;
@@ -327,6 +359,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         stampTree(this, tree);
 
         if (items.length > 0) this.$pushAll(items);
+        if (wrapConstructed !== undefined) return wrapConstructed(this);
     }
 
     /**
@@ -689,13 +722,17 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     // ────── ES2023 non-mutating helpers (typed here: the build targets lib ES2022) ──────
 
     /** Copy with `index` replaced (negative counts from the end). Plain array. */
-    with(index: number, value: V): V[] {
+    with(index: number, value: V): ArrayCopyOf<V> {
         const self = this;
         const copy = arrCopy(self);
         if (index < 0) index += copy.length;
         if (index < 0 || index >= copy.length) throw new RangeError(`Invalid index : ${index}`);
         copy[index] = value;
-        return copy;
+        return copy as ArrayCopyOf<V>;
+    }
+
+    concat(...items: (V | ConcatArray<V>)[]): ArrayCopyOf<V> {
+        return arrCopy(this).concat(...items) as ArrayCopyOf<V>;
     }
 
     toReversed(): V[] {

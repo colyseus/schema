@@ -7,6 +7,8 @@ export { MapSchema };
 
 import { ArraySchema } from "./types/custom/ArraySchema.js";
 export { ArraySchema };
+export type { ArraySchemaOptions } from "./types/custom/ArraySchema.js";
+export { enableLegacyCompat } from "./types/custom/ArrayLegacyCompat.js";
 
 import { QueueSchema } from "./types/custom/QueueSchema.js";
 export { QueueSchema };
