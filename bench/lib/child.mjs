@@ -21,6 +21,7 @@
 //     budget?: { [variantName]: n }, // optional gate budget in `unit`
 //     gate?: true,                   // include in `--filter gate` release checks
 //     layoutSensitive?: true,        // (or per variant) run.mjs randomises heap layout per sample (--pad)
+//     coldYoungGen?: true,           // (or per variant) scavenge before every timed op, outside the timing
 //     minWarmupMs?: n,               // per-scenario minimum warm-up time (run.mjs; 0 = counts only)
 //     nodeFlags?: ["--flag"],       // extra V8/node flags for the child process
 //     async setup(lib, variant, plan) -> ctx
@@ -117,15 +118,24 @@ tracker.reset();
 const repMs = [];
 let bytesTotal = 0;
 let bytesOps = 0;
+// An op that allocates about a semi-space keeps its scavenges at a fixed
+// phase of the loop: they copy nothing in one build and a whole op's live
+// graph in the next. Starting every op on an empty young generation removes
+// that; the forced scavenges stay in the gc columns.
+const coldYoungGen = (variant.coldYoungGen ?? scenario.coldYoungGen) === true;
 for (let r = 0; r < reps; r++) {
+    let ns = 0n;
     const t0 = process.hrtime.bigint();
     for (let i = 0; i < iterations; i++) {
+        let s0 = 0n;
+        if (coldYoungGen) { gc({ type: "minor" }); s0 = process.hrtime.bigint(); }
         const ret = scenario.run(ctx, runIndex++);
+        if (coldYoungGen) ns += process.hrtime.bigint() - s0;
         if (typeof ret === "number") { bytesTotal += ret; bytesOps++; }
         sink ^= ret | 0;
     }
-    const t1 = process.hrtime.bigint();
-    repMs.push(Number(t1 - t0) / 1e6 / iterations);
+    if (!coldYoungGen) ns = process.hrtime.bigint() - t0;
+    repMs.push(Number(ns) / 1e6 / iterations);
 }
 
 await flushGcEntries();

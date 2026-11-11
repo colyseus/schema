@@ -1,6 +1,7 @@
 // Big state, no views: 10k / 20k entities + 100 players + 2000 tiles + config.
 //   encode-*    — encodeAll() of the whole state (what a joining client receives)
-//   decode-*    — a fresh Decoder consuming that snapshot (client join cost)
+//   decode-*    — a fresh Decoder consuming that snapshot (client join cost);
+//                 one decode allocates about a semi-space, hence `coldYoungGen`
 //   decode-10k-callbacks — same with the idiomatic onAdd(entities) → listen(x, y)
 //   handshake   — Reflection.encode + Reflection.decode
 import { codecOf, withCodecs, defineWorld, buildWorld, attachCallbacks } from "../../lib/realworld.mjs";
@@ -13,9 +14,9 @@ export default {
     variants: withCodecs([
         { name: "encode-10k", n: 10000, mode: "encode", iterations: 40 },
         { name: "encode-20k", n: 20000, mode: "encode", iterations: 20 },
-        { name: "decode-10k", n: 10000, mode: "decode", iterations: 40 },
-        { name: "decode-20k", n: 20000, mode: "decode", iterations: 20 },
-        { name: "decode-10k-callbacks", n: 10000, mode: "decode", callbacks: true, iterations: 40 },
+        { name: "decode-10k", n: 10000, mode: "decode", iterations: 40, coldYoungGen: true },
+        { name: "decode-20k", n: 20000, mode: "decode", iterations: 20, coldYoungGen: true },
+        { name: "decode-10k-callbacks", n: 10000, mode: "decode", callbacks: true, iterations: 40, coldYoungGen: true },
         { name: "handshake", n: 10000, mode: "handshake", iterations: 200 },
     ]),
     setup(lib, variant) {

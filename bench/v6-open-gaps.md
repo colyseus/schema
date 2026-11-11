@@ -34,6 +34,148 @@ The builds are machine-local (`bench/.builds/` is gitignored); rebuild them
 with `npm run bench:snapshot <label>` (v6) and, for v5, a worktree of
 `master` built and copied as described in `bench/realworld-results.md`.
 
+## 0. Re-measured 2026-11-10 against 5.0.45
+
+`bench/.builds/v5.0.45` vs the working tree (`gaps-base` before, `gaps-sort2`
+after the `sort()` change below), N = 8. This supersedes the numbers in §1–§2:
+`decoder/churn` (−79 %) and the `forEach` / `map` / `filter` rows (−6 … −35 %)
+are wins now. What is still slower than 5.0.45:
+
+| unit | 5.0.45 | v6 | Δ |
+|---|---|---|---|
+| mutations/array-iterate/indexOf-last (2000 refs) | 0.69 µs | 1.90 µs | **+176 %** |
+| decoder/array-read/indexOf-last | 0.66 µs | 1.60 µs | **+142 %** |
+| mutations/array-iterate/shift-push (2000 refs) | 5.69 µs | 7.96 µs | **+40 %** |
+| mutations/array-refs/push-shift-2000 | 5.76 µs | 7.98 µs | **+39 %** |
+| decoder/array-read/for-of | 7.34 µs | 8.44 µs | +15 % (p .07) |
+
+**Closed: `sort()`** (not in the earlier revisions of this file). v6 shipped
+the full permutation and built a `Map` of the whole array on every call;
+`refs-500-swap` was +171 % and 885 B against 20 B. `sort()` / `move()` now
+record a REORDER over the smallest range of slots that changed (wire:
+`REORDER start, count, oldPos*count`, positions counted from `start`), a
+REVERSE when the whole array flips, and nothing — without writing the array
+— when the order is unchanged. Duplicate refs no longer drop the op.
+
+| mutations/array-sort | 5.0.45 | before | after | Δ vs 5.0.45 | bytes 5.0.45 → before → after |
+|---|---|---|---|---|---|
+| refs-50-swap | 2.39 µs | 3.98 µs | 2.03 µs | −13 % | 13 → 60 → 13 |
+| refs-50-still | 1.19 µs | 2.73 µs | 1.14 µs | −2 % (n.s.) | equal |
+| refs-500-swap | 10.4 µs | 30.1 µs | 9.74 µs | −6 % | 20 → 885 → 15 |
+| refs-500-flip | 50.0 µs | 31.5 µs | 10.2 µs | −80 % | 2740 → 877 → 3 |
+| nums-500-swap | 43.4 µs | 42.5 µs | 7.66 µs | −82 % | 3081 → 882 → 12 |
+| nums-500-flip | 41.2 µs | 44.3 µs | 8.39 µs | −80 % | 3081 → 877 → 3 |
+
+**Array redesign (same day, after the user dropped "`arr[i] = v` must stay
+tracked").** `bench/.builds/gaps-queue` vs 5.0.45, N = 8:
+
+| unit | 5.0.45 | v6 | Δ |
+|---|---|---|---|
+| mutations/array-iterate/index (server `arr[i]`, 2000) | 177 µs | 7.45 µs | **−96 %** |
+| mutations/array-refs/push-pop-100 | 1.54 µs | 0.45 µs | −71 % |
+| mutations/array-refs/queue-push-shift-2000 (`QueueSchema`) | 4.76 µs | 0.48 µs | **−90 %** |
+| mutations/array-refs/push-shift-2000 (`ArraySchema`) | 4.75 µs | 7.38 µs | +55 % |
+| mutations/array-iterate/indexOf-last | 0.65 µs | 1.5 – 2.4 µs (two modes) | +130 … +270 % |
+| decoder/array-read/indexOf-last | 0.64 µs | 1.49 µs | +134 % |
+| decoder/array-read/for-of | 7.04 µs | 7.25 µs | +2.9 % |
+
+- **No Proxy on the encoder side.** `new ArraySchema()` is the array.
+  Against the `set`-only Proxy build (`gaps-sort2`): `arr[i]` −94 %,
+  `encoder/construct` −33 %, `array-churn` −27 %, `heavy-tick` −19 %,
+  `turn-based/enc` −21 %, push / pop −18 %, `memory-footprint` −3.4 %. The
+  price: `arr[i] = v`, `arr.length = n`, `delete arr[i]` are untracked
+  (`set()`, `splice()`, `clear()`); TypeScript reports them through a
+  read-only index signature and `length`, plain JS does not — an untracked
+  ref write surfaces as "cannot encode … without a refId", a primitive one
+  as a silent desync. `ChangeTree.refTarget` and `$proxyTarget` are gone.
+- **`QueueSchema`** (`t.queue()`): head offset + one native compaction when
+  the dead front is half the storage; an array on the wire (PUSH /
+  `REMOVE 0`), so decoders see an `ArraySchema`. Encoder sites that need the
+  elements from index 0 read `ref[$elements]` (the queue compacts there).
+  This is the answer to the `shift` rows; `ArraySchema#shift()` itself is
+  unchanged (write barrier, §1).
+- **`EXT` array op** (15): skippable by decoders that don't know the
+  extension id; ops 12–14 unassigned.
+- **Not built: ordered `@view()` arrays.** `ADD_REF`'s arg is reserved in
+  `SPEC.md` for a position anchor and today's decoders already ignore it, so
+  it can be added without a wire break. The encoder side needs the nearest
+  preceding element visible to each view — one pass over the array per view
+  with adds per tick — which is a cost to decide on, not a free win.
+- `indexOf` stays a JS loop (the native builtin wants a plain-array
+  receiver); the server row's two modes (1.8 / 2.4 µs) are the same on the
+  Proxy build in isolation. Prototype-flipping to borrow the builtin leaves
+  the array on a new hidden class every round trip — dead end. A plain array
+  behind a `get` + `set` Proxy (5.x's model) was measured at `shift` 0.15 µs
+  and `indexOf` 0.49 µs but 96 ns per `arr[i]` and +17 ns per method call;
+  superseded by dropping the Proxy.
+
+### Decode rows that moved without a cause (2026-11-10)
+
+The full matrix of HEAD (`v6-f42fdb9`) against HEAD + the stub-tree change
+(`UntrackedChangeTree` constants on the prototype, 128 → 64 B per decoded
+ref) reported `big-state/decode-20k` +41 % and `inventory-rpg/dec` +8…12 %,
+both reproducible, both with a clean A/A. Neither is a property of the code.
+
+**`decode-20k`: scavenge phase locked to the loop.** One 20k decode allocated
+14.7 MB of young objects (13.3 MB with the smaller stub) against a 16 MB
+semi-space, so in a decode loop the scavenges land at a fixed phase per
+build: on dead decoders in one (30 ms of GC per 40 ops), mid-decode on a
+live graph in the other (216 ms). Sweeping `n`, HEAD is the slow build at
+15k and 30k (47 ms vs 25 ms). With `--max-semi-space-size=64`, or a scavenge
+before each op, the two builds are level. The decode rows of
+`realworld/big-state` now set `coldYoungGen` (`bench/lib/child.mjs`): HEAD vs
+stub change reads +0.6 % on `decode-20k`.
+
+**`inventory-rpg/dec`: what the parallel scavenger leaves adjacent.** The
+decode loop never reads or writes the moved fields (counted with getters on
+the prototype: 0 in 2000 ticks), TurboFan optimises and inlines the same
+functions in both builds, and a stand-alone script shows no gap. In the
+harness the gap is all inside `decodeRun` (+1.8 µs / tick), it is HEAD that
+slows down under `--single-threaded-gc` (15.6 → 18.0 µs; stub build 17.4 →
+17.8), and with `--pad` every build from HEAD to the current tree lands at
+15.5–16.1 µs. The `dec` / `callbacks` variants are now `layoutSensitive`.
+The swing itself (~15 %) is the cost of the pointer chain per run member —
+refs page → instance → stub tree → `$values` array → elements.
+
+**What a full-state decode allocates** (20k entities + 100 players + 2000
+tiles, sampling heap profiler, per decode):
+
+| | before | after |
+|---|---|---|
+| short strings (`+=` char loop: a dead string per character) | 5.6 MB | 1.0 MB |
+| instance + stub tree + `$values` (223 B / ref) | 4.8 MB | 4.8 MB |
+| `Map.set` (`$items` + `indexByKey`, tables doubling) | 3.5 MB | 1.8 MB |
+| boxed `number` values | 1.5 MB | 1.5 MB |
+| total | 16.3 MB | 9.9 MB |
+
+- **Short ASCII strings (1–12 bytes) in one `String.fromCharCode` call**
+  (`decode.utf8Read`): 15–23 ns and 24–32 B per string against 28–170 ns and
+  72–390 B for the `+=` loop, which is gone — everything else goes through
+  the unit-array `apply`, or `TextDecoder` from 48 ASCII bytes.
+- **A decoded map builds `indexByKey` on first read.** The decoder resolves
+  ops by index (`keyByIndex`); key → index is only read by local `set()` /
+  `delete()` and by an `Encoder` taking the state over. It stays unbuilt
+  while index → key is one-to-one — a key seen twice builds it first.
+- Against the tree before both (`gaps-final` → `dec-final`, N = 12,
+  `bench/results/ab-gaps-final-vs-decode-opts.json`): `big-state/decode-20k`
+  10.7 → 8.7 ms (−19 %), `decode-10k` −14 %, `decoder/map-bootstrap` −18 …
+  −32 %, `bulk-add` −14 %, `resync` −7 %, `bootstrap` −7 %,
+  `callbacks/map-churn/str` −10 %; steady-state decode rows unchanged.
+
+Left open, largest first:
+
+- **Boxed `number` fields.** Every non-integer float stored in `$values` is
+  a fresh 16 B HeapNumber, and on a promoted instance an old → young store.
+  With integer positions `inventory-rpg/dec` drops 15.6 → 12.1 µs / tick
+  (−22 %). Needs unboxed storage for float fields (a `Float64Array` per
+  instance or per class) on both sides — a storage redesign, not a patch.
+- **Three objects per decoded Schema** (instance, `$values` array, 64 B
+  stub tree: 223 B together). Folding the stub's four fields into the
+  instance would save the 64 B and one hop of the chain above.
+- **refId → tree table** next to `refs`, so a run member costs page → tree →
+  `$values` without touching the instance. Unmeasured; bounded by the ~15 %
+  layout swing.
+
 ## 1. ArraySchema `shift` / `indexOf` / `forEach` — the storage model
 
 Round 2 (agent C) took the overrides in `src/types/custom/ArraySchema.ts` as
@@ -66,9 +208,10 @@ Client side (`decoder/array-read/*`, plain `Array` subclass, no Proxy):
 | decoder/array-read/forEach | 4.93 µs | 5.84 µs | 5.50 µs | −5.8 % (< .001) | +13 % | +20 % |
 | decoder/array-read/map | 6.05 µs | 6.42 µs | 6.08 µs | −5.2 % (< .001) | +0.7 % | +7 % |
 
-(`index` −98 %, `length+at` −96 %, `for-of` −38 %, `spread` −8 % vs v5 are
-wins and did not move; `mutations/array-refs` push-pop / splice-head /
-unshift-pop are −2 … −36 % vs v5 and another −4 % in round 2.)
+(`index` −98 %, `length+at` −96 %, `spread` −8 % vs v5 are wins and did
+not move; `for-of` is −38 % vs 5.0.31 but +12 % vs 5.0.45, see below;
+`mutations/array-refs` push-pop / splice-head / unshift-pop are −2 … −36 %
+vs v5 and another −4 % in round 2.)
 
 Why the rest is the storage model, not the overrides:
 
@@ -91,6 +234,13 @@ Why the rest is the storage model, not the overrides:
   the native builtin, which TurboFan inlines together with the callback;
   the subclass loop keeps a keyed load with map and bounds check per
   element (~0.5 ns each). `map` is at parity.
+- **`for-of` on the client (+12 % vs 5.0.45, measured 2026-11-10)**: 5.0.45
+  returns the built-in iterator of its plain internal array, which TurboFan
+  lowers to an indexed loop. v6's `ArrayValues` iterator costs ~0.5 ns per
+  element over the subclass's own index loop (7.8 vs 6.8 µs for 2000). The
+  built-in iterator on the subclass receiver misses that lowering: patching
+  `Array.prototype[Symbol.iterator]` onto `ArraySchema.prototype` measured
+  +170 % vs 5.0.45. The gap was +21 % before the November perf audit.
 
 **Storage-model question (for the user, not decided here).** Only a native
 element move recovers the `shift` rows, i.e. plain-array storage on the
