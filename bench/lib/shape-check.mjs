@@ -93,7 +93,7 @@ const lobbyShapes = rw.defineLobby(lib);
 const lobby = rw.buildLobby(lib, codec, lobbyShapes, { players: 10, history: 20 });
 same("ChangeTree ArraySchema vs Hero", lobby.state.messages[$changes], tHero0);
 same("ChangeTree ArraySchema vs MapSchema", lobby.state.messages[$changes], tMap);
-props("encoder ArraySchema instance (proxy target)", lobby.state.messages[Symbol.for("$proxyTarget")] ?? lobby.state.messages);
+props("encoder ArraySchema instance (proxy target)", lobby.state.messages);
 
 // --- Arena with views ---------------------------------------------------------------
 const arenaShapes = rw.defineArena(lib);

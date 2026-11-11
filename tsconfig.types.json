@@ -16,6 +16,7 @@
     "test/types/SchemaCustomBase.ts",
     "test/types/SchemaExtend.ts",
     "test/types/CollectionElementRefinement.ts",
-    "test/types/MapKeyType.ts"
+    "test/types/MapKeyType.ts",
+    "test/types/ArrayIndexReadonly.ts"
   ]
 }

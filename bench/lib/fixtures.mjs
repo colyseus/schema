@@ -8,6 +8,12 @@
 /** Deterministic 8-char key (replaces nanoid — removes randomness from fixtures). */
 export const KEY = (i) => i.toString(36).padStart(8, "x");
 
+/** Tracked index write: `set()` on 6.x, the Proxy `set` trap on 5.x. */
+export function setAt(arr, index, value) {
+    if (typeof arr.set === "function") arr.set(index, value);
+    else arr[index] = value;
+}
+
 /** Must run before constructing any Encoder — default 8KB overflows full-state encodes. */
 export function setBufferSize(lib) {
     lib.Encoder.BUFFER_SIZE = 4 * 1024 * 1024;
@@ -110,7 +116,7 @@ export function genHeavyFrames(state, encoder, ticks, n) {
             const p = state.players.get(`p${j}`);
             p.position.x++;
             p.position.y++;
-            p.scores[0] = i;
+            setAt(p.scores, 0, i);
         }
         frames.push(encoder.encode().slice());
         encoder.discardChanges();

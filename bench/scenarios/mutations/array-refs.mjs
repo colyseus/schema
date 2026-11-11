@@ -14,6 +14,7 @@ export default {
         { name: "push-pop-2000", op: "push-pop", size: 2000, iterations: 3000 },
         { name: "push-shift-100", op: "push-shift", size: 100, iterations: 20000 },
         { name: "push-shift-2000", op: "push-shift", size: 2000, iterations: 3000 },
+        { name: "queue-push-shift-2000", op: "push-shift", size: 2000, iterations: 3000, queue: true },
         { name: "splice-head-500", op: "splice-head", size: 500, iterations: 5000 },
         { name: "unshift-pop-500", op: "unshift-pop", size: 500, iterations: 5000 },
     ],
@@ -30,7 +31,8 @@ export default {
         class ArrayState extends lib.Schema {
             constructor() {
                 super(...arguments);
-                this.items = new lib.ArraySchema();
+                // 6.x QueueSchema where the build has one (5.x: the same ops on an ArraySchema)
+                this.items = (variant.queue && lib.QueueSchema) ? new lib.QueueSchema() : new lib.ArraySchema();
             }
         }
         lib.type([Item])(ArrayState.prototype, "items", undefined);

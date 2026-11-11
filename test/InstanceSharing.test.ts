@@ -1208,7 +1208,6 @@ describe("Instance sharing", () => {
                     "pop()": (state) => { state.arr.pop(); },
                     "shift()": (state) => { state.arr.shift(); },
                     "splice()": (state) => { state.arr.splice(0, 1); },
-                    "length = 0": (state) => { state.arr.length = 0; },
                 },
             },
             MapSchema: {

@@ -1,5 +1,5 @@
 // Heavy tick: every player mutates (x, y, scores[0]) before each encode.
-import { buildBloatState } from "../../lib/fixtures.mjs";
+import { buildBloatState, setAt } from "../../lib/fixtures.mjs";
 
 export default {
     name: "encoder/heavy-tick",
@@ -18,7 +18,7 @@ export default {
             const p = state.players.get(`p${j}`);
             p.position.x++;
             p.position.y++;
-            p.scores[0] = i;
+            setAt(p.scores, 0, i);
         }
         const bytes = encoder.encode().byteLength;
         encoder.discardChanges();

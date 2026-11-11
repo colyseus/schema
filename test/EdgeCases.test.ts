@@ -156,8 +156,8 @@ describe("Edge cases", () => {
             state.child.n = 1;
 
             for (let i = 0; i < numItems; i++) {
-                state.arrayOfNum[i] = undefined;
-                state.arrayOfNum[i] = i * 100;
+                state.arrayOfNum.set(i, undefined);
+                state.arrayOfNum.set(i, i * 100);
             }
 
             for (let i = 0; i < numItems; i++) {

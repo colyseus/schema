@@ -33,7 +33,7 @@ function truncate(a: unknown[]): void {
  * | SET     | index  | –        | prev, value                       | 1      |
  * | REMOVE  | index  | count    | count removed values              | count  |
  * | REVERSE | –      | –        | –                                 | 1      |
- * | REORDER | len    | –        | len old positions                 | 1      |
+ * | REORDER | start  | count    | count old positions, from `start` | 1      |
  * | CLEAR   | –      | –        | –                                 | 1      |
  * | RESTATE | count  | rev      | count values (the whole array)    | 1      |
  *
@@ -198,11 +198,11 @@ export class ArrayLog<V = any> {
         this.rev += 1;
     }
 
-    /** `perm[k]` = old position of the element now at `k`. */
-    reorder(perm: number[]): void {
+    /** `perm[k]` = old position, counted from `start`, of the element now at `start + k`. */
+    reorder(start: number, perm: number[]): void {
         const n = perm.length;
         this.lastSeq = this.rev;
-        this.ops.push(ARRAY_OP.REORDER, n, 0);
+        this.ops.push(ARRAY_OP.REORDER, start, n);
         const vals = this.vals;
         for (let i = 0; i < n; i++) vals.push(perm[i]);
         this.rev += 1;
@@ -269,7 +269,7 @@ export class ArrayLog<V = any> {
             case ARRAY_OP.INSERT: return ops[i + 2];
             case ARRAY_OP.SET: return 2;
             case ARRAY_OP.REMOVE: return ops[i + 2];
-            case ARRAY_OP.REORDER: return ops[i + 1];
+            case ARRAY_OP.REORDER: return ops[i + 2];
             case ARRAY_OP.RESTATE: return ops[i + 1];
             default: return 0;
         }

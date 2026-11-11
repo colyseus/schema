@@ -29,8 +29,7 @@ export function forEachLiveWithCtx<C>(
     ctx: C,
     cb: (ctx: C, index: number) => void,
 ): void {
-    // `refTarget` is the raw instance (the un-proxied array for ArraySchema).
-    const ref = tree.refTarget as any;
+    const ref = tree.ref as any;
     const desc = tree.encDescriptor;
 
     if (desc.kind === KIND_SCHEMA) {
@@ -63,8 +62,7 @@ export function forEachLiveWithCtx<C>(
     if (tree.isPatchOnly) return;
 
     if (desc.kind === KIND_ARRAY) {
-        const els = tree.refTarget as any[];
-        for (let i = 0, len = els.length; i < len; i++) cb(ctx, i);
+        for (let i = 0, len = ref.length; i < len; i++) cb(ctx, i);
 
     } else if (desc.kind === KIND_MAP) {
         // `$items` (insertion) order, not wire-index order: the client rebuilds its map in walk order

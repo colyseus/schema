@@ -3,7 +3,7 @@
 // changes a score without changing the order, "flip" reverses the whole order.
 // "push-sort-pop" adds an entry, sorts and drops the last one in one tick
 // (5.x ships that as a full CLEAR + re-ADD on ref arrays since #249).
-import { setBufferSize } from "../../lib/fixtures.mjs";
+import { setAt, setBufferSize } from "../../lib/fixtures.mjs";
 
 export default {
     name: "mutations/array-sort",
@@ -60,7 +60,7 @@ export default {
         const j = (i * 7) % size;
         if (op === "swap") {
             const delta = (i & 1) ? 15 : -15; // past one neighbour
-            if (kind === "refs") arr[j].score += delta; else arr[j] = arr[j] + delta;
+            if (kind === "refs") arr[j].score += delta; else setAt(arr, j, arr[j] + delta);
             arr.sort(ctx.desc);
         } else if (op === "still") {
             arr[0].score += 1; // the leader extends its lead

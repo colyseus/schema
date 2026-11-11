@@ -78,7 +78,7 @@ describeBundle("Cross-copy runtime interop (two bundle copies)", function () {
         else { state.items.set(k, makeItem(t, t % 3 === 0)); }
 
         if (t % 4 === 0 && state.list.length > 0) { state.list.splice(t % state.list.length, 1); }
-        else if (t % 9 === 0 && state.list.length > 0) { state.list[0] = makeItem(t); }
+        else if (t % 9 === 0 && state.list.length > 0) { state.list.set(0, makeItem(t)); }
         else if (t % 11 === 0) { state.list.reverse(); }
         else if (state.list.length < 20) { state.list.push(makeItem(t, t % 2 === 0)); }
 

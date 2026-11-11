@@ -2,7 +2,7 @@ import { OPERATION } from "../encoding/spec.js";
 import { decodedRefIdOf } from "../encoder/ChangeTree.js";
 import { descriptorOf, fieldOf } from "../encoder/EncodeDescriptor.js";
 import { Schema } from "../Schema.js";
-import { $proxyTarget, $resyncPrune, $patchOnlyFieldIndexes, $values } from "../types/symbols.js";
+import { $resyncPrune, $patchOnlyFieldIndexes, $values } from "../types/symbols.js";
 import type { Decoder } from "./Decoder.js";
 import type { DataChange } from "./DecodeOperation.js";
 
@@ -148,7 +148,7 @@ function sweepSchema(decoder: Decoder, ref: Schema, seen: Set<number>, changes: 
 }
 
 function sweepCollection(decoder: Decoder, coll: any, seen: Set<number>, changes: DataChange[] | null) {
-    const tgt: any = coll[$proxyTarget] ?? coll;
+    const tgt: any = coll;
     const refId = decodedRefIdOf(tgt);
     if (refId === undefined || seen.has(refId)) { return; }
     seen.add(refId);

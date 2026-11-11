@@ -14,7 +14,7 @@ import { ChangeTree, installTracking } from "./ChangeTree.js";
 import { ensureTracked } from "./changeTree/treeAttachment.js";
 import { Encoder as EncoderClass } from "./Encoder.js";
 
-installTracking((ref, target) => new ChangeTree(ref, target), ensureTracked);
+installTracking((ref) => new ChangeTree(ref), ensureTracked);
 
 // A binding of this module's own: a plain re-export would let rollup point
 // `index.mjs` at the shared chunk and import this file only for its side

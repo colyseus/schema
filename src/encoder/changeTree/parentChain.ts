@@ -5,12 +5,12 @@
  * additional parents live in the `extraParents` linked list.
  */
 import { refTreeOf, type ChangeTree, type ParentEntry, type Ref } from "../ChangeTree.js";
+import { $elements } from "../../types/symbols.js";
 
 /**
  * Add a parent to the chain. If `parent` already exists anywhere in the
  * chain, update the primary parent's index instead (matches legacy
- * behavior). Parents are compared by tree: an ArraySchema is reachable both
- * as its Proxy and as the raw target.
+ * behavior). Parents are compared by tree.
  */
 export function addParent(tree: ChangeTree, parent: Ref, index: number, parentTree?: ChangeTree): void {
     // every internal attach passes it; derived from the ref otherwise
@@ -49,7 +49,7 @@ export function clearParents(tree: ChangeTree): void {
  * @returns true if parent was found and removed (Root.remove relies on this).
  */
 export function removeParent(tree: ChangeTree, parent: Ref): boolean {
-    const pt = refTreeOf(parent); // by tree: ArraySchema is reachable as Proxy and as raw target
+    const pt = refTreeOf(parent); 
     const primary = tree.parentTree;
     if (primary !== undefined && primary === pt) {
         // Removing inline parent — promote first extra parent if exists
@@ -151,8 +151,8 @@ export function getAllParents(tree: ChangeTree): ParentEntry[] {
  * informational only and goes stale after reorders.
  */
 export function isEdgeLive(tree: ChangeTree, parentTree: ChangeTree, index: number): boolean {
-    const target = parentTree.refTarget as any;
     if (parentTree.isArray) {
+        const target: any[] = (parentTree.ref as any)[$elements];
         const at = target[index];
         if (at !== undefined && refTreeOf(at) === tree) return true;
         for (let i = 0, len = target.length; i < len; i++) {

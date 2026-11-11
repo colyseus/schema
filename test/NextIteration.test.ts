@@ -22,7 +22,7 @@ describe("Next Iteration", () => {
         decoded.decode(encoded);
         assert.deepEqual(decoded.arr.toArray(), ['one', 'two', 'three']);
 
-        state.arr[1] = "t";
+        state.arr.set(1, "t");
 
         encoded = state.encode();
 

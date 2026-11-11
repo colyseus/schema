@@ -1807,7 +1807,7 @@ describe("Type: Schema", () => {
             const decodedState = new State();
 
             state.current = new ArraySchema<number>();
-            state.current[0] = 0;
+            state.current.set(0, 0);
 
             decodedState.decode(state.encode());
             assert.strictEqual(0, decodedState.current[0]);

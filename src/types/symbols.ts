@@ -47,6 +47,9 @@ export const $onChange = "~onChange";
 export const $onRemove = "~onRemove";
 export const $dispatchedGen = "~dispatchedGen";
 export const $deleteByIndex = "~deleteByIndex";
+
+/** An array-kind collection's elements as an array indexed from 0 (`ArraySchema`: itself). */
+export const $elements = "~elements";
 /**
  * Resync-sweep hook (see decoder/Resync.ts): prune every entry the rejoin
  * snapshot did not visit. Each collection owns its storage-specific
@@ -84,15 +87,6 @@ export const $keyType: unique symbol = Symbol.for("$keyType");
 
 /** Attach-time hook: `MapSchema[$applyKeyType](keyType)` sets `$keyType` and re-keys pre-existing entries if needed. */
 export const $applyKeyType = "~applyKeyType";
-
-/**
- * Self-reference an instance sets on `this` so its own methods can recover
- * the underlying object even when `this` is a Proxy wrapper. Used by
- * ArraySchema (whose public API is a Proxy) to grab the underlying instance
- * once at the top of hot methods and then access fields directly without
- * paying the Proxy.get cost on every read.
- */
-export const $proxyTarget: unique symbol = Symbol.for("$proxyTarget");
 
 /**
  * Optional "discard" method for custom types (ArraySchema)

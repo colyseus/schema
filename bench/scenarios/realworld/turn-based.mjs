@@ -4,9 +4,10 @@
 //   broadcast-100  — one encode + 100 clients decoding the same frame
 //   broadcast-1000 — one encode + 1000 clients
 import { codecOf, withCodecs, defineTurnBased, buildTurnBased, makeFullClient } from "../../lib/realworld.mjs";
+import { setAt } from "../../lib/fixtures.mjs";
 
 function move(state, players, i) {
-    state.board[i % 64] = 1 + (i % 3);
+    setAt(state.board, i % 64, 1 + (i % 3));
     state.currentTurn = `p${i & 3}`;
     if ((i & 3) === 3) state.round++;
     if ((i & 15) === 15) players[i & 3].score += 10;

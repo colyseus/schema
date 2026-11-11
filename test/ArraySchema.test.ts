@@ -437,7 +437,7 @@ describe("ArraySchema Tests", () => {
 
             // several [increment-all, shift] rounds inside one tick
             for (let round = 0; round < 3; round++) {
-                for (let j = 0; j < state.numbers.length; j++) state.numbers[j]++;
+                for (let j = 0; j < state.numbers.length; j++) state.numbers.set(j, state.numbers[j] + 1);
                 state.numbers.shift();
             }
             client.decode(state.encode());
@@ -445,7 +445,7 @@ describe("ArraySchema Tests", () => {
 
             // again across a second patch, mixed with push
             for (let round = 0; round < 2; round++) {
-                for (let j = 0; j < state.numbers.length; j++) state.numbers[j]++;
+                for (let j = 0; j < state.numbers.length; j++) state.numbers.set(j, state.numbers[j] + 1);
                 state.numbers.shift();
                 state.numbers.push(100 + round);
             }
@@ -517,7 +517,7 @@ describe("ArraySchema Tests", () => {
             client.decode(state.encode());
 
             state.entities.shift();
-            state.entities[0] = mkEntity(90);
+            state.entities.set(0, mkEntity(90));
             client.decode(state.encode());
             assert.deepStrictEqual([90, 2], client.entities.map((e) => e.thing));
             assertRefIdCounts(state, client);
@@ -537,7 +537,7 @@ describe("ArraySchema Tests", () => {
             }
             const mutateAllAndShift = (state: State, count: number) => {
                 for (let i = 0; i < count; i++) {
-                    for (let j = 0; j < state.numbers.length; j++) state.numbers[j]++;
+                    for (let j = 0; j < state.numbers.length; j++) state.numbers.set(j, state.numbers[j] + 1);
                     state.numbers.shift();
                 }
             };
@@ -592,15 +592,15 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encode());
         assert.strictEqual(3, decodedState.primativeArr.length);
 
-        state.primativeArr[0] = -1
+        state.primativeArr.set(0, -1)
         decodedState.decode(state.encode());
         assert.strictEqual(3, decodedState.primativeArr.length);
 
-        state.primativeArr[1] = -2
+        state.primativeArr.set(1, -2)
         decodedState.decode(state.encode());
         assert.strictEqual(3, decodedState.primativeArr.length);
 
-        state.primativeArr[2] = -3
+        state.primativeArr.set(2, -3)
         decodedState.decode(state.encode());
         assert.strictEqual(3, decodedState.primativeArr.length);
 
@@ -626,15 +626,15 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encode());
         assert.strictEqual(3, decodedState.schemaArr.length);
 
-        state.schemaArr[0] = new Item({ i: -1 });
+        state.schemaArr.set(0, new Item({ i: -1 }));
         decodedState.decode(state.encode());
         assert.strictEqual(3, decodedState.schemaArr.length);
 
-        state.schemaArr[1] = new Item({ i: -2 })
+        state.schemaArr.set(1, new Item({ i: -2 }))
         decodedState.decode(state.encode());
         assert.strictEqual(3, decodedState.schemaArr.length);
 
-        state.schemaArr[2] = new Item({ i: -3 })
+        state.schemaArr.set(2, new Item({ i: -3 }))
         decodedState.decode(state.encode());
         assert.strictEqual(3, decodedState.schemaArr.length);
 
@@ -817,9 +817,9 @@ describe("ArraySchema Tests", () => {
             const decodedState = new State();
             const $ = getCallbacks(decodedState);
 
-            state.turns[0] = "one";
-            state.turns[1] = "two";
-            state.turns[2] = "three";
+            state.turns.set(0, "one");
+            state.turns.set(1, "two");
+            state.turns.set(2, "three");
 
             const onAddIndexes: Array<{ item: string, index: number }> = [];
             const onRemoveIndexes: Array<{ item: string, index: number }> = [];
@@ -969,7 +969,7 @@ describe("ArraySchema Tests", () => {
             decodedState.decode(state.encode());
 
             // pending REPLACE + ADD get re-keyed past the inserts
-            state.arrayOfNumbers[2] = 99;
+            state.arrayOfNumbers.set(2, 99);
             state.arrayOfNumbers.push(4);
             state.arrayOfNumbers.unshift(0);
 
@@ -1078,7 +1078,7 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([-1, 0, 1, 2, 3], client.state.nums.toJSON());
 
             // mixed same-tick ops
-            state.nums[2] = 99;
+            state.nums.set(2, 99);
             state.nums.push(4);
             state.nums.unshift(-2);
             encodeMultiple(encoder, state, [client]);
@@ -1379,7 +1379,7 @@ describe("ArraySchema Tests", () => {
 
                 state.items.unshift(item(90));
                 state.items.splice(5, 1, item(10), item(11));
-                state.items[3] = item(93);
+                state.items.set(3, item(93));
                 state.items.push(item(94));
                 state.items.splice(0, 0, item(95));
                 decodedState.decode(state.encode());
@@ -2644,7 +2644,8 @@ describe("ArraySchema Tests", () => {
         decodedState.decode(state.encode());
 
         // Update remaining item
-        const preEncoding = state.player.itemIds[1] = "Item 3 changed!";
+        const preEncoding = "Item 3 changed!";
+        state.player.itemIds.set(1, preEncoding);
         decodedState.decode(state.encode());
 
         assert.strictEqual(4, decodedState.player.itemIds.length);
@@ -2734,15 +2735,15 @@ describe("ArraySchema Tests", () => {
             @type(["number"]) numbers = new ArraySchema<number>();
         }
         const state = new State();
-        state.numbers[0] = 1;
-        state.numbers[1] = 2;
-        state.numbers[2] = 3;
+        state.numbers.set(0, 1);
+        state.numbers.set(1, 2);
+        state.numbers.set(2, 3);
         assert.ok(state.encode().length > 0);
 
         // re-assignments, should not be enqueued
-        state.numbers[0] = 1;
-        state.numbers[1] = 2;
-        state.numbers[2] = 3;
+        state.numbers.set(0, 1);
+        state.numbers.set(1, 2);
+        state.numbers.set(2, 3);
         assert.ok(state.encode().length === 0);
 
         assertDeepStrictEqualEncodeAll(state);
@@ -2769,12 +2770,12 @@ describe("ArraySchema Tests", () => {
 
             state.cards.push(new Card().assign({ id: 6 }));
 
-            state.cards.move(() => {
-                [state.cards[4], state.cards[3]] = [state.cards[3], state.cards[4]];
-                [state.cards[3], state.cards[2]] = [state.cards[2], state.cards[3]];
-                [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
-                [state.cards[1], state.cards[1]] = [state.cards[1], state.cards[1]];
-                [state.cards[0], state.cards[0]] = [state.cards[0], state.cards[0]];
+            state.cards.move((cards) => {
+                [cards[4], cards[3]] = [cards[3], cards[4]];
+                [cards[3], cards[2]] = [cards[2], cards[3]];
+                [cards[2], cards[0]] = [cards[0], cards[2]];
+                [cards[1], cards[1]] = [cards[1], cards[1]];
+                [cards[0], cards[0]] = [cards[0], cards[0]];
             });
 
             decodedState.decode(state.encode());
@@ -2855,8 +2856,8 @@ describe("ArraySchema Tests", () => {
             });
 
             // swap refId 5 <=> 2
-            state.cards.move(() => {
-                [state.cards[2], state.cards[0]] = [state.cards[0], state.cards[2]];
+            state.cards.move((cards) => {
+                [cards[2], cards[0]] = [cards[0], cards[2]];
             });
 
             assert.strictEqual(1, encoder.root.refCount.get(state.cards[0][$refId]));
@@ -3134,8 +3135,7 @@ describe("ArraySchema Tests", () => {
         it("#concat()", () => {
             const arr = new ArraySchema<number>(1, 2, 3);
             const concat = arr.concat([4, 5, 6]);
-            assert.deepStrictEqual([1, 2, 3, 4, 5, 6], concat);
-            assert.ok(!(concat instanceof ArraySchema));
+            assert.deepStrictEqual([1, 2, 3, 4, 5, 6], [...concat]);
         });
 
         it("#join()", () => {
@@ -3187,7 +3187,7 @@ describe("ArraySchema Tests", () => {
                 const plain = [1, 2, 3, 1, 2.5, NaN, 0, 3];
                 state.numbers.push(...plain);
                 check(state.numbers, plain, [1, 2, 3, 2.5, NaN, 0, -0, 4, "1" as any, undefined, null]);
-                // decoder side (plain subclass instance, no Proxy); NaN is not
+                // decoder side; NaN is not
                 // representable on the wire (decodes as 0), so it is left out here
                 const decoded = createInstanceFromReflection(state);
                 decoded.decode(state.encodeAll());
@@ -3317,7 +3317,7 @@ describe("ArraySchema Tests", () => {
                 state.numbers.push(1, 2, 3);
                 const decoded = createInstanceFromReflection(state);
                 decoded.decode(state.encodeAll());
-                state.numbers.forEach((v, i, arr) => { arr[i] = v * 10; });
+                state.numbers.forEach((v, i, arr) => { arr.set(i, v * 10); });
                 decoded.decode(state.encode());
                 assert.deepStrictEqual(decoded.numbers.toArray(), [10, 20, 30]);
                 assertDeepStrictEqualEncodeAll(state);
@@ -3432,7 +3432,7 @@ describe("ArraySchema Tests", () => {
 
             it("index write then reverse()", () => {
                 assertSameTick(["a", "b", "c"], (arr, wrap) => {
-                    arr[0] = wrap("a2");
+                    arr.set(0, wrap("a2"));
                     arr.reverse();
                 }, ["c", "b", "a2"]);
             });
@@ -3521,7 +3521,7 @@ describe("ArraySchema Tests", () => {
 
             it("index write then sort()", () => {
                 assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
-                    arr[0] = wrap("z");
+                    arr.set(0, wrap("z"));
                     arr.sort(byName);
                 }, ["a", "b", "c", "z"]);
             });
@@ -3550,7 +3550,7 @@ describe("ArraySchema Tests", () => {
             it("sort() then index write", () => {
                 assertSameTick(["d", "b", "c", "a"], (arr, wrap) => {
                     arr.sort(byName);
-                    arr[3] = wrap("z");
+                    arr.set(3, wrap("z"));
                 }, ["a", "b", "c", "z"]);
             });
 
@@ -3636,7 +3636,7 @@ describe("ArraySchema Tests", () => {
 
                 it("index write then untracked sort()", () => {
                     assertUntracked((arr, wrap) => {
-                        arr[0] = wrap("z");
+                        arr.set(0, wrap("z"));
                         arr.untracked(() => arr.sort(byName));
                     }, ["a", "b", "c", "z"], ["z", "b", "c", "a"]);
                 });
@@ -3674,20 +3674,6 @@ describe("ArraySchema Tests", () => {
             assert.deepStrictEqual([1, 1, 2, 2, 3, 3], arr.flatMap((v) => [v, v]));
         });
 
-        it(".length = 0", () => {
-            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
-            arr.length = 0;
-
-            assert.deepStrictEqual([], arr.toJSON());
-        });
-
-        it(".length = x", () => {
-            const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
-            arr.length = 3;
-
-            assert.deepStrictEqual([1,2,3], arr.toJSON());
-        });
-
         it(".every()", () => {
             const arr = new ArraySchema<Player>();
             arr.push(new Player().assign({ x: 1, y: 1 }));
@@ -3716,9 +3702,9 @@ describe("ArraySchema Tests", () => {
 
         it("#with()", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
-            assert.deepStrictEqual([1, 6, 3, 4, 5], arr.with(1, 6));
-            assert.deepStrictEqual([1, 2, 3, 4, 7], arr.with(-1, 7));
-            assert.deepStrictEqual([1, 2, 3, 8, 5], arr.with(-2, 8));
+            assert.deepStrictEqual([1, 6, 3, 4, 5], [...arr.with(1, 6)]);
+            assert.deepStrictEqual([1, 2, 3, 4, 7], [...arr.with(-1, 7)]);
+            assert.deepStrictEqual([1, 2, 3, 8, 5], [...arr.with(-2, 8)]);
         });
 
         it("#toSpliced()", () => {
@@ -3808,8 +3794,8 @@ describe("ArraySchema Tests", () => {
     describe("Edge cases", () => {
         it("set values by index, sort, and then get values by index", () => {
             const arr = new ArraySchema<number>();
-            arr[0] = 100;
-            arr[1] = 50;
+            arr.set(0, 100);
+            arr.set(1, 50);
 
             const copy = arr.slice(0).sort((a, b) => a - b);
             assert.strictEqual(50, copy[0]);
@@ -3838,7 +3824,7 @@ describe("ArraySchema Tests", () => {
 
             // Scenario 1: Explicitly set item to undefined
             // This should trigger the undefined value issue in encodeValue
-            state.items[1] = undefined;
+            state.items.set(1, undefined);
 
             // This should not throw an error, but internally it might cause issues
             // when encodeValue tries to access value[$refId] on undefined
@@ -3854,9 +3840,9 @@ describe("ArraySchema Tests", () => {
 
             // Scenario 2: Create sparse array with holes
             state.items = new ArraySchema<Item>();
-            state.items[0] = new Item().assign({ name: "Sparse 0" });
-            state.items[2] = new Item().assign({ name: "Sparse 2" }); // Skip index 1
-            state.items[4] = new Item().assign({ name: "Sparse 4" }); // Skip index 3
+            state.items.set(0, new Item().assign({ name: "Sparse 0" }));
+            state.items.set(2, new Item().assign({ name: "Sparse 2" })); // Skip index 1
+            state.items.set(4, new Item().assign({ name: "Sparse 4" })); // Skip index 3
 
             // This should handle sparse arrays correctly
             assert.doesNotThrow(() => {
@@ -3996,7 +3982,7 @@ describe("ArraySchema Tests", () => {
 
         it("index write then pop() deletes the element the client holds", () => {
             const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
-                s.items[1] = item(3);
+                s.items.set(1, item(3));
                 s.items.pop();
             });
             assert.deepStrictEqual(ids(decoded.items), [1]);
@@ -4014,7 +4000,7 @@ describe("ArraySchema Tests", () => {
         it("unshift() then an index write over the unshifted slot", () => {
             const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
                 s.items.unshift(item(3));
-                s.items[0] = item(4);
+                s.items.set(0, item(4));
             });
             assert.deepStrictEqual(ids(decoded.items), [4, 1, 2]);
         });
@@ -4085,7 +4071,7 @@ describe("ArraySchema Tests", () => {
 
             it("index write, then unshift() of the overwritten value", () => {
                 const decoded = sync((s) => s.numbers.push(1, 2), (s) => {
-                    s.numbers[0] = 3;
+                    s.numbers.set(0, 3);
                     s.numbers.unshift(1);
                 });
                 assert.deepStrictEqual(Array.from(decoded.numbers), [1, 3, 2]);
@@ -4094,7 +4080,7 @@ describe("ArraySchema Tests", () => {
             it("index write, then unshift() of the overwritten instance", () => {
                 const decoded = sync((s) => s.items.push(item(1), item(2)), (s) => {
                     const first = s.items[0];
-                    s.items[0] = item(3);
+                    s.items.set(0, item(3));
                     s.items.unshift(first);
                 });
                 assert.deepStrictEqual(ids(decoded.items), [1, 3, 2]);

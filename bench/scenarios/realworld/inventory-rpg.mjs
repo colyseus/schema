@@ -13,8 +13,9 @@ export default {
     iterations: 500,
     variants: withCodecs([
         { name: "enc", mode: "enc" },
-        { name: "dec", mode: "dec" },
-        { name: "callbacks", mode: "dec", callbacks: true },
+        // which objects the parallel scavenger leaves next to each other swings these by ~10 % per build
+        { name: "dec", mode: "dec", layoutSensitive: true },
+        { name: "callbacks", mode: "dec", callbacks: true, layoutSensitive: true },
     ]),
     setup(lib, variant, plan) {
         const codec = codecOf(lib, variant);

@@ -6376,9 +6376,9 @@ describe("StateView", () => {
             const sharedCases: typeof cases = [
                 ...cases,
                 ["sort() then index write + view.add()", ({ arr, make, show }) => {
-                    arr.sort(byName); const item = make("z"); arr[1] = item; show(0, item);
+                    arr.sort(byName); const item = make("z"); arr.set(1, item); show(0, item);
                 }],
-                ["index write then sort()", ({ arr, make }) => { arr[0] = make("z"); arr.sort(byName); }],
+                ["index write then sort()", ({ arr, make }) => { arr.set(0, make("z")); arr.sort(byName); }],
             ];
 
             for (const [label, mutate] of sharedCases) {

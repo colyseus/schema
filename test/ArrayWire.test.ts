@@ -169,6 +169,80 @@ describe("ArraySchema wire format (op log + revision)", () => {
             assert.strictEqual(getEncoder(state).hasChanges, false);
         });
 
+        it("sort() ships only the range of slots that moved", () => {
+            const state = new State();
+            for (let i = 0; i < 200; i++) state.items.push(item("i" + i, i * 10));
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            getEncoder(state).discardChanges();
+
+            const changed: number[] = [];
+            getCallbacks(client)(client).items.onChange((_, index) => changed.push(index));
+
+            state.items[120].value += 15; // past one neighbour
+            state.items.sort((x, y) => x.value - y.value);
+            const log = (state.items as any)[$changes].rec as ArrayLog;
+            assert.deepStrictEqual(log.ops, [ARRAY_OP.REORDER, 120, 2]);
+            assert.deepStrictEqual(log.vals, [1, 0]);
+
+            const late = join(state); // already holds the new order: must skip the op
+            const patch = state.encode();
+            client.decode(patch);
+            late.decode(patch);
+
+            const names = state.items.map((i) => i.name);
+            assert.strictEqual(names[120], "i121");
+            assert.deepStrictEqual(client.items.map((i) => i.name), names);
+            assert.deepStrictEqual(late.items.map((i) => i.name), names);
+            assert.deepStrictEqual(changed.sort(), [120, 121]);
+            assertRefIdCounts(state, client);
+        });
+
+        it("sort() pairs equal values in order, NaN included", () => {
+            const state = new State();
+            state.numbers.push(7, 5, 3, NaN, 3, 9, 5, 1, NaN, 3, 8, 2, 9);
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            const onWire = (arr: ArraySchema<number>) => arr.toJSON().map((v) => (v !== v ? 0 : v)); // NaN travels as 0
+
+            state.numbers.sort((a, b) => (a !== a ? 1 : b !== b ? -1 : a - b));
+            client.decode(state.encode());
+            assert.deepStrictEqual(state.numbers.toJSON(), [1, 2, 3, 3, 3, 5, 5, 7, 8, 9, 9, NaN, NaN]);
+            assert.deepStrictEqual(client.numbers.toJSON(), onWire(state.numbers));
+
+            // a window small enough to be matched by scanning
+            state.numbers.move((arr) => { [arr[11], arr[9]] = [arr[9], arr[11]]; });
+            client.decode(state.encode());
+            assert.deepStrictEqual(client.numbers.toJSON(), onWire(state.numbers));
+        });
+
+        it("sort() of an instance held twice keeps the client in sync", () => {
+            const state = new State();
+            const twice = item("x", 2);
+            state.items.push(twice, item("y", 1), twice);
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+
+            state.items.sort((a, b) => a.value - b.value);
+            client.decode(state.encode());
+            assert.deepStrictEqual(client.items.map((i) => i.name), ["y", "x", "x"]);
+            assertRefIdCounts(state, client);
+        });
+
+        it("sort() that flips the whole array records a REVERSE", () => {
+            const state = new State();
+            state.numbers.push(1, 2, 3, 4, 5);
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            getEncoder(state).discardChanges();
+
+            state.numbers.sort((a, b) => b - a);
+            const log = (state.numbers as any)[$changes].rec as ArrayLog;
+            assert.deepStrictEqual(log.ops, [ARRAY_OP.REVERSE, 0, 0]);
+            client.decode(state.encode());
+            assert.deepStrictEqual(client.numbers.toJSON(), [5, 4, 3, 2, 1]);
+        });
+
         it("reverse() + move() on primitives", () => {
             const state = new State();
             state.numbers.push(1, 2, 3, 4);
@@ -196,6 +270,28 @@ describe("ArraySchema wire format (op log + revision)", () => {
         });
     });
 
+    describe("extension escape", () => {
+        it("an EXT op the decoder does not know is skipped, its weight applied", () => {
+            const state = new State();
+            state.numbers.push(1);
+            const client = createInstanceFromReflection(state);
+            client.decode(state.encodeAll());
+            getEncoder(state).discardChanges();
+
+            state.numbers.push(5);
+            const patch = Array.from(state.encode());
+            assert.deepStrictEqual(patch.slice(-2), [1 * 16 + ARRAY_OP.PUSH, 5]);
+
+            // the same chunk with `EXT id 2, weight 3, 2 payload bytes` ahead of the PUSH
+            const ext = [2 * 16 + ARRAY_OP.EXT, 3, 2, 0xaa, 0xbb];
+            const head = patch.slice(0, -3);
+            client.decode(new Uint8Array([...head, (2 + ext.length) * 2, ...ext, ...patch.slice(-2)]));
+
+            assert.deepStrictEqual(client.numbers.toJSON(), [1, 5]);
+            assert.strictEqual(client.numbers[$rev], state.numbers[$changes].rec.rev + 3);
+        });
+    });
+
     describe("Array subclass behaviour", () => {
         it("is a real Array; derived arrays are plain arrays", () => {
             const arr = new ArraySchema<number>(1, 2, 3);
@@ -208,16 +304,14 @@ describe("ArraySchema wire format (op log + revision)", () => {
             assert.strictEqual(JSON.stringify(arr), "[1,2,3]");
         });
 
-        it("writes past the end append; delete arr[i] removes; length grows are ignored", () => {
+        it("set() past the end appends; set(i, undefined) removes", () => {
             const state = new State();
             getEncoder(state);
-            state.numbers[0] = 1;
-            state.numbers[5] = 6; // appends
+            state.numbers.set(0, 1);
+            state.numbers.set(5, 6); // appends
             assert.deepStrictEqual(state.numbers.toJSON(), [1, 6]);
-            delete state.numbers[0];
+            state.numbers.set(0, undefined as any);
             assert.deepStrictEqual(state.numbers.toJSON(), [6]);
-            state.numbers.length = 10;
-            assert.strictEqual(state.numbers.length, 1);
             const client = createInstanceFromReflection(state);
             client.decode(state.encode());
             assert.deepStrictEqual(client.numbers.toJSON(), [6]);
@@ -330,14 +424,14 @@ describe("ArraySchema wire format (op log + revision)", () => {
             client.decode(state.encodeAll());
             getEncoder(state).discardChanges();
 
-            state.numbers[0] = 9;
+            state.numbers.set(0, 9);
             const bytes = state.encode();
             assert.strictEqual(bytes.byteLength, 4, Buffer.from(bytes).toString("hex"));
             assert.strictEqual(bytes[2], 0 * 16 + ARRAY_OP.SET);
             client.decode(bytes);
             assert.deepStrictEqual(client.numbers.toJSON(), [9, 2, 3]);
 
-            state.numbers[2] = 7;
+            state.numbers.set(2, 7);
             state.numbers.pop();
             state.numbers.push(8);
             client.decode(state.encode());

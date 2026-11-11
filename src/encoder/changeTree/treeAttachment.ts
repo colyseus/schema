@@ -4,7 +4,7 @@
  * goes through here, which is why the recursive walk uses a hoisted
  * callback + ctx-pool instead of per-call closures.
  */
-import { $childType, $proxyTarget } from "../../types/symbols.js";
+import { $elements, $childType } from "../../types/symbols.js";
 import { fieldOf } from "../EncodeDescriptor.js";
 import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
 import { Root, type Streamable } from "../Root.js";
@@ -145,18 +145,13 @@ export function forEachChildWithCtx<C>(
     ctx: C,
     callback: (ctx: C, change: ChangeTree, at: any) => void,
 ): void {
-    // `refTarget` is the raw backing instance — identical to `ref` for all
-    // non-Proxy types (Schema / Map / Set / Collection / Stream), and the
-    // un-wrapped `$proxyTarget` for ArraySchema. Reading through it here
-    // skips the ArraySchema Proxy on every lookup below — hot during the
-    // encodeAll DFS walk which touches every ArraySchema in the tree.
-    const ref = tree.refTarget as any;
+    const ref = tree.ref as any;
     const kind = tree.encDescriptor.kind;
     if (kind !== KIND_SCHEMA) {
         if (typeof ref[$childType] !== "string") {
             if (kind === KIND_ARRAY) {
                 // ArraySchema: dense index loop over the element storage.
-                const els = tree.refTarget as any[];
+                const els: any[] = ref[$elements];
                 for (let i = 0, len = els.length; i < len; i++) {
                     const value = els[i];
                     if (!value) { continue; }
@@ -199,20 +194,18 @@ export function forEachChildWithCtx<C>(
  * it to an encoder (hand-off of a decoded state) upgrades the stub to a real
  * tree on the spot. The decoder id is not inherited: `Root.add` allocates
  * this encoder's own, and re-stages the never-recorded contents.
- * Index writes on a decoder-built ArraySchema stay untracked (no Proxy).
  */
 export function ensureTracked(child: ChangeTree): ChangeTree {
     // a tracked tree of another library copy misses `instanceof`: only the stub reads `isTracked === false`
     if (child instanceof ChangeTree || (child as any).isTracked !== false) return child;
     const ref: any = (child as any).ref;
-    const target = ref[$proxyTarget] ?? ref;
-    const real = new ChangeTree(ref, target);
+    const real = new ChangeTree(ref);
     real.needsRestage = true;
     if (real.encDescriptor.kind === KIND_MAP) {
         // the decoder keeps no `nextIndex` for maps: new keys go after every decoded wire index
         for (const i of ref.indexByKey.values()) { if (i >= ref.nextIndex) ref.nextIndex = i + 1; }
     }
-    setTree(target, real);
+    setTree(ref, real);
     return real;
 }
 

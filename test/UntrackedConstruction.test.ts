@@ -52,7 +52,7 @@ describe("Construction without the encoder module (client bundles)", () => {
         state.items.push(new Item().assign({ x: 3 }), new Item().assign({ x: 1 }), new Item().assign({ x: 2 }));
         state.items.splice(0, 1);
         state.items.sort((a, b) => a.x - b.x);
-        state.items[0] = new Item().assign({ x: 9 });
+        state.items.set(0, new Item().assign({ x: 9 }));
         state.nums.push(3, 1, 2); state.nums.reverse(); state.nums.shift(); state.nums.unshift(7);
         state.byId.set("a", new Item()); state.byId.set("b", new Item()); state.byId.delete("a");
         state.tags.add("x"); state.tags.add("y"); state.tags.delete("x");

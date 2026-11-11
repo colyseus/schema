@@ -291,7 +291,7 @@ describe("ChangeTree", () => {
             decodedState.decode(state.encode());
 
             const entity2 = new Entity();
-            state.entities[0] = entity2;
+            state.entities.set(0, entity2);
             decodedState.decode(state.encode());
             assertRefIdCounts(state, decodedState);
 

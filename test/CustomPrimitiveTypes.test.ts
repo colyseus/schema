@@ -257,7 +257,7 @@ describe("CustomPrimitiveTypes", () => {
         decoded.decode(data.encodeAll());
         assert.deepStrictEqual(decoded.toJSON(), data.toJSON());
 
-        data.names[1] = "three";
+        data.names.set(1, "three");
         data.names.push("four");
         data.counts.set("b", 7);
         decoded.decode(data.encode());

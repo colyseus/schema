@@ -1,4 +1,5 @@
 import type { ArraySchema } from "./custom/ArraySchema.js";
+import { QueueSchema } from "./custom/QueueSchema.js";
 import type { MapSchema } from "./custom/MapSchema.js";
 import type { SetSchema } from "./custom/SetSchema.js";
 import type { CollectionSchema } from "./custom/CollectionSchema.js";
@@ -343,6 +344,11 @@ interface ArrayFactory {
     <P extends RawPrimitiveType>(child: P): FieldBuilder<ArraySchema<InferValueType<P>>, true, false>;
     <T>(child: CodecFor<T>): FieldBuilder<ArraySchema<T>, true, false>;
 }
+interface QueueFactory {
+    <C extends Constructor<Schema>>(child: C): FieldBuilder<QueueSchema<InstanceType<C>>, true, false>;
+    <P extends RawPrimitiveType>(child: P): FieldBuilder<QueueSchema<InferValueType<P>>, true, false>;
+    <T>(child: CodecFor<T>): FieldBuilder<QueueSchema<T>, true, false>;
+}
 /** `t.map(X, { key: "number" })` — declare the map's key type (default `"string"`). */
 export interface MapOptions<K extends MapKeyType = MapKeyType> { key?: K }
 /** Runtime key type of a map declared with `MapOptions` (`string` for `"string"` / none, `number` for every numeric key type). */
@@ -376,6 +382,9 @@ interface StreamFactory {
 
 const arrayFactory: ArrayFactory = ((child: ChildType) =>
     new FieldBuilder({ array: resolveChild(child) } as DefinitionType)) as ArrayFactory;
+// an array field on the wire: only the default instance differs
+const queueFactory: QueueFactory = ((child: ChildType) =>
+    new FieldBuilder({ array: resolveChild(child) } as DefinitionType).default(() => new QueueSchema())) as QueueFactory;
 // `key` is added to the definition only when given, so a string-keyed map
 // stays `{ map: X }` byte-for-byte in metadata, Reflection and codegen.
 const mapFactory: MapFactory = ((child: ChildType, opts?: MapOptions) =>
@@ -454,6 +463,12 @@ export const t = Object.freeze({
      */
     ref: refFactory,
     array: arrayFactory,
+    /**
+     * A first-in, first-out array: `push()` / `shift()` in O(1) however long
+     * it is, `at(i)` instead of index syntax. Clients receive a regular
+     * `ArraySchema`. {@see QueueSchema}
+     */
+    queue: queueFactory,
     map: mapFactory,
     set: setFactory,
     collection: collectionFactory,

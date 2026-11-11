@@ -535,7 +535,7 @@ export class Encoder<T extends Schema = any> {
                 canCache = (tree.dirtyLow & desc.refTypeBitmask) === 0 && (tree.dirtyHigh === 0 || !desc.hasRefFieldAbove32);
             } else {
                 // primitive-child collections carry no per-element visibility
-                canCache = typeof (tree.refTarget as any)[$childType] === "string";
+                canCache = typeof (tree.ref as any)[$childType] === "string";
                 // not streams: `_emitStreamPriority` grants element visibility per view, after this snapshot
                 routed = !canCache && desc.routable && !tree.isStreamCollection
                     && !entriesShareVisibility(tree, tree.rec as KeyedRecorder);

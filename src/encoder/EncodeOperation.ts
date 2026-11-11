@@ -2,7 +2,7 @@ import { ARRAY_OP, KEYED_OP, KEYED_OP_CODE, KIND_ARRAY, KIND_MAP, KIND_SCHEMA, O
 import type { Iterator } from "../encoding/decode.js";
 import { encode } from "../encoding/encode.js";
 import { uvarint, writeMask64, writeString, endChunk } from "../encoding/varint.js";
-import { $childType, $getByIndex, $keyType } from "../types/symbols.js";
+import { $elements, $childType, $getByIndex, $keyType } from "../types/symbols.js";
 import { Metadata } from "../Metadata.js";
 import { isQuantizedType, makeQuantizedEncoder } from "../types/quantize.js";
 import { IS_FILTERED, type ChangeTree, refTreeOf, refIdOf, viewTreeOf } from "./ChangeTree.js";
@@ -66,8 +66,6 @@ export interface Frame {
     tree: ChangeTree;
     ref: any;
     refTarget: any;
-    /** Element storage for arrays (the raw array: `tree.refTarget`). */
-    elements: any;
     /** `ref[$values]` — read once per tree, not per field (undefined on collections). */
     values: any[];
     desc: EncodeDescriptor;
@@ -120,7 +118,7 @@ function newFrame(depth: number): Frame {
     return framePool[depth] = {
         context: undefined!, buffer: undefined!, it: undefined!, capacity: 0, view: undefined, hasView: false,
         emitFiltered: false, mode: MODE_SNAPSHOT, genA: 0, genB: 0, prevRefId: -1,
-        depth, tree: undefined!, ref: undefined, refTarget: undefined, elements: undefined, values: undefined!, desc: undefined!, kind: 0,
+        depth, tree: undefined!, ref: undefined, refTarget: undefined, values: undefined!, desc: undefined!, kind: 0,
         treeIsFiltered: false, emitMask: 0, filter: undefined, childType: undefined, childEncoder: undefined, keyWriter: undefined,
         isSchemaChild: false, identityMode: false,
         lenPos: -1, maskLow: 0, maskHigh: 0, vals: [], keys: [], strs: [], valsLen: 0, strsLen: 0, entryForBody: undefined,
@@ -147,7 +145,6 @@ export function releaseFrames(): void {
         f.tree = undefined!;
         f.ref = undefined;
         f.refTarget = undefined;
-        f.elements = undefined;
         f.values = undefined!;
         f.entryForBody = undefined;
         // a pooled frame must not keep a reflected class (and its TypeContext) alive
@@ -176,7 +173,7 @@ function noteScratch(f: Frame, n: number, withStrs: boolean): void {
 /** Load `tree` into `f` (tree fields only). Straight-line on purpose: it must inline into the patch loop. */
 export function enterFrame(f: Frame, tree: ChangeTree): void {
     const desc = tree.encDescriptor;
-    const refTarget = tree.refTarget as any;
+    const refTarget = tree.ref as any;
     const treeIsFiltered = (tree.flags & IS_FILTERED) !== 0;
     // Per-instance child type. A Schema tree has none, and probing for it is a
     // megamorphic MISS (full prototype-chain walk) on every Schema instance,
@@ -185,7 +182,6 @@ export function enterFrame(f: Frame, tree: ChangeTree): void {
     f.tree = tree;
     f.ref = tree.ref;
     f.refTarget = refTarget;
-    f.elements = tree.refTarget;
     f.values = tree.values!; // the tree's cached `$values` (monomorphic load); undefined on collections
     f.desc = desc;
     f.kind = desc.kind;
@@ -553,7 +549,8 @@ function encodeArrayPositional(f: Frame, log: ArrayLog): void {
                 break;
             case ARRAY_OP.REORDER:
                 uvarint(bytes, a * 16 + op, it);
-                for (let k = 0; k < a; k++) uvarint(bytes, vals[v++], it);
+                uvarint(bytes, b, it);
+                for (let k = 0; k < b; k++) uvarint(bytes, vals[v++], it);
                 break;
             case ARRAY_OP.RESTATE:
                 uvarint(bytes, b * 2 * 16 + op, it); // positional: rev << 1
@@ -590,7 +587,7 @@ function encodeArrayIdentity(f: Frame, log: ArrayLog): void {
                 for (let k = 0; k < b; k++) identityDelete(f, vals[v++]);
                 break;
             case ARRAY_OP.REORDER:
-                v += a; // per-view subsets carry no order
+                v += b; // per-view subsets carry no order
                 break;
             case ARRAY_OP.RESTATE:
                 identityRestate(f, vals, v, a);
@@ -647,7 +644,7 @@ function identityRestate(f: Frame, source: any[], from: number, n: number): void
  * `ARRAY_SNAPSHOT` view-drain entry.
  */
 function emitArraySnapshotChunk(f: Frame): void {
-    const arr: any[] = f.elements;
+    const arr: any[] = f.refTarget[$elements];
     const log = f.tree.rec as ArrayLog;
     if (f.identityMode) {
         identityRestate(f, arr, 0, arr.length);
@@ -696,7 +693,7 @@ export function emitLiveChunk(f: Frame, forEachLiveWithCtx: (tree: ChangeTree, c
     if (f.kind === KIND_ARRAY) {
         if (f.treeIsFiltered !== f.emitFiltered) return;
         if (f.tree.isPatchOnly) return;
-        if (f.elements.length === 0 && !f.identityMode) {
+        if (f.refTarget.length === 0 && !f.identityMode) {
             // an empty positional array still needs its revision on a fresh client
             if ((f.tree.rec as ArrayLog).rev === 0) return;
         }
@@ -1081,7 +1078,7 @@ function writeIndexedBody(f: Frame): void {
  * `uvarint(1) uvarint(count) refValue*` (merged by the decoder).
  */
 function writeArrayBody(f: Frame): void {
-    const arr: any[] = f.elements;
+    const arr: any[] = f.refTarget[$elements];
     const log = f.tree.rec as ArrayLog;
     if (f.identityMode) {
         const scratch = f.vals;

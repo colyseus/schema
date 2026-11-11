@@ -66,7 +66,7 @@ function holdsKeyedIndex(parent: ChangeTree, index: number, child: ChangeTree): 
     const kind = parent.encDescriptor.kind;
     if (kind !== KIND_MAP && (kind !== KIND_INDEXED || parent.isStreamCollection || (parent.ref.constructor as any).$isStream === true)) return true;
     const ref = child.ref;
-    return (parent.refTarget as any)[$getByIndex](index) === ref
+    return (parent.ref as any)[$getByIndex](index) === ref
         || (parent.rec as KeyedRecorder | undefined)?.deleted?.get(index) === ref;
 }
 
@@ -556,7 +556,7 @@ export class StateView {
                 // ArraySchema: one sentinel entry — encodeView emits a whole-
                 // array RESTATE from the live array at drain time (one Map
                 // insert, and no slot can go stale).
-                if ((changeTree.refTarget as any).length > 0) {
+                if ((changeTree.ref as any).length > 0) {
                     changes.set(ARRAY_SNAPSHOT, OPERATION.ADD);
                     isChildAdded = true;
                 }

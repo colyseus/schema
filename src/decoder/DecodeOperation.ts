@@ -635,10 +635,11 @@ function decodeKeyValueBody(d: Decoder, bytes: Uint8Array, it: Iterator, ref: an
 // ── Array ───────────────────────────────────────────────────────────────
 
 /** REPLACE per slot whose occupant changed between `before` and the array's current content (reorders). */
-function reportMoved(arr: any[], before: any[], ref: any, refId: number, changes: DataChange[]): void {
-    for (let k = 0, len = arr.length; k < len; k++) {
-        if (arr[k] !== before[k]) {
-            changes.push({ ref, refId, op: OPERATION.REPLACE, dynamicIndex: k, value: arr[k], previousValue: before[k] });
+function reportMoved(arr: any[], before: any[], start: number, ref: any, refId: number, changes: DataChange[]): void {
+    for (let k = 0, len = before.length; k < len; k++) {
+        const value = arr[start + k];
+        if (value !== before[k]) {
+            changes.push({ ref, refId, op: OPERATION.REPLACE, dynamicIndex: start + k, value, previousValue: before[k] });
         }
     }
 }
@@ -868,17 +869,18 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
                 if (rev <= seq && arr.length > 1) {
                     const before = (changes !== null) ? arrCopy(arr) : undefined;
                     arrReverse(arr);
-                    if (before !== undefined) reportMoved(arr, before, ref, refId, changes!);
+                    if (before !== undefined) reportMoved(arr, before, 0, ref, refId, changes!);
                 }
                 seq += 1;
                 break;
             }
             case ARRAY_OP.REORDER: {
-                const n = arg;
+                const start = arg;
+                const n = readUvarint(bytes, it);
                 if (rev <= seq) {
-                    const before = arrCopy(arr);
-                    for (let k = 0; k < n; k++) arr[k] = before[readUvarint(bytes, it)];
-                    if (changes !== null) reportMoved(arr, before, ref, refId, changes);
+                    const before = arrCopy(arr, start, start + n);
+                    for (let k = 0; k < n; k++) arr[start + k] = before[readUvarint(bytes, it)];
+                    if (changes !== null) reportMoved(arr, before, start, ref, refId, changes);
                 } else {
                     for (let k = 0; k < n; k++) readUvarint(bytes, it);
                 }
@@ -931,6 +933,13 @@ export function decodeArrayOps(d: Decoder, bytes: Uint8Array, it: Iterator, end:
             }
             case ARRAY_OP.BASE: {
                 seq = arg;
+                break;
+            }
+            case ARRAY_OP.EXT: {
+                // no extension is defined yet: skip the payload, keep the revision in step
+                seq += readUvarint(bytes, it);
+                const byteLen = readUvarint(bytes, it);
+                it.offset += byteLen;
                 break;
             }
             default:

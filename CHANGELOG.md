@@ -58,26 +58,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **`ArraySchema` extends `Array`.** `Array.isArray(arr)` is true; `map` /
   `filter` / `slice` / `concat` / `flat` return plain arrays
   (`ArraySchema[Symbol.species] === Array`); `fill`, `copyWithin`, `flat`,
-  `flatMap` work. Index writes are tracked through a `set`-only Proxy on the
-  encoder side; decoder-side instances have no Proxy at all. Writes past the
-  end append (no holes); `delete arr[i]` removes; growing `length` is ignored.
+  `flatMap` work. **Index writes are no longer tracked**: `arr[i] = v`,
+  `arr.length = n` and `delete arr[i]` change the local array without
+  reaching clients — use `arr.set(i, v)`, `arr.splice(n)` and `arr.clear()`.
+  TypeScript reports them (the index signature and `length` are read-only);
+  plain JavaScript gets no warning. In exchange there is no Proxy: `arr[i]`
+  on the server costs what it does on a plain array (5.x: ~100 ns), and
+  constructing an array field is a third cheaper. `set()` past the end
+  appends (no holes); `set(i, undefined)` removes. `move()` hands its
+  callback a writable array.
   V8 runs `Array.prototype` builtins on a subclass instance through their
   generic path, so `ArraySchema` overrides the common ones (`push`, `pop`,
   `shift`, `unshift`, `splice`, `sort`, `reverse`, `forEach`, `map`,
   `filter`, `find`, `findIndex`, `some`, `every`, `reduce`, `indexOf`,
   `lastIndexOf`, `includes`, `slice`, `at`) with index loops that are as
   fast as on a plain array or faster, and `for…of` / `values` / `keys` /
-  `entries` iterate the raw array through a small iterator (about 3 ns per
-  element). What remains costly is a read through the encoder-side Proxy
-  itself: `arr[i]` costs about 70 ns there even without a `get` trap (5.x
-  paid twice that through its `get` trap), so walk a large array on the
-  server with `forEach`, `for…of` or `toArray()` rather than an index loop.
+  `entries` iterate through a small iterator (about 3 ns per element).
   Spread and `Array.from` remain about 15× slower than on a plain array.
 - **Array wire model**: an ordered op log (PUSH / INSERT / SET / REMOVE /
   REVERSE / REORDER / RESTATE / CLEAR) with a per-array revision, so a client
   that joined mid-tick applies exactly the ops recorded after its snapshot.
-  `sort()` / `move()` / `shuffle()` emit one REORDER (nothing when the order
-  is unchanged) and fire `onChange` for moved slots, never `onAdd` /
+  `sort()` / `move()` / `shuffle()` emit one REORDER covering only the slots
+  that moved (nothing when the order is unchanged) and fire `onChange` for moved slots, never `onAdd` /
   `onRemove`; a value pushed and removed in the same tick never reaches the
   wire. Arrays of Schema children under `@view()` keep identity ops
   (order not synced per view). Every array op is one varint carrying its
@@ -217,6 +219,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `QueueSchema` / `t.queue(Item)`: a first-in, first-out array whose `shift()` stays O(1) however long it is (`ArraySchema#shift()` on 2000 Schema children: 7.4 µs, a queue: 0.5 µs). It goes in an array field and travels as one, so clients — every SDK — keep receiving a regular `ArraySchema`. Read with `at(i)`, `peek()`, `forEach` or `for…of`; there is no index syntax and no insertion in the middle.
+- Array wire format: an `EXT` op that decoders skip when they don't know the extension, so array ops added after 6.0 don't break older clients.
 - `ArrayLog` / `KeyedRecorder`: one change recorder per collection, owned by
   the collection (`ChangeTree.rec`). Custom primitive types registered after
   import now work as collection children.

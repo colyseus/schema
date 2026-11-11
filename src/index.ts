@@ -8,6 +8,9 @@ export { MapSchema };
 import { ArraySchema } from "./types/custom/ArraySchema.js";
 export { ArraySchema };
 
+import { QueueSchema } from "./types/custom/QueueSchema.js";
+export { QueueSchema };
+
 import { CollectionSchema } from "./types/custom/CollectionSchema.js";
 export { CollectionSchema };
 

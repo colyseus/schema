@@ -110,7 +110,7 @@ scenario("unshift_same_tick_ops", (f) => {
     client.decode(f.capture("snapshot", encoder.encode()));
     encoder.discardChanges();
 
-    state.numbers[2] = 99;
+    state.numbers.set(2, 99);
     state.numbers.push(4);
     state.numbers.unshift(0);
 

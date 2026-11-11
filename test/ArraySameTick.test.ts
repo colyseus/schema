@@ -259,18 +259,14 @@ describe("ArraySchema", () => {
                 assertInSync(state, decodedState);
             });
 
-            it("proxy `arr[i] = undefined` keeps today's path", () => {
-                // $deleteAt records a DELETE and releases the refCount but never
-                // touches `items`, so the cancel is deliberately not wired there —
-                // `$onEncodeEnd` would resurrect the element with its ADD erased.
-                // TODO: `$deleteAt` leaves encoder `items` holding X (pre-existing).
+            it("`set(i, undefined)` removes an element pushed in the same tick", () => {
                 const { state, decodedState } = bootstrapped("a", "b", "c");
                 const warnings: string[] = [];
                 const originalWarn = console.warn;
                 console.warn = (...args: any[]) => warnings.push(String(args[0]));
                 try {
                     state.list.push(item("X"));
-                    (state.list as any)[3] = undefined;
+                    state.list.set(3, undefined as any);
                     decodedState.decode(state.encode());
                 } finally {
                     console.warn = originalWarn;

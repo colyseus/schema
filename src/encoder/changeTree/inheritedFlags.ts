@@ -237,7 +237,7 @@ export function drainFilterRefresh(root: Root): void {
  * trees (whose `$childType` is undefined and would pass anyway).
  */
 function _sharesEligible(tree: ChangeTree): boolean {
-    return tree._isSchema || typeof (tree.refTarget as any)[$childType] !== "string";
+    return tree._isSchema || typeof (tree.ref as any)[$childType] !== "string";
 }
 
 /**

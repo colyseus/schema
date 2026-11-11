@@ -33,7 +33,7 @@ describe("Codec (chunks, bodies, robustness)", () => {
         state.numbers.push(7, 1);
         const client = createInstanceFromReflection(state);
         client.decode(state.encodeAll());
-        state.numbers[1] = 2;
+        state.numbers.set(1, 2);
         client.decode(state.encode());
         assert.deepStrictEqual(client.numbers.toJSON(), [7, 2]);
     });
@@ -93,7 +93,7 @@ describe("Codec (chunks, bodies, robustness)", () => {
         assert.deepStrictEqual(client.toJSON(), state.toJSON());
 
         state.players.get("late").x = 1;
-        for (let i = 0; i < 300; i++) state.numbers[i] = i + 1;
+        for (let i = 0; i < 300; i++) state.numbers.set(i, i + 1);
         client.decode(state.encode());
         assert.deepStrictEqual(client.toJSON(), state.toJSON());
         assertRefIdCounts(state, client);
@@ -179,7 +179,7 @@ describe("Codec (chunks, bodies, robustness)", () => {
                 const r = rand();
                 if (r < 0.2) state.numbers.push(Math.floor(rand() * 100));
                 else if (r < 0.3 && state.numbers.length) state.numbers.splice(Math.floor(rand() * state.numbers.length), 1);
-                else if (r < 0.4 && state.numbers.length) state.numbers[Math.floor(rand() * state.numbers.length)] = Math.floor(rand() * 100);
+                else if (r < 0.4 && state.numbers.length) state.numbers.set(Math.floor(rand() * state.numbers.length), Math.floor(rand() * 100));
                 else if (r < 0.5) state.list.push(new Player().assign({ name: `n${n++}` }));
                 else if (r < 0.6 && state.list.length) state.list.splice(Math.floor(rand() * state.list.length), 1);
                 else if (r < 0.65 && state.list.length) state.list.reverse();

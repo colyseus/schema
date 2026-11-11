@@ -136,13 +136,24 @@ op  name        arg              operands                weight
 3   SET         index            value                   1
 4   REMOVE      index            uvarint(count)          count
 5   REVERSE     –                                        1
-6   REORDER     len              uvarint(oldPos)*len     1          -- new[i] = old[oldPos[i]]
+6   REORDER     start            uvarint(count) uvarint(oldPos)*count   1   -- new[start+i] = old[start+oldPos[i]]
 7   RESTATE     rev*2+identity   uvarint(count) value*   1 (positional) / 0 (identity)
-8   ADD_REF     –                refValue                0          -- identity mode
+8   ADD_REF     0 (reserved)     refValue                0          -- identity mode
 9   DELETE_REF  refId                                    0          -- identity mode
 10  CLEAR       –                                        1
 11  BASE        baseSeq                                  0          -- see Revision
+15  EXT         extension id     uvarint(weight) uvarint(byteLen) payload   weight
 ```
+
+`EXT` is the escape for ops added after 6.0 (12–14 are unassigned). A decoder
+that does not know the extension id skips `byteLen` bytes and advances the
+revision by `weight`, so the rest of the chunk still lines up. An encoder may
+send an extension unannounced only when ignoring it leaves the array correct
+(a hint); one that changes the array needs every client to know it.
+
+A **queue** (`QueueSchema`, `t.queue()`) is an array on the wire — its
+`push` / `shift` are PUSH and `REMOVE 0` — and is announced as an array in the
+reflection handshake: decoders need no queue type.
 
 Array ops are an ordered **log**: the decoder replays them in place (append,
 insert, index write, remove, reverse, permute). Values are the array's child
@@ -190,6 +201,10 @@ encoded per view as a **set**: `ADD_REF` / `DELETE_REF` by refId, a
 and `CLEAR`. Positions are never sent — each client holds the elements it
 was granted, in the order it received them. No `BASE` is sent and the
 identity ops have weight 0.
+
+`ADD_REF`'s arg is reserved for a position anchor (where the element goes
+relative to one the client already holds). Encoders send 0; decoders must
+accept any value and may ignore it — appending stays correct.
 
 ## Ref values and bodies
 
@@ -270,7 +285,9 @@ views into the shared buffer; a transport sends both (or `Encoder.concat`).
   at record time. Same-tick coalescing: consecutive pushes extend one PUSH;
   a value pushed and removed (or overwritten) in the same tick never reaches
   the wire; adjacent single removals merge into one REMOVE; `sort` / `move`
-  / `shuffle` record one REORDER (nothing when the order is unchanged);
+  / `shuffle` record one REORDER over the smallest range of slots that
+  changed (REVERSE when the whole array flips, nothing when the order is
+  unchanged);
   `clear` drops the pending log. Entries a mid-tick snapshot already
   delivered are never rewritten (`snapRev` watermark).
 - **Streams** (`t.stream()`, `.stream()` collections): broadcast mode

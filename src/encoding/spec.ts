@@ -79,12 +79,13 @@ export const ARRAY_OP = {
     SET: 3,         // arg index            value                    weight 1
     REMOVE: 4,      // arg index            uvarint(count)           weight count
     REVERSE: 5,     //                                               weight 1
-    REORDER: 6,     // arg len              uvarint(oldPos)*len      weight 1
+    REORDER: 6,     // arg start            uvarint(count) uvarint(oldPos - start)*count   weight 1
     RESTATE: 7,     // arg rev*2+identity   uvarint(count) value*    weight 1 (positional) / 0 (identity)
     ADD_REF: 8,     //                      refValue                 weight 0 (identity mode)
     DELETE_REF: 9,  // arg refId                                     weight 0 (identity mode)
     CLEAR: 10,      //                                               weight 1
     BASE: 11,       // arg baseSeq — the sequence the following ops apply at; sent only when a snapshot was taken this tick
+    EXT: 15,        // arg extension id     uvarint(weight) uvarint(byteLen) payload — skipped by a decoder that does not know the id
 } as const;
 export type ARRAY_OP = typeof ARRAY_OP[keyof typeof ARRAY_OP];
 

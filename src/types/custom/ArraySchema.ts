@@ -1,4 +1,4 @@
-import { $changes, $childType, $deleteByIndex, $getByIndex, $proxyTarget, $recorder, $refId, $reset, $resyncPrune, $rev } from "../symbols.js";
+import { $changes, $childType, $deleteByIndex, $elements, $getByIndex, $recorder, $refId, $reset, $resyncPrune, $rev } from "../symbols.js";
 import type { Schema } from "../../Schema.js";
 import { type IRef, type ChangeTree, createTree, installUntrackedChangeTree, refTreeOf, defineRefAccessors, refIdOf, stampTree, treeOf } from "../../encoder/ChangeTree.js";
 import type { ArrayLog } from "../../encoder/ArrayLog.js";
@@ -11,25 +11,21 @@ import { arrAppend, arrCopy, arrInsert, arrRemove, arrReverse, arrSplice } from 
 /**
  * ArraySchema — a real `Array` subclass with change tracking.
  *
- * Encoder side: `new ArraySchema()` returns a Proxy whose only traps are
- * `set` and `deleteProperty`, so `arr[i] = v`, `arr.length = n` and
- * `delete arr[i]` are recorded; reads go straight to the array. Every method
- * unwraps to the raw target once (`this[$proxyTarget]`) and mutates it by
- * index (see arrayOps.ts) — `super.push()` would re-enter the trap.
+ * There is no Proxy: the instance is the array, so `arr[i]` reads cost what
+ * they cost on a plain array. Only the methods record — `arr[i] = v`,
+ * `arr.length = n` and `delete arr[i]` change the local array without
+ * telling the encoder (the index signature and `length` are typed read-only
+ * for that reason). Write with `set(i, v)`, truncate with `splice` / `clear`.
  *
- * Decoder side: `initializeForDecoder()` builds a plain Array subclass
- * instance (no Proxy, no recorder); the decoder replays wire ops with the
- * same index helpers.
+ * Decoder side: `initializeForDecoder()` builds an instance with no
+ * recorder; the decoder replays wire ops with the same index helpers (see
+ * arrayOps.ts).
  *
  * The common builtins (`forEach`, `map`, `filter`, `indexOf`, `slice`, …)
  * are overridden with index loops: V8 runs an `Array.prototype` builtin on
  * a subclass instance through its generic per-property path, far slower
  * than on a plain array. `for…of` / `values` / `keys` / `entries` hand out
- * a small iterator over the raw target (the native array iterator would
- * read every element through the Proxy). What cannot be helped is a read
- * through the Proxy itself — `arr[i]` on the encoder side costs a Proxy
- * [[Get]] even without a `get` trap — so a hot server-side loop
- * over a large array should use `forEach`, `for…of` or `toArray()`.
+ * a small iterator (the native one misses its fast path on a subclass).
  *
  * Mutations are recorded on an `ArrayLog` (see encoder/ArrayLog.ts): an
  * ordered op log with the values captured at record time. There is no
@@ -40,51 +36,10 @@ import { arrAppend, arrCopy, arrInsert, arrRemove, arrReverse, arrSplice } from 
  * builtins call `new ArraySchema(n)`).
  */
 
-/** Set while `move()` runs its callback: index writes go straight to the array. */
-const $moving: unique symbol = Symbol("$moving");
+/** The array `move()` is running its callback on: its `set()` writes go straight to the array. */
+let moving: ArraySchema | undefined;
 
-/** Canonical array index key (`"0"`, `"12"`, never `"01"` / `"1.5"` / `"-1"`). */
-function indexOfKey(key: string): number {
-    const c = key.charCodeAt(0);
-    if (c < 48 || c > 57) return -1; // fast reject: not a digit
-    const n = +key;
-    return (n >>> 0 === n && (n !== 0 || key === "0") && String(n) === key) ? n : -1;
-}
-
-/**
- * Module-level Proxy handler shared by every encoder-side `ArraySchema`.
- * No `get` / `has` traps: reads are forwarded by the engine.
- */
-const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
-    set: (target, key, value) => {
-        if (typeof key === "string") {
-            const index = indexOfKey(key);
-            if (index !== -1) {
-                target.$setAt(index, value);
-                return true;
-            }
-            if (key === "length") {
-                target.$setLength(value);
-                return true;
-            }
-        }
-        target[key] = value;
-        return true;
-    },
-
-    deleteProperty: (target, key) => {
-        if (typeof key === "string") {
-            const index = indexOfKey(key);
-            if (index !== -1) {
-                target.$removeAt(index);
-                return true;
-            }
-        }
-        return delete target[key];
-    },
-};
-
-/** Live iterators over the raw target — see the class comment. */
+/** Live iterators — see the class comment. */
 class ArrayValues<V> implements IterableIterator<V> {
     private i = 0;
     /**
@@ -136,47 +91,89 @@ function releaseChild(tree: ChangeTree, value: any): void {
     if (childTree !== undefined) tree.root?.remove(childTree);
 }
 
-/** Attach a ref child; `parent` is the user-facing identity (the Proxy). */
+/** Attach a ref child. */
 function attachChild(tree: ChangeTree, parent: any, value: any, index: number): void {
     refTreeOf(value)?.setParent(parent, tree.root, index, tree);
 }
 
+/** The window of the last `windowPermutation()`: `[windowStart, windowEnd)`. */
+let windowStart = 0;
+let windowEnd = 0;
+
+/** `windowPermutation()` result for "the whole array, back to front". */
+const REVERSED: number[] = [-1];
+
+/** Windows up to this size are matched by scanning; larger ones through a Map. */
+const SCAN_WINDOW_MAX = 8;
+
 /**
- * `perm[k]` = old position of the element now at `k`, or `undefined` when
- * `after` is not a permutation of `before` (membership changed). Refs match
- * by identity; primitives by value, first unused occurrence wins.
+ * The slots `after` holds differently from `before`, as a permutation of the
+ * smallest window covering them: `perm[k]` = offset in the window of the old
+ * position of the element now at `windowStart + k`. `[]` when the order is
+ * unchanged, `REVERSED` when the whole array flipped, `undefined` when
+ * `after` is not a permutation of `before` (membership changed). Equal
+ * values pair up in order of occurrence.
  */
-function permutationOf(before: any[], after: any[]): number[] | undefined {
+function windowPermutation(before: ArrayLike<any>, after: ArrayLike<any>): number[] | undefined {
     const n = before.length;
     if (after.length !== n) return undefined;
-    const perm: number[] = new Array(n);
-    let identity = true;
-    if (n > 0 && typeof before[0] === "object") {
-        const at = new Map<any, number>();
-        for (let i = 0; i < n; i++) at.set(before[i], i);
-        if (at.size !== n) return undefined; // duplicates: not a permutation by identity
-        for (let k = 0; k < n; k++) {
-            const i = at.get(after[k]);
-            if (i === undefined) return undefined;
-            perm[k] = i;
-            if (i !== k) identity = false;
-        }
-    } else {
-        const at = new Map<any, number[]>();
-        for (let i = 0; i < n; i++) {
-            const list = at.get(before[i]);
-            if (list === undefined) at.set(before[i], [i]);
-            else list.push(i);
-        }
-        for (let k = 0; k < n; k++) {
-            const list = at.get(after[k]);
-            if (list === undefined || list.length === 0) return undefined;
-            const i = list.shift()!;
-            perm[k] = i;
-            if (i !== k) identity = false;
-        }
+    let lo = 0;
+    while (lo < n && before[lo] === after[lo]) lo++;
+    if (lo === n) return [];
+    let hi = n - 1;
+    while (before[hi] === after[hi]) hi--;
+    const w = hi - lo + 1;
+    windowStart = lo;
+    windowEnd = hi + 1;
+    if (w === n) {
+        let k = 0;
+        while (k < n && after[k] === before[n - 1 - k]) k++;
+        if (k === n) return REVERSED;
     }
-    return identity ? [] : perm;
+    const perm: number[] = new Array(w);
+
+    if (w <= SCAN_WINDOW_MAX) {
+        let used = 0;
+        for (let k = 0; k < w; k++) {
+            const value = after[lo + k];
+            let i = 0;
+            for (; i < w; i++) {
+                if ((used & (1 << i)) !== 0) continue;
+                const old = before[lo + i];
+                if (old === value || (old !== old && value !== value)) break; // NaN pairs with NaN, as in the Map
+            }
+            if (i === w) return undefined;
+            used |= 1 << i;
+            perm[k] = i;
+        }
+        return perm;
+    }
+
+    // first occurrence per value; `next` chains the later ones
+    const first = new Map<any, number>();
+    const next: number[] = new Array(w);
+    for (let i = w - 1; i >= 0; i--) {
+        const value = before[lo + i];
+        const later = first.get(value);
+        next[i] = (later === undefined) ? -1 : later;
+        first.set(value, i);
+    }
+    for (let k = 0; k < w; k++) {
+        const value = after[lo + k];
+        const i = first.get(value);
+        if (i === undefined || i === -1) return undefined;
+        first.set(value, next[i]);
+        perm[k] = i;
+    }
+    return perm;
+}
+
+/** Record a non-empty `windowPermutation()` result. */
+function recordPermutation(tree: ChangeTree, perm: number[]): void {
+    const log = tree.rec as ArrayLog;
+    if (perm === REVERSED) log.reverse();
+    else log.reorder(windowStart, perm);
+    tree.touch();
 }
 
 // ────── Search loops, one per element kind ──────
@@ -279,12 +276,14 @@ function forwardFrom(fromIndex: any, length: number): number {
 }
 
 export class ArraySchema<V = any> extends Array<V> implements Collection<number, V>, IRef {
-    /** Prototype accessor; the tree itself is stamped on the raw target (see ChangeTree.ts). */
+    /** Index and `length` writes are not tracked: `set(index, value)`, `splice(n)`, `clear()`. */
+    readonly [index: number]: V;
+    declare readonly length: number;
+
+    /** Prototype accessor; the tree itself is stamped on the instance (see ChangeTree.ts). */
     declare [$changes]: ChangeTree;
     declare [$refId]?: number;
-    [$proxyTarget]: this;
     [$rev]?: number;
-    [$moving]?: boolean;
 
     protected [$childType]: string | typeof Schema;
 
@@ -305,7 +304,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         );
     }
 
-    /** Tracked equivalent of `Array.from` (the native one bypasses the Proxy `set` trap). */
+    /** Tracked equivalent of `Array.from` (the native one writes by index). */
     static from<T>(iterable: Iterable<T> | ArrayLike<T>, mapfn?: (v: any, k: number) => T, thisArg?: any): ArraySchema<T> {
         const arr = new ArraySchema<T>();
         arr.$pushAll(Array.from(iterable as Iterable<any>, mapfn as any, thisArg));
@@ -319,45 +318,34 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         return arr;
     }
 
-    /**
-     * Never `super(...items)`: a single number argument would allocate holes.
-     * Returns the Proxy — the public identity of the array.
-     */
+    /** Never `super(...items)`: a single number argument would allocate holes. */
     constructor(...items: V[]) {
         super();
-        this[$proxyTarget] = this;
         this[$childType] = undefined as any;
-        this[$moving] = false;
 
-        const proxy = new Proxy(this, ARRAY_PROXY_HANDLER);
-
-        const tree = createTree(proxy, this);
-        stampTree(this, tree); // the raw target only — never the Proxy (see ChangeTree.ts)
+        const tree = createTree(this);
+        stampTree(this, tree);
 
         if (items.length > 0) this.$pushAll(items);
-
-        return proxy;
     }
 
     /**
      * Decoder-side factory: an exotic Array with `ArraySchema.prototype`
-     * whose constructor body never runs (no Proxy, no ChangeTree).
+     * whose constructor body never runs (no ChangeTree).
      */
     static initializeForDecoder<V = any>(): ArraySchema<V> {
         const self: any = Reflect.construct(Array, [], ArraySchema);
-        self[$proxyTarget] = self;
         self[$childType] = undefined;
-        self[$moving] = false;
         self[$rev] = 0;
         installUntrackedChangeTree(self);
         return self;
     }
 
     // ────── Change tracking control (same API as Schema) ──────
-    pauseTracking(): void { treeOf(this[$proxyTarget]).pause(); }
-    resumeTracking(): void { treeOf(this[$proxyTarget]).resume(); }
-    untracked<T>(fn: () => T): T { return treeOf(this[$proxyTarget]).untracked(fn); }
-    get isTrackingPaused(): boolean { return treeOf(this[$proxyTarget]).paused; }
+    pauseTracking(): void { treeOf(this).pause(); }
+    resumeTracking(): void { treeOf(this).resume(); }
+    untracked<T>(fn: () => T): T { return treeOf(this).untracked(fn); }
+    get isTrackingPaused(): boolean { return treeOf(this).paused; }
 
     // ────── Mutations ──────
 
@@ -367,7 +355,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
 
     /** `push` without spreading (large inputs). */
     protected $pushAll(values: V[]): number {
-        const self = this[$proxyTarget];
+        const self = this;
         const tree = treeOf(self);
         const childType = self[$childType];
         let n = values.length;
@@ -405,7 +393,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     pop(): V | undefined {
-        const self = this[$proxyTarget];
+        const self = this;
         const length = self.length;
         if (length === 0) return undefined;
 
@@ -417,13 +405,13 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
             tree.touch();
         }
 
-        self.length = length - 1;
+        (self as any[]).length = length - 1;
         releaseChild(tree, value);
         return value;
     }
 
     shift(): V | undefined {
-        const self = this[$proxyTarget];
+        const self = this;
         if (self.length === 0) return undefined;
 
         const tree = treeOf(self);
@@ -440,7 +428,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     unshift(...values: V[]): number {
-        const self = this[$proxyTarget];
+        const self = this;
         const n = values.length;
         if (n === 0) return self.length;
 
@@ -472,7 +460,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     splice(start: number, deleteCount?: number, ...items: V[]): V[] {
-        const self = this[$proxyTarget];
+        const self = this;
         const length = self.length;
 
         // normalize per the spec
@@ -525,30 +513,25 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     /**
-     * Sorts in place and records one REORDER op (the permutation) instead of
-     * a REPLACE per index. Nothing is recorded when the order is unchanged.
+     * Sorts in place and records one REORDER op covering the slots that
+     * moved, instead of a REPLACE per index. Nothing is recorded when the
+     * order is unchanged.
      */
     sort(compareFn?: (a: V, b: V) => number): this {
-        const self = this[$proxyTarget];
-        const length = self.length;
-        if (length < 2) return this;
-        // sort a plain copy and write it back (the native sort is generic on a subclass receiver)
-        const before = arrCopy(self);
-        const sorted = before.slice().sort(compareFn);
-        for (let i = 0; i < length; i++) self[i] = sorted[i];
+        const self = this;
+        if (self.length < 2) return this;
+        // sort a plain copy (the native sort is generic on a subclass receiver)
+        const sorted = arrCopy(self).sort(compareFn);
+        const perm = windowPermutation(self, sorted)!;
+        if (perm.length === 0) return this;
         const tree = treeOf(self);
-        if (tree.tracking) {
-            const perm = permutationOf(before, sorted);
-            if (perm !== undefined && perm.length > 0) {
-                (tree.rec as ArrayLog).reorder(perm);
-                tree.touch();
-            }
-        }
+        if (tree.tracking) recordPermutation(tree, perm);
+        for (let i = windowStart; i < windowEnd; i++) (self as V[])[i] = sorted[i];
         return this;
     }
 
     reverse(): this {
-        const self = this[$proxyTarget];
+        const self = this;
         if (self.length < 2) return this;
         const tree = treeOf(self);
         if (tree.tracking) {
@@ -560,18 +543,18 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     fill(value: V, start?: number, end?: number): this {
-        const self = this[$proxyTarget];
+        const self = this;
         const length = self.length;
         let from = start === undefined ? 0 : Math.trunc(start);
         let to = end === undefined ? length : Math.trunc(end);
         if (from < 0) from = Math.max(length + from, 0); else from = Math.min(from, length);
         if (to < 0) to = Math.max(length + to, 0); else to = Math.min(to, length);
-        for (let i = from; i < to; i++) self.$setAt(i, value);
+        for (let i = from; i < to; i++) self.set(i, value);
         return this;
     }
 
     copyWithin(target: number, start: number, end?: number): this {
-        const self = this[$proxyTarget];
+        const self = this;
         const length = self.length;
         let to = Math.trunc(target) || 0;
         let from = Math.trunc(start) || 0;
@@ -582,18 +565,57 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         const count = Math.min(final - from, length - to);
         if (count <= 0) return this;
         const segment = arrCopy(self, from, from + count);
-        for (let i = 0; i < count; i++) self.$setAt(to + i, segment[i]);
+        for (let i = 0; i < count; i++) self.set(to + i, segment[i]);
         return this;
     }
 
-    /** Tracked `arr[index] = value` for code paths that cannot go through the Proxy. */
+    /**
+     * Tracked `arr[index] = value`. A write past the end appends (the array
+     * never holds holes); `undefined` / `null` removes the element.
+     */
     set(index: number, value: V): this {
-        this[$proxyTarget].$setAt(index, value);
+        const self = this as any[];
+        if (moving === this) {
+            self[index] = value;
+            return this;
+        }
+        if (value === undefined || value === null) {
+            if (index < self.length) this.splice(index, 1);
+            return this;
+        }
+
+        const tree = treeOf(this);
+        const childType = this[$childType];
+        if (childType !== undefined && typeof value === "object") {
+            assertInstanceType(value as any, childType as typeof Schema, this, index);
+        }
+
+        const length = self.length;
+        if (index >= length) {
+            if (tree.tracking) {
+                (tree.rec as ArrayLog).push([value], length);
+                tree.touch();
+            }
+            self[length] = value;
+            if (typeof childType !== "string") attachChild(tree, tree.ref, value, length);
+            return this;
+        }
+
+        const previousValue = self[index];
+        if (previousValue === value) return this;
+
+        if (tree.tracking) {
+            (tree.rec as ArrayLog).set(index, previousValue, value);
+            tree.touch();
+        }
+        self[index] = value;
+        releaseChild(tree, previousValue);
+        if (typeof childType !== "string") attachChild(tree, tree.ref, value, index);
         return this;
     }
 
     clear(): void {
-        const self = this[$proxyTarget];
+        const self = this;
         if (self.length === 0) return;
 
         const tree = treeOf(self);
@@ -604,7 +626,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
             tree.touch();
         }
 
-        self.length = 0; // raw target: no trap
+        (self as any[]).length = 0;
     }
 
     /**
@@ -619,18 +641,18 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
      *         [cards[3], cards[2]] = [cards[2], cards[3]];
      *     })
      */
-    move(cb: (arr: this) => void): this {
-        const self = this[$proxyTarget];
+    move(cb: (arr: V[]) => void): this {
+        const self = this;
         const tree = treeOf(self);
         if (!tree.tracking) {
             cb(this);
             return this;
         }
         const before = arrCopy(self);
-        self[$moving] = true;
-        try { cb(this); } finally { self[$moving] = false; }
+        moving = self;
+        try { cb(this); } finally { moving = undefined; }
 
-        const perm = permutationOf(before, self);
+        const perm = windowPermutation(before, self);
         if (perm === undefined) {
             // membership changed: release / attach the difference, re-state
             const after = new Set<any>(self);
@@ -645,15 +667,14 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
             (tree.rec as ArrayLog).restate(arrCopy(self));
             tree.touch();
         } else if (perm.length > 0) {
-            (tree.rec as ArrayLog).reorder(perm);
-            tree.touch();
+            recordPermutation(tree, perm);
         }
         return this;
     }
 
     shuffle(): this {
         return this.move((arr) => {
-            const self = arr[$proxyTarget];
+            const self = arr;
             let currentIndex = self.length;
             while (currentIndex !== 0) {
                 const randomIndex = Math.floor(Math.random() * currentIndex);
@@ -669,7 +690,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
 
     /** Copy with `index` replaced (negative counts from the end). Plain array. */
     with(index: number, value: V): V[] {
-        const self = this[$proxyTarget];
+        const self = this;
         const copy = arrCopy(self);
         if (index < 0) index += copy.length;
         if (index < 0 || index >= copy.length) throw new RangeError(`Invalid index : ${index}`);
@@ -678,32 +699,32 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     toReversed(): V[] {
-        return arrCopy(this[$proxyTarget]).reverse();
+        return arrCopy(this).reverse();
     }
 
     toSorted(compareFn?: (a: V, b: V) => number): V[] {
-        return arrCopy(this[$proxyTarget]).sort(compareFn);
+        return arrCopy(this).sort(compareFn);
     }
 
     toSpliced(start: number, deleteCount?: number, ...items: V[]): V[] {
-        const copy: V[] = arrCopy(this[$proxyTarget]);
+        const copy: V[] = arrCopy(this);
         // forward `arguments` so an omitted deleteCount differs from an explicit undefined
         copy.splice.apply(copy, arguments as any);
         return copy;
     }
 
-    findLast<S extends V>(predicate: (value: V, index: number, array: V[]) => value is S, thisArg?: any): S | undefined;
-    findLast(predicate: (value: V, index: number, array: V[]) => unknown, thisArg?: any): V | undefined;
-    findLast(predicate: (value: V, index: number, array: V[]) => unknown, thisArg?: any): V | undefined {
-        const self = this[$proxyTarget];
+    findLast<S extends V>(predicate: (value: V, index: number, array: this) => value is S, thisArg?: any): S | undefined;
+    findLast(predicate: (value: V, index: number, array: this) => unknown, thisArg?: any): V | undefined;
+    findLast(predicate: (value: V, index: number, array: this) => unknown, thisArg?: any): V | undefined {
+        const self = this;
         for (let i = self.length - 1; i >= 0; i--) {
             if (predicate.call(thisArg, self[i], i, this)) return self[i];
         }
         return undefined;
     }
 
-    findLastIndex(predicate: (value: V, index: number, array: V[]) => unknown, thisArg?: any): number {
-        const self = this[$proxyTarget];
+    findLastIndex(predicate: (value: V, index: number, array: this) => unknown, thisArg?: any): number {
+        const self = this;
         for (let i = self.length - 1; i >= 0; i--) {
             if (predicate.call(thisArg, self[i], i, this)) return i;
         }
@@ -711,16 +732,13 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     // ────── Read-side builtins as index loops (see the class comment) ──────
-    // Callbacks receive the public identity (`this`, the Proxy on the encoder
-    // side) so writes made through the `array` argument are tracked.
-
     // Without a `thisArg` the callback is called directly (`Function#call`
     // costs a builtin call per element until TurboFan inlines it, and on
     // polymorphic callers). A direct call passes `this = undefined` exactly
     // like `.call(undefined, …)`, so the two branches are equivalent.
 
-    forEach(callbackfn: (value: V, index: number, array: V[]) => void, thisArg?: any): void {
-        const self = this[$proxyTarget];
+    forEach(callbackfn: (value: V, index: number, array: this) => void, thisArg?: any): void {
+        const self = this;
         const len = self.length;
         if (thisArg === undefined) {
             for (let i = 0; i < len; i++) callbackfn(self[i], i, this);
@@ -729,8 +747,8 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         }
     }
 
-    map<U>(callbackfn: (value: V, index: number, array: V[]) => U, thisArg?: any): U[] {
-        const self = this[$proxyTarget];
+    map<U>(callbackfn: (value: V, index: number, array: this) => U, thisArg?: any): U[] {
+        const self = this;
         const len = self.length;
         const out: U[] = new Array(len);
         if (thisArg === undefined) {
@@ -741,10 +759,10 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         return out;
     }
 
-    filter<S extends V>(predicate: (value: V, index: number, array: V[]) => value is S, thisArg?: any): S[];
-    filter(predicate: (value: V, index: number, array: V[]) => unknown, thisArg?: any): V[];
-    filter(predicate: (value: V, index: number, array: V[]) => unknown, thisArg?: any): V[] {
-        const self = this[$proxyTarget];
+    filter<S extends V>(predicate: (value: V, index: number, array: this) => value is S, thisArg?: any): S[];
+    filter(predicate: (value: V, index: number, array: this) => unknown, thisArg?: any): V[];
+    filter(predicate: (value: V, index: number, array: this) => unknown, thisArg?: any): V[] {
+        const self = this;
         const len = self.length;
         const out: V[] = [];
         if (thisArg === undefined) {
@@ -761,11 +779,11 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         return out;
     }
 
-    find<S extends V>(predicate: (value: V, index: number, obj: V[]) => value is S, thisArg?: any): S | undefined;
-    find(predicate: (value: V, index: number, obj: V[]) => unknown, thisArg?: any): V | undefined;
-    find(predicate: (value: V, index: number, obj: V[]) => unknown, thisArg?: any): V | undefined {
+    find<S extends V>(predicate: (value: V, index: number, obj: this) => value is S, thisArg?: any): S | undefined;
+    find(predicate: (value: V, index: number, obj: this) => unknown, thisArg?: any): V | undefined;
+    find(predicate: (value: V, index: number, obj: this) => unknown, thisArg?: any): V | undefined {
         // (returns the value captured before the predicate ran, as the spec does)
-        const self = this[$proxyTarget];
+        const self = this;
         const len = self.length;
         if (thisArg === undefined) {
             for (let i = 0; i < len; i++) { const value = self[i]; if (predicate(value, i, this)) return value; }
@@ -775,8 +793,8 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         return undefined;
     }
 
-    findIndex(predicate: (value: V, index: number, obj: V[]) => unknown, thisArg?: any): number {
-        const self = this[$proxyTarget];
+    findIndex(predicate: (value: V, index: number, obj: this) => unknown, thisArg?: any): number {
+        const self = this;
         const len = self.length;
         if (thisArg === undefined) {
             for (let i = 0; i < len; i++) if (predicate(self[i], i, this)) return i;
@@ -786,14 +804,14 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         return -1;
     }
 
-    some(predicate: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean {
+    some(predicate: (value: V, index: number, array: this) => unknown, thisArg?: any): boolean {
         return this.findIndex(predicate, thisArg) !== -1;
     }
 
-    every<S extends V>(predicate: (value: V, index: number, array: V[]) => value is S, thisArg?: any): this is S[];
-    every(predicate: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean;
-    every(predicate: (value: V, index: number, array: V[]) => unknown, thisArg?: any): boolean {
-        const self = this[$proxyTarget];
+    every<S extends V>(predicate: (value: V, index: number, array: this) => value is S, thisArg?: any): this is S[];
+    every(predicate: (value: V, index: number, array: this) => unknown, thisArg?: any): boolean;
+    every(predicate: (value: V, index: number, array: this) => unknown, thisArg?: any): boolean {
+        const self = this;
         const len = self.length;
         if (thisArg === undefined) {
             for (let i = 0; i < len; i++) if (!predicate(self[i], i, this)) return false;
@@ -803,11 +821,11 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         return true;
     }
 
-    reduce(callbackfn: (previousValue: V, currentValue: V, currentIndex: number, array: V[]) => V): V;
-    reduce(callbackfn: (previousValue: V, currentValue: V, currentIndex: number, array: V[]) => V, initialValue: V): V;
-    reduce<U>(callbackfn: (previousValue: U, currentValue: V, currentIndex: number, array: V[]) => U, initialValue: U): U;
-    reduce(callbackfn: (previousValue: any, currentValue: V, currentIndex: number, array: V[]) => any, initialValue?: any): any {
-        const self = this[$proxyTarget];
+    reduce(callbackfn: (previousValue: V, currentValue: V, currentIndex: number, array: this) => V): V;
+    reduce(callbackfn: (previousValue: V, currentValue: V, currentIndex: number, array: this) => V, initialValue: V): V;
+    reduce<U>(callbackfn: (previousValue: U, currentValue: V, currentIndex: number, array: this) => U, initialValue: U): U;
+    reduce(callbackfn: (previousValue: any, currentValue: V, currentIndex: number, array: this) => any, initialValue?: any): any {
+        const self = this;
         const len = self.length;
         let i = 0;
         let acc: any;
@@ -827,7 +845,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     // the initial Array.prototype) and fall back to a much slower runtime path.
 
     indexOf(searchElement: V, fromIndex?: number): number {
-        const self = this[$proxyTarget];
+        const self = this;
         const length = self.length;
         const from = forwardFrom(fromIndex, length);
         if (from === -1) return -1;
@@ -835,7 +853,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     lastIndexOf(searchElement: V, fromIndex?: number): number {
-        const self = this[$proxyTarget];
+        const self = this;
         const length = self.length;
         if (length === 0) return -1;
         // spec: an explicitly passed `undefined` is ToIntegerOrInfinity(undefined) = 0
@@ -850,7 +868,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     includes(searchElement: V, fromIndex?: number): boolean {
-        const self = this[$proxyTarget];
+        const self = this;
         const length = self.length;
         const from = forwardFrom(fromIndex, length);
         if (from === -1) return false;
@@ -866,7 +884,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
 
     /** Plain-array copy of a range (negative indexes count from the end). */
     slice(start?: number, end?: number): V[] {
-        const self = this[$proxyTarget];
+        const self = this;
         const length = self.length;
         let from = (start === undefined) ? 0 : Math.trunc(start) || 0;
         let to = (end === undefined) ? length : Math.trunc(end) || 0;
@@ -876,101 +894,40 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     at(index: number): V | undefined {
-        const self = this[$proxyTarget];
+        const self = this;
         index = Math.trunc(index) || 0;
         if (index < 0) index += self.length;
         return self[index];
     }
 
     [Symbol.iterator](): ReturnType<Array<V>[typeof Symbol.iterator]> {
-        return new ArrayValues(this[$proxyTarget]) as any;
+        return new ArrayValues(this) as any;
     }
 
     values(): ReturnType<Array<V>["values"]> {
-        return new ArrayValues(this[$proxyTarget]) as any;
+        return new ArrayValues(this) as any;
     }
 
     keys(): ReturnType<Array<V>["keys"]> {
-        return new ArrayKeys(this[$proxyTarget]) as any;
+        return new ArrayKeys(this) as any;
     }
 
     entries(): ReturnType<Array<V>["entries"]> {
-        return new ArrayEntries(this[$proxyTarget]) as any;
-    }
-
-    // ────── Proxy trap targets (always called on the raw target) ──────
-
-    protected $setAt(index: number, value: V): void {
-        if (this[$moving]) {
-            this[index] = value;
-            return;
-        }
-        if (value === undefined || value === null) {
-            this.$removeAt(index);
-            return;
-        }
-
-        const tree = treeOf(this[$proxyTarget]);
-        const childType = this[$childType];
-        if (childType !== undefined && typeof value === "object") {
-            assertInstanceType(value as any, childType as typeof Schema, this, index);
-        }
-
-        const length = this.length;
-        if (index >= length) {
-            // a write past the end appends: the array never holds holes
-            if (tree.tracking) {
-                (tree.rec as ArrayLog).push([value], length);
-                tree.touch();
-            }
-            this[length] = value;
-            if (typeof childType !== "string") attachChild(tree, tree.ref, value, length);
-            return;
-        }
-
-        const previousValue = this[index];
-        if (previousValue === value) return;
-
-        if (tree.tracking) {
-            (tree.rec as ArrayLog).set(index, previousValue, value);
-            tree.touch();
-        }
-        this[index] = value;
-        releaseChild(tree, previousValue);
-        if (typeof childType !== "string") attachChild(tree, tree.ref, value, index);
-    }
-
-    protected $removeAt(index: number): void {
-        if (index >= this.length) return;
-        const tree = treeOf(this[$proxyTarget]);
-        const value = this[index];
-        if (tree.tracking) {
-            (tree.rec as ArrayLog).remove(index, [value]);
-            tree.touch();
-        }
-        arrRemove(this, index, 1);
-        releaseChild(tree, value);
-    }
-
-    protected $setLength(newLength: number): void {
-        const length = this.length;
-        if (newLength === 0) {
-            this.clear();
-        } else if (newLength < length) {
-            this.splice(newLength, length - newLength);
-        } else if (newLength > length) {
-            console.warn("ArraySchema: can't set .length to a higher value than its length.");
-        }
+        return new ArrayEntries(this) as any;
     }
 
     // ────── Encoder / decoder plumbing ──────
+
+    get [$elements](): V[] {
+        return this as V[];
+    }
 
     [$getByIndex](index: number): any {
         return this[index];
     }
 
     [$deleteByIndex](index: number): void {
-        arrRemove(this[$proxyTarget], index, 1);
+        arrRemove(this, index, 1);
     }
 
     /**
@@ -980,10 +937,10 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
      * array field. The instance must already be detached from the encoder.
      */
     [$reset]() {
-        const self = this[$proxyTarget];
+        const self = this;
         const tree = treeOf(self);
         for (let i = 0, len = self.length; i < len; i++) (self[i] as any)?.[$reset]?.();
-        self.length = 0;
+        (self as any[]).length = 0;
         tree.recycle();
     }
 
@@ -998,7 +955,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
         prune: (value: V, identity: number | string) => void,
         keep: (value: V) => void,
     ): void {
-        const self = this[$proxyTarget];
+        const self = this as V[];
         const len = self.length;
         let w = 0; // survivors compact in place
         for (let i = 0; i < len; i++) {
@@ -1015,11 +972,11 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     toArray(): V[] {
-        return arrCopy(this[$proxyTarget]);
+        return arrCopy(this);
     }
 
     toJSON(): (V extends { toJSON(...args: any[]): infer R } ? R : V)[] {
-        const self = this[$proxyTarget];
+        const self = this;
         const length = self.length;
         const out = new Array(length);
         for (let i = 0; i < length; i++) {
@@ -1030,7 +987,7 @@ export class ArraySchema<V = any> extends Array<V> implements Collection<number,
     }
 
     clone(): ArraySchema<V> {
-        const self = this[$proxyTarget];
+        const self = this;
         const items: V[] = new Array(self.length);
         for (let i = 0, len = self.length; i < len; i++) {
             const item: any = self[i];
