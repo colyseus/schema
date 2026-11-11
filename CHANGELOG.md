@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.47]
+
+### Fixed
+
+- Setting an `ArraySchema` index to `null` or `undefined` now removes the element on the server too, as `splice(i, 1)` does. It used to be removed only on clients, so every later change at or after that index landed one slot off. Thanks @JROtto5! [#254](https://github.com/colyseus/schema/issues/254)
+
 ## [5.0.46]
 
 ### Fixed
