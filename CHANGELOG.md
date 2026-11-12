@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.48]
+
+### Fixed
+
+- Replacing the 22nd field of a `Schema` in the same patch that sets a child `Schema` field just before it no longer corrupts the client's state. Only the server needs the upgrade. Thanks @devlsh! [#257](https://github.com/colyseus/schema/issues/257)
+
 ## [5.0.47]
 
 ### Fixed
