@@ -3,6 +3,7 @@ import { TypeContext } from "../types/TypeContext.js";
 import { ChangeTree, ChangeTreeList, createChangeTreeList, PENDING_FILTER_REFRESH, type ChangeTreeNode } from "./ChangeTree.js";
 import { restageLiveCb } from "./changeTree/liveIteration.js";
 import { $changes, $refId } from "../types/symbols.js";
+import { assertAccessorsNotShadowed } from "../encoding/assert.js";
 import type { StateView } from "./StateView.js";
 import type { StreamSchema } from "../types/custom/StreamSchema.js";
 import type { StreamableState } from "./streaming.js";
@@ -179,6 +180,7 @@ export class Root {
         // *enumerable* own Symbols, so we keep defineProperty(enumerable:false)
         // to keep $refId hidden from deep-equal comparisons in tests.
         if (ref[$refId] === undefined) {
+            assertAccessorsNotShadowed(ref);
             $refIdDescriptor.value = this.nextUniqueId++;
             Object.defineProperty(ref, $refId, $refIdDescriptor);
         }
