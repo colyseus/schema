@@ -10,13 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Chunk header carries a refId delta** (`SPEC.md`, "Message and chunks"):
   `uvarint(refId * 2 + 1)` for the first chunk of a slice, then
-  `uvarint(zigzag(refId − prevRefId) * 2)`. Dirty structures come out in
-  change order, which mostly follows allocation order, so the header stays one
+  `uvarint(zigzag(refId − prevRefId) * 2)`. Dirty structures come out mostly
+  in change order, which mostly follows allocation order, so the header stays one
   byte long after absolute refIds pass 127: −3.6 % on a 5000-entity patch,
   −6 % on the RPG / shard patches. The first chunk of every slice is
   self-describing, so `[shared, view]` decodes concatenated or separately.
 - **Same-shape runs**: the length prefix is `uvarint(byteLen * 2 + flag)`;
-  with the flag set the chunk is a run — consecutive dirty Schemas of one
+  with the flag set the chunk is a run — dirty Schemas of one
   class whose dirty fields are the same primitives (all writes) share one
   header, class id and field mask, each member costing its refId delta plus
   its values. On a room of same-class entities updating the same fields per
@@ -235,6 +235,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `view.add(collection)` is documented as covering the items the collection holds at that moment; use `view.subscribe(collection)` when items added later should reach the view too.
 - The first patch after a client's full state no longer repeats everything its `StateView` already received in that full state, which roughly halves the bytes a join costs.
 - A client joining with a `StateView` gets its full state about 6× faster in a large filtered state (300 of 20,000 entities in view: 19 ms to 3 ms per join and leave), and disposing a view costs what the view held instead of scanning the whole state.
+- Patches are 21–23 % smaller when entities hold a nested Schema that changes along with them (`entity.position.x`): same-shape runs now form across the alternating entity / child chunks instead of only over adjacent ones (5,000 entities: 142 KB to 112 KB per tick). No wire-format change.
 
 ### Fixed
 

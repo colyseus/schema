@@ -39,8 +39,8 @@ op grammar applies is decided by the kind of the structure the refId names
 (Schema, Map, Array, Set/Collection/Stream). The root structure has refId 0.
 
 The refId rides as a delta from the previous chunk of the same slice (a
-shared encode, or one client's view slice): dirty structures are emitted in
-change order, which mostly follows allocation order, so the delta stays a
+shared encode, or one client's view slice): dirty structures are emitted
+mostly in change order, which mostly follows allocation order, so the delta stays a
 single byte long after absolute refIds have grown past 127 (deltas of −16…+31
 fit one byte; a 5000-entity 100 %-patch saves ~3.6 %, a 50-chunk owner-only
 view slice ~19 %). The low bit tells the two forms apart, so the first chunk
@@ -48,9 +48,9 @@ of every slice is self-describing and the `[shared, view]` pair can be
 decoded concatenated or separately. A decoder resets `prevRefId` at the start
 of each buffer it is handed.
 
-The low bit of the length prefix marks a **same-shape run**: consecutive dirty
-Schemas of one class whose dirty fields are the same set of primitives, all
-written (ADD), collapse into one chunk. The header names the first member;
+The low bit of the length prefix marks a **same-shape run**: dirty Schemas
+of one class whose dirty fields are the same set of primitives, all written
+(ADD), collapse into one chunk. The header names the first member;
 the body carries the class (`typeId` from the handshake), the field mask
 (the same LEB128-shaped mask as inline bodies) and the number of further
 members, then every member's values in ascending field order — later members
@@ -62,6 +62,13 @@ type (the class table gives every value's size); an unknown `typeId` skips
 the whole run by its length. Runs never carry fields past index 31, ref-typed
 fields, DELETEs, `@view`-tagged fields, stream fields, or classes that
 override the stock `[$filter]` — those structures keep their own chunk.
+
+Members need not be adjacent in change order: an entity and its nested
+child (`entity.position`) alternate in the dirty queue and can still get one
+run per shape. Which structures share a run is encoder policy — a decoder
+must not rely on it. Chunk order is therefore not change order: a run may
+follow the chunks of structures that changed after some of its members. A
+chunk never precedes the op that introduces its structure to that client.
 
 A full sync (`encodeAll`) is one root chunk whose ref values inline their
 bodies (see [bodies](#ref-values-and-bodies)); a patch is one chunk per

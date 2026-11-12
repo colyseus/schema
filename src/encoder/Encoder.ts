@@ -431,31 +431,19 @@ export class Encoder<T extends Schema = any> {
         const opsLen = this._viewOpsLen[view.id] | 0;
         let opPos = 0;
 
+        const slots = _slots;
+        slots.open = 0;
         for (let s = 0; s < seqLen; s++) {
             const i = seq[s];
             const tree = trees[i];
 
-            // same-shape run over consecutive visible filtered trees of one class
-            // (cheap peek at the next tree first; typeId lookup only for a real run)
-            const peek = (s + 1 < seqLen) ? trees[seq[s + 1]] : undefined;
-            if (peek !== undefined && peek.encDescriptor === tree.encDescriptor && peek.dirtyLow === tree.dirtyLow && tree.isFiltered && runEligible(tree, true)) {
-                let n = 0;
-                while (s + 1 + n < seqLen) {
-                    const next = trees[seq[s + 1 + n]];
-                    if (!next.isFiltered || !runContinues(tree, next, true)) break;
-                    n++;
-                }
-                if (n > 0 && f.context.getTypeId(tree.ref.constructor) !== undefined) {
-                    if (tree.isNew) tree._fullSyncGen = f.genB;
-                    enterFrame(f, tree);
-                    openRun(f, tree, n);
-                    for (let k = 1; k <= n; k++) {
-                        const member = trees[seq[s + k]];
-                        if (member.isNew) member._fullSyncGen = f.genB;
-                        addRunMember(f, member);
-                    }
-                    endRun(f);
-                    s += n;
+            // same-shape run: cheap checks here (an open slot, or the shape
+            // again within the next few trees), the rest out of line so this
+            // function stays small enough to optimize well
+            if (tree.dirtyLow !== 0 && (slots.open !== 0 || peekShapeSeq(trees, seq, s + 1, seqLen, tree.encDescriptor, tree.dirtyLow))) {
+                const taken = viewRun(f, trees, seq, s, seqLen);
+                if (taken >= 0) {
+                    s += taken;
                     continue;
                 }
             }
@@ -502,6 +490,7 @@ export class Encoder<T extends Schema = any> {
                 this._cacheChunk(i, key, buffer, (lenPos === -1) ? it.offset : lenPos, it.offset);
             }
         }
+        if (slots.open !== 0) flushSlots(f);
     }
 
     /** The tick's shared slice, one Uint8Array view reused by every client (read-only for the transport). */
@@ -959,6 +948,150 @@ export class Encoder<T extends Schema = any> {
 }
 
 /**
+ * Tuning, not wire format: how far past a tree the pass looks for another of
+ * its shape before opening a slot for it, and how many shapes can be open at
+ * once. A shape that recurs further apart, or past the last slot, keeps one
+ * chunk per tree.
+ */
+const RUN_PEEK = 8;
+const RUN_SLOTS = 8;
+
+/**
+ * Same-shape trees that are not adjacent in a pass — an entity and its nested
+ * child (`entity.position`) alternate in the dirty queue — collect here while
+ * the pass walks on, and leave as one run per shape when the pass ends. A
+ * deferred tree only ever moves later, so it stays behind the op that
+ * introduces it. One table serves the shared pass and every view pass: they
+ * never overlap, and each starts by resetting `open`.
+ */
+class RunSlots {
+    desc: unknown[] = [];
+    low: number[] = [];
+    items: ChangeTree[][] = [];
+    count: number[] = [];
+    open = 0;
+
+    constructor() {
+        for (let s = 0; s < RUN_SLOTS; s++) {
+            this.desc.push(undefined);
+            this.low.push(0);
+            this.items.push([]);
+            this.count.push(0);
+        }
+    }
+
+    /** The open slot `tree` can join, or -1. */
+    find(tree: ChangeTree): number {
+        const desc = tree.encDescriptor;
+        const low = tree.dirtyLow;
+        for (let s = 0; s < this.open; s++) {
+            if (this.desc[s] === desc && this.low[s] === low) {
+                return runContinues(this.items[s][0], tree, false) ? s : -1;
+            }
+        }
+        return -1;
+    }
+
+    /** Open a slot with `first` (eligible) in it; false when all are taken. */
+    take(first: ChangeTree): boolean {
+        const s = this.open;
+        if (s === RUN_SLOTS) return false;
+        this.desc[s] = first.encDescriptor;
+        this.low[s] = first.dirtyLow;
+        this.items[s][0] = first;
+        this.count[s] = 1;
+        this.open = s + 1;
+        return true;
+    }
+}
+
+const _slots = /*#__PURE__*/ new RunSlots();
+
+/** Is there a tree of this shape among the next `RUN_PEEK` of the queue? */
+function peekShape(node: ChangeTreeNode | undefined, desc: unknown, low: number): boolean {
+    for (let k = 0; node !== undefined && k < RUN_PEEK; k++, node = node.next) {
+        if (node.changeTree.encDescriptor === desc && node.changeTree.dirtyLow === low) return true;
+    }
+    return false;
+}
+
+/** `peekShape` over a view's work list. */
+function peekShapeSeq(trees: ChangeTree[], seq: number[], from: number, seqLen: number, desc: unknown, low: number): boolean {
+    const end = (from + RUN_PEEK < seqLen) ? from + RUN_PEEK : seqLen;
+    for (let q = from; q < end; q++) {
+        const tree = trees[seq[q]];
+        if (tree.encDescriptor === desc && tree.dirtyLow === low) return true;
+    }
+    return false;
+}
+
+/** End of a pass: every open slot leaves as a run, or as a plain chunk when nothing joined its first tree. */
+function flushSlots(f: Frame): void {
+    const slots = _slots;
+    for (let s = 0; s < slots.open; s++) {
+        const items = slots.items[s];
+        const count = slots.count[s];
+        const first = items[0];
+        enterFrame(f, first);
+        if (count === 1) {
+            encodeTreeOps(f);
+            closeChunk(f);
+        } else {
+            openRun(f, first, count - 1);
+            for (let k = 1; k < count; k++) addRunMember(f, items[k]);
+            endRun(f);
+        }
+        // a disposed state must not stay reachable
+        for (let k = 0; k < count; k++) items[k] = undefined!;
+        slots.desc[s] = undefined;
+    }
+    slots.open = 0;
+}
+
+/**
+ * Run handling for `trees[seq[s]]` in a view pass. Returns how many further
+ * work-list entries were emitted with it (a run of adjacent members), 0 when
+ * it was deferred into a slot, -1 when it keeps its own chunk.
+ */
+function viewRun(f: Frame, trees: ChangeTree[], seq: number[], s: number, seqLen: number): number {
+    const slots = _slots;
+    const tree = trees[seq[s]];
+    if (!tree.isFiltered) return -1;
+    const slot = slots.find(tree);
+    if (slot !== -1) {
+        slots.items[slot][slots.count[slot]++] = tree;
+    } else {
+        const desc = tree.encDescriptor;
+        const low = tree.dirtyLow;
+        // (the caller's peek only ran while no slot was open)
+        if (!peekShapeSeq(trees, seq, s + 1, seqLen, desc, low)) return -1;
+        if (!runEligible(tree, true) || f.context.getTypeId(tree.ref.constructor) === undefined) return -1;
+        let n = 0;
+        while (s + 1 + n < seqLen) {
+            const next = trees[seq[s + 1 + n]];
+            if (!next.isFiltered || !runContinues(tree, next, true)) break;
+            n++;
+        }
+        if (n > 0 && !peekShapeSeq(trees, seq, s + 1 + n, seqLen, desc, low)) {
+            // adjacent members and nothing further on: straight into the buffer
+            if (tree.isNew) tree._fullSyncGen = f.genB;
+            enterFrame(f, tree);
+            openRun(f, tree, n);
+            for (let k = 1; k <= n; k++) {
+                const member = trees[seq[s + k]];
+                if (member.isNew) member._fullSyncGen = f.genB;
+                addRunMember(f, member);
+            }
+            endRun(f);
+            return n;
+        }
+        if (!slots.take(tree)) return -1;
+    }
+    if (tree.isNew) tree._fullSyncGen = f.genB; // no parent op inlines it meanwhile
+    return 0;
+}
+
+/**
  * Shared patch loop: one chunk per dirty tree, skipping trees inlined earlier
  * in the pass. Reads flag bits and recorder state directly so the whole
  * per-tree + per-field path fits V8's cumulative inlining budget (no call
@@ -967,6 +1100,8 @@ export class Encoder<T extends Schema = any> {
  */
 function encodeQueue(f: Frame, queue: ChangeTreeList, skipped: ChangeTree[] | undefined): number {
     let nSkipped = 0;
+    const slots = _slots;
+    slots.open = 0;
     let current: ChangeTreeList | ChangeTreeNode = queue;
     while (current = current.next) {
         const tree = (current as ChangeTreeNode).changeTree;
@@ -980,20 +1115,28 @@ function encodeQueue(f: Frame, queue: ChangeTreeList, skipped: ChangeTree[] | un
         if (isSchema ? (tree.dirtyLow | tree.dirtyHigh) === 0 : !tree.has()) continue;
         // only a fresh tree can be inlined by a later parent op → only those need the "emitted" stamp
         if ((flags & IS_NEW) !== 0) tree._fullSyncGen = f.genB;
-        enterFrame(f, tree);
         if (isSchema) {
-            // same-shape run: look ahead for consecutive trees of this class with
-            // the same dirty primitives. Cheap peek first (interleaved classes and
-            // single-chunk ticks must not pay the eligibility loop), the handshake
-            // typeId lookup only once a run actually forms.
+            // same-shape run: trees of this class with the same dirty primitives.
+            // Cheap checks first — an open slot, or the shape again within the
+            // next few trees — so other ticks never pay the eligibility loop.
+            const slot = (slots.open === 0) ? -1 : slots.find(tree);
+            if (slot !== -1) {
+                slots.items[slot][slots.count[slot]++] = tree;
+                continue;
+            }
             let node: ChangeTreeNode | undefined = (current as ChangeTreeNode).next;
-            if (node !== undefined && node.changeTree.encDescriptor === tree.encDescriptor && node.changeTree.dirtyLow === tree.dirtyLow && runEligible(tree, false)) {
+            const desc = tree.encDescriptor;
+            const low = tree.dirtyLow;
+            // (`node !== undefined`: a lone or last tree skips even the call)
+            if (node !== undefined && peekShape(node, desc, low) && runEligible(tree, false) && f.context.getTypeId(tree.ref.constructor) !== undefined) {
                 let n = 0;
                 while (node !== undefined && node.changeTree._fullSyncGen !== f.genB && (node.changeTree.flags & IS_FILTERED) === 0 && runContinues(tree, node.changeTree, false)) {
                     n++;
                     node = node.next;
                 }
-                if (n > 0 && f.context.getTypeId(tree.ref.constructor) !== undefined) {
+                if (n > 0 && !peekShape(node, desc, low)) {
+                    // adjacent members and nothing further on: straight into the buffer
+                    enterFrame(f, tree);
                     openRun(f, tree, n);
                     for (let k = 0; k < n; k++) {
                         current = (current as ChangeTreeNode).next!;
@@ -1004,13 +1147,16 @@ function encodeQueue(f: Frame, queue: ChangeTreeList, skipped: ChangeTree[] | un
                     endRun(f);
                     continue;
                 }
+                if (slots.take(tree)) continue;
             }
-            encodeSchemaOps(f);
         }
+        enterFrame(f, tree);
+        if (isSchema) encodeSchemaOps(f);
         else if (tree.encDescriptor.kind === KIND_ARRAY) encodeTreeOps(f);
         else encodeKeyedOps(f);
         closeChunk(f);
     }
+    if (slots.open !== 0) flushSlots(f);
     return nSkipped;
 }
 

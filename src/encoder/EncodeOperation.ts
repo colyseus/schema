@@ -293,8 +293,8 @@ function closeChunkLong(f: Frame, lenPos: number, flag: number): void {
 // `run := chunkHeader uvarint(byteLen*2+1) uvarint(typeId) mask64 uvarint(extra)
 //         values { uvarint(zigzag(refId_k − refId_k−1)) values }×extra`
 //
-// Consecutive dirty Schemas of one class whose dirty fields are the same set
-// of primitives, all written (ADD), collapse into one chunk: the class and
+// Dirty Schemas of one class whose dirty fields are the same set of
+// primitives, all written (ADD), collapse into one chunk: the class and
 // the field mask ride once, each member costs its refId delta plus its values
 // — no per-member length, no per-field op byte (bench/realworld-results.md, x7).
 
@@ -326,11 +326,16 @@ export function runEligible(tree: ChangeTree, _treeIsFiltered: boolean): boolean
     return true;
 }
 
-/** Same run as `first`: same class descriptor and the same dirty field set (ops are all ADD by eligibility). */
+/**
+ * Same run as `first` (eligible): same class descriptor and the same dirty
+ * field set, all ADDs. The same op bytes as `first` settle that without the
+ * eligibility loop.
+ */
 export function runContinues(first: ChangeTree, next: ChangeTree, treeIsFiltered: boolean): boolean {
     return next.encDescriptor === first.encDescriptor
         && next.dirtyLow === first.dirtyLow
-        && runEligible(next, treeIsFiltered);
+        && ((next.opsLow === first.opsLow && next.opsHigh === first.opsHigh && next.ops === undefined && next.dirtyHigh === 0)
+            || runEligible(next, treeIsFiltered));
 }
 
 /** Open a run for `first` (frame already entered): header, length byte, typeId, mask, member count. */
