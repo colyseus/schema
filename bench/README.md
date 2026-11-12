@@ -255,5 +255,7 @@ site that reached megamorphic stays silent afterwards, and call-site
 polymorphism is not an IC event (use `--inlining` for calls). `profile.mjs`
 suffixes the profile name with the build directory when `--build` is given,
 so A/B profiles do not overwrite each other. `lib/wire-whatif.mjs
-<unit> [--delta]` captures a unit's frames, parses the chunk stream and
-projects the byte effect of format proposals before any is implemented.
+<unit> [--fields]` captures a unit's frames, assigns every byte to a
+category (framing, op headers, values by shape; `--fields` adds the top
+fields) and projects the byte effect of format proposals before any is
+implemented.
