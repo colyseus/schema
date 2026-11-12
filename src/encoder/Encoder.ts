@@ -310,6 +310,8 @@ export class Encoder<T extends Schema = any> {
         // fields to channels (see inheritedFlags.drainFilterRefresh).
         if (this.root.pendingFilterRefresh.length > 0) drainFilterRefresh(this.root);
 
+        this.untypedRefEnd = -1; // offsets from an earlier pass mean nothing here
+
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
 
@@ -964,8 +966,25 @@ export class Encoder<T extends Schema = any> {
         if (baseTypeId !== targetTypeId) {
             bytes[it.offset++] = TYPE_ID & 255;
             encode.number(bytes, targetTypeId, it);
+
+        } else {
+            this.untypedRefEnd = it.offset;
+            this.untypedRefTypeId = targetTypeId;
         }
     }
+
+    /**
+     * End offset and type id of the last child Schema written without a
+     * TYPE_ID — read by `encodeSchemaOperation`.
+     *
+     * Only `_encodeChannel` resets it. The other emitters (full sync,
+     * `view.changes`, streams) may run on a stale value, which is safe as
+     * long as they never emit DELETE_AND_ADD on a Schema field.
+     * @internal
+     */
+    untypedRefEnd: number = -1;
+    /** @internal */
+    untypedRefTypeId: number = 0;
 
     /**
      * True when the next `encode()` / `encodeView()` has something to send,

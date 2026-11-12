@@ -1,5 +1,5 @@
 export const SWITCH_TO_STRUCTURE = 255; // same byte as `DELETE_AND_ADD | 63`, which is why field index 63 is unassignable (Metadata.MAX_FIELDS)
-export const TYPE_ID = 213;
+export const TYPE_ID = 213; // same byte as `DELETE_AND_ADD | 21` — the encoder disambiguates, see `encodeSchemaOperation`
 
 /**
  * Encoding Schema field operations.

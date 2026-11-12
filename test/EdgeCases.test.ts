@@ -288,6 +288,61 @@ describe("Edge cases", () => {
         });
     });
 
+    describe("field index 21 (DELETE_AND_ADD | 21 === TYPE_ID)", () => {
+        // an op on field 21 right after an untyped child Schema (#257)
+        const Child = schema({ n: t.number() }, "Idx21Child");
+        const SubChild = (Child as any).extend({ extra: t.string() }, "Idx21SubChild");
+
+        function withFieldAt21(field21: any, name: string) {
+            const def: any = {};
+            for (let i = 0; i < 20; i++) { def[`pad_${i}`] = t.uint8(); }
+            def.before = t.ref(Child); // index 20
+            def.at21 = field21;
+            def.after = t.string();
+            return schema(def, name);
+        }
+
+        // SubChild travels with its own type id, so it never collided
+        for (const Replacement of [Child, SubChild]) {
+            it(`should replace child Schemas at index 20 and 21 in one patch (${Replacement.name})`, () => {
+                const StateT = withFieldAt21(t.ref(Child), `RefAtIndex21_${Replacement.name}`);
+
+                const state: any = new StateT();
+                state.before = new Child().assign({ n: 1 });
+                state.at21 = new Child().assign({ n: 2 });
+
+                const decodedState: any = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                state.before = new Replacement().assign({ n: 3 });
+                state.at21 = new Replacement().assign({ n: 4 });
+                state.after = "after";
+
+                encodeAndAssertEquals(state, decodedState);
+                assert.ok(decodedState.at21 instanceof decodedState.before.constructor);
+                assertDeepStrictEqualEncodeAll(state);
+            });
+        }
+
+        it("should add a child Schema, then null-then-set a primitive at index 21", () => {
+            const StateT = withFieldAt21(t.string(), "PrimitiveAtIndex21");
+
+            const state: any = new StateT();
+            state.at21 = "a";
+
+            const decodedState: any = createInstanceFromReflection(state);
+            decodedState.decode(state.encode());
+
+            state.before = new Child().assign({ n: 1 });
+            state.at21 = undefined;
+            state.at21 = "b";
+            state.after = "after";
+
+            encodeAndAssertEquals(state, decodedState);
+            assertDeepStrictEqualEncodeAll(state);
+        });
+    });
+
     it("string: containing specific UTF-8 characters", () => {
         let bytes: Uint8Array;
 
