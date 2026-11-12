@@ -2,7 +2,7 @@ import type { Schema } from "../Schema.js";
 import { TypeContext } from "../types/TypeContext.js";
 import { $childType, $getByIndex } from "../types/symbols.js";
 import type { Iterator } from "../encoding/decode.js";
-import { KIND_ARRAY, OPERATION, PROTOCOL_VERSION } from "../encoding/spec.js";
+import { KIND_ARRAY, KIND_MAP, OPERATION, PROTOCOL_VERSION } from "../encoding/spec.js";
 import { Reflection, populateReflection } from "../Reflection.js";
 import { Metadata } from "../Metadata.js";
 import { Root, type Streamable } from "./Root.js";
@@ -25,24 +25,33 @@ import {
 let warnedSize = 0;
 let warnedFor = 0;
 
+/** An encoder's first buffer: most rooms never need the whole `BUFFER_SIZE`, and a server may hold thousands of them. */
+const INITIAL_BUFFER_SIZE = 1024;
+
 /**
  * Grow an encoder's output buffer to 1.5× the `usedOffset` bytes the
  * overflowed pass measured (it keeps counting past the end, so one grow
  * fits). The headroom matters: every grow re-encodes the pass, and a state
- * that keeps growing would otherwise pay that at each `BUFFER_SIZE` step.
- * Warns only when a larger size than already suggested is needed.
+ * that keeps growing would otherwise pay that at each step. Up to
+ * `BUFFER_SIZE` the buffer grows quietly; past it, in `BUFFER_SIZE` steps,
+ * warning only when a larger size than already suggested is needed.
  */
 function growSharedBuffer(owner: { sharedBuffer: Uint8Array }, buffer: Uint8Array, usedOffset: number): Uint8Array {
-    const newSize = Math.ceil(usedOffset * 1.5 / Encoder.BUFFER_SIZE) * Encoder.BUFFER_SIZE;
-
-    if (newSize > warnedSize || warnedFor !== Encoder.BUFFER_SIZE) {
-        warnedSize = newSize;
-        warnedFor = Encoder.BUFFER_SIZE;
-        console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
+    const configured = Encoder.BUFFER_SIZE;
+    let newSize: number;
+    if (usedOffset <= configured) {
+        newSize = Math.min(configured, Math.max(buffer.byteLength * 2, Math.ceil(usedOffset * 1.5 / 1024) * 1024));
+    } else {
+        newSize = Math.ceil(usedOffset * 1.5 / configured) * configured;
+        if (newSize > warnedSize || warnedFor !== configured) {
+            warnedSize = newSize;
+            warnedFor = configured;
+            console.warn(`@colyseus/schema buffer overflow. Encoded state is higher than default BUFFER_SIZE. Use the following to increase default BUFFER_SIZE:
 
     import { Encoder } from "@colyseus/schema";
     Encoder.BUFFER_SIZE = ${Math.round(newSize / 1024)} * 1024; // ${Math.round(newSize / 1024)} KB
 `);
+        }
     }
 
     const newBuffer = new Uint8Array(newSize);
@@ -133,10 +142,11 @@ let reflectionBuffer: Uint8Array | undefined;
 
 export class Encoder<T extends Schema = any> {
     /**
-     * Per-encoder shared output buffer size. The encoder auto-grows on
-     * overflow and warns with a higher value to set (again only when a
-     * later overflow needs more), so
-     * the default just needs to comfortably cover typical room state.
+     * Size a shared output buffer may reach without a warning. Buffers
+     * start small and grow on overflow; past this size the encoder still
+     * grows, and warns with a higher value to set (again only when a
+     * later overflow needs more), so the default just needs to
+     * comfortably cover typical room state.
      * Raise per app via `Encoder.BUFFER_SIZE = N * 1024` before
      * constructing any Encoder.
      */
@@ -169,7 +179,7 @@ export class Encoder<T extends Schema = any> {
     private _cacheEntryEnd: number[] = [];
     private _cacheEntryNext: number[] = [];
     private _cacheEntryLen = 0;
-    private _scratch: Uint8Array = new Uint8Array(4096);
+    private _scratch: Uint8Array = EMPTY_SLICE; // grows on first use: only rooms with several views cache chunks
     private _scratchOffset = 0;
     /**
      * Per-view work lists, keyed by `view.id`: indexes into `_filteredDirty`
@@ -205,13 +215,11 @@ export class Encoder<T extends Schema = any> {
     private _viewOpsLen: number[] = [];
 
     /**
-     * @param bufferSize size of this encoder's shared output buffer
-     * (default `Encoder.BUFFER_SIZE`). Throwaway encoders — the reflection
-     * handshake — pass a small size and provide their own buffer, so a room
-     * configured with a large `BUFFER_SIZE` does not allocate (and collect)
-     * that much per client join.
+     * @param bufferSize initial size of this encoder's shared output
+     * buffer. It starts small and grows with what the state needs, so
+     * `Encoder.BUFFER_SIZE` is paid only by the rooms that fill it.
      */
-    constructor(state: T, root?: Root, bufferSize: number = Encoder.BUFFER_SIZE) {
+    constructor(state: T, root?: Root, bufferSize: number = Math.min(Encoder.BUFFER_SIZE, INITIAL_BUFFER_SIZE)) {
         this.sharedBuffer = new Uint8Array(bufferSize);
         // Use .cache() here to avoid re-creating a new context for every new room instance.
         this.context = TypeContext.cache(state.constructor as typeof Schema);
@@ -290,7 +298,7 @@ export class Encoder<T extends Schema = any> {
         // `Reflection.encode` builds a throwaway encoder that never discards:
         // drop the frame pool's tree references here as well.
         releaseFrames();
-        return buffer.subarray(initialOffset, it.offset);
+        return buffer.subarray(0, it.offset); // from 0: keeps a caller-written prefix (protocol byte)
     }
 
     /** View region of a full sync: filtered fields / trees visible to `view`. */
@@ -305,6 +313,12 @@ export class Encoder<T extends Schema = any> {
             return this.encodeAllView(view, sharedOffset, it, buffer);
         }
         releaseFrames();
+        // The snapshot carries everything queued for a view nobody has seen
+        // yet; draining it again would resend the whole view in the next patch.
+        if (!view.encoded) {
+            view.encoded = true;
+            view.changes.clear();
+        }
         return [buffer.subarray(0, sharedOffset), buffer.subarray(viewOffset, it.offset)];
     }
 
@@ -326,7 +340,7 @@ export class Encoder<T extends Schema = any> {
             it.offset = initialOffset;
             return this.encode(it, buffer);
         }
-        return buffer.subarray(initialOffset, it.offset);
+        return buffer.subarray(0, it.offset); // from 0: keeps a caller-written prefix (protocol byte)
     }
 
     /**
@@ -344,6 +358,7 @@ export class Encoder<T extends Schema = any> {
 
     private _encodeViewBody(view: StateView, sharedOffset: number, it: Iterator, buffer: Uint8Array): [Uint8Array, Uint8Array] {
         const viewOffset = it.offset;
+        view.encoded = true;
 
         // Idle view: nothing queued for it and none of its visible trees are
         // dirty. Skip the pass setup and the per-view slice allocation — with
@@ -510,9 +525,16 @@ export class Encoder<T extends Schema = any> {
         this._cacheEntryLen = 0;
         const viewDirty = this._viewDirty;
         const viewDirtyLen = this._viewDirtyLen;
-        for (let k = 0; k < viewDirtyLen.length; k++) viewDirtyLen[k] = 0;
+        for (let k = 0; k < viewDirtyLen.length; k++) {
+            trimWorkList(viewDirty[k], viewDirtyLen[k]);
+            viewDirtyLen[k] = 0;
+        }
+        const viewOps = this._viewOps;
         const viewOpsLen = this._viewOpsLen;
-        for (let k = 0; k < viewOpsLen.length; k++) viewOpsLen[k] = 0;
+        for (let k = 0; k < viewOpsLen.length; k++) {
+            trimWorkList(viewOps[k], viewOpsLen[k]);
+            viewOpsLen[k] = 0;
+        }
         const routedOps = this._routedOps;
         const grantable = this._grantableViews;
         const visited = this._grantVisited;
@@ -622,7 +644,7 @@ export class Encoder<T extends Schema = any> {
     private _cacheChunk(i: number, key: number, buffer: Uint8Array, start: number, end: number): void {
         const len = end - start;
         if (this._scratchOffset + len > this._scratch.byteLength) {
-            const grown = new Uint8Array(Math.max(this._scratch.byteLength * 2, this._scratchOffset + len));
+            const grown = new Uint8Array(Math.max(256, this._scratch.byteLength * 2, this._scratchOffset + len));
             grown.set(this._scratch.subarray(0, this._scratchOffset));
             this._scratch = grown;
         }
@@ -655,7 +677,7 @@ export class Encoder<T extends Schema = any> {
             it.offset = initialOffset;
             return this.encodeUnreliable(it, buffer);
         }
-        return buffer.subarray(initialOffset, it.offset);
+        return buffer.subarray(0, it.offset); // from 0: keeps a caller-written prefix (protocol byte)
     }
 
     /**
@@ -1001,17 +1023,38 @@ function encodeQueue(f: Frame, queue: ChangeTreeList, skipped: ChangeTree[] | un
 function walkView(f: Frame, tree: ChangeTree): void {
     const stamp = tree._fullSyncGen;
     if (stamp === f.genA) return;
-    if (stamp !== f.genB && f.view!.isChangeTreeVisible(tree)) {
+    const visible = f.view!.isChangeTreeVisible(tree);
+    if (stamp !== f.genB && visible) {
         enterFrame(f, tree);
         emitLiveChunk(f, forEachLiveWithCtx);
         closeChunk(f);
     }
     tree._fullSyncGen = f.genA;
+    // Adding a tree to a view marks its ancestors visible, so nothing below
+    // a filtered tree this view cannot see is visible either.
+    if (!visible && tree.isFiltered) return;
+    if (tree.encDescriptor.kind === KIND_MAP) {
+        // forEachChild resolves each entry's wire index, which this walk never reads
+        const ref: any = tree.ref;
+        if (typeof ref[$childType] !== "string") {
+            for (const value of ref.$items.values()) walkView(f, refTreeOf(value));
+        }
+        return;
+    }
     forEachChildWithCtx(tree, f, walkViewChildCb);
 }
 
 function walkViewChildCb(f: Frame, child: ChangeTree, _index: any): void {
     walkView(f, child);
+}
+
+/**
+ * Halve a per-view work list that last tick used under a quarter of: one
+ * heavy tick (a join, a burst) would otherwise size it for the room's life.
+ * Never to zero, which drops the backing store.
+ */
+function trimWorkList(list: number[] | undefined, used: number): void {
+    if (list !== undefined && list.length > 64 && used * 4 < list.length) list.length = list.length >> 1;
 }
 
 /** Small chunks are copied byte by byte: `set(subarray())` allocates a view per call. */

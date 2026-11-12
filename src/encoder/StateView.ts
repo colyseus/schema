@@ -16,39 +16,67 @@ import type { Schema } from "../Schema.js";
 import type { Root, Streamable } from "./Root.js";
 
 /**
- * Clear the bit for `(slot, bit)` on every ChangeTree in `root`. Called
- * from `dispose()` and from the FinalizationRegistry callback so a view's
- * leftover visibility bits don't leak to whoever next acquires its ID.
- *
- * Cost: O(N trees) per dispose. dispose is rare (once per view lifecycle,
- * typically once per client disconnect), so the per-tick encode hot path
- * is unaffected.
+ * RefIds of the trees a view set a bit on, so disposing it costs the view's
+ * size instead of the state's. Ids may repeat or be stale (the tree left):
+ * clearing a bit that is not set is harmless.
  */
-function _clearViewBitFromAllTrees(root: Root, slot: number, bit: number): void {
-    const clearMask = ~bit;
-    for (const tree of root.changeTrees.values()) {
-        const v = tree.visibleViews;
-        if (v !== undefined && slot < v.length) v[slot] &= clearMask;
-        const s = tree.aux?.subscribedViews;
-        if (s !== undefined && slot < s.length) s[slot] &= clearMask;
-        const t = tree.tagViews;
-        if (t !== undefined) {
-            for (let j = 0; j < t.length; j++) {
-                const bitmap = t[j];
-                if (slot < bitmap.length) bitmap[slot] &= clearMask;
-            }
+interface TouchedTrees {
+    ids: number[];
+    /** `ids.length` that triggers the next compaction. */
+    limit: number;
+    /** The view outgrew `TOUCHED_MAX`: nothing is recorded, disposing scans every tree. */
+    all: boolean;
+}
+
+const TOUCHED_MIN_LIMIT = 256;
+/** A view holding more trees than this is a large share of most states: scanning them all costs less than 8 bytes per tree per view. */
+const TOUCHED_MAX = 4096;
+
+function clearViewBitsOn(tree: ChangeTree, slot: number, clearMask: number): void {
+    const v = tree.visibleViews;
+    if (v !== undefined && slot < v.length) v[slot] &= clearMask;
+    const s = tree.aux?.subscribedViews;
+    if (s !== undefined && slot < s.length) s[slot] &= clearMask;
+    const t = tree.tagViews;
+    if (t !== undefined) {
+        for (let j = 0; j < t.length; j++) {
+            const bitmap = t[j];
+            if (slot < bitmap.length) bitmap[slot] &= clearMask;
         }
     }
 }
 
 /**
+ * Clear the bit for `(slot, bit)` on every tree the view touched. Called
+ * from `dispose()` and from the FinalizationRegistry callback so a view's
+ * leftover visibility bits don't leak to whoever next acquires its ID.
+ */
+function _clearViewBits(root: Root, slot: number, bit: number, touched: TouchedTrees): void {
+    const clearMask = ~bit;
+    const trees = root.changeTrees;
+    if (touched.all) {
+        // forEach, not the `values()` generator: this visits every tree in the state
+        trees.forEach((tree) => clearViewBitsOn(tree, slot, clearMask));
+    } else {
+        const ids = touched.ids;
+        for (let i = 0; i < ids.length; i++) {
+            const tree = trees.get(ids[i]);
+            if (tree !== undefined) clearViewBitsOn(tree, slot, clearMask);
+        }
+    }
+    touched.ids = [];
+    touched.limit = TOUCHED_MIN_LIMIT;
+    touched.all = false;
+}
+
+/**
  * `FinalizationRegistry` returns a view's ID to its Root's freelist AND
- * clears the view's leftover bits from every ChangeTree. Backstop for
+ * clears the view's leftover bits from the trees it touched. Backstop for
  * forgotten `view.dispose()` calls; timing is non-deterministic but bounded.
  */
-const _disposeRegistry = /*#__PURE__*/ new FinalizationRegistry<{ root: Root; id: number; slot: number; bit: number }>(
-    ({ root, id, slot, bit }) => {
-        _clearViewBitFromAllTrees(root, slot, bit);
+const _disposeRegistry = /*#__PURE__*/ new FinalizationRegistry<{ root: Root; id: number; slot: number; bit: number; touched: TouchedTrees }>(
+    ({ root, id, slot, bit, touched }) => {
+        _clearViewBits(root, slot, bit, touched);
         // Stream backlog too: it would keep `encoder.hasChanges` true, and leak into the id's next owner.
         root.activeViews.delete(id);
         for (const stream of root.streamTrees) stream._dropView(id);
@@ -117,6 +145,43 @@ export class StateView {
     private _slot: number = 0;
     private _bit: number = 0;
 
+    /** Shared with the FinalizationRegistry entry, which must not hold the view itself. */
+    private _touched: TouchedTrees = { ids: [], limit: TOUCHED_MIN_LIMIT, all: false };
+
+    /** Record a tree this view is about to set its first bit of a kind on. */
+    private _touch(tree: ChangeTree): void {
+        const touched = this._touched;
+        if (touched.all) return;
+        const refId = tree.refId;
+        if (refId === undefined) return; // not in a Root: nothing can look it up
+        if (touched.ids.length >= touched.limit) this._compactTouched();
+        touched.ids.push(refId);
+    }
+
+    /** Drop repeated ids and the ones whose tree left or holds none of this view's bits. */
+    private _compactTouched(): void {
+        const touched = this._touched;
+        const trees = this._root!.changeTrees;
+        const ids = touched.ids;
+        const seen = new Set<number>();
+        let kept = 0;
+        for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            if (seen.has(id)) continue;
+            seen.add(id);
+            const tree = trees.get(id);
+            if (tree === undefined) continue;
+            if (this.isVisible(tree) || this.isSubscribed(tree) || this.tagsOnTree(tree) !== 0) ids[kept++] = id;
+        }
+        if (kept >= TOUCHED_MAX) {
+            touched.ids = [];
+            touched.all = true;
+            return;
+        }
+        ids.length = kept;
+        touched.limit = Math.max(TOUCHED_MIN_LIMIT, kept * 2);
+    }
+
     /**
      * Per-tree custom-tag membership lives on each ChangeTree's `tagBits` /
      * `tagViews` (per tag bit, a per-view bitmap). The StateView only needs
@@ -142,6 +207,8 @@ export class StateView {
     changes = new Map<number, Map<number | ChangeTree, OPERATION>>();
     /** In `Root.viewsWithChanges`. */
     listed = false;
+    /** A full sync or a patch was encoded for this view: `changes` may be owed to a client that is already in sync. */
+    encoded = false;
 
     /** `changes` entry of `refId`, created on demand; the first one lists this view in `Root.viewsWithChanges`. */
     entriesOf(refId: number): Map<number | ChangeTree, OPERATION> {
@@ -177,7 +244,7 @@ export class StateView {
         root.registerView(this);
         _disposeRegistry.register(
             this,
-            { root, id: this.id, slot: this._slot, bit: this._bit },
+            { root, id: this.id, slot: this._slot, bit: this._bit, touched: this._touched },
             this,
         );
     }
@@ -195,12 +262,13 @@ export class StateView {
     public dispose(): void {
         if (this._root === undefined) return;
         this._root.unregisterView(this);
-        _clearViewBitFromAllTrees(this._root, this._slot, this._bit);
+        _clearViewBits(this._root, this._slot, this._bit, this._touched);
         this._root.releaseViewId(this.id);
         _disposeRegistry.unregister(this);
         this._root = undefined;
         this.id = -1;
         this.listed = false;
+        this.encoded = false;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -223,7 +291,10 @@ export class StateView {
             arr = tree.visibleViews = [];
         }
         while (arr.length <= slot) arr.push(0);
-        arr[slot] |= this._bit;
+        const bit = this._bit;
+        if ((arr[slot] & bit) !== 0) return;
+        arr[slot] |= bit;
+        this._touch(tree);
     }
 
     /** Clear visibility bit. */
@@ -249,7 +320,10 @@ export class StateView {
             arr = tree.subscribedViews = [];
         }
         while (arr.length <= slot) arr.push(0);
-        arr[slot] |= this._bit;
+        const bit = this._bit;
+        if ((arr[slot] & bit) !== 0) return;
+        arr[slot] |= bit;
+        this._touch(tree);
     }
 
     /** Clear the subscription bit on `tree`. */
@@ -328,7 +402,9 @@ export class StateView {
             }
             const arr = bitmaps[j];
             while (arr.length <= slot) arr.push(0);
+            if ((arr[slot] & bit) !== 0) continue;
             arr[slot] |= bit;
+            this._touch(tree);
         }
     }
 
@@ -358,6 +434,16 @@ export class StateView {
         }
     }
 
+    /**
+     * Make `obj` visible to this view, with what it holds right now.
+     *
+     * Adding a `@view()` collection covers the items it has at this moment:
+     * an item pushed or set later stays hidden until it is added too. For a
+     * collection whose future items should all reach this view, use
+     * {@link subscribe} instead.
+     *
+     * @param tag only the fields declared with this `@view(tag)` (default: the untagged `@view()` ones)
+     */
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
         return this._add(obj, tag, checkIncludeParent, /* _skipStreamRouting */ false);

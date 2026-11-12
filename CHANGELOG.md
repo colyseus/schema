@@ -230,6 +230,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Decoding a full state is 14–19 % faster and allocates about 40 % less (20,000 entities: 10.7 ms to 8.7 ms, 16.3 MB to 9.9 MB), and maps decode 18–32 % faster. Short strings and map keys were the bulk of it.
+- Each room's encoder starts with a 1 KB buffer and grows it as the state needs, instead of allocating `Encoder.BUFFER_SIZE` (16 KB) plus a 4 KB cache up front: 2,000 small rooms hold 3 MB of buffers instead of 40 MB. The overflow warning still appears only past `Encoder.BUFFER_SIZE`.
+- Rooms with many `StateView`s hold less memory after a busy tick: the encoder's per-view work lists shrink back instead of staying at their largest size (200 views of 1,000 entities each: 45 MB to 32 MB retained).
+- `view.add(collection)` is documented as covering the items the collection holds at that moment; use `view.subscribe(collection)` when items added later should reach the view too.
+- The first patch after a client's full state no longer repeats everything its `StateView` already received in that full state, which roughly halves the bytes a join costs.
+- A client joining with a `StateView` gets its full state about 6× faster in a large filtered state (300 of 20,000 entities in view: 19 ms to 3 ms per join and leave), and disposing a view costs what the view held instead of scanning the whole state.
 
 ### Fixed
 

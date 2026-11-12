@@ -1043,12 +1043,24 @@ function writeMapBody(f: Frame): void {
     const strs = f.strs;
     const vals = f.vals;
     let n = 0;
-    for (const [key, value] of $items) {
-        const index = indexByKey.get(key)!;
-        if (!filter(f.ref, index, f.view)) continue;
-        keys[n] = index;
-        strs[n] = key;
-        vals[n++] = value;
+    const view = f.view;
+    if (view !== undefined && f.desc.routable && typeof ref[$childType] !== "string") {
+        // What the filter answers for a live entry, without its two lookups
+        // per entry: a join pays this for every entry of the map.
+        for (const [key, value] of $items) {
+            if (!view.isChangeTreeVisible(refTreeOf(value))) continue;
+            keys[n] = indexByKey.get(key)!;
+            strs[n] = key;
+            vals[n++] = value;
+        }
+    } else {
+        for (const [key, value] of $items) {
+            const index = indexByKey.get(key)!;
+            if (!filter(f.ref, index, view)) continue;
+            keys[n] = index;
+            strs[n] = key;
+            vals[n++] = value;
+        }
     }
     writeMapEntries(f, n);
 }

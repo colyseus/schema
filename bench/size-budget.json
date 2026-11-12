@@ -1,6 +1,6 @@
 {
-  "//": "npm run size:gate — bytes after rollup tree-shaking + esbuild minify (bench/size.mjs), ~3% headroom; `forbidden: false` fails on encoder internals in the bundle. Measured 2026-11-09 (KiB, as size.mjs prints): full 153.8 min / 47.2 gzip, client 88.4 / 27.6, sdk 92.1 / 28.9 (before change tracking moved behind importing `Encoder`: 108.4 / 33.1 and 112.0 / 34.3; esbuild: 139.5 / 43.1 and 142.9 / 44.3).",
-  "full": { "min": 162500, "gzip": 50000 },
+  "//": "npm run size:gate — bytes after rollup tree-shaking + esbuild minify (bench/size.mjs), ~3% headroom; `forbidden: false` fails on encoder internals in the bundle. Measured 2026-11-09 (KiB, as size.mjs prints; full re-measured 2026-11-11): full 159.1 min / 48.9 gzip, client 88.4 / 27.6, sdk 92.1 / 28.9 (before change tracking moved behind importing `Encoder`: 108.4 / 33.1 and 112.0 / 34.3; esbuild: 139.5 / 43.1 and 142.9 / 44.3).",
+  "full": { "min": 167500, "gzip": 51500 },
   "client": { "min": 93500, "gzip": 29500, "forbidden": false },
   "sdk": { "min": 97500, "gzip": 30500, "forbidden": false }
 }

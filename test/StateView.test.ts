@@ -6400,4 +6400,121 @@ describe("StateView", () => {
         });
     });
 
+    describe("first patch after a full sync", () => {
+        class Entity extends Schema {
+            @type("number") x: number = 0;
+            @view() @type("number") secret: number = 0;
+        }
+        class State extends Schema {
+            @view() @type({ map: Entity }) entities = new MapSchema<Entity>();
+        }
+
+        function populate(state: State, n: number) {
+            for (let i = 0; i < n; i++) {
+                const entity = new Entity();
+                entity.x = i;
+                entity.secret = i * 10;
+                state.entities.set("e" + i, entity);
+            }
+        }
+
+        function patch(encoder: Encoder, clients: Array<{ view: StateView, state: Schema }>) {
+            const it = { offset: 0 };
+            encoder.encode(it);
+            const sharedOffset = it.offset;
+            const sizes = clients.map((client) => {
+                const parts = encoder.encodeView(client.view, sharedOffset, it);
+                client.state.decode(joinSlices(parts));
+                return parts[1].length;
+            });
+            encoder.discardChanges();
+            return sizes;
+        }
+
+        it("does not repeat what the full sync carried", () => {
+            const state = new State();
+            const encoder = getEncoder(state);
+            populate(state, 50);
+            patch(encoder, []); // the entities are no longer this tick's changes
+
+            const client = createClientWithView(state);
+            for (const entity of state.entities.values()) client.view.add(entity);
+            encodeAllForView(encoder, client);
+            assert.strictEqual(client.state.entities.size, 50);
+
+            assert.deepStrictEqual(patch(encoder, [client]), [0]);
+
+            // what comes after the full sync still travels
+            const late = new Entity();
+            late.secret = 7;
+            state.entities.set("late", late);
+            client.view.add(late);
+            client.view.remove(state.entities.get("e0")!);
+            assert.ok(patch(encoder, [client])[0] > 0);
+            assert.strictEqual(client.state.entities.get("late")!.secret, 7);
+            assert.strictEqual(client.state.entities.has("e0"), false);
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("keeps what a view shared with a synced client still owes it", () => {
+            const state = new State();
+            const encoder = getEncoder(state);
+            populate(state, 4);
+
+            const shared = new StateView();
+            const first = createClientWithView(state, shared);
+            shared.add(state.entities.get("e0")!);
+            encodeAllForView(encoder, first);
+            patch(encoder, [first]);
+
+            // queued for `first`; the joiner's full sync must not consume it
+            shared.add(state.entities.get("e1")!);
+            const joiner = createClientWithView(state, shared);
+            encodeAllForView(encoder, joiner);
+            assert.strictEqual(joiner.state.entities.size, 2);
+
+            patch(encoder, [first, joiner]);
+            assert.strictEqual(first.state.entities.size, 2);
+            assert.strictEqual(first.state.entities.get("e1")!.secret, 10);
+            assert.strictEqual(joiner.state.entities.get("e1")!.secret, 10);
+        });
+
+        it("keeps what was queued between two full syncs of a shared view", () => {
+            const state = new State();
+            const encoder = getEncoder(state);
+            populate(state, 4);
+
+            const shared = new StateView();
+            const first = createClientWithView(state, shared);
+            shared.add(state.entities.get("e0")!);
+            encodeAllForView(encoder, first);
+
+            shared.add(state.entities.get("e1")!);
+            const joiner = createClientWithView(state, shared);
+            encodeAllForView(encoder, joiner);
+
+            patch(encoder, [first, joiner]);
+            assert.strictEqual(first.state.entities.size, 2);
+            assert.strictEqual(joiner.state.entities.size, 2);
+        });
+
+        it("starts over once the view is disposed and used again", () => {
+            const state = new State();
+            const encoder = getEncoder(state);
+            populate(state, 4);
+            patch(encoder, []);
+
+            const view = new StateView();
+            view.add(state.entities.get("e0")!);
+            encodeAllForView(encoder, createClientWithView(state, view));
+            view.dispose();
+
+            const client = createClientWithView(state, view);
+            view.add(state.entities.get("e1")!);
+            encodeAllForView(encoder, client);
+            assert.deepStrictEqual(Array.from(client.state.entities.keys()), ["e1"]);
+            assert.deepStrictEqual(patch(encoder, [client]), [0]);
+        });
+    });
+
 });

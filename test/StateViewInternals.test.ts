@@ -345,6 +345,80 @@ describe("StateView internals", () => {
         });
     });
 
+    describe("dispose after churn", () => {
+        class Unit extends Schema {
+            @view() @type("number") hp: number = 0;
+        }
+        class World extends Schema {
+            @view() @type({ map: Unit }) units = new MapSchema<Unit>();
+        }
+
+        it("clears every tree the view still holds, however often it was re-added", () => {
+            const state = new World();
+            getEncoder(state);
+            const units: Unit[] = [];
+            for (let i = 0; i < 400; i++) { units.push(new Unit()); state.units.set("u" + i, units[i]); }
+
+            const view = new StateView();
+            for (let round = 0; round < 20; round++) {
+                for (const unit of units) view.add(unit, 2);
+                for (const unit of units) view.remove(unit, 2);
+            }
+            // removed units leave the record: it stays near what the view holds
+            // @ts-ignore — private
+            assert.ok(view["_touched"].ids.length <= 2 * units.length + 256, `record grew to ${view["_touched"].ids.length}`);
+
+            for (const unit of units) view.add(unit);
+            for (let i = 0; i < 200; i++) state.units.delete("u" + i); // gone before the dispose
+            const id = view.id;
+            view.dispose();
+
+            const next = new StateView();
+            // @ts-ignore — private
+            next["_bindRoot"]((state as any)[$changes].root);
+            assert.strictEqual(next.id, id, "ID was reused");
+            assert.strictEqual(next.isVisible(state[$changes]), false);
+            assert.strictEqual(next.isVisible(state.units[$changes]), false);
+            for (let i = 200; i < 400; i++) {
+                assert.strictEqual(next.isVisible(units[i][$changes]), false);
+                assert.strictEqual(next.tagsOnTree(units[i][$changes]), 0);
+            }
+        });
+    });
+
+    describe("dispose of a view too large to record", () => {
+        class Unit extends Schema {
+            @view() @type("number") hp: number = 0;
+        }
+        class World extends Schema {
+            @view() @type({ map: Unit }) units = new MapSchema<Unit>();
+        }
+
+        it("still clears every tree", () => {
+            const state = new World();
+            getEncoder(state);
+            const units: Unit[] = [];
+            for (let i = 0; i < 9000; i++) { units.push(new Unit()); state.units.set("u" + i, units[i]); }
+
+            const view = new StateView();
+            for (const unit of units) view.add(unit);
+            // @ts-ignore — private
+            assert.strictEqual(view["_touched"].all, true, "expected the scan fallback");
+            view.dispose();
+
+            const next = new StateView();
+            // @ts-ignore — private
+            next["_bindRoot"]((state as any)[$changes].root);
+            assert.strictEqual(next.isVisible(state.units[$changes]), false);
+            assert.ok(units.every((unit) => !next.isVisible(unit[$changes])));
+
+            // the record starts over with the next use of the view
+            view.add(units[0]);
+            // @ts-ignore — private
+            assert.strictEqual(view["_touched"].all, false);
+        });
+    });
+
     describe("privacy: dispose must clear prior view's bits", () => {
         // End-to-end repro of the stale-bit-on-ID-reuse hazard at the
         // encoded-bytes level. Custom-tagged fields (@view(N)) are gated
