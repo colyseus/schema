@@ -4234,6 +4234,45 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client]);
         });
 
+        it("a default-tag remove() revokes the custom tags it was granted", () => {
+            const TAG_SECRET = 1;
+
+            class Player extends Schema {
+                @type("string") name: string = "";
+                @view(TAG_SECRET) @type("string") secret: string = "";
+            }
+
+            class State extends Schema {
+                @type({ map: Player }) players = new MapSchema<Player>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const player = new Player().assign({ name: "alice", secret: "s3cr3t" });
+            state.players.set("p", player);
+
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(player, TAG_SECRET);
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("p").secret, "s3cr3t");
+
+            // drop the object with the default tag, then re-add it without one
+            client.view.remove(player);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(player);
+            encodeMultiple(encoder, state, [client]);
+
+            player.secret = "no longer granted";
+            encodeMultiple(encoder, state, [client]);
+
+            assert.strictEqual(client.state.players.get("p").secret, undefined,
+                "a default-tag add must not deliver a field tagged for a view that was revoked");
+        });
+
         it("tagged remove() should remove child structures from visible set", () => {
             const TAG_INVENTORY = 1;
 
