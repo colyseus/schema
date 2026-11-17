@@ -412,7 +412,7 @@ export class Encoder<T extends Schema = any> {
             const stamp = tree._fullSyncGen;
             if (stamp === f.genA || stamp === f.genB) continue; // inlined already
             enterFrame(f, tree);
-            emitViewEntry(f, entry);
+            emitViewEntry(f, entry, forEachLiveWithCtx);
             closeChunk(f);
         }
 

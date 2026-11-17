@@ -347,14 +347,21 @@ function _edgeBits(tree: ChangeTree, parentTree: ChangeTree, index: number, shar
         // Collection edge: the collection's own classification already
         // folds in the field that holds it.
         bits |= EDGE_PUBLIC;
-    } else if (sharesEligible && !parentTree.isStreamCollection) {
-        // #226: default-tag @view() collections keep per-item gating;
-        // untagged and non-default-tag @view(N) ones share.
-        const gp = parentTree.parentTree;
-        const tag = gp?._isSchema ? gp.encDescriptor.tags[parentTree.parentIndex] : undefined;
-        if (tag !== DEFAULT_VIEW_TAG) bits |= EDGE_SHARES;
+    } else if (sharesEligible && itemsShareVisibility(parentTree)) {
+        bits |= EDGE_SHARES;
     }
     return bits;
+}
+
+/**
+ * Do a filtered collection's Schema items see what the collection's viewers
+ * see? #226: default-tag `@view()` collections keep per-item gating (and
+ * streams their own); untagged and `@view(N)` ones share.
+ */
+export function itemsShareVisibility(collection: ChangeTree): boolean {
+    if (collection.isStreamCollection) return false;
+    const gp = collection.parentTree;
+    return !gp?._isSchema || gp.encDescriptor.tags[collection.parentIndex] !== DEFAULT_VIEW_TAG;
 }
 
 const _cascadeRefreshCb = (_parentTree: ChangeTree, child: ChangeTree, _index: any): void => {

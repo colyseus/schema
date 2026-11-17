@@ -64,6 +64,7 @@ export class KeyedRecorder<V = any> {
      *   ADD / REPLACE / DELETE_AND_ADD over DELETE → DELETE_AND_ADD
      *   DELETE_AND_ADD over anything            → DELETE_AND_ADD
      *   REPLACE over ADD                        → ADD (still unseen)
+     *   ADD over REPLACE                        → ADD (restage: the client may not hold the key)
      *   otherwise                               → keep the pending op
      */
     add(index: number, op: OPERATION): void {
@@ -79,7 +80,7 @@ export class KeyedRecorder<V = any> {
         let next: OPERATION;
         if (prev === OPERATION.DELETE) next = OPERATION.DELETE_AND_ADD;
         else if (op === OPERATION.DELETE_AND_ADD) next = OPERATION.DELETE_AND_ADD;
-        else if (prev === OPERATION.ADD && op === OPERATION.REPLACE) next = OPERATION.ADD;
+        else if (prev === OPERATION.REPLACE && op === OPERATION.ADD) next = OPERATION.ADD;
         else next = prev;
         if (next !== prev) page[slot] = next + 1;
     }

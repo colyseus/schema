@@ -243,6 +243,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An instance removed from a collection or field and added back later, while also referenced elsewhere, no longer reaches clients with empty fields. 5.0.43 fixed this for `ArraySchema.clear()` only.
 - Instances of a class with a `@deprecated()` field no longer throw `"<field> is deprecated."` when attached to the state, cloned, removed from a `StateView`, or released or resynced by the decoder.
 - `InputEncoder.reset()` now also clears the fields emptied before the reset, so a server-side input kept across a reconnect no longer holds stale values.
+- `view.add()` on a nested instance (`view.add(item.secret)`) now also sends the rest of the ancestors it reveals. When they had been encoded in an earlier patch, only the path to the added instance arrived: their other fields never did, and their nested instances gave `"refId" not found`.
+- An instance removed from the state and added back in a later patch now arrives intact when its collections changed in between: a map value overwritten meanwhile came back under an `undefined` key, and an array emptied meanwhile threw a `RangeError` on the client that dropped the rest of the patch.
+- An array element pushed in the same patch that adds the array back to the state and reveals it with `view.add()` no longer arrives twice.
 
 ## [5.0.49]
 

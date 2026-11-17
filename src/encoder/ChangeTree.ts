@@ -816,9 +816,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      * 1, or a pooled instance with NEEDS_RESTAGE) and by the filtered→public
      * flip in `inheritedFlags.refreshFilterState`. Arrays re-state
      * positionally in one absorbing op (so clients that received elements by
-     * identity get the server order and revision); an empty collection
-     * records nothing, which keeps pooled instances byte-identical to fresh
-     * ones.
+     * identity get the server order and revision); an empty collection with
+     * nothing pending records nothing, which keeps pooled instances
+     * byte-identical to fresh ones.
      */
     restage(): void {
         if (this._isSchema) {
@@ -829,7 +829,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
         if (rec === undefined) return;
         if (this.encDescriptor.kind === KIND_ARRAY) {
             const arr: any[] = (this.ref as any)[$elements];
-            if (arr.length > 0) (rec as ArrayLog).restate(arrCopy(arr));
+            // ops recorded while detached address elements a client that dropped the array lacks
+            if (arr.length > 0 || rec.has()) (rec as ArrayLog).restate(arrCopy(arr));
         } else {
             _forEachLiveWithCtx(this, rec as KeyedRecorder, _restageKeyedCb);
         }

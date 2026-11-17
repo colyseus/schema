@@ -4555,6 +4555,123 @@ describe("StateView", () => {
             assert.strictEqual(client.state.parent.arrayChild[0].y, 2);
             assert.strictEqual(client.state.parent.arrayChild[0].z, 3);
         });
+
+        it("a nested add() reveals an ancestor encoded in an earlier tick with all its fields", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Child extends Schema { @type("number") n = 0; }
+            class Item extends Schema {
+                @type("number") x = 5;
+                @type(["string"]) arr = new ArraySchema<string>("a");
+                @type(Child) child = new Child();
+                @view() @type(Secret) secret = new Secret();
+            }
+            class State extends Schema { @view() @type(Item) item = new Item(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            client1.view.add(state.item.secret);
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                item: { x: 5, arr: ["a"], child: { n: 0 }, secret: { s: 1 } },
+            });
+
+            state.item.child.n++;
+            state.item.arr.push("b");
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                item: { x: 5, arr: ["a", "b"], child: { n: 1 }, secret: { s: 1 } },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("a nested add() reveals a map element encoded in an earlier tick, not its hidden siblings", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Item extends Schema {
+                @type("number") x = 5;
+                @type({ map: "number" }) tags = new MapSchema<number>({ k: 1 });
+                @view() @type(Secret) secret = new Secret();
+            }
+            class State extends Schema { @view() @type({ map: Item }) items = new MapSchema<Item>(); }
+
+            const state = new State();
+            state.items.set("a", new Item());
+            state.items.set("b", new Item());
+            const encoder = getEncoder(state);
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            client1.view.add(state.items.get("a").secret);
+            encodeMultiple(encoder, state, [client1, client2]);
+            state.items.get("a").tags.set("k2", 2);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                items: { a: { x: 5, tags: { k: 1, k2: 2 }, secret: { s: 1 } } },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("a nested tagged add() reveals the ancestor's other fields of that tag", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Item extends Schema {
+                @type("number") x = 5;
+                @view(2) @type(Secret) a = new Secret();
+                @view(2) @type("number") b = 7;
+            }
+            class State extends Schema { @view() @type(Item) item = new Item(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(state.item.a, 2);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { item: { x: 5, a: { s: 1 }, b: 7 } });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("a re-attached array pushed to and revealed in the same tick arrives once", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Item extends Schema {
+                @type(["string"]) log = new ArraySchema<string>("l0");
+                @view() @type(Secret) secret = new Secret();
+            }
+            class State extends Schema {
+                @view() @type({ map: Item }) hidden = new MapSchema<Item>();
+                @type({ map: Item }) pub = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            client.view.add(state);
+            const item = new Item();
+            state.pub.set("a", item);
+            encodeMultiple(encoder, state, [client]);
+
+            state.pub.delete("a");
+            encodeMultiple(encoder, state, [client]);
+
+            // re-staged (RESTATE), then a PUSH, then a snapshot for this view
+            state.hidden.set("b", item);
+            item.log.push("m");
+            client.view.add(item);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { hidden: { b: { log: ["l0", "m"], secret: { s: 1 } } }, pub: {} });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
     });
 
     describe("view.changes encoding order (refId not found)", () => {
@@ -5636,7 +5753,7 @@ describe("StateView", () => {
         });
 
         it("view.add(owner) snapshots its array after a same-tick reindex", () => {
-            // Exercises the bulk-snapshot path (`ARRAY_SNAPSHOT` sentinel):
+            // Exercises the bulk-snapshot path (`SNAPSHOT` sentinel):
             // adding a Schema whose ref-array gets reindexed later in the
             // same tick must still deliver every element.
             class Attr extends Schema {

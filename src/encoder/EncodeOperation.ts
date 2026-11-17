@@ -8,7 +8,7 @@ import { isQuantizedType, makeQuantizedEncoder } from "../types/quantize.js";
 import { IS_FILTERED, type ChangeTree, refTreeOf, refIdOf, viewTreeOf } from "./ChangeTree.js";
 import type { EncodeDescriptor } from "./EncodeDescriptor.js";
 import type { StateView } from "./StateView.js";
-import { ARRAY_SNAPSHOT } from "./StateView.js";
+import { SNAPSHOT } from "./StateView.js";
 import type { TypeContext } from "../types/TypeContext.js";
 import type { ArrayLog } from "./ArrayLog.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
@@ -561,6 +561,8 @@ function encodeArrayPositional(f: Frame, log: ArrayLog): void {
                 uvarint(bytes, b * 2 * 16 + op, it); // positional: rev << 1
                 uvarint(bytes, a, it);
                 for (let k = 0; k < a; k++) writeValue(f, type, enc, vals[v++], true);
+                // a client the snapshot put past it skips it and resumes at its own revision: re-anchor
+                if (log.snapRev > b) uvarint(bytes, b * 16 + ARRAY_OP.BASE, it);
                 break;
             default: // REVERSE / CLEAR
                 bytes[it.offset++] = op;
@@ -646,7 +648,7 @@ function identityRestate(f: Frame, source: any[], from: number, n: number): void
 /**
  * Whole-array snapshot as one RESTATE op: positional (authoritative, carries
  * the revision) or identity (the visible refs). Used by full syncs and the
- * `ARRAY_SNAPSHOT` view-drain entry.
+ * `SNAPSHOT` view-drain entry.
  */
 function emitArraySnapshotChunk(f: Frame): void {
     const arr: any[] = f.refTarget[$elements];
@@ -681,16 +683,16 @@ function schemaOpAt(tree: ChangeTree, index: number): number {
 
 /** Live-walk callback (`forEachLiveWithCtx`): every populated field as ADD through the gate. Schemas and keyed collections only. */
 function fullSyncCb(f: Frame, index: number): void {
-    if (f.kind === KIND_SCHEMA) {
-        if (!schemaFieldPasses(f, index)) return;
-        if (f.lenPos === -1) openChunk(f);
-        emitSchemaOp(f, index, OPERATION.ADD);
-        return;
-    }
-    if (f.treeIsFiltered !== f.emitFiltered) return;
-    if (f.filter !== undefined && !f.filter(f.ref, index, f.view)) return;
+    if (!fullSyncPasses(f, index)) return;
     if (f.lenPos === -1) openChunk(f);
-    emitKeyedOp(f, index, OPERATION.ADD);
+    if (f.kind === KIND_SCHEMA) emitSchemaOp(f, index, OPERATION.ADD);
+    else emitKeyedOp(f, index, OPERATION.ADD);
+}
+
+/** Does a full sync of the frame's tree carry populated index `index` (Schemas and keyed collections)? */
+function fullSyncPasses(f: Frame, index: number): boolean {
+    if (f.kind === KIND_SCHEMA) return schemaFieldPasses(f, index);
+    return f.treeIsFiltered === f.emitFiltered && (f.filter === undefined || f.filter(f.ref, index, f.view));
 }
 
 /** Emit the live structure of the frame's tree as one chunk (full sync). */
@@ -893,12 +895,12 @@ function writeBody(parent: Frame, child: ChangeTree, fromRecorder: boolean, entr
     const f = childFrame(parent, child);
     switch (f.kind) {
         case KIND_SCHEMA:
-            if (entry !== undefined) writeSchemaBodyEntry(f, entry);
+            if (entry !== undefined && !entry.has(SNAPSHOT)) writeSchemaBodyEntry(f, entry);
             else if (fromRecorder) writeSchemaBodyRecorder(f);
             else writeSchemaBodyLive(f);
             break;
         case KIND_MAP:
-            if (entry !== undefined) writeMapBodyEntry(f, entry);
+            if (entry !== undefined && !entry.has(SNAPSHOT)) writeMapBodyEntry(f, entry);
             else writeMapBody(f);
             break;
         case KIND_ARRAY:
@@ -1119,13 +1121,13 @@ function writeArrayBody(f: Frame): void {
 }
 
 /**
- * DRAIN body for an array. `ARRAY_SNAPSHOT` (an explicit `view.add(array)`)
+ * DRAIN body for an array. `SNAPSHOT` (an explicit `view.add(array)`)
  * means the whole array; otherwise the entry holds the elements this view
  * was just bound to (`view.add(element)`) and only those ride along — the
  * client already holds everything else.
  */
 function writeArrayBodyEntry(f: Frame, entry: Map<number | ChangeTree, OPERATION>): void {
-    if (!f.identityMode || entry.has(ARRAY_SNAPSHOT)) {
+    if (!f.identityMode || entry.has(SNAPSHOT)) {
         writeArrayBody(f);
         return;
     }
@@ -1151,13 +1153,13 @@ function writeArrayBodyEntry(f: Frame, entry: Map<number | ChangeTree, OPERATION
  * Drain one `view.changes` entry into the current frame's chunk (the
  * `encodeView` inner loop). The chunk opens lazily.
  */
-export function emitViewEntry(f: Frame, entry: Map<number | ChangeTree, OPERATION>): void {
+export function emitViewEntry(f: Frame, entry: Map<number | ChangeTree, OPERATION>, forEachLiveWithCtx: (tree: ChangeTree, ctx: Frame, cb: (f: Frame, index: number) => void) => void): void {
     const view = f.view!;
     const refTarget = f.refTarget;
 
     if (f.kind === KIND_ARRAY) {
         for (const [key, op] of entry) {
-            if (key === ARRAY_SNAPSHOT) {
+            if (key === SNAPSHOT) {
                 emitArraySnapshotChunk(f);
                 continue;
             }
@@ -1183,8 +1185,11 @@ export function emitViewEntry(f: Frame, entry: Map<number | ChangeTree, OPERATIO
         return;
     }
 
+    const snapshot = entry.has(SNAPSHOT);
+    if (snapshot) emitLiveChunk(f, forEachLiveWithCtx);
     for (const [key, op] of entry) {
-        if (typeof key !== "number") continue; // identity keys only exist under array parents
+        if (typeof key !== "number" || key === SNAPSHOT) continue; // identity keys only exist under array parents
+        if (snapshot && op !== OPERATION.DELETE && fullSyncPasses(f, key)) continue; // the live chunk carried it
         const value = (f.kind === KIND_SCHEMA) ? readSchemaValue(f, key) : refTarget[$getByIndex](key);
         const operation = (value !== undefined && value !== null && op) || OPERATION.DELETE;
         if (f.lenPos === -1) openChunk(f);

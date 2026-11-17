@@ -1,7 +1,7 @@
 import { ChangeTree, Ref, viewTreeOf, refIdOf } from "./ChangeTree.js";
 import { isEdgeLive } from "./changeTree/parentChain.js";
-import { fieldPassesViews } from "./changeTree/inheritedFlags.js";
-import { $fieldIndexesByViewTag, $getByIndex, $viewFieldIndexes } from "../types/symbols.js";
+import { fieldPassesViews, itemsShareVisibility } from "./changeTree/inheritedFlags.js";
+import { $childType, $fieldIndexesByViewTag, $getByIndex, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { KIND_INDEXED, KIND_MAP, OPERATION } from "../encoding/spec.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
@@ -118,13 +118,16 @@ function holdsKeyedIndex(parent: ChangeTree, index: number, child: ChangeTree): 
  * internals and buries the message that matters.
  */
 /**
- * Sentinel inner-map key: "snapshot this ArraySchema" (positional RESTATE
- * with its revision, or the visible refs for a filtered Schema-child
- * array). Written by `_add` instead of one entry per element; `encodeView`
- * emits it from the live array at drain time. Real indexes are never
- * negative, so -1 cannot collide.
+ * Sentinel inner-map key: "send this tree's live state, as a full sync
+ * would", emitted from the live structure at drain time:
+ * - ArraySchema (`_add`, instead of one entry per element): positional
+ *   RESTATE with its revision, or the visible refs of a filtered
+ *   Schema-child array;
+ * - any tree `_introduce` reveals: every live field / entry through the
+ *   pass filter, so the tags it reads are the ones held at encode time.
+ * Real indexes are never negative, so -1 cannot collide.
  */
-export const ARRAY_SNAPSHOT = -1;
+export const SNAPSHOT = -1;
 
 function describeArg(value: any): string {
     if (value === undefined) { return "undefined"; }
@@ -675,7 +678,7 @@ export class StateView {
                 // array RESTATE from the live array at drain time (one Map
                 // insert, and no slot can go stale).
                 if ((changeTree.ref as any).length > 0) {
-                    changes.set(ARRAY_SNAPSHOT, OPERATION.ADD);
+                    changes.set(SNAPSHOT, OPERATION.ADD);
                     isChildAdded = true;
                 }
 
@@ -747,11 +750,6 @@ export class StateView {
         const changeTree = childChangeTree.parentTree;
         const parentIndex = childChangeTree.parentIndex;
 
-        if (!this.isVisible(changeTree)) {
-            // view must have all "changeTree" parent tree
-            this.grantVisible(changeTree);
-        }
-
         // Recurse all the way to the root REGARDLESS of whether this parent
         // is already visible. Walking the full chain keeps `view.changes`
         // topologically ordered by construction (ancestors touched before
@@ -770,6 +768,16 @@ export class StateView {
         const parentChangeTree: ChangeTree = changeTree.parentTree;
         if (parentChangeTree) {
             this.addParentOf(changeTree, tag);
+        }
+
+        // after the recursion: an ancestor revealed above has introduced this one if it hands it visibility
+        if (!this.isChangeTreeVisible(changeTree)) {
+            if (changeTree.isNew) {
+                this.grantVisible(changeTree); // its recorder still holds its whole state
+            } else {
+                this.markVisible(changeTree);
+                this._introduce(changeTree);
+            }
         }
 
         // Skip the entry-write for non-filtered ancestors: their refIds
@@ -807,6 +815,37 @@ export class StateView {
                 OPERATION.ADD,
             );
         }
+    }
+
+    /**
+     * Queue what a full sync would send this view for `tree`, an ancestor
+     * that a nested `add()` just revealed, and recurse into the children the
+     * reveal hands visibility to. Only for trees encoded in an earlier tick:
+     * their recorders no longer hold their state, and the client never got it.
+     *
+     * `tree` carries this view's bit already (plain `markVisible`: a child's
+     * bit still means "the client holds it" while its parent introduces it).
+     */
+    private _introduce(tree: ChangeTree): void {
+        const isSchema = tree._isSchema;
+        const filtered = tree.isFiltered;
+        if (!isSchema) {
+            if (!filtered) return; // public items: every client holds them
+            // per-item gating: none become visible, and addParentOf binds the added one
+            if (typeof (tree.ref as any)[$childType] !== "string" && !itemsShareVisibility(tree)) return;
+        }
+
+        const changes = this.entriesOf(tree.refId); // before the children's: Map order is topological
+        const inherit = isSchema ? (tree.encDescriptor.viewInheritFields ??= viewInheritFieldsOf(tree)) : undefined;
+        tree.forEachChild((child, index) => {
+            if (!child.isFiltered || this.isVisible(child)) return; // the client holds it
+            // the grant rules of `isChangeTreeVisible` (primary edge unguarded) and `grantVisible`
+            if (child.isVisibilitySharedWithParent ? (child.parentTree !== tree && !filtered) : inherit?.includes(index) !== true) return;
+            this.markVisible(child);
+            if (!child.isNew) this._introduce(child);
+        });
+
+        if (!tree.isArray || (tree.ref as any).length > 0) changes.set(SNAPSHOT, OPERATION.ADD);
     }
 
     /**
@@ -1211,7 +1250,7 @@ export class StateView {
         // inheritedFlags.ts — short-circuits for the common case, and
         // the view's bit memoizes the grant, so the branch fires at most once
         // per (tree, view) pair.
-        // grant rules mirrored by `orGrantableViews` / `inheritedViews` (Encoder.ts): a grant added here must be added there
+        // grant rules mirrored by `orGrantableViews` / `inheritedViews` (Encoder.ts) and `_introduce`: a grant added here must be added there
         if (!isVisible && changeTree.isVisibilitySharedWithParent){
             // Primary check is intentionally unguarded — pre-existing
             // semantics; the extras walk below is stricter on purpose.

@@ -1263,6 +1263,48 @@ describe("Instance sharing", () => {
                 }
             }
         }
+
+        describe("collections changed while detached", () => {
+            class Holder extends Schema {
+                @type({ map: "number" }) tags = new MapSchema<number>();
+                @type(["string"]) log = new ArraySchema<string>();
+            }
+            class Root extends Schema {
+                @type({ map: Holder }) a = new MapSchema<Holder>();
+                @type({ map: Holder }) b = new MapSchema<Holder>();
+            }
+
+            function detachMutateReattach(setup: (holder: Holder) => void, mutate: (holder: Holder) => void) {
+                const state = new Root();
+                const encoder = getEncoder(state);
+                const decoded = createInstanceFromReflection(state);
+                decoded.decode(encoder.encodeAll());
+                encoder.discardChanges();
+
+                const holder = new Holder();
+                setup(holder);
+                state.a.set("x", holder);
+                decoded.decode(state.encode());
+
+                state.a.delete("x"); // the client drops it
+                decoded.decode(state.encode());
+
+                mutate(holder);
+                state.b.set("y", holder);
+                decoded.decode(state.encode());
+
+                assert.deepStrictEqual(decoded.toJSON(), state.toJSON());
+                assertRefIdCounts(state, decoded);
+            }
+
+            it("a map value overwritten while detached keeps its key", () => {
+                detachMutateReattach((h) => h.tags.set("k", 1), (h) => h.tags.set("k", 2));
+            });
+
+            it("an array emptied while detached decodes", () => {
+                detachMutateReattach((h) => h.log.push("l0"), (h) => h.log.shift());
+            });
+        });
     });
 
     describe("StateView: instance shared across a filter boundary", () => {
