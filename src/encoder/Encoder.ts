@@ -12,7 +12,7 @@ import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
 import { type KeyedRecorder, keyedValueAt } from "./KeyedRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { ensureTracked, forEachChildWithCtx } from "./changeTree/treeAttachment.js";
-import { drainFilterRefresh, fieldPassesViews } from "./changeTree/inheritedFlags.js";
+import { drainFilterRefresh, fieldPassesViews, grantableViews, orGrantableViews } from "./changeTree/inheritedFlags.js";
 import { recordBroadcastSent, sentByBroadcast, streamHasBroadcastBacklog, streamHasViewBacklog } from "./streaming.js";
 import {
     MODE_DRAIN, MODE_PATCH, MODE_SNAPSHOT, MODE_STREAM,
@@ -62,35 +62,6 @@ function growSharedBuffer(owner: { sharedBuffer: Uint8Array }, buffer: Uint8Arra
     }
 
     return newBuffer;
-}
-
-/**
- * OR into `out` every view bit `StateView.isChangeTreeVisible` could grant
- * `tree`: its own, its primary parent's and filtered extra parents' — and,
- * through ancestors that share visibility too, theirs, since a view pass can
- * memoize those bits before it reaches `tree`. `visited` guards cyclic
- * instance graphs.
- */
-function orGrantableViews(tree: ChangeTree, out: number[], visited: ChangeTree[]): void {
-    const vv = tree.visibleViews;
-    if (vv !== undefined) {
-        for (let s = 0; s < vv.length; s++) out[s] = (out[s] | 0) | (vv[s] | 0); // holes read as undefined
-    }
-    if (!tree.isVisibilitySharedWithParent || visited.indexOf(tree) !== -1) return;
-    visited.push(tree);
-    const parent = tree.parentTree;
-    if (parent !== undefined) orGrantableViews(parent, out, visited);
-    for (let e = tree.aux?.extraParents; e !== undefined; e = e.next) {
-        if (e.tree.isFiltered) orGrantableViews(e.tree, out, visited);
-    }
-}
-
-/** `orGrantableViews` into the zeroed scratch `out`, which it returns. */
-function grantableViews(tree: ChangeTree, out: number[], visited: ChangeTree[]): number[] {
-    for (let s = 0; s < out.length; s++) out[s] = 0;
-    orGrantableViews(tree, out, visited);
-    while (visited.length !== 0) visited.pop();
-    return out;
 }
 
 /**

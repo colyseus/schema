@@ -190,20 +190,52 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
             && (!fieldHasViewTag || (parentIsCollection && parentMetadata[parentIndex].tag !== DEFAULT_VIEW_TAG))
         );
         tree.isVisibilitySharedWithParent = inheritsViews && sharesEligible;
-        if (inheritsViews && !sharesEligible) inheritVisibleViews(tree, parentChangeTree); // eager — see `_sharesEligible`
+        // eager — see `_sharesEligible`; a mid-pass grant of the just-written parent reaches `tree` via `inheritedViews`
+        if (inheritsViews && !sharesEligible) inheritVisibleViews(tree, parentChangeTree.visibleViews);
     }
 }
 
 /**
- * Make `tree` visible to every view `from` is visible to. Through each
+ * OR into `out` every view bit `StateView.isChangeTreeVisible` could grant
+ * `tree`: its own, its primary parent's and filtered extra parents' — and,
+ * through ancestors that share visibility too, theirs, since a view pass can
+ * memoize those bits before it reaches `tree`. `visited` guards cyclic
+ * instance graphs.
+ */
+export function orGrantableViews(tree: ChangeTree, out: number[], visited: ChangeTree[]): void {
+    const vv = tree.visibleViews;
+    if (vv !== undefined) {
+        for (let s = 0; s < vv.length; s++) out[s] = (out[s] | 0) | (vv[s] | 0); // holes read as undefined
+    }
+    if (!tree.isVisibilitySharedWithParent || visited.indexOf(tree) !== -1) return;
+    visited.push(tree);
+    const parent = tree.parentTree;
+    if (parent !== undefined) orGrantableViews(parent, out, visited);
+    for (let e = tree.aux?.extraParents; e !== undefined; e = e.next) {
+        if (e.tree.isFiltered) orGrantableViews(e.tree, out, visited);
+    }
+}
+
+/** `orGrantableViews` into the zeroed scratch `out`, which it returns. */
+export function grantableViews(tree: ChangeTree, out: number[], visited: ChangeTree[]): number[] {
+    for (let s = 0; s < out.length; s++) out[s] = 0;
+    orGrantableViews(tree, out, visited);
+    while (visited.length !== 0) visited.pop();
+    return out;
+}
+
+const _grantable: number[] = [];
+const _grantVisited: ChangeTree[] = [];
+
+/**
+ * Make `tree` visible to every view whose bit is set in `src`. Through each
  * view's `markVisible`, so `dispose()` finds the bit to clear.
  */
-function inheritVisibleViews(tree: ChangeTree, from: ChangeTree): void {
-    const src = from.visibleViews;
+function inheritVisibleViews(tree: ChangeTree, src: number[] | undefined): void {
     const root = tree.root;
     if (src === undefined || root === undefined) return;
     for (let s = 0; s < src.length; s++) {
-        let w = src[s] | 0;
+        let w = (src[s] | 0) & ~(tree.visibleViews?.[s] | 0); // views that see it already skip the lookup
         while (w !== 0) {
             const bit = w & -w;
             w ^= bit;
@@ -341,7 +373,8 @@ function _edgeBits(tree: ChangeTree, parentTree: ChangeTree, index: number, shar
         if (fieldPassesViews(parentTree, index)) {
             if (!parentTree.isFiltered) bits |= EDGE_PUBLIC;
             else if (sharesEligible) bits |= EDGE_SHARES;
-            else inheritVisibleViews(tree, parentTree);
+            // a refresh runs outside the tick: a parent seen only through sharing may stay clean and never mark `tree`
+            else inheritVisibleViews(tree, grantableViews(parentTree, _grantable, _grantVisited));
         }
     } else if (!parentTree.isFiltered) {
         // Collection edge: the collection's own classification already

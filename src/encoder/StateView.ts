@@ -477,7 +477,9 @@ export class StateView {
      * collection whose future items should all reach this view, use
      * {@link subscribe} instead.
      *
-     * @param tag only the fields declared with this `@view(tag)` (default: the untagged `@view()` ones)
+     * @param tag only the fields declared with this `@view(tag)` (default: the untagged `@view()` ones).
+     *   On an object this view already sees, the tag reaches only what the view sees below it:
+     *   objects attached since need their own `add()`.
      */
     // TODO: allow to set multiple tags at once
     add(obj: Ref, tag: number = DEFAULT_VIEW_TAG, checkIncludeParent: boolean = true) {
@@ -627,17 +629,17 @@ export class StateView {
         // rather than chasing `metadata[index].tag` — same source, but a
         // direct array index instead of a per-field-object hop.
         const tags = changeTree.encDescriptor.tags;
+        // a tagged add on a tree this view saw already opens that tag's fields only
+        const tagOnly = tag !== DEFAULT_VIEW_TAG && wasVisible;
         changeTree.forEachChild((change, index) => {
             // Do not ADD children whose field tag shares no bit with `tag`.
             // DEFAULT_VIEW_TAG fields are visible to all clients; custom-tag
             // fields only when bits overlap, and never to default-tag clients.
             const fieldTag = tags[index];
-            if (fieldTag !== undefined) {
-                const tagMatch = fieldTag === DEFAULT_VIEW_TAG ||
-                    (tag !== DEFAULT_VIEW_TAG && (fieldTag & tag) !== 0);
-                if (!tagMatch) {
-                    return;
-                }
+            if (fieldTag === undefined || fieldTag === DEFAULT_VIEW_TAG) {
+                if (tagOnly && !this.isChangeTreeVisible(change)) return; // e.g. a @view() map item never added
+            } else if (tag === DEFAULT_VIEW_TAG || (fieldTag & tag) === 0) {
+                return;
             }
 
             if (this.add(change.ref, tag, false)) {
@@ -672,7 +674,7 @@ export class StateView {
         // A tagged add on an already-visible tree stays incremental (byTag
         // only); default-tag re-adds re-snapshot on purpose (see `items`
         // dedup note above).
-        if ((tag === DEFAULT_VIEW_TAG || !wasVisible) && (!changeTree.isNew || isChildAdded)) {
+        if (!tagOnly && (!changeTree.isNew || isChildAdded)) {
             if (changeTree.isArray) {
                 // ArraySchema: one sentinel entry — encodeView emits a whole-
                 // array RESTATE from the live array at drain time (one Map
@@ -1248,7 +1250,7 @@ export class StateView {
         // inheritedFlags.ts — short-circuits for the common case, and
         // the view's bit memoizes the grant, so the branch fires at most once
         // per (tree, view) pair.
-        // grant rules mirrored by `orGrantableViews` / `inheritedViews` (Encoder.ts) and `_introduce`: a grant added here must be added there
+        // grant rules mirrored by `orGrantableViews` (inheritedFlags.ts), `inheritedViews` (Encoder.ts) and `_introduce`: a grant added here must be added there
         if (!isVisible && changeTree.isVisibilitySharedWithParent){
             // Primary check is intentionally unguarded — pre-existing
             // semantics; the extras walk below is stricter on purpose.

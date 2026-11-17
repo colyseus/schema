@@ -247,6 +247,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - An instance removed from the state and added back in a later patch now arrives intact when its collections changed in between: a map value overwritten meanwhile came back under an `undefined` key, and an array emptied meanwhile threw a `RangeError` on the client that dropped the rest of the patch.
 - An array element pushed in the same patch that adds the array back to the state and reveals it with `view.add()` no longer arrives twice.
 - `view.remove(obj, tag)` now hides only that tag's fields. It also stopped `obj`'s untagged `@view()` fields from syncing, leaving the client with stale values. A plain `view.remove(obj)` now also drops the tags `obj` was added with, so a later `view.add(obj)` no longer brings its tagged fields back on their next change.
+- `view.add(obj, tag)` on an object the view already sees now reveals only that tag's fields, on `obj` and on what the view already sees below it. Items of `@view()` collections that were never added no longer show up after a full sync, and objects attached since need their own `view.add(item, tag)`.
+- A collection of primitives keeps syncing after its owner loses its last public parent but stays in a `@view()` collection.
 
 ## [5.0.49]
 
