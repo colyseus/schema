@@ -1560,4 +1560,102 @@ describe("Instance sharing", () => {
         });
     });
 
+    describe("StateView: shared instance whose old Schema field was set to null", () => {
+        //
+        // Setting a Schema ref field to `null` leaves the edge in the old
+        // value's parent chain, and the field then holds `null`, not
+        // `undefined`. When that instance later gains or loses an edge while
+        // shared, the filter refresh re-checks every edge, including the one
+        // to the now-null field. A card moved between a hand, a deck and
+        // slots shows each way of getting there.
+        //
+        class Card extends Schema {
+            @type("string") name: string;
+        }
+        class Slot extends Schema {
+            @type(Card) card: Card;
+        }
+        class State extends Schema {
+            @type([Slot]) slots = new ArraySchema<Slot>(new Slot(), new Slot());
+            @type([Card]) hand = new ArraySchema<Card>();
+            @type([Card]) deck = new ArraySchema<Card>();
+            @view() @type("string") secret: string; // any @view field enables filter refresh
+        }
+
+        function setup() {
+            const state = new State();
+            const encoder = getEncoder(state);
+            const card = new Card().assign({ name: "card" });
+            state.hand.push(card);
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+            const clients = [viewer, plain];
+            encodeMultiple(encoder, state, clients);
+            return { state, encoder, card, clients };
+        }
+
+        function slotIn(state: State, card: Card, slot: number) {
+            state.slots[slot].card = card;
+            state.hand.splice(state.hand.indexOf(card), 1);
+        }
+
+        function assertCardsIn(clients: ClientWithState<State>[], where: { slots: string[], hand: string[], deck: string[] }) {
+            for (const client of clients) {
+                const json = client.state.toJSON() as any;
+                assert.deepStrictEqual(json.slots.map((slot: any) => slot.card?.name ?? ""), where.slots);
+                assert.deepStrictEqual(json.hand.map((card: any) => card.name), where.hand);
+                assert.deepStrictEqual(json.deck.map((card: any) => card.name), where.deck);
+            }
+        }
+
+        it("instance moved into an array before its field is set to null", () => {
+            const { state, encoder, card, clients } = setup();
+            slotIn(state, card, 0);
+            encodeMultiple(encoder, state, clients);
+
+            state.deck.push(card);
+            state.slots[0].card = null;
+            encodeMultiple(encoder, state, clients);
+
+            assertCardsIn(clients, { slots: ["", ""], hand: [], deck: ["card"] });
+            assertEncodeAllMultiple(encoder, state, clients);
+        });
+
+        it("instance shared later on, after leaving a field that's now null", () => {
+            const { state, encoder, card, clients } = setup();
+            slotIn(state, card, 0);
+            encodeMultiple(encoder, state, clients);
+            state.slots[0].card = null;
+            state.deck.push(card);
+            encodeMultiple(encoder, state, clients);
+            state.deck.splice(0, 1);
+            state.hand.push(card);
+            encodeMultiple(encoder, state, clients);
+
+            // into the other slot while still in the hand: briefly shared
+            slotIn(state, card, 1);
+            encodeMultiple(encoder, state, clients);
+
+            assertCardsIn(clients, { slots: ["", "card"], hand: [], deck: [] });
+            assertEncodeAllMultiple(encoder, state, clients);
+        });
+
+        it("instance briefly in two arrays, after leaving a field that's now null", () => {
+            const { state, encoder, card, clients } = setup();
+            slotIn(state, card, 0);
+            encodeMultiple(encoder, state, clients);
+            state.slots[0].card = null;
+            state.hand.push(card);
+            encodeMultiple(encoder, state, clients);
+
+            // refill the deck while the hand still holds the card, then empty the hand
+            state.deck.push(card);
+            state.hand.clear();
+            encodeMultiple(encoder, state, clients);
+
+            assertCardsIn(clients, { slots: ["", ""], hand: [], deck: ["card"] });
+            assertEncodeAllMultiple(encoder, state, clients);
+        });
+    });
+
 });

@@ -215,6 +215,8 @@ export function isEdgeLive(tree: ChangeTree, parentTree: ChangeTree, index: numb
         }
         return false;
     }
+    // A Schema field set to `null` holds `null`, not `undefined`, while the
+    // edge to it lingers in the chain.
     const at = parentTree.getValue(index);
-    return at !== undefined && at[$changes] === tree;
+    return at !== undefined && at !== null && at[$changes] === tree;
 }
