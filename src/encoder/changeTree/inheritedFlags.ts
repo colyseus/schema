@@ -270,6 +270,8 @@ function inheritVisibleViews(tree: ChangeTree, src: number[] | undefined): void 
  */
 export function drainFilterRefresh(root: Root): void {
     const list = root.pendingFilterRefresh;
+    const wasFiltered = _wasFiltered;
+    for (let i = 0; i < list.length; i++) wasFiltered[i] = list[i].isFiltered;
     for (let i = 0; i < list.length; i++) {
         const tree = list[i];
         // Already settled as another entry's parent, or detached/recycled
@@ -277,8 +279,17 @@ export function drainFilterRefresh(root: Root): void {
         if ((tree.flags & PENDING_FILTER_REFRESH) === 0) continue;
         refreshFilterState(tree);
     }
+    // Its edges changed: the op that introduces it may come from a parent
+    // queued after it, attached later this tick. One that was public and
+    // stays public was introduced by that public edge already.
+    for (let i = 0; i < list.length; i++) {
+        const tree = list[i];
+        if (tree.root === root && (tree.isFiltered || wasFiltered[i])) root.moveSubtreeToTail(tree);
+    }
     list.length = 0;
 }
+
+const _wasFiltered: boolean[] = [];
 
 /**
  * Whether field `index` of Schema `tree` passes its views down: a
