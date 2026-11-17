@@ -330,6 +330,30 @@ describe("StateView internals", () => {
             );
         });
 
+        it("clears the bit a primitive collection took from its parent", () => {
+            class Holder extends Schema { @type({ map: "number" }) map: MapSchema<number>; }
+            class HolderState extends Schema { @view() @type(Holder) holder = new Holder(); }
+
+            const state = new HolderState();
+            getEncoder(state);
+
+            const v1 = new StateView();
+            v1.add(state.holder);
+            // attached to an already-visible Schema: inherits v1's bit
+            state.holder.map = new MapSchema<number>({ k: 1 });
+            const tree = state.holder.map[$changes];
+            assert.strictEqual(v1.isVisible(tree), true);
+
+            const reusedId = v1.id;
+            v1.dispose();
+
+            const v2 = new StateView();
+            // @ts-ignore — private
+            v2["_bindRoot"]((state as any)[$changes].root);
+            assert.strictEqual(v2.id, reusedId, "ID was reused");
+            assert.strictEqual(v2.isVisible(tree), false);
+        });
+
         it("re-add after dispose works (idempotent markVisible)", () => {
             const state = new State();
             getEncoder(state);

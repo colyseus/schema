@@ -244,6 +244,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Instances of a class with a `@deprecated()` field no longer throw `"<field> is deprecated."` when attached to the state, cloned, removed from a `StateView`, or released or resynced by the decoder.
 - `InputEncoder.reset()` now also clears the fields emptied before the reset, so a server-side input kept across a reconnect no longer holds stale values.
 
+## [5.0.49]
+
+### Fixed
+
+- Collections of primitives (`ArraySchema<string>`, `MapSchema<number>`, …) attached to a `@view()`-filtered `Schema` after `view.add()` now reach that view, such as those on an item pushed into a visible inventory. They used to arrive empty and never update. Only the server needs the upgrade. Thanks @FTWinston! [#258](https://github.com/colyseus/schema/pull/258)
+
 ## [5.0.45]
 
 ### Fixed

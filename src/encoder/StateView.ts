@@ -1,10 +1,11 @@
 import { ChangeTree, Ref, viewTreeOf, refIdOf } from "./ChangeTree.js";
 import { isEdgeLive } from "./changeTree/parentChain.js";
+import { fieldPassesViews } from "./changeTree/inheritedFlags.js";
 import { $fieldIndexesByViewTag, $getByIndex, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { KIND_INDEXED, KIND_MAP, OPERATION } from "../encoding/spec.js";
 import type { KeyedRecorder } from "./KeyedRecorder.js";
-import { Metadata } from "../Metadata.js";
+import { Metadata, resolveFieldType } from "../Metadata.js";
 import { spliceOne } from "../types/utils.js";
 import { fieldOf } from "./EncodeDescriptor.js";
 import { ensureStreamState, streamDequeueForView, streamEnqueueForView } from "./streaming.js";
@@ -83,6 +84,18 @@ const _disposeRegistry = /*#__PURE__*/ new FinalizationRegistry<{ root: Root; id
         root.releaseViewId(id);
     },
 );
+
+/** `EncodeDescriptor.viewInheritFields` of `tree`'s class. */
+function viewInheritFieldsOf(tree: ChangeTree): number[] {
+    const out: number[] = [];
+    const desc = tree.encDescriptor;
+    const refIndexes = desc.refIndexes;
+    for (let k = 0; k < refIndexes.length; k++) {
+        const i = refIndexes[k];
+        if (fieldPassesViews(tree, i) && typeof resolveFieldType(desc.types[i]).childType === "string") out.push(i);
+    }
+    return out;
+}
 
 /**
  * A child's entry may address its keyed parent by `index` only while it
@@ -295,6 +308,25 @@ export class StateView {
         if ((arr[slot] & bit) !== 0) return;
         arr[slot] |= bit;
         this._touch(tree);
+    }
+
+    /**
+     * `markVisible`, plus the tree's primitive-element collections — they
+     * don't share visibility lazily (see `_sharesEligible` in
+     * inheritedFlags.ts). Not for `_add`'s walk: it reads a child's bit as
+     * "already bootstrapped".
+     */
+    public grantVisible(tree: ChangeTree): void {
+        this.markVisible(tree);
+        const desc = tree.encDescriptor;
+        const fields = desc.viewInheritFields ??= viewInheritFieldsOf(tree);
+        if (fields.length === 0) return;
+        const ref = tree.ref;
+        const values = tree.values;
+        for (let i = 0; i < fields.length; i++) {
+            const child = viewTreeOf(fieldOf(desc, ref, values, fields[i]));
+            if (child !== undefined) this.markVisible(child);
+        }
     }
 
     /** Clear visibility bit. */
@@ -717,7 +749,7 @@ export class StateView {
 
         if (!this.isVisible(changeTree)) {
             // view must have all "changeTree" parent tree
-            this.markVisible(changeTree);
+            this.grantVisible(changeTree);
         }
 
         // Recurse all the way to the root REGARDLESS of whether this parent
@@ -1099,7 +1131,7 @@ export class StateView {
             });
         } else if (!introduced) {
             tree.forEachChild((child) => {
-                this.markVisible(child);
+                this.grantVisible(child);
             });
         }
 
@@ -1177,14 +1209,13 @@ export class StateView {
         // to manually call view.add() items to child arrays..."). The
         // `isVisibilitySharedWithParent` flag — precomputed at attach-time in
         // inheritedFlags.ts — short-circuits for the common case, and
-        // `markVisible` memoizes so the branch fires at most once per
-        // (tree, view) pair.
-        // grant rules mirrored by `orGrantableViews` (Encoder.ts): a grant added here must be added there
+        // the view's bit memoizes the grant, so the branch fires at most once
+        // per (tree, view) pair.
+        // grant rules mirrored by `orGrantableViews` / `inheritedViews` (Encoder.ts): a grant added here must be added there
         if (!isVisible && changeTree.isVisibilitySharedWithParent){
-            // Primary grant is intentionally unguarded — pre-existing
+            // Primary check is intentionally unguarded — pre-existing
             // semantics; the extras walk below is stricter on purpose.
             if (this.isVisible(changeTree.parentTree)) {
-                this.markVisible(changeTree);
                 isVisible = true;
             } else {
                 // Shared instance: the sharing parent may sit anywhere in the
@@ -1194,12 +1225,12 @@ export class StateView {
                 for (let e = changeTree.aux?.extraParents; e !== undefined; e = e.next) {
                     const parentTree = e.tree;
                     if (parentTree.isFiltered && this.isVisible(parentTree)) {
-                        this.markVisible(changeTree);
                         isVisible = true;
                         break;
                     }
                 }
             }
+            if (isVisible) this.grantVisible(changeTree);
         }
 
         return isVisible;

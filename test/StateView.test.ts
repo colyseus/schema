@@ -6170,6 +6170,155 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [outer, inner, none]);
         });
 
+        it("covers primitive collections attached after view.add()", () => {
+            class Item extends Schema {
+                @type("number") id: number;
+                @type(["string"]) arr = new ArraySchema<string>();
+                @type({ map: "number" }) map = new MapSchema<number>();
+                @type({ set: "string" }) set = new SetSchema<string>();
+            }
+            class Inventory extends Schema { @type([Item]) items = new ArraySchema<Item>(); }
+            class State extends Schema { @view(1) @type(Inventory) inventory = new Inventory(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state, 1);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // Attached once the view is already set up, with its collections already holding values.
+            const item = new Item().assign({ id: 1 });
+            item.arr.push("x");
+            item.map.set("k", 1);
+            item.set.add("s");
+            state.inventory.items.push(item);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                inventory: { items: [{ id: 1, arr: ["x"], map: { k: 1 }, set: ["s"] }] },
+            });
+
+            // Later changes to those collections.
+            item.arr.push("y");
+            item.map.set("k", 2);
+            item.map.set("l", 3);
+            item.set.add("t");
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                inventory: { items: [{ id: 1, arr: ["x", "y"], map: { k: 2, l: 3 }, set: ["s", "t"] }] },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("covers a primitive collection replaced on an already-visible Schema", () => {
+            class Item extends Schema {
+                @type({ map: "number" }) map = new MapSchema<number>();
+            }
+            class State extends Schema { @view() @type(Item) item = new Item(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state.item);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            state.item.map = new MapSchema<number>({ k: 1 });
+
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.deepStrictEqual(client1.state.toJSON(), { item: { map: { k: 1 } } });
+
+            state.item.map.set("l", 2);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.deepStrictEqual(client1.state.toJSON(), { item: { map: { k: 1, l: 2 } } });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("covers primitive collections on a Schema revealed through a nested view.add()", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Child extends Schema { @type(["string"]) arr = new ArraySchema<string>(); }
+            class Item extends Schema {
+                @type(["string"]) arr = new ArraySchema<string>();
+                @type(Child) child = new Child();
+                @view() @type(Secret) secret = new Secret();
+            }
+            class State extends Schema { @view() @type(Item) item = new Item(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            // Reveals `item` as an ancestor; `item.arr` is held directly, `item.child.arr` one level down.
+            client1.view.add(state.item.secret);
+            state.item.arr.push("x");
+            state.item.child.arr.push("y");
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            state.item.arr.push("x2");
+            state.item.child.arr.push("y2");
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                item: { arr: ["x", "x2"], child: { arr: ["y", "y2"] }, secret: { s: 1 } },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("covers a primitive collection left filtered when its public owner drops it", () => {
+            class Item extends Schema {
+                @type({ map: "number" }) map: MapSchema<number>;
+            }
+            class State extends Schema {
+                @type(Item) pub = new Item();
+                @view() @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            const item = new Item();
+            state.items.set("a", item);
+            client1.view.add(item);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // Public first, so attaching it to `item` is a 2nd edge (no attach-time inheritance).
+            const map = new MapSchema<number>({ k: 1 });
+            state.pub.map = map;
+            item.map = map;
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            state.pub.map = undefined;
+            map.set("l", 2);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), { pub: {}, items: { a: { map: { k: 1, l: 2 } } } });
+            assert.deepStrictEqual(client2.state.toJSON(), { pub: {} });
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
     });
 
 

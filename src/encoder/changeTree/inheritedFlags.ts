@@ -184,12 +184,31 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
         // The `parentMetadata[parentIndex].tag` access is safe inside the
         // `fieldHasViewTag` short-circuit (the metadata entry and its `tag`
         // are guaranteed to exist when that flag is set).
-        tree.isVisibilitySharedWithParent = (
+        const inheritsViews = (
             parentChangeTree.isFiltered
-            && sharesEligible
             && !fieldHasStream
             && (!fieldHasViewTag || (parentIsCollection && parentMetadata[parentIndex].tag !== DEFAULT_VIEW_TAG))
         );
+        tree.isVisibilitySharedWithParent = inheritsViews && sharesEligible;
+        if (inheritsViews && !sharesEligible) inheritVisibleViews(tree, parentChangeTree); // eager — see `_sharesEligible`
+    }
+}
+
+/**
+ * Make `tree` visible to every view `from` is visible to. Through each
+ * view's `markVisible`, so `dispose()` finds the bit to clear.
+ */
+function inheritVisibleViews(tree: ChangeTree, from: ChangeTree): void {
+    const src = from.visibleViews;
+    const root = tree.root;
+    if (src === undefined || root === undefined) return;
+    for (let s = 0; s < src.length; s++) {
+        let w = src[s] | 0;
+        while (w !== 0) {
+            const bit = w & -w;
+            w ^= bit;
+            root.activeViews.get((s << 5) + (31 - Math.clz32(bit)))?.deref()?.markVisible(tree);
+        }
     }
 }
 
@@ -230,11 +249,23 @@ export function drainFilterRefresh(root: Root): void {
 }
 
 /**
- * Primitive-element collections never share visibility downward. One
- * predicate for both derivations (`checkInheritedFlags` and
- * `refreshFilterState`) — the InstanceSharing invariant test pins them
- * together. `_isSchema` short-circuits the `$childType` probe for Schema
- * trees (whose `$childType` is undefined and would pass anyway).
+ * Whether field `index` of Schema `tree` passes its views down: a
+ * `@view`-tagged or stream field stays filtered even under a public parent,
+ * and never shares visibility downward.
+ */
+export function fieldPassesViews(tree: ChangeTree, index: number): boolean {
+    return tree.encDescriptor.tags[index] === undefined && !tree.isFieldStream(index);
+}
+
+/**
+ * Primitive-element collections don't share visibility lazily: the encoder
+ * would walk their parent chain every tick they are dirty
+ * (`grantableViews`). They take the parent's views eagerly instead — at
+ * attach / refresh here, and from `StateView#grantVisible` wherever the
+ * parent is granted. One predicate for both derivations
+ * (`checkInheritedFlags` and `refreshFilterState`) — the InstanceSharing
+ * invariant test pins them together. `_isSchema` short-circuits the
+ * `$childType` probe for Schema trees.
  */
 function _sharesEligible(tree: ChangeTree): boolean {
     return tree._isSchema || typeof (tree.ref as any)[$childType] !== "string";
@@ -293,7 +324,8 @@ const EDGE_SATURATED = EDGE_LIVE | EDGE_PUBLIC | EDGE_SHARES;
 
 /**
  * Classify one parent edge: is it live, does it make the tree publicly
- * reachable, does view visibility flow through it.
+ * reachable, does view visibility flow through it. A non-`sharesEligible`
+ * tree takes a sharing edge's views right here instead.
  */
 function _edgeBits(tree: ChangeTree, parentTree: ChangeTree, index: number, sharesEligible: boolean): number {
     if (parentTree.root !== tree.root || !isEdgeLive(tree, parentTree, index)) return 0;
@@ -306,13 +338,10 @@ function _edgeBits(tree: ChangeTree, parentTree: ChangeTree, index: number, shar
 
     let bits = EDGE_LIVE;
     if (parentTree._isSchema) {
-        // A @view/stream-marked field stays filtered even under a public
-        // parent, and never shares visibility downward.
-        const marked = parentTree.encDescriptor.tags[index] !== undefined
-            || parentTree.isFieldStream(index);
-        if (!marked) {
+        if (fieldPassesViews(parentTree, index)) {
             if (!parentTree.isFiltered) bits |= EDGE_PUBLIC;
             else if (sharesEligible) bits |= EDGE_SHARES;
+            else inheritVisibleViews(tree, parentTree);
         }
     } else if (!parentTree.isFiltered) {
         // Collection edge: the collection's own classification already

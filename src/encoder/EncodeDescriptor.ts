@@ -154,6 +154,13 @@ export interface EncodeDescriptor {
     hasTagAbove32: boolean;
     /** Mask of the custom `@view(tag)` bits declared on this class. */
     customTagMask: number;
+    /**
+     * Untagged, non-stream fields holding a primitive-element collection:
+     * `StateView#grantVisible` marks them along with the Schema (see
+     * `_sharesEligible` in inheritedFlags.ts). Filled in by its first grant,
+     * which keeps the computation out of the decoder bundle.
+     */
+    viewInheritFields: number[] | undefined;
 }
 
 /**
@@ -311,6 +318,7 @@ function buildDescriptor(ctor: any): EncodeDescriptor {
         hasRefFieldAbove32: refIndexes.length > 0 && refIndexes[refIndexes.length - 1] >= 32,
         hasTagAbove32,
         customTagMask,
+        viewInheritFields: undefined, // in the literal: keeps every descriptor one shape
     };
     Object.defineProperty(ctor, $encodeDescriptor, {
         value: desc,

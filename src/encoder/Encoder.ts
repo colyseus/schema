@@ -12,7 +12,7 @@ import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
 import { type KeyedRecorder, keyedValueAt } from "./KeyedRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { ensureTracked, forEachChildWithCtx } from "./changeTree/treeAttachment.js";
-import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
+import { drainFilterRefresh, fieldPassesViews } from "./changeTree/inheritedFlags.js";
 import { recordBroadcastSent, sentByBroadcast, streamHasBroadcastBacklog, streamHasViewBacklog } from "./streaming.js";
 import {
     MODE_DRAIN, MODE_PATCH, MODE_SNAPSHOT, MODE_STREAM,
@@ -91,6 +91,34 @@ function grantableViews(tree: ChangeTree, out: number[], visited: ChangeTree[]):
     orGrantableViews(tree, out, visited);
     while (visited.length !== 0) visited.pop();
     return out;
+}
+
+/**
+ * Fan-out of a primitive-element collection (eager — see `_sharesEligible`
+ * in inheritedFlags.ts): its own bits, plus each dirty sharing parent's
+ * grantable ones — a view pass may grant that parent before reaching `tree`,
+ * and `StateView#grantVisible` then marks `tree` too.
+ */
+function inheritedViews(tree: ChangeTree, out: number[], visited: ChangeTree[]): number[] | undefined {
+    const primary = tree.parentTree;
+    const viaPrimary = primary !== undefined && grantsMidPass(primary, tree._parentIndex!);
+    let viaExtra = false;
+    for (let e = tree.aux?.extraParents; e !== undefined && !viaExtra; e = e.next) viaExtra = grantsMidPass(e.tree, e.index);
+    if (!viaPrimary && !viaExtra) return tree.visibleViews;
+    grantableViews(tree, out, visited); // just its own bits: `tree` doesn't share
+    if (viaPrimary) orGrantableViews(primary, out, visited);
+    if (viaExtra) {
+        for (let e = tree.aux!.extraParents; e !== undefined; e = e.next) {
+            if (grantsMidPass(e.tree, e.index)) orGrantableViews(e.tree, out, visited);
+        }
+    }
+    while (visited.length !== 0) visited.pop();
+    return out;
+}
+
+/** A dirty Schema that may be granted mid-pass, through a field that passes its views to the child. */
+function grantsMidPass(parent: ChangeTree, index: number): boolean {
+    return parent.isVisibilitySharedWithParent && parent.has() && fieldPassesViews(parent, index);
 }
 
 /**
@@ -564,7 +592,9 @@ export class Encoder<T extends Schema = any> {
             }
 
             // fan out to the views that hold this tree's visibility bit (or could be granted it; each view re-checks)
-            const vv = tree.isVisibilitySharedWithParent ? grantableViews(tree, grantable, visited) : tree.visibleViews;
+            const vv = tree.isVisibilitySharedWithParent ? grantableViews(tree, grantable, visited)
+                : (canCache && !tree._isSchema) ? inheritedViews(tree, grantable, visited)
+                : tree.visibleViews;
             if (vv !== undefined) {
                 for (let s = 0; s < vv.length; s++) {
                     let w = vv[s] | 0; // a hole reads as undefined
