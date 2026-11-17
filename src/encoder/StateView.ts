@@ -400,6 +400,16 @@ export class StateView {
         return false;
     }
 
+    /**
+     * True if this view sees the ref in `tree`'s field `index`. Primitive
+     * fields answer false, so their tagged chunks stay a function of the
+     * view's tags (the cross-view chunk cache relies on it).
+     */
+    public isFieldRefVisible(tree: ChangeTree, index: number): boolean {
+        const child = viewTreeOf(fieldOf(tree.encDescriptor, tree.ref, tree.values, index));
+        return child !== undefined && this.isVisible(child);
+    }
+
     /** Mask of every custom tag bit this view holds on `tree` (0 when none). */
     public tagsOnTree(tree: ChangeTree): number {
         const tagBits = tree.tagBits;

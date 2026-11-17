@@ -208,8 +208,10 @@ export class Schema<C = any> implements IRef {
 
         } else {
             // view pass: custom tag (bitmask) — field's stored mask matches
-            // if it shares any bit with a tag this view was add()ed with.
-            return view.hasTagOnTree(refTreeOf(ref), tag);
+            // if it shares any bit with a tag this view was add()ed with,
+            // or the view sees the ref it holds (a nested add() opened the path).
+            const tree = refTreeOf(ref);
+            return view.hasTagOnTree(tree, tag) || view.isFieldRefVisible(tree, index);
         }
     }
 

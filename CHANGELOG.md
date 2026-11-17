@@ -249,6 +249,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `view.remove(obj, tag)` now hides only that tag's fields. It also stopped `obj`'s untagged `@view()` fields from syncing, leaving the client with stale values. A plain `view.remove(obj)` now also drops the tags `obj` was added with, so a later `view.add(obj)` no longer brings its tagged fields back on their next change.
 - `view.add(obj, tag)` on an object the view already sees now reveals only that tag's fields, on `obj` and on what the view already sees below it. Items of `@view()` collections that were never added no longer show up after a full sync, and objects attached since need their own `view.add(item, tag)`.
 - A collection of primitives keeps syncing after its owner loses its last public parent but stays in a `@view()` collection.
+- `view.add()` on an instance below a `@view(N)` field the view holds no tag for now opens that field in full syncs too, as patches already did. A client syncing afterwards used to miss it and log `"refId" not found`. The owner's other `@view(N)` fields stay hidden.
 
 ## [5.0.49]
 

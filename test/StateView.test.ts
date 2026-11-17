@@ -4715,6 +4715,33 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client1, client2]);
         });
 
+        it("a nested add() opens the @view(N) field on its path, not the owner's other fields of that tag", () => {
+            const TAG = 1;
+            class Item extends Schema { @type("number") id = 0; }
+            class Inventory extends Schema { @type([Item]) items = new ArraySchema<Item>(); }
+            class State extends Schema {
+                @view(TAG) @type(Inventory) inv = new Inventory();
+                @view(TAG) @type("number") gold = 10;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            const a = new Item().assign({ id: 1 });
+            const b = new Item().assign({ id: 2 });
+            state.inv.items.push(a, b);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(a);
+            encodeMultiple(encoder, state, [client]);
+            b.id = 3; // shares the inventory's visibility
+            state.gold = 11;
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { inv: { items: [{ id: 1 }, { id: 3 }] } });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
         it("a nested tagged add() reveals the ancestor's other fields of that tag", () => {
             class Secret extends Schema { @type("number") s = 1; }
             class Item extends Schema {
