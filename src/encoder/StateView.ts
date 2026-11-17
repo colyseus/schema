@@ -888,6 +888,11 @@ export class StateView {
         }
     }
 
+    /**
+     * Hide `obj` from this view.
+     *
+     * @param tag only the fields declared with this `@view(tag)`: `obj` itself stays visible (default: `obj` and its subtree)
+     */
     remove(obj: Ref, tag?: number): this; // hide _isClear parameter from public API
     remove(obj: Ref, tag?: number, _isClear?: boolean): this;
     remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG, _isClear: boolean = false): this {
@@ -951,16 +956,6 @@ export class StateView {
             return this;
         }
 
-        this.unmarkVisible(changeTree);
-
-        // remove from iterable list
-        if (
-            this.iterable &&
-            !_isClear // no need to remove during clear(), as it will be cleared entirely
-        ) {
-            spliceOne(this.items, this.items.indexOf(obj));
-        }
-
         const ref = changeTree.ref;
         const metadata: Metadata = ref.constructor[Symbol.metadata]; // ArraySchema/MapSchema do not have metadata
 
@@ -975,6 +970,9 @@ export class StateView {
         const changes = this.entriesOf(refId);
 
         if (tag === DEFAULT_VIEW_TAG) {
+            this.unmarkVisible(changeTree); // only here: a tagged remove keeps the object visible
+            if (this.iterable && !_isClear) spliceOne(this.items, this.items.indexOf(obj)); // clear() empties `items` wholesale
+
             // parent is collection (Map/Array)
             const parent = changeTree.parent;
             if (parent && !Metadata.isValidInstance(parent) && changeTree.isFiltered) {
@@ -1026,7 +1024,7 @@ export class StateView {
         }
 
         // remove tag bits for this view
-        if (tag === undefined) {
+        if (tag === DEFAULT_VIEW_TAG) {
             this.removeAllTagsOnTree(changeTree);
         } else {
             this.removeTag(changeTree, tag);

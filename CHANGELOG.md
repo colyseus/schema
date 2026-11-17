@@ -246,6 +246,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `view.add()` on a nested instance (`view.add(item.secret)`) now also sends the rest of the ancestors it reveals. When they had been encoded in an earlier patch, only the path to the added instance arrived: their other fields never did, and their nested instances gave `"refId" not found`.
 - An instance removed from the state and added back in a later patch now arrives intact when its collections changed in between: a map value overwritten meanwhile came back under an `undefined` key, and an array emptied meanwhile threw a `RangeError` on the client that dropped the rest of the patch.
 - An array element pushed in the same patch that adds the array back to the state and reveals it with `view.add()` no longer arrives twice.
+- `view.remove(obj, tag)` now hides only that tag's fields. It also stopped `obj`'s untagged `@view()` fields from syncing, leaving the client with stale values. A plain `view.remove(obj)` now also drops the tags `obj` was added with, so a later `view.add(obj)` no longer brings its tagged fields back on their next change.
 
 ## [5.0.49]
 

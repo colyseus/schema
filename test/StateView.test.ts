@@ -983,6 +983,31 @@ describe("StateView", () => {
                 assertEncodeAllMultiple(encoder, state, [client]);
             });
         });
+
+        it("tagged remove() hides only that tag's fields", () => {
+            const TAG = 1;
+            class Item extends Schema { @type("number") id = 0; }
+            class State extends Schema {
+                @view(TAG) @type(Item) tagged = new Item();
+                @view() @type({ map: Item }) items = new MapSchema<Item>();
+                @view() @type("number") secret = 7;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            client.view.add(state);
+            client.view.add(state, TAG);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.remove(state, TAG);
+            encodeMultiple(encoder, state, [client]);
+            state.secret = 8;
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { items: {}, secret: 8 });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
     });
 
     describe("default-tag add() must not leak custom-tagged fields", () => {
@@ -1105,6 +1130,12 @@ describe("StateView", () => {
 
             assert.strictEqual(client.state.players.get("one").name, "Alice");
             assert.strictEqual(client.state.players.get("one").secret, undefined);
+
+            // the default remove() dropped the tag too
+            player.secret = 100;
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one").secret, undefined);
+            assertEncodeAllMultiple(encoder, state, [client]);
         });
 
         it("double-add of the same instance: state intact, no tagged leak", () => {
