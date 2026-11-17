@@ -15,8 +15,8 @@
  * cycle (ChangeTree caches descriptors at construction; Encoder reads them
  * during encode).
  */
-import { Metadata } from "../Metadata.js";
-import { $encodeDescriptor, $encoder, $encoders, $filter, $numFields, $fullStateOnlyFieldIndexes, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
+import { Metadata, resolveFieldType } from "../Metadata.js";
+import { $encodeDescriptor, $encoder, $encoders, $filter, $numFields, $fullStateOnlyFieldIndexes, $refTypeFieldIndexes, $streamFieldIndexes, $unreliableFieldIndexes, $viewFieldIndexes } from "../types/symbols.js";
 import type { StateView } from "./StateView.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
 
@@ -80,6 +80,13 @@ export interface EncodeDescriptor {
     types: any[];
     tags: (number | undefined)[];
     encoders: (((bytes: Uint8Array, value: any, it: any) => void) | undefined)[];
+
+    /**
+     * Untagged, non-stream fields holding a primitive-element collection —
+     * `StateView#grantVisible` marks them along with the Schema (see
+     * `_sharesEligible` in inheritedFlags.ts). Undefined when there are none.
+     */
+    viewInheritFields: number[] | undefined;
 }
 
 /**
@@ -136,6 +143,18 @@ function buildFieldArrays(metadata: any): {
     return { names, types, tags, encoders };
 }
 
+function viewInheritFields(metadata: any): number[] | undefined {
+    const refIndexes: number[] | undefined = metadata?.[$refTypeFieldIndexes];
+    if (refIndexes === undefined) return undefined;
+    let out: number[] | undefined;
+    for (const i of refIndexes) {
+        const field = metadata[i];
+        if (field.tag !== undefined || Metadata.hasStreamAtIndex(metadata, i)) continue;
+        if (typeof resolveFieldType(field.type).childType === "string") (out ??= []).push(i);
+    }
+    return out;
+}
+
 export function getEncodeDescriptor(ref: any): EncodeDescriptor {
     const ctor = ref.constructor;
 
@@ -179,6 +198,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         types: arrays.types,
         tags: arrays.tags,
         encoders: arrays.encoders,
+        viewInheritFields: viewInheritFields(metadata),
     };
     Object.defineProperty(ctor, $encodeDescriptor, {
         value: desc,

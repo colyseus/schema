@@ -1,5 +1,5 @@
 import { ChangeTree, Ref } from "./ChangeTree.js";
-import { $changes, $childType, $fieldIndexesByViewTag, $refId, $viewFieldIndexes } from "../types/symbols.js";
+import { $changes, $childType, $fieldIndexesByViewTag, $refId, $values, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
@@ -197,6 +197,25 @@ export class StateView {
         }
         while (arr.length <= slot) arr.push(0);
         arr[slot] |= this._bit;
+    }
+
+    /**
+     * `markVisible`, plus the tree's primitive-element collections — they
+     * don't share visibility lazily (see `_sharesEligible`). Not for `_add`'s
+     * walk: it reads a child's bit as "already bootstrapped".
+     */
+    public grantVisible(tree: ChangeTree): void {
+        this.markVisible(tree);
+        const desc = tree.encDescriptor;
+        const fields = desc.viewInheritFields;
+        if (fields === undefined) return;
+        const ref = tree.ref as any;
+        const values = ref[$values];
+        for (let i = 0; i < fields.length; i++) {
+            const index = fields[i];
+            const value = values[index] ?? ref[desc.names[index]]; // dense read — skips the accessor
+            if (value) this.markVisible(value[$changes]);
+        }
     }
 
     /** Clear visibility bit. */
@@ -585,7 +604,7 @@ export class StateView {
 
         if (!this.isVisible(changeTree)) {
             // view must have all "changeTree" parent tree
-            this.markVisible(changeTree);
+            this.grantVisible(changeTree);
         }
 
         // Recurse all the way to the root REGARDLESS of whether this parent
@@ -969,7 +988,7 @@ export class StateView {
             });
         } else if (!introduced) {
             tree.forEachChild((child) => {
-                this.markVisible(child);
+                this.grantVisible(child);
             });
         }
 
@@ -1062,7 +1081,6 @@ export class StateView {
             // Primary grant is intentionally unguarded — pre-existing
             // semantics; the extras walk below is stricter on purpose.
             if (this.isVisible(changeTree.parent[$changes])) {
-                this.markVisible(changeTree);
                 isVisible = true;
             } else {
                 // Shared instance: the sharing parent may sit anywhere in the
@@ -1072,12 +1090,12 @@ export class StateView {
                 for (let e = changeTree.extraParents; e !== undefined; e = e.next) {
                     const parentTree = e.ref[$changes];
                     if (parentTree.isFiltered && this.isVisible(parentTree)) {
-                        this.markVisible(changeTree);
                         isVisible = true;
                         break;
                     }
                 }
             }
+            if (isVisible) this.grantVisible(changeTree);
         }
 
         return isVisible;

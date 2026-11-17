@@ -58,13 +58,13 @@ export function propagateNewChildToSubscribers(
                 // pass to drain under `maxPerTick`.
                 streamEnqueueForView(streamable!, viewId, childIndex);
             } else if (childTree !== undefined) {
-                // Non-stream collections: just markVisible. The parent's
+                // Non-stream collections: just grantVisible. The parent's
                 // recorder already carries the ADD op (triggered by the
                 // push/set/add that led to this setParent), and the
                 // child's tree carries its construction-time dirty state
                 // — the encoder's normal view pass picks both up on the
                 // next encode, no view.changes seeding needed.
-                view.markVisible(childTree);
+                view.grantVisible(childTree);
             }
         }
     }

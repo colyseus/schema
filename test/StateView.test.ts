@@ -6421,6 +6421,76 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client1, client2]);
         });
 
+        it("covers primitive collections on a Schema revealed through a nested view.add()", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Child extends Schema { @type(["string"]) arr = new ArraySchema<string>(); }
+            class Item extends Schema {
+                @type(["string"]) arr = new ArraySchema<string>();
+                @type(Child) child = new Child();
+                @view() @type(Secret) secret = new Secret();
+            }
+            class State extends Schema { @view() @type(Item) item = new Item(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            // Reveals `item` as an ancestor; `item.arr` is held directly, `item.child.arr` one level down.
+            client1.view.add(state.item.secret);
+            state.item.arr.push("x");
+            state.item.child.arr.push("y");
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            state.item.arr.push("x2");
+            state.item.child.arr.push("y2");
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                item: { arr: ["x", "x2"], child: { arr: ["y", "y2"] }, secret: { s: 1 } },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("covers a primitive collection left filtered when its public owner drops it", () => {
+            class Item extends Schema {
+                @type({ map: "number" }) map: MapSchema<number>;
+            }
+            class State extends Schema {
+                @type(Item) pub = new Item();
+                @view() @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            const item = new Item();
+            state.items.set("a", item);
+            client1.view.add(item);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // Public first, so attaching it to `item` is a 2nd edge (no attach-time inheritance).
+            const map = new MapSchema<number>({ k: 1 });
+            state.pub.map = map;
+            item.map = map;
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            state.pub.map = undefined;
+            map.set("l", 2);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), { pub: {}, items: { a: { map: { k: 1, l: 2 } } } });
+            assert.deepStrictEqual(client2.state.toJSON(), { pub: {} });
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
     });
 
 });
