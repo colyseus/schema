@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.49]
+
+### Fixed
+
+- Collections of primitives (`ArraySchema<string>`, `MapSchema<number>`, …) attached to a `@view()`-filtered `Schema` after `view.add()` now reach that view, such as those on an item pushed into a visible inventory. They used to arrive empty and never update. Only the server needs the upgrade. Thanks @FTWinston! [#258](https://github.com/colyseus/schema/pull/258)
+
 ## [5.0.48]
 
 ### Fixed
