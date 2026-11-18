@@ -1558,6 +1558,37 @@ describe("Instance sharing", () => {
             assertClientStates(viewer, plain);
             assertEncodeAllMultiple(encoder, state, [viewer, plain]);
         });
+        it("a full sync carries an instance first reached through a @view() map before its public one", () => {
+            class Child extends Schema { @type("number") n = 2; }
+            class Secret extends Schema { @type("number") s = 7; }
+            class Thing extends Schema {
+                @type("number") id = 0;
+                @type(Child) child = new Child();
+                @view() @type(Secret) secret = new Secret();
+            }
+            class Room extends Schema {
+                @view() @type({ map: Thing }) loot = new MapSchema<Thing>(); // walked first
+                @type({ map: Thing }) pub = new MapSchema<Thing>();
+            }
+
+            const state = new Room();
+            const encoder = getEncoder(state);
+            const thing = new Thing().assign({ id: 3 });
+            state.pub.set("k", thing);
+            state.loot.set("k", thing);
+            encoder.encode();
+            encoder.discardChanges(); // late joiners: the full sync alone carries `thing`
+
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+            viewer.view.add(state);
+            viewer.view.add(thing);
+            encodeMultiple(encoder, state, [viewer, plain]);
+
+            const full = { id: 3, child: { n: 2 }, secret: { s: 7 } };
+            assert.deepStrictEqual(viewer.state.toJSON(), { loot: { k: full }, pub: { k: full } });
+            assert.deepStrictEqual(plain.state.toJSON(), { pub: { k: { id: 3, child: { n: 2 } } } });
+        });
     });
 
     describe("StateView: shared instance whose old Schema field was set to null", () => {

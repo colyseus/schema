@@ -54,6 +54,8 @@ export interface EncodeDescriptor {
      * be included in a view's bootstrap.
      */
     hasAnyView: boolean;
+    /** Any ref-typed field carries a `@view` tag: the full-sync walk gates this class's edges (see `_fullSyncWalk`). */
+    hasViewRef: boolean;
     fullStateOnlyBitmask: number;
     unreliableBitmask: number;
     /**
@@ -191,6 +193,7 @@ export function getEncodeDescriptor(ref: any): EncodeDescriptor {
         hasAnyUnreliable: (metadata?.[$unreliableFieldIndexes]?.length ?? 0) > 0,
         hasAnyStream: (metadata?.[$streamFieldIndexes]?.length ?? 0) > 0,
         hasAnyView,
+        hasViewRef: metadata?.[$refTypeFieldIndexes]?.some((i: number) => metadata[i].tag !== undefined) ?? false,
         fullStateOnlyBitmask: indexesToBitmask(metadata?.[$fullStateOnlyFieldIndexes]),
         unreliableBitmask: indexesToBitmask(metadata?.[$unreliableFieldIndexes]),
         streamBitmask: indexesToBitmask(metadata?.[$streamFieldIndexes]),
