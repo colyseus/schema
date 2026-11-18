@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.50]
+
+### Fixed
+
+Only the server needs the upgrade for any of these.
+
+- `encode()` no longer throws when an instance whose old `Schema` field was set to `null` is put into another container, in states with any `@view()` field. Thanks @FTWinston! [#259](https://github.com/colyseus/schema/pull/259)
+- Adding a `@view()` `Schema` field that holds `null` to a view no longer makes `encode()` throw. Tagged primitive fields holding `null` now stay unset on clients after `view.add(obj, tag)`, as on a full sync, instead of arriving as `""`, `0` or `false`. Thanks @FTWinston! [#259](https://github.com/colyseus/schema/pull/259)
+- An instance shared between a `@view()` container and another container no longer arrives empty, whether it joins both in the same tick or the client joins late.
+- A nested `view.add()` (such as `view.add(item.secret)`) now sends the ancestors it reveals whole when they were synced in an earlier tick, instead of only the fields on the path to the added instance.
+- `view.remove(obj, tag)` now hides only that tag's fields: `obj` and its untagged `@view()` fields keep syncing. A plain `view.remove(obj)` now also drops the tags `obj` was added with.
+- `view.add(obj, tag)` on an object the view already sees no longer reveals `@view()` collection items the view never added.
+- After `view.add(child)` reaches `child` through a `@view(N)` field the view lacks tag N for, that field now also survives full syncs, and stays hidden from other views.
+- An instance held in a `@view()` collection now shows up there, or disappears from it, as soon as a view starts or stops seeing it through another path, not only in full syncs.
+- A map entry overwritten while its owner was detached keeps its key when the owner is attached again.
+- Primitive collections under a `Schema` that a view sees only through instance sharing now reach that view.
+
+### Changed
+
+- Joining with a `StateView` is up to 20% faster to encode when most of the state has no `@view()` fields.
+
 ## [5.0.49]
 
 ### Fixed
