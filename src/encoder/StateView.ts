@@ -1,10 +1,11 @@
-import { ChangeTree, Ref } from "./ChangeTree.js";
+import { ChangeTree, HAS_OPEN_FIELD, Ref } from "./ChangeTree.js";
 import { $changes, $childType, $fieldIndexesByViewTag, $refId, $values, $viewFieldIndexes } from "../types/symbols.js";
 import { DEFAULT_VIEW_TAG } from "../annotations.js";
 import { OPERATION } from "../encoding/spec.js";
 import { Metadata } from "../Metadata.js";
 import { spliceOne } from "../types/utils.js";
 import { ensureStreamState, streamDequeueForView, streamEnqueueForView } from "./streaming.js";
+import { grantsVisibility, itemsShareVisibility } from "./changeTree/inheritedFlags.js";
 import type { StreamSchema } from "../types/custom/StreamSchema.js";
 import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { SetSchema } from "../types/custom/SetSchema.js";
@@ -315,6 +316,33 @@ export class StateView {
         }
     }
 
+    /**
+     * True if a nested `add()` without its tag opened `tree`'s `@view(N)`
+     * field `index` for this view (see `addParentOf`), and the view sees the
+     * ref the field holds now.
+     */
+    public isFieldOpen(tree: ChangeTree, index: number): boolean {
+        if ((tree.flags & HAS_OPEN_FIELD) === 0) return false;
+        const arr = tree.tagViews?.get(~index);
+        const slot = this._slot;
+        if (arr === undefined || slot >= arr.length || (arr[slot] & this._bit) === 0) return false;
+        const ref = tree.ref as any;
+        const child: ChangeTree | undefined = (ref[$values][index] ?? ref[tree.encDescriptor.names[index]])?.[$changes];
+        return child !== undefined && this.isVisible(child);
+    }
+
+    /** Record that an `add()` opened `tree`'s `@view(N)` field `index` for this view. */
+    private _openField(tree: ChangeTree, index: number): void {
+        tree.flags |= HAS_OPEN_FIELD;
+        let map = tree.tagViews;
+        if (map === undefined) map = tree.tagViews = new Map();
+        let arr = map.get(~index); // beside the tag bitmaps: dispose, recycle and default remove() clear it with them
+        if (arr === undefined) map.set(~index, arr = []);
+        const slot = this._slot;
+        while (arr.length <= slot) arr.push(0);
+        arr[slot] |= this._bit;
+    }
+
     /** Clear ALL tag bits this view holds on `tree` (used when the per-tag isn't known). */
     public removeAllTagsOnTree(tree: ChangeTree): void {
         const map = tree.tagViews;
@@ -477,17 +505,18 @@ export class StateView {
         // rather than chasing `metadata[index].tag` — same source, but a
         // direct array index instead of a per-field-object hop.
         const tags = changeTree.encDescriptor.tags;
+        // a tagged add on a tree this view saw already reveals no filtered child it hides
+        const tagOnly = tag !== DEFAULT_VIEW_TAG && wasVisible;
         changeTree.forEachChild((change, index) => {
             // Do not ADD children whose field tag shares no bit with `tag`.
             // DEFAULT_VIEW_TAG fields are visible to all clients; custom-tag
             // fields only when bits overlap, and never to default-tag clients.
             const fieldTag = tags[index];
-            if (fieldTag !== undefined) {
-                const tagMatch = fieldTag === DEFAULT_VIEW_TAG ||
-                    (tag !== DEFAULT_VIEW_TAG && (fieldTag & tag) !== 0);
-                if (!tagMatch) {
-                    return;
-                }
+            if (fieldTag === undefined || fieldTag === DEFAULT_VIEW_TAG) {
+                // e.g. a @view() map item never added; public children still take the tag
+                if (tagOnly && change.isFiltered && !this.isChangeTreeVisible(change)) return;
+            } else if (tag === DEFAULT_VIEW_TAG || (fieldTag & tag) === 0) {
+                return;
             }
 
             if (this.add(change.ref, tag, false)) {
@@ -522,7 +551,7 @@ export class StateView {
         // A tagged add on an already-visible tree stays incremental (byTag
         // only); default-tag re-adds re-snapshot on purpose (see `items`
         // dedup note above).
-        if ((tag === DEFAULT_VIEW_TAG || !wasVisible) && (!changeTree.isNew || isChildAdded)) {
+        if (!tagOnly && (!changeTree.isNew || isChildAdded)) {
             if (changeTree.isArray && typeof (changeTree.refTarget as any)[$childType] !== "string") {
                 // Ref-typed ArraySchema (the only proxied collection): one
                 // sentinel entry — encodeView snapshots the live elements at
@@ -602,11 +631,6 @@ export class StateView {
         const changeTree = childChangeTree.parent[$changes];
         const parentIndex = childChangeTree.parentIndex;
 
-        if (!this.isVisible(changeTree)) {
-            // view must have all "changeTree" parent tree
-            this.grantVisible(changeTree);
-        }
-
         // Recurse all the way to the root REGARDLESS of whether this parent
         // is already visible. Walking the full chain keeps `view.changes`
         // topologically ordered by construction (ancestors touched before
@@ -627,14 +651,18 @@ export class StateView {
             this.addParentOf(changeTree, tag);
         }
 
-        // Skip the entry-write for non-filtered ancestors: their refIds
-        // are already known to the decoder through the shared pass, and
-        // an extra ADD on a non-filtered field's index would only emit
-        // bytes for a no-op (`value === previousValue` on the decoder).
-        if (!changeTree.hasFilteredFields) return;
+        // after the recursion: an ancestor revealed above has introduced this one if it hands it visibility
+        let revealed = false;
+        if (!this.isChangeTreeVisible(changeTree)) {
+            if (changeTree.isNew) {
+                this.grantVisible(changeTree); // its recorder still holds its whole state
+            } else {
+                this.markVisible(changeTree);
+                revealed = true;
+            }
+        }
 
-        // add parent's tag properties
-        if (changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
+        if (changeTree.hasFilteredFields && changeTree.getChange(parentIndex) !== OPERATION.DELETE) {
             let changes = this.changes.get(changeTree.ref[$refId]);
             if (changes === undefined) {
                 changes = new Map<number | ChangeTree, OPERATION>();
@@ -647,11 +675,11 @@ export class StateView {
             // the view every OTHER same-tag field on the parent, which then
             // rode out on its next mutation (never at add() time, so it read
             // as "the field only shows up after it changes").
+            // Without the tag, the binding below opens just that field: record it for full syncs and later patches.
             const parentFieldTag = changeTree.encDescriptor.tags[parentIndex];
-            if (parentFieldTag !== undefined &&
-                parentFieldTag !== DEFAULT_VIEW_TAG &&
-                (parentFieldTag & tag) !== 0) {
-                this.addTag(changeTree, tag);
+            if (parentFieldTag !== undefined && parentFieldTag !== DEFAULT_VIEW_TAG) {
+                if (tag !== DEFAULT_VIEW_TAG && (parentFieldTag & tag) !== 0) this.addTag(changeTree, tag);
+                else this._openField(changeTree, parentIndex);
             }
 
             // ArraySchema parents: key by the child's identity, not the wire
@@ -664,6 +692,53 @@ export class StateView {
                 OPERATION.ADD,
             );
         }
+
+        if (revealed) this._introduce(changeTree); // after the tag grant above: the snapshot reads it
+    }
+
+    /**
+     * Queue what a full sync would send this view for `tree`, an ancestor
+     * that a nested `add()` just revealed, and recurse into the children the
+     * reveal hands visibility to. Only for trees encoded in an earlier tick:
+     * their recorders no longer hold their state, and the client never got it.
+     *
+     * `tree` carries this view's bit already (plain `markVisible`: a child's
+     * bit still means "the client holds it" while its parent introduces it).
+     */
+    private _introduce(tree: ChangeTree): void {
+        const isSchema = tree._isSchema;
+        const filtered = tree.isFiltered;
+        const isPrimitiveCollection = !isSchema && typeof (tree.refTarget as any)[$childType] === "string";
+        if (!isSchema) {
+            if (!filtered) return; // public items: every client holds them
+            // per-item gating: none become visible, and addParentOf binds the added one
+            if (!isPrimitiveCollection && !itemsShareVisibility(tree)) return;
+        }
+
+        const refId = tree.ref[$refId];
+        let changes = this.changes.get(refId); // before the children's: Map order is topological
+        if (changes === undefined) this.changes.set(refId, changes = new Map());
+
+        const inherit = isSchema ? tree.encDescriptor.viewInheritFields : undefined;
+        tree.forEachChild((child, index) => {
+            if (!child.isFiltered || this.isVisible(child)) return; // the client holds it
+            // the grant rules of `isChangeTreeVisible` and `grantVisible`
+            if (child.isVisibilitySharedWithParent ? !grantsVisibility(tree, child) : inherit?.includes(index) !== true) return;
+            this.markVisible(child);
+            if (!child.isNew) this._introduce(child);
+        });
+
+        if (tree.isArray && !isPrimitiveCollection) {
+            if ((tree.refTarget as any).items.length > 0) changes.set(ARRAY_SNAPSHOT, OPERATION.ADD);
+            return;
+        }
+
+        // every live field a full sync would send this view (a public tree's untagged ones went through the shared pass)
+        const { tags, filter } = tree.encDescriptor;
+        tree.forEachLive((index) => {
+            if (tags[index] === undefined ? !filtered : (filter !== undefined && !filter(tree.ref, index, this))) return;
+            changes.set(index, OPERATION.ADD);
+        });
     }
 
     /**
@@ -706,6 +781,11 @@ export class StateView {
         }
     }
 
+    /**
+     * Hide `obj` from this view.
+     *
+     * @param tag only the fields declared with this `@view(tag)`: `obj` itself stays visible (default: `obj` and its subtree)
+     */
     remove(obj: Ref, tag?: number): this; // hide _isClear parameter from public API
     remove(obj: Ref, tag?: number, _isClear?: boolean): this;
     remove(obj: Ref, tag: number = DEFAULT_VIEW_TAG, _isClear: boolean = false): this {
@@ -768,16 +848,6 @@ export class StateView {
             return this;
         }
 
-        this.unmarkVisible(changeTree);
-
-        // remove from iterable list
-        if (
-            this.iterable &&
-            !_isClear // no need to remove during clear(), as it will be cleared entirely
-        ) {
-            spliceOne(this.items, this.items.indexOf(obj));
-        }
-
         const ref = changeTree.ref;
         const metadata: Metadata = ref.constructor[Symbol.metadata]; // ArraySchema/MapSchema do not have metadata
 
@@ -796,6 +866,9 @@ export class StateView {
         }
 
         if (tag === DEFAULT_VIEW_TAG) {
+            this.unmarkVisible(changeTree); // only here: a tagged remove keeps the object visible
+            if (this.iterable && !_isClear) spliceOne(this.items, this.items.indexOf(obj)); // clear() empties `items` wholesale
+
             // parent is collection (Map/Array)
             const parent = changeTree.parent;
             if (parent && !Metadata.isValidInstance(parent) && changeTree.isFiltered) {
@@ -831,6 +904,8 @@ export class StateView {
                     this._removeViewField(changeTree, changes, index));
             }
 
+            this.removeAllTagsOnTree(changeTree);
+
         } else {
             // delete only tagged properties. `$fieldIndexesByViewTag` is
             // keyed per-bit, so a combined tag iterates each set bit.
@@ -841,12 +916,6 @@ export class StateView {
                         this._removeViewField(changeTree, changes, index));
                 }
             }
-        }
-
-        // remove tag bits for this view
-        if (tag === undefined) {
-            this.removeAllTagsOnTree(changeTree);
-        } else {
             this.removeTag(changeTree, tag);
         }
 
@@ -1077,28 +1146,28 @@ export class StateView {
         // inheritedFlags.ts — short-circuits for the common case, and
         // `markVisible` memoizes so the branch fires at most once per
         // (tree, view) pair.
-        if (!isVisible && changeTree.isVisibilitySharedWithParent){
-            // Primary grant is intentionally unguarded — pre-existing
-            // semantics; the extras walk below is stricter on purpose.
-            if (this.isVisible(changeTree.parent[$changes])) {
-                isVisible = true;
-            } else {
-                // Shared instance: the sharing parent may sit anywhere in the
-                // chain — addParent promotes the LAST container to primary.
-                // Only filtered parents can grant (public ones never share
-                // visibility downward).
-                for (let e = changeTree.extraParents; e !== undefined; e = e.next) {
-                    const parentTree = e.ref[$changes];
-                    if (parentTree.isFiltered && this.isVisible(parentTree)) {
-                        isVisible = true;
-                        break;
-                    }
-                }
-            }
-            if (isVisible) this.grantVisible(changeTree);
+        if (!isVisible && changeTree.isVisibilitySharedWithParent && this._parentGrantsVisibility(changeTree)) {
+            isVisible = true;
+            this.grantVisible(changeTree);
         }
 
         return isVisible;
+    }
+
+    /**
+     * Does a parent that `tree` shares visibility with make it visible to
+     * this view (see `grantsVisibility`)? `isChangeTreeVisible`'s fallback,
+     * without memoizing the grant.
+     */
+    private _parentGrantsVisibility(tree: ChangeTree): boolean {
+        if (this.isVisible(tree.parent[$changes])) return true; // the primary parent always grants
+        // Shared instance: the sharing parent may sit anywhere in the
+        // chain — addParent promotes the LAST container to primary.
+        for (let e = tree.extraParents; e !== undefined; e = e.next) {
+            const parentTree = e.ref[$changes];
+            if (grantsVisibility(parentTree, tree) && this.isVisible(parentTree)) return true;
+        }
+        return false;
     }
 
     protected _recursiveDeleteVisibleChangeTree(changeTree: ChangeTree) {

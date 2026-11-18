@@ -1177,6 +1177,47 @@ describe("Instance sharing", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
+        describe("collections changed while detached", () => {
+            class Holder extends Schema {
+                @type({ map: "number" }) tags = new MapSchema<number>();
+                @type(["string"]) log = new ArraySchema<string>();
+            }
+            class Root extends Schema {
+                @type({ map: Holder }) a = new MapSchema<Holder>();
+                @type({ map: Holder }) b = new MapSchema<Holder>();
+            }
+
+            function detachMutateReattach(setup: (holder: Holder) => void, mutate: (holder: Holder) => void) {
+                const state = new Root();
+                const encoder = getEncoder(state);
+                const decoded = createInstanceFromReflection(state);
+                decoded.decode(encoder.encodeAll());
+                encoder.discardChanges();
+
+                const holder = new Holder();
+                setup(holder);
+                state.a.set("x", holder);
+                decoded.decode(state.encode());
+
+                state.a.delete("x"); // the client drops it
+                decoded.decode(state.encode());
+
+                mutate(holder);
+                state.b.set("y", holder);
+                decoded.decode(state.encode());
+
+                assert.deepStrictEqual(decoded.toJSON(), state.toJSON());
+                assertRefIdCounts(state, decoded);
+            }
+
+            it("a map value overwritten while detached keeps its key", () => {
+                detachMutateReattach((h) => h.tags.set("k", 1), (h) => h.tags.set("k", 2));
+            });
+
+            it("an array emptied while detached decodes", () => {
+                detachMutateReattach((h) => h.log.push("l0"), (h) => h.log.shift());
+            });
+        });
     });
 
     describe("StateView: instance shared across a filter boundary", () => {
@@ -1558,6 +1599,68 @@ describe("Instance sharing", () => {
             assertClientStates(viewer, plain);
             assertEncodeAllMultiple(encoder, state, [viewer, plain]);
         });
+        it("a new instance added to a filtered container, then to a public one queued after it, arrives whole", () => {
+            class Child extends Schema { @type("number") n = 2; }
+            class Secret extends Schema { @type("number") s = 7; }
+            class Thing extends Schema {
+                @type("number") id = 0;
+                @type(Child) child = new Child();
+                @view() @type(Secret) secret = new Secret(); // stays filtered
+            }
+            class Room extends Schema {
+                @view() @type({ map: Thing }) loot = new MapSchema<Thing>();
+                @type({ map: Thing }) pub = new MapSchema<Thing>();
+            }
+
+            const state = new Room();
+            const encoder = getEncoder(state);
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+            viewer.view.add(state);
+            encodeMultiple(encoder, state, [viewer, plain]);
+
+            const thing = new Thing().assign({ id: 3 });
+            state.loot.set("k", thing); // queues `thing` before `pub`
+            viewer.view.add(thing);
+            state.pub.set("k", thing);
+            encodeMultiple(encoder, state, [viewer, plain]);
+
+            const full = { id: 3, child: { n: 2 }, secret: { s: 7 } };
+            assert.deepStrictEqual(viewer.state.toJSON(), { loot: { k: full }, pub: { k: full } });
+            assert.deepStrictEqual(plain.state.toJSON(), { pub: { k: { id: 3, child: { n: 2 } } } });
+            assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+        });
+
+        it("a new instance added to two filtered containers seen by different tags arrives whole in both", () => {
+            class Child extends Schema { @type("number") n = 2; }
+            class Thing extends Schema {
+                @type("number") id = 0;
+                @type(Child) child = new Child();
+            }
+            class Room extends Schema {
+                @view(1) @type([Thing]) a = new ArraySchema<Thing>();
+                @view(2) @type({ map: Thing }) b = new MapSchema<Thing>();
+            }
+
+            const state = new Room();
+            const encoder = getEncoder(state);
+            const v1 = createClientWithView(state);
+            const v2 = createClientWithView(state);
+            v1.view.add(state, 1);
+            v2.view.add(state, 2);
+            encodeMultiple(encoder, state, [v1, v2]);
+
+            const thing = new Thing().assign({ id: 3 });
+            state.a.push(thing); // queues `thing` before `b`
+            state.b.set("k", thing);
+            encodeMultiple(encoder, state, [v1, v2]);
+
+            const json = { id: 3, child: { n: 2 } };
+            assert.deepStrictEqual(v1.state.toJSON(), { a: [json] });
+            assert.deepStrictEqual(v2.state.toJSON(), { b: { k: json } });
+            assertEncodeAllMultiple(encoder, state, [v1, v2]);
+        });
+
         it("a full sync carries an instance first reached through a @view() map before its public one", () => {
             class Child extends Schema { @type("number") n = 2; }
             class Secret extends Schema { @type("number") s = 7; }
