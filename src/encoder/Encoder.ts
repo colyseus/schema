@@ -14,6 +14,7 @@ import { ARRAY_SNAPSHOT, type StateView } from "./StateView.js";
 import type { ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree.js";
 import { PENDING_SHIPPED_BY_FULL_SYNC } from "./ChangeTree.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
+import type { EncodeDescriptor } from "./EncodeDescriptor.js";
 import { forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { forEachChildWithCtx as _forEachChildWithCtx } from "./changeTree/treeAttachment.js";
 import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
@@ -138,7 +139,7 @@ function _fullSyncWalk(ctx: EncodeCtx, changeTree: ChangeTree): void {
     const desc = changeTree.encDescriptor;
     const filtered = changeTree.isFiltered;
 
-    if (visibleHere) {
+    if (visibleHere && _treeEmitsIn(ctx.emitFiltered, filtered, desc)) {
         ctx.changeTree = changeTree;
         ctx.ref = changeTree.ref;
         ctx.encoder = desc.encoder;
@@ -221,6 +222,16 @@ function _fullSyncEdgeIntroduces(ctx: EncodeCtx, parent: ChangeTree, parentVisib
     if (tag === undefined || tag === DEFAULT_VIEW_TAG) return true; // pass on a visible Schema
     const filter = parent.encDescriptor.filter;
     return filter === undefined || filter(parent.ref, index, ctx.view);
+}
+
+/**
+ * Can a full-sync pass emit any of the tree's fields? `encodeChangeCb`'s rule
+ * at tree level: the view pass sends filtered trees and `@view` fields
+ * (`ChangeTree.hasFilteredFields`, inlined), the shared pass public trees.
+ * A pass it rejects would only walk fields `encodeChangeCb` drops.
+ */
+function _treeEmitsIn(emitFiltered: boolean, filtered: boolean, desc: EncodeDescriptor): boolean {
+    return emitFiltered ? (filtered || desc.hasAnyView) : !filtered;
 }
 
 /**
