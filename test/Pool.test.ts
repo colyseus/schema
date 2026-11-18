@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { Schema, type, MapSchema, ArraySchema, type SchemaPool, createPool, $changes, $refId } from "../src";
+import { Schema, type, view, MapSchema, ArraySchema, StateView, type SchemaPool, createPool, $changes, $refId } from "../src";
 import { getEncoder, getDecoder, createInstanceFromReflection, assertRefIdCounts, assertDeepStrictEqualEncodeAll } from "./Schema";
 
 class Position extends Schema {
@@ -61,6 +61,27 @@ describe("SchemaPool", () => {
         assert.strictEqual(e.items.size, 0, "collection field must be emptied");
 
         assert.strictEqual(pool.size, 1);
+    });
+
+    it("release() drops the @view(N) fields a view's add() opened", () => {
+        class Bag extends Schema { @type("number") n = 0; }
+        class Hero extends Schema { @view(1) @type(Bag) bag = new Bag(); }
+        class World extends Schema { @type({ map: Hero }) heroes = new MapSchema<Hero>(); }
+
+        const state = new World();
+        getEncoder(state);
+        const pool = createPool(Hero);
+        const hero = pool.acquire();
+        state.heroes.set("h", hero);
+
+        const stateView = new StateView();
+        stateView.add(hero.bag); // without tag 1: opens `bag`
+        assert.strictEqual(stateView.isFieldOpen(hero[$changes], 0), true);
+
+        state.heroes.delete("h");
+        state.encode();
+        pool.release(hero);
+        assert.strictEqual(hero[$changes].aux?.openViews, undefined);
     });
 
     it("round-trips correctly across spawn -> despawn -> respawn churn", () => {

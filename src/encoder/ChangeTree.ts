@@ -316,8 +316,9 @@ const _restageKeyedCb = (rec: KeyedRecorder, index: number): void => {
 /**
  * Per-tree state that only some trees ever use, behind ONE slot of the
  * ChangeTree (`aux`), allocated on the first write: instance sharing
- * (`extraParents`), the `@unreliable` channel and view subscriptions
- * (`subscribedViews`, only on subscribed collections), kept off the in-object
+ * (`extraParents`), the `@unreliable` channel, view subscriptions
+ * (`subscribedViews`, only on subscribed collections) and `@view(N)` fields
+ * a nested `view.add()` opened (`openViews`), kept off the in-object
  * slots of every tree. Accessors on ChangeTree keep the field names for cold
  * readers and all writers; hot readers (attach / detach / discard / enqueue)
  * read `tree.aux?.x` directly, so no getter is inlined into `setParent` & co.
@@ -329,6 +330,8 @@ class ChangeTreeAux {
     unreliableRecorder: ChangeRecorder | undefined = undefined;
     unreliableChangesNode: ChangeTreeNode | undefined = undefined;
     subscribedViews: number[] | undefined = undefined;
+    /** Per `@view(N)` field index, the views a nested `add()` without tag N opened it for (see `StateView.addParentOf`). */
+    openViews: (number[] | undefined)[] | undefined = undefined;
 }
 
 export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
@@ -482,6 +485,23 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
      */
     get subscribedViews(): number[] | undefined { const aux = this.aux; return (aux !== undefined) ? aux.subscribedViews : undefined; }
     set subscribedViews(v: number[] | undefined) { const aux = this.aux; if (aux !== undefined) aux.subscribedViews = v; else if (v !== undefined) this.ensureAux().subscribedViews = v; }
+
+    /** Bitmap of the views field `index` is open for (`aux.openViews`), created on demand. */
+    openViewsOf(index: number): number[] {
+        return (this.ensureAux().openViews ??= [])[index] ??= [];
+    }
+
+    /** Forget every view's bits: their ids name views of another Root, or of this tree's previous life. */
+    dropViewState(): void {
+        this.visibleViews = undefined;
+        this.tagBits = undefined;
+        this.tagViews = undefined;
+        const aux = this.aux;
+        if (aux !== undefined) {
+            aux.subscribedViews = undefined;
+            aux.openViews = undefined;
+        }
+    }
 
     // Accessor properties for flags
     get isFiltered() { return (this.flags & IS_FILTERED) !== 0; }
@@ -795,18 +815,15 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
 
         // per-view visibility lives on the tree (NOT keyed by refId), so a
         // recycled tree must not inherit its previous life's view membership.
-        this.visibleViews = undefined;
-        this.tagBits = undefined;
-        this.tagViews = undefined;
+        this.dropViewState();
 
-        // the rare state: parent chain, unreliable recorder + queue node, subscriptions.
+        // the rare state: parent chain, unreliable recorder + queue node.
         // The side object and its recorder stay allocated (re-alloc is the cost we avoid).
         const aux = this.aux;
         if (aux !== undefined) {
             aux.extraParents = undefined;
             aux.unreliableRecorder?.reset();
             aux.unreliableChangesNode = undefined;
-            aux.subscribedViews = undefined;
         }
     }
 

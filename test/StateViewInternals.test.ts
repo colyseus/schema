@@ -354,6 +354,29 @@ describe("StateView internals", () => {
             assert.strictEqual(v2.isVisible(tree), false);
         });
 
+        it("clears the @view(N) fields a nested add() opened", () => {
+            class Bag extends Schema { @type("number") n = 0; }
+            class Hero extends Schema { @view(1) @type(Bag) bag = new Bag(); }
+
+            const state = new Hero();
+            getEncoder(state);
+
+            const v1 = new StateView();
+            v1.add(state.bag); // without tag 1: opens `bag` for v1 alone
+            const tree = state[$changes];
+            assert.strictEqual(v1.isFieldOpen(tree, 0), true);
+
+            const reusedId = v1.id;
+            v1.dispose();
+
+            const v2 = new StateView();
+            // @ts-ignore — private
+            v2["_bindRoot"](tree.root);
+            assert.strictEqual(v2.id, reusedId, "ID was reused");
+            v2.markVisible(state.bag[$changes]);
+            assert.strictEqual(v2.isFieldOpen(tree, 0), false);
+        });
+
         it("re-add after dispose works (idempotent markVisible)", () => {
             const state = new State();
             getEncoder(state);
@@ -407,6 +430,37 @@ describe("StateView internals", () => {
                 assert.strictEqual(next.isVisible(units[i][$changes]), false);
                 assert.strictEqual(next.tagsOnTree(units[i][$changes]), 0);
             }
+        });
+    });
+
+    describe("dispose of a view that opened a field", () => {
+        class Bag extends Schema { @type("number") n = 0; }
+        class Hero extends Schema { @view(1) @type(Bag) bag = new Bag(); }
+        class World extends Schema { @type({ map: Hero }) heroes = new MapSchema<Hero>(); }
+
+        it("clears it after the owner left the view and the record was compacted", () => {
+            const state = new World();
+            getEncoder(state);
+            const hero = new Hero();
+            state.heroes.set("h", hero);
+
+            const view = new StateView();
+            view.add(hero.bag); // without tag 1: opens `bag`
+            view.remove(hero); // the open bit outlives hero's own
+            for (let i = 0; i < 300; i++) {
+                const other = new Hero();
+                state.heroes.set("o" + i, other);
+                view.add(other); // past the record's compaction limit
+            }
+            const id = view.id;
+            view.dispose();
+
+            const next = new StateView();
+            // @ts-ignore — private
+            next["_bindRoot"]((state as any)[$changes].root);
+            assert.strictEqual(next.id, id, "ID was reused");
+            next.markVisible(hero.bag[$changes]);
+            assert.strictEqual(next.isFieldOpen(hero[$changes], 0), false);
         });
     });
 

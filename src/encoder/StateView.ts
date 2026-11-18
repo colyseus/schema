@@ -36,15 +36,30 @@ const TOUCHED_MAX = 4096;
 function clearViewBitsOn(tree: ChangeTree, slot: number, clearMask: number): void {
     const v = tree.visibleViews;
     if (v !== undefined && slot < v.length) v[slot] &= clearMask;
-    const s = tree.aux?.subscribedViews;
-    if (s !== undefined && slot < s.length) s[slot] &= clearMask;
-    const t = tree.tagViews;
-    if (t !== undefined) {
-        for (let j = 0; j < t.length; j++) {
-            const bitmap = t[j];
-            if (slot < bitmap.length) bitmap[slot] &= clearMask;
-        }
+    const aux = tree.aux;
+    if (aux !== undefined) {
+        const s = aux.subscribedViews;
+        if (s !== undefined && slot < s.length) s[slot] &= clearMask;
+        clearBitmapsOf(aux.openViews, slot, clearMask);
     }
+    clearBitmapsOf(tree.tagViews, slot, clearMask);
+}
+
+function clearBitmapsOf(bitmaps: (number[] | undefined)[] | undefined, slot: number, clearMask: number): void {
+    if (bitmaps === undefined) return;
+    for (let j = 0; j < bitmaps.length; j++) {
+        const bitmap = bitmaps[j];
+        if (bitmap !== undefined && slot < bitmap.length) bitmap[slot] &= clearMask;
+    }
+}
+
+function holdsBitIn(bitmaps: (number[] | undefined)[] | undefined, slot: number, bit: number): boolean {
+    if (bitmaps === undefined) return false;
+    for (let j = 0; j < bitmaps.length; j++) {
+        const bitmap = bitmaps[j];
+        if (bitmap !== undefined && slot < bitmap.length && (bitmap[slot] & bit) !== 0) return true;
+    }
+    return false;
 }
 
 /**
@@ -187,7 +202,7 @@ export class StateView {
             seen.add(id);
             const tree = trees.get(id);
             if (tree === undefined) continue;
-            if (this.isVisible(tree) || this.isSubscribed(tree) || this.tagsOnTree(tree) !== 0) ids[kept++] = id;
+            if (this.isVisible(tree) || this.isSubscribed(tree) || holdsBitIn(tree.tagViews, this._slot, this._bit) || holdsBitIn(tree.aux?.openViews, this._slot, this._bit)) ids[kept++] = id;
         }
         if (kept >= TOUCHED_MAX) {
             touched.ids = [];
@@ -401,13 +416,29 @@ export class StateView {
     }
 
     /**
-     * True if this view sees the ref in `tree`'s field `index`. Primitive
-     * fields answer false, so their tagged chunks stay a function of the
-     * view's tags (the cross-view chunk cache relies on it).
+     * True if a nested `add()` without its tag opened `tree`'s `@view(N)`
+     * field `index` for this view (see `addParentOf`), and the view sees the
+     * ref the field holds now. Only ref fields open, so tagged primitive
+     * chunks stay a function of the view's tags (the cross-view chunk cache
+     * relies on it).
      */
-    public isFieldRefVisible(tree: ChangeTree, index: number): boolean {
+    public isFieldOpen(tree: ChangeTree, index: number): boolean {
+        const arr = tree.aux?.openViews?.[index];
+        const slot = this._slot;
+        if (arr === undefined || slot >= arr.length || (arr[slot] & this._bit) === 0) return false;
         const child = viewTreeOf(fieldOf(tree.encDescriptor, tree.ref, tree.values, index));
         return child !== undefined && this.isVisible(child);
+    }
+
+    /** Record that an `add()` opened `tree`'s `@view(N)` field `index` for this view. */
+    private _openField(tree: ChangeTree, index: number): void {
+        const arr = tree.openViewsOf(index);
+        const slot = this._slot;
+        while (arr.length <= slot) arr.push(0);
+        const bit = this._bit;
+        if ((arr[slot] & bit) !== 0) return;
+        arr[slot] |= bit;
+        this._touch(tree);
     }
 
     /** Mask of every custom tag bit this view holds on `tree` (0 when none). */
@@ -469,14 +500,7 @@ export class StateView {
 
     /** Clear ALL tag bits this view holds on `tree` (used when the per-tag isn't known). */
     public removeAllTagsOnTree(tree: ChangeTree): void {
-        const bitmaps = tree.tagViews;
-        if (bitmaps === undefined) return;
-        const slot = this._slot;
-        const clearMask = ~this._bit;
-        for (let j = 0; j < bitmaps.length; j++) {
-            const arr = bitmaps[j];
-            if (slot < arr.length) arr[slot] &= clearMask;
-        }
+        clearBitmapsOf(tree.tagViews, this._slot, ~this._bit);
     }
 
     /**
@@ -811,11 +835,12 @@ export class StateView {
             // the view every OTHER same-tag field on the parent, which then
             // rode out on its next mutation (never at add() time, so it read
             // as "the field only shows up after it changes").
+            // Without the tag, the binding written below opens that one
+            // field: record it so full syncs and later patches pass it too.
             const parentFieldTag = changeTree.encDescriptor.tags[parentIndex];
-            if (parentFieldTag !== undefined &&
-                parentFieldTag !== DEFAULT_VIEW_TAG &&
-                (parentFieldTag & tag) !== 0) {
-                this.addTag(changeTree, tag);
+            if (parentFieldTag !== undefined && parentFieldTag !== DEFAULT_VIEW_TAG) {
+                if (tag !== DEFAULT_VIEW_TAG && (parentFieldTag & tag) !== 0) this.addTag(changeTree, tag);
+                else this._openField(changeTree, parentIndex);
             }
 
             // ArraySchema parents: key by the child's identity — elements are

@@ -4742,6 +4742,31 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client]);
         });
 
+        it("a @view(N) field stays closed to a view that sees its value through another path", () => {
+            class Thing extends Schema { @type("number") id = 0; }
+            class State extends Schema {
+                @view(1) @type(Thing) one: Thing;
+                @view(2) @type({ map: Thing }) b = new MapSchema<Thing>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const opener = createClientWithView(state);
+            const client = createClientWithView(state);
+            client.view.add(state, 2);
+            encodeMultiple(encoder, state, [opener, client]);
+
+            const u = new Thing().assign({ id: 7 });
+            state.b.set("k", u);
+            state.one = u; // attached last: `one` is the path add(u) walks
+            opener.view.add(u); // without tag 1: opens `one` for opener alone
+            encodeMultiple(encoder, state, [opener, client]);
+
+            assert.deepStrictEqual(opener.state.toJSON(), { one: { id: 7 } });
+            assert.deepStrictEqual(client.state.toJSON(), { b: { k: { id: 7 } } });
+            assertEncodeAllMultiple(encoder, state, [opener, client]);
+        });
+
         it("a nested tagged add() reveals the ancestor's other fields of that tag", () => {
             class Secret extends Schema { @type("number") s = 1; }
             class Item extends Schema {

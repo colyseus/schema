@@ -38,14 +38,9 @@ export function setRoot(tree: ChangeTree, root: Root): void {
 function adoptTree(tree: ChangeTree, root: Root): void {
     tree._fullSyncGen = 0;
     tree.changesNode = undefined;
-    tree.visibleViews = undefined;
-    tree.tagBits = undefined;
-    tree.tagViews = undefined;
+    tree.dropViewState();
     const aux = tree.aux;
-    if (aux !== undefined) {
-        aux.unreliableChangesNode = undefined;
-        aux.subscribedViews = undefined;
-    }
+    if (aux !== undefined) aux.unreliableChangesNode = undefined;
     if (tree.isStreamCollection) {
         const stream = tree.ref as unknown as Streamable;
         const st = stream._stream;

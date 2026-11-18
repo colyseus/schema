@@ -119,6 +119,32 @@ describe("Encoder hand-over", () => {
         assert.strictEqual(client.state.items?.get("s"), undefined);
     });
 
+    it("a StateView of the new Encoder does not inherit the @view(N) fields the previous one's add() opened", () => {
+        class Thing extends Schema { @type("number") id = 0; }
+        class TaggedState extends Schema {
+            @view(2) @type({ map: Thing }) b = new MapSchema<Thing>();
+            @view(1) @type(Thing) one: Thing;
+        }
+
+        const state = new TaggedState();
+        const u = new Thing().assign({ id: 7 });
+        state.b.set("k", u);
+        state.one = u; // attached last: `one` is the path add(u) walks
+
+        const previous = new Encoder(state);
+        const previousClient = createClientWithView(state, new StateView(), previous);
+        previousClient.view.add(u); // without tag 1: opens `one`
+        encodeMultiple(previous, state, [previousClient]);
+        assert.strictEqual(previousClient.state.one?.id, 7);
+
+        const encoder = new Encoder(state);
+        const client = createClientWithView(state, new StateView(), encoder);
+        client.view.add(state, 2);
+        encodeMultiple(encoder, state, [client]);
+        assert.strictEqual(client.view.id, previousClient.view.id, "the new Root hands out the same view id");
+        assert.deepStrictEqual(client.state.toJSON(), { b: { k: { id: 7 } } });
+    });
+
     describe("streams", () => {
         const Enemy = schema({ hp: t.number() }, "HandOverEnemy");
         const StreamState = schema({ enemies: t.stream(Enemy) }, "HandOverStreamState");
