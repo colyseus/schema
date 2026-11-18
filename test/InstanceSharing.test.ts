@@ -1692,6 +1692,81 @@ describe("Instance sharing", () => {
             assert.deepStrictEqual(viewer.state.toJSON(), { loot: { k: full }, pub: { k: full } });
             assert.deepStrictEqual(plain.state.toJSON(), { pub: { k: { id: 3, child: { n: 2 } } } });
         });
+        describe("an instance a view starts seeing is bound in each @view() collection holding it", () => {
+            const TAG = 1;
+            class Item extends Schema {
+                @type("number") id = 0;
+                @view() @type("number") secret = 7;
+                @view(TAG) @type("number") tagged = 9;
+            }
+            class MapRoom extends Schema {
+                @view() @type({ map: Item }) loot = new MapSchema<Item>(); // each item needs its own add()
+                @type({ map: Item }) pub = new MapSchema<Item>();
+            }
+            class ArrayRoom extends Schema {
+                @view() @type([Item]) loot = new ArraySchema<Item>();
+                @type({ map: Item }) pub = new MapSchema<Item>();
+            }
+
+            for (const Room of [MapRoom, ArrayRoom]) {
+                const kind = (Room === MapRoom) ? "map" : "array";
+
+                function setup() {
+                    const state = new Room();
+                    const encoder = getEncoder(state);
+                    const client = createClientWithView(state);
+                    client.view.add(state);
+                    encodeMultiple(encoder, state, [client]);
+                    const item = new Item().assign({ id: 1 });
+                    const putInLoot = () => (state instanceof MapRoom) ? state.loot.set("k", item) : state.loot.push(item);
+                    return { state, encoder, client, item, putInLoot };
+                }
+                const lootOf = (client: ClientWithState<MapRoom | ArrayRoom>) => Object.values(client.state.toJSON().loot);
+
+                it(`revealed by a tagged re-add of its owner (${kind})`, () => {
+                    const { state, encoder, client, item, putInLoot } = setup();
+                    state.pub.set("k", item);
+                    putInLoot(); // hidden there: never added
+                    encodeMultiple(encoder, state, [client]);
+
+                    client.view.add(state, TAG); // reaches `item` through `pub`
+                    encodeMultiple(encoder, state, [client]);
+
+                    assert.deepStrictEqual(lootOf(client), [{ id: 1, secret: 7, tagged: 9 }]);
+                    assertEncodeAllMultiple(encoder, state, [client]);
+                });
+
+                for (const sameTick of [false, true]) {
+                    it(`unbound when the view stops seeing it${sameTick ? " in the same tick" : ""} (${kind})`, () => {
+                        const { state, encoder, client, item, putInLoot } = setup();
+                        state.pub.set("k", item);
+                        putInLoot();
+                        encodeMultiple(encoder, state, [client]);
+
+                        client.view.add(state, TAG);
+                        if (!sameTick) encodeMultiple(encoder, state, [client]);
+                        client.view.remove(item);
+                        encodeMultiple(encoder, state, [client]);
+
+                        assert.deepStrictEqual(lootOf(client), []);
+                        assertEncodeAllMultiple(encoder, state, [client]);
+                    });
+                }
+
+                it(`made public and added in the same tick (${kind})`, () => {
+                    const { state, encoder, client, item, putInLoot } = setup();
+                    putInLoot();
+                    encodeMultiple(encoder, state, [client]);
+
+                    state.pub.set("k", item); // `pub` becomes its newest parent: the path add() walks
+                    client.view.add(item);
+                    encodeMultiple(encoder, state, [client]);
+
+                    assert.deepStrictEqual(lootOf(client), [{ id: 1, secret: 7 }]);
+                    assertEncodeAllMultiple(encoder, state, [client]);
+                });
+            }
+        });
     });
 
     describe("StateView: shared instance whose old Schema field was set to null", () => {
