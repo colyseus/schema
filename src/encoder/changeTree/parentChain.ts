@@ -215,6 +215,5 @@ export function isEdgeLive(tree: ChangeTree, parentTree: ChangeTree, index: numb
         }
         return false;
     }
-    const at = parentTree.getValue(index);
-    return at !== undefined && at[$changes] === tree;
+    return parentTree.getValue(index)?.[$changes] === tree; // cleared Schema fields hold `null`
 }

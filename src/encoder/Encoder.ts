@@ -586,7 +586,7 @@ export class Encoder<T extends Schema = any> {
                 // workaround when using view.add() on item that has been deleted from state
                 // (see test "adding to view item that has been removed from state")
                 const value = refTarget[$getByIndex](index);
-                const operation = (value !== undefined && op) || OPERATION.DELETE;
+                const operation = (value != null && op) || OPERATION.DELETE; // `null` is unset, as in a full sync
 
                 // isEncodeAll = false, hasView = true
                 encoder(this, bytes, changeTree, index, operation, it, false, true, metadata);
