@@ -316,6 +316,12 @@ export class ArrayLog<V = any> {
         this.lastSeq = this.rev;
     }
 
+    /** Continue from revision `rev` (a decoded array taken over: its clients already hold `rev`). */
+    resumeAt(rev: number): void {
+        this.rev = rev;
+        this.reset();
+    }
+
     /** Pool recycle: back to a freshly-constructed log. */
     recycle(): void {
         this.reset();

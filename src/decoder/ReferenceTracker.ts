@@ -109,6 +109,7 @@ export class ReferenceTracker {
     public callbacks: RefTable<RefCallbacks> = new CallbacksTable<RefCallbacks>();
     /** @internal Bumped once per dispatch; the `$dispatchedGen` stamp of a Schema table with an `onChange` list makes it fire once per batch. */
     dispatchGen: number = 0;
+    /** Past every refId ever decoded, freed ones included: a takeover (`Encoder.fromDecoder`) numbers from here. */
     protected nextUniqueId: number = 0;
 
     getNextUniqueId() {
@@ -118,6 +119,7 @@ export class ReferenceTracker {
     // for decoding
     addRef(refId: number, ref: IRef, incrementCount: boolean = true) {
         this.refs.set(refId, ref);
+        if (refId >= this.nextUniqueId) this.nextUniqueId = refId + 1;
 
         // The refId lives on the ref's (Untracked)ChangeTree; `ref[$refId]` is
         // a prototype accessor over it, so it stays out of `deepStrictEqual`.

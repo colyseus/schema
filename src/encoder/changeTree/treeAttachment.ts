@@ -4,7 +4,9 @@
  * goes through here, which is why the recursive walk uses a hoisted
  * callback + ctx-pool instead of per-call closures.
  */
-import { $elements, $childType } from "../../types/symbols.js";
+import { $elements, $childType, $rev } from "../../types/symbols.js";
+import type { ReferenceTracker } from "../../decoder/ReferenceTracker.js";
+import type { ArrayLog } from "../ArrayLog.js";
 import { fieldOf } from "../EncodeDescriptor.js";
 import { KIND_ARRAY, KIND_MAP, KIND_SCHEMA } from "../../encoding/spec.js";
 import { Root, type Streamable } from "../Root.js";
@@ -184,24 +186,45 @@ export function forEachChildWithCtx<C>(
 // Hoisted callbacks used by setRoot / setParent to avoid per-call
 // closure allocation in the recursive attach path.
 
+/** Set only while `Encoder.fromDecoder` attaches the decoded state: whose refIds to keep. */
+let adopting: ReferenceTracker | undefined = undefined;
+
+export function setAdopting(tracker: ReferenceTracker | undefined): void { adopting = tracker; }
+
 /**
  * A decoder-built instance carries an `UntrackedChangeTree` stub. Attaching
  * it to an encoder (hand-off of a decoded state) upgrades the stub to a real
  * tree on the spot. The decoder id is not inherited: `Root.add` allocates
- * this encoder's own, and re-stages the never-recorded contents.
+ * this encoder's own, and re-stages the never-recorded contents — except
+ * under a takeover (see {@link adopt}).
  */
 export function ensureTracked(child: ChangeTree): ChangeTree {
     // a tracked tree of another library copy misses `instanceof`: only the stub reads `isTracked === false`
     if (child instanceof ChangeTree || (child as any).isTracked !== false) return child;
     const ref: any = (child as any).ref;
     const real = new ChangeTree(ref);
-    real.needsRestage = true;
+    if (!adopt(real, (child as any).refId)) real.needsRestage = true;
     if (real.encDescriptor.kind === KIND_MAP) {
         // the decoder keeps no `nextIndex` for maps: new keys go after every decoded wire index
         for (const i of ref.indexByKey.values()) { if (i >= ref.nextIndex) ref.nextIndex = i + 1; }
     }
     setTree(ref, real);
     return real;
+}
+
+/**
+ * Under `Encoder.fromDecoder`, give `tree` its decoded `refId` as-is: its
+ * clients already hold it, so nothing is re-staged and an array resumes at
+ * their revision. The root may be a tracked tree (the instance given to
+ * `new Decoder(state)`): `discard` drops what its constructor recorded.
+ */
+export function adopt(tree: ChangeTree, refId: number | undefined): boolean {
+    if (adopting === undefined || refId === undefined || adopting.refs.get(refId) !== tree.ref) return false;
+    tree.refId = refId;
+    tree.isNew = false;
+    tree.discard();
+    if (tree.encDescriptor.kind === KIND_ARRAY) (tree.rec as ArrayLog).resumeAt((tree.ref as any)[$rev] ?? 0);
+    return true;
 }
 
 /** A shared instance reached again by an attach walk: an upgraded stub recorded no edge at decode time. */

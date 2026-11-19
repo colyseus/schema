@@ -11,7 +11,8 @@ import { IS_FILTERED, IS_NEW, type ChangeTree, type ChangeTreeList, type ChangeT
 import type { SchemaChangeRecorder } from "./ChangeRecorder.js";
 import { type KeyedRecorder, keyedValueAt } from "./KeyedRecorder.js";
 import { forEachLiveWithCtx } from "./changeTree/liveIteration.js";
-import { ensureTracked, forEachChildWithCtx } from "./changeTree/treeAttachment.js";
+import { adopt, ensureTracked, forEachChildWithCtx, setAdopting } from "./changeTree/treeAttachment.js";
+import type { Decoder } from "../decoder/Decoder.js";
 import { drainFilterRefresh, fieldPassesViews, grantableViews, orGrantableViews } from "./changeTree/inheritedFlags.js";
 import { recordBroadcastSent, sentByBroadcast, streamHasBroadcastBacklog, streamHasViewBacklog } from "./streaming.js";
 import {
@@ -221,18 +222,44 @@ export class Encoder<T extends Schema = any> {
     constructor(state: T, root?: Root, bufferSize: number = Math.min(Encoder.BUFFER_SIZE, INITIAL_BUFFER_SIZE)) {
         this.sharedBuffer = new Uint8Array(bufferSize);
         // Use .cache() here to avoid re-creating a new context for every new room instance.
-        this.context = TypeContext.cache(state.constructor as typeof Schema);
+        this.context = root?.types ?? TypeContext.cache(state.constructor as typeof Schema);
         this.root = root ?? new Root(this.context);
         this.setState(state);
+    }
+
+    /**
+     * Take over a decoded state as its new authority (host migration in a
+     * relayed setup): the state keeps the refIds, type ids and array
+     * revisions it was decoded with, so clients that decoded the same stream
+     * keep their decoders and apply this encoder's patches directly.
+     *
+     * Nothing is re-sent: the first `encode()` carries only changes made
+     * after the takeover. New refs are numbered past every refId the decoder
+     * has seen. A client that may have missed part of the old stream should
+     * apply this encoder's `encodeAll()` through `Decoder.decodeResync`.
+     *
+     * The decoder can't decode into the state afterwards. Requires every
+     * client to have decoded the same, unfiltered stream: refIds of
+     * instances hidden from this decoder by `@view()` may be handed out again.
+     */
+    static fromDecoder<T extends Schema>(decoder: Decoder<T>, bufferSize?: number): Encoder<T> {
+        setAdopting(decoder.root);
+        try {
+            return new Encoder(decoder.state, new Root(decoder.context, decoder.root.getNextUniqueId()), bufferSize);
+        } finally {
+            setAdopting(undefined);
+        }
     }
 
     protected setState(state: T) {
         this.state = state;
         const tree: any = ensureTracked(refTreeOf(state));
         if (tree.root === undefined && tree.refId !== undefined) {
-            // an id this Root did not hand out (a decoded state's root): allocate our own
-            tree.refId = undefined;
-            tree.needsRestage = true;
+            // a decoded state's root: keep its id on a takeover, else allocate our own
+            if (!adopt(tree, tree.refId)) {
+                tree.refId = undefined;
+                tree.needsRestage = true;
+            }
             if (tree.decodeInfo !== undefined) tree.decodeInfo = undefined; // a later decode into it hits the relay guard
         }
         tree.setRoot(this.root);

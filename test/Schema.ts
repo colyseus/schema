@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator, StateView, view } from "../src";
+import { Schema, type, ArraySchema, MapSchema, Reflection, Iterator, StateView, view, $changes } from "../src";
 import { Decoder } from "../src/decoder/Decoder";
 import { Encoder } from "../src/encoder/Encoder";
 import { CallbackProxy, getDecoderStateCallbacks, SchemaCallbackProxy } from "../src/decoder/strategy/getDecoderStateCallbacks";
@@ -80,6 +80,27 @@ export function assertRefParity(encoderRoot: { refCount: any, changeTrees: any }
             `decoder holds orphan refId ${refId} (${decoderRoot.refs.get(refId)?.constructor.name}) — encoder refCount=${encoderRoot.refCount.get(refId) ?? "absent"}${more()}`,
         );
     }
+}
+
+/** One tick: encode, discard, and apply the patch on every decoder. */
+export function tick(encoder: Encoder, ...decoders: Decoder[]): void {
+    const patch = encoder.encode().slice();
+    encoder.discardChanges();
+    for (const decoder of decoders) decoder.decode(patch);
+}
+
+/** Every reachable tree has an id of this Root, registered to itself (a collision overwrites the table entry). */
+export function assertOwnIds(encoder: Encoder) {
+    const seen = new Set<any>();
+    const walk = (tree: any) => {
+        if (seen.has(tree)) { return; }
+        seen.add(tree);
+        assert.notStrictEqual(tree.refId, undefined);
+        assert.strictEqual(encoder.root.changeTrees.get(tree.refId), tree, `refId ${tree.refId} collides`);
+        tree.forEachChild((child: any) => walk(child));
+    };
+    walk((encoder.state as any)[$changes]);
+    assert.strictEqual(new Set([...seen].map((t) => t.refId)).size, seen.size);
 }
 
 /**

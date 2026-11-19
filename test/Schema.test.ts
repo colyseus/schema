@@ -7,7 +7,7 @@
 // import "core-js";
 
 import * as assert from "assert";
-import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder } from "./Schema";
+import { State, Player, DeepState, DeepMap, DeepChild, Position, DeepEntity, assertDeepStrictEqualEncodeAll, createInstanceFromReflection, getEncoder, tick, assertOwnIds } from "./Schema";
 import { Schema, ArraySchema, MapSchema, type, view, Metadata, $changes, Encoder, Decoder, SetSchema, StateView, schema, t, ToJSON, $refId } from "../src";
 import { getNormalizedType } from "../src/Metadata";
 
@@ -1375,25 +1375,6 @@ describe("Type: Schema", () => {
             const decoder = new Decoder(state);
             decoder.decode(bytes);
             return decoder;
-        }
-
-        function tick(encoder: Encoder, decoder: Decoder) {
-            decoder.decode(encoder.encode());
-            encoder.discardChanges();
-        }
-
-        /** Every reachable tree has an id of this Root, registered to itself. */
-        function assertOwnIds(encoder: Encoder) {
-            const seen = new Set<any>();
-            const walk = (tree: any) => {
-                if (seen.has(tree)) { return; }
-                seen.add(tree);
-                assert.notStrictEqual(tree.refId, undefined);
-                assert.strictEqual(encoder.root.changeTrees.get(tree.refId), tree, `refId ${tree.refId} collides`);
-                tree.forEachChild((child: any) => walk(child));
-            };
-            walk((encoder.state as any)[$changes]);
-            assert.strictEqual(new Set([...seen].map((t) => t.refId)).size, seen.size);
         }
 
         it("encodeAll after hand-off, with new Schema children", () => {
