@@ -1749,6 +1749,59 @@ describe("StateView", () => {
 
         });
 
+        it("adding to view a Schema field set to null in the same tick", () => {
+            class Card extends Schema {
+                @type("string") name: string;
+            }
+            class Slot extends Schema {
+                @view() @type(Card) card: Card;
+            }
+            class State extends Schema {
+                @type(Slot) slot = new Slot();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            state.slot.card = new Card().assign({ name: "card" });
+            client.view.add(state.slot);
+            state.slot.card = null;
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.slot.card, undefined);
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("view.add() with a tag leaves tagged fields holding null unset, as a full sync does", () => {
+            const TAG = 1;
+            class Card extends Schema {
+                @type("string") name: string;
+            }
+            class Item extends Schema {
+                @type("number") pub = 1;
+                @view(TAG) @type("string") s: string = null;
+                @view(TAG) @type("number") n: number = null;
+                @view(TAG) @type("boolean") b: boolean = null;
+                @view(TAG) @type(Card) card: Card = null;
+            }
+            class State extends Schema {
+                @type(Item) item = new Item();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(state.item, TAG);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.item.toJSON(), { pub: 1 });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
         it("should support add + remove + add of complex items", () => {
             class Component extends Schema {
                 @type("string") name: string;
