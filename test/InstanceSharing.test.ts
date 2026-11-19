@@ -1747,6 +1747,187 @@ describe("Instance sharing", () => {
             assert.deepStrictEqual(v2.state.toJSON(), { b: { k: json } });
             assertEncodeAllMultiple(encoder, state, [v1, v2]);
         });
+
+        describe("an instance in a @view() collection and a public one", () => {
+            class Item extends Schema {
+                @type("number") id = 0;
+                @view() @type("number") secret = 7;
+            }
+            class MapRoom extends Schema {
+                @view() @type({ map: Item }) loot = new MapSchema<Item>(); // each item needs its own add()
+                @type({ map: Item }) pub = new MapSchema<Item>();
+            }
+            class ArrayRoom extends Schema {
+                @view() @type([Item]) loot = new ArraySchema<Item>();
+                @type({ map: Item }) pub = new MapSchema<Item>();
+            }
+
+            for (const Room of [MapRoom, ArrayRoom]) {
+                const kind = (Room === MapRoom) ? "map" : "array";
+
+                // steps: "loot" / "pub" put the item there, "add" / "remove" go to the view, "tick" encodes
+                function run(steps: string) {
+                    const state = new Room();
+                    const encoder = getEncoder(state);
+                    const client = createClientWithView(state);
+                    client.view.add(state);
+                    encodeMultiple(encoder, state, [client]);
+
+                    const item = new Item().assign({ id: 1 });
+                    for (const step of steps.split(" ")) {
+                        if (step === "loot") (state instanceof MapRoom) ? state.loot.set("k", item) : (state as ArrayRoom).loot.push(item);
+                        else if (step === "pub") state.pub.set("k", item);
+                        else if (step === "add") client.view.add(item);
+                        else if (step === "remove") client.view.remove(item);
+                        else encodeMultiple(encoder, state, [client]);
+                    }
+                    return { state, encoder, client };
+                }
+                function lootAfter(steps: string) {
+                    const { state, encoder, client } = run(steps);
+                    assertEncodeAllMultiple(encoder, state, [client]);
+                    assertNoDecoderWarnings();
+                    return Object.values(client.state.toJSON().loot);
+                }
+
+                it(`shows up there once added, though add() walks the public one (${kind})`, () => {
+                    assert.deepStrictEqual(lootAfter("loot tick pub add tick"), [{ id: 1, secret: 7 }]);
+                });
+
+                it(`leaves it on view.remove() (${kind})`, () => {
+                    assert.deepStrictEqual(lootAfter("pub loot tick add tick remove tick"), []);
+                    assert.deepStrictEqual(lootAfter("loot tick add tick pub tick remove tick"), []);
+                });
+
+                it(`sends it no entry when added and removed in the same tick (${kind})`, () => {
+                    const { state, client } = run("loot tick pub add remove");
+                    assert.strictEqual(client.view.changes.get(state.loot[$refId])?.size ?? 0, 0);
+                });
+            }
+
+            describe("revealed by a nested add()", () => {
+                class Detail extends Schema { @type("number") n = 5; }
+                class Inner extends Schema { @type("number") v = 3; }
+                class Holder extends Schema {
+                    @type(Inner) inner: Inner;
+                    @view() @type(Detail) detail = new Detail();
+                }
+                class Room extends Schema {
+                    @view() @type({ map: Holder }) holders = new MapSchema<Holder>();
+                    @view() @type({ map: Inner }) loot = new MapSchema<Inner>();
+                    @type({ map: Holder }) pub = new MapSchema<Holder>();
+                }
+
+                function setup() {
+                    const state = new Room();
+                    const encoder = getEncoder(state);
+                    const client = createClientWithView(state);
+                    client.view.add(state);
+                    encodeMultiple(encoder, state, [client]);
+                    return { state, encoder, client, holder: new Holder() };
+                }
+
+                it("the ancestor it reveals shows up in its @view() collection", () => {
+                    const { state, encoder, client, holder } = setup();
+                    state.holders.set("k", holder);
+                    encodeMultiple(encoder, state, [client]);
+                    state.pub.set("k", holder); // the path add() walks
+                    encodeMultiple(encoder, state, [client]);
+
+                    client.view.add(holder.detail);
+                    encodeMultiple(encoder, state, [client]);
+
+                    assert.deepStrictEqual(Object.keys(client.state.toJSON().holders), ["k"]);
+                    assertEncodeAllMultiple(encoder, state, [client]);
+                    assertNoDecoderWarnings();
+                });
+
+                it("an instance revealed with its ancestor shows up in its @view() collection", () => {
+                    const { state, encoder, client, holder } = setup();
+                    const inner = new Inner();
+                    state.loot.set("k", inner);
+                    encodeMultiple(encoder, state, [client]);
+                    holder.inner = inner;
+                    state.holders.set("k", holder);
+                    encodeMultiple(encoder, state, [client]);
+
+                    client.view.add(holder.detail); // reveals `holder`, which hands `inner` visibility
+                    encodeMultiple(encoder, state, [client]);
+
+                    assert.deepStrictEqual(client.state.toJSON().loot, { k: { v: 3 } });
+                    assertEncodeAllMultiple(encoder, state, [client]);
+                    assertNoDecoderWarnings();
+                });
+            });
+
+            it("stays there on view.remove() while a parent it shares visibility with shows it", () => {
+                class Item extends Schema {
+                    @type("number") id = 1;
+                    @view() @type("number") secret = 7;
+                }
+                class Holder extends Schema { @type(Item) item: Item; }
+                class Room extends Schema {
+                    @view() @type({ map: Item }) loot = new MapSchema<Item>();
+                    @view() @type(Holder) holder = new Holder();
+                }
+                const state = new Room();
+                const encoder = getEncoder(state);
+                const client = createClientWithView(state);
+                client.view.add(state);
+                encodeMultiple(encoder, state, [client]);
+
+                const item = new Item();
+                state.loot.set("k", item);
+                encodeMultiple(encoder, state, [client]);
+                state.holder.item = item; // `holder` hands `item` its visibility
+                client.view.add(item);
+                encodeMultiple(encoder, state, [client]);
+
+                client.view.remove(item);
+                encodeMultiple(encoder, state, [client]);
+                // a full sync keeps `loot.k`; its `secret` going too is a separate, known gap
+                assert.deepStrictEqual(Object.keys(client.state.toJSON().loot), ["k"]);
+            });
+
+            describe("held below an object the view adds and removes", () => {
+                class Detail extends Schema { @type("number") n = 5; }
+                class Holder extends Schema { @view() @type(Detail) detail: Detail; }
+                class Room extends Schema {
+                    @view() @type({ map: Holder }) holders = new MapSchema<Holder>();
+                    @type(Holder) holder = new Holder();
+                    @view() @type({ map: Detail }) loot = new MapSchema<Detail>();
+                }
+
+                // `where`: the holder sits in a @view() map, or in a Schema field
+                for (const where of ["holders", "holder"] as const) {
+                    it(`leaves its @view() collection with the holder (${where})`, () => {
+                        const state = new Room();
+                        const encoder = getEncoder(state);
+                        const client = createClientWithView(state);
+                        client.view.add(state);
+                        encodeMultiple(encoder, state, [client]);
+
+                        const detail = new Detail();
+                        state.loot.set("k", detail);
+                        encodeMultiple(encoder, state, [client]);
+                        const holder = (where === "holders") ? new Holder() : state.holder;
+                        holder.detail = detail;
+                        if (where === "holders") state.holders.set("h", holder);
+                        encodeMultiple(encoder, state, [client]);
+
+                        client.view.add(holder); // reaches `detail`: binds loot.k
+                        encodeMultiple(encoder, state, [client]);
+                        assert.deepStrictEqual(client.state.toJSON().loot, { k: { n: 5 } });
+
+                        client.view.remove(holder);
+                        encodeMultiple(encoder, state, [client]);
+                        assert.deepStrictEqual(client.state.toJSON().loot, {});
+                        assertEncodeAllMultiple(encoder, state, [client]);
+                        assertNoDecoderWarnings();
+                    });
+                }
+            });
+        });
     });
 
 });

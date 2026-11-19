@@ -531,7 +531,8 @@ export class StateView {
         this._add(obj, tag, /* checkIncludeParent */ true, /* _skipStreamRouting */ true);
     }
 
-    private _add(obj: Ref, tag: number, checkIncludeParent: boolean, _skipStreamRouting: boolean) {
+    /** `via`: the parent whose recursion or snapshot reaches `obj`, and binds it there. */
+    private _add(obj: Ref, tag: number, checkIncludeParent: boolean, _skipStreamRouting: boolean, via?: ChangeTree) {
         const changeTree: ChangeTree = viewTreeOf(obj);
         if (!changeTree) {
             console.warn(
@@ -620,6 +621,7 @@ export class StateView {
         if (checkIncludeParent && parentChangeTree) {
             this.addParentOf(changeTree, tag);
         }
+        if (!wasVisible && !changeTree.isNew) this._syncGatedEdges(changeTree, true, checkIncludeParent ? changeTree.parentTree : via); // after addParentOf: the path it binds comes first
 
         // Streamable-collection (the stream itself, not an element): mark
         // visible only. No auto-seed of elements — users must explicitly
@@ -676,7 +678,7 @@ export class StateView {
                 return;
             }
 
-            if (this.add(change.ref, tag, false)) {
+            if (this._add(change.ref, tag, false, false, changeTree)) {
                 isChildAdded = true;
             }
         });
@@ -777,7 +779,7 @@ export class StateView {
                 this.markVisible(child);
                 this._markSubtreeVisible(child, tag);
             } else {
-                this._add(child.ref, tag, false, false);
+                this._add(child.ref, tag, false, false, tree);
             }
         });
     }
@@ -812,7 +814,7 @@ export class StateView {
                 this.grantVisible(changeTree); // its recorder still holds its whole state
             } else {
                 this.markVisible(changeTree);
-                this._introduce(changeTree);
+                this._introduce(changeTree, changeTree.parentTree);
             }
         }
 
@@ -863,7 +865,8 @@ export class StateView {
      * `tree` carries this view's bit already (plain `markVisible`: a child's
      * bit still means "the client holds it" while its parent introduces it).
      */
-    private _introduce(tree: ChangeTree): void {
+    private _introduce(tree: ChangeTree, bound: ChangeTree | undefined): void {
+        this._syncGatedEdges(tree, true, bound); // its @view() collections' entries before its own: Map order is topological
         const isSchema = tree._isSchema;
         const filtered = tree.isFiltered;
         if (!isSchema) {
@@ -876,13 +879,49 @@ export class StateView {
         const inherit = isSchema ? (tree.encDescriptor.viewInheritFields ??= viewInheritFieldsOf(tree)) : undefined;
         tree.forEachChild((child, index) => {
             if (!child.isFiltered || this.isVisible(child)) return; // the client holds it
-            // the grant rules of `isChangeTreeVisible` (primary edge unguarded) and `grantVisible`
+            // the grant rules of `_parentGrantsVisibility` (primary edge unguarded) and `grantVisible`
             if (child.isVisibilitySharedWithParent ? (child.parentTree !== tree && !filtered) : inherit?.includes(index) !== true) return;
             this.markVisible(child);
-            if (!child.isNew) this._introduce(child);
+            if (!child.isNew) this._introduce(child, tree); // a new child's edges are pending ADDs
         });
 
         if (!tree.isArray || (tree.ref as any).length > 0) changes.set(SNAPSHOT, OPERATION.ADD);
+    }
+
+    /**
+     * Keep `tree`'s entries in the per-item-gated collections holding it
+     * (default-tag `@view()` maps and arrays) in step with its visibility, as
+     * a full sync would: bind when this view starts seeing it, unbind when it
+     * stops. A patch otherwise carries only entries attached this tick and the
+     * path `addParentOf` walks. Collections whose items share visibility send
+     * theirs with the collection.
+     *
+     * `bound` is a parent whose edge the caller has already written (an
+     * `addParentOf` entry, the parent's snapshot, `remove()`'s DELETE).
+     * Skipping it saves `isEdgeLive`'s scan of an array whose slots moved.
+     */
+    private _syncGatedEdges(tree: ChangeTree, bind: boolean, bound?: ChangeTree): void {
+        const extra = tree.aux?.extraParents;
+        if (!tree.isFiltered && extra === undefined) return; // one public edge: no @view() collection holds it
+        const parent = tree.parentTree;
+        if (parent !== undefined && parent !== bound) this._syncGatedEdge(tree, parent, tree.parentIndex!, bind);
+        for (let e = extra; e !== undefined; e = e.next) if (e.tree !== bound) this._syncGatedEdge(tree, e.tree, e.index, bind);
+    }
+
+    private _syncGatedEdge(tree: ChangeTree, parent: ChangeTree, index: number, bind: boolean): void {
+        if (parent._isSchema || !parent.isFiltered) return;
+        if (parent.isStreamCollection || itemsShareVisibility(parent)) return; // streams queue their own elements
+        if (!this.isVisible(parent) && !parent.isVisibilitySharedWithParent) return; // hidden for good: skip the scan below
+        if (parent.root !== tree.root || !isEdgeLive(tree, parent, index)) return; // detached edges linger
+        if (!this.isChangeTreeVisible(parent)) return; // the client doesn't hold the collection
+
+        const key = parent.isArray ? tree : index; // arrays: identity keys, see `changes`
+        const changes = this.entriesOf(parent.refId);
+        if (!bind && changes.get(key) === OPERATION.ADD) {
+            changes.delete(key); // bound this tick: it never reached the client
+            return;
+        }
+        changes.set(key, bind ? OPERATION.ADD : OPERATION.DELETE);
     }
 
     /**
@@ -1007,12 +1046,14 @@ export class StateView {
         const changes = this.entriesOf(refId);
 
         if (tag === DEFAULT_VIEW_TAG) {
+            const wasVisible = this.isVisible(changeTree);
             this.unmarkVisible(changeTree); // only here: a tagged remove keeps the object visible
             if (this.iterable && !_isClear) spliceOne(this.items, this.items.indexOf(obj)); // clear() empties `items` wholesale
 
             // parent is collection (Map/Array)
             const parent = changeTree.parent;
-            if (parent && !Metadata.isValidInstance(parent) && changeTree.isFiltered) {
+            const viaCollection = parent && !Metadata.isValidInstance(parent) && changeTree.isFiltered;
+            if (viaCollection) {
                 // ArraySchema parents use identity keys (see `changes` field
                 // docs); Map parents keep the (stable) journal index.
                 const key = parentTree!.isArray
@@ -1047,6 +1088,8 @@ export class StateView {
                 metadata?.[$viewFieldIndexes]?.forEach((index) =>
                     this._removeViewField(changeTree, changes, index));
             }
+
+            if (wasVisible) this._unbindGated(changeTree, viaCollection ? parentTree : undefined); // after the branch above: it reads the pending ADD this drops
 
         } else {
             // delete only tagged properties. `$fieldIndexesByViewTag` is
@@ -1276,7 +1319,7 @@ export class StateView {
     }
 
     isChangeTreeVisible(changeTree: ChangeTree) {
-        let isVisible = this.isVisible(changeTree);
+        if (this.isVisible(changeTree)) return true;
 
         // The parent-visibility fallback handles child collections without
         // their own @view tag (see StateView.test.ts "should not be required
@@ -1285,36 +1328,45 @@ export class StateView {
         // inheritedFlags.ts — short-circuits for the common case, and
         // the view's bit memoizes the grant, so the branch fires at most once
         // per (tree, view) pair.
-        // grant rules mirrored by `orGrantableViews` (inheritedFlags.ts), `inheritedViews` (Encoder.ts) and `_introduce`: a grant added here must be added there
-        if (!isVisible && changeTree.isVisibilitySharedWithParent){
-            // Primary check is intentionally unguarded — pre-existing
-            // semantics; the extras walk below is stricter on purpose.
-            if (this.isVisible(changeTree.parentTree)) {
-                isVisible = true;
-            } else {
-                // Shared instance: the sharing parent may sit anywhere in the
-                // chain — addParent promotes the LAST container to primary.
-                // Only filtered parents can grant (public ones never share
-                // visibility downward).
-                for (let e = changeTree.aux?.extraParents; e !== undefined; e = e.next) {
-                    const parentTree = e.tree;
-                    if (parentTree.isFiltered && this.isVisible(parentTree)) {
-                        isVisible = true;
-                        break;
-                    }
-                }
-            }
-            if (isVisible) this.grantVisible(changeTree);
-        }
+        if (!changeTree.isVisibilitySharedWithParent || !this._parentGrantsVisibility(changeTree)) return false;
+        this.grantVisible(changeTree);
+        return true;
+    }
 
-        return isVisible;
+    /**
+     * Does a parent that `tree` shares visibility with make it visible to
+     * this view? `isChangeTreeVisible`'s fallback, without memoizing the grant.
+     *
+     * Grant rules mirrored by `orGrantableViews` (inheritedFlags.ts),
+     * `inheritedViews` (Encoder.ts) and `_introduce`: a grant added here must
+     * be added there.
+     */
+    private _parentGrantsVisibility(tree: ChangeTree): boolean {
+        if (this.isVisible(tree.parentTree)) return true; // the primary parent always grants
+        // a shared instance's sharing parent can be any container: addParent promotes the last one to primary
+        for (let e = tree.aux?.extraParents; e !== undefined; e = e.next) {
+            if (e.tree.isFiltered && this.isVisible(e.tree)) return true; // public parents never share visibility downward
+        }
+        return false;
     }
 
     protected _recursiveDeleteVisibleChangeTree(changeTree: ChangeTree) {
         changeTree.forEachChild((childChangeTree) => {
-            this.unmarkVisible(childChangeTree);
+            this._hide(childChangeTree);
             this._recursiveDeleteVisibleChangeTree(childChangeTree);
         });
+    }
+
+    /** Hide a descendant that `remove()` takes out with its owner. */
+    private _hide(tree: ChangeTree): void {
+        if (!this.isVisible(tree)) return;
+        this.unmarkVisible(tree);
+        this._unbindGated(tree);
+    }
+
+    /** Unbind `tree` from the `@view()` collections holding it, unless a sharing parent still shows it, as a full sync would. */
+    private _unbindGated(tree: ChangeTree, bound?: ChangeTree): void {
+        if (!(tree.isVisibilitySharedWithParent && this._parentGrantsVisibility(tree))) this._syncGatedEdges(tree, false, bound);
     }
 
     /**
@@ -1341,7 +1393,7 @@ export class StateView {
         const value = fieldOf(changeTree.encDescriptor, changeTree.ref, changeTree.values, index);
         const valueTree: ChangeTree = viewTreeOf(value);
         if (valueTree) {
-            this.unmarkVisible(valueTree);
+            this._hide(valueTree);
             this._recursiveDeleteVisibleChangeTree(valueTree);
             if (wasPendingAdd) {
                 this._dropPendingEntries(valueTree);

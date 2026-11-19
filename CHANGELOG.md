@@ -251,6 +251,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A collection of primitives keeps syncing after its owner loses its last public parent but stays in a `@view()` collection.
 - `view.add()` on an instance below a `@view(N)` field the view holds no tag for now opens that field in full syncs too, as patches already did. A client syncing afterwards used to miss it and log `"refId" not found`. The owner's other `@view(N)` fields stay hidden.
 - An instance added to a `@view()` / `@view(N)` collection and then to another collection in the same patch now arrives whole. It reached clients as an empty instance, with `"refId" not found`, whenever the second collection was public or seen through another tag.
+- An instance held in a `@view()` collection now shows up there, or disappears from it, as soon as a view starts or stops seeing it through another path, not only in full syncs.
 
 ## [5.0.49]
 
