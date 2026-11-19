@@ -1171,7 +1171,8 @@ function walkView(f: Frame, tree: ChangeTree): void {
     const stamp = tree._fullSyncGen;
     if (stamp === f.genA) return;
     const visible = f.view!.isChangeTreeVisible(tree);
-    if (stamp !== f.genB && visible) {
+    // a public tree without @view fields has nothing for this pass: don't walk its fields only to reject each
+    if (stamp !== f.genB && visible && tree.hasFilteredFields) {
         enterFrame(f, tree);
         emitLiveChunk(f, forEachLiveWithCtx);
         closeChunk(f);

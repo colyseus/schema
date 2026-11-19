@@ -236,6 +236,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The first patch after a client's full state no longer repeats everything its `StateView` already received in that full state, which roughly halves the bytes a join costs.
 - A client joining with a `StateView` gets its full state about 6× faster in a large filtered state (300 of 20,000 entities in view: 19 ms to 3 ms per join and leave), and disposing a view costs what the view held instead of scanning the whole state.
 - Patches are 21–23 % smaller when entities hold a nested Schema that changes along with them (`entity.position.x`): same-shape runs now form across the alternating entity / child chunks instead of only over adjacent ones (5,000 entities: 142 KB to 112 KB per tick). No wire-format change.
+- Joining with a `StateView` is 20 % faster to encode when most of the state has no `@view()` fields.
 
 ### Fixed
 
