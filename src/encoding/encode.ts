@@ -45,6 +45,10 @@ const _float32 = new Float32Array(_convoBuffer);
 const _float64 = new Float64Array(_convoBuffer);
 const _int64 = new BigInt64Array(_convoBuffer);
 
+function isLowSurrogate(c: number) {
+    return c >= 0xdc00 && c < 0xe000;
+}
+
 const hasBufferByteLength = (typeof Buffer !== 'undefined' && Buffer.byteLength);
 
 const utf8Length: (str: string, _?: any) => number = (hasBufferByteLength)
@@ -62,9 +66,13 @@ const utf8Length: (str: string, _?: any) => number = (hasBufferByteLength)
             else if (c < 0xd800 || c >= 0xe000) {
                 length += 3;
             }
-            else {
+            else if (c < 0xdc00 && isLowSurrogate(str.charCodeAt(i + 1))) {
                 i++;
                 length += 4;
+            }
+            else {
+                // lone surrogate: written as U+FFFD, like Buffer.byteLength
+                length += 3;
             }
         }
         return length;
@@ -88,7 +96,7 @@ function utf8Write(view: BufferLike, str: string, it: Iterator) {
       view[it.offset+2] = 0x80 | (c & 0x3f);
       it.offset += 3;
     }
-    else {
+    else if (c < 0xdc00 && isLowSurrogate(str.charCodeAt(i + 1))) {
       i++;
       c = 0x10000 + (((c & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
       view[it.offset] = 0xf0 | (c >> 18);
@@ -96,6 +104,13 @@ function utf8Write(view: BufferLike, str: string, it: Iterator) {
       view[it.offset+2] = 0x80 | (c >> 6 & 0x3f);
       view[it.offset+3] = 0x80 | (c & 0x3f);
       it.offset += 4;
+    }
+    else {
+      // lone surrogate: write U+FFFD, like Buffer.byteLength and TextEncoder
+      view[it.offset] = 0xef;
+      view[it.offset+1] = 0xbf;
+      view[it.offset+2] = 0xbd;
+      it.offset += 3;
     }
   }
 }
