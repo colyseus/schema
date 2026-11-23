@@ -1013,6 +1013,89 @@ describe("StateView", () => {
                 assertEncodeAllMultiple(encoder, state, [client]);
             });
         });
+        it("tagged remove() hides only that tag's fields", () => {
+            const TAG = 1;
+            class Item extends Schema { @type("number") id = 0; }
+            class State extends Schema {
+                @view(TAG) @type(Item) tagged = new Item();
+                @view() @type({ map: Item }) items = new MapSchema<Item>();
+                @view() @type("number") secret = 7;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            client.view.add(state);
+            client.view.add(state, TAG);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.remove(state, TAG);
+            encodeMultiple(encoder, state, [client]);
+            state.secret = 8;
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { items: {}, secret: 8 });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("tagged add() on a visible object reveals that tag's fields, not items it never added", () => {
+            const TAG = 1;
+            class Item extends Schema {
+                @type("number") id = 0;
+                @view(TAG) @type("number") secret = 5;
+            }
+            class Inventory extends Schema { @type([Item]) items = new ArraySchema<Item>(); }
+            class State extends Schema {
+                @view(TAG) @type(Inventory) inv = new Inventory();
+                @view() @type({ map: Item }) loot = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            client.view.add(state);
+            encodeMultiple(encoder, state, [client]);
+
+            const hidden = new Item().assign({ id: 9 });
+            const shown = new Item().assign({ id: 2 });
+            state.loot.set("hidden", hidden);
+            state.loot.set("shown", shown);
+            state.inv.items.push(new Item().assign({ id: 1 }));
+            client.view.add(shown);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(state, TAG);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), {
+                inv: { items: [{ id: 1, secret: 5 }] },
+                loot: { shown: { id: 2, secret: 5 } },
+            });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("tagged add() on a visible object still reaches public objects attached since", () => {
+            const TAG = 1;
+            class Player extends Schema {
+                @type("string") name: string;
+                @view(TAG) @type("number") secret = 5;
+            }
+            class State extends Schema { @type({ map: Player }) players = new MapSchema<Player>(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            state.players.set("a", new Player().assign({ name: "a" }));
+            client.view.add(state, TAG);
+            encodeMultiple(encoder, state, [client]);
+
+            state.players.set("b", new Player().assign({ name: "b" }));
+            client.view.add(state, TAG);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { players: { a: { name: "a", secret: 5 }, b: { name: "b", secret: 5 } } });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
     });
 
     describe("default-tag add() must not leak custom-tagged fields", () => {
@@ -1135,6 +1218,12 @@ describe("StateView", () => {
 
             assert.strictEqual(client.state.players.get("one").name, "Alice");
             assert.strictEqual(client.state.players.get("one").secret, undefined);
+
+            // the default remove() dropped the tag too
+            player.secret = 100;
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.players.get("one").secret, undefined);
+            assertEncodeAllMultiple(encoder, state, [client]);
         });
 
         it("double-add of the same instance: state intact, no tagged leak", () => {
@@ -1682,6 +1771,59 @@ describe("StateView", () => {
             encodeMultiple(encoder, state, [client1]);
             assert.strictEqual(client1.state.items.size, 0);
 
+        });
+
+        it("adding to view a Schema field set to null in the same tick", () => {
+            class Card extends Schema {
+                @type("string") name: string;
+            }
+            class Slot extends Schema {
+                @view() @type(Card) card: Card;
+            }
+            class State extends Schema {
+                @type(Slot) slot = new Slot();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            state.slot.card = new Card().assign({ name: "card" });
+            client.view.add(state.slot);
+            state.slot.card = null;
+
+            encodeMultiple(encoder, state, [client]);
+            assert.strictEqual(client.state.slot.card, undefined);
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("view.add() with a tag leaves tagged fields holding null unset, as a full sync does", () => {
+            const TAG = 1;
+            class Card extends Schema {
+                @type("string") name: string;
+            }
+            class Item extends Schema {
+                @type("number") pub = 1;
+                @view(TAG) @type("string") s: string = null;
+                @view(TAG) @type("number") n: number = null;
+                @view(TAG) @type("boolean") b: boolean = null;
+                @view(TAG) @type(Card) card: Card = null;
+            }
+            class State extends Schema {
+                @type(Item) item = new Item();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(state.item, TAG);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.item.toJSON(), { pub: 1 });
+            assertEncodeAllMultiple(encoder, state, [client]);
         });
 
         it("should support add + remove + add of complex items", () => {
@@ -4234,45 +4376,6 @@ describe("StateView", () => {
             assertEncodeAllMultiple(encoder, state, [client]);
         });
 
-        it("a default-tag remove() revokes the custom tags it was granted", () => {
-            const TAG_SECRET = 1;
-
-            class Player extends Schema {
-                @type("string") name: string = "";
-                @view(TAG_SECRET) @type("string") secret: string = "";
-            }
-
-            class State extends Schema {
-                @type({ map: Player }) players = new MapSchema<Player>();
-            }
-
-            const state = new State();
-            const encoder = getEncoder(state);
-
-            const player = new Player().assign({ name: "alice", secret: "s3cr3t" });
-            state.players.set("p", player);
-
-            const client = createClientWithView(state);
-            encodeMultiple(encoder, state, [client]);
-
-            client.view.add(player, TAG_SECRET);
-            encodeMultiple(encoder, state, [client]);
-            assert.strictEqual(client.state.players.get("p").secret, "s3cr3t");
-
-            // drop the object with the default tag, then re-add it without one
-            client.view.remove(player);
-            encodeMultiple(encoder, state, [client]);
-
-            client.view.add(player);
-            encodeMultiple(encoder, state, [client]);
-
-            player.secret = "no longer granted";
-            encodeMultiple(encoder, state, [client]);
-
-            assert.strictEqual(client.state.players.get("p").secret, undefined,
-                "a default-tag add must not deliver a field tagged for a view that was revoked");
-        });
-
         it("tagged remove() should remove child structures from visible set", () => {
             const TAG_INVENTORY = 1;
 
@@ -4623,6 +4726,173 @@ describe("StateView", () => {
             assert.strictEqual(client.state.parent.arrayChild[0].x, 1);
             assert.strictEqual(client.state.parent.arrayChild[0].y, 2);
             assert.strictEqual(client.state.parent.arrayChild[0].z, 3);
+        });
+        it("a nested add() reveals an ancestor encoded in an earlier tick with all its fields", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Child extends Schema { @type("number") n = 0; }
+            class Item extends Schema {
+                @type("number") x = 5;
+                @type(["string"]) arr = new ArraySchema<string>("a");
+                @type(Child) child = new Child();
+                @view() @type(Secret) secret = new Secret();
+            }
+            class State extends Schema { @view() @type(Item) item = new Item(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            client1.view.add(state.item.secret);
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                item: { x: 5, arr: ["a"], child: { n: 0 }, secret: { s: 1 } },
+            });
+
+            state.item.child.n++;
+            state.item.arr.push("b");
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                item: { x: 5, arr: ["a", "b"], child: { n: 1 }, secret: { s: 1 } },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("a nested add() reveals a map element encoded in an earlier tick, not its hidden siblings", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Item extends Schema {
+                @type("number") x = 5;
+                @type({ map: "number" }) tags = new MapSchema<number>({ k: 1 });
+                @view() @type(Secret) secret = new Secret();
+            }
+            class State extends Schema { @view() @type({ map: Item }) items = new MapSchema<Item>(); }
+
+            const state = new State();
+            state.items.set("a", new Item());
+            state.items.set("b", new Item());
+            const encoder = getEncoder(state);
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            client1.view.add(state.items.get("a").secret);
+            encodeMultiple(encoder, state, [client1, client2]);
+            state.items.get("a").tags.set("k2", 2);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                items: { a: { x: 5, tags: { k: 1, k2: 2 }, secret: { s: 1 } } },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("a nested add() opens the @view(N) field on its path, not the owner's other fields of that tag", () => {
+            const TAG = 1;
+            class Item extends Schema { @type("number") id = 0; }
+            class Inventory extends Schema { @type([Item]) items = new ArraySchema<Item>(); }
+            class State extends Schema {
+                @view(TAG) @type(Inventory) inv = new Inventory();
+                @view(TAG) @type("number") gold = 10;
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            const a = new Item().assign({ id: 1 });
+            const b = new Item().assign({ id: 2 });
+            state.inv.items.push(a, b);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(a);
+            encodeMultiple(encoder, state, [client]);
+            b.id = 3; // shares the inventory's visibility
+            state.gold = 11;
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { inv: { items: [{ id: 1 }, { id: 3 }] } });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("a @view(N) field stays closed to a view that sees its value through another path", () => {
+            class Thing extends Schema { @type("number") id = 0; }
+            class State extends Schema {
+                @view(1) @type(Thing) one: Thing;
+                @view(2) @type({ map: Thing }) b = new MapSchema<Thing>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const opener = createClientWithView(state);
+            const client = createClientWithView(state);
+            client.view.add(state, 2);
+            encodeMultiple(encoder, state, [opener, client]);
+
+            const u = new Thing().assign({ id: 7 });
+            state.b.set("k", u);
+            state.one = u; // attached last: `one` is the path add(u) walks
+            opener.view.add(u); // without tag 1: opens `one` for opener alone
+            encodeMultiple(encoder, state, [opener, client]);
+
+            assert.deepStrictEqual(opener.state.toJSON(), { one: { id: 7 } });
+            assert.deepStrictEqual(client.state.toJSON(), { b: { k: { id: 7 } } });
+            assertEncodeAllMultiple(encoder, state, [opener, client]);
+        });
+
+        it("a nested tagged add() reveals the ancestor's other fields of that tag", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Item extends Schema {
+                @type("number") x = 5;
+                @view(2) @type(Secret) a = new Secret();
+                @view(2) @type("number") b = 7;
+            }
+            class State extends Schema { @view() @type(Item) item = new Item(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+
+            client.view.add(state.item.a, 2);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { item: { x: 5, a: { s: 1 }, b: 7 } });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("a re-attached array pushed to and revealed in the same tick arrives once", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Item extends Schema {
+                @type(["string"]) log = new ArraySchema<string>("l0");
+                @view() @type(Secret) secret = new Secret();
+            }
+            class State extends Schema {
+                @view() @type({ map: Item }) hidden = new MapSchema<Item>();
+                @type({ map: Item }) pub = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            client.view.add(state);
+            const item = new Item();
+            state.pub.set("a", item);
+            encodeMultiple(encoder, state, [client]);
+
+            state.pub.delete("a");
+            encodeMultiple(encoder, state, [client]);
+
+            state.hidden.set("b", item);
+            item.log.push("m");
+            client.view.add(item);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { hidden: { b: { log: ["l0", "m"], secret: { s: 1 } } }, pub: {} });
+            assertEncodeAllMultiple(encoder, state, [client]);
         });
     });
 
@@ -6379,6 +6649,188 @@ describe("StateView", () => {
             assert.deepStrictEqual(none.state.toJSON(), {});
 
             assertEncodeAllMultiple(encoder, state, [outer, inner, none]);
+        });
+
+        it("covers primitive collections attached after view.add()", () => {
+            class Item extends Schema {
+                @type("number") id: number;
+                @type(["string"]) arr = new ArraySchema<string>();
+                @type({ map: "number" }) map = new MapSchema<number>();
+                @type({ set: "string" }) set = new SetSchema<string>();
+            }
+            class Inventory extends Schema { @type([Item]) items = new ArraySchema<Item>(); }
+            class State extends Schema { @view(1) @type(Inventory) inventory = new Inventory(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state, 1);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // Attached once the view is already set up, with its collections already holding values.
+            const item = new Item().assign({ id: 1 });
+            item.arr.push("x");
+            item.map.set("k", 1);
+            item.set.add("s");
+            state.inventory.items.push(item);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                inventory: { items: [{ id: 1, arr: ["x"], map: { k: 1 }, set: ["s"] }] },
+            });
+
+            // Later changes to those collections.
+            item.arr.push("y");
+            item.map.set("k", 2);
+            item.map.set("l", 3);
+            item.set.add("t");
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                inventory: { items: [{ id: 1, arr: ["x", "y"], map: { k: 2, l: 3 }, set: ["s", "t"] }] },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("covers a primitive collection replaced on an already-visible Schema", () => {
+            class Item extends Schema {
+                @type({ map: "number" }) map = new MapSchema<number>();
+            }
+            class State extends Schema { @view() @type(Item) item = new Item(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            client1.view.add(state.item);
+
+            const client2 = createClientWithView(state);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            state.item.map = new MapSchema<number>({ k: 1 });
+
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.deepStrictEqual(client1.state.toJSON(), { item: { map: { k: 1 } } });
+
+            state.item.map.set("l", 2);
+
+            encodeMultiple(encoder, state, [client1, client2]);
+            assert.deepStrictEqual(client1.state.toJSON(), { item: { map: { k: 1, l: 2 } } });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("covers primitive collections on a Schema revealed through a nested view.add()", () => {
+            class Secret extends Schema { @type("number") s = 1; }
+            class Child extends Schema { @type(["string"]) arr = new ArraySchema<string>(); }
+            class Item extends Schema {
+                @type(["string"]) arr = new ArraySchema<string>();
+                @type(Child) child = new Child();
+                @view() @type(Secret) secret = new Secret();
+            }
+            class State extends Schema { @view() @type(Item) item = new Item(); }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            // Reveals `item` as an ancestor; `item.arr` is held directly, `item.child.arr` one level down.
+            client1.view.add(state.item.secret);
+            state.item.arr.push("x");
+            state.item.child.arr.push("y");
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            state.item.arr.push("x2");
+            state.item.child.arr.push("y2");
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), {
+                item: { arr: ["x", "x2"], child: { arr: ["y", "y2"] }, secret: { s: 1 } },
+            });
+            assert.deepStrictEqual(client2.state.toJSON(), {});
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("covers a primitive collection left filtered when its public owner drops it", () => {
+            class Item extends Schema {
+                @type({ map: "number" }) map: MapSchema<number>;
+            }
+            class State extends Schema {
+                @type(Item) pub = new Item();
+                @view() @type({ map: Item }) items = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+
+            const client1 = createClientWithView(state);
+            const client2 = createClientWithView(state);
+
+            const item = new Item();
+            state.items.set("a", item);
+            client1.view.add(item);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            // Public first, so attaching it to `item` is a 2nd edge (no attach-time inheritance).
+            const map = new MapSchema<number>({ k: 1 });
+            state.pub.map = map;
+            item.map = map;
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            state.pub.map = undefined;
+            map.set("l", 2);
+            encodeMultiple(encoder, state, [client1, client2]);
+
+            assert.deepStrictEqual(client1.state.toJSON(), { pub: {}, items: { a: { map: { k: 1, l: 2 } } } });
+            assert.deepStrictEqual(client2.state.toJSON(), { pub: {} });
+
+            assertEncodeAllMultiple(encoder, state, [client1, client2]);
+        });
+
+        it("covers a primitive collection whose Schema owner is visible only through sharing", () => {
+            class Secret extends Schema { @type("number") s = 0; }
+            class Child extends Schema { @type(["number"]) vals = new ArraySchema<number>(0); }
+            class Item extends Schema {
+                @type(Child) child = new Child();
+                @view() @type(Secret) secret = new Secret();
+            }
+            class State extends Schema {
+                @view() @type({ map: Item }) loot = new MapSchema<Item>();
+                @type({ map: Item }) pub = new MapSchema<Item>();
+            }
+
+            const state = new State();
+            const encoder = getEncoder(state);
+            const client = createClientWithView(state);
+            client.view.add(state);
+            const item = new Item();
+            state.pub.set("a", item);
+            state.loot.set("s", item);
+            encodeMultiple(encoder, state, [client]);
+
+            // `child` turns filtered and shares `item`'s views, which it hasn't marked
+            state.pub.delete("a");
+            client.view.add(item.secret);
+            item.child.vals.push(3);
+            encodeMultiple(encoder, state, [client]);
+            item.child.vals.push(4);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON().loot.s.child, { vals: [0, 3, 4] });
+            assertEncodeAllMultiple(encoder, state, [client]);
         });
 
     });

@@ -1,6 +1,6 @@
 import * as assert from "assert";
 
-import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, assertNoOrphanRefs, createClientWithView, encodeMultiple } from "./Schema";
+import { State, Player, getCallbacks, getEncoder, createInstanceFromReflection, getDecoder, assertDeepStrictEqualEncodeAll, assertRefIdCounts, assertNoOrphanRefs, createClientWithView, encodeMultiple, encodeAndAssertEquals } from "./Schema";
 import { ArraySchema, Schema, type, view, $changes, $refId, MapSchema, ChangeTree, OPERATION, schema, t } from "../src";
 
 describe("ArraySchema Tests", () => {
@@ -29,6 +29,164 @@ describe("ArraySchema Tests", () => {
     describe("Internals", () => {
         it("Symbol.species", () => {
             assert.strictEqual(ArraySchema[Symbol.species], ArraySchema);
+        });
+
+        describe("property access through the Proxy", () => {
+            class State extends Schema {
+                @type(["number"]) numbers = new ArraySchema<number>();
+            }
+
+            // encoder side (`new ArraySchema()`) and decoder side
+            // (`ArraySchema.initializeForDecoder()`) share one handler
+            function createArrays() {
+                const state = new State();
+                state.numbers.push(10, 20, 30);
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+                return [
+                    { side: "encoder", numbers: state.numbers as any },
+                    { side: "decoder", numbers: decodedState.numbers as any },
+                ];
+            }
+
+            it("reads elements by number and by index string", () => {
+                for (const { side, numbers } of createArrays()) {
+                    assert.strictEqual(numbers[0], 10, side);
+                    assert.strictEqual(numbers[2], 30, side);
+                    assert.strictEqual(numbers["0"], 10, side);
+                    assert.strictEqual(numbers["2"], 30, side);
+                    assert.strictEqual(numbers[3], undefined, side);
+                    assert.strictEqual(numbers["3"], undefined, side);
+                }
+            });
+
+            it("reads properties and methods by name", () => {
+                for (const { side, numbers } of createArrays()) {
+                    assert.strictEqual(numbers.length, 3, side);
+                    assert.strictEqual(numbers["length"], 3, side);
+                    assert.strictEqual(numbers.at(-1), 30, side);
+                    assert.strictEqual(numbers.find((value: number) => value > 10), 20, side);
+                    assert.strictEqual(numbers.includes(20), true, side);
+                    assert.deepStrictEqual(numbers.map((value: number) => value / 10), [1, 2, 3], side);
+                    assert.deepStrictEqual(numbers.toJSON(), [10, 20, 30], side);
+                    assert.deepStrictEqual([...numbers], [10, 20, 30], side);
+                    assert.strictEqual(numbers.constructor, ArraySchema, side);
+                    assert.strictEqual(numbers.unknownProperty, undefined, side);
+                }
+            });
+
+            it("reads names that start with a symbol character", () => {
+                for (const { side, numbers } of createArrays()) {
+                    assert.strictEqual(typeof numbers["$changeAt"], "function", side);
+                    assert.strictEqual(numbers["$unknown"], undefined, side);
+                }
+            });
+
+            it("number-like keys that are not an index read as undefined", () => {
+                const keys = [
+                    "Infinity", "+Infinity", "-Infinity", "NaN",
+                    "", " ", " 1", "1 ", " 1", "﻿1",
+                    "-1", "+1", "1.5", ".5", "01", "1e0", "0x1", "0b1",
+                ];
+                for (const { side, numbers } of createArrays()) {
+                    for (const key of keys) {
+                        assert.strictEqual(numbers[key], undefined, `${side}: ${JSON.stringify(key)}`);
+                    }
+                    assert.strictEqual(numbers[-1], undefined, side);
+                    assert.strictEqual(numbers[1.5], undefined, side);
+                    assert.strictEqual(numbers[Infinity], undefined, side);
+                    assert.strictEqual(numbers[NaN], undefined, side);
+                }
+            });
+
+            // all but the last pass isNaN(), yet none is a canonical index
+            const NON_INDEX_KEYS = [
+                "Infinity", "\u00A01", "\uFEFF1", "", " 1", "+1", "-1", "01", "1e0", "1.5",
+                "customProperty",
+            ];
+
+            it("a key that is not an index is a plain property for set, get and `in`", () => {
+                for (const key of NON_INDEX_KEYS) {
+                    for (const { side, numbers } of createArrays()) {
+                        const message = `${side}: ${JSON.stringify(key)}`;
+                        assert.strictEqual(key in numbers, false, message);
+
+                        numbers[key] = 7;
+
+                        assert.strictEqual(numbers[key], 7, message);
+                        assert.strictEqual(key in numbers, true, message);
+                        assert.strictEqual(numbers.length, 3, message);
+                        assert.deepStrictEqual(numbers.toJSON(), [10, 20, 30], message);
+                    }
+                }
+            });
+
+            it("writing a key that is not an index sends nothing to clients", () => {
+                for (const key of NON_INDEX_KEYS) {
+                    const state = new State();
+                    state.numbers.push(10, 20, 30);
+                    const encoder = getEncoder(state);
+                    const decodedState = createInstanceFromReflection(state);
+                    decodedState.decode(state.encode());
+
+                    (state.numbers as any)[key] = 7;
+
+                    assert.strictEqual(encoder.hasChanges, false, JSON.stringify(key));
+                    decodedState.decode(state.encode());
+                    assert.deepStrictEqual(decodedState.numbers.toJSON(), [10, 20, 30], JSON.stringify(key));
+                }
+            });
+
+            it("nulling an index past the end sends nothing to clients", () => {
+                const state = new State();
+                state.numbers.push(10, 20, 30);
+                const encoder = getEncoder(state);
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                (state.numbers as any)[3] = null;
+                (state.numbers as any)[10] = undefined;
+
+                assert.strictEqual(encoder.hasChanges, false);
+                assert.deepStrictEqual(state.numbers.toJSON(), [10, 20, 30]);
+            });
+
+            it("arr[-1] after shift() in the same patch stays in sync", () => {
+                const state = new State();
+                state.numbers.push(1, 2, 3);
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                state.numbers.shift();
+                (state.numbers as any)[-1] = 9;
+
+                decodedState.decode(state.encode());
+                assert.deepStrictEqual(decodedState.numbers.toJSON(), [2, 3]);
+                assertDeepStrictEqualEncodeAll(state);
+            });
+
+            it("index writes and `in` still address the elements", () => {
+                const state = new State();
+                state.numbers.push(10, 20, 30);
+                const decodedState = createInstanceFromReflection(state);
+                decodedState.decode(state.encode());
+
+                state.numbers[1] = 21;
+                (state.numbers as any)["2"] = 31;
+
+                assert.strictEqual(0 in state.numbers, true);
+                assert.strictEqual("2" in state.numbers, true);
+                assert.strictEqual(3 in state.numbers, false);
+                assert.strictEqual("3" in state.numbers, false);
+                assert.strictEqual("length" in state.numbers, true);
+
+                decodedState.decode(state.encode());
+                assert.deepStrictEqual(decodedState.numbers.toJSON(), [10, 21, 31]);
+
+                state.numbers.length = 0;
+                decodedState.decode(state.encode());
+                assert.deepStrictEqual(decodedState.numbers.toJSON(), []);
+            });
         });
 
         it("should allow to assign a regular array", () => {
@@ -3490,6 +3648,45 @@ describe("ArraySchema Tests", () => {
             });
         });
 
+        describe("`arr[i] = null | undefined` removes the element on both sides (#254)", () => {
+            const nextTick: Record<string, (arr: ArraySchema<any>, wrap: (name: string) => any) => void> = {
+                "arr[1] = x": (arr, wrap) => { arr[1] = wrap("x"); },
+                "push()": (arr, wrap) => { arr.push(wrap("x")); },
+                "pop()": (arr) => { arr.pop(); },
+                "shift()": (arr) => { arr.shift(); },
+                "unshift()": (arr, wrap) => { arr.unshift(wrap("x")); },
+            };
+
+            for (const [label, op] of Object.entries(nextTick)) {
+                it(`then ${label} next tick`, () => {
+                    for (const nullish of [null, undefined]) {
+                        const { state, decodedState } = synced(["a", "b", "c"]);
+                        (state.items as any)[1] = nullish;
+                        (state.strings as any)[1] = nullish;
+                        assert.deepStrictEqual(state.items.map(nameOf), ["a", "c"]);
+                        assert.deepStrictEqual([...state.strings], ["a", "c"]);
+                        encodeAndAssertEquals(state, decodedState);
+
+                        op(state.items, item);
+                        op(state.strings, (name) => name);
+                        encodeAndAssertEquals(state, decodedState);
+                        assertRefIdCounts(state, decodedState);
+                        assertDeepStrictEqualEncodeAll(state);
+                    }
+                });
+            }
+
+            it("child mutation after removal reaches the right element", () => {
+                const { state, decodedState } = synced(["a", "b", "c"]);
+                (state.items as any)[1] = null;
+                decodedState.decode(state.encode());
+
+                state.items[1].name = "C";
+                encodeAndAssertEquals(state, decodedState);
+                assert.deepStrictEqual(decodedState.items.map(nameOf), ["a", "C"]);
+            });
+        });
+
         it("#flat", () => {
             const arr = new ArraySchema<number>(1, 2, 3, 4, 5);
             assert.throws(() => { arr.flat(); }, /not supported/i);
@@ -3674,6 +3871,7 @@ describe("ArraySchema Tests", () => {
             }, "Setting array item to undefined should not throw during encoding");
 
             // Verify the item was removed
+            assert.strictEqual(2, state.items.length);
             assert.strictEqual(2, decodedState.items.length);
             assert.strictEqual("Item 1", decodedState.items[0].name);
             assert.strictEqual("Item 3", decodedState.items[1].name);
@@ -4014,11 +4212,7 @@ describe("ArraySchema Tests", () => {
                 assertInSync(state, decodedState);
             });
 
-            it("proxy `arr[i] = undefined` keeps today's path", () => {
-                // $deleteAt records a DELETE and releases the refCount but never
-                // touches `items`, so the cancel is deliberately not wired there —
-                // `$onEncodeEnd` would resurrect the element with its ADD erased.
-                // TODO: `$deleteAt` leaves encoder `items` holding X (pre-existing).
+            it("proxy `arr[i] = undefined` cancels a same-tick push", () => {
                 const { state, decodedState } = bootstrapped("a", "b", "c");
                 const warnings: string[] = [];
                 const originalWarn = console.warn;
@@ -4031,8 +4225,8 @@ describe("ArraySchema Tests", () => {
                     console.warn = originalWarn;
                 }
                 assert.deepStrictEqual(warnings, []);
-                assert.deepStrictEqual(names(decodedState.list), ["a", "b", "c"]);
-                assertRefIdCounts(state, decodedState);
+                assert.deepStrictEqual(names(state.list), ["a", "b", "c"]);
+                assertInSync(state, decodedState);
             });
 
             describe("StateView", () => {

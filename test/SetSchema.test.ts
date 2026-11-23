@@ -2,7 +2,7 @@ import * as assert from "assert";
 
 import { Schema, type, SetSchema, MapSchema, Encoder, $changes, $refId } from "../src";
 import "./Schema";
-import { assertDeepStrictEqualEncodeAll, encodeAndAssertEquals } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, createClientWithView, encodeAndAssertEquals, encodeMultiple } from "./Schema";
 
 describe("Type: SetSchema", () => {
 
@@ -366,6 +366,36 @@ describe("Type: SetSchema", () => {
         state.players.clear();
 
         assert.strictEqual(state.players.size, 0);
+    });
+
+    it("re-adding the same instance after clear() reaches the client", () => {
+        class Player extends Schema {
+            @type("number") level: number;
+        }
+
+        class State extends Schema {
+            @type({ set: Player })
+            players = new SetSchema<Player>();
+        }
+
+        const state = new State();
+        const encoder = new Encoder(state);
+        const client = createClientWithView(state, undefined, encoder);
+        encodeMultiple(encoder, state, [client]);
+
+        const player = new Player().assign({ level: 1 });
+        state.players.add(player);
+        encodeMultiple(encoder, state, [client]);
+
+        state.players.clear();
+        encodeMultiple(encoder, state, [client]);
+
+        // Before the fix the refill reused a tree that still believed it was
+        // attached, so the client kept a member with no fields ("{}").
+        state.players.add(player);
+        encodeMultiple(encoder, state, [client]);
+
+        assert.deepStrictEqual(client.state.players.toJSON(), [{ level: 1 }]);
     });
 
     it("SetSchema.toJSON", () => {

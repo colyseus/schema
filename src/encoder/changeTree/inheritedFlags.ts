@@ -201,14 +201,60 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
         // The `parentMetadata[parentIndex].tag` access is safe inside the
         // `fieldHasViewTag` short-circuit (the metadata entry and its `tag`
         // are guaranteed to exist when that flag is set).
-        tree.isVisibilitySharedWithParent = (
+        const inheritsViews = (
             parentChangeTree.isFiltered
-            && sharesEligible
             && !fieldHasStream
             && (!fieldHasViewTag || (parentIsCollection && parentMetadata[parentIndex].tag !== DEFAULT_VIEW_TAG))
         );
+        tree.isVisibilitySharedWithParent = inheritsViews && sharesEligible;
+        // eager — see `_sharesEligible`; at attach the parent was just written, so its own bits are current
+        if (inheritsViews && !sharesEligible) inheritVisibleViews(tree, parentChangeTree);
     }
 }
+
+/** OR `from`'s per-view visibility bits into `tree`. */
+function inheritVisibleViews(tree: ChangeTree, from: ChangeTree): void {
+    const src = from.visibleViews;
+    if (src === undefined) return;
+    const dst = tree.visibleViews;
+    if (dst === undefined) { tree.visibleViews = src.slice(); return; }
+    for (let i = 0; i < src.length; i++) dst[i] |= src[i];
+}
+
+/**
+ * Does `parent` pass its viewers on to `child`, a tree that shares
+ * visibility with its parents? The primary parent always does
+ * (pre-existing semantics); another one only when filtered — a public
+ * parent never shares visibility downward. The one grant rule behind
+ * `StateView.isChangeTreeVisible`, `orGrantableViews` and `StateView._introduce`.
+ */
+export function grantsVisibility(parent: ChangeTree, child: ChangeTree): boolean {
+    return parent.isFiltered || child.parent?.[$changes] === parent;
+}
+
+/**
+ * OR into `out` every view bit `StateView.isChangeTreeVisible` could grant
+ * `tree`: its own, its primary parent's and filtered extra parents' — and,
+ * through ancestors that share visibility too, theirs, since a view pass can
+ * memoize those bits before it reaches `tree`. `visited` guards cyclic
+ * instance graphs.
+ */
+function orGrantableViews(tree: ChangeTree, out: number[], visited: ChangeTree[]): void {
+    const vv = tree.visibleViews;
+    if (vv !== undefined) {
+        for (let s = 0; s < vv.length; s++) out[s] |= vv[s];
+    }
+    if (!tree.isVisibilitySharedWithParent || visited.indexOf(tree) !== -1) return;
+    visited.push(tree);
+    const parent: ChangeTree | undefined = tree.parent?.[$changes];
+    if (parent !== undefined) orGrantableViews(parent, out, visited);
+    for (let e = tree.extraParents; e !== undefined; e = e.next) {
+        const extra: ChangeTree = e.ref[$changes];
+        if (grantsVisibility(extra, tree)) orGrantableViews(extra, out, visited);
+    }
+}
+
+const _grantVisited: ChangeTree[] = [];
 
 // ────────────────────────────────────────────────────────────────────────
 // Per-edge filter refresh — instance sharing across a @view boundary.
@@ -236,6 +282,8 @@ export function checkInheritedFlags(tree: ChangeTree, parent: Ref, parentIndex: 
  */
 export function drainFilterRefresh(root: Root): void {
     const list = root.pendingFilterRefresh;
+    const wasFiltered = _wasFiltered;
+    for (let i = 0; i < list.length; i++) wasFiltered[i] = list[i].isFiltered;
     for (let i = 0; i < list.length; i++) {
         const tree = list[i];
         // Already settled as another entry's parent, or detached/recycled
@@ -243,15 +291,27 @@ export function drainFilterRefresh(root: Root): void {
         if ((tree.flags & PENDING_FILTER_REFRESH) === 0) continue;
         refreshFilterState(tree);
     }
+    // Its edges changed: the op that introduces it may come from a parent
+    // queued after it, attached later this tick. One that was public and
+    // stays public was introduced by that public edge already.
+    for (let i = 0; i < list.length; i++) {
+        const tree = list[i];
+        if (tree.root === root && (tree.isFiltered || wasFiltered[i])) root.moveSubtreeToTail(tree);
+    }
     list.length = 0;
 }
 
+const _wasFiltered: boolean[] = [];
+
 /**
- * Primitive-element collections never share visibility downward. One
- * predicate for both derivations (`checkInheritedFlags` and
- * `refreshFilterState`) — the InstanceSharing invariant test pins them
- * together. `_isSchema` short-circuits the `$childType` probe for Schema
- * trees (whose `$childType` is undefined and would pass anyway).
+ * Primitive-element collections never share visibility lazily — a view that
+ * can't see the parent would pay `isChangeTreeVisible`'s parent fallback on
+ * every dirty tick. They take the parent's view bits eagerly instead: copied
+ * at attach / refresh, and marked with the parent by
+ * `StateView#grantVisible`. One predicate for both derivations
+ * (`checkInheritedFlags` and `refreshFilterState`) — the InstanceSharing
+ * invariant test pins them together. `_isSchema` short-circuits the
+ * `$childType` probe for Schema trees.
  */
 function _sharesEligible(tree: ChangeTree): boolean {
     return tree._isSchema || typeof (tree.refTarget as any)[$childType] !== "string";
@@ -309,7 +369,8 @@ const EDGE_SATURATED = EDGE_LIVE | EDGE_PUBLIC | EDGE_SHARES;
 
 /**
  * Classify one parent edge: is it live, does it make the tree publicly
- * reachable, does view visibility flow through it.
+ * reachable, does view visibility flow through it. A non-`sharesEligible`
+ * tree takes a sharing edge's view bits right here instead.
  */
 function _edgeBits(tree: ChangeTree, parentRef: Ref, index: number, sharesEligible: boolean): number {
     const parentTree: ChangeTree = parentRef[$changes];
@@ -330,19 +391,31 @@ function _edgeBits(tree: ChangeTree, parentRef: Ref, index: number, sharesEligib
         if (!marked) {
             if (!parentTree.isFiltered) bits |= EDGE_PUBLIC;
             else if (sharesEligible) bits |= EDGE_SHARES;
+            // a refresh runs outside the tick: a parent seen only through sharing may stay clean and never mark `tree`
+            else {
+                orGrantableViews(parentTree, tree.visibleViews ??= [], _grantVisited);
+                _grantVisited.length = 0;
+            }
         }
     } else if (!parentTree.isFiltered) {
         // Collection edge: the collection's own classification already
         // folds in the field that holds it.
         bits |= EDGE_PUBLIC;
-    } else if (sharesEligible && !parentTree.isStreamCollection) {
-        // #226: default-tag @view() collections keep per-item gating;
-        // untagged and non-default-tag @view(N) ones share.
-        const gp = parentTree.parent?.[$changes];
-        const tag = gp?._isSchema ? gp.encDescriptor.tags[parentTree.parentIndex] : undefined;
-        if (tag !== DEFAULT_VIEW_TAG) bits |= EDGE_SHARES;
+    } else if (sharesEligible && itemsShareVisibility(parentTree)) {
+        bits |= EDGE_SHARES;
     }
     return bits;
+}
+
+/**
+ * Do a filtered collection's Schema items see what the collection's viewers
+ * see? #226: default-tag `@view()` collections keep per-item gating (and
+ * streams their own); untagged and `@view(N)` ones share.
+ */
+export function itemsShareVisibility(collection: ChangeTree): boolean {
+    if (collection.isStreamCollection) return false;
+    const gp: ChangeTree | undefined = collection.parent?.[$changes];
+    return !gp?._isSchema || gp.encDescriptor.tags[collection.parentIndex] !== DEFAULT_VIEW_TAG;
 }
 
 const _cascadeRefreshCb = (_parentTree: ChangeTree, child: ChangeTree, _index: any): void => {

@@ -19,6 +19,32 @@ const DEFAULT_SORT = (a: any, b: any) => {
 }
 
 /**
+ * Whether a Proxy trap key addresses `items` rather than the instance. The
+ * `get`, `set` and `has` traps all ask here, so they agree on every key.
+ *
+ * Only a canonical array index ("0", "17") does, as on a native Array.
+ * Anything else ("length", "$changeAt", "-1", "1.5", "01", "1e0", "") is a
+ * plain property of the instance: letting a number-like key through would
+ * record a change at `Number(key)` while storing the value under the string
+ * key, so clients would get a write the server never made.
+ *
+ * Names fail on their first char, so a named read never parses a number.
+ */
+function isIndexKey(key: string | symbol): key is string {
+    if (typeof (key) === "symbol") { return false; }
+
+    let c = key.charCodeAt(0);
+    if (!(c >= 48 && c <= 57)) { return false; } // not a digit; NaN for ""
+    if (c === 48) { return key.length === 1; } // "0", never "01"
+
+    for (let i = 1, len = key.length; i < len; i++) {
+        c = key.charCodeAt(i);
+        if (c < 48 || c > 57) { return false; }
+    }
+    return true;
+}
+
+/**
  * Module-level Proxy handler shared by every `ArraySchema` instance. Hoisted
  * out of the ctor so per-instance Proxy setup stops allocating ~6 arrow
  * closures (the `__name` wrappers around those closures dominated one slice
@@ -28,20 +54,18 @@ const DEFAULT_SORT = (a: any, b: any) => {
  */
 const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
     get: (obj, prop) => {
-        if (
-            typeof (prop) !== "symbol" &&
-            // FIXME: d8 accuses this as low performance
-            !isNaN(prop as any) // https://stackoverflow.com/a/175787/892698
-        ) {
+        if (isIndexKey(prop)) {
             return obj.items[prop as unknown as number];
         }
         return Reflect.get(obj, prop);
     },
 
     set: (obj, key, setValue) => {
-        if (typeof (key) !== "symbol" && !isNaN(key as any)) {
+        if (isIndexKey(key)) {
             if (setValue === undefined || setValue === null) {
-                obj.$deleteAt(key as unknown as number);
+                // no null holes: remove, so both sides shift alike
+                const index = Number(key);
+                if (index < obj.items.length) { obj.splice(index, 1); }
 
             } else {
                 // wire slot the write was recorded at; undefined = nothing
@@ -101,16 +125,12 @@ const ARRAY_PROXY_HANDLER: ProxyHandler<any> = {
     },
 
     deleteProperty: (obj, prop) => {
-        if (typeof (prop) === "number") {
-            obj.$deleteAt(prop);
-        } else {
-            delete obj[prop as unknown as number];
-        }
+        delete obj[prop as unknown as number];
         return true;
     },
 
     has: (obj, key) => {
-        if (typeof (key) !== "symbol" && !isNaN(Number(key))) {
+        if (isIndexKey(key)) {
             return Reflect.has(obj.items, key);
         }
         return Reflect.has(obj, key);
@@ -558,11 +578,6 @@ export class ArraySchema<V = any> implements Array<V>, Collection<number, V>, IR
         }
 
         return wireIndex;
-    }
-
-    // encoding only
-    protected $deleteAt(index: number, operation?: OPERATION) {
-        this[$changes].delete(this.$wireIndex(index), operation);
     }
 
     // decoding only

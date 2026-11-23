@@ -1177,6 +1177,47 @@ describe("Instance sharing", () => {
 
             assertDeepStrictEqualEncodeAll(state);
         });
+        describe("collections changed while detached", () => {
+            class Holder extends Schema {
+                @type({ map: "number" }) tags = new MapSchema<number>();
+                @type(["string"]) log = new ArraySchema<string>();
+            }
+            class Root extends Schema {
+                @type({ map: Holder }) a = new MapSchema<Holder>();
+                @type({ map: Holder }) b = new MapSchema<Holder>();
+            }
+
+            function detachMutateReattach(setup: (holder: Holder) => void, mutate: (holder: Holder) => void) {
+                const state = new Root();
+                const encoder = getEncoder(state);
+                const decoded = createInstanceFromReflection(state);
+                decoded.decode(encoder.encodeAll());
+                encoder.discardChanges();
+
+                const holder = new Holder();
+                setup(holder);
+                state.a.set("x", holder);
+                decoded.decode(state.encode());
+
+                state.a.delete("x"); // the client drops it
+                decoded.decode(state.encode());
+
+                mutate(holder);
+                state.b.set("y", holder);
+                decoded.decode(state.encode());
+
+                assert.deepStrictEqual(decoded.toJSON(), state.toJSON());
+                assertRefIdCounts(state, decoded);
+            }
+
+            it("a map value overwritten while detached keeps its key", () => {
+                detachMutateReattach((h) => h.tags.set("k", 1), (h) => h.tags.set("k", 2));
+            });
+
+            it("an array emptied while detached decodes", () => {
+                detachMutateReattach((h) => h.log.push("l0"), (h) => h.log.shift());
+            });
+        });
     });
 
     describe("StateView: instance shared across a filter boundary", () => {
@@ -1557,6 +1598,240 @@ describe("Instance sharing", () => {
             encodeMultiple(encoder, state, [viewer, plain]);
             assertClientStates(viewer, plain);
             assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+        });
+        it("a new instance added to a filtered container, then to a public one queued after it, arrives whole", () => {
+            class Child extends Schema { @type("number") n = 2; }
+            class Secret extends Schema { @type("number") s = 7; }
+            class Thing extends Schema {
+                @type("number") id = 0;
+                @type(Child) child = new Child();
+                @view() @type(Secret) secret = new Secret(); // stays filtered
+            }
+            class Room extends Schema {
+                @view() @type({ map: Thing }) loot = new MapSchema<Thing>();
+                @type({ map: Thing }) pub = new MapSchema<Thing>();
+            }
+
+            const state = new Room();
+            const encoder = getEncoder(state);
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+            viewer.view.add(state);
+            encodeMultiple(encoder, state, [viewer, plain]);
+
+            const thing = new Thing().assign({ id: 3 });
+            state.loot.set("k", thing); // queues `thing` before `pub`
+            viewer.view.add(thing);
+            state.pub.set("k", thing);
+            encodeMultiple(encoder, state, [viewer, plain]);
+
+            const full = { id: 3, child: { n: 2 }, secret: { s: 7 } };
+            assert.deepStrictEqual(viewer.state.toJSON(), { loot: { k: full }, pub: { k: full } });
+            assert.deepStrictEqual(plain.state.toJSON(), { pub: { k: { id: 3, child: { n: 2 } } } });
+            assertEncodeAllMultiple(encoder, state, [viewer, plain]);
+        });
+
+        it("a new instance added to two filtered containers seen by different tags arrives whole in both", () => {
+            class Child extends Schema { @type("number") n = 2; }
+            class Thing extends Schema {
+                @type("number") id = 0;
+                @type(Child) child = new Child();
+            }
+            class Room extends Schema {
+                @view(1) @type([Thing]) a = new ArraySchema<Thing>();
+                @view(2) @type({ map: Thing }) b = new MapSchema<Thing>();
+            }
+
+            const state = new Room();
+            const encoder = getEncoder(state);
+            const v1 = createClientWithView(state);
+            const v2 = createClientWithView(state);
+            v1.view.add(state, 1);
+            v2.view.add(state, 2);
+            encodeMultiple(encoder, state, [v1, v2]);
+
+            const thing = new Thing().assign({ id: 3 });
+            state.a.push(thing); // queues `thing` before `b`
+            state.b.set("k", thing);
+            encodeMultiple(encoder, state, [v1, v2]);
+
+            const json = { id: 3, child: { n: 2 } };
+            assert.deepStrictEqual(v1.state.toJSON(), { a: [json] });
+            assert.deepStrictEqual(v2.state.toJSON(), { b: { k: json } });
+            assertEncodeAllMultiple(encoder, state, [v1, v2]);
+        });
+
+        it("a full sync carries an instance first reached through a @view() map before its public one", () => {
+            class Child extends Schema { @type("number") n = 2; }
+            class Secret extends Schema { @type("number") s = 7; }
+            class Thing extends Schema {
+                @type("number") id = 0;
+                @type(Child) child = new Child();
+                @view() @type(Secret) secret = new Secret();
+            }
+            class Room extends Schema {
+                @view() @type({ map: Thing }) loot = new MapSchema<Thing>(); // walked first
+                @type({ map: Thing }) pub = new MapSchema<Thing>();
+            }
+
+            const state = new Room();
+            const encoder = getEncoder(state);
+            const thing = new Thing().assign({ id: 3 });
+            state.pub.set("k", thing);
+            state.loot.set("k", thing);
+            encoder.encode();
+            encoder.discardChanges(); // late joiners: the full sync alone carries `thing`
+
+            const viewer = createClientWithView(state);
+            const plain = createClientWithView(state);
+            viewer.view.add(state);
+            viewer.view.add(thing);
+            encodeMultiple(encoder, state, [viewer, plain]);
+
+            const full = { id: 3, child: { n: 2 }, secret: { s: 7 } };
+            assert.deepStrictEqual(viewer.state.toJSON(), { loot: { k: full }, pub: { k: full } });
+            assert.deepStrictEqual(plain.state.toJSON(), { pub: { k: { id: 3, child: { n: 2 } } } });
+        });
+        describe("an instance a view starts seeing is bound in each @view() collection holding it", () => {
+            const TAG = 1;
+            class Item extends Schema {
+                @type("number") id = 0;
+                @view() @type("number") secret = 7;
+                @view(TAG) @type("number") tagged = 9;
+            }
+            class MapRoom extends Schema {
+                @view() @type({ map: Item }) loot = new MapSchema<Item>(); // each item needs its own add()
+                @type({ map: Item }) pub = new MapSchema<Item>();
+            }
+            class ArrayRoom extends Schema {
+                @view() @type([Item]) loot = new ArraySchema<Item>();
+                @type({ map: Item }) pub = new MapSchema<Item>();
+            }
+
+            for (const Room of [MapRoom, ArrayRoom]) {
+                const kind = (Room === MapRoom) ? "map" : "array";
+
+                function setup() {
+                    const state = new Room();
+                    const encoder = getEncoder(state);
+                    const client = createClientWithView(state);
+                    client.view.add(state);
+                    encodeMultiple(encoder, state, [client]);
+                    const item = new Item().assign({ id: 1 });
+                    const putInLoot = () => (state instanceof MapRoom) ? state.loot.set("k", item) : state.loot.push(item);
+                    return { state, encoder, client, item, putInLoot };
+                }
+                const lootOf = (client: ClientWithState<MapRoom | ArrayRoom>) => Object.values(client.state.toJSON().loot);
+
+                it(`revealed by a tagged re-add of its owner (${kind})`, () => {
+                    const { state, encoder, client, item, putInLoot } = setup();
+                    state.pub.set("k", item);
+                    putInLoot(); // hidden there: never added
+                    encodeMultiple(encoder, state, [client]);
+
+                    client.view.add(state, TAG); // reaches `item` through `pub`
+                    encodeMultiple(encoder, state, [client]);
+
+                    assert.deepStrictEqual(lootOf(client), [{ id: 1, secret: 7, tagged: 9 }]);
+                    assertEncodeAllMultiple(encoder, state, [client]);
+                });
+
+                for (const sameTick of [false, true]) {
+                    it(`unbound when the view stops seeing it${sameTick ? " in the same tick" : ""} (${kind})`, () => {
+                        const { state, encoder, client, item, putInLoot } = setup();
+                        state.pub.set("k", item);
+                        putInLoot();
+                        encodeMultiple(encoder, state, [client]);
+
+                        client.view.add(state, TAG);
+                        if (!sameTick) encodeMultiple(encoder, state, [client]);
+                        client.view.remove(item);
+                        encodeMultiple(encoder, state, [client]);
+
+                        assert.deepStrictEqual(lootOf(client), []);
+                        assertEncodeAllMultiple(encoder, state, [client]);
+                    });
+                }
+
+                it(`made public and added in the same tick (${kind})`, () => {
+                    const { state, encoder, client, item, putInLoot } = setup();
+                    putInLoot();
+                    encodeMultiple(encoder, state, [client]);
+
+                    state.pub.set("k", item); // `pub` becomes its newest parent: the path add() walks
+                    client.view.add(item);
+                    encodeMultiple(encoder, state, [client]);
+
+                    assert.deepStrictEqual(lootOf(client), [{ id: 1, secret: 7 }]);
+                    assertEncodeAllMultiple(encoder, state, [client]);
+                });
+            }
+        });
+    });
+
+    describe("StateView: shared instance whose old Schema field was set to null", () => {
+        // The nulled field's stale edge is re-checked by the filter refresh once the instance is shared.
+        class Card extends Schema {
+            @type("string") name: string;
+        }
+        class Slot extends Schema {
+            @type(Card) card: Card;
+        }
+        class State extends Schema {
+            @type([Slot]) slots = new ArraySchema<Slot>(new Slot(), new Slot());
+            @type([Card]) hand = new ArraySchema<Card>();
+            @type([Card]) deck = new ArraySchema<Card>();
+            @view() @type("string") secret: string; // any @view field enables filter refresh
+        }
+
+        function setup() {
+            const state = new State();
+            const encoder = getEncoder(state);
+            const card = new Card().assign({ name: "card" });
+            state.slots[0].card = card;
+            const client = createClientWithView(state);
+            encodeMultiple(encoder, state, [client]);
+            return { state, encoder, card, client };
+        }
+
+        it("instance moved into an array before its field is set to null", () => {
+            const { state, encoder, card, client } = setup();
+            state.deck.push(card);
+            state.slots[0].card = null;
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { slots: [{}, {}], hand: [], deck: [{ name: "card" }] });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("instance shared later on, after leaving a field that's now null", () => {
+            const { state, encoder, card, client } = setup();
+            state.slots[0].card = null;
+            state.hand.push(card);
+            encodeMultiple(encoder, state, [client]);
+
+            // into the other slot while still in the hand: briefly shared
+            state.slots[1].card = card;
+            state.hand.splice(0, 1);
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { slots: [{}, { card: { name: "card" } }], hand: [], deck: [] });
+            assertEncodeAllMultiple(encoder, state, [client]);
+        });
+
+        it("instance briefly in two arrays, after leaving a field that's now null", () => {
+            const { state, encoder, card, client } = setup();
+            state.slots[0].card = null;
+            state.hand.push(card);
+            encodeMultiple(encoder, state, [client]);
+
+            // refill the deck while the hand still holds the card, then empty the hand
+            state.deck.push(card);
+            state.hand.clear();
+            encodeMultiple(encoder, state, [client]);
+
+            assert.deepStrictEqual(client.state.toJSON(), { slots: [{}, {}], hand: [], deck: [{ name: "card" }] });
+            assertEncodeAllMultiple(encoder, state, [client]);
         });
     });
 

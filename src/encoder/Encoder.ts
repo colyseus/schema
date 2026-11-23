@@ -2,6 +2,7 @@ import type { Schema } from "../Schema.js";
 import { TypeContext } from "../types/TypeContext.js";
 import { $changes, $getByIndex, $refId } from "../types/symbols.js";
 import { Metadata } from "../Metadata.js";
+import { DEFAULT_VIEW_TAG } from "../annotations.js";
 
 import { encode } from "../encoding/encode.js";
 import type { Iterator } from "../encoding/decode.js";
@@ -13,6 +14,7 @@ import { ARRAY_SNAPSHOT, type StateView } from "./StateView.js";
 import type { ChangeTree, ChangeTreeList, ChangeTreeNode } from "./ChangeTree.js";
 import { PENDING_SHIPPED_BY_FULL_SYNC } from "./ChangeTree.js";
 import type { EncodeOperation } from "./EncodeOperation.js";
+import type { EncodeDescriptor } from "./EncodeDescriptor.js";
 import { forEachLiveWithCtx as _forEachLiveWithCtx } from "./changeTree/liveIteration.js";
 import { forEachChildWithCtx as _forEachChildWithCtx } from "./changeTree/treeAttachment.js";
 import { drainFilterRefresh } from "./changeTree/inheritedFlags.js";
@@ -68,6 +70,9 @@ interface EncodeCtx {
      * Rewritten per walk by `encodeFullSync` before kicking off the DFS.
      */
     gen: number;
+    /** Tree whose children `_fullSyncWalkChildCb` is visiting, and whether it passed the visibility gate. */
+    walkParent: ChangeTree;
+    walkParentVisible: boolean;
     /** Initial buffer offset at encodeFullSync entry — used by the walker to
      *  decide whether to emit SWITCH_TO_STRUCTURE for the root tree. */
     initialOffset: number;
@@ -128,19 +133,19 @@ function _fullSyncWalk(ctx: EncodeCtx, changeTree: ChangeTree): void {
     if (changeTree._fullSyncGen === ctx.gen) return;
     changeTree._fullSyncGen = ctx.gen;
 
-    // Visibility gate: when a view is active, a non-visible tree contributes
-    // nothing itself but we still recurse so descendants (possibly added to
-    // the view explicitly) are reachable.
+    // Visibility gate: a tree the view can't see emits nothing itself, but
+    // the walk still visits its children (through the edge gate below).
     const visibleHere = !ctx.hasView || ctx.view!.isChangeTreeVisible(changeTree);
+    const desc = changeTree.encDescriptor;
+    const filtered = changeTree.isFiltered;
 
-    if (visibleHere) {
-        const desc = changeTree.encDescriptor;
+    if (visibleHere && _treeEmitsIn(ctx.emitFiltered, filtered, desc)) {
         ctx.changeTree = changeTree;
         ctx.ref = changeTree.ref;
         ctx.encoder = desc.encoder;
         ctx.filter = desc.filter;
         ctx.metadata = desc.metadata;
-        ctx.treeIsFiltered = changeTree.isFiltered;
+        ctx.treeIsFiltered = filtered;
         ctx.isSchema = desc.isSchema;
         ctx.filterBitmask = desc.filterBitmask;
         ctx.tags = desc.tags;
@@ -162,7 +167,21 @@ function _fullSyncWalk(ctx: EncodeCtx, changeTree: ChangeTree): void {
         _forEachLiveWithCtx(changeTree, ctx, encodeFullSyncCb);
     }
 
-    _forEachChildWithCtx(changeTree, ctx, _fullSyncWalkChildCb);
+    // shared pass: a filtered tree binds nothing, and whatever is public below it has a public path too
+    if (filtered && !ctx.emitFiltered) return;
+
+    if (!(filtered || desc.hasViewRef) || changeTree.isStreamCollection) {
+        _forEachChildWithCtx(changeTree, ctx, _fullSyncWalkChildCb); // every edge public (streams keep their own rules)
+    } else {
+        _fullSyncWalkGated(ctx, changeTree, visibleHere);
+    }
+}
+
+/** Visit the children of a tree with filtered edges, through the ones that bind them in this pass. */
+function _fullSyncWalkGated(ctx: EncodeCtx, changeTree: ChangeTree, visibleHere: boolean): void {
+    ctx.walkParent = changeTree;
+    ctx.walkParentVisible = visibleHere;
+    _forEachChildWithCtx(changeTree, ctx, _fullSyncWalkGatedChildCb);
 }
 
 /**
@@ -173,6 +192,46 @@ function _fullSyncWalk(ctx: EncodeCtx, changeTree: ChangeTree): void {
  */
 function _fullSyncWalkChildCb(ctx: EncodeCtx, child: ChangeTree, _index: any): void {
     _fullSyncWalk(ctx, child);
+}
+
+/** `_fullSyncWalkChildCb` under a parent with filtered edges: skips the ones that don't bind `child` in this pass. */
+function _fullSyncWalkGatedChildCb(ctx: EncodeCtx, child: ChangeTree, index: any): void {
+    const parent = ctx.walkParent;
+    const parentVisible = ctx.walkParentVisible;
+    if (!_fullSyncEdgeIntroduces(ctx, parent, parentVisible, child, index)) return;
+    _fullSyncWalk(ctx, child);
+    ctx.walkParent = parent;
+    ctx.walkParentVisible = parentVisible;
+}
+
+/**
+ * Does this pass send the op binding `child` under `parent` (or did the
+ * shared pass, which the client decodes first)? A shared instance reached
+ * first through another edge would ship its body before its refId exists,
+ * and the visit stamp would then skip it under the edge that binds it.
+ */
+function _fullSyncEdgeIntroduces(ctx: EncodeCtx, parent: ChangeTree, parentVisible: boolean, child: ChangeTree, index: number): boolean {
+    if (!parent._isSchema) {
+        // view pass (the shared one skips filtered collections): a filtered item ships only when visible, through its own gate
+        return parentVisible || !child.isFiltered;
+    }
+    const tag = parent.encDescriptor.tags[index];
+    if (!ctx.emitFiltered) return tag === undefined; // shared pass: untagged fields of public Schemas
+    if (!child.isFiltered) return true; // the shared pass bound it
+    if (!parentVisible) return false;
+    if (tag === undefined || tag === DEFAULT_VIEW_TAG) return true; // pass on a visible Schema
+    const filter = parent.encDescriptor.filter;
+    return filter === undefined || filter(parent.ref, index, ctx.view);
+}
+
+/**
+ * Can a full-sync pass emit any of the tree's fields? `encodeChangeCb`'s rule
+ * at tree level: the view pass sends filtered trees and `@view` fields
+ * (`ChangeTree.hasFilteredFields`, inlined), the shared pass public trees.
+ * A pass it rejects would only walk fields `encodeChangeCb` drops.
+ */
+function _treeEmitsIn(emitFiltered: boolean, filtered: boolean, desc: EncodeDescriptor): boolean {
+    return emitFiltered ? (filtered || desc.hasAnyView) : !filtered;
 }
 
 /**
@@ -264,7 +323,7 @@ export class Encoder<T extends Schema = any> {
         treeIsFiltered: false, isSchema: false, emitFiltered: false,
         filterBitmask: 0, tags: undefined!,
         structSwitchEmitted: false, isRootTree: false, shouldEmitSwitch: false,
-        gen: 0, initialOffset: 0, rootChangeTree: undefined!,
+        gen: 0, walkParent: undefined!, walkParentVisible: false, initialOffset: 0, rootChangeTree: undefined!,
     };
 
     /**
@@ -309,6 +368,8 @@ export class Encoder<T extends Schema = any> {
         // Settle any pending per-edge filter re-derivations before routing
         // fields to channels (see inheritedFlags.drainFilterRefresh).
         if (this.root.pendingFilterRefresh.length > 0) drainFilterRefresh(this.root);
+
+        this.untypedRefEnd = -1; // offsets from an earlier pass mean nothing here
 
         const hasView = (view !== undefined);
         const rootChangeTree = this.state[$changes];
@@ -584,7 +645,7 @@ export class Encoder<T extends Schema = any> {
                 // workaround when using view.add() on item that has been deleted from state
                 // (see test "adding to view item that has been removed from state")
                 const value = refTarget[$getByIndex](index);
-                const operation = (value !== undefined && op) || OPERATION.DELETE;
+                const operation = (value != null && op) || OPERATION.DELETE; // `null` is unset, as in a full sync
 
                 // isEncodeAll = false, hasView = true
                 encoder(this, bytes, changeTree, index, operation, it, false, true, metadata);
@@ -964,8 +1025,25 @@ export class Encoder<T extends Schema = any> {
         if (baseTypeId !== targetTypeId) {
             bytes[it.offset++] = TYPE_ID & 255;
             encode.number(bytes, targetTypeId, it);
+
+        } else {
+            this.untypedRefEnd = it.offset;
+            this.untypedRefTypeId = targetTypeId;
         }
     }
+
+    /**
+     * End offset and type id of the last child Schema written without a
+     * TYPE_ID — read by `encodeSchemaOperation`.
+     *
+     * Only `_encodeChannel` resets it. The other emitters (full sync,
+     * `view.changes`, streams) may run on a stale value, which is safe as
+     * long as they never emit DELETE_AND_ADD on a Schema field.
+     * @internal
+     */
+    untypedRefEnd: number = -1;
+    /** @internal */
+    untypedRefTypeId: number = 0;
 
     /**
      * True when the next `encode()` / `encodeView()` has something to send,

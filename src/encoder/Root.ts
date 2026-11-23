@@ -27,6 +27,15 @@ export interface Streamable {
 // stay non-enumerable for deepStrictEqual) but the descriptor literal isn't.
 const $refIdDescriptor = { value: 0, enumerable: false, writable: true };
 
+const _movedToTail = /*#__PURE__*/ new Set<ChangeTree>();
+
+function moveSubtreeToTailVisit(root: Root, tree: ChangeTree): void {
+    if (_movedToTail.has(tree)) return; // cyclic instance graphs
+    _movedToTail.add(tree);
+    root.moveToTail(tree);
+    tree.forEachChildWithCtx(root, moveSubtreeToTailVisit);
+}
+
 export class Root {
     /**
      * Monotonic refId counter. RefIds are never recycled — a refId is a
@@ -266,6 +275,21 @@ export class Root {
         return refCount;
     }
 
+    /**
+     * Move `tree` and its queued descendants to the back of the change queues,
+     * in pre-order: behind every parent that may introduce them this tick.
+     */
+    moveSubtreeToTail(tree: ChangeTree): void {
+        moveSubtreeToTailVisit(this, tree);
+        _movedToTail.clear();
+    }
+
+    /** Move `tree` to the back of the change queues it is in. */
+    moveToTail(tree: ChangeTree): void {
+        if (tree.changesNode !== undefined) this._moveToTail(this.changes, tree.changesNode);
+        if (tree.unreliableChangesNode !== undefined) this._moveToTail(this.unreliableChanges, tree.unreliableChangesNode);
+    }
+
     recursivelyMoveNextToParent(changeTree: ChangeTree) {
         this.moveNextToParent(changeTree);
         changeTree.forEachChild((child, _) => this.recursivelyMoveNextToParent(child));
@@ -296,6 +320,19 @@ export class Root {
         // exact O(1) "is child already after parent" test — no queue scan.
         if (node.position > parentNode.position) return;
 
+        // Re-append at the tail: after `parentNode` AND after every other
+        // queued parent of a multi-referenced instance — relinking next to
+        // the *primary* parent could jump the child ahead of a 2nd/3rd
+        // parent whose ADD the decoder must see first.
+        // (`recursivelyMoveNextToParent` visits pre-order, so a moved
+        // subtree re-serializes parent-first behind it.)
+        this._moveToTail(changeSet, node);
+    }
+
+    /** Unlink `node` and re-append it with a fresh max position (the order stays append-only). */
+    private _moveToTail(changeSet: ChangeTreeList, node: ChangeTreeNode): void {
+        if (changeSet.tail === node) return;
+
         // Remove node from current position
         if (node.prev) {
             node.prev.next = node.next;
@@ -309,16 +346,9 @@ export class Root {
             changeSet.tail = node.prev;
         }
 
-        // Re-append at the tail: after `parentNode` AND after every other
-        // queued parent of a multi-referenced instance — relinking next to
-        // the *primary* parent could jump the child ahead of a 2nd/3rd
-        // parent whose ADD the decoder must see first. Tail placement gets
-        // a fresh max position, keeping the invariant append-only.
-        // (`recursivelyMoveNextToParent` visits pre-order, so a moved
-        // subtree re-serializes parent-first behind it.)
         node.prev = changeSet.tail;
         node.next = undefined;
-        changeSet.tail!.next = node; // parentNode remains in the list — never empty here
+        changeSet.tail!.next = node; // not the tail, so the list holds another node
         changeSet.tail = node;
         node.position = changeSet.nextPosition++;
     }
