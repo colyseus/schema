@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { MapSchema, Schema, type, ArraySchema, defineTypes, Reflection, Encoder, $changes } from "../src";
 
 import { State, Player, getCallbacks, assertDeepStrictEqualEncodeAll, createInstanceFromReflection } from "./Schema";
-import { encode } from "../src/encoding/encode";
+import { encode, utf8LengthFallback } from "../src/encoding/encode";
 import { decode } from "../src/encoding/decode";
 
 describe("Encoder", () => {
@@ -28,8 +28,7 @@ describe("Encoder", () => {
     });
 
     describe("strings with lone surrogates", () => {
-        // e.g. a string cut in the middle of an emoji. Lone surrogates are
-        // written as U+FFFD, like TextEncoder and Buffer.byteLength.
+        // e.g. a string sliced mid-emoji
         const cases: Array<[string, string]> = [
             ["\uD83D", "\uFFFD"],
             ["\uDE00", "\uFFFD"],
@@ -42,8 +41,14 @@ describe("Encoder", () => {
         it("should write the same bytes as TextEncoder", () => {
             for (const [value] of cases) {
                 const bytes: number[] = [];
-                encode.string(bytes, value, { offset: 0 });
-                assert.deepStrictEqual(bytes.slice(1), Array.from(new TextEncoder().encode(value)), JSON.stringify(value));
+                encode.utf8Write(bytes, value, { offset: 0 });
+                assert.deepStrictEqual(bytes, Array.from(new TextEncoder().encode(value)), JSON.stringify(value));
+            }
+        });
+
+        it("should count the same length in the browser fallback as Buffer.byteLength", () => {
+            for (const [value] of cases) {
+                assert.strictEqual(utf8LengthFallback(value), Buffer.byteLength(value), JSON.stringify(value));
             }
         });
 
@@ -64,7 +69,7 @@ describe("Encoder", () => {
         });
 
         it("should decode the fields after a truncated name", () => {
-            const state = new Player("Bob \uD83D\uDE00".slice(0, 5), 42, 7);
+            const state = new Player("Bob \uD83D", 42, 7);
 
             const decodedState = createInstanceFromReflection(state);
             decodedState.decode(state.encodeAll());
