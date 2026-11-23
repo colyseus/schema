@@ -82,13 +82,8 @@ function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
       continue;
     }
 
-    // invalid byte, or a multi-byte sequence cut off by the end of the string
-    // (never read past `end`: those bytes belong to the next value)
-
-    // (do not throw error to avoid server/client from crashing due to hack attemps)
-    // throw new Error('Invalid byte ' + byte.toString(16));
-
-    console.error('decode.utf8Read(): Invalid byte ' + byte + ' at offset ' + i + '. Skip to end of string: ' + (it.offset + length));
+    // invalid or cut-off sequence: log, don't throw — malformed input mustn't crash server/client
+    console.error('decode.utf8Read(): Invalid or truncated UTF-8 sequence (byte ' + byte + ') at offset ' + i + '. Skip to end of string: ' + end);
     break;
   }
   it.offset += length;

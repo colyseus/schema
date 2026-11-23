@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import { decode } from "../src/encoding/decode";
+import { encode } from "../src/encoding/encode";
 
 describe("Decoder", () => {
     it("should handle string with length way higher than actual provided bytes", () => {
@@ -55,7 +56,7 @@ describe("Decoder", () => {
         const buffer = [0xa2, 0xe2, 0x82, 0xa1, 0x41];
         const it = { offset: 0 };
 
-        // used to be "\u20a1": the header of the next string was read as the 3rd byte
+        // 0xa1 is the next string's header, not a 3rd byte
         assert.strictEqual(decode.string(buffer, it), "");
         assert.strictEqual(it.offset, 3);
         assert.strictEqual(decode.string(buffer, it), "A");
@@ -78,8 +79,8 @@ describe("Decoder", () => {
     });
 
     it("should still decode valid multi-byte strings", () => {
-        const bytes = Array.from(new TextEncoder().encode("é€😀"));
-        const it = { offset: 0 };
-        assert.strictEqual(decode.string([0xa0 | bytes.length, ...bytes], it), "é€😀");
+        const bytes: number[] = [];
+        encode.string(bytes, "é€😀", { offset: 0 });
+        assert.strictEqual(decode.string(bytes, { offset: 0 }), "é€😀");
     });
 });
