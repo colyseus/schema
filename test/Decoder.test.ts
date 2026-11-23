@@ -49,5 +49,37 @@ describe("Decoder", () => {
         assert.strictEqual(str.length, 3, "String length should be 3 bytes");
         assert.strictEqual(it.offset, 256, "Iterator offset should be 256");
     });
-});
 
+    it("should not read a multi-byte sequence past the end of the string", () => {
+        // two strings: "\xe2\x82" (3-byte sequence cut after 2 bytes), then "A"
+        const buffer = [0xa2, 0xe2, 0x82, 0xa1, 0x41];
+        const it = { offset: 0 };
+
+        // used to be "\u20a1": the header of the next string was read as the 3rd byte
+        assert.strictEqual(decode.string(buffer, it), "");
+        assert.strictEqual(it.offset, 3);
+        assert.strictEqual(decode.string(buffer, it), "A");
+    });
+
+    it("should keep the text before a 4-byte sequence cut off by the end of the string", () => {
+        // two strings: "A\xf0\x9f\x98" (4-byte sequence cut after 3 bytes), then "B"
+        const buffer = [0xa4, 0x41, 0xf0, 0x9f, 0x98, 0xa1, 0x42];
+        const it = { offset: 0 };
+
+        assert.strictEqual(decode.string(buffer, it), "A");
+        assert.strictEqual(it.offset, 5);
+        assert.strictEqual(decode.string(buffer, it), "B");
+    });
+
+    it("should not read a 2-byte sequence past the end of the buffer", () => {
+        const it = { offset: 0 };
+        assert.strictEqual(decode.string([0xa2, 0x41, 0xc3], it), "A");
+        assert.strictEqual(it.offset, 3);
+    });
+
+    it("should still decode valid multi-byte strings", () => {
+        const bytes = Array.from(new TextEncoder().encode("é€😀"));
+        const it = { offset: 0 };
+        assert.strictEqual(decode.string([0xa0 | bytes.length, ...bytes], it), "é€😀");
+    });
+});
