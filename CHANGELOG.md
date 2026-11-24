@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.51]
+
+### Fixed
+
+- A string holding half an emoji, such as one cut by `slice()`, no longer corrupts the state on every client. The broken half now arrives as `�`. Thanks @vtxe02023274! [#261](https://github.com/colyseus/schema/pull/261)
+- Decoding a string whose last character is cut off no longer pulls in bytes from the field after it. Thanks @bardrop! [#260](https://github.com/colyseus/schema/pull/260)
+- The server no longer keeps a disposed room's state in memory after the room attached a collection. Thanks @serjek! [#263](https://github.com/colyseus/schema/pull/263)
+
+### Changed
+
+- `InputDecoder` now throws on malformed input instead of logging it and applying what it could. It also throws when created for an input class with `Schema` or collection fields, which `InputEncoder` already refused. Thanks @NissanBoss!
+
 ## [5.0.50]
 
 ### Fixed
