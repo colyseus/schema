@@ -1,7 +1,8 @@
 import * as assert from "assert";
 import * as vm from "vm";
-import { Schema, type, Encoder, Decoder } from "../src";
+import { Schema, type, Encoder, Decoder, OPERATION } from "../src";
 import { InputEncoder, InputDecoder } from "../src/input";
+import { SWITCH_TO_STRUCTURE } from "../src/encoding/spec";
 import { createInstanceFromReflection } from "./Schema";
 
 describe("InputEncoder / InputDecoder", () => {
@@ -458,6 +459,16 @@ describe("InputEncoder / InputDecoder", () => {
         assert.throws(() => new InputDecoder(new Thing()), /primitive fields only/);
         // Reflection classes have no encoders, yet no ref fields either
         assert.doesNotThrow(() => new InputDecoder(createInstanceFromReflection(new Position())));
+    });
+
+    it("InputDecoder should throw on malformed input", () => {
+        class Input extends Schema {
+            @type("number") x: number;
+        }
+        const dec = new InputDecoder(new Input());
+
+        assert.throws(() => dec.decode(new Uint8Array([OPERATION.ADD | 5, 0x01])), /field not defined/);
+        assert.throws(() => dec.decode(new Uint8Array([SWITCH_TO_STRUCTURE, 5])), /"refId" not found/);
     });
 
     it("should throw on classes without fields", () => {

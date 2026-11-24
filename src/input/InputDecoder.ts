@@ -28,6 +28,7 @@ export class InputDecoder<T extends Schema = any> {
         }
         this.instance = instance;
         this._decoder = new Decoder(instance);
+        this._decoder.strict = true;
     }
 
     /**

@@ -78,6 +78,18 @@ describe("Decoder", () => {
         assert.strictEqual(it.offset, 3);
     });
 
+    it("should truncate invalid UTF-8 without logging", () => {
+        const error = console.error;
+        let logged = 0;
+        console.error = () => { logged++; };
+        try {
+            assert.strictEqual(decode.string([0xa1, 0xff], { offset: 0 }), "");
+        } finally {
+            console.error = error;
+        }
+        assert.strictEqual(logged, 0);
+    });
+
     it("should still decode valid multi-byte strings", () => {
         const bytes: number[] = [];
         encode.string(bytes, "é€😀", { offset: 0 });
