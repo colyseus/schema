@@ -72,8 +72,13 @@ export function setParent(
         ctx.parentRef = tree.ref;
         ctx.root = root;
         _setParentDepth++;
-        forEachChildWithCtx(tree, ctx, _setParentChildCb);
-        _setParentDepth--;
+        try {
+            forEachChildWithCtx(tree, ctx, _setParentChildCb);
+        } finally {
+            _setParentDepth--;
+            ctx.parentRef = undefined!;
+            ctx.root = undefined!;
+        }
     }
 
     return wasLinked;
