@@ -1,22 +1,8 @@
 import { Schema, type, MapSchema, TypeContext, Reflection, Encoder } from "../src";
 import { InputEncoder } from "../src/input";
 import * as assert from "assert";
-import * as v8 from "v8";
-import * as vm from "vm";
 import { entity } from "../src/annotations";
-
-// `gc()` without the --expose-gc CLI flag.
-v8.setFlagsFromString("--expose-gc");
-const gc: () => void = vm.runInNewContext("gc");
-
-/** Every target collected once nothing but `fn`'s own frame held it. */
-async function collected(fn: () => object[]) {
-    const refs = fn().map((o) => new WeakRef(o));
-    // WeakRef targets are kept until the current job ends.
-    await new Promise((resolve) => setImmediate(resolve));
-    gc(); gc();
-    return refs.every((r) => r.deref() === undefined);
-}
+import { collected } from "./helpers/test_helpers";
 
 describe("TypeContext", () => {
     it("should register all inherited classes", () => {

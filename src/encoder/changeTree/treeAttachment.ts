@@ -1,8 +1,8 @@
 /**
  * Tree-attachment helpers: setRoot / setParent + child-iteration recursion.
  * Hot path: every new Schema/Collection instance attached to the root
- * goes through here, which is why the recursive walk uses a hoisted
- * callback + ctx-pool instead of per-call closures.
+ * goes through here, which is why the recursive walk uses hoisted
+ * callbacks instead of per-call closures.
  */
 import { $changes, $childType, $refTypeFieldIndexes } from "../../types/symbols.js";
 import { Root } from "../Root.js";
@@ -61,24 +61,9 @@ export function setParent(
     }
 
     // assign same parent on child structures (closure-free hot path).
-    // setParent recurses, so each depth gets its own ctx from a pool
-    // that grows to the recursion depth (typically tree height = 3-5).
+    // The tree is the walk's ctx: it carries both `ref` and `root` (=== root by now).
     if (isNewChangeTree) {
-        let ctx = _setParentCtxPool[_setParentDepth];
-        if (ctx === undefined) {
-            ctx = { parentRef: undefined!, root: undefined! };
-            _setParentCtxPool[_setParentDepth] = ctx;
-        }
-        ctx.parentRef = tree.ref;
-        ctx.root = root;
-        _setParentDepth++;
-        try {
-            forEachChildWithCtx(tree, ctx, _setParentChildCb);
-        } finally {
-            _setParentDepth--;
-            ctx.parentRef = undefined!;
-            ctx.root = undefined!;
-        }
+        forEachChildWithCtx(tree, tree, _setParentChildCb);
     }
 
     return wasLinked;
@@ -167,17 +152,12 @@ function _setRootChildCb(root: Root, child: ChangeTree, _index: any): void {
     }
 }
 
-interface SetParentCtx { parentRef: Ref; root: Root; }
-// Pool of ctx objects, indexed by setParent recursion depth. Grows to
-// max depth seen (typically tree height = 3-5 in bench), then stays put.
-const _setParentCtxPool: SetParentCtx[] = [];
-let _setParentDepth = 0;
-
-function _setParentChildCb(ctx: SetParentCtx, child: ChangeTree, index: any): void {
-    if (child.root === ctx.root) {
-        ctx.root.add(child);
-        ctx.root.moveNextToParent(child);
+function _setParentChildCb(parent: ChangeTree, child: ChangeTree, index: any): void {
+    const root = parent.root!;
+    if (child.root === root) {
+        root.add(child);
+        root.moveNextToParent(child);
         return;
     }
-    child.setParent(ctx.parentRef, ctx.root, index);
+    child.setParent(parent.ref, root, index);
 }
