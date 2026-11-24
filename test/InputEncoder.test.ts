@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import * as vm from "vm";
-import { Schema, type, Encoder, Decoder, OPERATION } from "../src";
+import { Schema, type, Encoder, Decoder, OPERATION, ArraySchema } from "../src";
 import { InputEncoder, InputDecoder } from "../src/input";
 import { SWITCH_TO_STRUCTURE } from "../src/encoding/spec";
 import { createInstanceFromReflection } from "./Schema";
@@ -445,7 +445,7 @@ describe("InputEncoder / InputDecoder", () => {
         assert.notDeepStrictEqual(Array.from(b1), first);
     });
 
-    it("should throw on non-primitive fields (nested Schema)", () => {
+    it("should throw on non-primitive fields (nested Schema, collections)", () => {
         class Position extends Schema {
             @type("number") x: number;
             @type("number") y: number;
@@ -457,6 +457,11 @@ describe("InputEncoder / InputDecoder", () => {
 
         assert.throws(() => new InputEncoder(new Thing()), /non-primitive/i);
         assert.throws(() => new InputDecoder(new Thing()), /primitive fields only/);
+        // client bytes must never reach ArraySchema decoding (unbounded index)
+        class Path extends Schema {
+            @type(["number"]) points = new ArraySchema<number>();
+        }
+        assert.throws(() => new InputDecoder(new Path()), /primitive fields only/);
         // Reflection classes have no encoders, yet no ref fields either
         assert.doesNotThrow(() => new InputDecoder(createInstanceFromReflection(new Position())));
     });
