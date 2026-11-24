@@ -97,4 +97,4 @@ export { getEncodeDescriptor, type EncodeDescriptor } from "./encoder/EncodeDesc
 
 // Symbols used by InputEncoder/InputDecoder via the runtime-externalized
 // `@colyseus/schema` import in `build/input/index.mjs`.
-export { $numFields, $values } from "./types/symbols.js";
+export { $numFields, $values, $refTypeFieldIndexes } from "./types/symbols.js";

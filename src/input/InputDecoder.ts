@@ -1,6 +1,7 @@
 import { Decoder } from "../decoder/Decoder.js";
 import { decode, type Iterator } from "../encoding/decode.js";
 import type { Schema } from "../Schema.js";
+import { $refTypeFieldIndexes } from "../types/symbols.js";
 
 /**
  * Bound single-struct decoder for input packets. Wraps the standard
@@ -11,6 +12,9 @@ import type { Schema } from "../Schema.js";
  *   mode). Invokes `cb` with the mutated instance once per framed input,
  *   oldest → newest. The instance is re-used across callbacks — consume
  *   synchronously (apply to game state) rather than holding the reference.
+ *
+ * Flat primitive fields only, like {@link InputEncoder}: ref/collection
+ * fields throw at construction.
  */
 export class InputDecoder<T extends Schema = any> {
     readonly instance: T;
@@ -18,6 +22,10 @@ export class InputDecoder<T extends Schema = any> {
     private readonly _it: Iterator = { offset: 0 };
 
     constructor(instance: T) {
+        // untrusted input: keep the decoder off its ref/collection paths
+        if ((instance.constructor as typeof Schema)[Symbol.metadata]?.[$refTypeFieldIndexes]) {
+            throw new Error(`InputDecoder: '${instance.constructor.name}' must have primitive fields only.`);
+        }
         this.instance = instance;
         this._decoder = new Decoder(instance);
     }
@@ -53,6 +61,8 @@ export class InputDecoder<T extends Schema = any> {
         while (it.offset < bytes.length) {
             const len = decode.number(bytes, it);
             const end = it.offset + len;
+            // NaN-safe; a negative len would rewind the cursor forever
+            if (!(len >= 0 && end <= bytes.length)) { break; }
             this._decoder.decode(bytes.subarray(it.offset, end));
             onInput(this.instance, baseSeq + count);   // slot seq by position
             it.offset = end;

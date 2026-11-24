@@ -1,6 +1,8 @@
 import * as assert from "assert";
+import * as vm from "vm";
 import { Schema, type, Encoder, Decoder } from "../src";
 import { InputEncoder, InputDecoder } from "../src/input";
+import { createInstanceFromReflection } from "./Schema";
 
 describe("InputEncoder / InputDecoder", () => {
 
@@ -335,6 +337,17 @@ describe("InputEncoder / InputDecoder", () => {
             ]);
         });
 
+        it("decodeAll stops at a frame length that is negative or runs past the packet", () => {
+            // a regression loops forever: fail on a timeout instead of hanging the suite
+            const decodeAll = (bytes: number[]): number => vm.runInNewContext("f()", {
+                f: () => new InputDecoder(new RingInput()).decodeAll(new Uint8Array(bytes), () => {}),
+            }, { timeout: 1000 });
+
+            assert.strictEqual(decodeAll([0x00, 0xfe]), 0);       // len = -2
+            assert.strictEqual(decodeAll([0x00, 0x05, 0x80]), 0); // len = 5, 1 byte left
+            assert.strictEqual(decodeAll([0x00, 0x00, 0xfe]), 1); // empty frame, then len = -2
+        });
+
         it("historySize defaults to 3", () => {
             const src = new RingInput();
             const enc = new InputEncoder(src, { mode: "unreliable" });
@@ -442,6 +455,9 @@ describe("InputEncoder / InputDecoder", () => {
         }
 
         assert.throws(() => new InputEncoder(new Thing()), /non-primitive/i);
+        assert.throws(() => new InputDecoder(new Thing()), /primitive fields only/);
+        // Reflection classes have no encoders, yet no ref fields either
+        assert.doesNotThrow(() => new InputDecoder(createInstanceFromReflection(new Position())));
     });
 
     it("should throw on classes without fields", () => {
