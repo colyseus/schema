@@ -52,7 +52,7 @@ describe("Encoder", () => {
         assert.throws(() => new Encoder(state), /GameState\.items is an own property.*"useDefineForClassFields": false/);
     });
 
-    it("should throw the same error from encode() when a child's field is an own property", () => {
+    it("should throw the same error from encode()/encodeAll() when a child's field is an own property", () => {
         class Inventory extends Schema {
             @type(["string"]) slots = new ArraySchema<string>();
         }
@@ -83,9 +83,13 @@ describe("Encoder", () => {
             encoder.discardChanges();
         }
 
+        // a late joiner's full sync takes the error, the next one carries the child
         encoder.state.inventory = shadowed();
         assert.throws(() => encoder.encodeAll(), /Inventory\.slots is an own property/);
-        assert.doesNotThrow(() => encoder.encode());
+        const joiner = createInstanceFromReflection(encoder.state, encoder);
+        joiner.decode(encoder.encodeAll());
+        assert.ok(joiner.inventory instanceof Schema);
+        assert.notStrictEqual(joiner.inventory, joiner);
     });
 
     it("should keep syncing the subtree when the error is caught", () => {
