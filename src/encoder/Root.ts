@@ -3,7 +3,7 @@ import { TypeContext } from "../types/TypeContext.js";
 import { ChangeTree, ChangeTreeList, createChangeTreeList, PENDING_FILTER_REFRESH, type ChangeTreeNode } from "./ChangeTree.js";
 import { restageLiveCb } from "./changeTree/liveIteration.js";
 import { $changes, $refId } from "../types/symbols.js";
-import { assertAccessorsNotShadowed } from "../encoding/assert.js";
+import { findShadowedAccessor, type EncodeSchemaError } from "../encoding/assert.js";
 import type { StateView } from "./StateView.js";
 import type { StreamSchema } from "../types/custom/StreamSchema.js";
 import type { StreamableState } from "./streaming.js";
@@ -47,6 +47,10 @@ export class Root {
     protected nextUniqueId: number = 0;
 
     changeTrees: {[refId: number]: ChangeTree} = {};
+
+    // Recorded by add() and thrown by the Encoder, so the attach always
+    // completes and an app that catches it still has a consistent tree.
+    attachError: EncodeSchemaError | undefined = undefined;
 
     /**
      * Reference count of every live tree, keyed by refId. Debug/test aid:
@@ -189,7 +193,7 @@ export class Root {
         // *enumerable* own Symbols, so we keep defineProperty(enumerable:false)
         // to keep $refId hidden from deep-equal comparisons in tests.
         if (ref[$refId] === undefined) {
-            assertAccessorsNotShadowed(ref);
+            this.attachError ??= findShadowedAccessor(ref);
             $refIdDescriptor.value = this.nextUniqueId++;
             Object.defineProperty(ref, $refId, $refIdDescriptor);
         }

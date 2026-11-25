@@ -314,6 +314,13 @@ export class Encoder<T extends Schema = any> {
     protected setState(state: T) {
         this.state = state;
         this.state[$changes].setRoot(this.root);
+        if (this.root.attachError !== undefined) { this.throwAttachError(); }
+    }
+
+    private throwAttachError(): never {
+        const error = this.root.attachError!;
+        this.root.attachError = undefined;
+        throw error;
     }
 
     private _encodeCtx: EncodeCtx = {
@@ -365,6 +372,7 @@ export class Encoder<T extends Schema = any> {
         initialOffset: number,
         unreliable: boolean,
     ): Uint8Array {
+        if (this.root.attachError !== undefined) { this.throwAttachError(); }
         // Settle any pending per-edge filter re-derivations before routing
         // fields to channels (see inheritedFlags.drainFilterRefresh).
         if (this.root.pendingFilterRefresh.length > 0) drainFilterRefresh(this.root);
@@ -454,6 +462,7 @@ export class Encoder<T extends Schema = any> {
         view?: StateView,
         initialOffset: number = it.offset
     ): Uint8Array {
+        if (this.root.attachError !== undefined) { this.throwAttachError(); }
         // Full-sync splits fields by the same isFiltered classification.
         if (this.root.pendingFilterRefresh.length > 0) drainFilterRefresh(this.root);
 
@@ -548,6 +557,7 @@ export class Encoder<T extends Schema = any> {
         it: Iterator,
         bytes: Uint8Array = this.sharedBuffer
     ) {
+        if (this.root.attachError !== undefined) { this.throwAttachError(); }
         const viewOffset = it.offset;
 
         // Stream priority pass: drain up to `maxPerTick` per-view entries

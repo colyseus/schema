@@ -52,7 +52,7 @@ describe("Encoder", () => {
         assert.throws(() => new Encoder(state), /GameState\.items is an own property.*"useDefineForClassFields": false/);
     });
 
-    it("should throw the same error when a child's field is an own property", () => {
+    it("should throw the same error from encode() when a child's field is an own property", () => {
         class Inventory extends Schema {
             @type(["string"]) slots = new ArraySchema<string>();
         }
@@ -64,12 +64,66 @@ describe("Encoder", () => {
 
         const encoder = new Encoder(new Hero());
 
-        const inventory = new Inventory();
-        Object.defineProperty(inventory, "slots", { value: new ArraySchema<string>(), writable: true, enumerable: true, configurable: true });
+        const shadowed = () => {
+            const inventory = new Inventory();
+            Object.defineProperty(inventory, "slots", { value: new ArraySchema<string>(), writable: true, enumerable: true, configurable: true });
+            return inventory;
+        };
+        const attachments: Array<() => void> = [
+            () => encoder.state.inventory = shadowed(),
+            () => encoder.state.stash.set("a", shadowed()),
+            () => encoder.state.bags.push(shadowed()),
+            () => encoder.state.bags[0] = shadowed(),
+            () => encoder.state.bags.unshift(shadowed()),
+        ];
 
-        assert.throws(() => encoder.state.inventory = inventory, /Inventory\.slots is an own property/);
-        assert.throws(() => encoder.state.stash.set("a", inventory), /Inventory\.slots is an own property/);
-        assert.throws(() => encoder.state.bags.push(inventory), /Inventory\.slots is an own property/);
+        for (const attach of attachments) {
+            assert.doesNotThrow(attach);
+            assert.throws(() => encoder.encode(), /Inventory\.slots is an own property/);
+            encoder.discardChanges();
+        }
+    });
+
+    it("should keep syncing the subtree when the error is caught", () => {
+        class Tag extends Schema {
+            @type("number") level: number = 1;
+        }
+        class Item extends Schema {
+            @type("string") name: string;
+            @type(Tag) tag = new Tag();
+        }
+        class GameState extends Schema {
+            @type("string") title: string = "root";
+            @type(Item) item: Item;
+            @type({ map: Item }) items = new MapSchema<Item>();
+            @type([Item]) list = new ArraySchema<Item>();
+        }
+
+        const state = new GameState();
+        const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(state.encode());
+
+        const shadowed = () => {
+            const item = new Item();
+            Object.defineProperty(item, "name", { value: "a", writable: true, enumerable: true, configurable: true });
+            return item;
+        };
+        state.item = shadowed();
+        state.items.set("a", shadowed());
+        state.list.push(new Item());
+        state.list.unshift(shadowed());
+        state.list[1] = shadowed();
+
+        // thrown once, then the queued changes encode as before
+        assert.throws(() => state.encode(), /Item\.name is an own property/);
+        decodedState.decode(state.encode());
+
+        for (const item of [decodedState.item, decodedState.items.get("a"), decodedState.list[0], decodedState.list[1]]) {
+            assert.ok(item instanceof Schema);
+            assert.notStrictEqual(item, decodedState);
+            assert.strictEqual(item.tag.level, 1);
+        }
+        assert.strictEqual(decodedState.list.length, 2);
     });
 
     it("should not check children added to a collection with no encoder (client-side)", () => {

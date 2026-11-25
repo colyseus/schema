@@ -71,14 +71,15 @@ export function assertInstanceType(
 // hide the @type() accessors, so nothing is tracked. Checked once per class,
 // from Root.add(), so setters pay nothing extra.
 const checkedClasses = new WeakSet<Function>();
-export function assertAccessorsNotShadowed(ref: any) {
+export function findShadowedAccessor(ref: any): EncodeSchemaError | undefined {
     const ctor = ref.constructor;
-    if (checkedClasses.has(ctor)) { return; }
+    if (checkedClasses.has(ctor)) { return undefined; }
     const descriptors = ctor[Symbol.metadata]?.[$descriptors];
     for (const field in descriptors) {
         if (descriptors[field].get !== undefined && Object.prototype.hasOwnProperty.call(ref, field)) {
-            throw new EncodeSchemaError(`@colyseus/schema: ${ctor.name}.${field} is an own property that hides its synced accessor, so its changes are never tracked. Set "useDefineForClassFields": false (TypeScript, esbuild); in plain JavaScript, assign it in the constructor instead of declaring a class field.`);
+            return new EncodeSchemaError(`@colyseus/schema: ${ctor.name}.${field} is an own property that hides its synced accessor, so its changes are never tracked. Set "useDefineForClassFields": false (TypeScript, esbuild); in plain JavaScript, assign it in the constructor instead of declaring a class field.`);
         }
     }
     checkedClasses.add(ctor);
+    return undefined;
 }
