@@ -34,6 +34,14 @@ export class Decoder<T extends IRef = any> {
      */
     resyncDamaged: boolean = false;
 
+    /**
+     * @internal Throw on malformed input (unknown refId, undefined field) instead of
+     * logging and skipping it. Set by `InputDecoder`, which decodes untrusted
+     * client bytes on the server, where a log line per bad op is free for a
+     * client to trigger.
+     */
+    strict: boolean = false;
+
     constructor(root: T, context?: TypeContext) {
         this.setState(root);
 
@@ -87,7 +95,7 @@ export class Decoder<T extends IRef = any> {
                 // Trying to access a reference that haven't been decoded yet.
                 //
                 if (!nextRef) {
-                    // throw new Error(`"refId" not found: ${nextRefId}`);
+                    if (this.strict) { throw new Error(`"refId" not found: ${nextRefId}`); }
                     console.error(`"refId" not found: ${nextRefId}`, { previousRef: ref, previousRefId: this.currentRefId });
                     console.warn("Please report this issue to the developers.");
                     this.skipCurrentStructure(bytes, it, totalBytes);

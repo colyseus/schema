@@ -4,6 +4,51 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.51]
+
+### Fixed
+
+- A string holding half an emoji, such as one cut by `slice()`, no longer corrupts the state on every client. The broken half now arrives as `�`. Thanks @vtxe02023274! [#261](https://github.com/colyseus/schema/pull/261)
+- Decoding a string whose last character is cut off no longer pulls in bytes from the field after it. Thanks @bardrop! [#260](https://github.com/colyseus/schema/pull/260)
+- The server no longer keeps a disposed room's state in memory after the room attached a collection. Thanks @serjek! [#263](https://github.com/colyseus/schema/pull/263)
+
+### Changed
+
+- `InputDecoder` now throws on malformed input instead of logging it and applying what it could. It also throws when created for an input class with `Schema` or collection fields, which `InputEncoder` already refused. Thanks @NissanBoss!
+
+## [5.0.50]
+
+### Fixed
+
+Only the server needs the upgrade for any of these.
+
+- `encode()` no longer throws when an instance whose old `Schema` field was set to `null` is put into another container, in states with any `@view()` field. Thanks @FTWinston! [#259](https://github.com/colyseus/schema/pull/259)
+- Adding a `@view()` `Schema` field that holds `null` to a view no longer makes `encode()` throw. Tagged primitive fields holding `null` now stay unset on clients after `view.add(obj, tag)`, as on a full sync, instead of arriving as `""`, `0` or `false`. Thanks @FTWinston! [#259](https://github.com/colyseus/schema/pull/259)
+- An instance shared between a `@view()` container and another container no longer arrives empty, whether it joins both in the same tick or the client joins late.
+- A nested `view.add()` (such as `view.add(item.secret)`) now sends the ancestors it reveals whole when they were synced in an earlier tick, instead of only the fields on the path to the added instance.
+- `view.remove(obj, tag)` now hides only that tag's fields: `obj` and its untagged `@view()` fields keep syncing. A plain `view.remove(obj)` now also drops the tags `obj` was added with.
+- `view.add(obj, tag)` on an object the view already sees no longer reveals `@view()` collection items the view never added.
+- After `view.add(child)` reaches `child` through a `@view(N)` field the view lacks tag N for, that field now also survives full syncs, and stays hidden from other views.
+- An instance held in a `@view()` collection now shows up there, or disappears from it, as soon as a view starts or stops seeing it through another path, not only in full syncs.
+- A map entry overwritten while its owner was detached keeps its key when the owner is attached again.
+- Primitive collections under a `Schema` that a view sees only through instance sharing now reach that view.
+
+### Changed
+
+- Joining with a `StateView` is up to 20% faster to encode when most of the state has no `@view()` fields.
+
+## [5.0.49]
+
+### Fixed
+
+- Collections of primitives (`ArraySchema<string>`, `MapSchema<number>`, …) attached to a `@view()`-filtered `Schema` after `view.add()` now reach that view, such as those on an item pushed into a visible inventory. They used to arrive empty and never update. Only the server needs the upgrade. Thanks @FTWinston! [#258](https://github.com/colyseus/schema/pull/258)
+
+## [5.0.48]
+
+### Fixed
+
+- Replacing the 22nd field of a `Schema` in the same patch that sets a child `Schema` field just before it no longer corrupts the client's state. Only the server needs the upgrade. Thanks @devlsh! [#257](https://github.com/colyseus/schema/issues/257)
+
 ## [5.0.47]
 
 ### Fixed

@@ -53,14 +53,14 @@ function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
       string += String.fromCharCode(byte);
       continue;
     }
-    if ((byte & 0xe0) === 0xc0) {
+    if ((byte & 0xe0) === 0xc0 && i + 1 < end) {
       string += String.fromCharCode(
         ((byte & 0x1f) << 6) |
         (bytes[++i] & 0x3f)
       );
       continue;
     }
-    if ((byte & 0xf0) === 0xe0) {
+    if ((byte & 0xf0) === 0xe0 && i + 2 < end) {
       string += String.fromCharCode(
         ((byte & 0x0f) << 12) |
         ((bytes[++i] & 0x3f) << 6) |
@@ -68,7 +68,7 @@ function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
       );
       continue;
     }
-    if ((byte & 0xf8) === 0xf0) {
+    if ((byte & 0xf8) === 0xf0 && i + 3 < end) {
       chr = ((byte & 0x07) << 18) |
         ((bytes[++i] & 0x3f) << 12) |
         ((bytes[++i] & 0x3f) << 6) |
@@ -82,11 +82,7 @@ function utf8Read(bytes: BufferLike, it: Iterator, length: number) {
       continue;
     }
 
-    // (do not throw error to avoid server/client from crashing due to hack attemps)
-    // throw new Error('Invalid byte ' + byte.toString(16));
-
-    console.error('decode.utf8Read(): Invalid byte ' + byte + ' at offset ' + i + '. Skip to end of string: ' + (it.offset + length));
-    break;
+    break; // invalid or cut-off: truncate silently — the bytes may be untrusted
   }
   it.offset += length;
   return string;

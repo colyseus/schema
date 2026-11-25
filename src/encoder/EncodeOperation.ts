@@ -1,4 +1,4 @@
-import { OPERATION } from "../encoding/spec.js";
+import { OPERATION, TYPE_ID } from "../encoding/spec.js";
 import { $changes, $childType, $encoders, $getByIndex, $refId, $values } from "../types/symbols.js";
 
 import { encode } from "../encoding/encode.js";
@@ -75,10 +75,19 @@ export const encodeSchemaOperation: EncodeOperation = function <T extends Schema
     _: any,
     __: any,
 ) {
-    // "compress" field index + operation. Can't collide with
-    // SWITCH_TO_STRUCTURE (255): that needs `DELETE_AND_ADD | 63`, and
-    // `Metadata.MAX_FIELDS` keeps index 63 unassignable.
-    bytes[it.offset++] = (index | operation) & 255;
+    // "compress" field index + operation. `DELETE_AND_ADD | n` can land on
+    // the two marker bytes: 255 (SWITCH_TO_STRUCTURE) at 63, which
+    // `Metadata.MAX_FIELDS` keeps unassignable, and 213 (TYPE_ID) at 21.
+    const opByte = (index | operation) & 255;
+
+    // The decoder peeks for TYPE_ID after a child Schema sent without one,
+    // so spell that child's type id out before an op that looks like it.
+    if (opByte === TYPE_ID && encoder.untypedRefEnd === it.offset) {
+        bytes[it.offset++] = TYPE_ID;
+        encode.number(bytes, encoder.untypedRefTypeId, it);
+    }
+
+    bytes[it.offset++] = opByte;
 
     // Do not encode value for DELETE operations
     if (operation === OPERATION.DELETE) {

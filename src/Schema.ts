@@ -196,8 +196,10 @@ export class Schema<C = any> implements IRef {
 
         } else {
             // view pass: custom tag (bitmask) — field's stored mask matches
-            // if it shares any bit with a tag this view was add()ed with.
-            return view.hasTagOnTree(ref[$changes], tag);
+            // if it shares any bit with a tag this view was add()ed with,
+            // or a nested add() opened this field for the view.
+            const tree = ref[$changes];
+            return view.hasTagOnTree(tree, tag) || view.isFieldOpen(tree, index);
         }
     }
 

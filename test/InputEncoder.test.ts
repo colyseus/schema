@@ -1,6 +1,9 @@
 import * as assert from "assert";
-import { Schema, type, Encoder, Decoder } from "../src";
+import * as vm from "vm";
+import { Schema, type, Encoder, Decoder, OPERATION, ArraySchema } from "../src";
 import { InputEncoder, InputDecoder } from "../src/input";
+import { SWITCH_TO_STRUCTURE } from "../src/encoding/spec";
+import { createInstanceFromReflection } from "./Schema";
 
 describe("InputEncoder / InputDecoder", () => {
 
@@ -335,6 +338,17 @@ describe("InputEncoder / InputDecoder", () => {
             ]);
         });
 
+        it("decodeAll stops at a frame length that is negative or runs past the packet", () => {
+            // a regression loops forever: fail on a timeout instead of hanging the suite
+            const decodeAll = (bytes: number[]): number => vm.runInNewContext("f()", {
+                f: () => new InputDecoder(new RingInput()).decodeAll(new Uint8Array(bytes), () => {}),
+            }, { timeout: 1000 });
+
+            assert.strictEqual(decodeAll([0x00, 0xfe]), 0);       // len = -2
+            assert.strictEqual(decodeAll([0x00, 0x05, 0x80]), 0); // len = 5, 1 byte left
+            assert.strictEqual(decodeAll([0x00, 0x00, 0xfe]), 1); // empty frame, then len = -2
+        });
+
         it("historySize defaults to 3", () => {
             const src = new RingInput();
             const enc = new InputEncoder(src, { mode: "unreliable" });
@@ -431,7 +445,7 @@ describe("InputEncoder / InputDecoder", () => {
         assert.notDeepStrictEqual(Array.from(b1), first);
     });
 
-    it("should throw on non-primitive fields (nested Schema)", () => {
+    it("should throw on non-primitive fields (nested Schema, collections)", () => {
         class Position extends Schema {
             @type("number") x: number;
             @type("number") y: number;
@@ -442,6 +456,24 @@ describe("InputEncoder / InputDecoder", () => {
         }
 
         assert.throws(() => new InputEncoder(new Thing()), /non-primitive/i);
+        assert.throws(() => new InputDecoder(new Thing()), /primitive fields only/);
+        // client bytes must never reach ArraySchema decoding (unbounded index)
+        class Path extends Schema {
+            @type(["number"]) points = new ArraySchema<number>();
+        }
+        assert.throws(() => new InputDecoder(new Path()), /primitive fields only/);
+        // Reflection classes have no encoders, yet no ref fields either
+        assert.doesNotThrow(() => new InputDecoder(createInstanceFromReflection(new Position())));
+    });
+
+    it("InputDecoder should throw on malformed input", () => {
+        class Input extends Schema {
+            @type("number") x: number;
+        }
+        const dec = new InputDecoder(new Input());
+
+        assert.throws(() => dec.decode(new Uint8Array([OPERATION.ADD | 5, 0x01])), /field not defined/);
+        assert.throws(() => dec.decode(new Uint8Array([SWITCH_TO_STRUCTURE, 5])), /"refId" not found/);
     });
 
     it("should throw on classes without fields", () => {

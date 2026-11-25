@@ -170,6 +170,12 @@ export const PENDING_SHIPPED_BY_FULL_SYNC = 512;
 // search otherwise. Sticky: a duplicate outlives the tick.
 export const REATTACHED_CHILD = 1024;
 /**
+ * A nested `view.add()` opened one of this tree's `@view(N)` fields for some
+ * view (records in `tagViews`). `StateView.isFieldOpen` skips the lookup
+ * without it. Only recycle clears it: a stale bit costs that lookup, nothing more.
+ */
+export const HAS_OPEN_FIELD = 2048;
+/**
  * Flags a child inherits from its parent's own transitive state via
  * `checkInheritedFlags`. Read as a bitwise mask so the inheritance step
  * is a single OR instead of three getter/setter pairs.
@@ -282,7 +288,9 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
     visibleViews?: number[];
 
     // Per-(view, tag) bitmap, indexed by tag. Custom tags only —
-    // DEFAULT_VIEW_TAG visibility lives in `visibleViews`.
+    // DEFAULT_VIEW_TAG visibility lives in `visibleViews`. Negative keys
+    // `~fieldIndex` hold the views a nested `add()` opened that `@view(N)`
+    // field for (see `StateView.isFieldOpen`).
     tagViews?: Map<number, number[]>;
 
     /**
@@ -458,6 +466,8 @@ export class ChangeTree<T extends Ref = any> implements ChangeRecorder {
             if (prev === undefined) finalOp = op;
             else if (prev === OPERATION.DELETE) finalOp = OPERATION.DELETE_AND_ADD;
             else if (prev === OPERATION.ADD && op === OPERATION.DELETE_AND_ADD) finalOp = OPERATION.DELETE_AND_ADD;
+            // restage: the client may not hold the key, and a map REPLACE carries none (arrays: ADD inserts)
+            else if (prev === OPERATION.REPLACE && op === OPERATION.ADD && !this.isArray) finalOp = OPERATION.ADD;
             else finalOp = prev;
             dirty.set(index, finalOp);
         }

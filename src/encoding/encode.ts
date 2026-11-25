@@ -45,31 +45,39 @@ const _float32 = new Float32Array(_convoBuffer);
 const _float64 = new Float64Array(_convoBuffer);
 const _int64 = new BigInt64Array(_convoBuffer);
 
+function isLowSurrogate(c: number) {
+    return c >= 0xdc00 && c < 0xe000;
+}
+
 const hasBufferByteLength = (typeof Buffer !== 'undefined' && Buffer.byteLength);
+
+/** UTF-8 byte length of `str`, for runtimes without `Buffer.byteLength`. Must count exactly what `utf8Write` writes. */
+export function utf8LengthFallback(str: string, _?: any) {
+    var c = 0, length = 0;
+    for (var i = 0, l = str.length; i < l; i++) {
+        c = str.charCodeAt(i);
+        if (c < 0x80) {
+            length += 1;
+        }
+        else if (c < 0x800) {
+            length += 2;
+        }
+        else if (c >= 0xd800 && c < 0xdc00 && isLowSurrogate(str.charCodeAt(i + 1))) {
+            i++;
+            length += 4;
+        }
+        else {
+            length += 3; // incl. lone surrogates, written as U+FFFD
+        }
+    }
+    return length;
+}
 
 const utf8Length: (str: string, _?: any) => number = (hasBufferByteLength)
     ? Buffer.byteLength // node
-    : function (str: string, _?: any) {
-        var c = 0, length = 0;
-        for (var i = 0, l = str.length; i < l; i++) {
-            c = str.charCodeAt(i);
-            if (c < 0x80) {
-                length += 1;
-            }
-            else if (c < 0x800) {
-                length += 2;
-            }
-            else if (c < 0xd800 || c >= 0xe000) {
-                length += 3;
-            }
-            else {
-                i++;
-                length += 4;
-            }
-        }
-        return length;
-    }
+    : utf8LengthFallback;
 
+// keep small: V8 inlines it into string() only under 460 bytes of bytecode
 function utf8Write(view: BufferLike, str: string, it: Iterator) {
   var c = 0;
   for (var i = 0, l = str.length; i < l; i++) {
@@ -82,13 +90,7 @@ function utf8Write(view: BufferLike, str: string, it: Iterator) {
       view[it.offset + 1] = 0x80 | (c & 0x3f);
       it.offset += 2;
     }
-    else if (c < 0xd800 || c >= 0xe000) {
-      view[it.offset] = 0xe0 | (c >> 12);
-      view[it.offset+1] = 0x80 | (c >> 6 & 0x3f);
-      view[it.offset+2] = 0x80 | (c & 0x3f);
-      it.offset += 3;
-    }
-    else {
+    else if (c >= 0xd800 && c < 0xdc00 && isLowSurrogate(str.charCodeAt(i + 1))) {
       i++;
       c = 0x10000 + (((c & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
       view[it.offset] = 0xf0 | (c >> 18);
@@ -96,6 +98,13 @@ function utf8Write(view: BufferLike, str: string, it: Iterator) {
       view[it.offset+2] = 0x80 | (c >> 6 & 0x3f);
       view[it.offset+3] = 0x80 | (c & 0x3f);
       it.offset += 4;
+    }
+    else {
+      if (c >= 0xd800 && c < 0xe000) { c = 0xfffd; } // lone surrogate, like TextEncoder
+      view[it.offset] = 0xe0 | (c >> 12);
+      view[it.offset+1] = 0x80 | (c >> 6 & 0x3f);
+      view[it.offset+2] = 0x80 | (c & 0x3f);
+      it.offset += 3;
     }
   }
 }

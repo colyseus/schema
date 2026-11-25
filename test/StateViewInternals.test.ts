@@ -330,6 +330,29 @@ describe("StateView internals", () => {
             );
         });
 
+        it("clears the @view(N) fields a nested add() opened", () => {
+            class Bag extends Schema { @type("number") n = 0; }
+            class Hero extends Schema { @view(1) @type(Bag) bag = new Bag(); }
+
+            const state = new Hero();
+            getEncoder(state);
+
+            const v1 = new StateView();
+            v1.add(state.bag); // without tag 1: opens `bag` for v1 alone
+            const tree = state[$changes];
+            assert.strictEqual(v1.isFieldOpen(tree, 0), true);
+
+            const reusedId = v1.id;
+            v1.dispose();
+
+            const v2 = new StateView();
+            // @ts-ignore — private
+            v2["_bindRoot"](tree.root);
+            assert.strictEqual(v2.id, reusedId, "ID was reused");
+            v2.markVisible(state.bag[$changes]);
+            assert.strictEqual(v2.isFieldOpen(tree, 0), false);
+        });
+
         it("re-add after dispose works (idempotent markVisible)", () => {
             const state = new State();
             getEncoder(state);
