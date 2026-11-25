@@ -229,7 +229,7 @@ export function stringCheck(bytes: BufferLike, it: Iterator) {
   const prefix = bytes[it.offset];
   return (
     // fixstr
-    (prefix < 0xc0 && prefix > 0xa0) ||
+    (prefix < 0xc0 && prefix >= 0xa0) ||
     // str 8
     prefix === 0xd9 ||
     // str 16
