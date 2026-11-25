@@ -317,6 +317,8 @@ export class Encoder<T extends Schema = any> {
         if (this.root.attachError !== undefined) { this.throwAttachError(); }
     }
 
+    // Checked first in every encode entry point, before any state is touched,
+    // so the changes queued with the bad attach still go out on the next call.
     private throwAttachError(): never {
         const error = this.root.attachError!;
         this.root.attachError = undefined;

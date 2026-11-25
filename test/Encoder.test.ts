@@ -82,6 +82,10 @@ describe("Encoder", () => {
             assert.throws(() => encoder.encode(), /Inventory\.slots is an own property/);
             encoder.discardChanges();
         }
+
+        encoder.state.inventory = shadowed();
+        assert.throws(() => encoder.encodeAll(), /Inventory\.slots is an own property/);
+        assert.doesNotThrow(() => encoder.encode());
     });
 
     it("should keep syncing the subtree when the error is caught", () => {

@@ -69,7 +69,7 @@ export function assertInstanceType(
 
 // `useDefineForClassFields: true` turns class fields into own properties that
 // hide the @type() accessors, so nothing is tracked. Checked once per class,
-// from Root.add(), so setters pay nothing extra.
+// from Root.add() on the first instance attached, so setters pay nothing extra.
 const checkedClasses = new WeakSet<Function>();
 export function findShadowedAccessor(ref: any): EncodeSchemaError | undefined {
     const ctor = ref.constructor;
