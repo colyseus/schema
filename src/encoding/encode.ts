@@ -146,6 +146,7 @@ function uint32(bytes: BufferLike, value: number, it: Iterator) {
 };
 
 function int64(bytes: BufferLike, value: number, it: Iterator) {
+  value = Math.trunc(value); // like int32; else floor() takes `high` one too low for -0.5
   const high = Math.floor(value / Math.pow(2, 32));
   const low = value >>> 0;
   uint32(bytes, low, it);
