@@ -156,6 +156,23 @@ describe("Type: Schema", () => {
             assert.strictEqual(decoded.int64, -9223372036854775808);
         });
 
+        it("int64: drop the fraction of a negative value, like int32", () => {
+            class Data extends Schema {
+                @type("int64") int64: number;
+            }
+
+            const decoded = new Data();
+            for (const [value, expected] of [
+                [-0.75, 0],
+                [-4294967296.5, -4294967296],
+            ]) {
+                const data = new Data();
+                data.int64 = value;
+                decoded.decode(data.encode());
+                assert.strictEqual(decoded.int64, expected, `int64 = ${value}`);
+            }
+        });
+
 
         it("float32", () => {
             class Data extends Schema {

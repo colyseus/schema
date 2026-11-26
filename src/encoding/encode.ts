@@ -146,6 +146,7 @@ function uint32(bytes: BufferLike, value: number, it: Iterator) {
 };
 
 function int64(bytes: BufferLike, value: number, it: Iterator) {
+  value = Math.trunc(value); // high (floor) and low (>>> 0) must split the same integer
   const high = Math.floor(value / Math.pow(2, 32));
   const low = value >>> 0;
   uint32(bytes, low, it);
