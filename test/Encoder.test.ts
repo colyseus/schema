@@ -37,6 +37,120 @@ describe("Encoder", () => {
         decodedState.decode(state.encode());
     });
 
+    it("should throw a clear error when a field is an own property (useDefineForClassFields)", () => {
+        class Item extends Schema {
+            @type("string") name: string;
+        }
+        class GameState extends Schema {
+            @type({ map: Item }) items = new MapSchema<Item>();
+        }
+
+        // what `useDefineForClassFields: true` emits for a class field initializer
+        const state = new GameState();
+        Object.defineProperty(state, "items", { value: new MapSchema<Item>(), writable: true, enumerable: true, configurable: true });
+
+        assert.throws(() => new Encoder(state), /GameState\.items is an own property.*"useDefineForClassFields": false/);
+    });
+
+    it("should throw the same error from encode()/encodeAll() when a child's field is an own property", () => {
+        class Inventory extends Schema {
+            @type(["string"]) slots = new ArraySchema<string>();
+        }
+        class Hero extends Schema {
+            @type(Inventory) inventory: Inventory;
+            @type({ map: Inventory }) stash = new MapSchema<Inventory>();
+            @type([Inventory]) bags = new ArraySchema<Inventory>();
+        }
+
+        const encoder = new Encoder(new Hero());
+
+        const shadowed = () => {
+            const inventory = new Inventory();
+            Object.defineProperty(inventory, "slots", { value: new ArraySchema<string>(), writable: true, enumerable: true, configurable: true });
+            return inventory;
+        };
+        const attachments: Array<() => void> = [
+            () => encoder.state.inventory = shadowed(),
+            () => encoder.state.stash.set("a", shadowed()),
+            () => encoder.state.bags.push(shadowed()),
+            () => encoder.state.bags[0] = shadowed(),
+            () => encoder.state.bags.unshift(shadowed()),
+        ];
+
+        for (const attach of attachments) {
+            assert.doesNotThrow(attach);
+            assert.throws(() => encoder.encode(), /Inventory\.slots is an own property/);
+            encoder.discardChanges();
+        }
+
+        // a late joiner's full sync takes the error, the next one carries the child
+        encoder.state.inventory = shadowed();
+        assert.throws(() => encoder.encodeAll(), /Inventory\.slots is an own property/);
+        const joiner = createInstanceFromReflection(encoder.state, encoder);
+        joiner.decode(encoder.encodeAll());
+        assert.ok(joiner.inventory instanceof Schema);
+        assert.notStrictEqual(joiner.inventory, joiner);
+    });
+
+    it("should keep syncing the subtree when the error is caught", () => {
+        class Tag extends Schema {
+            @type("number") level: number = 1;
+        }
+        class Item extends Schema {
+            @type("string") name: string;
+            @type(Tag) tag = new Tag();
+        }
+        class GameState extends Schema {
+            @type("string") title: string = "root";
+            @type(Item) item: Item;
+            @type({ map: Item }) items = new MapSchema<Item>();
+            @type([Item]) list = new ArraySchema<Item>();
+        }
+
+        const state = new GameState();
+        const decodedState = createInstanceFromReflection(state);
+        decodedState.decode(state.encode());
+
+        const shadowed = () => {
+            const item = new Item();
+            Object.defineProperty(item, "name", { value: "a", writable: true, enumerable: true, configurable: true });
+            return item;
+        };
+        state.item = shadowed();
+        state.items.set("a", shadowed());
+        state.list.push(new Item());
+        state.list.unshift(shadowed());
+        state.list[1] = shadowed();
+
+        // thrown once, then the queued changes encode as before
+        assert.throws(() => state.encode(), /Item\.name is an own property/);
+        decodedState.decode(state.encode());
+
+        for (const item of [decodedState.item, decodedState.items.get("a"), decodedState.list[0], decodedState.list[1]]) {
+            assert.ok(item instanceof Schema);
+            assert.notStrictEqual(item, decodedState);
+            assert.strictEqual(item.tag.level, 1);
+        }
+        assert.strictEqual(decodedState.list.length, 2);
+    });
+
+    it("should not check children added to a collection with no encoder (client-side)", () => {
+        class Inventory extends Schema {
+            @type(["string"]) slots = new ArraySchema<string>();
+        }
+        const inventory = new Inventory();
+        Object.defineProperty(inventory, "slots", { value: new ArraySchema<string>(), writable: true, enumerable: true, configurable: true });
+
+        class Hero extends Schema {
+            @type({ map: Inventory }) stash = new MapSchema<Inventory>();
+        }
+        const hero = new Hero();
+        assert.doesNotThrow(() => hero.stash.set("a", inventory));
+
+        // still caught once the tree gets an encoder
+        assert.throws(() => new Encoder(hero), /Inventory\.slots is an own property/);
+    });
+
     describe("strings with lone surrogates", () => {
         // e.g. a string sliced mid-emoji
         const cases: Array<[string, string]> = [

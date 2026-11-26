@@ -4,6 +4,7 @@ import type { MapSchema } from "../types/custom/MapSchema.js";
 import type { SetSchema } from "../types/custom/SetSchema.js";
 import type { ArraySchema } from "../types/custom/ArraySchema.js";
 import type { Ref } from "../encoder/ChangeTree.js";
+import { $descriptors } from "../types/symbols.js";
 
 export class EncodeSchemaError extends Error {}
 
@@ -64,4 +65,21 @@ export function assertInstanceType(
     if (!(value instanceof type)) {
         throw new EncodeSchemaError(`a '${type.name}' was expected, but '${value && (value as any).constructor.name}' was provided in ${instance.constructor.name}#${field}`);
     }
+}
+
+// `useDefineForClassFields: true` turns class fields into own properties that
+// hide the @type() accessors, so nothing is tracked. Checked from Root.add();
+// a class is cached once an instance passes, so setters pay nothing extra.
+const checkedClasses = new WeakSet<Function>();
+export function findShadowedAccessor(ref: any): EncodeSchemaError | undefined {
+    const ctor = ref.constructor;
+    if (checkedClasses.has(ctor)) { return undefined; }
+    const descriptors = ctor[Symbol.metadata]?.[$descriptors];
+    for (const field in descriptors) {
+        if (descriptors[field].get !== undefined && Object.prototype.hasOwnProperty.call(ref, field)) {
+            return new EncodeSchemaError(`@colyseus/schema: ${ctor.name}.${field} is an own property that hides its synced accessor, so its changes are never tracked. Set "useDefineForClassFields": false (TypeScript, esbuild); in plain JavaScript, assign it in the constructor instead of declaring a class field.`);
+        }
+    }
+    checkedClasses.add(ctor);
+    return undefined;
 }
