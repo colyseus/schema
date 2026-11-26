@@ -95,4 +95,20 @@ describe("Decoder", () => {
         encode.string(bytes, "é€😀", { offset: 0 });
         assert.strictEqual(decode.string(bytes, { offset: 0 }), "é€😀");
     });
+
+    it("stringCheck should accept every string prefix the encoder writes, including the empty string", () => {
+        for (const value of ["", "a", "x".repeat(31), "x".repeat(32), "x".repeat(256), "x".repeat(65536)]) {
+            const bytes: number[] = [];
+            encode.string(bytes, value, { offset: 0 });
+            assert.strictEqual(decode.stringCheck(bytes, { offset: 0 }), true, `length ${value.length}`);
+        }
+    });
+
+    it("stringCheck should reject number prefixes", () => {
+        for (const value of [0, 1, 127, 128, 65535, -1, -32, -33, -129, 1.5, 2 ** 40]) {
+            const bytes: number[] = [];
+            encode.number(bytes, value, { offset: 0 });
+            assert.strictEqual(decode.stringCheck(bytes, { offset: 0 }), false, `value ${value}`);
+        }
+    });
 });
