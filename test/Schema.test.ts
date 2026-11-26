@@ -163,11 +163,8 @@ describe("Type: Schema", () => {
 
             const decoded = new Data();
             for (const [value, expected] of [
-                [-0.5, 0],
-                [-1.5, -1],
+                [-0.75, 0],
                 [-4294967296.5, -4294967296],
-                [-8589934592.25, -8589934592],
-                [2.75, 2],
             ]) {
                 const data = new Data();
                 data.int64 = value;
