@@ -16,7 +16,7 @@ Contents: [primitives](#primitives) · [message and chunks](#message-and-chunks)
 | `uvarint` | unsigned LEB128: 7 bits per byte, low group first, high bit = continuation. 1 byte < 128, 2 bytes < 16 384, 3 bytes < 2 097 152. Used for every structural integer: refIds, field / entry indexes, counts, lengths, type ids, revisions. |
 | `string` | `uvarint(utf8ByteLength) utf8Bytes`. `null` / `undefined` ride as `""`. |
 | fixed-width types | `int8…int64`, `uint8…uint64`, `float32`, `float64`, `bigint64`, `biguint64`, `boolean` — little-endian, no tag. |
-| `number` (dynamic) | msgpack-shaped: positive fixint `0x00–0x7f`, negative fixint `0xe0–0xff`, `0xcc/0xcd/0xce` uint8/16/32, `0xd0/0xd1/0xd2` int8/16/32, `0xca` float32 (chosen when `|f32(v) − v| < 1e-4`), `0xcb` float64 (also integers beyond 32 bits). `NaN` rides as `0`, `±Infinity` as `±MAX_SAFE_INTEGER`. |
+| `number` (dynamic) | msgpack-shaped: positive fixint `0x00–0x7f`, negative fixint `0xe0–0xff`, `0xcc/0xcd/0xce` uint8/16/32, `0xd0/0xd1/0xd2` int8/16/32, `0xca` float32 (chosen when `|f32(v) − v| < 1e-4`), `0xcb` float64. Integers beyond 32 bits take the float forms, never `0xcf/0xd3`. `NaN` rides as `0`, `±Infinity` as `±MAX_SAFE_INTEGER`. |
 | quantized | raw `uint8/16/32` per the field's `bits`. |
 
 ## Message and chunks
@@ -356,8 +356,10 @@ references point at the grammar above.
    on a definition mismatch. 255 is an ordinary byte now.
 2. **Integers.** Every structural integer — refId, field index, wire index,
    count, length, type id, revision, array op operand — is unsigned LEB128,
-   not a msgpack number. Field *values* keep their declared encoding; the
-   dynamic `number` type is unchanged (msgpack-shaped).
+   not a msgpack number. Field *values* keep their declared encoding, and
+   the dynamic `number` keeps its msgpack shape, except that `0xce` now also
+   carries 2^31…2^32−1 (5.x sent those as floats): read it unsigned. The 5.x
+   Haxe decoder returns it signed.
 3. **Strings** ([primitives](#primitives)): `uvarint(utf8Len) utf8` replaces
    the msgpack `str` family; `null` / `undefined` ride as `""`.
 4. **Schema field ops** ([schema ops](#schema-ops)): `uvarint(fieldIndex << 2

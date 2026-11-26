@@ -1,7 +1,9 @@
 import * as assert from "assert";
 import {
     uvarint, uvarintSize, readUvarint, writeMask64, writeString as string6, readString as readString6, endChunk,
+    writeNumber,
 } from "../src/encoding/varint";
+import { decode } from "../src/encoding/decode";
 
 /** A chunk opens as `uvarint(refId)` + one reserved length byte (inline in the encoder). */
 function beginChunk(bytes: Uint8Array, refId: number, it: { offset: number }): number {
@@ -112,5 +114,22 @@ describe("v6 encoding", () => {
         assert.strictEqual(it.offset, 210);
         endChunk(bytes, lenPos, it, bytes.length);
         assert.strictEqual(it.offset, 211); // > capacity → caller re-encodes
+    });
+
+    it("number: integers in 2^31..2^32-1 take the 5-byte uint32 form", () => {
+        for (const [value, tag, size] of [
+            [2 ** 31, 0xce, 5],
+            [3000000001, 0xce, 5], // not exact in float32: float64 would take 9
+            [2 ** 32 - 1, 0xce, 5],
+            [2 ** 32, 0xca, 5],
+            [2 ** 32 + 1, 0xcb, 9],
+            [-(2 ** 31) - 1, 0xcb, 9],
+        ]) {
+            const bytes = new Uint8Array(16);
+            const it = { offset: 0 };
+            writeNumber(bytes, value, it);
+            assert.deepStrictEqual([bytes[0], it.offset], [tag, size], `encoding of ${value}`);
+            assert.strictEqual(decode.number(bytes, { offset: 0 }), value);
+        }
     });
 });

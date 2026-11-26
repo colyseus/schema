@@ -146,9 +146,13 @@ const _f64 = new Float64Array(_conv);
 /**
  * Dynamic `number` (msgpack-shaped): positive fixint `0x00–0x7f`, negative
  * fixint `0xe0–0xff`, `0xcc/0xcd/0xce` uint8/16/32, `0xd0–0xd2` int8/16/32,
- * `0xca` float32 (chosen when `|f32(v) − v| < 1e-4`), `0xcb` float64. Integers
- * beyond 32 bits and non-finite values take the float64 form. Reads back
- * through `decode.number`.
+ * `0xca` float32 (chosen when `|f32(v) − v| < 1e-4`), `0xcb` float64. Reads
+ * back through `decode.number`.
+ *
+ * Integers beyond 32 bits take the float form on purpose, not `0xcf/0xd3`:
+ * float64 costs the same 9 bytes, holds every double (int64 wraps past 2^63),
+ * and float32 still gets the 5-byte form for exact values such as 2^32.
+ * Non-finite values also take the float64 form.
  */
 export function writeNumber(bytes: Uint8Array, value: number, it: Iterator): void {
     if (value === (value | 0)) {
@@ -163,6 +167,14 @@ export function writeNumber(bytes: Uint8Array, value: number, it: Iterator): voi
             if (value >= -0x8000) { bytes[it.offset++] = 0xd1; bytes[it.offset++] = value & 255; bytes[it.offset++] = (value >> 8) & 255; return; }
             bytes[it.offset++] = 0xd2;
         }
+        bytes[it.offset++] = value & 255;
+        bytes[it.offset++] = (value >> 8) & 255;
+        bytes[it.offset++] = (value >> 16) & 255;
+        bytes[it.offset++] = (value >> 24) & 255;
+        return;
+    }
+    if (value === (value >>> 0)) { // 2^31..2^32-1: 5 bytes, where a float may need 9
+        bytes[it.offset++] = 0xce;
         bytes[it.offset++] = value & 255;
         bytes[it.offset++] = (value >> 8) & 255;
         bytes[it.offset++] = (value >> 16) & 255;

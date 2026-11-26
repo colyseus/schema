@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   integer is a LEB128 varint, strings are `uvarint(len) + utf8`. A 5.x client
   is rejected at the reflection handshake. Snapshots are ~40 % smaller and
   ~40 % faster to encode; patches ~15 % faster (`bench/v6-results.md`).
+- An untyped `number` from 2^31 to 2^32−1 takes 5 bytes on the wire (msgpack uint32) instead of up to 9 as a float. SDK decoders must read `0xce` as unsigned.
 - **`ArraySchema` extends `Array`.** `Array.isArray(arr)` is true; `map` /
   `filter` / `slice` / `concat` / `flat` return plain arrays
   (`ArraySchema[Symbol.species] === Array`); `fill`, `copyWithin`, `flat`,
