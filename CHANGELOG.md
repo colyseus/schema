@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.52]
+
+### Fixed
+
+- An `int64` field set to a value between -1 and 0, such as `-0.5`, now arrives as `0` instead of `-4294967296`. Thanks @bardrop! [#265](https://github.com/colyseus/schema/pull/265)
+
 ## [5.0.51]
 
 ### Fixed
