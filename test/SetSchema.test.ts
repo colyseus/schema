@@ -1,8 +1,8 @@
 import * as assert from "assert";
 
-import { Schema, type, SetSchema, MapSchema } from "../src";
+import { Schema, type, SetSchema, MapSchema, Encoder, $changes, $refId } from "../src";
 import "./Schema";
-import { assertDeepStrictEqualEncodeAll, encodeAndAssertEquals } from "./Schema";
+import { assertDeepStrictEqualEncodeAll, createClientWithView, encodeAndAssertEquals, encodeMultiple } from "./Schema";
 
 describe("Type: SetSchema", () => {
 
@@ -307,6 +307,96 @@ describe("Type: SetSchema", () => {
         assert.deepEqual([1, 3, 5, 7, 9], decoded2.numbers.toArray());
     });
     */
+
+    it("clear() releases its children", () => {
+        class Player extends Schema {
+            @type("number") level: number;
+        }
+
+        class State extends Schema {
+            @type({ set: Player })
+            players = new SetSchema<Player>();
+        }
+
+        const state = new State();
+        const encoder = new Encoder(state);
+        encoder.encodeAll();
+        encoder.discardChanges();
+
+        const players = [10, 20, 30].map((level) => new Player().assign({ level }));
+        players.forEach((player) => state.players.add(player));
+
+        encoder.encode();
+        encoder.discardChanges();
+
+        state.players.clear();
+        encoder.encode();
+        encoder.discardChanges();
+
+        // Unlike MapSchema / CollectionSchema / ArraySchema, clear() used to
+        // leave every element attached: refCount stayed at 1 and the tree
+        // stayed in root.changeTrees forever (one leaked tree per element,
+        // per clear()).
+        players.forEach((player) => {
+            assert.strictEqual(player[$changes].refCount, 0,
+                "a cleared member must not keep a reference");
+            assert.strictEqual(encoder.root.changeTrees[player[$refId]], undefined,
+                "a cleared member must not stay registered on the root");
+        });
+    });
+
+    it("clear() tolerates a member that has no ChangeTree", () => {
+        class Player extends Schema {
+            @type("number") level: number;
+        }
+
+        class State extends Schema {
+            @type({ set: Player })
+            players = new SetSchema<Player>();
+        }
+
+        const state = new State();
+        const encoder = new Encoder(state);
+        encoder.encodeAll();
+        encoder.discardChanges();
+
+        // add() accepts anything, so a plain object can be a member and carry
+        // no ChangeTree for clear() to unlink.
+        (state.players as any).add({ level: 1 });
+        state.players.clear();
+
+        assert.strictEqual(state.players.size, 0);
+    });
+
+    it("re-adding the same instance after clear() reaches the client", () => {
+        class Player extends Schema {
+            @type("number") level: number;
+        }
+
+        class State extends Schema {
+            @type({ set: Player })
+            players = new SetSchema<Player>();
+        }
+
+        const state = new State();
+        const encoder = new Encoder(state);
+        const client = createClientWithView(state, undefined, encoder);
+        encodeMultiple(encoder, state, [client]);
+
+        const player = new Player().assign({ level: 1 });
+        state.players.add(player);
+        encodeMultiple(encoder, state, [client]);
+
+        state.players.clear();
+        encodeMultiple(encoder, state, [client]);
+
+        // Before the fix the refill reused a tree that still believed it was
+        // attached, so the client kept a member with no fields ("{}").
+        state.players.add(player);
+        encodeMultiple(encoder, state, [client]);
+
+        assert.deepStrictEqual(client.state.players.toJSON(), [{ level: 1 }]);
+    });
 
     it("SetSchema.toJSON", () => {
         const set = new SetSchema();
